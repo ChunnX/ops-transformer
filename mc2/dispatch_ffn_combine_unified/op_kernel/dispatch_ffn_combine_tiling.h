@@ -69,21 +69,13 @@ struct DispatchFFNCombineInfoCommon {
     uint64_t initRoutingQuantTilingKey;
 };
 
-struct DispatchFFNCombineInfoQuant {
+struct DispatchFFNCombineTilingDataQuant {
     DispatchFFNCombineInfoCommon common;
     optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
 };
 
-struct DispatchFFNCombineInfoNonQuant {
+struct DispatchFFNCombineTilingDataNonQuant {
     DispatchFFNCombineInfoCommon common;
     optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
-};
-
-struct DispatchFFNCombineTilingDataQuant {
-    DispatchFFNCombineInfoQuant dispatchFFNCombineInfo;
-};
-
-struct DispatchFFNCombineTilingDataNonQuant {
-    DispatchFFNCombineInfoNonQuant dispatchFFNCombineInfo;
 };
 #endif

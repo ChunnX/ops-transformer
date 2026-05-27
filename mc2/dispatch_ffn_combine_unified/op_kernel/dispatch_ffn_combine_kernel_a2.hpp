@@ -114,9 +114,6 @@ public:
         int32_t listLen;
         int32_t expertPerRank;
         uint32_t maxOutputSize;
-        uint32_t rank;
-        uint32_t rankSize;
-        GM_ADDR symmetricPtr;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -152,8 +149,8 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_,
-               uint32_t expertPerRank_, uint32_t maxOutputSize_, uint32_t rank_,
-               uint32_t rankSize_, int64_t topK_, uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
+               uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
+               uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
                GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
@@ -163,15 +160,12 @@ public:
                 GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                 optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
-                float swigluLimit_ = std::numeric_limits<float>::infinity(),
-                GM_ADDR symmetricPtr_ = nullptr)
+                float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),
               EP(EP_),
               listLen(listLen_),
               expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_),
-              rank(rank_),
-              rankSize(rankSize_),
               topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_),
@@ -203,7 +197,6 @@ public:
               ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
-              symmetricPtr(symmetricPtr_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
         {
             moeInitRoutingQuantV2TilingData.vbsComputeParamsOp = moeInitRoutingQuantV2TilingData_.vbsComputeParamsOp;
@@ -221,8 +214,8 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_,
-               uint32_t expertPerRank_, uint32_t maxOutputSize_, uint32_t rank_,
-                uint32_t rankSize_, int64_t topK_, uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
+               uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
+                uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                 GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                 LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
                 GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
@@ -232,15 +225,12 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
-                float swigluLimit_ = std::numeric_limits<float>::infinity(),
-                GM_ADDR symmetricPtr_ = nullptr)
+                float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),
               EP(EP_),
               listLen(listLen_),
               expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_),
-              rank(rank_),
-              rankSize(rankSize_),
               topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_),
@@ -272,7 +262,6 @@ public:
               ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
-              symmetricPtr(symmetricPtr_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
         }
@@ -319,10 +308,23 @@ public:
     }
 
 private:
+    CATLASS_DEVICE
+    int32_t RuntimeRank(Params const &params) const
+    {
+        (void)params;
+        return shmem.Rank();
+    }
+
+    CATLASS_DEVICE
+    int32_t RuntimeRankSize(Params const &params) const
+    {
+        (void)params;
+        return shmem.RankSize();
+    }
+
     CATLASS_DEVICE void initBuffer(Params const &params)
     {
-#ifdef HCCL_COMM
-        auto tmpContext = reinterpret_cast<__gm__ Mc2MoeContext *>(params.contextGM);
+        auto tmpContext = reinterpret_cast<__gm__ CommContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
         // A2-only init: fetch the RDMA QP descriptor that `SendTokensV3`'s
         // cross-server path needs, and compute which physical server the
@@ -330,10 +332,7 @@ private:
         // are never read.
         qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
-#else
-        shmem.initShmem(params.symmetricPtr, params.rank, params.rankSize);
-#endif
-        serverId_ = static_cast<int32_t>(params.rank / SERVER_RANK_SIZE_A2);
+        serverId_ = static_cast<int32_t>(RuntimeRank(params) / SERVER_RANK_SIZE_A2);
 
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
@@ -355,7 +354,7 @@ private:
         tokenPerExpert.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
 
-        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        tokenPerExpertLayout = Layout3D(AlignUp(RuntimeRankSize(params) * params.expertPerRank, ALIGN_128), params.expertPerRank);
         preSumBeforeRank.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(params.ptrXActiveMask));
     }
@@ -916,7 +915,7 @@ private:
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
 
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            if (dstEpIdx == params.rank) {
+            if (dstEpIdx == RuntimeRank(params)) {
                 continue;
             }
             AscendC::GlobalTensor<int32_t> srcAddress;
@@ -946,7 +945,7 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            if (dstEpIdx != params.rank) {
+            if (dstEpIdx != RuntimeRank(params)) {
                 int32_t intPer512 = CACHE_LINE / sizeof(int);
                 for (int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128);
                      checkIdx += intPer512) {
@@ -971,8 +970,8 @@ private:
             AscendC::PipeBarrier<PIPE_ALL>();
             int32_t prevSum = 0;
             int32_t j = 0;
-            for (int32_t i = 0; i < (params.rank + 1) * params.expertPerRank; i++) {
-                if (i >= params.rank * params.expertPerRank) {
+            for (int32_t i = 0; i < (RuntimeRank(params) + 1) * params.expertPerRank; i++) {
+                if (i >= RuntimeRank(params) * params.expertPerRank) {
                     prevSumBuf(j) = prevSum;
                     j++;
                 }
@@ -1202,7 +1201,7 @@ private:
         CopyUbToGm copyUbToGm;
 
         // -- Path A: self-rank --
-        if (static_cast<int32_t>(params.rank) == dstEpIdx) {
+        if (static_cast<int32_t>(RuntimeRank(params)) == dstEpIdx) {
             AscendC::GlobalTensor<ElementPerTokenScale> gmScale;
             gmScale.SetGlobalBuffer(reinterpret_cast<__gm__ ElementPerTokenScale *>(
                 shmem() + peermemInfo.offsetPeerPerTokenScale));
@@ -1244,7 +1243,7 @@ private:
             // Epoch flag (IPC). Receiver waits for value != groupIdx.
             AscendC::GlobalTensor<int32_t> remoteFlag;
             remoteFlag.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-                shmem(0, dstEpIdx) + peermemInfo.offsetFlag + params.rank * sizeof(uint64_t)));
+                shmem(0, dstEpIdx) + peermemInfo.offsetFlag + RuntimeRank(params) * sizeof(uint64_t)));
             flagUb.SetValue(0, groupIdx + 1);
             AscendC::PipeBarrier<PIPE_ALL>();
             AscendC::DataCopyPad(remoteFlag, flagUb,
@@ -1256,7 +1255,7 @@ private:
         // -- Path C: cross-server (RDMA data then RDMA flag) --
         AscendC::GlobalTensor<int32_t> localFlagGm;
         localFlagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            shmem.windowsOutAddr() + peermemInfo.offsetFlag + params.rank * sizeof(uint64_t)));
+            shmem.windowsOutAddr() + peermemInfo.offsetFlag + RuntimeRank(params) * sizeof(uint64_t)));
         flagUb.SetValue(0, groupIdx + 1);
         AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::DataCopyPad(localFlagGm, flagUb,
@@ -1273,7 +1272,7 @@ private:
         GM_ADDR remoteFlagAddr = reinterpret_cast<GM_ADDR>(
             reinterpret_cast<uintptr_t>(shmem(0, dstEpIdx)) +
             static_cast<uintptr_t>(peermemInfo.offsetFlag) +
-            static_cast<uintptr_t>(params.rank) * sizeof(uint64_t));
+            static_cast<uintptr_t>(RuntimeRank(params)) * sizeof(uint64_t));
         AIVRDMAPostSend(const_cast<GM_ADDR>(reinterpret_cast<const GM_ADDR>(localFlagGm.GetPhyAddr())), remoteFlagAddr,
                         static_cast<uint64_t>(dstEpIdx), sizeof(int32_t),
                         qp_info_, rdmaUbLocal, rdmaUbLocalHead);
@@ -1292,7 +1291,7 @@ private:
     CATLASS_DEVICE void RecvTokensV3(int32_t rows2, int32_t rowStart2, uint32_t hiddenSize,
                                      int32_t srcEpIdx, int32_t groupIdx, Params const &params)
     {
-        if (srcEpIdx == static_cast<int32_t>(params.rank)) {
+        if (srcEpIdx == static_cast<int32_t>(RuntimeRank(params))) {
             return;
         }
         if (rows2 == 0) {
@@ -1402,7 +1401,7 @@ private:
     {
         icache_preload(8);
         int64_t localTokenPerExpertOffset =
-            peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(params.rank, 0, 0) * sizeof(int32_t);
+            peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(RuntimeRank(params), 0, 0) * sizeof(int32_t);
         GM_ADDR localTokenPerExpert =
             shmem.windowsOutAddr() + localTokenPerExpertOffset;  // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
@@ -1455,7 +1454,7 @@ private:
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
         if (coreIdx == 0) {
-            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.rank, params.EP);
+            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, RuntimeRank(params), params.EP);
         }
 
         uint32_t curGroupOffset = 0;
@@ -1497,7 +1496,7 @@ private:
             // only registers `ascend910_93`).
             // ----------------------------------------------------------
             uint32_t currentM;
-            currentM = static_cast<uint32_t>(cumsumMM(tokenPerExpertLayout(params.EP - 1, params.rank, groupIdx)));
+            currentM = static_cast<uint32_t>(cumsumMM(tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), groupIdx)));
             // SEND phase: parallel-over-cores send to each dstEpIdx.
             // prevGroupSum1: dstEpIdx peer mem offset base (SEND phase)
             // prevGroupSum2: rank peer mem offset base (RECV phase)
@@ -1508,13 +1507,13 @@ private:
                  dstEpIdx < static_cast<int32_t>(params.EP);
                  dstEpIdx += static_cast<int32_t>(coreNum)) {
                 uint32_t rowStart = prevGroupSum1 +
-                    ((params.rank == 0) ? 0u
+                    ((RuntimeRank(params) == 0) ? 0u
                         : static_cast<uint32_t>(cumsumMM(
-                            tokenPerExpertLayout(params.rank - 1, dstEpIdx, groupIdx))));
+                            tokenPerExpertLayout(RuntimeRank(params) - 1, dstEpIdx, groupIdx))));
                 currentMSend = static_cast<uint32_t>(
                     cumsumMM(tokenPerExpertLayout(params.EP - 1, dstEpIdx, groupIdx)));
                 if (rowStart < params.maxOutputSize) {
-                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(params.rank, dstEpIdx, groupIdx));
+                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(RuntimeRank(params), dstEpIdx, groupIdx));
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
@@ -1546,10 +1545,10 @@ private:
                 uint32_t rowStart2 = prevGroupSum2 +
                     ((srcEpIdx == 0) ? 0u
                         : static_cast<uint32_t>(cumsumMM(
-                            tokenPerExpertLayout(srcEpIdx - 1, params.rank, groupIdx))));
+                            tokenPerExpertLayout(srcEpIdx - 1, RuntimeRank(params), groupIdx))));
                 if (rowStart2 < params.maxOutputSize) {
                     uint32_t rows2 = static_cast<uint32_t>(
-                        tokenPerExpert(tokenPerExpertLayout(srcEpIdx, params.rank, groupIdx)));
+                        tokenPerExpert(tokenPerExpertLayout(srcEpIdx, RuntimeRank(params), groupIdx)));
                     if (rows2 + rowStart2 > params.maxOutputSize) {
                         rows2 = params.maxOutputSize - rowStart2;
                     }
@@ -1596,7 +1595,7 @@ private:
         typename BlockEpilogue2::Params epilogueParams{
             static_cast<int32_t>(params.EP),
             static_cast<int32_t>(params.expertPerRank),
-            static_cast<int32_t>(params.rank),
+            static_cast<int32_t>(RuntimeRank(params)),
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
             params.layoutD2,
             static_cast<int32_t>(n2),

@@ -145,6 +145,8 @@ public:
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         // ubOffset += blockN * sizeof(float);
+        ubOffset += 32;
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset);
     }
     CATLASS_DEVICE
     void Finalize()
@@ -308,12 +310,13 @@ public:
             // Multiply FP32 C with per-token scale value
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Muls(ubCFp32, ubCFp32, perTokenScale, blockN);
+            AscendC::PipeBarrier<PIPE_V>();
 
             // swiglu limit clamp
             if (swigluLimit > 0.0f) {
-                AscendC::ClampMax(ubCFp32, ubCFp32, sharedUbTmpBuffer.template ReinterpretCast<uint8_t>(), swigluLimit, blockN);
+                AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedUbTmpBuffer.template ReinterpretCast<uint8_t>(), -1.0f * swigluLimit, ChunkTileLen);
+                AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
@@ -447,6 +450,7 @@ private:
     AscendC::LocalTensor<int32_t> ubQuantS32;
     AscendC::LocalTensor<half> ubQuantF16;
     AscendC::LocalTensor<float> ubPerTokenScaleOutput;
+    AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
 
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;

@@ -63,7 +63,7 @@ constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
 // Atlas A3 (910_93) kernel.
 //
-// Uses `HcclOpResParamCustom` window context.
+// Uses `HcclOpResParam` window context.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
           class BlockEpilogue2_>
 class DispatchFFNCombineKernel {
@@ -118,9 +118,6 @@ public:
         int32_t listLen;
         int32_t expertPerRank;
         uint32_t maxOutputSize;
-        uint32_t rank;
-        uint32_t rankSize;
-        GM_ADDR symmetricPtr;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -156,8 +153,8 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_,
-               uint32_t expertPerRank_, uint32_t maxOutputSize_, uint32_t rank_,
-               uint32_t rankSize_, int64_t topK_, uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
+               uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
+               uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
                GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
@@ -167,15 +164,12 @@ public:
                 GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                 optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
-                float swigluLimit_ = std::numeric_limits<float>::infinity(),
-                GM_ADDR symmetricPtr_ = nullptr)
+                float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),
               EP(EP_),
               listLen(listLen_),
               expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_),
-              rank(rank_),
-              rankSize(rankSize_),
               topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_),
@@ -207,7 +201,6 @@ public:
               ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
-              symmetricPtr(symmetricPtr_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
         {
             moeInitRoutingQuantV2TilingData.vbsComputeParamsOp = moeInitRoutingQuantV2TilingData_.vbsComputeParamsOp;
@@ -225,8 +218,8 @@ public:
 
         CATLASS_HOST_DEVICE
         Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_,
-               uint32_t expertPerRank_, uint32_t maxOutputSize_, uint32_t rank_,
-                uint32_t rankSize_, int64_t topK_, uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
+               uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
+                uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                 GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
                 LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
                 GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
@@ -236,15 +229,12 @@ public:
                 GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
                 optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
-                float swigluLimit_ = std::numeric_limits<float>::infinity(),
-                GM_ADDR symmetricPtr_ = nullptr)
+                float swigluLimit_ = std::numeric_limits<float>::infinity())
             : problemShape(problemShape_),
               EP(EP_),
               listLen(listLen_),
               expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_),
-              rank(rank_),
-              rankSize(rankSize_),
               topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_),
@@ -276,7 +266,6 @@ public:
               ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
-              symmetricPtr(symmetricPtr_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
         {
         }
@@ -330,14 +319,24 @@ public:
     }
 
 private:
+    CATLASS_DEVICE
+    int32_t RuntimeRank(Params const &params) const
+    {
+        (void)params;
+        return shmem.Rank();
+    }
+
+    CATLASS_DEVICE
+    int32_t RuntimeRankSize(Params const &params) const
+    {
+        (void)params;
+        return shmem.RankSize();
+    }
+
     CATLASS_DEVICE void initBuffer(Params const &params)
     {
-#ifdef HCCL_COMM
-        auto tmpContext = reinterpret_cast<__gm__ Mc2MoeContext *>(params.contextGM);
+        auto tmpContext = reinterpret_cast<__gm__ CommContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
-#else
-        shmem.initShmem(params.symmetricPtr, params.rank, params.rankSize);
-#endif
         workspaceInfo = WorkspaceInfo(params);
         peermemInfo = PeermemInfo(params, shmem);
 
@@ -368,7 +367,8 @@ private:
         tokenPerExpert.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
 
-        tokenPerExpertLayout = Layout3D(AlignUp(params.EP * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        tokenPerExpertLayout = Layout3D(AlignUp(RuntimeRankSize(params) * params.expertPerRank, ALIGN_128),
+                                        params.expertPerRank);
         preSumBeforeRank.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(params.ptrXActiveMask));
     }
@@ -606,7 +606,7 @@ private:
         AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> tmpResult =
             resource.ubBuf.template GetBufferByByte<int32_t>(EP * expertPerRank * sizeof(int32_t));
-#define U16(x) static_cast<uint16_t>(x)
+    #define U16(x) static_cast<uint16_t>(x)
 
         AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert[rankId * expertPerRank],
                              {U16(EP), U16(expertPerRank * sizeof(int32_t)),
@@ -887,10 +887,6 @@ private:
                             blockMmad(gmS2[gmOffsetS], layoutScale, gmA2I4[gmGroupOffsetA + gmOffsetA], layoutA,
                                       gmB2[gmGroupOffsetB + gmOffsetB], layoutB2, gmC2[gmGroupOffsetC + gmOffsetC],
                                       layoutC, actualBlockShape, Callback{}, Callback{}, syncLoopIdx, 0);
-                        } else {
-                            blockMmad(gmS2[gmOffsetS], layoutScale, gmA2I4[gmGroupOffsetA + gmOffsetA], layoutA,
-                                      gmB2[gmGroupOffsetB + gmOffsetB], layoutB2, gmC2[gmGroupOffsetC + gmOffsetC],
-                                      layoutC, actualBlockShape);
                         }
                     } else if constexpr (std::is_same_v<ElementA, int8_t>) {
                         int64_t gmOffsetS = blockCoord.n() * L1TileShape::N + (params.listLen == 1 ? groupIdx * n2 : 0);
@@ -917,11 +913,11 @@ private:
 
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
-        if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
+        if constexpr (BlockMmad::DispatchPolicy::ASYNC ) {
             blockMmad.SynchronizeBlock();
-        }
-        if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-            blockMmad.Finalize(params.expertPerRank - 1, 0);
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                blockMmad.Finalize(params.expertPerRank - 1, 0);
+            }
         }
     }
 
@@ -963,12 +959,14 @@ private:
     void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
                                                                         int64_t localTokenPerExpertOffset)
     {
+        // printf("[DBG] CrossRankSync enter: coreIdx=%u rank=%u ep=%u expPerRank=%u\n",coreIdx, params.rank, params.EP, params.expertPerRank);
         uint32_t numPerCore = AlignUp(params.EP * params.expertPerRank, 128);
         AscendC::LocalTensor<int32_t> tmpBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
 
+        int32_t runtimeRank = RuntimeRank(params);
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            if (dstEpIdx == params.rank) {
+            if (dstEpIdx == runtimeRank) {
                 continue;
             }
             AscendC::GlobalTensor<int32_t> srcAddress;
@@ -998,7 +996,7 @@ private:
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-            if (dstEpIdx != params.rank) {
+            if (dstEpIdx != runtimeRank) {
                 int32_t intPer512 = CACHE_LINE / sizeof(int);
                 for (int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128);
                      checkIdx += intPer512) {
@@ -1023,8 +1021,8 @@ private:
             AscendC::PipeBarrier<PIPE_ALL>();
             int32_t prevSum = 0;
             int32_t j = 0;
-            for (int32_t i = 0; i < (params.rank + 1) * params.expertPerRank; i++) {
-                if (i >= params.rank * params.expertPerRank) {
+            for (int32_t i = 0; i < (runtimeRank + 1) * params.expertPerRank; i++) {
+                if (i >= runtimeRank * params.expertPerRank) {
                     prevSumBuf(j) = prevSum;
                     j++;
                 }
@@ -1173,9 +1171,13 @@ private:
     CATLASS_DEVICE
     void DispatchAndCombine(Params const &params)
     {
+        // printf("[DBG] DispatchAndCombine enter: coreIdx=%u rank=%u ep=%u expPerRank=%u m=%u n=%u k=%u topK=%u maxOut=%u\n",
+        //        coreIdx, params.rank, params.EP, params.expertPerRank,
+        //        params.problemShape.m(), params.problemShape.n(), params.problemShape.k(), params.topK, params.maxOutputSize);
         icache_preload(8);
+        int32_t runtimeRank = RuntimeRank(params);
         int64_t localTokenPerExpertOffset =
-            peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(params.rank, 0, 0) * sizeof(int32_t);
+            peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(runtimeRank, 0, 0) * sizeof(int32_t);
         GM_ADDR localTokenPerExpert =
             shmem() + localTokenPerExpertOffset;  // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
@@ -1225,11 +1227,12 @@ private:
         }
         
         AscendC::SyncAll<true>();
+        // printf("[DBG] routing done: coreIdx=%u\n", coreIdx);
 
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
         if (coreIdx == 0) {
-            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.rank, params.EP);
+            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
         }
 
         uint32_t curGroupOffset = 0;
@@ -1248,6 +1251,8 @@ private:
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
+
+//         // printf("[DBG] pre group loop: coreIdx=%u prevSum=%d\n", coreIdx, prevSum);
 
         uint32_t prevGroupSum1 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1268,7 +1273,7 @@ private:
                 uint32_t rowStart =
                     (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum1;
                 if (rowStart < params.maxOutputSize) {
-                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
@@ -1346,7 +1351,7 @@ private:
         typename BlockEpilogue2::Params epilogueParams{
             static_cast<int32_t>(params.EP),
             static_cast<int32_t>(params.expertPerRank),
-            static_cast<int32_t>(params.rank),
+            runtimeRank,
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert),
             params.layoutD2,
             static_cast<int32_t>(n2),
@@ -1361,11 +1366,14 @@ private:
         AscendC::SyncAll<false>();
 #endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+            // printf("[DBG] swiglu loop enter: coreIdx=%u nSyncSwiglu=%u\n", coreIdx, nSyncSwiglu);
             for(int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++)
             {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
                 AscendC::SyncAll<true>();
                 uint32_t curRowNum = dequantSum[syncIdx+1] - dequantSum[syncIdx];
+                // printf("[DBG] swiglu epi: coreIdx=%u syncIdx=%d curRowNum=%u rowStart=%u total=%u\n",
+                //        coreIdx, syncIdx, curRowNum, dequantSum[syncIdx], dequantSum[syncIdx+1]);
                 if(curRowNum > 0)
                 {
                     uint32_t rowStartThisCore = dequantSum[syncIdx];
@@ -1377,13 +1385,14 @@ private:
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                                     reinterpret_cast<__gm__ float *>(params.ptrBias1),
                                     gmA2I4_I8[gmOffsetD], cumsumMM, rowStartThisCore, gmPerTokenScale2[rowStartThisCore],
-                                    params.expertPerRank, params.EP, gmCGMM1[gmOffsetC], params.rank, params.listLen,
+                                    params.expertPerRank, params.EP, gmCGMM1[gmOffsetC], runtimeRank, params.listLen,
                                     params.epilogueCoreNum, params.swigluLimit);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
             }
-        } else {
+        } 
+        else {
             AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
             AscendC::SyncAll<true>();
             if (dequantSum1 > 0) {
@@ -1430,6 +1439,7 @@ private:
             }
         }
         blockEpilogue1.Finalize();
+        // printf("[DBG] swiglu epi done, entering CombineV2: coreIdx=%u\n", coreIdx);
 #ifdef SYNC_MODE
         AscendC::SyncAll<false>();
         AscendC::SyncAll<false>();
@@ -1445,7 +1455,8 @@ private:
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
             shmem.CrossRankSyncV2Set(ctrBuffer);
-        } else {
+        } 
+        else {
             uint32_t uboffset = 0;
             uint32_t aicCoreNum = coreNum / 2;
             uint32_t aicCoreIdx = get_block_idx();
@@ -1466,16 +1477,21 @@ private:
             shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
+            // printf("[DBG] unpermute start: coreIdx=%u subblock=%u\n", coreIdx, get_subblockid());
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
             kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs,
                                            reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
+            // printf("[DBG] unpermute done: coreIdx=%u\n", coreIdx);
         }
+        // printf("[DBG] DispatchAndCombine exit: coreIdx=%u\n", coreIdx);
     }
 
     CATLASS_DEVICE
     void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
+        // printf("[DBG] CombineV2 enter: coreIdx=%u aicCoreIdx=%u aivSubCore=%u n2=%u k2=%u expPerRank=%u\n",
+        //        coreIdx, get_block_idx(), get_subblockid(), params.problemShape.k(), params.problemShape.n()/2, params.expertPerRank);
         blockEpilogue.InitFlag();
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;

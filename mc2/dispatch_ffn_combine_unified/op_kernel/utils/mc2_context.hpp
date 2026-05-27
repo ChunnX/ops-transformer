@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MC2_CONTEXT_HPP
-#define MC2_CONTEXT_HPP
+#ifndef _HPP
+#define _HPP
 
 #include <cstdint>
 
@@ -19,12 +19,12 @@
 
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 
-struct Mc2MoeContext {
+struct CommContext {
     uint32_t epRankId;
-    uint32_t epRankSize;
-    uint64_t winSize;
+    uint32_t rankSizePerServer;
+    uint64_t kfcContextAddr;
     uint64_t hcclContextAddr;
-    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE];
+    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
 #ifdef __CCE_AICORE__
@@ -36,4 +36,4 @@ __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t off
 }
 #endif
 
-#endif // MC2_CONTEXT_HPP
+#endif // _HPP

@@ -31,7 +31,7 @@ using namespace AscendC;
 
 #include "kernel_operator.h"
 
-#include "utils/moe_distribute_base.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 
 #include "dispatch_ffn_combine_tiling.h"
 #include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
@@ -109,8 +109,6 @@ private:
 
     TBuf<AscendC::TPosition::VECCALC> uBuf_;
 
-    int32_t rank;
-    int32_t rankSize;
     int32_t aivNum;
 
     static constexpr int32_t UB_MOVE_NUM = 16 * 1024;
@@ -162,50 +160,41 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Init(
         auto tiling = (__gm__ DispatchFFNCombineTilingDataQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
-        aivNum = tilingData.dispatchFFNCombineInfo.common.aivNum;
-        m = tilingData.dispatchFFNCombineInfo.common.M;
-        k = tilingData.dispatchFFNCombineInfo.common.K;
-        n = tilingData.dispatchFFNCombineInfo.common.N;
-        EP = tilingData.dispatchFFNCombineInfo.common.worldSize;
-        topK = tilingData.dispatchFFNCombineInfo.common.topK;
-        expertPerRank = tilingData.dispatchFFNCombineInfo.common.expertPerRank;
-        maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
-        listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
+        aivNum = tilingData.common.aivNum;
+        m = tilingData.common.M;
+        k = tilingData.common.K;
+        n = tilingData.common.N;
+        EP = tilingData.common.worldSize;
+        topK = tilingData.common.topK;
+        expertPerRank = tilingData.common.expertPerRank;
+        maxOutputSize = tilingData.common.maxRecvTokenNum;
+        listLen = tilingData.common.listLen;
 
-        activationClamp = tilingData.dispatchFFNCombineInfo.common.activationClamp;
+        activationClamp = tilingData.common.activationClamp;
 
-        moeInitRoutingQuantV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingQuantV2TilingData;
-        initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
+        moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
+        initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     } else {
         auto tiling = (__gm__ DispatchFFNCombineTilingDataNonQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
 
-        aivNum = tilingData.dispatchFFNCombineInfo.common.aivNum;
-        m = tilingData.dispatchFFNCombineInfo.common.M;
-        k = tilingData.dispatchFFNCombineInfo.common.K;
-        n = tilingData.dispatchFFNCombineInfo.common.N;
-        EP = tilingData.dispatchFFNCombineInfo.common.worldSize;
-        topK = tilingData.dispatchFFNCombineInfo.common.topK;
-        expertPerRank = tilingData.dispatchFFNCombineInfo.common.expertPerRank;
-        maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
-        listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
+        aivNum = tilingData.common.aivNum;
+        m = tilingData.common.M;
+        k = tilingData.common.K;
+        n = tilingData.common.N;
+        EP = tilingData.common.worldSize;
+        topK = tilingData.common.topK;
+        expertPerRank = tilingData.common.expertPerRank;
+        maxOutputSize = tilingData.common.maxRecvTokenNum;
+        listLen = tilingData.common.listLen;
 
-        activationClamp = tilingData.dispatchFFNCombineInfo.common.activationClamp;
+        activationClamp = tilingData.common.activationClamp;
 
-        moeInitRoutingV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingV2TilingData;
-        initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
+        moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
+        initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     }
 
-    // The unified op exposes `context` as the first kernel input containing a
-    // Mc2MoeContext struct that holds all ranks' HCCL buffer base addresses.
-    // This follows the pattern established in mega_moe for direct peer-memory
-    // access without HCCL collective calls.
-    __gm__ Mc2MoeContext *mc2Context = reinterpret_cast<__gm__ Mc2MoeContext*>(contextGM_);
-    rank = static_cast<int32_t>(mc2Context->epRankId);
-    rankSize = static_cast<int32_t>(mc2Context->epRankSize);
-    for (int32_t i = 0; i < rankSize; ++i) {
-        winRankAddr_[i] = (GM_ADDR)mc2Context->epHcclBuffer[i];
-    }
+    // printf("[DBG] Init done:");
 }
 
 template <MegaMoeClass>
@@ -215,14 +204,6 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     constexpr bool enableUnitFlag = false;
     constexpr bool enableShuffleK = true;
 
-    // ------------------------------------------------------------------
-    // Path selection based on the weight element type.
-    //   - W4A8 path : weight is INT4 (or INT32 packed INT4) — A3 (910_93) only
-    //   - INT8 path : weight is INT8 — A2 (910B) and A3 (910_93)
-    //   - BF16 path : weight is FP16 / BF16 — A2 and A3
-    // The matmul A side type is forced to match the weight side so that the
-    // cube engine sees a homogeneous (A,B) pair.
-    // ------------------------------------------------------------------
     constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;
     constexpr bool isInt8 = std::is_same_v<BType_, int8_t>;
 
@@ -246,11 +227,6 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
     using LayoutC = layout::RowMajor;
 
-    // Cube tile shapes are tuned per data-type combination to match the legacy
-    // implementations:
-    //   W4A8 : 128 x 256 x 1024 (L1) / 128 x 256 x 256 (L0)
-    //   INT8 : 128 x 256 x  512 (L1) / 128 x 256 x 128 (L0)
-    //   BF16 : 128 x 256 x  256 (L1) / 128 x 256 x  64 (L0)
     using L1TileShape = std::conditional_t<
         isW4A8,
         GemmShape<128, 256, 1024>,
@@ -337,9 +313,9 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     using MatmulKernel = std::conditional_t<
         IS_A2_,
         Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
-                                                 BlockEpilogue1, BlockEpilogue2>,
+                                                  BlockEpilogue1, BlockEpilogue2>,
         Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList,
-                                               BlockEpilogue1, BlockEpilogue2>
+                                                BlockEpilogue1, BlockEpilogue2>
     >;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
@@ -350,6 +326,8 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     layout::RowMajor layoutD2{static_cast<uint32_t>(m * topK), static_cast<uint32_t>(n2)};
 
     GemmCoord problemShape{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
+
+    // printf("[DBG] Process: ");
 
     // Epilogue scheduling depends on the data-type path, matching the
     // historic per-path tuning carried over from the three legacy kernels:
@@ -364,11 +342,11 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     } else if constexpr (isInt8) {
         epilogueCoreNum = static_cast<uint32_t>(aivNum) / 2U;
         epilogueGranularity = (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) : 0U;
-    } else {
+     } else {
         // BF16 / FP16 path
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
-    }
+     }
 
     constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
                                      std::is_same_v<BType_, int32_t> ||
@@ -380,7 +358,6 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
         params = typename MatmulKernel::Params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
             static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
-            static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
@@ -392,12 +369,11 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp, winRankAddr_[rank]};
+            epilogueGranularity, activationClamp};
     } else {
         params = typename MatmulKernel::Params{
             problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
             static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
-            static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
@@ -409,7 +385,7 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingV2TilingData,
-            epilogueGranularity, activationClamp, winRankAddr_[rank]};
+            epilogueGranularity, activationClamp};
     }
 
     MatmulKernel kernel(params);

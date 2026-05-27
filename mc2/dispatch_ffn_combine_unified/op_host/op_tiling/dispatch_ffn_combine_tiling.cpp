@@ -303,7 +303,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
         DispatchFFNCombineTilingDataQuant *tilingDataQuant = context->GetTilingData<DispatchFFNCombineTilingDataQuant>();
         OP_TILING_CHECK(tilingDataQuant == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
                         return ge::GRAPH_FAILED);
-        DispatchFFNCombineInfoCommon &info = tilingDataQuant->dispatchFFNCombineInfo.common;
+        DispatchFFNCombineInfoCommon &info = tilingDataQuant->common;
 
         OP_TILING_CHECK(DispatchFFNCombineCheckAttrAndSetTiling(context, info, config) != ge::GRAPH_SUCCESS,
             OP_LOGE(context->GetNodeName(), "DispatchFFNCombine CheckAttrAndSetTiling Failed"),
@@ -363,7 +363,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
         DispatchFFNCombineTilingDataQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataQuant>();
         OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
                         return ge::GRAPH_FAILED);
-        tilingData->dispatchFFNCombineInfo.common = infoCommon;
+        tilingData->common = infoCommon;
 
         optiling::MoeInitRoutingQuantV2TilingBase moeInitRoutingQuantV2TilingBase;
         int64_t quantModeRouting = 1;
@@ -372,13 +372,13 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
             inuptXDtypeSize, quantModeRouting, scaleDim0, aivNumInitRouting, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingQuantV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingQuantV2TilingBase.workspaceSize_;
-        tilingData->dispatchFFNCombineInfo.moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
-        tilingData->dispatchFFNCombineInfo.common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
+        tilingData->moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
+        tilingData->common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     } else {
         DispatchFFNCombineTilingDataNonQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataNonQuant>();
         OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
                         return ge::GRAPH_FAILED);
-        tilingData->dispatchFFNCombineInfo.common = infoCommon;
+        tilingData->common = infoCommon;
 
         optiling::MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
         int64_t quantModeRouting = 0;
@@ -387,8 +387,8 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
             inuptXDtypeSize, quantModeRouting, scaleDim0, aivNumInitRouting, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingV2TilingBase.workspaceSize_;
-        tilingData->dispatchFFNCombineInfo.moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
-        tilingData->dispatchFFNCombineInfo.common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
+        tilingData->moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
+        tilingData->common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     }
 
     OP_LOGD(K_INNER_DEBUG, "initRoutingQuantTilingKey=%lu (isQuantRouting=%u)",

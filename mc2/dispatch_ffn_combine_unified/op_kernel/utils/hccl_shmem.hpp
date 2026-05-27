@@ -13,7 +13,7 @@
  * \brief Templated HCCL shared-memory helper.
  *        Parameterized on `IS_A2`:
  *          - IS_A2 == true  : Atlas A2 (910B), context type is `HcclA2CombineOpParam`
- *          - IS_A2 == false : Atlas A3 (910_93), context type is `HcclOpResParamCustom`
+ *          - IS_A2 == false : Atlas A3 (910_93), context type is `HcclOpResParam`
  *        Unifies the three legacy hccl_shmem.hpp variants under
  *        dispatch_ffn_combine / dispatch_ffn_combine_bf16 / dispatch_ffn_combine_w4_a8
  *        so that the unified op_kernel can compile for both platforms.
@@ -28,8 +28,7 @@
 #include "mc2_context.hpp"
 
 #ifdef HCCL_COMM
-#include "moe_distribute_base.h"
-using namespace AscendC::HcclContextDef;
+#include "../../../common/op_kernel/moe_distribute_base.h"
 
 #else
 #include "shmem_api.h"
@@ -107,20 +106,20 @@ class HcclShmem {
 public:
     #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
         std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
-                            __gm__ HcclOpResParamCustom *> WinContext_{nullptr};
+                            __gm__ HcclOpResParam *> WinContext_{nullptr};
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
         HcclShmem(){
         }
         FORCE_INLINE_AICORE
-        void initShmem(__gm__ Mc2MoeContext *mc2Context) {
+        void initShmem(__gm__ CommContext *mc2Context) {
             GM_ADDR hcclContextAddr = (GM_ADDR)mc2Context->hcclContextAddr;
             if constexpr(IS_A2) {
                 WinContext_ = (__gm__ HcclA2CombineOpParam *)hcclContextAddr;
                 m_rank = WinContext_->rankId;
                 m_rankSize = WinContext_->rankNum;
             } else {
-                WinContext_ = (__gm__ HcclOpResParamCustom *)hcclContextAddr;
+                WinContext_ = (__gm__ HcclOpResParam *)hcclContextAddr;
                 m_rank = WinContext_->localUsrRankId;
                 m_rankSize = WinContext_->rankSize;
             }
@@ -171,7 +170,7 @@ public:
                 }
             } else {
                 return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
-                                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+                                    ((HcclRankRelationResV2 *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
             }
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
@@ -199,7 +198,7 @@ public:
                 }
             } else {
                 return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
-                                    ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
+                                    ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
             }
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
@@ -270,6 +269,11 @@ public:
     FORCE_INLINE_AICORE
     size_t SegmentSize() const {
         return m_segmentSize;
+    }
+
+    FORCE_INLINE_AICORE
+    int32_t Rank() const {
+        return m_rank;
     }
 
     FORCE_INLINE_AICORE
