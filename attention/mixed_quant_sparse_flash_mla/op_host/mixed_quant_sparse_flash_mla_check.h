@@ -125,7 +125,7 @@ constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_SCALE_INDEX = 0;
 constexpr uint32_t ATTR_ROPE_HEAD_DIM_INDEX = 1;
-constexpr uint32_t ATTR_SOTFMAX_SCALE_INDEX = 2;
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 2;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 3;
 constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 4;
 constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 5;
