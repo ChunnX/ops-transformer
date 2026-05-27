@@ -33,7 +33,7 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
-#if defined(DTYPE_GMM_X_SCALE) && (DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0)
+#if defined(ORIG_DTYPE_GMM_X_SCALE) && (ORIG_DTYPE_GMM_X_SCALE == DT_FLOAT8_E8M0)
 #define MX_QUANT_MODE true
 #else
 #define MX_QUANT_MODE false
