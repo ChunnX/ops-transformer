@@ -41,7 +41,8 @@ public:
         uint64_t bufferSize1 = (2 * LICommon::Align(topK, (uint32_t)256) + 5 * 256 + 64)  * sizeof(uint32_t);
         // LICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
         uint64_t bufferSize2 = (LICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2;
+        uint64_t reuseBufferSize = 2 * LICommon::Align(topK, (uint32_t)256) * sizeof(uint32_t);
+        return bufferSize1 + bufferSize2 - reuseBufferSize;
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -50,13 +51,13 @@ public:
         this->trunkLen = trunkLen;
     }
     
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer, LocalTensor<uint32_t>& indicesOutLocal, LocalTensor<uint32_t>& hisIndexLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[LICommon::Align(topK, (uint32_t)256)];
+        LocalTensor<uint32_t> hisIndexLocal1 = indicesOutLocal;
+        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal;
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[LICommon::Align(topK, (uint32_t)256)];
+        histogramsLocal = sharedTmpBuffer[0];
         idx0Local = histogramsLocal[256];
         idx1Local = idx0Local[256];
         idx2Local = idx1Local[256];
