@@ -959,7 +959,6 @@ private:
     void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
                                                                         int64_t localTokenPerExpertOffset)
     {
-        // printf("[DBG] CrossRankSync enter: coreIdx=%u rank=%u ep=%u expPerRank=%u\n",coreIdx, params.rank, params.EP, params.expertPerRank);
         uint32_t numPerCore = AlignUp(params.EP * params.expertPerRank, 128);
         AscendC::LocalTensor<int32_t> tmpBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
@@ -1171,9 +1170,6 @@ private:
     CATLASS_DEVICE
     void DispatchAndCombine(Params const &params)
     {
-        // printf("[DBG] DispatchAndCombine enter: coreIdx=%u rank=%u ep=%u expPerRank=%u m=%u n=%u k=%u topK=%u maxOut=%u\n",
-        //        coreIdx, params.rank, params.EP, params.expertPerRank,
-        //        params.problemShape.m(), params.problemShape.n(), params.problemShape.k(), params.topK, params.maxOutputSize);
         icache_preload(8);
         int32_t runtimeRank = RuntimeRank(params);
         int64_t localTokenPerExpertOffset =
@@ -1227,7 +1223,6 @@ private:
         }
         
         AscendC::SyncAll<true>();
-        // printf("[DBG] routing done: coreIdx=%u\n", coreIdx);
 
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
@@ -1251,8 +1246,6 @@ private:
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
-
-//         // printf("[DBG] pre group loop: coreIdx=%u prevSum=%d\n", coreIdx, prevSum);
 
         uint32_t prevGroupSum1 = 0;
         uint32_t prevGroupSum2 = 0;
@@ -1366,14 +1359,11 @@ private:
         AscendC::SyncAll<false>();
 #endif
         if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
-            // printf("[DBG] swiglu loop enter: coreIdx=%u nSyncSwiglu=%u\n", coreIdx, nSyncSwiglu);
             for(int32_t syncIdx = 0; syncIdx < nSyncSwiglu; syncIdx++)
             {
                 AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
                 AscendC::SyncAll<true>();
                 uint32_t curRowNum = dequantSum[syncIdx+1] - dequantSum[syncIdx];
-                // printf("[DBG] swiglu epi: coreIdx=%u syncIdx=%d curRowNum=%u rowStart=%u total=%u\n",
-                //        coreIdx, syncIdx, curRowNum, dequantSum[syncIdx], dequantSum[syncIdx+1]);
                 if(curRowNum > 0)
                 {
                     uint32_t rowStartThisCore = dequantSum[syncIdx];
@@ -1439,7 +1429,6 @@ private:
             }
         }
         blockEpilogue1.Finalize();
-        // printf("[DBG] swiglu epi done, entering CombineV2: coreIdx=%u\n", coreIdx);
 #ifdef SYNC_MODE
         AscendC::SyncAll<false>();
         AscendC::SyncAll<false>();
@@ -1477,21 +1466,16 @@ private:
             shmem.CrossRankSyncV2Wait(statusTensor, gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
-            // printf("[DBG] unpermute start: coreIdx=%u subblock=%u\n", coreIdx, get_subblockid());
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
             kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs,
                                            reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
             kernelMoeTokenUnpermuteOp.Process();
-            // printf("[DBG] unpermute done: coreIdx=%u\n", coreIdx);
         }
-        // printf("[DBG] DispatchAndCombine exit: coreIdx=%u\n", coreIdx);
     }
 
     CATLASS_DEVICE
     void CombineV2(Params const &params, BlockEpilogue2 &blockEpilogue)
     {
-        // printf("[DBG] CombineV2 enter: coreIdx=%u aicCoreIdx=%u aivSubCore=%u n2=%u k2=%u expPerRank=%u\n",
-        //        coreIdx, get_block_idx(), get_subblockid(), params.problemShape.k(), params.problemShape.n()/2, params.expertPerRank);
         blockEpilogue.InitFlag();
         BlockScheduler blockScheduler;
         int32_t syncLoopIdx = 0;

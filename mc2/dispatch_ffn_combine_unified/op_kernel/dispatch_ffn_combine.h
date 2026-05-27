@@ -194,7 +194,6 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Init(
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
     }
 
-    // printf("[DBG] Init done:");
 }
 
 template <MegaMoeClass>
@@ -326,8 +325,6 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     layout::RowMajor layoutD2{static_cast<uint32_t>(m * topK), static_cast<uint32_t>(n2)};
 
     GemmCoord problemShape{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
-
-    // printf("[DBG] Process: ");
 
     // Epilogue scheduling depends on the data-type path, matching the
     // historic per-path tuning carried over from the three legacy kernels:

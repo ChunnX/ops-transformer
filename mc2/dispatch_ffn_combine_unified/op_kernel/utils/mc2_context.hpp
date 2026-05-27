@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef _HPP
-#define _HPP
+#ifndef MC2_CONTEXT_HPP
+#define MC2_CONTEXT_HPP
 
 #include <cstdint>
 
@@ -27,13 +27,4 @@ struct CommContext {
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
-#ifdef __CCE_AICORE__
-inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
-
-__aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
-{
-    return (GM_ADDR)(winRankAddr_[rankId] + offset);
-}
-#endif
-
-#endif // _HPP
+#endif // MC2_CONTEXT_HPP

@@ -37,10 +37,8 @@ __global__ __aicore__ void dispatch_ffn_combine(
 
     constexpr bool isNz = (FORMAT_WEIGHT1 == FORMAT_FRACTAL_NZ);
     constexpr bool isA2 = (TPL_ARCH == SOC_ASCEND910B);
-    // printf("[DBG] Process: calling kernel operator()  0");
     REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
     REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8) || (QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8)", DispatchFFNCombineTilingDataQuant);
-    // printf("[DBG] Process: calling kernel operator()  00");
     if constexpr (isA2) {
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
@@ -66,17 +64,13 @@ __global__ __aicore__ void dispatch_ffn_combine(
     } else {
         if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
                       TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
-            // printf("[DBG] Process: calling kernel operator()  1");
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
-            // printf("[DBG] Process: calling kernel operator()  2");            
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
                                TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,
                                isNz, false> op;
-            // printf("[DBG] Process: calling kernel operator()  3");
             op.Init(context, x, topkIds, topkWeights, weight1, weight2,
                     weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
                     yOut, expertTokenNumsOut, workspaceGM, tilingGM);
-            // printf("[DBG] Process: calling kernel operator()  4");
             op.Process();
         } else {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
