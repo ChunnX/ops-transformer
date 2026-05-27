@@ -75,12 +75,6 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
     } else {
         dSinks = at::empty({0}, q.options().dtype(at::kFloat));
     }
-    at::Tensor oriSoftmaxL1Norm;
-    if (ori_sparse_indices_const.defined()) {
-        oriSoftmaxL1Norm = at::empty_like(ori_sparse_indices_const);
-    } else {
-        oriSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
-    }
 
     auto headDim = q.size(q.dim() - 1);
 
@@ -92,6 +86,13 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
     const int64_t ori_win_left_const = ori_win_left.value_or(-1);
     const int64_t ori_win_right_const = ori_win_right.value_or(-1);
     const int64_t deterministic_const = ori_win_right.value_or(0);
+
+    at::Tensor oriSoftmaxL1Norm;
+    if (ori_sparse_indices_const.defined()) {
+        oriSoftmaxL1Norm = at::empty(ori_sparse_indices_const.sizes(), ori_sparse_indices_const.options().dtype(at::kFloat));
+    } else {
+        oriSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
+    }
 
     at::Tensor cmpSoftmaxL1Norm;
     if (cmp_sparse_indices_const.defined()) {
