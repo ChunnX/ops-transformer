@@ -18,6 +18,9 @@ from testcases import GRAPH_MODE_PARAMS
 import check_valid_param
 import gqa_no_quant_bnsd_bsnd
 import gqa_no_quant_bnsd_bsnd_ge
+import gqa_pseudo_quant_case0382
+import gqa_pseudo_quant_case175
+import gqa_pseudo_quant_case803
 import pytest
 
 DEBUG_ON = 0
@@ -88,7 +91,6 @@ for _, params in enumerate(ENABLED_PARAMS):
 
         check_valid_param.check_result(expect, result)
 
-
     @pytest.mark.graph
     @pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
     def test_flash_attention_ge(param_combinations):    # 初始化参数和tensor
@@ -127,3 +129,23 @@ for _, params in enumerate(ENABLED_PARAMS):
             expect, result = gqa_no_quant_bnsd_bsnd_ge.test_gqa_no_quant_ge(test_data)
 
         check_valid_param.check_result(expect, result)
+
+
+@pytest.mark.ci
+def test_case0382_gqa_pseudo_quant():
+    gqa_pseudo_quant_case0382.test_gqa_pseudo_quant_case0382()
+
+
+@pytest.mark.ci
+def test_case175_gqa_pseudo_quant():
+    gqa_pseudo_quant_case175.test_gqa_pseudo_quant_case175()
+
+
+@pytest.mark.graph
+def test_case175_gqa_pseudo_quant_ge():
+    gqa_pseudo_quant_case175.test_gqa_pseudo_quant_case175_graph()
+
+
+@pytest.mark.ci
+def test_case803_gqa_pseudo_quant():
+    gqa_pseudo_quant_case803.test_gqa_pseudo_quant_case803()
