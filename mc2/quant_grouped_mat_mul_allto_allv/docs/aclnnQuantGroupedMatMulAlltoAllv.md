@@ -57,6 +57,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     int64_t            commQuantDtypeOptional,
     int64_t            groupSize, 
     const char*        group,
+    const char*        commMode,
     int64_t            epWorldSize,
     const aclIntArray* sendCounts,
     const aclIntArray* recvCounts,
@@ -309,6 +310,17 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
                 <td>通信域标识。</td>
                 <td>字符串长度需大于 0，小于 128。</td>
                 <td>char*</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            <!-- commMode -->
+            <tr>
+                <td>commMode</td>
+                <td>输入</td>
+                <td>指定当前通信类型。</td>
+                <td>支持输入"default"、"aicpu"和"ccu"。</td>
+                <td>STRING</td>
                 <td>-</td>
                 <td>-</td>
                 <td>-</td>
@@ -772,6 +784,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
             commQuantDtypeOptional,
             groupSize,
             hcomName,
+            "ccu",
             EP_WORLD_SIZE,
             sendCounts,
             recvCounts,
