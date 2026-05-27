@@ -78,9 +78,9 @@ constexpr uint64_t BS_MIN_VALUE = 0;
 constexpr uint64_t SEND_COUNTS_MIN_VALUE = 0;
 constexpr uint64_t RECV_COUNTS_MIN_VALUE = 0;
 constexpr uint64_t E_MIN_VALUE = 0;
-constexpr uint64_t E_MAX_VALUE = 32;
+constexpr uint64_t E_MAX_VALUE = 64;
 constexpr uint64_t EXPERT_MIN_VALUE = 0;
-constexpr uint64_t EXPERT_MAX_VALUE = 256;
+constexpr uint64_t EXPERT_MAX_VALUE = 1024;
 // 910_93 comm size range
 constexpr uint64_t COMM_MIN_SIZE = 2 * 1024 * 1024;
 constexpr uint32_t COMM_MAX_SIZE = 100 * 1024 * 1024;
