@@ -192,7 +192,7 @@ class FunctionMoeTokenPermuteWithRoutingMapGradApi(BaseApi):
         drop_and_pad = input_data.kwargs["padded_mode"]
         num_out_tokens = input_data.kwargs["permutedTokenOutputGrad"].shape[0]
         self.torch_type = input_data.kwargs['permutedTokenOutputGrad'].dtype
-        
+        print(self.device)
         if self.device == "npu":
             permutedTokenOutputGrad = permutedTokenOutputGrad.npu()
             permutedProbsOutputGradOptional = permutedProbsOutputGradOptional.npu()
