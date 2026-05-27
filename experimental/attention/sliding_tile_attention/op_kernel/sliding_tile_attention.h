@@ -10,7 +10,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "../../common/op_kernel/vector_common.h"
 #include "sliding_tile_attention_tiling_data.h"
 
 namespace SlidingTileAttentionKernel {
@@ -71,6 +70,59 @@ template <>
 struct DataTypeSelector<true> {
     using Type = bfloat16_t;
 };
+
+namespace fa_base_vector {
+constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = 8;
+constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = 64;
+
+__aicore__ inline void RowMuls(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
+                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+{
+    const uint32_t dLoop = actualColumnCount / FP32_REPEAT_ELEMENT_NUM;
+    const uint32_t dRemain = actualColumnCount % FP32_REPEAT_ELEMENT_NUM;
+
+    BinaryRepeatParams repeatParams;
+    repeatParams.src0BlkStride = 1;
+    repeatParams.src1BlkStride = 0;
+    repeatParams.dstBlkStride = 1;
+    repeatParams.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParams.src1RepStride = 1;
+    repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < dLoop; ++i) {
+        Mul(dstUb[offset], src0Ub[offset], src1Ub, FP32_REPEAT_ELEMENT_NUM, dealRowCount, repeatParams);
+        offset += FP32_REPEAT_ELEMENT_NUM;
+    }
+    if (dRemain > 0) {
+        Mul(dstUb[offset], src0Ub[offset], src1Ub, dRemain, dealRowCount, repeatParams);
+    }
+}
+
+__aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+{
+    const uint32_t dLoop = actualColumnCount / FP32_REPEAT_ELEMENT_NUM;
+    const uint32_t dRemain = actualColumnCount % FP32_REPEAT_ELEMENT_NUM;
+
+    BinaryRepeatParams repeatParams;
+    repeatParams.src0BlkStride = 1;
+    repeatParams.src1BlkStride = 1;
+    repeatParams.dstBlkStride = 1;
+    repeatParams.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParams.src1RepStride = 0;
+    repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+
+    uint32_t offset = 0;
+    for (uint32_t i = 0; i < dLoop; ++i) {
+        Sub(dstUb[offset], src0Ub[offset], src1Ub[offset], FP32_REPEAT_ELEMENT_NUM, dealRowCount, repeatParams);
+        offset += FP32_REPEAT_ELEMENT_NUM;
+    }
+    if (dRemain > 0) {
+        Sub(dstUb[offset], src0Ub[offset], src1Ub[offset], dRemain, dealRowCount, repeatParams);
+    }
+}
+} // namespace fa_base_vector
 
 __aicore__ inline int64_t MaxInt64(int64_t a, int64_t b)
 {
