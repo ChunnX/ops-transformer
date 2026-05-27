@@ -82,6 +82,11 @@
                     "name": "comm_alg",
                     "dtype": "string",
                     "value": ""
+                },
+                {
+                    "name": "aiv_num",
+                    "dtype": "int",
+                    "value": -1
                 }
             ]
         },
@@ -166,6 +171,11 @@
                     "name": "comm_alg",
                     "dtype": "string",
                     "value": ""
+                },
+                {
+                    "name": "aiv_num",
+                    "dtype": "int",
+                    "value": -1
                 }
             ]
         }
