@@ -168,14 +168,11 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     if (opParamInfo_.topk != nullptr) {
         OP_LOGI(context_->GetNodeName(), "topk is:%d", *opParamInfo_.topk);
     }
+    if (opParamInfo_.maxSeqlenQ != nullptr) {
+        OP_LOGI(context_->GetNodeName(), "maxSeqlenQ is:%d", *opParamInfo_.maxSeqlenQ);
+    }
     if (opParamInfo_.maskMode != nullptr) {
         OP_LOGI(context_->GetNodeName(), "mask mode is:%d", *opParamInfo_.maskMode);
-    }
-    if (opParamInfo_.preTokens != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "pre tokens is:%d", *opParamInfo_.preTokens);
-    }
-    if (opParamInfo_.nextTokens != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "next tokens is:%d", *opParamInfo_.nextTokens);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
         OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
@@ -195,7 +192,6 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGE(opName_, "input attr layout_key only supported PA_BSND, BSND or TND"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
-    // TODO
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX)) ),
  	                OP_LOGE(opName_, "input attr topk must > 0 and <= 8192."),
  	                return ge::GRAPH_FAILED);
@@ -282,10 +278,10 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                    OP_LOGE(opName_, "when layout_key is PA_BSND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
         // TODO
-        // OP_CHECK_IF(
-        //     opParamInfo_.actualSeqLengths.tensor == nullptr,
-        //     OP_LOGE(opName_, "when layout_key is PA_BSND, input actual_seq_lengths_key must not be null"),
-        //     return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            opParamInfo_.sequsedK.tensor == nullptr,
+            OP_LOGE(opName_, "when layout_key is PA_BSND, input sequsedK must not be null"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                 OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
