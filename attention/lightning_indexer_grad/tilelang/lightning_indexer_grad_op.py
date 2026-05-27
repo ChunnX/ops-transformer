@@ -218,19 +218,18 @@ class LightningIndexerGrad:
                 d_query_b = torch.einsum('sk,skd->sd', relu_grad_out.float(), key_gather_npu.float()).to(dtype)
                 d_query[b, :, n1, :] = d_query_b
                 
-                # ========== 步骤6: Cube4 - TileLang kernel ✓ ==========
-                # scatter_add = relu_grad_out^T @ query
-                # (topk, S1) @ (S1, D) -> (topk, D)
-                relu_grad_out_t = relu_grad_out.T.contiguous()  # (topk, S1)
-                scatter_add = self.kernel_cube4(relu_grad_out_t, query_b)
-                
+                # ========== 步骤6: Cube4 - ReluGrad外积Query ==========
+                # 每个位置s需要独立的(topk, D)值，因为scatter时indices不同，不能跨s求和
+                # relu_grad_out: (S1, topk), query_b: (S1, D) -> scatter_add: (S1, topk, D)
+                scatter_add = torch.einsum('sk,sd->skd', relu_grad_out.float(), query_b.float()).to(dtype)
+
                 # ========== 步骤7: Vec3 - ScatterAdd (CPU辅助) ==========
                 scatter_add_cpu = scatter_add.cpu().numpy()
                 d_key_cpu = d_key[b].cpu().numpy()
                 d_key_cpu = scatter_add_python(
-                    d_key_cpu[np.newaxis, ...],
-                    scatter_add_cpu[np.newaxis, ...],
-                    indices_cpu[b:b+1],
+                    d_key_cpu[np.newaxis, ...],       # (1, S2, head_num_k, D)
+                    scatter_add_cpu[np.newaxis, ...], # (1, S1, topk, D)
+                    indices_cpu[b:b+1],               # (1, S1, topk)
                     n2_idx,
                     self.head_dim
                 )
