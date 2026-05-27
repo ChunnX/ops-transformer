@@ -956,6 +956,9 @@ public:
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop % DB]);
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
+        AscendC::PRINTF("FA_WR: aiv=%u n2=%u wsPos=%u vecMbase=%u mStart=%u mDeal=%u gmOff=%llu\n",
+                        GetBlockIdx(), runInfo.n2Idx, runInfo.faTmpOutWsPos, runInfo.vecMbaseIdx,
+                        mStartVec, mDealSize, gmOffset);
 
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;

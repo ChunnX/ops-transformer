@@ -269,6 +269,8 @@ protected:
         copyInPadParams.paddingValue = 0;
         uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV +                 // taskoffset + g轴offset
                                          splitKVIndex * s1BaseSize * constInfo.dSizeV; // 份数offset
+        AscendC::PRINTF("FD_RD: aiv=%u splitKV=%u startRow=%u offset=%llu\n",
+                        GetBlockIdx(), splitKVIndex, startRow, combineAccumOutOffset);
 
         DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
     }
@@ -490,6 +492,9 @@ public:
         taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
+        AscendC::PRINTF("FD: aiv=%u b=%u n2=%u mStart=%u mLen=%u wsIdx=%u s2SplitNum=%u\n",
+                        GetBlockIdx(), taskInfo.bIdx, taskInfo.n2Idx, fd.mStart, fd.mLen,
+                        fd.fdWorkspaceIdx, fd.fdS2SplitNum);
 
         for (uint32_t fdS1gOuterMIdx = tmpFdS1gOuterMStart; fdS1gOuterMIdx <= tmpFdS1gOuterMEnd;
              fdS1gOuterMIdx++) { // 左闭右闭
