@@ -357,12 +357,13 @@ __aicore__ inline void MoeSortMultiCore::Init(GM_ADDR expertIdx, GM_ADDR expande
 
     // key and value
     int64_t kvFactor = 2;
+    // workspaceGms起始位置：Align(n*k)*2 + Align(actualExpertNum)（必须与其他变量位置不冲突）
     workspaceGms[0].SetGlobalBuffer((__gm__ float *)workspace + Align(this->totalLength, sizeof(int32_t)) * 2 +
-                                        tilingData->actualExpertNum,
+                                        Align(tilingData->actualExpertNum, sizeof(int32_t)),
                                     Align(this->totalLength, sizeof(int32_t)) * kvFactor);
     workspaceGms[1].SetGlobalBuffer((__gm__ float *)workspace +
                                         Align(this->totalLength, sizeof(int32_t)) * (kvFactor + 2) +
-                                        tilingData->actualExpertNum,
+                                        Align(tilingData->actualExpertNum, sizeof(int32_t)),
                                     Align(this->totalLength, sizeof(int32_t)) * kvFactor);
 
     int64_t bufferSize = Ceil(Max(this->sortOutTilingData->oneLoopMaxElements * MAX_MRGSORT_LIST, sortCoreLoopElements),

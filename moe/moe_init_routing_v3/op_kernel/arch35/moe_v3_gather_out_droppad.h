@@ -104,10 +104,13 @@ colsLoops_ = tilingData->gatherOutDropPadParamsOp.colsLoops;
 
     actualExpertNum_ = tilingData->actualExpertNum;
     // expertTotalCountGm用于读取专家处理的token总数（动态值）
-    // 地址：workspace + Align(n*k)*2 + Align(actualExpertNum)
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                             Align(actualExpertNum_, sizeof(int32_t)),
-                                         1);
+    // 地址必须避开sort阶段的workspaceGms区域
+    // workspaceGms占用：Align(n*k)*2 + Align(actualExpertNum) 开始，大小Align(n*k)*4个float
+    // expertTotalCountGm应该放在workspaceGms之后
+    // 正确位置：Align(n*k)*2 + Align(actualExpertNum) + Align(n*k)*4
+    int64_t workspaceGmsEndOffset = Align(n_ * k_, sizeof(int32_t)) * 2 + Align(actualExpertNum_, sizeof(int32_t)) +
+                                      Align(n_ * k_, sizeof(int32_t)) * 4 / sizeof(float); // 转换为int32_t单位
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + workspaceGmsEndOffset, 1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);
@@ -251,7 +254,10 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Process()
             if (indicesLoop == indicesLoops_ - 1) {
                 curLoopElements = curCoreLastLoopIndicesElements_;
             }
-            int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
+            // 必须使用固定的perCorePerLoopIndicesElements_作为步长，而非curCorePerLoopIndicesElements_
+            // 因为expandedRowIdx是按固定的perCorePerLoopIndicesElements步长存储的
+            // 非arch35版本也使用固定的perLoopRows_作为步长（对应perCorePerLoopIndicesElements）
+            int64_t curExpertLoopOffset = indicesLoop * perCorePerLoopIndicesElements_;
             int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyExpertIn(globalReadOffset, curLoopElements);
