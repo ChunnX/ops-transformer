@@ -271,7 +271,7 @@ protected:
     ge::graphStatus DoLibApiTiling() override
     {
         // softmaxGrad tiling，一次最多处理16K个元素个数
-        constexpr uint32_t element_num = 16 * 1024;
+        constexpr uint32_t element_num = 8 * 1024;
         uint32_t process_s1_size = element_num / head_dim_;
         auto input_shape = ge::Shape({process_s1_size, head_dim_});
 
