@@ -801,7 +801,7 @@ static ge::graphStatus QuantGetAndConvertCommMode(const gert::TilingContext *con
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."),
                     return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
-    if (std::strcmp(commModeStr, "aicpu") == 0) {
+    if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
@@ -811,9 +811,9 @@ static ge::graphStatus QuantGetAndConvertCommMode(const gert::TilingContext *con
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

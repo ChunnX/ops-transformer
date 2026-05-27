@@ -50,7 +50,7 @@ extern "C" {
  * @param [in] mmXQuantMode: 共享专家matmul计算中的左矩阵的量化模式，同上，当前仅支持配置为1或6。
  * @param [in] mmWeightQuantMode: 共享专家matmul计算中的右矩阵的量化模式，同上，当前仅支持配置为1或6。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域。
- * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型，支持输入"default"、"aicpu"和"ccu"
+ * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型，支持输入"default"、"ai_cpu"和"ccu"
  * @param [in] epWorldSize: 计算输入，int。ep通信域size
  * @param [in] epWorldSize: 计算输入，int。ep通信域size。
  * @param [in] sendCounts: 计算输入，list int。通信发送的数据量。

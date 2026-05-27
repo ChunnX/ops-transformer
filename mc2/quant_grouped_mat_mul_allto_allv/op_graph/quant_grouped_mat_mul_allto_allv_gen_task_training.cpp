@@ -62,7 +62,7 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
         serverType = "ccu server";
         streamType = "ccu_stream";
         OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvCalcParamFunc use CCU GenTask");
-    } else if ((isArch35 &&  commMode == "aicpu") || (isArch35 && rankSize > 8 && commMode == "")) {
+    } else if ((isArch35 &&  commMode == "ai_cpu") || (isArch35 && rankSize > 8 && commMode == "")) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvCalcParamFunc use AICPU GenTask");
@@ -81,7 +81,7 @@ ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationCo
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    if ((isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8 && commMode == "")) {
+    if ((isArch35 && commMode == "ai_cpu") || (isArch35 && rankSize > 8 && commMode == "")) {
         OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvGenTaskFunc use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
