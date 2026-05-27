@@ -1463,6 +1463,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
             AscendC::WaitFlag<HardEvent::MTE3_V>(eventIdMte3ToV);
         }
         AscendC::PipeBarrier<PIPE_V>();
+        DumpTensor(stage1PingTensor, 300, extraInfo.vec1S1RealSize * extraInfo.s2AlignedSize);
         if constexpr (!IsSameType<T, INPUT_T>::value) {
             LocalTensor<INPUT_T> stage1CastTensor;
             if constexpr (hasPse == true) {
@@ -2236,6 +2237,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
 
         AscendC::SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
         AscendC::WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+        DumpTensor(stage2BufTensor, 110, (uint32_t)mm2ResCalcSize);
         if (unlikely(extraInfo.s2LoopCount == 0)) {
             DataCopy(bmm2ResUb, stage2BufTensor, mm2ResCalcSize);
         } else {
@@ -2245,6 +2247,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
         }
 
         if (extraInfo.s2LoopCount == extraInfo.s2LoopLimit) {
+            DumpTensor(bmm2ResUb, 310, (uint32_t)mm2ResCalcSize);
             Bmm2ResultDiv(extraInfo, s1oIdx);
             Bmm2DataCopyOut(extraInfo, s1oIdx, mm2ResCalcSize);
             SoftmaxDataCopyOut(extraInfo, s1oIdx);
