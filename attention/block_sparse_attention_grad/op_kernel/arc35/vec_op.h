@@ -182,7 +182,8 @@ public:
                 }
 
                 ComputeEvenCoreInfo(info, q_seq_len, SFTG_TILE_LEN);
-                ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info);
+                ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
+                                        tilingData);
                 SET_FLAG(MTE3, MTE2, EVENT_ID0);
                 WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
             }
