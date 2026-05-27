@@ -321,64 +321,64 @@ private:
                                                    const GlobalTensor<INPUT_TYPE> &dy_gm,
                                                    const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info)
     {
-        // if (info.start_idx >= info.data_size) {
-        //     return;
-        // }
-        // LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
-        // LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
-        // LocalTensor<float> dy_out_tensor = dy_out_ping_;
-        // LocalTensor<float> attention_out_tensor = attention_out_ping_;
-        // uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
-        // uint32_t src_stride;
-        // if constexpr (INPUT_LAYOUT == BSND) {
-        //     src_stride = q_head_num_ * head_dim_;
-        // } else if constexpr (INPUT_LAYOUT == BNSD) {
-        //     src_stride = head_dim_;
-        // } else if constexpr (INPUT_LAYOUT == TND) {
-        //     src_stride = q_head_num_ * head_dim_;
-        // }
+        if (info.start_idx >= info.data_size) {
+            return;
+        }
+        LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
+        LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
+        LocalTensor<float> dy_out_tensor = dy_out_ping_;
+        LocalTensor<float> attention_out_tensor = attention_out_ping_;
+        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
+        uint32_t src_stride;
+        if constexpr (INPUT_LAYOUT == BSND) {
+            src_stride = q_head_num_ * head_dim_;
+        } else if constexpr (INPUT_LAYOUT == BNSD) {
+            src_stride = head_dim_;
+        } else if constexpr (INPUT_LAYOUT == TND) {
+            src_stride = q_head_num_ * head_dim_;
+        }
 
-        // for (uint32_t i = 0; i < info.loop_num; i++) {
-        //     if (unlikely(i == info.loop_num - 1)) {
-        //         process_size = info.align_tail + info.pad_tail;
-        //         if (process_size == 0) {
-        //             break;
-        //         }
-        //     }
-        //     uint64_t in_gm_offset = (info.start_idx + i * info.max_process_size) * src_stride;
+        for (uint32_t i = 0; i < info.loop_num; i++) {
+            if (unlikely(i == info.loop_num - 1)) {
+                process_size = info.align_tail + info.pad_tail;
+                if (process_size == 0) {
+                    break;
+                }
+            }
+            uint64_t in_gm_offset = (info.start_idx + i * info.max_process_size) * src_stride;
 
-        //     DataCopyParams copyParam;
-        //     copyParam.blockCount = 1;
-        //     copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
-        //     copyParam.srcStride = 0;
-        //     copyParam.dstStride = process_size * (src_stride - head_dim_) * sizeof(INPUT_TYPE);
-        //     DataCopyPad(dy_tensor, dy_gm[gm_offset], copyParam, {false, 0, 0, 0});
-        //     DataCopyPad(attention_tensor, out_gm[gm_offset], copyParam, {false, 0, 0, 0});
-        //     SET_FLAG(MTE2, V, EVENT_ID0);
-        //     WAIT_FLAG(MTE2, V, EVENT_ID0);
+            DataCopyParams copyParam;
+            copyParam.blockCount = 1;
+            copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
+            copyParam.srcStride = 0;
+            copyParam.dstStride = process_size * (src_stride - head_dim_) * sizeof(INPUT_TYPE);
+            DataCopyPad(dy_tensor, dy_gm[gm_offset], copyParam, {false, 0, 0, 0});
+            DataCopyPad(attention_tensor, out_gm[gm_offset], copyParam, {false, 0, 0, 0});
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
 
-        //     Cast(dy_out_tensor, dy_tensor, RoundMode::None, process_size * head_dim_);
-        //     Cast(attention_out_tensor, attention_tensor, RoundMode::None, process_size * head_dim_);
-        //     PipeBarrier<PIPE_V>();
+            Cast(dy_out_tensor, dy_tensor, RoundMode::None, process_size * head_dim_);
+            Cast(attention_out_tensor, attention_tensor, RoundMode::None, process_size * head_dim_);
+            PipeBarrier<PIPE_V>();
 
-        //     if (likely(isBasicBlock)) {
-        //         SoftmaxGradFront<float, true>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
-        //                                       tilingData->softmaxGradFrontTilingData);
-        //     } else {
-        //         SoftmaxGradFront<float, false>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
-        //                                        tilingData->softmaxGradFrontTilingData);
-        //     }
-        //     PipeBarrier<PIPE_V>();
+            if (likely(isBasicBlock)) {
+                SoftmaxGradFront<float, true>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+                                              tilingData->softmaxGradFrontTilingData);
+            } else {
+                SoftmaxGradFront<float, false>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+                                               tilingData->softmaxGradFrontTilingData);
+            }
+            PipeBarrier<PIPE_V>();
 
-        //     uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
-        //     copyParam.blockCount = 1;
-        //     copyParam.blockLen = process_size * 8 * sizeof(float);
-        //     copyParam.srcStride = 0;
-        //     copyParam.dstStride = 0;
-        //     DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, copyParam);
-        //     SET_FLAG(MTE3, MTE2, EVENT_ID0);
-        //     WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        // }
+            uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
+            copyParam.blockCount = 1;
+            copyParam.blockLen = process_size * 8 * sizeof(float);
+            copyParam.srcStride = 0;
+            copyParam.dstStride = 0;
+            DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, copyParam);
+            SET_FLAG(MTE3, MTE2, EVENT_ID0);
+            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        }
     }
 
     template <bool MULS>
