@@ -320,11 +320,11 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToke
     DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams, padParams);
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 }
 
@@ -393,7 +393,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
         GlobalTensor<XType> tempTensor = dstWinGMTensor[0];
         ProcessToken(tempTensor, tokenIndex);
 
-        // 更新发送计数
         SyncFunc<AscendC::HardEvent::V_S>();
     }
 }
@@ -526,7 +525,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
     DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
     DataCopy(localStatusTensor, srcStatus, statusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // 计算前缀和：当前核之前所有核收到的token总数
     uint32_t preCnt = 0;
