@@ -261,7 +261,7 @@ public:
         pipe_.InitBuffer(maxFloatBuf_, tiling_->qBlock * sizeof(float));
         pipe_.InitBuffer(denomFloatBuf_, tiling_->qBlock * sizeof(float));
         pipe_.InitBuffer(oldScaleFloatBuf_, tiling_->qBlock * VECTOR_FP32_BLOCK_ELEMS * sizeof(float));
-        pipe_.InitBuffer(blockSumFloatBuf_, tiling_->qBlock * VECTOR_FP32_BLOCK_ELEMS * sizeof(float));
+        pipe_.InitBuffer(blockSumFloatBuf_, tiling_->qBlock * sizeof(float));
     }
 
     __aicore__ inline void Process()
@@ -610,7 +610,7 @@ private:
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
                 const int64_t stateOffset = GetRowStateOffset(row);
                 const float oldScale = oldScaleLocal.GetValue(stateOffset);
-                const float blockSum = blockSumLocal.GetValue(stateOffset);
+                const float blockSum = blockSumLocal.GetValue(row);
                 denomLocal.SetValue(row, denomLocal.GetValue(row) * oldScale + blockSum);
             }
         }
@@ -737,7 +737,7 @@ private:
                                                     maxScore, newMaxScore, scaleDelta, blockSum,
                                                     hasKvTail, bufferIdx);
                 DuplicateRowState(oldScaleLocal, row, scaleDelta);
-                DuplicateRowState(blockSumLocal, row, blockSum);
+                blockSumLocal.SetValue(row, blockSum);
                 if (newMaxScore != maxScore) {
                     maxLocal.SetValue(row, newMaxScore);
                     hasScaleDelta = true;
@@ -747,11 +747,12 @@ private:
             if (hasScaleDelta) {
                 ApplyDeferredAccScaleAndDenom(rowBegin, validRowEnd, alignedHeadDim, denomLocal, bufferIdx);
             } else {
-                SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-                WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-                for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                    denomLocal.SetValue(row, denomLocal.GetValue(row) + blockSumLocal.GetValue(GetRowStateOffset(row)));
-                }
+                const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
+                const int64_t alignedEnd =
+                    MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
+                Add(denomLocal[alignedBegin], denomLocal[alignedBegin], blockSumLocal[alignedBegin],
+                    static_cast<uint32_t>(alignedEnd - alignedBegin));
+                PipeBarrier<PIPE_V>();
             }
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx, subBlock));
@@ -860,13 +861,24 @@ private:
             }
         }
 
+        if (rowBegin < validRowEnd) {
+            LocalTensor<float> invDenomLocal = oldScaleFloatBuf_.Get<float>();
+            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+                DuplicateRowState(invDenomLocal, row, 1.0F / denomLocal.GetValue(row));
+            }
+            PipeBarrier<PIPE_V>();
+            const uint32_t rowCount = static_cast<uint32_t>(validRowEnd - rowBegin);
+            LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
+            fa_base_vector::RowMuls(accTile[rowBegin * alignedHeadDim], accTile[rowBegin * alignedHeadDim],
+                                    invDenomLocal[GetRowStateOffset(rowBegin)], rowCount, alignedHeadDim,
+                                    alignedHeadDim);
+            PipeBarrier<PIPE_V>();
+        }
+
         for (int64_t row = rowBegin; row < validRowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-            const float denom = denomLocal.GetValue(row);
-            Muls(accRow, accRow, 1.0F / denom, alignedHeadDim);
-            PipeBarrier<PIPE_V>();
             StoreFloatRow(qBase, accRow, alignedHeadDim, static_cast<uint32_t>(row % BUFFER_NUM));
         }
     }
