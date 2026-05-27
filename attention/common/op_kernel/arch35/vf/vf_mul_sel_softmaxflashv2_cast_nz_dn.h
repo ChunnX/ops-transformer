@@ -23,6 +23,9 @@ using namespace MicroAPI;
 #define VMULSCVT false
 #define DROPOUT false
 
+constexpr float LN2 = static_cast<float>(0.6931471806f);
+constexpr float INV_LN2 = static_cast<float>(1.4426950409F);
+
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, bool hasSink = false>
 __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
@@ -927,7 +930,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
-
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
     if (subLoop == 1) {
         LoadAlign(vreg_x_max_f32_b, new_global_max);
         Max(max0, max0, vreg_x_max_f32_b, preg_108);
@@ -1332,6 +1337,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
+    Muls(max0, max0, INV_LN2, preg_108);
+    Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
+    Muls(max0, max0, LN2, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
