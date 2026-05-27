@@ -423,7 +423,6 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor,
     l0aBuffer.Set<HardEvent::M_MTE1>();
 }
 
-
 // 切K mx
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType, typename AScaleType = float, typename BScaleType = float, typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor,
