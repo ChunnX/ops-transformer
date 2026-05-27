@@ -638,7 +638,6 @@ public:
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-        printf("[FA_DBG] c%u V2OnUb lp=%d wait_MTE3V0\n", GetBlockIdx(), (int)runInfo.loop);
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -667,7 +666,6 @@ public:
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        printf("[FA_DBG] c%u V2OnUb lp=%d set_MTE3V0_done\n", GetBlockIdx(), (int)runInfo.loop);
     }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -1006,7 +1004,6 @@ public:
         uint32_t subMBase = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        printf("[FA_DBG] c%u V2C2Gm lp=%d wait_MTE3V0\n", GetBlockIdx(), (int)runInfo.loop);
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         LocalTensor<T> bmm2Ub = mm2InBuf;
 
@@ -1089,7 +1086,6 @@ public:
             }
         }
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        printf("[FA_DBG] c%u V2C2Gm lp=%d set_MTE3V0_done\n", GetBlockIdx(), (int)runInfo.loop);
     }
 
     __aicore__ inline void SoftmaxInitBuffer(LocalMemAllocator<Hardware::UB> &allocator)
@@ -1159,19 +1155,12 @@ public:
         vToMte3Id[1] = FA_V_TO_MTE3_1;
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-        printf("[FA_DBG] c%u AllocEventID done mte3ToV=[%u,%u] vToMte3=[%u,%u]\n",
-               GetBlockIdx(), mte3ToVId[0], mte3ToVId[1], vToMte3Id[0], vToMte3Id[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
-        printf("[FA_DBG] c%u FreeEventID wait0(id=%u)\n", GetBlockIdx(), mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        printf("[FA_DBG] c%u FreeEventID wait0_done\n", GetBlockIdx());
-        printf("[FA_DBG] c%u FreeEventID wait1(id=%u)\n", GetBlockIdx(), mte3ToVId[1]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        printf("[FA_DBG] c%u FreeEventID wait1_done\n", GetBlockIdx());
-        // 静态 event ID 无需 ReleaseEventID
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
