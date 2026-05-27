@@ -235,151 +235,58 @@ enum class FiaKernelType : uint8_t {
     FULL_QUANT
 };
 
-struct RunInfoX {
-    uint32_t loop = 0;
-    uint32_t mloop = 0;
+struct RunInfoXCube {
+    uint32_t bIdx = 0;
+    uint32_t n2Idx = 0;
+    uint32_t gS1Idx = 0;
+    uint32_t s2Idx = 0;
+    uint32_t actMSize = 0;
+    uint32_t actSingleLoopS2Size = 0;
     bool isValid = false;
-    bool isChangeBatch = false;
     bool isFirstS2Loop = false;
     bool isLastS2Loop = false;
+    bool isChangeBatch = false;
+};
 
+struct RunInfoXVec {
+    uint64_t actS1Size = 1;
+    uint64_t actS2Size = 1;
+    int64_t preTokensLeftUp = 0;
+    int64_t nextTokensLeftUp = 0;
+
+    uint32_t actVecMSize = 0;
+    uint32_t actSingleLoopS2Size = 0;
+    uint32_t loop = 0;
+    uint32_t mloop = 0;
+    uint32_t actSingleLoopS2SizeAlign = 0;
     uint32_t bIdx = 0;
     uint32_t n2Idx = 0;
     uint32_t gS1Idx = 0;
     uint32_t gIdx = 0;
-    uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
-    uint64_t actS1Size = 1;   // 当前处理head的S1轴实际大小
-    uint64_t actS2Size = 1;   // 当前处理head的S2轴实际大小
-    uint32_t actMSize = 0;    // GS1方向上的长度
-    uint32_t actMSizeAlign32; // GS1 方向上长度对齐
-    uint32_t actVecMSize;     // VEC 视角, 基本块GS1方向长度
-    uint32_t vecMbaseIdx;     // VEC 对应的M 轴起始位置,V0 为0， V1 为 V0的actVecMSize
+    uint32_t actMSize = 0;
+    uint32_t actMSizeAlign32 = 0;
+    uint32_t vecMbaseIdx = 0;
+    uint32_t faTmpOutWsPos = 0;
 
-    uint32_t actSingleLoopS2Size = 0; // S2方向长度
-    uint32_t actSingleLoopS2SizeAlign;
-    // uint32_t curS2LoopTimes = 0;
+    bool isValid = false;
+    bool isFirstS2Loop = false;
+    bool isLastS2Loop = false;
     bool isS2SplitCore = false;
-    uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
-
-    int64_t preTokensLeftUp = 0;
-    int64_t nextTokensLeftUp = 0;
-
-    uint64_t qPaddingBeginOffset = 0;
-    uint64_t kvPaddingBeginOffset = 0;
 };
 
 
 struct CommonConstInfo {
-    /* 轴长度 */
-    uint32_t bSize;
-    uint64_t t1Size;
-    uint64_t t2Size;
-    uint32_t dSize;
-    uint32_t dSizeV;
-    uint32_t dBasicBlock;
-    uint32_t dSizeRope;
-    uint32_t gSize; /* g轴的大小 */
-    uint32_t n2Size;
-    uint64_t s1Size;          /* s1总大小 */
-    uint64_t s2Size;          /* s2总大小 */
-    uint64_t cuSeqLensQSize;  /* 用户输入的actualseq的长度 */
-    uint64_t cuSeqLensKVSize; /* 用户输入的actualseq_kv的长度 */
-    uint64_t seqUsedQSize;    /* 用户输入的seq used q的长度 */
-    uint64_t seqUsedKvSize;   /* 用户输入的seq used kv的长度 */
-
-    /* FA kernel meta */
-    uint32_t bN2Start;
-    uint32_t bN2End;
-    uint32_t gS1OStart;
-    uint32_t gS1OEnd;
-    uint32_t s2OStart;
-    uint32_t s2OEnd;
-    uint32_t coreFirstTmpOutWsPos;
-
-    uint32_t sparseMode; // sparse
-    uint32_t attenMaskBatch;
-    uint32_t attenMaskS1Size;
-    uint32_t attenMaskS2Size;
-    int64_t preTokens;
-    int64_t nextTokens;
-    bool isExistRowInvalid;
-    float scaleValue;
-
-    /* 核信息 */
     uint32_t aicIdx;
     uint32_t aivIdx;
     uint8_t subBlockIdx;
-    uint32_t coreNum;
-
-    /* FA中间结果写出workspace信息 */
-    uint32_t accumOutSize;
-    uint32_t logSumExpSize;
-
-    /* 输出shape */
-    FA_LAYOUT outputLayout;
-    bool needInitOutput;
-};
-
-struct PAConstInfo {
-    uint32_t blockSize;
-    uint32_t maxBlockNumPerBatch;
-    uint32_t paLayoutType;
-};
-
-struct LseConstInfo {
-    bool isSoftmaxLseEnable;
-};
-
-struct SinkConstInfo {
-    bool learnableSinkFlag = false;
-};
-
-struct PseConstInfo {
-    uint32_t pseShiftByBatch;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseStride;
-};
-
-struct TensorListConstInfo {
-    bool isKvContinuous; /* 是否为tensorlist */
-};
-
-struct PostQuantConstInfo {
-    bool isPostQuantPerChnl;
-    bool isPostQuantBF16;
-    bool isPostQuantOffsetExist;
-    float postQuantScaleValue;
-    float postQuantOffsetValue;
-};
-
-struct LeftPaddingConstInfo {
-    bool isQHasLeftPadding;
-    bool isKVHasLeftPadding;
-    int64_t queryRightPaddingSize;
-    int64_t kvRightPaddingSize;
-};
-
-struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
+    uint32_t dBasicBlock;
 };
 
 template <FiaKernelType>
 struct ConstInfo_t;
 
 template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
-                                              PAConstInfo,
-                                              LseConstInfo,
-                                              SinkConstInfo,
-                                              PseConstInfo,
-                                              TensorListConstInfo,
-                                              PostQuantConstInfo,
-                                              LeftPaddingConstInfo,
-                                              SysPrefixConstInfo {};
+struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo {};
 
 #endif // FLASH_ATTN_COMMON_DEF_H_

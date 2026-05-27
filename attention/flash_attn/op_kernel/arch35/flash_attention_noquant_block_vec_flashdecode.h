@@ -16,6 +16,7 @@
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
 #include "kernel_operator.h"
+#include "flash_attn_lse_copy.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -26,6 +27,9 @@
 #include "../../../common/op_kernel/fia_public_define.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/memory_copy.h"
+#include "flash_attn_tiling_data.h"
+
+using namespace optiling;
 
 namespace BaseApi {
 struct TaskInfo {
@@ -126,11 +130,12 @@ protected:
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    // ================================类成员变量====================================
-    // aic、aiv核信息
     uint32_t blockIdx = 0U;
     const ConstInfoX &constInfo;
+    const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
     TaskInfo taskInfo{};
+    FDparamsX fdParams_;
+    GlobalTensor<uint32_t> fdMetaDataGm;
 
 private:
     // ================================FD Local Buffer区====================================
@@ -179,6 +184,31 @@ public:
         this->kvActSeqLensParser = &kvParser;
     }
 
+    __aicore__ inline void SetFdMetaDataGm(__gm__ uint32_t *fdMetaDataPtr, uint32_t sectionNum)
+    {
+        this->fdMetaDataGm.SetGlobalBuffer(fdMetaDataPtr, FA_AIV_CORE_NUM * 16U * sectionNum);
+    }
+
+    __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t aivIdx, uint32_t metaIdx, uint32_t sectionIdx)
+    {
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * aivIdx + metaIdx;
+    }
+
+    __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
+    {
+        uint32_t aivIdx = GetBlockIdx();
+        fdParams_.mLen = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_NUM_INDEX, sectionIdx));
+        fdParams_.fdCoreEnable = fdParams_.mLen > 0 ? 1U : 0U;
+        if (!fdParams_.fdCoreEnable) {
+            return;
+        }
+        fdParams_.fdBN2Idx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
+        fdParams_.fdWorkspaceIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        fdParams_.fdS2SplitNum = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+    }
+
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
     {
         this->softmaxLseGm = softmaxLseGm;
@@ -190,7 +220,11 @@ public:
     }
     __aicore__ inline void InitParams()
     {
-        this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
+        this->dSizeV_Align = this->Align(tilingData->flashAttnBaseParams.dSizeV, FP32_REPEAT_ELEMENT_NUM);
+    }
+    __aicore__ inline void SetTilingData(const __gm__ optiling::FlashAttnNoQuantTilingArch35 *tiling)
+    {
+        this->tilingData = tiling;
     }
     __aicore__ inline void InitDecodeParams()
     {
@@ -259,16 +293,16 @@ protected:
         DataCopyExtParams copyInParams;
         DataCopyPadExtParams<T> copyInPadParams;
         copyInParams.blockCount = dealRowCount;
-        copyInParams.blockLen = constInfo.dSizeV * sizeof(T);
+        copyInParams.blockLen = tilingData->flashAttnBaseParams.dSizeV * sizeof(T);
         copyInParams.srcStride = 0;
-        copyInParams.dstStride = (this->dSizeV_Align - constInfo.dSizeV) / BLOCK_ELEMENT_NUM;
+        copyInParams.dstStride = (this->dSizeV_Align - tilingData->flashAttnBaseParams.dSizeV) / BLOCK_ELEMENT_NUM;
 
         copyInPadParams.isPad = true;
         copyInPadParams.leftPadding = 0;
-        copyInPadParams.rightPadding = (this->dSizeV_Align - constInfo.dSizeV) % BLOCK_ELEMENT_NUM;
+        copyInPadParams.rightPadding = (this->dSizeV_Align - tilingData->flashAttnBaseParams.dSizeV) % BLOCK_ELEMENT_NUM;
         copyInPadParams.paddingValue = 0;
-        uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV +                 // taskoffset + g轴offset
-                                         splitKVIndex * s1BaseSize * constInfo.dSizeV; // 份数offset
+        uint64_t combineAccumOutOffset = startRow * tilingData->flashAttnBaseParams.dSizeV +
+                                         splitKVIndex * s1BaseSize * tilingData->flashAttnBaseParams.dSizeV;
 
         DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
     }
@@ -302,7 +336,7 @@ protected:
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf;
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo.isSoftmaxLseEnable, learnableSinkFlag);
+                                actualCombineLoopSize, tilingData->flashAttnBaseParams.isSoftMaxLseEnable, learnableSinkFlag);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
@@ -318,36 +352,36 @@ protected:
                         .gS1Idx = taskInfo.gS1Idx + startRow,
                         .dIdx = 0,
                         .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo.dSizeV};
+                        .dDealSize = (uint32_t)tilingData->flashAttnBaseParams.dSizeV};
 
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(tilingData->flashAttnBaseParams.bSize, tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnBaseParams.gSize, tilingData->flashAttnBaseParams.s1Size,
+                                              tilingData->flashAttnBaseParams.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(tilingData->flashAttnBaseParams.bSize, tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnBaseParams.gSize, tilingData->flashAttnBaseParams.s1Size,
+                                              tilingData->flashAttnBaseParams.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnBaseParams.gSize, tilingData->flashAttnBaseParams.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT, int32_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
+            outGmTensor.offsetCalculator.Init(tilingData->flashAttnBaseParams.n2Size, tilingData->flashAttnBaseParams.gSize, tilingData->flashAttnBaseParams.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -366,7 +400,7 @@ protected:
         DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
         DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
+        uint32_t shapeArray[] = {dealRowCount, (uint32_t)tilingData->flashAttnBaseParams.dSizeV};
         tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
         if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
             Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * this->dSizeV_Align);
@@ -382,20 +416,19 @@ protected:
     __aicore__ inline void CalcPreNextTokens()
     {
         actSeqLensQ = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
+        if (tilingData->flashAttnBaseParams.cuSeqLensKVSize == 0 && tilingData->flashAttnBaseParams.seqUsedKvSize == 0 && !tilingData->flashAttnBaseParams.isKvContinuous) {
             actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
         } else {
             actSeqLensKv = kvActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
         }
-        int64_t safePreToken = constInfo.preTokens;
-        int64_t safeNextToken = constInfo.nextTokens;
+int64_t safePreToken = tilingData->flashAttnAttenMaskParams.winLefts;
+        int64_t safeNextToken = tilingData->flashAttnAttenMaskParams.winRights;
+        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, tilingData->flashAttnAttenMaskParams.sparseMode);
 
-        fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, safePreToken, safeNextToken, constInfo.sparseMode);
-
-        if (constInfo.sparseMode == BAND) {
+        if (tilingData->flashAttnAttenMaskParams.sparseMode == BAND) {
             preTokensPerBatch = safePreToken;
             nextTokensPerBatch = actSeqLensKv - actSeqLensQ + safeNextToken;
-        } else if ((constInfo.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
+        } else if ((tilingData->flashAttnAttenMaskParams.sparseMode == DEFAULT_MASK) && attenMaskFlag) {
             nextTokensPerBatch = safeNextToken;
             preTokensPerBatch = actSeqLensKv - actSeqLensQ + safePreToken;
         } else {
@@ -416,7 +449,7 @@ protected:
 
         for (int64_t row = 0; row < dealRowCount; ++row) {
             if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { // 内存按照S1G排布
-                gIdx = (taskInfo.gS1Idx + startRow + row) % constInfo.gSize;
+                gIdx = (taskInfo.gS1Idx + startRow + row) % tilingData->flashAttnBaseParams.gSize;
             } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { // 内存按照GS1排布
                 int64_t actS1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                 gIdx = (taskInfo.gS1Idx + startRow + row) / actS1Size;
@@ -434,13 +467,13 @@ protected:
             return;
         }
 
-        if (constInfo.sparseMode == ALL_MASK || constInfo.sparseMode == LEFT_UP_CAUSAL) {
+        if (tilingData->flashAttnAttenMaskParams.sparseMode == ALL_MASK || tilingData->flashAttnAttenMaskParams.sparseMode == LEFT_UP_CAUSAL) {
             return;
         }
 
         fa_base_vector::InvalidRowParams params{
             .actS1Size = actSeqLensQ,
-            .gSize = static_cast<uint64_t>(constInfo.gSize),
+            .gSize = static_cast<uint64_t>(tilingData->flashAttnBaseParams.gSize),
             .gS1Idx = taskInfo.gS1Idx + startRow,
             .dealRowCount = dealRowCount,
             .columnCount = columnCount,
@@ -459,7 +492,7 @@ protected:
         if (!attenMaskFlag) {
             return;
         }
-        if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
+        if (tilingData->flashAttnAttenMaskParams.sparseMode != DEFAULT_MASK && tilingData->flashAttnAttenMaskParams.sparseMode != ALL_MASK) {
             return;
         }
         LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
@@ -469,26 +502,26 @@ protected:
     }
 
 public:
-    __aicore__ inline void FlashDecode(FDparamsX &fd)
+    __aicore__ inline void FlashDecode()
     {
-        if (!fd.fdCoreEnable) {
+        if (!fdParams_.fdCoreEnable) {
             return;
         }
         uint32_t fdBalanceMBaseSize = 8U;
-        uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
+        uint32_t fdBalanceMSplitNum = (fdParams_.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
-            (fd.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fd.mLen % fdBalanceMBaseSize;
+            (fdParams_.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fdParams_.mLen % fdBalanceMBaseSize;
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
 
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
-        taskInfo.bIdx = fd.fdBN2Idx / constInfo.n2Size;
-        taskInfo.n2Idx = fd.fdBN2Idx % constInfo.n2Size;
-        taskInfo.gS1Idx = fd.fdMIdx * s1BaseSize;
-        taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
-        uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
+        taskInfo.bIdx = fdParams_.fdBN2Idx / tilingData->flashAttnBaseParams.n2Size;
+        taskInfo.n2Idx = fdParams_.fdBN2Idx % tilingData->flashAttnBaseParams.n2Size;
+        taskInfo.gS1Idx = fdParams_.fdMIdx * s1BaseSize;
+        taskInfo.actualCombineLoopSize = fdParams_.fdS2SplitNum; // 当前规约任务kv方向有几份
+        uint64_t combineTaskPrefixSum = fdParams_.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
 
         for (uint32_t fdS1gOuterMIdx = tmpFdS1gOuterMStart; fdS1gOuterMIdx <= tmpFdS1gOuterMEnd;
@@ -497,7 +530,7 @@ public:
             if (fdS1gOuterMIdx == fdBalanceMSplitNum - 1) {
                 actualGSplitSize = fdBalanceMTailSize;
             }
-            uint32_t startRow = fd.mStart + fdS1gOuterMIdx * fdBalanceMBaseSize;
+            uint32_t startRow = fdParams_.mStart + fdS1gOuterMIdx * fdBalanceMBaseSize;
 
             LocalTensor<T> lseExp = fdLseExpBuf;
             LocalTensor<T> reduceOut = fdReduceBuf;
@@ -516,35 +549,35 @@ public:
             }
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
             CalcPreNextTokens();
-            if (constInfo.isSoftmaxLseEnable) {
+            if (tilingData->flashAttnBaseParams.isSoftMaxLseEnable) {
                 LocalTensor<T> maxLseUb = fdLseUbBuf;
                 SetFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
-                    uint64_t bN2Offset = taskInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
-                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                                   actualGSplitSize, constInfo);
+                    uint64_t bN2Offset = taskInfo.n2Idx * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.t1Size + prefixBS1;
+                    FlashAttnLseCopy::DataCopyLseTNDtoNT<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                                                                   actualGSplitSize, tilingData);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint32_t s1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                     uint64_t bN2Offset =
-                        prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                               actualGSplitSize, constInfo, s1Size);
+                        prefixBS1 * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.n2Size + taskInfo.n2Idx * tilingData->flashAttnBaseParams.gSize;
+                    FlashAttnLseCopy::DataCopyLseNTD<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                                                               actualGSplitSize, tilingData, s1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                    uint64_t bN2Offset = taskInfo.bIdx * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.n2Size * tilingData->flashAttnBaseParams.s1Size +
+                                         taskInfo.n2Idx * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo);
+FlashAttnLseCopy::DataCopyLseBSND<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                                                                 actualGSplitSize, tilingData);
                 } else { // BNSD
-                    uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
-                                         taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
+                    uint64_t bN2Offset = taskInfo.bIdx * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.n2Size * tilingData->flashAttnBaseParams.s1Size +
+                                         taskInfo.n2Idx * tilingData->flashAttnBaseParams.gSize * tilingData->flashAttnBaseParams.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
-                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
-                                                                actualGSplitSize, constInfo, qActSeqLens);
+FlashAttnLseCopy::DataCopyLseBNSD<T>(softmaxLseGm, maxLseUb, bN2Offset, mOffset,
+                                                                 actualGSplitSize, tilingData, qActSeqLens);
                 }
             }
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
