@@ -31,28 +31,28 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
 
     OP_CHECK_IF(((tokenXShape->GetDimNum() != DIM_NUM_2) && (tokenXShape->GetDimNum() != DIM_NUM_3)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokenX",
-                                            std::to_string(tokenXShape->GetDimNum()) + "D", "2D or 3D"),
+                    std::to_string(tokenXShape->GetDimNum()) + "D", "2D or 3D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((weightUkShape->GetDimNum() != DIM_NUM_3),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightUk",
-                                            std::to_string(weightUkShape->GetDimNum()) + "D", "3D"),
+                    std::to_string(weightUkShape->GetDimNum()) + "D", "3D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(((ropeSinShape->GetDimNum() != DIM_NUM_2) && (ropeSinShape->GetDimNum() != DIM_NUM_3)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "ropeSin",
-                                            std::to_string(ropeSinShape->GetDimNum()) + "D", "2D or 3D"),
+                    std::to_string(ropeSinShape->GetDimNum()) + "D", "2D or 3D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((weightDqShape->GetDimNum() != DIM_NUM_2),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "weightDq",
-                                            std::to_string(weightDqShape->GetDimNum()) + "D", "2D"),
+                    std::to_string(weightDqShape->GetDimNum()) + "D", "2D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(((kvCacheShape->GetDimNum() != DIM_NUM_3) && (kvCacheShape->GetDimNum() != DIM_NUM_4)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "kvCache",
-                                            std::to_string(kvCacheShape->GetDimNum()) + "D", "3D or 4D"),
+                    std::to_string(kvCacheShape->GetDimNum()) + "D", "3D or 4D"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(((krCacheShape->GetDimNum() != DIM_NUM_1) && (krCacheShape->GetDimNum() != DIM_NUM_3) &&
                 (krCacheShape->GetDimNum() != DIM_NUM_4)),
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "krCache",
-                                            std::to_string(krCacheShape->GetDimNum()) + "D", "1D or 3D or 4D"),
+                    std::to_string(krCacheShape->GetDimNum()) + "D", "1D or 3D or 4D"),
                 return ge::GRAPH_FAILED);
 
     if (tokenXShape->GetDimNum() == DIM_NUM_3) { // BS
@@ -172,12 +172,12 @@ ge::graphStatus SetMlaPrologV3ShapeDim(const MlaPrologProtoShapeParam &shapePara
         } else if (weightQuantMode == WEIGHT_QUANT_MODE_MXFP8_FULL_QUANT) {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_2);
             dequantScaleQNormShape->SetDim(DIM_INDEX_0,
-                                           shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
+                        shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
             dequantScaleQNormShape->SetDim(DIM_INDEX_1, shapeParam.Hcq / FP8_E4M3_BLOCK_SIZE);
         } else {
             dequantScaleQNormShape->SetDimNum(DIM_NUM_2);
             dequantScaleQNormShape->SetDim(DIM_INDEX_0,
-                                           shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
+                        shapeParam.isBsMerge ? shapeParam.T : shapeParam.B * shapeParam.S);
             dequantScaleQNormShape->SetDim(DIM_INDEX_1, DIM_NUM_1);
         }
     } else {
