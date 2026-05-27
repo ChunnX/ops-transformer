@@ -66,3 +66,4 @@ batch_mat_mul_reduce_scatter_allto_all
 grouped_mat_mul_all_reduce
 matmul_all_reduce_add_rms_norm
 inplace_matmul_all_reduce_add_rms_norm
+distribute_barrier_extend
