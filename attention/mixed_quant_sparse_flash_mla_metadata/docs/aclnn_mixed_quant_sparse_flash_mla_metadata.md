@@ -776,7 +776,7 @@ int main() {
     ScopeGuard argsGuard([&] { DestroyArgs(context); });
 
     // 3. 调用CANN算子库API，需要修改为具体的API
-    // 调用aclnnLightningIndexerV2Metadata第一段接口
+    // 调用aclnnMixedQuantSparseFlashMlaMetadata第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
@@ -803,7 +803,7 @@ int main() {
         }
     });
     
-    // 调用aclnnLightningIndexerV2Metadata第二段接口
+    // 调用aclnnMixedQuantSparseFlashMlaMetadata第二段接口
     ret = aclnnMixedQuantSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnMixedQuantSparseFlashMlaMetadata failed. ERROR: %d\n", ret);
 
@@ -842,3 +842,9 @@ int main() {
     return 0;
 }
 ```
+
+## 调用说明
+
+| 调用方式  | 样例代码                                                                | 说明                                                                                          |
+| ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| aclnn接口 | [test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_mixed_quant_sparse_flash_mla_metadata.cpp) | 通过[`aclnnMixedQuantSparseFlashMlaMetadata`](./docs/aclnnMixedQuantSparseFlashMlaMetadata.md)接口方式调用 |
