@@ -51,18 +51,26 @@ ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInf
         const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
         OP_CHECK_IF(ge::GRAPH_SUCCESS !=
                         CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor, querypaddingsizeShapeNumList),
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The shape size of query paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "The shape size of query paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The dim number of query paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "The dim number of query paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag) {
         const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
         OP_CHECK_IF(
             ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor, kvpaddingsizeShapeNumList),
-            ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The shape size of key/value paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
+            ({ OP_LOGE(fiaInfo.opName,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    fiaInfo.opName, "The shape size of key/value paddingsize is not 1!"); }), return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "The dim number of key/value paddingsize is not 1!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "The dim number of key/value paddingsize is not 1!"); }),
                     return ge::GRAPH_FAILED);
     }
 
@@ -94,14 +102,18 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
     if (fiaInfo.qPaddingSizeFlag && !fiaInfo.isMaxWorkspace) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengthsQ.tensor == nullptr ||
                         fiaInfo.opParamInfo.actualSeqLengthsQ.tensor->GetShapeSize() == 0U,
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "When query_padding_size exists, the query's actual sequence lengths are required!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "When query_padding_size exists, the query's actual sequence lengths are required!"); }),
                     return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag && !fiaInfo.isMaxWorkspace) {
         OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr ||
                         fiaInfo.opParamInfo.actualSeqLengths.tensor->GetShapeSize() == 0U,
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "When kv_padding_size exists, the key/value's actual sequence lengths are required!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "When kv_padding_size exists, the key/value's actual sequence lengths are required!"); }),
                     return ge::GRAPH_FAILED);
     }
 
@@ -114,22 +126,34 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(layoutStr == "BSH_BNSD",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSH_BNSD!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSH_BNSD!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "BSND_BNSD",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSND_BNSD!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSND_BNSD!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "TND",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "NTD",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "NTD_TND",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD_TND!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD_TND!"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "TND_NTD",
-                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND_NTD!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND_NTD!"); }),
                     return ge::GRAPH_FAILED);
     }
 
@@ -141,7 +165,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureAlibiPse(const FiaTilingInfo &fi
     // When left-padding is enabled for Query and Key/Value, PseType = 2/3 is not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.enableAlibiPse,
-                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "When pseType = 2/3, left padding is not supported!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "In op [%s], [%s] is not supported, got [%s]",
+                            fiaInfo.opName, "feature", "When pseType = 2/3, left padding is not supported!"); }),
                     return ge::GRAPH_FAILED);
     }
 
@@ -153,7 +179,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInf
     // When left-padding is enabled for Query and Key/Value, PageAttention scenarios are not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION,
-                    ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "When page attention is used, left padding is not supported!"); }),
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "In op [%s], [%s] is not supported, got [%s]",
+                            fiaInfo.opName, "feature", "When page attention is used, left padding is not supported!"); }),
                     return ge::GRAPH_FAILED);
     }
 
@@ -172,7 +200,10 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
             OP_CHECK_IF(
                 (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                     fiaInfo.inputKvType == ge::DT_INT8,
-                ({ OP_LOGE(fiaInfo.opName, "In op [%s], [%s] is not supported, got [%s]", fiaInfo.opName, "feature", "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if keyAntiquantMode/valueAntiquan"); }),
+                ({ OP_LOGE(fiaInfo.opName,
+                        "In op [%s], [%s] is not supported, got [%s]",
+                        fiaInfo.opName, "feature",
+                        "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if keyAntiquantMode/valueAntiquan"); }),
                     return ge::GRAPH_FAILED);
         }
     }
@@ -211,7 +242,9 @@ ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaIn
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(
             fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE,
-            ({ OP_LOGE(fiaInfo.opName, "The op [%s] received bad params, the reason is: [%s]", fiaInfo.opName, "In GQA scenario, not support leftpadding when query and key headdim is not equal to value headdim."); }),
+            ({ OP_LOGE(fiaInfo.opName,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    fiaInfo.opName, "In GQA scenario, not support leftpadding when query and key headdim is not equal to value headdim."); }),
                 return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -223,3 +256,5 @@ ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInf
 }
 
 }  // namespace optiling
+
+

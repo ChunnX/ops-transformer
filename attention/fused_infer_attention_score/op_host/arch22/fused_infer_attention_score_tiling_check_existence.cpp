@@ -33,19 +33,54 @@ constexpr int64_t QUERY_QUANT_MODE_DEFAULT_VALUE = 0;
 ge::graphStatus FiaTilingCheck::CheckRopeExistence() const
 {
     OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr && opParamInfo_.keyRope.tensor == nullptr),
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "query_rope", (snprintf(reason, sizeof(reason), "%s is null, but queryRope exists, they should be both null or exist.", KEY_ROPE_NAME.c_str()) > 0) ? reason : "%s is null, but queryRope exists, they should be both null or exist.", "%s is null, but queryRope exists, they should be both null or exist."); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "query_rope",
+                (snprintf(reason, sizeof(reason),
+                    "%s is null, but queryRope exists, they should be both null or exist.",
+                    KEY_ROPE_NAME.c_str()) > 0)
+                        ? reason
+                        : "%s is null, but queryRope exists, they should be both null or exist.",
+                "%s is null, but queryRope exists, they should be both null or exist."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.queryRope.tensor == nullptr && opParamInfo_.keyRope.tensor != nullptr),
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "key_rope", (snprintf(reason, sizeof(reason), "%s is null, but keyRope exists, they should be both null or exist.", QUERY_ROPE_NAME.c_str()) > 0) ? reason : "%s is null, but keyRope exists, they should be both null or exist.", "%s is null, but keyRope exists, they should be both null or exist."); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "key_rope",
+                (snprintf(reason, sizeof(reason),
+                    "%s is null, but keyRope exists, they should be both null or exist.",
+                    QUERY_ROPE_NAME.c_str()) > 0)
+                        ? reason
+                        : "%s is null, but keyRope exists, they should be both null or exist.",
+                "%s is null, but keyRope exists, they should be both null or exist."); }),
         return ge::GRAPH_FAILED);
 
     if (ropeMode_ == RopeMode::ROPE_SPLIT) {
         OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation and rope exsists, desc of %s and %s should not be null", QuantModeToSerialString(quantMode_).c_str(), KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()) > 0) ? reason : "In %s situation and rope exsists, desc of %s and %s should not be null"); }),
+            ({ char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_,
+                    (snprintf(reason, sizeof(reason),
+                        "In %s situation and rope exsists, desc of %s and %s should not be null",
+                        QuantModeToSerialString(quantMode_).c_str(), KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()) > 0)
+                            ? reason
+                            : "In %s situation and rope exsists, desc of %s and %s should not be null"); }),
             return ge::GRAPH_FAILED);
     } else if (ropeMode_ == RopeMode::ROPE_COMBINE) {
         OP_CHECK_IF(opParamInfo_.keyRope.desc != nullptr || opParamInfo_.queryRope.desc != nullptr,
-            ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "In %s situation and rope exsists, desc of %s and %s should be null", QuantModeToSerialString(quantMode_).c_str(), KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()) > 0) ? reason : "In %s situation and rope exsists, desc of %s and %s should be null", "In %s situation and rope exsists, desc of %s and %s should be null"); }),
+            ({ char reason[512] = {0};
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "input",
+                    (snprintf(reason, sizeof(reason),
+                        "In %s situation and rope exsists, desc of %s and %s should be null",
+                        QuantModeToSerialString(quantMode_).c_str(), KEY_ROPE_NAME.c_str(), QUERY_ROPE_NAME.c_str()) > 0)
+                            ? reason
+                            : "In %s situation and rope exsists, desc of %s and %s should be null",
+                    "In %s situation and rope exsists, desc of %s and %s should be null"); }),
             return ge::GRAPH_FAILED);
     }
 
@@ -108,7 +143,9 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagMla()
         quantMode_ = FiaQuantMode::FULL_QUANT;
     } else {
         char reason[512] = {0};
-        OP_LOGE(opName_, "In op [%s], the data type of [%s] is not supported, got [%s]", opName_, "query", DtypeListToStr(actualDtypeList).c_str());
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "query", DtypeListToStr(actualDtypeList).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -144,7 +181,9 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlagGqa()
         quantMode_ = FiaQuantMode::FULL_QUANT;
     } else {
         char reason[512] = {0};
-        OP_LOGE(opName_, "In op [%s], the data type of [%s] is not supported, got [%s]", opName_, "query", DtypeListToStr(actualDtypeList).c_str());
+        OP_LOGE(opName_,
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                opName_, "query", DtypeListToStr(actualDtypeList).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -164,7 +203,15 @@ ge::graphStatus FiaTilingCheck::CheckDtypeAndSetQuantFlag()
 ge::graphStatus FiaTilingCheck::CheckExists(const void *pointer, const std::string &name) const
 {
     OP_CHECK_IF(pointer == nullptr,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s, %s situation, %s should not be null", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()) > 0) ? reason : "In %s, %s situation, %s should not be null"); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "In %s, %s situation, %s should not be null",
+                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()) > 0)
+                        ? reason
+                        : "In %s, %s situation, %s should not be null"); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -172,7 +219,16 @@ ge::graphStatus FiaTilingCheck::CheckExists(const void *pointer, const std::stri
 ge::graphStatus FiaTilingCheck::CheckNotExists(const void *pointer, const std::string &name) const
 {
     OP_CHECK_IF(pointer != nullptr,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "In %s, %s situation, %s should be null", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()) > 0) ? reason : "In %s, %s situation, %s should be null", "In %s, %s situation, %s should be null"); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "input",
+                (snprintf(reason, sizeof(reason),
+                    "In %s, %s situation, %s should be null",
+                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str(), name.c_str()) > 0)
+                        ? reason
+                        : "In %s, %s situation, %s should be null",
+                "In %s, %s situation, %s should be null"); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -225,7 +281,15 @@ void FiaTilingCheck::LogErrorExistenceEqual(std::map<std::string, const void *> 
     }
 
     char reason[512] = {0};
-    OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "input", (snprintf(reason, sizeof(reason), "In %s situation, %s's existence status should be same", QuantModeToSerialString(quantMode_).c_str(), oss.str().c_str()) > 0) ? reason : "In %s situation, %s's existence status should be same", "In %s situation, %s's existence status should be same");
+    OP_LOGE(opName_,
+            "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+            opName_, "input",
+            (snprintf(reason, sizeof(reason),
+                "In %s situation, %s's existence status should be same",
+                QuantModeToSerialString(quantMode_).c_str(), oss.str().c_str()) > 0)
+                    ? reason
+                    : "In %s situation, %s's existence status should be same",
+            "In %s situation, %s's existence status should be same");
 }
 
 ge::graphStatus FiaTilingCheck::CheckParaExistenceEqual(std::map<std::string, const void *> &paramMap) const
@@ -261,7 +325,12 @@ ge::graphStatus FiaTilingCheck::CheckAttrValueByMap(std::map<std::string, std::p
         const std::pair<const T *, T> &pointerValuePair = kv.second;
         if (pointerValuePair.first == nullptr) {
             char reason[512] = {0};
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "%s should not be nullptr", name.c_str()) > 0) ? reason : "%s should not be nullptr");
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_,
+                    (snprintf(reason, sizeof(reason),
+                        "%s should not be nullptr",
+                        name.c_str()) > 0) ? reason : "%s should not be nullptr");
             return ge::GRAPH_FAILED;
         }
 
@@ -271,7 +340,15 @@ ge::graphStatus FiaTilingCheck::CheckAttrValueByMap(std::map<std::string, std::p
             std::ostringstream ossActual;
             ossActual << std::to_string(*(pointerValuePair.first));
             char reason[512] = {0};
-            OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "value", (snprintf(reason, sizeof(reason), "In %s situation, %s value should be %s, but got %s", QuantModeToSerialString(quantMode_).c_str(), name.c_str(), ossExpect.str().c_str(), ossActual.str().c_str()) > 0) ? reason : "In %s situation, %s value should be %s, but got %s", "In %s situation, %s value should be %s, but got %s");
+            OP_LOGE(opName_,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                    opName_, "value",
+                    (snprintf(reason, sizeof(reason),
+                        "In %s situation, %s value should be %s, but got %s",
+                        QuantModeToSerialString(quantMode_).c_str(), name.c_str(), ossExpect.str().c_str(), ossActual.str().c_str()) > 0)
+                            ? reason
+                            : "In %s situation, %s value should be %s, but got %s",
+                    "In %s situation, %s value should be %s, but got %s");
             return ge::GRAPH_FAILED;
         }
     }
@@ -315,7 +392,31 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaNoquant() const
     }
     // torch_npu==2.1, 当actualSharedPrefixLen不传的时候, pta会把actualSharedPrefixLen传入一个shape为0的tensor
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "prefix", (snprintf(reason, sizeof(reason), "In %s, %s situation, actualSharedPrefixLen should be null", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0) ? reason : "In %s, %s situation, actualSharedPrefixLen should be null", "In %s, %s situation, actualSharedPrefixLen should be null"); }),
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "prefix",
+                (snprintf(reason, sizeof(reason),
+                    "In %s, %s situation, actualSharedPrefixLen should be null",
+                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0)
+                        ? reason
+                        : "In %s, %s situation, actualSharedPrefixLen should be null",
+                "In %s, %s situation, actualSharedPrefixLen should be null"); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -363,7 +464,31 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaAntiquant() const
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "prefix", (snprintf(reason, sizeof(reason), "In %s, %s situation, actualSharedPrefixLen should be null", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0) ? reason : "In %s, %s situation, actualSharedPrefixLen should be null", "In %s, %s situation, actualSharedPrefixLen should be null"); }),
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "prefix",
+                (snprintf(reason, sizeof(reason),
+                    "In %s, %s situation, actualSharedPrefixLen should be null",
+                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0)
+                        ? reason
+                        : "In %s, %s situation, actualSharedPrefixLen should be null",
+                "In %s, %s situation, actualSharedPrefixLen should be null"); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -410,7 +535,31 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaFullquant() const
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(opParamInfo_.actualSharedPrefixLen.tensor != nullptr && opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]", opName_, "prefix", (snprintf(reason, sizeof(reason), "In %s, %s situation, actualSharedPrefixLen should be null", QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0) ? reason : "In %s, %s situation, actualSharedPrefixLen should be null", "In %s, %s situation, actualSharedPrefixLen should be null"); }),
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                opName_, "prefix",
+                (snprintf(reason, sizeof(reason),
+                    "In %s, %s situation, actualSharedPrefixLen should be null",
+                    QuantModeToSerialString(quantMode_).c_str(), SituationToSerialString(ropeMode_).c_str()) > 0)
+                        ? reason
+                        : "In %s, %s situation, actualSharedPrefixLen should be null",
+                "In %s, %s situation, actualSharedPrefixLen should be null"); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -479,13 +628,38 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceGqaAntiquantInt8Inner() const
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.keyAntiquantOffset.tensor != nullptr,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, %s is null, but %s exists", QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), KEY_ANTIQUANT_OFFSET_NAME.c_str()) > 0) ? reason : "In %s situation, %s is null, but %s exists"); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "In %s situation, %s is null, but %s exists",
+                    QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), KEY_ANTIQUANT_OFFSET_NAME.c_str()) > 0)
+                        ? reason
+                        : "In %s situation, %s is null, but %s exists"); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.antiquantScale.tensor == nullptr,
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, when %s is null, %s should not be null", QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), ANTIQUANT_SCALE_NAME.c_str()) > 0) ? reason : "In %s situation, when %s is null, %s should not be null"); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "In %s situation, when %s is null, %s should not be null",
+                    QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), ANTIQUANT_SCALE_NAME.c_str()) > 0)
+                        ? reason
+                        : "In %s situation, when %s is null, %s should not be null"); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.keyAntiquantMode != 0) || (*opParamInfo_.valueAntiquantMode != 0),
-        ({ char reason[512] = {0}; OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, (snprintf(reason, sizeof(reason), "In %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0", QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), KEY_ANTIQUANT_MODE_NAME.c_str(), *opParamInfo_.keyAntiquantMode, VALUE_ANTIQUANT_MODE_NAME.c_str(), *opParamInfo_.valueAntiquantMode) > 0) ? reason : "In %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0"); }),
+        ({ char reason[512] = {0};
+        OP_LOGE(opName_,
+                "The op [%s] received bad params, the reason is: [%s]",
+                opName_,
+                (snprintf(reason, sizeof(reason),
+                    "In %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0",
+                    QuantModeToSerialString(quantMode_).c_str(), KEY_ANTIQUANT_SCALE_NAME.c_str(), KEY_ANTIQUANT_MODE_NAME.c_str(),
+                    *opParamInfo_.keyAntiquantMode, VALUE_ANTIQUANT_MODE_NAME.c_str(), *opParamInfo_.valueAntiquantMode) > 0)
+                        ? reason
+                        : "In %s situation, when %s is null, %s(%ld) and %s(%ld) should both be 0"); }),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -614,11 +788,15 @@ ge::graphStatus FiaTilingCheck::CheckExistenceSystemPrefix() const
 {
     if (!fiaInfo_.sysPrefixFlag && (opParamInfo_.keySharedPrefix.tensor != nullptr || opParamInfo_.valueSharedPrefix.tensor != nullptr)) {
         if (opParamInfo_.keySharedPrefix.tensor == nullptr) {
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, "When valueSharedPrefix exists, keySharedPrefix should also exist.");
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_, "When valueSharedPrefix exists, keySharedPrefix should also exist.");
             return ge::GRAPH_FAILED;
         }
         if (opParamInfo_.valueSharedPrefix.tensor == nullptr) {
-            OP_LOGE(opName_, "The op [%s] received bad params, the reason is: [%s]", opName_, "When keySharedPrefix exists, valueSharedPrefix should also exist.");
+            OP_LOGE(opName_,
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    opName_, "When keySharedPrefix exists, valueSharedPrefix should also exist.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -665,3 +843,20 @@ ge::graphStatus FiaTilingCheck::CheckParaExistence()
     }
 }
 } // namespace optiling
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

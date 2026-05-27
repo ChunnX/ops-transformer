@@ -107,14 +107,18 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
 
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake actualSeqLengthsKvOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "Try alloc fake actualSeqLengthsKvOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         return ret;
     }
 
     ret = FakeArray(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake actualSharedPrefixLenOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "Try alloc fake actualSharedPrefixLenOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         return ret;
@@ -122,7 +126,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
 
     ret = FakeArray(qStartIdxOptional, fakeQStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake qStartIdxOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "Try alloc fake qStartIdxOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         aclDestroyTensor(fakeActualSharedPrefixLenOptional);
@@ -131,7 +137,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
 
     ret = FakeArray(kvStartIdxOptional, fakeKVStartIdxOptional);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "Try alloc fake kvStartIdxOptional failed");
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "Try alloc fake kvStartIdxOptional failed");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
         aclDestroyTensor(fakeActualSharedPrefixLenOptional);

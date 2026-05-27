@@ -53,7 +53,11 @@ std::string FusedDataTypeToSerialString(ge::DataType type)
         return it->second;
     } else {
         char reason[512] = {0};
-        OP_LOGE("FusedInferAttentionScore", "In op [%s], the data type of [%s] is not supported, got [%s]", "FusedInferAttentionScore", "input", type);
+        OP_LOGE("FusedInferAttentionScore",
+                "In op [%s], the data type of [%s] is not supported, got [%s]",
+                "FusedInferAttentionScore", "input",
+                (snprintf(reason, sizeof(reason), "dtype=%d", static_cast<int>(type)) > 0)
+                    ? reason : "dtype=%d");
         return "UNDEFINED";
     }
 }
@@ -119,3 +123,5 @@ ge::graphStatus TilingCheck::Check(const FiaTilingInfo &fiaInfo)
     return tilingChecker.Process();
 }
 } // namespace optiling
+
+

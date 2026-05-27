@@ -154,24 +154,53 @@ static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsFor
             // are the same.
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardKH) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under tensorlist mode!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardKH) > 0) ? reason : "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardKH) > 0)
+                                ? reason
+                                : "H of Key(%ld) in the %ld-th batch is different from H of Key(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) != standardVH) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under tensorlist mode!", contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardVH) > 0) ? reason : "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardVH) > 0)
+                                ? reason
+                                : "H of Value(%ld) in the %ld-th batch is different from H of Value(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
                 contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) { // k_s != v_s
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S for Key(%ld) and Value(%ld) does NOT equal!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) > 0) ? reason : "S for Key(%ld) and Value(%ld) does NOT equal!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "S for Key(%ld) and Value(%ld) does NOT equal!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) > 0)
+                                ? reason
+                                : "S for Key(%ld) and Value(%ld) does NOT equal!");
                 return false;
             }
             if (contextKeyParams.keyRopeInputShape != nullptr) {
                 if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
                     char reason[512] = {0};
-                    OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS) > 0) ? reason : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
+                    OP_LOGE(context->GetNodeName(),
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            context->GetNodeName(),
+                            (snprintf(reason, sizeof(reason),
+                                "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS) > 0)
+                                    ? reason
+                                    : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
                     return false;
                 }
             }
@@ -198,7 +227,14 @@ static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsFor
 
         if (tmpNKv != standardN) {
             char reason[512] = {0};
-            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!", standardN, tmpNKv) > 0) ? reason : "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!");
+            OP_LOGE(context->GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context->GetNodeName(),
+                    (snprintf(reason, sizeof(reason),
+                        "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
+                        standardN, tmpNKv) > 0)
+                            ? reason
+                            : "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!");
             return false;
         }
 
@@ -206,30 +242,67 @@ static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsFor
             if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN) ||
                 (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1) != standardN)) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1), tmpIdx + 1, standardN) > 0) ? reason : "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1), tmpIdx + 1, standardN) > 0)
+                                ? reason
+                                : "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD) > 0) ? reason : "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD) > 0)
+                                ? reason
+                                : "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!", contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD) > 0) ? reason : "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD) > 0)
+                                ? reason
+                                : "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
                 contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S from Key(%ld) and Value(%ld) does NOT equal but they should!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)) > 0) ? reason : "S from Key(%ld) and Value(%ld) does NOT equal but they should!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2)) > 0)
+                                ? reason
+                                : "S from Key(%ld) and Value(%ld) does NOT equal but they should!");
                 return false;
             }
             if (contextKeyParams.keyRopeInputShape != nullptr) {
                 if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2) !=
                     keyRopeS) { // k_s != krope_s
                     char reason[512] = {0};
-                    OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), keyRopeS) > 0) ? reason : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
+                    OP_LOGE(context->GetNodeName(),
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            context->GetNodeName(),
+                            (snprintf(reason, sizeof(reason),
+                                "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), keyRopeS) > 0)
+                                    ? reason
+                                    : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
                     return false;
                 }
             }
@@ -255,7 +328,14 @@ static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsFor
 
         if (tmpNKv != standardN) {
             char reason[512] = {0};
-            OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!", standardN, tmpNKv) > 0) ? reason : "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!");
+            OP_LOGE(context->GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context->GetNodeName(),
+                    (snprintf(reason, sizeof(reason),
+                        "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!",
+                        standardN, tmpNKv) > 0)
+                            ? reason
+                            : "N of Key(%ld) in the first batch is different from numKeyValueHeads(%ld)!");
             return false;
         }
 
@@ -267,29 +347,66 @@ static bool CheckNormalTensorList(gert::TilingContext *context, ContextParamsFor
                 standardN)) { // 2: The second dimension of the tensorlist represents n, in order to check whether all n
                               // in the tensorlist are the same.
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardN) > 0) ? reason : "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2),
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_2), tmpIdx + 1, standardN) > 0)
+                                ? reason
+                                : "N of Key(%ld) and Value(%ld) in the %ld-th batch is different from numKeyValueHeads(%ld) under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardKD) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD) > 0) ? reason : "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardKD) > 0)
+                                ? reason
+                                : "D of Key(%ld) in the %ld-th batch is different from D of Key(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3) != standardVD) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!", contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD) > 0) ? reason : "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!",
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(KV_DIM_3), tmpIdx + 1, standardVD) > 0)
+                                ? reason
+                                : "D of Value(%ld) in the %ld-th batch is different from D of Value(%ld) in the first batch under tensorlist mode!");
                 return false;
             }
             if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
                 contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
                 char reason[512] = {0};
-                OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S from Key(%ld) and Value(%ld) does NOT equal but they should!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) > 0) ? reason : "S from Key(%ld) and Value(%ld) does NOT equal but they should!");
+                OP_LOGE(context->GetNodeName(),
+                        "The op [%s] received bad params, the reason is: [%s]",
+                        context->GetNodeName(),
+                        (snprintf(reason, sizeof(reason),
+                            "S from Key(%ld) and Value(%ld) does NOT equal but they should!",
+                            contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1),
+                            contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) > 0)
+                                ? reason
+                                : "S from Key(%ld) and Value(%ld) does NOT equal but they should!");
                 return false;
             }
             if (contextKeyParams.keyRopeInputShape != nullptr) {
                 if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) != keyRopeS) { // k_s != krope_s
                     char reason[512] = {0};
-                    OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), (snprintf(reason, sizeof(reason), "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!", contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS) > 0) ? reason : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
+                    OP_LOGE(context->GetNodeName(),
+                            "The op [%s] received bad params, the reason is: [%s]",
+                            context->GetNodeName(),
+                            (snprintf(reason, sizeof(reason),
+                                "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!",
+                                contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1), keyRopeS) > 0)
+                                    ? reason
+                                    : "S for Key(%ld) and keyRope(%ld) does NOT equal but they should!");
                     return false;
                 }
             }
@@ -510,7 +627,9 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext *context,
 
     auto convertQuantRet = ConvertQuantOptionalInputs(context, contextKeyParams);
     if (convertQuantRet != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context->GetNodeName(), "Error occured while convert quant related tilingContext to PFA context!");
+        OP_LOGE(context->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context->GetNodeName(), "Error occured while convert quant related tilingContext to PFA context!");
         return convertQuantRet;
     }
 
@@ -614,7 +733,9 @@ static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext &context, I
     bool isMaxWorkspace)
 {
     if (context.GetNodeName() == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "opName got from TilingContext is nullptr");
+        OP_LOGE("FusedInferAttentionScore",
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     ifaContext.opName = context.GetNodeName();
@@ -763,7 +884,9 @@ ge::graphStatus TilingFusedInferAttentionScoreArch38(gert::TilingContext *contex
 ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
 {
     if (context_ == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "The op [%s] received bad params, the reason is: [%s]", "FusedInferAttentionScore", "tiling context is nullptr!");
+        OP_LOGE("FusedInferAttentionScore",
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
@@ -1084,7 +1207,14 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         }
     } else {
         char reason[512] = {0};
-        OP_LOGE(context_->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context_->GetNodeName(), (snprintf(reason, sizeof(reason), "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD layout are supported!", inputLayoutStr.c_str()) > 0) ? reason : "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD ");
+        OP_LOGE(context_->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context_->GetNodeName(),
+                (snprintf(reason, sizeof(reason),
+                    "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD layout are supported!",
+                    inputLayoutStr.c_str()) > 0)
+                        ? reason
+                        : "Invalid input layout:%s. Currently only TND/NTD/BSH/BNSD/BSND/BSND_BNSD/BNSD_BSND/BSH_BNSD/BSND_NBSD/BNSD_NBSD/BSH_NBSD ");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF((queryD > DLIMIT),
@@ -1120,7 +1250,9 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         IncreFlashAttentionContext ifaContext{};
         auto ret = ConvertContextToParamsIFA(*context_, ifaContext, isMaxWorkspace);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(context_->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context_->GetNodeName(), "Error occored while convert tilingContext to ifa context!");
+            OP_LOGE(context_->GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context_->GetNodeName(), "Error occored while convert tilingContext to ifa context!");
             return ret;
         }
         IFATilingArch38 ifaTilingArch38(context_);
@@ -1161,7 +1293,9 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         contextParamsForPFATiling.compileInfoPtr = &tempCompileInfoPtr;
         auto ret = ConvertContextToParamsPFA(context_, contextParamsForPFATiling, isMaxWorkspace);
         if (ret != ge::GRAPH_SUCCESS) {
-            OP_LOGE(context_->GetNodeName(), "The op [%s] received bad params, the reason is: [%s]", context_->GetNodeName(), "Error occored while convert tilingContext to PFA context!");
+            OP_LOGE(context_->GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context_->GetNodeName(), "Error occored while convert tilingContext to PFA context!");
             return ret;
         }
         if (lseFlag != false) {
