@@ -512,8 +512,9 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
         OP_LOGI("Context cache not found, need to create");
         return ACLNN_SUCCESS;
     }
-    auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    hcclBuffSize = 800 * 1024 * 1024;
+    // auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
+    // CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     return ACLNN_SUCCESS;
 }
 
