@@ -152,16 +152,20 @@ op = LightningIndexerGrad(
     block_d=128,
 )
 
-# 计算梯度
+# 计算梯度（接口与官方算子一致）
 d_query, d_key, d_weights = op.forward(
-    query=query_tensor,      # (batch, S1, D)
+    query=query_tensor,      # (batch, S1, head_num_q, D)
     key=key_tensor,          # (batch, S2, head_num_k, D)
-    weights=weights_tensor,  # (batch, S1, N1)
     dy=dy_tensor,            # (batch, S1, K)
     indices=indices_tensor,  # (batch, S1, K)
-    relu_in=relu_in_tensor,  # (batch, S1, K)
+    weights=weights_tensor,  # (batch, S1, head_num_q)
+    head_num=32,             # 头数量
+    layout="BSND",           # 数据布局
+    sparse_mode=3,           # 稀疏模式
 )
 ```
+
+**注意**: relu_in 参数已移除，现在在内部通过 Cube1 (Query @ KeyGather^T) 计算。
 
 ### 分块大小调优
 

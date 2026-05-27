@@ -233,7 +233,7 @@ def test_scatter_add():
 
 
 def test_full_pipeline():
-    """使用小尺寸测试完整流水线。"""
+    """测试完整流水线。"""
     print("\n=== 测试完整流水线 ===")
     
     from lightning_indexer_grad_op import LightningIndexerGrad
@@ -260,16 +260,20 @@ def test_full_pipeline():
         block_d=16,
     )
     
-    query = torch.randn(batch, seqlen_q, head_dim, dtype=torch.float16).npu()
+    query = torch.randn(batch, seqlen_q, head_num_q, head_dim, dtype=torch.float16).npu()
     key = torch.randn(batch, seqlen_k, head_num_k, head_dim, dtype=torch.float16).npu()
-    weights = torch.randn(batch, seqlen_q, head_num_q // group_num, dtype=torch.float16).npu()
+    weights = torch.randn(batch, seqlen_q, head_num_q, dtype=torch.float16).npu()
     dy = torch.randn(batch, seqlen_q, topk, dtype=torch.float16).npu()
     indices = torch.randint(0, seqlen_k, (batch, seqlen_q, topk), dtype=torch.int32).npu()
-    relu_in = torch.randn(batch, seqlen_q, topk, dtype=torch.float16).npu()
     
     torch.npu.synchronize()
     
-    d_query, d_key, d_weights = op.forward(query, key, weights, dy, indices, relu_in)
+    d_query, d_key, d_weights = op.forward(
+        query, key, dy, indices, weights,
+        head_num=head_num_q,
+        layout="BSND",
+        sparse_mode=3,
+    )
     
     torch.npu.synchronize()
     
