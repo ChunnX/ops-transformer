@@ -769,8 +769,8 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
             hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
         }
     } else {
-        OP_TILING_CHECK(std::strcmp(commModeStr, "") != 0, OP_LOGE(context->GetNodeName(), "In arch22, the input attr comm_mode must be ''."),
-                        return ge::GRAPH_FAILED);
+        // OP_TILING_CHECK(std::strcmp(commModeStr, "") != 0, OP_LOGE(context->GetNodeName(), "In arch22, the input attr comm_mode must be ''."),
+        //                 return ge::GRAPH_FAILED);
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
 

@@ -137,7 +137,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
     
-    const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "aicpu" : "";
+    // const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "aicpu" : "";
+    const char *commMode = "aicpu";
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
@@ -160,12 +161,15 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize,
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("Arch35 platform, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 OP_LOGD("Arch35 platform, use CCU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
+        } else {
+            OP_LOGD("Arch22 platform, use AICPU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);

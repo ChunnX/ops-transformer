@@ -207,7 +207,7 @@ static ge::graphStatus ExecuteAlltoAllvQuantGroupedMatMul(
     const gert::Tensor* mmY,
     const gert::Tensor* permuteOut)
 {
-    if (std::strcmp(attrsData.commMode, "ccu") == 0 || std::strcmp(attrsData.commMode, "aicpu") == 0 || std::strcmp(attrsData.commMode, "default") == 0) {
+    if (std::strcmp(attrsData.commMode, "ccu") == 0 || std::strcmp(attrsData.commMode, "default") == 0) {
         OPS_LOG_D("AlltoAllvQuantGroupedMatMulFallback", "aclnnAlltoAllvQuantGroupedMatMulV2.");
         const auto apiRet = EXEC_OPAPI_CMD(
                                           aclnnAlltoAllvQuantGroupedMatMulV2, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
@@ -218,6 +218,17 @@ static ge::graphStatus ExecuteAlltoAllvQuantGroupedMatMul(
                                           *attrsData.permuteOutFlag, gmmY, mmY, permuteOut);
         OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
                    OP_LOGE("AlltoAllvGroupedMatMulFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
+    } else if (std::strcmp(attrsData.commMode, "aicpu") == 0) {
+        OPS_LOG_D("AlltoAllvQuantGroupedMatMulFallback", "aclnnAlltoAllvQuantGroupedMatMul.");
+        const auto apiRet = EXEC_OPAPI_CMD(
+                                          aclnnAlltoAllvQuantGroupedMatMul, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
+                                          inputs.sendCountsTensor, inputs.recvCountsTensor, inputs.mmX, inputs.mmWeight, inputs.mmXScale,
+                                          inputs.mmWeightScale, *attrsData.gmmXQuantMode, *attrsData.gmmWeightQuantMode, *attrsData.mmXQuantMode,
+                                          *attrsData.mmWeightQuantMode, attrsData.group, *attrsData.epWorldSize, actSendCountsSeqArray,
+                                          actRecvCountsSeqArray, *attrsData.transGmmWeight, *attrsData.transMmWeight, *attrsData.groupSize,
+                                          *attrsData.permuteOutFlag, gmmY, mmY, permuteOut);
+        OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
+                   OP_LOGE("AlltoAllvQuantGroupedMatMulFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
