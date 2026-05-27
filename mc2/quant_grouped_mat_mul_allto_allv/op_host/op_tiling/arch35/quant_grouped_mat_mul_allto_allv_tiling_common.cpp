@@ -42,8 +42,6 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
     ge::DT_FLOAT,
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
-const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128, 256};
-constexpr int64_t RANK_DEFAULT_NUM = -1;
 
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
@@ -616,10 +614,14 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetSendRecvCoun
     auto gmmQTilingCommonInfoPtr = &localTilingData_.taskTilingInfo;
     uint64_t maxCountsSize = std::min<uint64_t>(expertNum, MAX_EXPERT_NUM);
     for (uint64_t i = 0; i < maxCountsSize; i++) {
-        OP_TILING_CHECK(sendCounts[i] < 0, OP_LOGE(opName_, "sendCounts value %ld should not be < 0 !", sendCounts[i]),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(recvCounts[i] < 0, OP_LOGE(opName_, "recvCounts value %ld should not be < 0 !", recvCounts[i]),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            sendCounts[i] < 0 || sendCounts[i] > static_cast<int64_t>(localParams_.A),
+            OP_LOGE(opName_, "sendCounts[%lu] should be in [0, %lu], but got %ld.", i, localParams_.A, sendCounts[i]),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            recvCounts[i] < 0 || recvCounts[i] > static_cast<int64_t>(localParams_.BsK),
+            OP_LOGE(opName_, "recvCounts[%lu] should be in [0, %lu], but got %ld.", i, localParams_.BsK, recvCounts[i]),
+            return ge::GRAPH_FAILED);
         gmmQTilingCommonInfoPtr->sendCnt[i] = static_cast<int32_t>(sendCounts[i]);
         gmmQTilingCommonInfoPtr->recvCnt[i] = static_cast<int32_t>(recvCounts[i]);
     }
@@ -632,7 +634,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckLocalParams()
     OP_TILING_CHECK((localParams_.H1 == 0) || (localParams_.H1 >= MAX_H1_VALUE),
                     OP_LOGE(opName_, "H1 should be in range (0, %lu), but got %lu.", MAX_H1_VALUE, localParams_.H1),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((localParams_.BsK >= MAX_BSK_VALUE),
+    OP_TILING_CHECK((localParams_.BsK == 0) || (localParams_.BsK >= MAX_BSK_VALUE),
                     OP_LOGE(opName_, "BSK should be in range (0, %lu), but got %lu.", MAX_BSK_VALUE, localParams_.BsK),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((localParams_.N1 == 0) || (localParams_.N1 >= MAX_N1_VALUE),
@@ -813,11 +815,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.a2avCcTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -956,10 +956,10 @@ uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-        localParams_.isMmWeightTrans, commMode);
+                                                  localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-        localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;
 }
 
-}
+} // namespace Mc2Tiling

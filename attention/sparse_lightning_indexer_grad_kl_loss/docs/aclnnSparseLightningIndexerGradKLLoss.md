@@ -142,7 +142,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
             <td>(B,S1,N1,DQuery)、(T1,N1,DQuery)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>key</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
             <td>(B,S2,N2,DQuery)、(T2,N2,DQuery)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryIndex</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,Nidx1,DQueryIndex)、(T1,Nidx1,DQueryIndex)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyIndex</td>
@@ -187,7 +187,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S2,Nidx2,DQueryIndex)、(T2,Nidx2,DQueryIndex)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>weights</td>
@@ -197,7 +197,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16、FLOAT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -207,7 +207,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx2,K)、(T1,Nidx2,K)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryRope</td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S1,N1,DRope)、(T1,N1,DRope)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyRope</td>
@@ -257,7 +257,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
             <td>(B,S2,N2,DRope)、(T2,N2,DRope)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>    
         <tr>
             <td>actualSeqLengthsQuery</td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT64</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>actualSeqLengthsKey</td>
@@ -291,7 +291,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>INT64</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>scaleValue</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>layout</td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>STRING</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>sparseMode</td>
@@ -330,7 +330,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
-        <td>x</td>
+        <td>-</td>
         </tr>
         <tr>
         <td>deterministic</td>
@@ -342,7 +342,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>BOOL</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>dQueryIndex</td>

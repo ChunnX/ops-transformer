@@ -289,24 +289,6 @@ __aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr) {
     return reinterpret_cast<__gm__ T*>(*(retPtr + index));
 }
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ != 310
-__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset,
-    const MC2GMMBaseParams *__restrict &gmmBaseParams, const GlobalTensor<int64_t> &groupListGm)
-{
-    int32_t splitValue = 0;
-    if (likely(gmmBaseParams->groupType != -1)) { // -1: no  need to split
-        if (gmmBaseParams->groupListType == 0) {
-            int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
-            splitValue = offset - preOffset;
-            preOffset = offset;
-        } else {
-            splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
-        }
-    }
-    return splitValue;
-}
-#endif
-
 template <typename T> __aicore__ inline constexpr uint32_t GetTypeBits()
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
