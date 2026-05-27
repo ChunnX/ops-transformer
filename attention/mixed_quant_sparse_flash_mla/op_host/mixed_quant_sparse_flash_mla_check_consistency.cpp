@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file mixed_quant_sparse_flash_mla_check_consistancy.cpp
+ * \file mixed_quant_sparse_flash_mla_check_consistency.cpp
  * \brief
  */
 
@@ -111,10 +111,6 @@ ge::graphStatus QSMLATilingCheck::CheckBlockTable() const
             OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
                 QSMLALayoutToSerialString(kvLayout_).c_str(), ORI_BLOCK_TABLE_NAME.c_str()),
             return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    }
-
-    if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.cmpBlockTable.tensor != nullptr,
             OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
                 QSMLALayoutToSerialString(kvLayout_).c_str(), CMP_BLOCK_TABLE_NAME.c_str()),

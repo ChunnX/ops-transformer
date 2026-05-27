@@ -101,7 +101,7 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN,
     int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
-    // 计算每个基本快可以拷贝多少行s
+    // 计算每个基本块可以拷贝多少行s
     runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? \
         (constInfo.s1BaseSize / constInfo.gSize) : 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;

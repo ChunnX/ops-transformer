@@ -110,7 +110,7 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
     """
-    dispatcher implementation for NPU.zhe
+    dispatcher implementation for NPU
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_mixed_quant_sparse_flash_mla(q,
