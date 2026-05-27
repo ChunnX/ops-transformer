@@ -367,9 +367,9 @@ def cpu_compressor(
     kv_state = kv_state.numpy()
     score_state = score_state.numpy()
     ape = ape.numpy()
-    norm_weight = norm_weight.to(torch.float32).numpy()
-    rope_sin = rope_sin.to(torch.float32).numpy()
-    rope_cos = rope_cos.to(torch.float32).numpy()
+    norm_weight = norm_weight.numpy()
+    rope_sin = rope_sin.numpy()
+    rope_cos = rope_cos.numpy()
     matmul_dtype = np.float32
     for i in range(wkv.shape[1] // 128):
         leftH = i * 128
