@@ -14,11 +14,11 @@
  * 
  * 算子功能说明：
  * 本算子实现了 MOE (Mixture of Experts) 场景下的 AlltoAll Dispatch 通信，
- * 用于测试 NPU 设备间的通信带宽。每个 rank 根据 expert_id 将 token 发送到
+ * 用于测试 NPU 设备间的通信带宽。每个 rank 根据 dst_rank_id 将 token 发送到
  * 对应的目标 rank，实现数据的分布式分发。
  * 
  * 执行流程 (mode=0 完整流程):
- * 1. SendToMoeExpert: 根据 expert_id 将 token 写入目标 rank 的通信窗口
+ * 1. SendToMoeExpert: 根据 dst_rank_id 将 token 写入目标 rank 的通信窗口
  * 2. SetStatus: 统计发送到各 rank 的 token 数量，写入状态区通知对端
  * 3. WaitDispatch: 等待所有 rank 完成数据发送并写入状态
  * 4. LocalWindowCopy: 从本地窗口读取接收到的数据，拷贝到输出 tensor
@@ -65,7 +65,7 @@ template <TemplateBandwidthTestTypeClass>
 class BandwidthTest {
 public:
     __aicore__ inline BandwidthTest() {};
-    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
         GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -96,19 +96,19 @@ private:
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;              // 输入数据 x
-    GlobalTensor<int32_t> expertIdGMTensor_;     // 专家ID (用于确定目标rank)
+    GlobalTensor<int32_t> dstRankIdGMTensor_;     // 专家ID (用于确定目标rank)
     GlobalTensor<YType> yGMTensor_;              // 输出数据 y
     GlobalTensor<int32_t> receiveCntGMTensor_;   // 接收到的token计数
     GlobalTensor<float> windowInStatusFp32Tensor_; // 窗口状态区(用于同步)
     LocalTensor<XType> xTmpTensor_;              // 临时存储token数据
     LocalTensor<YType> yTmpTensor_;              // 临时存储输出数据
-    LocalTensor<int32_t> expertIdsTensor_;       // 本地缓存的expert_id数组
+    LocalTensor<int32_t> dstRankIdsTensor_;       // 本地缓存的dst_rank_id数组
     LocalTensor<int32_t> statusTensor_;          // 状态数据
     LocalTensor<float> statusFp32Tensor_;        // 状态数据(FP32视图)
     LocalTensor<int32_t> dstExpIdTensor_;
     LocalTensor<int32_t> subExpIdTensor_;
     LocalTensor<float> workLocalTensor_;
-    TBuf<> expertIdsBuf_;      // expert_id 缓冲区
+    TBuf<> dstRankIdsBuf_;      // dst_rank_id 缓冲区
     TBuf<> statusBuf_;         // 状态缓冲区
     TBuf<> waitStatusBuf_;     // 等待状态缓冲区
     TBuf<> gatherMaskOutBuf_;  // 中间计算缓冲区
@@ -141,8 +141,8 @@ private:
     uint32_t hAlignWinCnt_{0};     // 窗口对齐后的元素个数
     uint32_t hOutAlignUbSize_{0};  // UB对齐后的hidden size
     uint32_t hAlignSize_{0};       // UB对齐后的hidden size
-    uint32_t startExpertId_{0};    // 当前核处理的起始expert ID
-    uint32_t endExpertId_{0};      // 当前核处理的结束expert ID
+    uint32_t startRankId_{0};    // 当前核处理的起始expert ID
+    uint32_t endRankId_{0};      // 当前核处理的结束expert ID
     uint32_t sendExpertNum_{0};    // 当前核处理的expert数量
     uint32_t totalCnt_{0};         // 总计处理的token数
     uint32_t dataState_{0};        // 数据状态 (用于双缓冲)
@@ -162,7 +162,7 @@ private:
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
-    GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
+    GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -201,7 +201,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
-    expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
+    dstRankIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)dstRankId);
     yGMTensor_.SetGlobalBuffer((__gm__ YType*)y);
     receiveCntGMTensor_.SetGlobalBuffer((__gm__ int32_t*)receiveCnt);
 
@@ -255,16 +255,16 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
     // ============ 初始化其他缓冲区 ============
-    uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t dstRankIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(int16_t), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
-    tpipe_->InitBuffer(expertIdsBuf_, expertIdsBufSize);
-    totalUsedUB_ += expertIdsBufSize;
-    expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
+    uint32_t dstRankIdsBufSize = dstRankIdsSize > bsAlign256 ? dstRankIdsSize : bsAlign256;
+    tpipe_->InitBuffer(dstRankIdsBuf_, dstRankIdsBufSize);
+    totalUsedUB_ += dstRankIdsBufSize;
+    dstRankIdsTensor_ = dstRankIdsBuf_.Get<int32_t>();
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
-    uint32_t maxSize = expertIdsSize;
-    maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
+    uint32_t maxSize = dstRankIdsSize;
+    maxSize = hFp32Size > dstRankIdsSize ? hFp32Size : dstRankIdsSize;
     tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
     totalUsedUB_ += maxSize;
 
@@ -335,7 +335,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalTokenSen
     SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
     PipeBarrier<PIPE_V>();
-    Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
+    Sub(subExpIdTensor_, dstRankIdsTensor_, dstExpIdTensor_, calCnt);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
     LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
@@ -357,7 +357,7 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
     // 发送token到目标rank的窗口
-    // 根据 expert_id 确定目标 rank，将 token 写入该 rank 的通信窗口
+    // 根据 dst_rank_id 确定目标 rank，将 token 写入该 rank 的通信窗口
     
     // ============ 计算当前核处理的token范围 ============
     uint32_t startTokenId, endTokenId, sendTokenNum; // 每个aiv发送时的起始rankid
@@ -365,28 +365,28 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     if (startTokenId >= axisBS_) { return; }
 
-    // ============ 读取expert_id数组到UB ============
+    // ============ 读取dst_rank_id数组到UB ============
     GlobalTensor<XType> dstWinGMTensor;
-    DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
+    DataCopyExtParams dstRankIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> dstRankIdsCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_, dstRankIdsParams, dstRankIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-        uint32_t dstRankId = expertIdsTensor_(tokenIndex);// expert_id 直接作为目标rank_id
+        uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);// dst_rank_id 直接作为目标rank_id
         int32_t curExpertCnt = 0;
 
         if (tokenIndex > 0) {
             SyncFunc<AscendC::HardEvent::S_V>();
-            CalTokenSendExpertCnt(dstRankId, tokenIndex, curExpertCnt);
+            CalTokenSendExpertCnt(todDstRankId, tokenIndex, curExpertCnt);
         }
 
         SyncFunc<AscendC::HardEvent::S_V>();
         
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(dstRankId) +
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(todDstRankId) +
                                            epRankId_ * expertPerSizeOnWin_ +
                                            curExpertCnt * hAlignWinSize_);
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
@@ -403,31 +403,31 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
     // 设置状态：统计发送到各rank的token数量，并写入状态区通知对端
     // 状态区结构: [flag(1.0f), count, rank_id, world_size, ...]
     // ============ 计算当前核负责的rank范围 ============
-    SplitToCore(epWorldSize_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendExpertNum_);
 
     // ============ 统计发送到各rank的token数量 ============
-    for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
-        int32_t curExpertCnt = 0;
-        int32_t cntPosIndex = (curExpertId - startExpertId_) * 8 + 1;
+    for (uint32_t curRankId = startRankId_; curRankId < endRankId_; ++curRankId) {
+        int32_t curRankCnt = 0;
+        int32_t cntPosIndex = (curRankId - startRankId_) * 8 + 1;
         SyncFunc<AscendC::HardEvent::S_V>();
         
-        CalTokenSendExpertCnt(curExpertId, axisBS_, curExpertCnt);
-        statusTensor_(cntPosIndex) = curExpertCnt;
+        CalTokenSendExpertCnt(curRankId, axisBS_, curRankCnt);
+        statusTensor_(cntPosIndex) = curRankCnt;
     }
 
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>(); // 等待所有核完成统计
-    if (startExpertId_ >= epWorldSize_) { return; }
+    if (startRankId_ >= epWorldSize_) { return; }
 
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
     GlobalTensor<int32_t> rankGMTensor;
-    for (uint32_t expertIndex = startExpertId_; expertIndex < endExpertId_; ++expertIndex) {
-        uint32_t dstRankId = expertIndex;
+    for (uint32_t rankIndex = startRankId_; rankIndex < endRankId_; ++rankIndex) {
+        uint32_t toDstRankId = rankIndex;
         uint32_t offset = stateOffset_ * epRankId_;  // 当前rank在目标状态区的偏移
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(dstRankId) + offset);
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(toDstRankId) + offset);
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_) * 8], 8UL);
+        DataCopy<int32_t>(rankGMTensor, statusTensor_[(rankIndex - startRankId_) * 8], 8UL);
     }
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
@@ -457,8 +457,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     // 通过轮询状态区，等待所有rank的状态flag变为1.0f
     
     BufferInit();
-    startExpertId_ = startStatusIndex_;
-    endExpertId_ = startExpertId_ + recStatusNumPerCore_;
+    startRankId_ = startStatusIndex_;
+    endRankId_ = startRankId_ + recStatusNumPerCore_;
     sendExpertNum_ = recStatusNumPerCore_;
 
     // 如果当前核没有需要等待的rank，直接返回
@@ -511,7 +511,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // 从本地窗口读取接收到的数据，拷贝到输出tensor
     // 输出格式: y[rank_id * max_bs * hidden : (rank_id+1) * max_bs * hidden] = 来自该rank的数据
     
-    if (startExpertId_ >= rscvStatusNum_) { return; }
+    if (startRankId_ >= rscvStatusNum_) { return; }
 
     // ============ 读取状态数据 ============
     TBuf<> localStatusBuf;
@@ -529,7 +529,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
 
     // 计算前缀和：当前核之前所有核收到的token总数
     uint32_t preCnt = 0;
-    for (uint32_t i = 0; i < startExpertId_; i++) {
+    for (uint32_t i = 0; i < startRankId_; i++) {
         uint32_t value = localStatusTensor(i * 8 + 1);
         preCnt += value; // token数量存储在位置1
     }
@@ -555,8 +555,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     uint32_t beginIdx = preCnt;
 
     // ============ 遍历每个rank，从窗口拷贝数据到输出 ============
-    for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
-        uint32_t i = index - startExpertId_;
+    for (uint32_t index = startRankId_; index < endRankId_; index++) {
+        uint32_t i = index - startRankId_;
         uint32_t count = localStatusTensor(index * 8 + 1); // 从该rank收到的token数量
         
         // 计算窗口中该rank数据的起始地址
