@@ -248,25 +248,28 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
         return false;
     }
 
-    bool lastAxisContiguous = (viewStrides[dimNum - 1] == 1);
-    bool otherAxesNonContiguous = false;
-
-    if (dimNum > 1) {
-        otherAxesNonContiguous = !IsAxesContiguous(tensor, 0, dimNum - 1);
-    }
-
-    return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
+    return viewStrides[dimNum - 1] == 1;
 }
 
-static bool IsSupportNonContiguousCache(const aclTensor *keyCacheRef, const aclTensor *valueCacheRef,
-                                        const aclTensor *value)
+static bool IsSupportNonContiguousCache(const aclTensor *key, const aclTensor *keyCacheRef,
+                                        const aclTensor *value, const aclTensor *valueCacheRef)
 {
-    bool keyCacheCase1 = IsFirstAxisNonContiguous(keyCacheRef);
-    bool valueCacheCase1 = true;
+    bool keyContiguous = IsContiguous(key);
+    bool valueContiguous = true;
     if (value != nullptr) {
-        valueCacheCase1 = IsFirstAxisNonContiguous(valueCacheRef);
+        valueContiguous = IsContiguous(value);
     }
-    return keyCacheCase1 && valueCacheCase1;
+
+    bool keyCacheNonContiguous = IsFirstAxisNonContiguous(keyCacheRef);
+    bool valueCacheNonContiguous = true;
+    if (value != nullptr) {
+        valueCacheNonContiguous = IsFirstAxisNonContiguous(valueCacheRef);
+    }
+
+    bool keyAndValueContiguous = keyContiguous && valueContiguous;
+    bool cacheNonContiguous = keyCacheNonContiguous || valueCacheNonContiguous;
+
+    return keyAndValueContiguous && cacheNonContiguous;
 }
 
 static bool IsSupportNonContiguousKeyAndCache(const aclTensor *key, const aclTensor *keyCacheRef,
@@ -525,7 +528,7 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
                                strcmp(scatterModeOptional, "None") == 0);
 
     if (isArch35 && isKey3Dim && isScatterModeEmpty) {
-        bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCacheRef, valueCacheRef, value);
+        bool isCacheNonContiguous = IsSupportNonContiguousCache(key, keyCacheRef, value, valueCacheRef);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(key, keyCacheRef, value, valueCacheRef);
 
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {

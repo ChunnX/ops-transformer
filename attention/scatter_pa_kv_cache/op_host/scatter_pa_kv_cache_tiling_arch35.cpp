@@ -908,14 +908,7 @@ bool ScatterPaKvCacheTiling::IsLastAxisContiguous(const gert::Stride &stride, co
         return false;
     }
 
-    bool lastAxisContiguous = (stride.GetStride(dimNum - 1) == 1);
-    bool otherAxesNonContiguous = false;
-
-    if (dimNum > 1) {
-        otherAxesNonContiguous = !IsAxesContiguous(stride, shape, 0, dimNum - 1);
-    }
-
-    return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
+    return stride.GetStride(dimNum - 1) == 1;
 }
 
 // 当前非连续场景只支持key, keyCache, value, valueCache尾轴连续的场景
