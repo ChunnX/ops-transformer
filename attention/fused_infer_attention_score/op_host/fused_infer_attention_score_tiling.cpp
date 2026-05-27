@@ -1324,7 +1324,6 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     constexpr int64_t KV_ACTUAL_SEQ_LEN_1024 = 1024;
  	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_16 = 16;
  	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
- 	constexpr int32_t EMBEDDING_SIZE_128 = 128;
  	constexpr int64_t GROUP_SIZE_128 = 128;
 
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -1340,6 +1339,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     int32_t tmpNKv = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX)));
     int32_t tmpBlkSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
     int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
+    faInfo.blockStride = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_STRIDE_INDEX)));
     float scaleValue = *(attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX));
     faInfo.sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     int64_t preToken  = *(attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX));
@@ -1399,7 +1399,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = false;
         int64_t maxQSeqlen = 0;
         int64_t minQSeqlen = INT64_MAX;
-        int64_t minKVSeqlen = INT64_MAX;
+        int64_t maxKVSeqlen = 0;
         for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
             int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
@@ -1419,15 +1419,18 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
             if (qSeqlen < minQSeqlen) {
                 minQSeqlen = qSeqlen;
             }
-            if (kvSeqlen < minKVSeqlen) {
-                minKVSeqlen = kvSeqlen;
+            if (kvSeqlen > maxKVSeqlen) {
+                maxKVSeqlen = kvSeqlen;
             }
         }
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;
-        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
-        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
+        bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (maxKVSeqlen >= aicoreNum * 512);
+        bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024);
         if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
-            (faInfo.embeddingSize <= EMBEDDING_SIZE_128) && (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) && (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) && (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) && (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
+            (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
+            (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
+            (maxKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
+            (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
         }

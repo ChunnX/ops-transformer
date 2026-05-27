@@ -136,11 +136,16 @@ public:
 
     __aicore__ inline
     void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t &nowNIdx,
-        uint32_t &strideKV, uint32_t &blockSize)
+        uint32_t &strideKV, uint32_t &blockSize, uint32_t blockStride)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            kOffset = blockTableId * blockSize * strideKV;
+            if (blockStride != 0) {
+                kOffset = blockTableId * blockStride;
+            } else {
+                kOffset = blockTableId * blockSize * strideKV;
+            }
+            
         } else {
             kOffset = nowNIdx * blockSize * strideKV;
         }
@@ -154,7 +159,7 @@ public:
         AscendC::GlobalTensor<int32_t> gBlockTable,
         LayoutA layoutA, LayoutB layoutB, LayoutC layoutC,GemmCoord actualOriShape,
         uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger)
+        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger, uint32_t blockStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
@@ -168,7 +173,7 @@ public:
              blockStackIdx++) {
             uint32_t nowNIdx = nIdx + blockStackIdx;
             getBlockShape(actualShape, nowNIdx, nLoop, kvSeqlen, blockSize);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, strideKV, blockSize);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, strideKV, blockSize, blockStride);
             auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
             MatrixCoord l1BTileCoord{blockStackIdx * blockSize, 0};
             auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
