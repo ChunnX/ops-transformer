@@ -1189,6 +1189,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
                 SplitS2(fiaInfo);
             }
         }
+        if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag &&
+            (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)) {
+            isRowInvalid_ = true;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
