@@ -183,10 +183,13 @@ private:
     GatherPaKvCacheTilingDataV35 tilingData_;
 
     // ===== 非连续支持 =====
-    int64_t kCacheStrides_[4] = {0, 0, 0, 0};
-    int64_t vCacheStrides_[4] = {0, 0, 0, 0};
-    int64_t keyOutStrides_[3] = {0, 0, 0};
-    int64_t valueOutStrides_[3] = {0, 0, 0};
+    gert::Stride kCacheStride_;
+    gert::Stride vCacheStride_;
+    gert::Stride keyOutStride_;
+    gert::Stride valueOutStride_;
+
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
 
     bool isKCacheContiguous_ = true;
     bool isVCacheContiguous_ = true;
