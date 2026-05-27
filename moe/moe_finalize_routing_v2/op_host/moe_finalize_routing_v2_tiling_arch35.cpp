@@ -14,7 +14,7 @@
  */
 #include "op_host/tiling_util.h"
 #include "moe_finalize_routing_v2_tiling.h"
-#include "moe_finalize_routing_v2_tiling_arch35.h"
+#include "../op_kernel/arch35/moe_finalize_routing_v2_tiling_struct.h"
 
 namespace optiling {
 static constexpr int64_t TWO = 2;

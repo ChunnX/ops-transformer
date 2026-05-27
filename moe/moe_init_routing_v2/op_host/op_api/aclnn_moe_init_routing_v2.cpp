@@ -18,7 +18,6 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
-#include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
@@ -42,9 +41,7 @@ static const std::initializer_list<op::DataType> MOE_INIT_ROUTING_V2_DTYPE_SUPPO
 static const std::initializer_list<op::DataType> MOE_INIT_ROUTING_V2_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
 
 static inline bool CheckNotNull(const aclTensor *x, const aclTensor *expertIdx, const aclTensor *expandedXOut,
-                                const aclTensor *expandedRowIdxOut,
-                                const aclTensor *expertTokensCountOrCumsumOutOptional,
-                                const aclTensor *expertTokensBeforeCapacityOutOptional)
+                                const aclTensor *expandedRowIdxOut)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(expertIdx, return false);
@@ -148,8 +145,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *expertIdx, c
                                const aclTensor *expertTokensCountOrCumsumOutOptional,
                                const aclTensor *expertTokensBeforeCapacityOutOptional)
 {
-    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
-                           expertTokensBeforeCapacityOutOptional),
+    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
                               expertTokensBeforeCapacityOutOptional),
@@ -162,8 +158,7 @@ static aclnnStatus CheckParams310P(const aclTensor *x, const aclTensor *expertId
                                    const aclTensor *expertTokensCountOrCumsumOutOptional,
                                    const aclTensor *expertTokensBeforeCapacityOutOptional)
 {
-    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
-                           expertTokensBeforeCapacityOutOptional),
+    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid310P(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
                                   expertTokensBeforeCapacityOutOptional),
@@ -176,8 +171,7 @@ static aclnnStatus CheckParamsRegbase(const aclTensor *x, const aclTensor *exper
                                       const aclTensor *expertTokensCountOrCumsumOutOptional,
                                       const aclTensor *expertTokensBeforeCapacityOutOptional)
 {
-    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOutOptional,
-                           expertTokensBeforeCapacityOutOptional),
+    CHECK_RET(CheckNotNull(x, expertIdx, expandedXOut, expandedRowIdxOut),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValidRegbase(x, expertIdx, expandedXOut, expandedRowIdxOut,
                                      expertTokensCountOrCumsumOutOptional, expertTokensBeforeCapacityOutOptional),
