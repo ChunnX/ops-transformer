@@ -209,13 +209,14 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
 // 检查commMode参数是否合法，并获取commMode对应枚举值
 aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
+    const size_t maxLength = 6UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "") == 0) {
+        } else if (strncmp(commModeStr, "", maxLength) == 0) {
             // default：小于等于8P走CCU，否则走AICPU
             // 获取卡数
             uint32_t rankSize = 0;
@@ -230,7 +231,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
         }
     } else {
         // 910B和910_93只支持默认通信引擎
-        if (std::strcmp(commModeStr, "") != 0) {
+        if (strncmp(commModeStr, "", maxLength) != 0) {
             OP_LOGI("The commMode [%s] is illegal, will use default communication engine.", commModeStr);
         }
     }
