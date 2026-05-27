@@ -169,8 +169,10 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     if (taskParam.isLoadAntiqParam) {
         if constexpr (KVFP4) {
             if (likely(taskParam.copyTotalS > 0)) {
+                WaitFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
                 LoadAntiquantParamsPerTokenGroup(antiqScaleGm, antiqScaleInputQue, kvAntiqMxScaleRes,
                     taskParam, isBeforeHalf, s2RealSize);
+                SetFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
             }
         } else if constexpr (ANTIQUANT_PER_TOKEN) {
             if (likely(taskParam.copyTotalS > 0)) {
