@@ -41,19 +41,23 @@ at::Device get_metadata_output_device(
 }
 
 at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    int64_t num_heads_q,
+    int64_t num_heads_k,
+    int64_t head_dim,
     const c10::optional<at::Tensor> &cu_seqlens_q,
     const c10::optional<at::Tensor> &cu_seqlens_k,
     const c10::optional<at::Tensor> &seqused_q,
     const c10::optional<at::Tensor> &seqused_k,
     const c10::optional<at::Tensor> &cmp_residual_k,
-    int64_t b_size,
-    int64_t s1_size,
-    int64_t s2_size,
-    int64_t k_size,
+    int64_t batch_size,
+    int64_t max_seqlen_q,
+    int64_t max_seqlen_k,
+    int64_t topk,
+    std::string layout_q,
+    std::string layout_k,
     int64_t mask_mode,
     int64_t cmp_ratio,
-    std::string layout_q,
-    std::string layout_k)
+    int64_t deterministic)
 {
     at::Tensor output = at::empty(
         {SLI_KL_LOSS_GRAD_METADATA_SIZE},
@@ -65,7 +69,8 @@ at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
 
     ACLNN_CMD(aclnnSparseLightningIndexerKLLossGradMetadata,
         cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
-        b_size, s1_size, s2_size, k_size, mask_mode, cmp_ratio, layout_q_ptr, layout_k_ptr, output);
+        batch_size, max_seqlen_q, max_seqlen_k, num_heads_q, num_heads_k, head_dim, topk,
+        layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, deterministic, output);
 
     return output;
 }

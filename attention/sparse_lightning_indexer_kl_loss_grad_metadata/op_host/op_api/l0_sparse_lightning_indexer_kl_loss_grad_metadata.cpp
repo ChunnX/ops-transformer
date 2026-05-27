@@ -32,31 +32,38 @@ const aclTensor* SparseLightningIndexerKLLossGradMetadata(
     const aclTensor* seqUsedQOptional,
     const aclTensor* seqUsedKOptional,
     const aclTensor* cmpResidualKOptional,
-    int64_t bSize,
-    int64_t s1Size,
-    int64_t s2Size,
-    int64_t kSize,
-    int64_t maskMode,
-    int64_t cmpRatio,
+    int64_t batchSize,
+    int64_t maxSeqLenQ,
+    int64_t maxSeqLenK,
+    int64_t numHeadsQ,
+    int64_t numHeadsK,
+    int64_t headDim,
+    int64_t topk,
     char *layoutQ,
     char *layoutK,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    int64_t deterministic,
     int64_t aicCoreNum,
     const aclTensor* metadata,
     aclOpExecutor* executor)
 {
     L0_DFX(SparseLightningIndexerKLLossGradMetadata, cuSeqLensQOptional, cuSeqLensKOptional,
            seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional,
-           bSize, s1Size, s2Size, kSize, maskMode, cmpRatio, layoutQ, layoutK, aicCoreNum, metadata);
+           batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, layoutQ, layoutK, maskMode,
+           cmpRatio, deterministic, aicCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("SparseLightningIndexerKLLossGradMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         SparseLightningIndexerKLLossGradMetadata,
-        OP_ATTR_NAMES({"b_size", "s1_size", "s2_size", "k_size", "mask_mode", "cmp_ratio", "layout_q", "layout_k",
+        OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_k", "num_heads_q", "num_heads_k", "head_dim",
+                       "topk", "layout_q", "layout_k", "mask_mode", "cmp_ratio", "deterministic",
                        "aic_core_num"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional),
         OP_OUTPUT(metadata),
-        OP_ATTR(bSize, s1Size, s2Size, kSize, maskMode, cmpRatio, layoutQ, layoutK, aicCoreNum));
+        OP_ATTR(batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, layoutQ, layoutK, maskMode,
+                cmpRatio, deterministic, aicCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseLightningIndexerKLLossGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);

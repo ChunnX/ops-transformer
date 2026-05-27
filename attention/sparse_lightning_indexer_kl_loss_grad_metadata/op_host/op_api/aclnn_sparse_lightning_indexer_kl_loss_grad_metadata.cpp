@@ -39,21 +39,26 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     const aclTensor* seqUsedQOptional,
     const aclTensor* seqUsedKOptional,
     const aclTensor* cmpResidualKOptional,
-    int64_t bSize,
-    int64_t s1Size,
-    int64_t s2Size,
-    int64_t kSize,
-    int64_t maskMode,
-    int64_t cmpRatio,
+    int64_t batchSize,
+    int64_t maxSeqLenQ,
+    int64_t maxSeqLenK,
+    int64_t numHeadsQ,
+    int64_t numHeadsK,
+    int64_t headDim,
+    int64_t topk,
     char *layoutQ,
     char *layoutK,
+    int64_t maskMode,
+    int64_t cmpRatio,
+    int64_t deterministic,
     const aclTensor* metadata,
     uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnSparseLightningIndexerKLLossGradMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
-                          cmpResidualKOptional, bSize, s1Size, s2Size, kSize, maskMode, cmpRatio, layoutQ, layoutK),
+                          cmpResidualKOptional, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim,
+                          topk, layoutQ, layoutK, maskMode, cmpRatio, deterministic),
                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -93,7 +98,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
 
     auto output = l0op::SparseLightningIndexerKLLossGradMetadata(
         cuSeqLensQContiguous, cuSeqLensKContiguous, seqUsedQContiguous, seqUsedKContiguous, cmpResidualKContiguous,
-        bSize, s1Size, s2Size, kSize, maskMode, cmpRatio, layoutQ, layoutK, aicCoreNum, metadata, uniqueExecutor.get());
+        batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, layoutQ, layoutK, maskMode, cmpRatio,
+        deterministic, aicCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

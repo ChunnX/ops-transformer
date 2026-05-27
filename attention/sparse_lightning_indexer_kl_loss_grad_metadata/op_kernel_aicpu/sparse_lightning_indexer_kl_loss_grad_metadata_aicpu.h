@@ -69,6 +69,14 @@ inline typename std::enable_if<std::is_integral_v<T>, void>::type GetAttrValueOp
     }
 }
 
+inline void GetAttrValueOpt(CpuKernelContext &ctx, const std::string &name, std::string &value)
+{
+    auto attr = ctx.GetAttr(name);
+    if (attr != nullptr) {
+        value = attr->GetString();
+    }
+}
+
 class SparseLightningIndexerKLLossGradMetadataCpuKernel : public CpuKernel {
 public:
     SparseLightningIndexerKLLossGradMetadataCpuKernel() = default;
@@ -96,14 +104,21 @@ private:
 
     Tensor *cuSeqLensQuery_ = nullptr;
     Tensor *cuSeqLensKey_ = nullptr;
+    Tensor *seqUsedQuery_ = nullptr;
+    Tensor *seqUsedKey_ = nullptr;
+    Tensor *cmpResidualKey_ = nullptr;
     Tensor *metadata_ = nullptr;
 
     int64_t bSize_ = 0;
     int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    int64_t kSize_ = 2048;
-    int64_t sparseMode_ = 3;
+    int64_t kSize_ = 0;
+    int64_t numHeadsQ_ = 0;
+    int64_t numHeadsK_ = 0;
+    int64_t headDim_ = 0;
+    int64_t sparseMode_ = 0;
     int64_t cmpRatio_ = 1;
+    int64_t deterministic_ = 0;
     int64_t aicCoreNum_ = 25;
     std::string layout_ = "BSND";
     std::string layoutK_ = "BSND";

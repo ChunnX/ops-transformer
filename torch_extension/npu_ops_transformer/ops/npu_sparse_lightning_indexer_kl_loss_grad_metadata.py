@@ -17,6 +17,7 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 
 
 SLI_KL_LOSS_GRAD_METADATA_SIZE = 64
+SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM = 25
 
 
 class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
@@ -31,29 +32,35 @@ class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "npu_sparse_lightning_indexer_kl_loss_grad_metadata("
-            "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
-            "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int b_size=0, int s1_size=0, "
-            "int s2_size=0, int k_size=0, int mask_mode=3, int cmp_ratio=1, "
-            "str layout_q=\"TND\", str layout_k=\"TND\") -> Tensor"
+            "int num_heads_q, int num_heads_k, int head_dim, *, "
+            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
+            "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int? batch_size=None, "
+            "int? max_seqlen_q=None, int? max_seqlen_k=None, int? topk=None, "
+            "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
+            "int? cmp_ratio=None, int? deterministic=None) -> Tensor"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_sparse_lightning_indexer_kl_loss_grad_metadata_meta(
+            num_heads_q,
+            num_heads_k,
+            head_dim,
             *,
             cu_seqlens_q=None,
             cu_seqlens_k=None,
             seqused_q=None,
             seqused_k=None,
             cmp_residual_k=None,
-            b_size=0,
-            s1_size=0,
-            s2_size=0,
-            k_size=0,
-            mask_mode=3,
-            cmp_ratio=1,
-            layout_q="TND",
-            layout_k="TND",
+            batch_size=None,
+            max_seqlen_q=None,
+            max_seqlen_k=None,
+            topk=None,
+            layout_q=None,
+            layout_k=None,
+            mask_mode=None,
+            cmp_ratio=None,
+            deterministic=None,
         ):
             return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
@@ -64,35 +71,53 @@ op_module = sparse_lightning_indexer_kl_loss_grad_metadata_op_builder.load()
 
 @impl(AS_LIBRARY, sparse_lightning_indexer_kl_loss_grad_metadata_op_builder.name, "PrivateUse1")
 def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    num_heads_q,
+    num_heads_k,
+    head_dim,
     *,
     cu_seqlens_q=None,
     cu_seqlens_k=None,
     seqused_q=None,
     seqused_k=None,
     cmp_residual_k=None,
-    b_size=0,
-    s1_size=0,
-    s2_size=0,
-    k_size=0,
-    mask_mode=3,
-    cmp_ratio=1,
-    layout_q="TND",
-    layout_k="TND",
+    batch_size=None,
+    max_seqlen_q=None,
+    max_seqlen_k=None,
+    topk=None,
+    layout_q=None,
+    layout_k=None,
+    mask_mode=None,
+    cmp_ratio=None,
+    deterministic=None,
 ):
+    batch_size = 0 if batch_size is None else batch_size
+    max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
+    max_seqlen_k = 0 if max_seqlen_k is None else max_seqlen_k
+    topk = 0 if topk is None else topk
+    layout_q = "BSND" if layout_q is None else layout_q
+    layout_k = "BSND" if layout_k is None else layout_k
+    mask_mode = 0 if mask_mode is None else mask_mode
+    cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
+    deterministic = 0 if deterministic is None else deterministic
+
     return op_module.npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+        num_heads_q,
+        num_heads_k,
+        head_dim,
         cu_seqlens_q,
         cu_seqlens_k,
         seqused_q,
         seqused_k,
         cmp_residual_k,
-        b_size,
-        s1_size,
-        s2_size,
-        k_size,
-        mask_mode,
-        cmp_ratio,
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_k,
+        topk,
         layout_q,
         layout_k,
+        mask_mode,
+        cmp_ratio,
+        deterministic,
     )
 
 
@@ -100,35 +125,43 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     "npu_ops_transformer::npu_sparse_lightning_indexer_kl_loss_grad_metadata", None
 )
 def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
+    num_heads_q,
+    num_heads_k,
+    head_dim,
     *,
     cu_seqlens_q=None,
     cu_seqlens_k=None,
     seqused_q=None,
     seqused_k=None,
     cmp_residual_k=None,
-    b_size=0,
-    s1_size=0,
-    s2_size=0,
-    k_size=0,
-    mask_mode=3,
-    cmp_ratio=1,
-    layout_q="TND",
-    layout_k="TND",
+    batch_size=None,
+    max_seqlen_q=None,
+    max_seqlen_k=None,
+    topk=None,
+    layout_q=None,
+    layout_k=None,
+    mask_mode=None,
+    cmp_ratio=None,
+    deterministic=None,
 ):
     return npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+        num_heads_q,
+        num_heads_k,
+        head_dim,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_k=cu_seqlens_k,
         seqused_q=seqused_q,
         seqused_k=seqused_k,
         cmp_residual_k=cmp_residual_k,
-        b_size=b_size,
-        s1_size=s1_size,
-        s2_size=s2_size,
-        k_size=k_size,
-        mask_mode=mask_mode,
-        cmp_ratio=cmp_ratio,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        topk=topk,
         layout_q=layout_q,
         layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        deterministic=deterministic,
     )
 
 
@@ -148,24 +181,37 @@ if _TORCHAIR_AVAILABLE:
         torch.ops.npu_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad_metadata.default
     )
     def convert_npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+        num_heads_q: int,
+        num_heads_k: int,
+        head_dim: int,
         *,
         cu_seqlens_q: Optional[Tensor] = None,
         cu_seqlens_k: Optional[Tensor] = None,
         seqused_q: Optional[Tensor] = None,
         seqused_k: Optional[Tensor] = None,
         cmp_residual_k: Optional[Tensor] = None,
-        b_size: int = 0,
-        s1_size: int = 0,
-        s2_size: int = 0,
-        k_size: int = 0,
-        mask_mode: int = 3,
-        cmp_ratio: int = 1,
-        layout_q: str = "TND",
-        layout_k: str = "TND",
+        batch_size: Optional[int] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_k: Optional[int] = None,
+        topk: Optional[int] = None,
+        layout_q: Optional[str] = None,
+        layout_k: Optional[str] = None,
+        mask_mode: Optional[int] = None,
+        cmp_ratio: Optional[int] = None,
+        deterministic: Optional[int] = None,
         meta_outputs: TensorSpec = None,
     ):
+        batch_size = 0 if batch_size is None else batch_size
+        max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
+        max_seqlen_k = 0 if max_seqlen_k is None else max_seqlen_k
+        topk = 0 if topk is None else topk
+        layout_q = "BSND" if layout_q is None else layout_q
+        layout_k = "BSND" if layout_k is None else layout_k
+        mask_mode = 0 if mask_mode is None else mask_mode
+        cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
+        deterministic = 0 if deterministic is None else deterministic
         stream_info = torch.npu.get_stream_limit(torch.npu.current_stream())
-        aic_core_num = stream_info.get("cube_core_num")
+        aic_core_num = stream_info.get("cube_core_num") or SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM
         return torchair.ge.custom_op(
             "SparseLightningIndexerKLLossGradMetadata",
             inputs={
@@ -176,14 +222,18 @@ if _TORCHAIR_AVAILABLE:
                 "cmp_residual_k": cmp_residual_k,
             },
             attrs={
-                "b_size": attr.Int(b_size),
-                "s1_size": attr.Int(s1_size),
-                "s2_size": attr.Int(s2_size),
-                "k_size": attr.Int(k_size),
-                "mask_mode": attr.Int(mask_mode),
-                "cmp_ratio": attr.Int(cmp_ratio),
+                "batch_size": attr.Int(batch_size),
+                "max_seqlen_q": attr.Int(max_seqlen_q),
+                "max_seqlen_k": attr.Int(max_seqlen_k),
+                "num_heads_q": attr.Int(num_heads_q),
+                "num_heads_k": attr.Int(num_heads_k),
+                "head_dim": attr.Int(head_dim),
+                "topk": attr.Int(topk),
                 "layout_q": attr.Str(layout_q),
                 "layout_k": attr.Str(layout_k),
+                "mask_mode": attr.Int(mask_mode),
+                "cmp_ratio": attr.Int(cmp_ratio),
+                "deterministic": attr.Int(deterministic),
                 "aic_core_num": attr.Int(aic_core_num),
             },
             outputs=["metadata"],

@@ -61,20 +61,28 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::Prepare(CpuKernelContext
 {
     cuSeqLensQuery_ = ctx.Input(0);
     cuSeqLensKey_ = ctx.Input(1);
+    seqUsedQuery_ = ctx.Input(2);
+    seqUsedKey_ = ctx.Input(3);
+    cmpResidualKey_ = ctx.Input(4);
     metadata_ = ctx.Output(0);
 
-    bool requiredAttrs = GetAttrValue(ctx, "b_size", bSize_) &&
-                         GetAttrValue(ctx, "s1_size", s1Size_) &&
-                         GetAttrValue(ctx, "s2_size", s2Size_) &&
-                         GetAttrValue(ctx, "k_size", kSize_) &&
-                         GetAttrValue(ctx, "mask_mode", sparseMode_) &&
-                         GetAttrValue(ctx, "cmp_ratio", cmpRatio_) &&
-                         GetAttrValue(ctx, "layout_q", layout_) &&
-                         GetAttrValue(ctx, "layout_k", layoutK_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_);
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
+                         GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
+                         GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
     }
+
+    GetAttrValueOpt(ctx, "batch_size", bSize_);
+    GetAttrValueOpt(ctx, "max_seqlen_q", s1Size_);
+    GetAttrValueOpt(ctx, "max_seqlen_k", s2Size_);
+    GetAttrValueOpt(ctx, "topk", kSize_);
+    GetAttrValueOpt(ctx, "layout_q", layout_);
+    GetAttrValueOpt(ctx, "layout_k", layoutK_);
+    GetAttrValueOpt(ctx, "mask_mode", sparseMode_);
+    GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
+    GetAttrValueOpt(ctx, "deterministic", deterministic_);
+    GetAttrValueOpt(ctx, "aic_core_num", aicCoreNum_);
 
     if (layout_ == "BSND") {
         layoutType_ = SliLayout::BSND;
@@ -83,6 +91,14 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::Prepare(CpuKernelContext
     } else {
         KERNEL_LOG_ERROR("layout_q must be BSND or TND, but got %s", layout_.c_str());
         return false;
+    }
+
+    if (bSize_ <= 0) {
+        if (IsTensorValid(seqUsedQuery_)) {
+            bSize_ = seqUsedQuery_->GetTensorShape()->GetDimSize(0);
+        } else if (layoutType_ == SliLayout::TND && IsTensorValid(cuSeqLensQuery_)) {
+            bSize_ = cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) - 1;
+        }
     }
 
     return ParamsCheck();
@@ -98,9 +114,28 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("aic_core_num must be positive, but got %ld", aicCoreNum_);
         return false;
     }
-    if (bSize_ <= 0 || s1Size_ <= 0 || s2Size_ <= 0 || kSize_ <= 0) {
-        KERNEL_LOG_ERROR("b/s1/s2/k must be positive, but got b=%ld s1=%ld s2=%ld k=%ld",
-                         bSize_, s1Size_, s2Size_, kSize_);
+    if (numHeadsQ_ <= 0 || numHeadsK_ <= 0 || headDim_ <= 0) {
+        KERNEL_LOG_ERROR("num_heads_q/num_heads_k/head_dim must be positive, but got nq=%ld nk=%ld d=%ld",
+                         numHeadsQ_, numHeadsK_, headDim_);
+        return false;
+    }
+    if (bSize_ <= 0 || kSize_ <= 0) {
+        KERNEL_LOG_ERROR("batch_size/topk must be positive, but got batch_size=%ld topk=%ld", bSize_, kSize_);
+        return false;
+    }
+    if (layoutType_ == SliLayout::BSND && (s1Size_ <= 0 || s2Size_ <= 0)) {
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be positive for BSND, but got q=%ld k=%ld",
+                         s1Size_, s2Size_);
+        return false;
+    }
+    if (s1Size_ < 0 || s2Size_ < 0) {
+        KERNEL_LOG_ERROR("max_seqlen_q/max_seqlen_k must be non-negative, but got q=%ld k=%ld",
+                         s1Size_, s2Size_);
+        return false;
+    }
+    if (numHeadsQ_ % numHeadsK_ != 0) {
+        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
+                         numHeadsQ_, numHeadsK_);
         return false;
     }
     if (sparseMode_ != static_cast<int64_t>(SliSparseMode::NO_MASK) &&
@@ -112,6 +147,10 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cmp_ratio must be in [1, 128], but got %ld", cmpRatio_);
         return false;
     }
+    if (deterministic_ < 0 || deterministic_ > 2) {
+        KERNEL_LOG_ERROR("deterministic only supports 0, 1 or 2, but got %ld", deterministic_);
+        return false;
+    }
     if (layoutType_ == SliLayout::TND && (!IsTensorValid(cuSeqLensQuery_) || !IsTensorValid(cuSeqLensKey_))) {
         KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k must be provided for TND metadata.");
         return false;
@@ -119,7 +158,7 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
     if (layoutType_ == SliLayout::TND &&
         (cuSeqLensQuery_->GetTensorShape()->GetDimSize(0) < bSize_ + 1 ||
          cuSeqLensKey_->GetTensorShape()->GetDimSize(0) < bSize_ + 1)) {
-        KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least b_size + 1.");
+        KERNEL_LOG_ERROR("cu_seqlens_q/cu_seqlens_k length must be at least batch_size + 1.");
         return false;
     }
     return true;
