@@ -77,9 +77,17 @@ public:
     void CheckTensorConditionalNotNull(bool conditional) const
     {
         if (inner_ && conditional) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s != nullptr failed!", name_.c_str());
+            // 原报错: OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s != nullptr failed!", name_.c_str())
+            //         → ACLNN_ERR_PARAM_NULLPTR是错误码常量不是算子名，上报EZ9999
+            // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter [name] of aclnnMlaPrologV3WeightNz is required, but it is empty."
+            //         场景: inner_不为空但条件要求它为空(tensor不应存在却传入了)
+            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", name_.c_str());
         } else if (!inner_ && !conditional) {
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s == nullptr failed!", name_.c_str());
+            // 原报错: OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Check %s == nullptr failed!", name_.c_str())
+            //         → ACLNN_ERR_PARAM_NULLPTR是错误码常量不是算子名，上报EZ9999
+            // 新报错: OP_LOGE_FOR_INVALID_VALUE(EZ0024) → "Parameter [name] of aclnnMlaPrologV3WeightNz has incorrect value : not nullptr. It should be nullptr."
+            //         场景: inner_为空但条件要求它不为空(tensor应存在却未传入)
+            OP_LOGE_FOR_INVALID_VALUE("aclnnMlaPrologV3WeightNz", name_.c_str(), ": not nullptr", "nullptr");
         }
     }
 
@@ -110,8 +118,9 @@ bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "WeightQuantMode must be within {%s}, actually is %lld.", supportedStr.c_str(),
-                weightQuantMode);
+        // 原报错: OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "WeightQuantMode must be within {%s}, actually is %lld.", ...) → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute weightQuantMode of aclnnMlaPrologV3WeightNz has incorrect value [val]. It should be [supportedStr]."
+        OP_LOGE_WITH_INVALID_ATTR("aclnnMlaPrologV3WeightNz", "weightQuantMode", std::to_string(weightQuantMode), supportedStr);
         return false;
     }
     return true;
@@ -145,9 +154,13 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
             supportedStr.pop_back();
             supportedStr.pop_back();
         }
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
-                "When weightQuantMode == %lld, kvCacheQuantMode must be within {%s}, actually is %lld.",
-                weightQuantMode, supportedStr.c_str(), kvCacheQuantMode);
+        // 原报错: OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "When weightQuantMode == %lld, kvCacheQuantMode must be within {%s}, actually is %lld.", ...) → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute kvCacheQuantMode of aclnnMlaPrologV3WeightNz has incorrect value [val]. 
+                                                    // It should be When weightQuantMode==[wqm], must be within [supportedStr]."
+        // TODO: 待申请OP_LOGE_WITH_INVALID_ATTR_WITH_REASON宏后替换，当前用EZ0002表达，correctVal中嵌入条件依赖
+        OP_LOGE_WITH_INVALID_ATTR("aclnnMlaPrologV3WeightNz",
+                "kvCacheQuantMode", std::to_string(kvCacheQuantMode),
+                "When weightQuantMode==" + std::to_string(weightQuantMode) + ", must be within " + supportedStr);
         return false;
     }
     return true;
@@ -157,7 +170,9 @@ bool CheckQueryQuantModeValidity(int64_t queryQuantMode)
 {
     std::set<int64_t> supportedQueryQuantMode = {0LL, 1LL};
     if (supportedQueryQuantMode.find(queryQuantMode) == supportedQueryQuantMode.end()) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "QueryQuantMode must be within {0, 1}, actually is %lld.", queryQuantMode);
+        // 原报错: OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "QueryQuantMode must be within {0, 1}, actually is %lld.", ...) → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_ATTR(EZ0002) → "Attribute queryQuantMode of aclnnMlaPrologV3WeightNz has incorrect value [val]. It should be {0, 1}."
+        OP_LOGE_WITH_INVALID_ATTR("aclnnMlaPrologV3WeightNz", "queryQuantMode", std::to_string(queryQuantMode), "{0, 1}");
         return false;
     }
     return true;
@@ -213,15 +228,24 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     auto dequantScaleQNormHolder =
         TensorHolder(dequantScaleQNormOutOptional, dequantScaleQNormDataType, std::string("dequantScaleQNormOut"));
     if (dequantScaleQNopeOutOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOu!");
+        // 原报错: OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNopeOu!") → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter dequantScaleQNopeOut of aclnnMlaPrologV3WeightNz is required, but it is empty."
+        // TODO 暂用INPUT报错， 待审批新接口OP_LOGE_WITH_INVALID_OUTPUT
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNopeOut");
         return ge::GRAPH_FAILED;
     }
     if (queryNormOutOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor queryNormOut!");
+        // 原报错: OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor queryNormOut!") → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter queryNormOut of aclnnMlaPrologV3WeightNz is required, but it is empty."
+        // TODO 暂用INPUT报错， 待审批新接口OP_LOGE_WITH_INVALID_OUTPUT
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "queryNormOut");
         return ge::GRAPH_FAILED;
     }
     if (dequantScaleQNormOutOptional == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNormOut!");
+        // 原报错: OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor dequantScaleQNormOut!") → 上报EZ9999
+        // 新报错: OP_LOGE_WITH_INVALID_INPUT(EZ0004) → "Parameter dequantScaleQNormOut of aclnnMlaPrologV3WeightNz is required, but it is empty."
+        // TODO 暂用INPUT报错， 待审批新接口OP_LOGE_WITH_INVALID_OUTPUT
+        OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV3WeightNz", "dequantScaleQNormOut");
         return ge::GRAPH_FAILED;
     }
     // weightQuantMode == 2,4,5:全量化场景(int8,fp8,hif8)
