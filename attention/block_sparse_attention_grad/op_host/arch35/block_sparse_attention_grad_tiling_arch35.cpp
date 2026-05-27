@@ -272,12 +272,12 @@ protected:
     {
         // softmaxGrad tiling，一次最多处理16K个元素个数
         constexpr uint32_t element_num = 16 * 1024;
-        constexpr uint32_t process_s1_size = element_num / head_dim_;
+        uint32_t process_s1_size = element_num / head_dim_;
         auto input_shape = ge::Shape({process_s1_size, head_dim_});
 
-        uint32_t tmp_space_size = GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
+        uint32_t tmp_space_size = AscendC::GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
         AscendC::SoftMaxGradTilingFunc(input_shape, sizeof(float), tmp_space_size,
-                                       tilingData_->softmaxGradFrontTilingData, true);
+                                       tilingData_.softmaxGradFrontTilingData, true);
         std::cout << "tmp_space_size: " << tmp_space_size << std::endl;
         return ge::GRAPH_SUCCESS;
     }
