@@ -181,8 +181,8 @@ ge::Status Mc2GenTaskOpsUtils::CreateAicpuTaskV1(const gert::ExeResGenerationCon
     }
     aicpu_args_format.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kWorkspace));
     aicpu_args_format.emplace_back(ge::ArgDescInfo(ge::ArgDescType::kTiling));
-    auto args_format_str = ge::ArgsFormatSerializer::Serialize(aicpu_args_format).GetString();
-    aicpu_task.SetArgsFormat(args_format_str);
+    auto args_format_str = ge::ArgsFormatSerializer::Serialize(aicpu_args_format);
+    aicpu_task.SetArgsFormat(args_format_str.GetString());
     OPS_LOG_I(context->GetNodeName(), "aicpu ArgsFormat: %s", args_format_str);
     return ge::GRAPH_SUCCESS;
 }

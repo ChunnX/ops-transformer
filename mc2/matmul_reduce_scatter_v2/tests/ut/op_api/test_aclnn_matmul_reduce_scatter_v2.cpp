@@ -1015,7 +1015,7 @@ TEST_F(MatmulReduceScatterV2AclnnTest, WrongBiasDtype)
 {
     TensorDesc x1 = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc bias = TensorDesc({16}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
                         INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),

@@ -14,19 +14,19 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_VEC_COMPUTE_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_VEC_COMPUTE_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#include "kernel_operator_intf.h"
-#endif
-#include "tool.h"
 #include "anti_quant_y_vf.h"
 #include "basic_block_config.h"
 #include "basic_block_vf_mx.h"
 #include "basic_block_vf_nd.h"
 #include "basic_block_vf_nz.h"
 #include "mx_a8w4_scale_trans_id_constant.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#include "kernel_operator_intf.h"
+#endif
+#include "weight_quant_tool.h"
 
 using AscendC::BLOCK_CUBE;
 using AscendC::CacheMode;

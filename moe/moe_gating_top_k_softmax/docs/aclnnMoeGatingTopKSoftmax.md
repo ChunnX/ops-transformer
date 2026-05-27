@@ -10,7 +10,7 @@
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    √    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
 ## 功能说明
@@ -261,6 +261,12 @@ aclnnStatus aclnnMoeGatingTopKSoftmax(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - x最后一维的大小（即专家数）取值范围为[1, 2048]。
+
+- <term>Ascend 310P</term>:
+  - 输入x shape为[token_num, expert_num], expert_num必须满足16对齐，即expert_num是16整数倍
+  - 输入x仅支持FLOAT16
+  - 输入不支持finishedOptional，只能输入None。
+  - 输出不支持rowIdxOut，rowIdxOut输出全0。
 
 ## 调用示例
 

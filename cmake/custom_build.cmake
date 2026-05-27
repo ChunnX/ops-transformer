@@ -126,6 +126,7 @@ if (BUILD_OPEN_PROJECT)
             graph
             graph_base
             register
+            ops_base
             ascendalog
             error_manager
             platform
@@ -707,6 +708,7 @@ endif()
 target_link_libraries(
     cust_proto
     PUBLIC ${OPHOST_NAME}_infer_obj
+    PUBLIC $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:${OPHOST_NAME}_tiling_obj>
     PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:${OPGRAPH_NAME}_gentask_obj>
 )
 
@@ -946,6 +948,11 @@ endif()
 
 # ------------------------------------------------ generate adapt py ------------------------------------------------
 if (NOT ENABLE_AICPU_KERNEL)
+    # Whitelist: *_depends paths (e.g. mc2/common) whose op_kernel is installed in one place below.
+    # Skipped in the per-operator depends loop to avoid duplicate CMake install rules. Add new deps here
+    # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
+    set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
+
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
             \"\"
@@ -979,8 +986,9 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
+    install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
@@ -995,11 +1003,18 @@ foreach(_3rd_op_dir ${_3rd_op_dirs})
     endif()
 endforeach(    )
 
-    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/log
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
+
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+            OPTIONAL
+    )
+
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/op_kernel
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+            OPTIONAL
     )
 
     foreach (op_dir ${OP_DIR_LIST})
@@ -1022,14 +1037,16 @@ endforeach(    )
             get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
             get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
-            install(FILES ${SELECTED_DEPEND_FILES}
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                    OPTIONAL
-            )
-            install(DIRECTORY ${SELECTED_DEPEND_DIRS}
-                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
-                    OPTIONAL
-            )
+            if (NOT op_depend_dir IN_LIST OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS)
+                install(FILES ${SELECTED_DEPEND_FILES}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        OPTIONAL
+                )
+                install(DIRECTORY ${SELECTED_DEPEND_DIRS}
+                        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                        OPTIONAL
+                )
+            endif ()
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
                 set(COMMON_SRC_DIR "")
                 if (ENABLE_EXPERIMENTAL)
