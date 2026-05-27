@@ -45,6 +45,7 @@ public:
     this->Attr("mode").AttrType(REQUIRED).Int();
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
+    this->Attr("aiv_num").AttrType(OPTIONAL).Int(-1);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
