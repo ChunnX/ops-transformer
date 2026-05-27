@@ -349,7 +349,7 @@ public:
         return FA_METADATA_SIZE * NPU_AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void ClacS1OutSplitLoopTimes()
+    __aicore__ inline void CalcS1OutSplitLoopTimes()
     {
         int64_t varlenCycleCoreNums = constInfo.coreNum * 2;
         int64_t varlenCalcLoops = constInfo.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
@@ -414,7 +414,7 @@ public:
         prevGS1Idx = gS1Cur;
 
         if (constInfo.enableS1OutSplit) {
-            ClacS1OutSplitLoopTimes();
+            CalcS1OutSplitLoopTimes();
         }
 
         bool shouldDispatchTask = true;
