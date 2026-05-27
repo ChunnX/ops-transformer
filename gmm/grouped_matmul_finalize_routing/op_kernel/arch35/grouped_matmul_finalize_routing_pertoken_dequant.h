@@ -27,13 +27,77 @@ using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB, int scaleType, int rowIndType>
+__aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
+    GM_ADDR x, GM_ADDR w, GM_ADDR w_scale, GM_ADDR bias, GM_ADDR x_scale, GM_ADDR group_list, GM_ADDR share_input,
+    GM_ADDR logit, GM_ADDR row_index, GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+{
+    REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingTilingData);
+    GET_TILING_DATA(tilingData, tilingGM);
+    auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
+    auto matmulTiling_ = tilingData.matmulTiling;
+
+    using L1TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
+    using L0TileShape = AscendC::Shape<Cgmct::Gemm::_0, Cgmct::Gemm::_0, Cgmct::Gemm::_0>;
+    using AType = DTYPE_X;
+    using BType = DTYPE_W;
+    using CType = DTYPE_Y;
+    using LayoutA = layoutA;
+    using LayoutB = layoutB;
+    using LayoutC = layout::RowMajorAlign;
+    using weightscaleType = std::conditional_t<scaleType == 2, bfloat16_t, float>;
+    using BiasType = bfloat16_t;
+    using LayoutBias = layout::RowMajor;
+    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>;
+    using ProblemShape = Cgmct::Gemm::MatmulShape;
+    using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
+
+    SetSysWorkspace(workspaceGM);
+    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
+
+    using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler;
+    using BlockMmadBuilder = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType,
+                                                     LayoutBias, L1TileShape, L0TileShape, BlockScheduler,
+                                                     MatmulMultiBlock<>,
+                                                     Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
+    using BlockEpilogueDequant =
+        Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRoutingDeter<CType, C1Type, weightscaleType, float,
+                                                                      BiasType, std::conditional_t<rowIndType == 1, int32_t, int64_t>>;
+    using GmmKernel =
+        Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequantDeter<ProblemShape, BlockMmadBuilder, BlockPrologue,
+                                                                           BlockEpilogueDequant, BlockScheduler>;
+    using Params = typename GmmKernel::Params;
+    using GMMTiling = typename GmmKernel::GMMTiling;
+
+    GMMTiling gmmParams{gmmFinalizeRoutingQuantParams_.groupNum,
+                        gmmFinalizeRoutingQuantParams_.groupListType,
+                        matmulTiling_.baseM,
+                        matmulTiling_.baseN,
+                        matmulTiling_.baseK,
+                        gmmFinalizeRoutingQuantParams_.hasBias,
+                        gmmFinalizeRoutingQuantParams_.deterministicFlag,
+                        gmmFinalizeRoutingQuantParams_.deterWorkspaceSize,
+                        static_cast<uint32_t>(matmulTiling_.usedCoreNum)};
+    gmmParams.matmulTiling = &matmulTiling_;
+    Params params = {
+        {1, 1, 1, 1},
+        {x, w, y, bias, group_list},
+        {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+         gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
+         gmmFinalizeRoutingQuantParams_.residualScale},
+        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
+         userWorkspace, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize},
+        gmmParams};
+    GmmKernel gmm;
+    gmm(params);
+}
+
+template <typename layoutA, typename layoutB, int scaleType, int rowIndType>
 __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     GM_ADDR x, GM_ADDR w, GM_ADDR w_scale, GM_ADDR bias, GM_ADDR x_scale, GM_ADDR group_list, GM_ADDR share_input,
     GM_ADDR logit, GM_ADDR row_index, GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
-
     auto gmmFinalizeRoutingQuantParams_ = tilingData.gmmFinalizeRoutingDataParams;
     auto matmulTiling_ = tilingData.matmulTiling;
 
@@ -53,46 +117,10 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
     using ProblemShape = Cgmct::Gemm::MatmulShape;
     using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
+
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
-        SetSysWorkspace(workspaceGM);
-        GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
-
-        using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler;
-        using BlockMmadBuilder = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType,
-                                                         LayoutBias, L1TileShape, L0TileShape, BlockScheduler,
-                                                         MatmulMultiBlock<>,
-                                                         Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
-        using BlockEpilogueDequant =
-            Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRoutingDeter<CType, C1Type, weightscaleType, xscaleType,
-                                                                          BiasType, rowIndexType>;
-        using GmmKernel =
-            Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequantDeter<ProblemShape, BlockMmadBuilder, BlockPrologue,
-                                                                               BlockEpilogueDequant, BlockScheduler>;
-        using Params = typename GmmKernel::Params;
-        using GMMTiling = typename GmmKernel::GMMTiling;
-
-        GMMTiling gmmParams{gmmFinalizeRoutingQuantParams_.groupNum,
-                            gmmFinalizeRoutingQuantParams_.groupListType,
-                            matmulTiling_.baseM,
-                            matmulTiling_.baseN,
-                            matmulTiling_.baseK,
-                            gmmFinalizeRoutingQuantParams_.hasBias,
-                            gmmFinalizeRoutingQuantParams_.deterministicFlag,
-                            gmmFinalizeRoutingQuantParams_.deterWorkspaceSize,
-                            static_cast<uint32_t>(matmulTiling_.usedCoreNum)};
-
-        gmmParams.matmulTiling = &matmulTiling_;
-        Params params = {
-            {1, 1, 1, 1},
-            {x, w, y, bias, group_list},
-            {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
-             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-             gmmFinalizeRoutingQuantParams_.residualScale},
-            {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
-             userWorkspace, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize},
-            gmmParams};
-        GmmKernel gmm;
-        gmm(params);
+        grouped_matmul_finalize_routing_pertoken_dequant_deter<layoutA, layoutB, scaleType, rowIndType>(
+            x, w, w_scale, bias, x_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM, tilingGM);
         return;
     }
 
