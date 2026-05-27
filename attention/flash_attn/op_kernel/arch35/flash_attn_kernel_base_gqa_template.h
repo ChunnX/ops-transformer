@@ -31,16 +31,25 @@ public:
 
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
 
+    CubeData cubeData;
+    VectorData vectorData;
+
     FlashAttentionCubeProcessor<CubeData> cubeProc;
     FlashAttentionVectorProcessor<VectorData> vectorProc;
 
-    __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeProc(this), vectorProc(this)
+    __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeProc(&cubeData), vectorProc(&vectorData)
     {
+        cubeData.ctx = this;
+        vectorData.ctx = this;
     }
 
-    __aicore__ inline void InitConstInfoWithPA()
+    __aicore__ inline void InitConstInfoWithPA(const __gm__ FlashAttnNoQuantTilingArch35 *tilingData)
     {
-        FlashAttentionGqaContext::InitConstInfo();
+        if ASCEND_IS_AIC {
+            cubeData->InitConstInfo(tilingData);
+        } else {
+            vectorData->InitConstInfo(tilingData);
+        }
     }
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
@@ -77,9 +86,25 @@ public:
     {
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             if ASCEND_IS_AIC {
-                cubeProc.cubeData.qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ,
+                cubeProc.cubeData->qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ,
                                                         this->tilingData->flashAttnBaseParams.cuSeqLensQSize,
                                                         this->tilingData->flashAttnBaseParams.seqUsedQSize);
+            }
+            if ASCEND_IS_AIV {
+                vectorProc.vectorData->qCuSeqLensParser.Init(this->cuSeqLensGmQ, this->seqUsedGmQ,
+                                                            this->tilingData->flashAttnBaseParams.cuSeqLensQSize,
+                                                            this->tilingData->flashAttnBaseParams.seqUsedQSize);
+            }
+        } else {
+            if ASCEND_IS_AIC {
+                cubeProc.cubeData->qSeqUsedParser.Init(this->seqUsedGmQ,
+                                                      this->tilingData->flashAttnBaseParams.seqUsedQSize,
+                                                      this->tilingData->flashAttnBaseParams.s1Size);
+            }
+            if ASCEND_IS_AIV {
+                vectorProc.vectorData->qSeqUsedParser.Init(this->seqUsedGmQ,
+                                                          this->tilingData->flashAttnBaseParams.seqUsedQSize,
+                                                          this->tilingData->flashAttnBaseParams.s1Size);
             }
         }
     }
@@ -88,23 +113,23 @@ public:
     {
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             if ASCEND_IS_AIC {
-                cubeProc.cubeData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv,
+                cubeProc.cubeData->kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv,
                                                          this->tilingData->flashAttnBaseParams.cuSeqLensKVSize,
                                                          this->tilingData->flashAttnBaseParams.seqUsedKvSize);
             }
             if ASCEND_IS_AIV {
-                vectorProc.vectorData.kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv,
+                vectorProc.vectorData->kvCuSeqLensParser.Init(this->cuSeqLensGmKv, this->seqUsedGmKv,
                                                              this->tilingData->flashAttnBaseParams.cuSeqLensKVSize,
                                                              this->tilingData->flashAttnBaseParams.seqUsedKvSize);
             }
         } else {
             if ASCEND_IS_AIC {
-                cubeProc.cubeData.kvSeqUsedParser.Init(this->seqUsedGmKv,
+                cubeProc.cubeData->kvSeqUsedParser.Init(this->seqUsedGmKv,
                                                        this->tilingData->flashAttnBaseParams.seqUsedKvSize,
                                                        this->tilingData->flashAttnBaseParams.s2Size);
             }
             if ASCEND_IS_AIV {
-                vectorProc.vectorData.kvSeqUsedParser.Init(this->seqUsedGmKv,
+                vectorProc.vectorData->kvSeqUsedParser.Init(this->seqUsedGmKv,
                                                            this->tilingData->flashAttnBaseParams.seqUsedKvSize,
                                                            this->tilingData->flashAttnBaseParams.s2Size);
             }
@@ -116,13 +141,13 @@ public:
     {
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
-                                                          blockTable, cubeProc.cubeData.qCuSeqLensParser,
-                                                          cubeProc.cubeData.kvCuSeqLensParser, this->tilingData);
+                cubeProc.cubeData->cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
+                                                          blockTable, cubeProc.cubeData->qCuSeqLensParser,
+                                                          cubeProc.cubeData->kvCuSeqLensParser, this->tilingData);
             } else {
-                cubeProc.cubeData.cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
-                                                          blockTable, cubeProc.cubeData.qSeqUsedParser,
-                                                          cubeProc.cubeData.kvSeqUsedParser, this->tilingData);
+                cubeProc.cubeData->cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value,
+                                                          blockTable, cubeProc.cubeData->qSeqUsedParser,
+                                                          cubeProc.cubeData->kvSeqUsedParser, this->tilingData);
             }
         }
     }
@@ -133,43 +158,43 @@ public:
                                       __gm__ uint8_t *workspace, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv)
     {
         if ASCEND_IS_AIV {
-            vectorProc.vectorData.vecFaBlock.isFd = vectorProc.vectorData.isFd;
+            vectorProc.vectorData->vecFaBlock.isFd = vectorProc.vectorData->isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vectorProc.vectorData.vecFaBlock.InitVecBlock(this->pipe, cuSeqLensQ, cuSeqLensKv, attenMask,
+                vectorProc.vectorData->vecFaBlock.InitVecBlock(this->pipe, cuSeqLensQ, cuSeqLensKv, attenMask,
                                                               learnableSink, softmaxLse, attentionOut, workspace,
                                                               this->tilingData);
-                vectorProc.vectorData.vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData.qCuSeqLensParser);
+                vectorProc.vectorData->vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData->qCuSeqLensParser);
             } else {
-                vectorProc.vectorData.vecFaBlock.InitVecBlock(this->pipe, seqUsedQ, seqUsedKv, attenMask, learnableSink,
+                vectorProc.vectorData->vecFaBlock.InitVecBlock(this->pipe, seqUsedQ, seqUsedKv, attenMask, learnableSink,
                                                               softmaxLse, attentionOut, workspace, this->tilingData);
-                vectorProc.vectorData.vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData.qSeqUsedParser);
+                vectorProc.vectorData->vecFaBlock.SetCuSeqLensParser(vectorProc.vectorData->qSeqUsedParser);
             }
-            vectorProc.vectorData.vecFaBlock.ClearOutput();
+            vectorProc.vectorData->vecFaBlock.ClearOutput();
 
-            if (vectorProc.vectorData.isFd) {
-                vectorProc.vectorData.vecFdBlock.SetTilingData(this->tilingData);
-                vectorProc.vectorData.vecFdBlock.InitParams();
-                vectorProc.vectorData.vecFdBlock.InitGlobalTensor(
-                    vectorProc.vectorData.vecFaBlock.softmaxFDMaxGm, vectorProc.vectorData.vecFaBlock.softmaxFDSumGm,
-                    vectorProc.vectorData.vecFaBlock.accumOutGm, vectorProc.vectorData.vecFaBlock.attentionOutGm,
+            if (vectorProc.vectorData->isFd) {
+                vectorProc.vectorData->vecFdBlock.SetTilingData(this->tilingData);
+                vectorProc.vectorData->vecFdBlock.InitParams();
+                vectorProc.vectorData->vecFdBlock.InitGlobalTensor(
+                    vectorProc.vectorData->vecFaBlock.softmaxFDMaxGm, vectorProc.vectorData->vecFaBlock.softmaxFDSumGm,
+                    vectorProc.vectorData->vecFaBlock.accumOutGm, vectorProc.vectorData->vecFaBlock.attentionOutGm,
                     this->keyPtr);
                 if (learnableSink != nullptr) {
                     GlobalTensor<typename CubeBlockType::Q_T> sinkGm;
                     sinkGm.SetGlobalBuffer((__gm__ typename CubeBlockType::Q_T *)learnableSink);
-                    vectorProc.vectorData.vecFaBlock.learnableSinkFlag = true;
-                    vectorProc.vectorData.vecFdBlock.InitLearnableSinkGm(sinkGm);
+                    vectorProc.vectorData->vecFaBlock.learnableSinkFlag = true;
+                    vectorProc.vectorData->vecFdBlock.InitLearnableSinkGm(sinkGm);
                 }
                 if (this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable) {
                     GlobalTensor<float> softmaxLseGm;
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vectorProc.vectorData.vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+                    vectorProc.vectorData->vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
                 }
                 if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vectorProc.vectorData.vecFdBlock.SetCuSeqLensParsers(vectorProc.vectorData.qCuSeqLensParser,
-                                                                         vectorProc.vectorData.kvCuSeqLensParser);
+                    vectorProc.vectorData->vecFdBlock.SetCuSeqLensParsers(vectorProc.vectorData->qCuSeqLensParser,
+                                                                         vectorProc.vectorData->kvCuSeqLensParser);
                 } else {
-                    vectorProc.vectorData.vecFdBlock.SetCuSeqLensParsers(vectorProc.vectorData.qSeqUsedParser,
-                                                                         vectorProc.vectorData.kvSeqUsedParser);
+                    vectorProc.vectorData->vecFdBlock.SetCuSeqLensParsers(vectorProc.vectorData->qSeqUsedParser,
+                                                                         vectorProc.vectorData->kvSeqUsedParser);
                 }
             }
         }
@@ -218,12 +243,12 @@ public:
         if ASCEND_IS_AIC {
             this->InitCube(query, key, value, blockTable);
         } else {
-            vectorProc.vectorData.isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
-            if (vectorProc.vectorData.isFd) {
+            vectorProc.vectorData->isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+            if (vectorProc.vectorData->isFd) {
                 __gm__ uint32_t *fdMetaDataPtr = (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
                                                                      FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM *
                                                                          this->sectionNum_ * sizeof(uint32_t));
-                vectorProc.vectorData.vecFdBlock.SetFdMetaDataGm(fdMetaDataPtr, this->sectionNum_);
+                vectorProc.vectorData->vecFdBlock.SetFdMetaDataGm(fdMetaDataPtr, this->sectionNum_);
             }
             this->InitVector(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut, workspace,
                              seqUsedQ, seqUsedKv);

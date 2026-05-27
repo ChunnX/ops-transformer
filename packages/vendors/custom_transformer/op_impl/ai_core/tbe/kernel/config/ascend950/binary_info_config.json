@@ -1,0 +1,153 @@
+{
+  "FlashAttn": {
+    "dynamicRankSupport": true,
+    "simplifiedKeyMode": 0,
+    "optionalInputMode": "gen_placeholder",
+    "optionalOutputMode": "gen_placeholder",
+    "params": {
+      "inputs": [
+        {
+          "name": "q",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "k",
+          "index": 1,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "v",
+          "index": 2,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "block_table",
+          "index": 3,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "cu_seqlens_q",
+          "index": 4,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "cu_seqlens_kv",
+          "index": 5,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "seqused_q",
+          "index": 6,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "seqused_kv",
+          "index": 7,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "sinks",
+          "index": 8,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "attn_mask",
+          "index": 9,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "metadata",
+          "index": 10,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "attn_out",
+          "index": 0,
+          "paramType": "required",
+          "formatMode": "static_nd_agnostic"
+        },
+        {
+          "name": "softmax_lse",
+          "index": 1,
+          "paramType": "optional",
+          "formatMode": "static_nd_agnostic"
+        }
+      ],
+      "attrs": [
+        {
+          "name": "softmax_scale"
+        },
+        {
+          "name": "mask_mode"
+        },
+        {
+          "name": "win_left"
+        },
+        {
+          "name": "win_right"
+        },
+        {
+          "name": "max_seqlen_q"
+        },
+        {
+          "name": "max_seqlen_kv"
+        },
+        {
+          "name": "layout_q"
+        },
+        {
+          "name": "layout_kv"
+        },
+        {
+          "name": "layout_out"
+        },
+        {
+          "name": "return_softmax_lse"
+        },
+        {
+          "name": "deterministic"
+        }
+      ]
+    },
+    "binaryList": [
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "FlashAttn/d=0,p=1/27,2/27,2/27,2/27,2",
+          "FlashAttn/d=0,p=0/27,2/27,2/27,2/27,2",
+          "FlashAttn/d=1,p=1/27,2/27,2/27,2/27,2",
+          "FlashAttn/d=1,p=0/27,2/27,2/27,2/27,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/flash_attn/FlashAttn_4fa2d0a6c11259a48d6734049bca4a85.o",
+        "jsonPath": "ascend950/flash_attn/FlashAttn_4fa2d0a6c11259a48d6734049bca4a85.json"
+      },
+      {
+        "coreType": 0,
+        "simplifiedKey": [
+          "FlashAttn/d=0,p=1/1,2/1,2/1,2/1,2",
+          "FlashAttn/d=0,p=0/1,2/1,2/1,2/1,2",
+          "FlashAttn/d=1,p=1/1,2/1,2/1,2/1,2",
+          "FlashAttn/d=1,p=0/1,2/1,2/1,2/1,2"
+        ],
+        "multiKernelType": 1,
+        "binPath": "ascend950/flash_attn/FlashAttn_b03ace08e9e92e5caae11c83679e1252.o",
+        "jsonPath": "ascend950/flash_attn/FlashAttn_b03ace08e9e92e5caae11c83679e1252.json"
+      }
+    ]
+  }
+}

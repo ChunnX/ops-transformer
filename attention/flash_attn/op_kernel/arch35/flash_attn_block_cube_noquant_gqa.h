@@ -189,7 +189,12 @@ public:
     using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    struct CubeConstInfo {
+        uint32_t aicIdx;
+        uint32_t dBasicBlock;
+    };
+
+    using ConstInfoX = CubeConstInfo;
 
     __aicore__ inline CubeBlockBase(ConstInfoX &constInfo){};
 };

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashAttention GQA 类结构图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            font-size: 32px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .box {
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            position: relative;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .box:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+        }
+        .box-title {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .box-title .icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .box-items {
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .box-items .item {
+            padding: 3px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .box-items .item::before {
+            content: "•";
+            color: rgba(255,255,255,0.6);
+        }
+
+        /* Context Box */
+        .context-box {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            min-width: 600px;
+        }
+        .context-box .box-title .icon {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Kernel Box */
+        .kernel-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-width: 800px;
+        }
+        .kernel-box .box-title .icon {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Data Boxes */
+        .data-box {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            min-width: 320px;
+        }
+        .data-box .box-title .icon {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Processor Boxes */
+        .processor-box {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            min-width: 300px;
+        }
+        .processor-box .box-title .icon {
+            background: rgba(255,255,255,0.3);
+        }
+
+        /* Arrows */
+        .arrow-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+        }
+        .arrow {
+            width: 3px;
+            height: 40px;
+            background: white;
+            position: relative;
+        }
+        .arrow::after {
+            content: "";
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid white;
+        }
+        .arrow-label {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        /* Row Layout */
+        .row {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        /* Inner Container */
+        .inner-container {
+            border: 2px dashed rgba(255,255,255,0.4);
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        /* Connection Lines */
+        .connection-line {
+            position: absolute;
+            background: white;
+        }
+        
+        .legend {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 40px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        .legend h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+        }
+        .legend-items {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 30px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .legend-text {
+            font-size: 13px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>FlashAttention GQA 内核模板架构重构 - 类结构图</h1>
+        
+        <div class="diagram">
+            <!-- Context 层 -->
+            <div class="box context-box">
+                <div class="box-title">
+                    <span class="icon">📦</span>
+                    FlashAttentionGqaContext
+                </div>
+                <div class="box-items">
+                    <div class="item">pipe, tilingData, constInfo</div>
+                    <div class="item">GM tensors (cuSeqLensGmQ, cuSeqLensGmKv, etc.)</div>
+                    <div class="item">Buffers (bmm1Buffers, bmm2Buffers, l1PBuffers)</div>
+                    <div class="item">Scheduler variables (bN2Start_, gS1OStart_, etc.)</div>
+                    <div class="item">GetFASectionInfo(), GetFDSectionInfo()</div>
+                </div>
+            </div>
+
+            <!-- 箭头 -->
+            <div class="arrow-container">
+                <span class="arrow-label">继承</span>
+                <div class="arrow"></div>
+            </div>
+
+            <!-- Kernel 层 -->
+            <div class="box kernel-box">
+                <div class="box-title">
+                    <span class="icon">⚙️</span>
+                    FlashAttentionNoQuantGqaKernel&lt;3个模板参数&gt;
+                </div>
+                <div class="box-items" style="margin-bottom: 10px;">
+                    <div class="item">cubeProc: FlashAttentionCubeProcessor&lt;CubeData&gt;</div>
+                    <div class="item">vectorProc: FlashAttentionVectorProcessor&lt;VectorData&gt;</div>
+                    <div class="item">Init(), Process()</div>
+                </div>
+                
+                <div class="inner-container">
+                    <div class="row">
+                        <!-- 左侧 Cube 分支 -->
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+                            <div class="box data-box">
+                                <div class="box-title">
+                                    <span class="icon">📊</span>
+                                    FlashAttentionCubeData&lt;CubeBlockType&gt;
+                                </div>
+                                <div class="box-items">
+                                    <div class="item">ctx (Context指针)</div>
+                                    <div class="item">cubeBlock</div>
+                                    <div class="item">parsers</div>
+                                </div>
+                            </div>
+                            
+                            <div class="arrow-container">
+                                <div class="arrow"></div>
+                            </div>
+                            
+                            <div class="box processor-box">
+                                <div class="box-title">
+                                    <span class="icon">🔄</span>
+                                    FlashAttentionCubeProcessor
+                                </div>
+                                <div class="box-items">
+                                    <div class="item">cubeData</div>
+                                    <div class="item">ProcessCube()</div>
+                                    <div class="item">FlashAttentionCube</div>
+                                    <div class="item">ComputeMm1/Mm2</div>
+                                    <div class="item">RunInfoXCube[]</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右侧 Vector 分支 -->
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+                            <div class="box data-box">
+                                <div class="box-title">
+                                    <span class="icon">📊</span>
+                                    FlashAttentionVectorData&lt;VecFaBlockType, VecFdBlockType, InputT, LayoutQ, PageAttention&gt;
+                                </div>
+                                <div class="box-items">
+                                    <div class="item">ctx (Context指针)</div>
+                                    <div class="item">vecFaBlock, vecFdBlock</div>
+                                    <div class="item">parsers</div>
+                                </div>
+                            </div>
+                            
+                            <div class="arrow-container">
+                                <div class="arrow"></div>
+                            </div>
+                            
+                            <div class="box processor-box">
+                                <div class="box-title">
+                                    <span class="icon">🔄</span>
+                                    FlashAttentionVectorProcessor
+                                </div>
+                                <div class="box-items">
+                                    <div class="item">vectorData</div>
+                                    <div class="item">ProcessVector()</div>
+                                    <div class="item">FlashAttentionVector</div>
+                                    <div class="item">ComputeVec1/Vec2</div>
+                                    <div class="item">RunInfoXVec[]</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图例 -->
+        <div class="legend">
+            <h3>图例说明</h3>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);"></div>
+                    <span class="legend-text">Context 共享数据类</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+                    <span class="legend-text">Kernel 主入口类</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
+                    <span class="legend-text">Data 数据类</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
+                    <span class="legend-text">Processor 处理器类</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
