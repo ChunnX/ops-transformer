@@ -364,7 +364,7 @@ public:
         }
     }
 
-    __aicore__ inline int64_t ComputeFlatTaskIdx()
+    __aicore__ inline int64_t CalcS1OutTaskIdx()
     {
         if (coreGS1Loops % 2 == 0) {
             return coreGS1Loops * constInfo.coreNum + constInfo.aicIdx;
@@ -475,19 +475,17 @@ public:
             (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (s2Cur == constInfo.s2OStart);
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
-            uint64_t rawActSeqLenKv = 0;
             prevBIdx = bIdx;
             if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             }
-            rawActSeqLenKv = actSeqLensKv;
             actSeqLensKv += constInfo.actualKVPrefixSize;
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
         }
 
-        if (constInfo.enableS1OutSplit && accGS1Loops != ComputeFlatTaskIdx()) {
+        if (constInfo.enableS1OutSplit && accGS1Loops != CalcS1OutTaskIdx()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
@@ -790,7 +788,7 @@ public:
         if (coreGS1Loops >= varlenCalcTimes || bN2Cur >= constInfo.n2Size * constInfo.bSize) {
             return;
         }
-        curTaskIdx = ComputeFlatTaskIdx();
+        curTaskIdx = CalcS1OutTaskIdx();
 
         // 本次需要跳过的GS1
         int64_t gS1Skip = curTaskIdx - preTaskIdx;
