@@ -26,8 +26,8 @@
 | 参数名           |输入/输出/属性|    描述    | 数据类型    |数据格式|
 |-------------|------------|------|-----|-----|
 |q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为[B, S1, N1, D]，当layout_q为TND时shape为[T1, N1, D]。|BFLOAT16|ND|
-|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_ND时shape为[block_num1, block_size1, KV_N, D]|FLOAT8_E4M3FN|ND|
-|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_ND时shape为[block_num2, block_size2, KV_N, D]|FLOAT8_E4M3FN|ND|
+|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为[block_num1, block_size1, KV_N, D]|FLOAT8_E4M3FN|ND|
+|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为[block_num2, block_size2, KV_N, D]|FLOAT8_E4M3FN|ND|
 |ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K1]，layout_q为TND时shape为[T1, KV_N, K1]|INT32|ND|
 |cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K2]，layout_q为TND时shape为[T1, KV_N, K2]|INT32|ND|
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|

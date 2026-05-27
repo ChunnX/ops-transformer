@@ -16,7 +16,7 @@ TEST_PARAMS = {
     "decode_first":{
         "Testcase_Name": [None],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
@@ -55,7 +55,7 @@ TEST_PARAMS = {
     "prefill_first":{
         "Testcase_Name": [None],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
@@ -93,7 +93,7 @@ TEST_PARAMS = {
     "decode_first_hif8":{
         "Testcase_Name": [None],
         "layout_q": ["TND"],
-        "layout_kv": ["PA_ND"],
+        "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.uint8],
         "cmp_kv_type": [torch.uint8],

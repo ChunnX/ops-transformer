@@ -59,7 +59,7 @@ ge::graphStatus QSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
     } else if (layout == QSMLALayout::TND) {
         shapeExpected = gert::Shape({param.T, param.N, param.D});
-    } else if (layout == QSMLALayout::PA_ND) {
+    } else if (layout == QSMLALayout::PA_BBND) {
         shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
     } else {
         OP_LOGE(opName_, "layout %s is unsupported", QSMLALayoutToSerialString(layout).c_str());

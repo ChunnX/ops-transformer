@@ -201,7 +201,7 @@ ge::graphStatus QSMLAInfoParser::GetQueryAndOutLayout()
 ge::graphStatus QSMLAInfoParser::GetKvLayout()
 {
     const map<string, QSMLALayout> layoutKVMap = {
-        {"PA_ND",     QSMLALayout::PA_ND},
+        {"PA_BBND",     QSMLALayout::PA_BBND},
         {"TND",       QSMLALayout::TND},
     };
 

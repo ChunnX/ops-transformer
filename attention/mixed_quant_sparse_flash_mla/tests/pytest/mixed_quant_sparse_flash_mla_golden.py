@@ -700,7 +700,7 @@ def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, d_aligne
 
 def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
-               seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_ND"):
+               seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_BBND"):
     if kv_quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
         quant_range_left = quant_param
@@ -782,7 +782,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
 def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size,
                quant_scale_head_dim, d_aligned_128, pad_d, block_num2, block_size2, cmp_max_s2,
                cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-               quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_ND"):
+               quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_BBND"):
     if cmp_max_s2 == 0:
         return None, None, None, None
     if kv_quant_mode == 10:

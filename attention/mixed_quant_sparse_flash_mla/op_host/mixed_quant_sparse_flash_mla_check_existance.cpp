@@ -32,12 +32,12 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
 {
     if (kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
-    }  else if (kvLayout_ == QSMLALayout::PA_ND) {
+    }  else if (kvLayout_ == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-            OP_LOGE(opName_, "when layout_kv is PA_ND, actualSeqLengthsKv must not be null"),
+            OP_LOGE(opName_, "when layout_kv is PA_BBND, actualSeqLengthsKv must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((opParamInfo_.oriBlockTable.tensor == nullptr) && (opParamInfo_.cmpBlockTable.tensor == nullptr),
-            OP_LOGE(opName_, "when layout_kv is PA_ND, oriBlockTable and cmpBlockTable must be one "),
+            OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable and cmpBlockTable must be one "),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -99,8 +99,8 @@ ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
     if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_ND,
-        OP_LOGE(opName_, "oriBlockTable must not be empty when kvLayout is PA_ND and cmpKv is not provided. "),
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_BBND,
+        OP_LOGE(opName_, "oriBlockTable must not be empty when kvLayout is PA_BBND and cmpKv is not provided. "),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -124,8 +124,8 @@ ge::graphStatus QSMLATilingCheck::CheckCFAExistence()
         OP_LOGE(opName_, "cmpRatio must not be empty when cmpKv is provided and cmpSparseIndices is not provided."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr && opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_ND,
-        OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_ND, cmpKv is provided and cmpSparseIndices is not provided."),
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor != nullptr && opParamInfo_.cmpBlockTable.tensor == nullptr && kvLayout_ == QSMLALayout::PA_BBND,
+        OP_LOGE(opName_, "cmpBlockTable must not be empty when kvLayout is PA_BBND, cmpKv is provided and cmpSparseIndices is not provided."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

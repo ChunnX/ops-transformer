@@ -38,7 +38,7 @@ std::string QSMLALayoutToSerialString(QSMLALayout layout)
     switch (layout) {
         case QSMLALayout::BSND: return "BSND";
         case QSMLALayout::TND: return "TND";
-        case QSMLALayout::PA_ND: return "PA_ND";
+        case QSMLALayout::PA_BBND: return "PA_BBND";
         default: return "UNKNOWN";
     }
 }

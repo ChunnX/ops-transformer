@@ -52,7 +52,7 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
-    constexpr bool isPa = (KV_LAYOUT_T == QSMLA_LAYOUT_PA_ND);
+    constexpr bool isPa = (KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND);
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
         QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaScfa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
             fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, isPa,

@@ -61,7 +61,7 @@ struct QSMLATilingOptionalParaInfo {
 enum class QSMLALayout : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_ND = 2
+    PA_BBND = 2
 };
 
 enum class QSMLAAxis : uint32_t {
@@ -202,13 +202,13 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
 const std::map<QSMLALayout, std::vector<QSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
     {QSMLALayout::BSND, {QSMLAAxis::B, QSMLAAxis::S, QSMLAAxis::N, QSMLAAxis::D}},
     {QSMLALayout::TND, {QSMLAAxis::T, QSMLAAxis::N, QSMLAAxis::D}},
-    {QSMLALayout::PA_ND, {QSMLAAxis::Bn, QSMLAAxis::Bs, QSMLAAxis::N, QSMLAAxis::D}},
+    {QSMLALayout::PA_BBND, {QSMLAAxis::Bn, QSMLAAxis::Bs, QSMLAAxis::N, QSMLAAxis::D}},
 };
 
 const std::map<QSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
     {QSMLALayout::BSND, DIM_NUM_FOUR},
     {QSMLALayout::TND, DIM_NUM_THREE},
-    {QSMLALayout::PA_ND, DIM_NUM_FOUR},
+    {QSMLALayout::PA_BBND, DIM_NUM_FOUR},
 };
 
 std::string QSMLADataTypeToSerialString(ge::DataType type);
@@ -314,7 +314,7 @@ public:
 
     // Layout
     QSMLALayout qLayout = QSMLALayout::BSND;
-    QSMLALayout kvLayout = QSMLALayout::PA_ND;
+    QSMLALayout kvLayout = QSMLALayout::PA_BBND;
     QSMLALayout outLayout = QSMLALayout::BSND;
 };
 
@@ -399,7 +399,7 @@ public:
     // Layout
     QSMLALayout qLayout_ = QSMLALayout::BSND;
     QSMLALayout outLayout_ = QSMLALayout::BSND;
-    QSMLALayout kvLayout_ = QSMLALayout::PA_ND;
+    QSMLALayout kvLayout_ = QSMLALayout::PA_BBND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -568,7 +568,7 @@ private:
 
     QSMLALayout qLayout_ = QSMLALayout::BSND;
     QSMLALayout outLayout_ = QSMLALayout::BSND;
-    QSMLALayout kvLayout_ = QSMLALayout::PA_ND;
+    QSMLALayout kvLayout_ = QSMLALayout::PA_BBND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;

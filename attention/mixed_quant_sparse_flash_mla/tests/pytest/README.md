@@ -10,7 +10,7 @@
 
 - **数据格式**:
     - **layout_q**：BSND、TND
-    - **layout_kv**：PA_ND
+    - **layout_kv**：PA_BBND
 
 ### 环境配置
 

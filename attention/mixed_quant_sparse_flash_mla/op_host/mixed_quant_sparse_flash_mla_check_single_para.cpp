@@ -43,8 +43,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<QSMLALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,             {QSMLALayout::BSND, QSMLALayout::TND}},
-    {ORI_KV_NAME,            {QSMLALayout::PA_ND, QSMLALayout::TND}},
-    {CMP_KV_NAME,            {QSMLALayout::PA_ND, QSMLALayout::TND}},
+    {ORI_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
+    {CMP_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
     {ATTEN_OUT_NAME,         {QSMLALayout::BSND, QSMLALayout::TND}},
 };
 
@@ -198,7 +198,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    if (kvLayout_ == QSMLALayout::PA_ND) {
+    if (kvLayout_ == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
             OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
             oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
@@ -235,7 +235,7 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
             return ge::GRAPH_FAILED);
 
-        if (kvLayout_ == QSMLALayout::PA_ND) {
+        if (kvLayout_ == QSMLALayout::PA_BBND) {
             OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
                 OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be in range (0, %u].",
                 cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
