@@ -349,10 +349,10 @@ private:
             uint64_t in_gm_offset = (info.start_idx + i * info.max_process_size) * src_stride;
 
             DataCopyParams copyParam;
-            copyParam.blockCount = 1;
-            copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
+            copyParam.blockCount = process_size;
+            copyParam.blockLen = head_dim_ * sizeof(INPUT_TYPE);
             copyParam.srcStride = 0;
-            copyParam.dstStride = process_size * (src_stride - head_dim_) * sizeof(INPUT_TYPE);
+            copyParam.dstStride = (src_stride - head_dim_) * sizeof(INPUT_TYPE);
             DataCopyPad(dy_tensor, dy_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
             DataCopyPad(attention_tensor, out_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
@@ -373,11 +373,7 @@ private:
             PipeBarrier<PIPE_V>();
 
             uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
-            copyParam.blockCount = 1;
-            copyParam.blockLen = process_size * 8 * sizeof(float);
-            copyParam.srcStride = 0;
-            copyParam.dstStride = 0;
-            DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, copyParam);
+            DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, process_size * 8);
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         }
