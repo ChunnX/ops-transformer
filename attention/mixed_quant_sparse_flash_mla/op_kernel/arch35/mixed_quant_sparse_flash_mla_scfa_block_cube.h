@@ -101,7 +101,7 @@ private:
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-    FaGmTensor<Q_T, Q_FORMAT> queryGm;
+    FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
 
     /* =====================运行时变量==================== */
     CubeCoordInfo coordInfo[3];
