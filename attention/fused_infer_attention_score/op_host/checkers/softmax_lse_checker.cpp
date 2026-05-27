@@ -14,6 +14,7 @@
  */
 
 #include <map>
+#include <cstdio>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -36,8 +37,10 @@ ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo
     // SoftmaxLse only supports output FP32
     if (fiaInfo.softmaxLseFlag) {
         OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.lseOut.desc, SOFTMAX_LSE_NAME),
-                    OP_LOGE(fiaInfo.opName, "SoftmaxLse only support dtype FP32, but got %s",
-                            DataTypeToSerialString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str()),
+                    ({ char reason[512] = {0};
+                    OP_LOGE(fiaInfo.opName,
+                            "In op [%s], the data type of [%s] is not supported, got [%s]",
+                            fiaInfo.opName, "softmax_lse", DataTypeToSerialString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str()); }),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -50,10 +53,12 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     if (fiaInfo.softmaxLseFlag) {
         const gert::StorageShape *lseShape = fiaInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseShape == nullptr,
-                    OP_LOGE(fiaInfo.opName, "SoftmaxLse shape is nullptr but softmaxLseFlag is true!"),
+                    ({ OP_LOGE(fiaInfo.opName, "The op [%s] missing [%s] parameter", fiaInfo.opName, "shape"); }),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.lseOut.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of lseOut tensor is nullptr!"), return ge::GRAPH_FAILED);
+                    ({ OP_LOGE(fiaInfo.opName,
+                            "The op [%s] missing [%s] parameter",
+                            fiaInfo.opName, "lseout"); }), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -69,31 +74,58 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
         std::shared_ptr<FiaTilingShapeCompare> softmaxLseShapeCmp_ = nullptr;
         if (fiaInfo.outLayout == FiaLayout::TND || fiaInfo.outLayout == FiaLayout::NTD) {
             OP_CHECK_IF(lseShape->GetStorageShape().GetDimNum() != DIM_NUM_3,
-                        OP_LOGE(fiaInfo.opName, "TND/NTD SoftmaxLse shape dim(%zu) should be 3!",
-                                lseShape->GetStorageShape().GetDimNum()),
+                        ({ char reason[512] = {0};
+                        OP_LOGE(fiaInfo.opName,
+                                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                                fiaInfo.opName, "softmax_lse",
+                                (snprintf(reason, sizeof(reason),
+                                    "TND/NTD SoftmaxLse shape dim(%zu) should be 3!",
+                                    lseShape->GetStorageShape().GetDimNum()) > 0)
+                                        ? reason
+                                        : "TND/NTD SoftmaxLse shape dim(%zu) should be 3!",
+                                "TND/NTD SoftmaxLse shape dim(%zu) should be 3!"); }),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2)),
+                        ({ char reason[512] = {0};
+                        OP_LOGE(fiaInfo.opName,
+                                "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                                fiaInfo.opName, "softmax_lse",
+                                (snprintf(reason, sizeof(reason),
+                                    "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!",
+                                    lseShape->GetStorageShape().GetDim(DIM_NUM_0), lseShape->GetStorageShape().GetDim(DIM_NUM_1),
+                                    lseShape->GetStorageShape().GetDim(DIM_NUM_2)) > 0)
+                                        ? reason
+                                        : "SoftmaxLse shape[%ld, %ld, %ld] does not match TN1!"); }),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(lseShape->GetStorageShape().GetDimNum() != DIM_NUM_4,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape dim(%zu) should be 4!",
-                                lseShape->GetStorageShape().GetDimNum()),
+                        ({ char reason[512] = {0};
+                        OP_LOGE(fiaInfo.opName,
+                                "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                                fiaInfo.opName, "softmax_lse",
+                                (snprintf(reason, sizeof(reason),
+                                    "SoftmaxLse shape dim(%zu) should be 4!",
+                                    lseShape->GetStorageShape().GetDimNum()) > 0)
+                                        ? reason
+                                        : "SoftmaxLse shape dim(%zu) should be 4!",
+                                "SoftmaxLse shape dim(%zu) should be 4!"); }),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST,
-                        OP_LOGE(fiaInfo.opName, "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_0),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_1),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_2),
-                                lseShape->GetStorageShape().GetDim(DIM_NUM_3)),
+                        ({ char reason[512] = {0};
+                        OP_LOGE(fiaInfo.opName,
+                                "In op [%s], the tensor shapes of [%s..] are mismatched, the reason is: [%s]",
+                                fiaInfo.opName, "softmax_lse",
+                                (snprintf(reason, sizeof(reason),
+                                    "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!",
+                                    lseShape->GetStorageShape().GetDim(DIM_NUM_0), lseShape->GetStorageShape().GetDim(DIM_NUM_1),
+                                    lseShape->GetStorageShape().GetDim(DIM_NUM_2), lseShape->GetStorageShape().GetDim(DIM_NUM_3)) > 0)
+                                        ? reason
+                                        : "SoftmaxLse shape[%ld, %ld, %ld, %ld] does not match [B, N, Q_S, 1]!"); }),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -124,8 +156,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInf
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
-        OP_LOGE(fiaInfo.opName,
-            "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
+        ({ OP_LOGE(fiaInfo.opName,
+                "The op [%s] received bad params, the reason is: [%s]",
+                fiaInfo.opName, "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."); }),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

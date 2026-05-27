@@ -14,6 +14,7 @@
  */
 
 #include "fused_infer_attention_score_tiling.h"
+#include <cstdio>
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
 #include "log/log.h"
@@ -359,12 +360,16 @@ static ge::graphStatus GetCumulativeKeyValueSInBSH(gert::TilingContext &context,
     for (int64_t tmpIdx = 0; tmpIdx < validBatchOfK; ++tmpIdx) {
         if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardH) ||
             (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardH)) {
-            OP_LOGE(context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
             return ge::GRAPH_FAILED;
         }
         if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
             contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
-            OP_LOGE(context.GetNodeName(), "S from Key and Value are not equal!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "S from Key and Value are not equal!");
             return ge::GRAPH_FAILED;
         }
         if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) == 0) {
@@ -388,24 +393,32 @@ static ge::graphStatus GetCumulativeKeyValueSInBNSD(gert::TilingContext &context
     int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ? *contextKeyParams.numKeyValueHeads :
                                                                     *contextKeyParams.headsNumber;
     if (tmpNKv != standardN) {
-        OP_LOGE(context.GetNodeName(), "kvN from tensorlist does NOT EQUAL kvN from attribute!");
+        OP_LOGE(context.GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context.GetNodeName(), "kvN from tensorlist does NOT EQUAL kvN from attribute!");
         return ge::GRAPH_FAILED;
     }
 
     for (int64_t idx = 0; idx < validBatchOfK; ++idx) {
         if ((contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(1) != standardN) ||
             (contextKeyParams.vTensorList[idx]->GetStorageShape().GetDim(1) != standardN)) {
-            OP_LOGE(context.GetNodeName(), "N is not the same across batch and Key Value under tensorlist mode!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "N is not the same across batch and Key Value under tensorlist mode!");
             return ge::GRAPH_FAILED;
         }
         if ((contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(DIM_3) != standardD) ||
             (contextKeyParams.vTensorList[idx]->GetStorageShape().GetDim(DIM_3) != standardD)) {
-            OP_LOGE(context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
             return ge::GRAPH_FAILED;
         }
         if (contextKeyParams.kTensorList[idx]->GetStorageShape().GetDim(DIM_2) !=
             contextKeyParams.vTensorList[idx]->GetStorageShape().GetDim(DIM_2)) {
-            OP_LOGE(context.GetNodeName(), "S from Key and Value does NOT equal but they should!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "S from Key and Value does NOT equal but they should!");
             return ge::GRAPH_FAILED;
         }
         // DIM_2: Traverse the k list of the tiling key to check whether the second dimension of each tensor is 0.
@@ -430,7 +443,9 @@ static ge::graphStatus GetCumulativeKeyValueSInBSND(gert::TilingContext &context
     int64_t tmpNKv = (*contextKeyParams.numKeyValueHeads != 0) ?
         *contextKeyParams.numKeyValueHeads :*contextKeyParams.headsNumber;
     if (tmpNKv != standardN) {
-        OP_LOGE(context.GetNodeName(), "kvN from tensorlist does NOT EQUAL kvN from attribute!");
+        OP_LOGE(context.GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context.GetNodeName(), "kvN from tensorlist does NOT EQUAL kvN from attribute!");
         return ge::GRAPH_FAILED;
     }
 
@@ -438,17 +453,23 @@ static ge::graphStatus GetCumulativeKeyValueSInBSND(gert::TilingContext &context
          // DIM_2: The second dimension of the tensorlist represents n, in order to check whether all n in the tensorlist are the same.
         if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardN) ||
             (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_2) != standardN)) {
-            OP_LOGE(context.GetNodeName(), "N is not the same across batch and Key Value under tensorlist mode!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "N is not the same across batch and Key Value under tensorlist mode!");
             return ge::GRAPH_FAILED;
         }
         if ((contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_3) != standardD) ||
             (contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(DIM_3) != standardD)) {
-            OP_LOGE(context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "D is not the same across batch and Key Value under tensorlist mode!");
             return ge::GRAPH_FAILED;
         }
         if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) !=
             contextKeyParams.vTensorList[tmpIdx]->GetStorageShape().GetDim(1)) {
-            OP_LOGE(context.GetNodeName(), "S from Key and Value does NOT equal but they should!");
+            OP_LOGE(context.GetNodeName(),
+                    "The op [%s] received bad params, the reason is: [%s]",
+                    context.GetNodeName(), "S from Key and Value does NOT equal but they should!");
             return ge::GRAPH_FAILED;
         }
         if (contextKeyParams.kTensorList[tmpIdx]->GetStorageShape().GetDim(1) == 0) {
@@ -732,7 +753,9 @@ static ge::graphStatus ConvertAttrsIFA(gert::TilingContext &context, IncreFlashA
 static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext)
 {
     if (context.GetNodeName() == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "opName got from TilingContext is nullptr");
+        OP_LOGE("FusedInferAttentionScore",
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     ifaContext.opName = context.GetNodeName();
@@ -897,7 +920,9 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     contextParamsForPFATiling.compileInfoPtr = &tempCompileInfoPtr;
     ret = ConvertContextToParamsPFA(*context, contextParamsForPFATiling);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while convert tilingContext to PFA context");
+        OP_LOGE(context->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context->GetNodeName(), "Error occurred while convert tilingContext to PFA context");
         return ret;
     }
 
@@ -1140,14 +1165,29 @@ ge::graphStatus CheckFAILearnableSink(const gert::TilingContext *context)
 
     auto sinkDim = learnableSinkShape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(sinkDim != 1U,
-                OP_LOGE(context->GetNodeName(), "learnable_sink enable, sink shape dim(%u) must be 1!", sinkDim),
+                ({ char reason[512] = {0};
+                OP_LOGE(context->GetNodeName(),
+                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                        context->GetNodeName(), "learnable_sink",
+                        (snprintf(reason, sizeof(reason),
+                            "learnable_sink enable, sink shape dim(%u) must be 1!",
+                            sinkDim) > 0) ? reason : "learnable_sink enable, sink shape dim(%u) must be 1!",
+                        "learnable_sink enable, sink shape dim(%u) must be 1!"); }),
                 return ge::GRAPH_FAILED);
 
     auto sinkDimValue = learnableSinkShape->GetStorageShape().GetDim(DIM_0);
     auto queryN = queryShape->GetStorageShape().GetDim(DIM_1);
     OP_CHECK_IF(sinkDimValue != queryN,
-                OP_LOGE(context->GetNodeName(), "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!",
-                        sinkDimValue, queryN),
+                ({ char reason[512] = {0};
+                OP_LOGE(context->GetNodeName(),
+                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint: [%s]",
+                        context->GetNodeName(), "query",
+                        (snprintf(reason, sizeof(reason),
+                            "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!",
+                            sinkDimValue, queryN) > 0)
+                                ? reason
+                                : "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!",
+                        "learnable_sink enable, sink shape(%u) must be same equal queryN(%u)!"); }),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((tempInnerPrecise == 1 || tempInnerPrecise == 2 || tempInnerPrecise == 3),
@@ -1782,7 +1822,9 @@ static ge::graphStatus TilingProcess4IFA(gert::TilingContext *context)
     IncreFlashAttentionContext ifaContext {};
     auto ret = ConvertContextToParamsIFA(*context, ifaContext);
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occored while convert tilingContext to ifa context");
+        OP_LOGE(context->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context->GetNodeName(), "Error occored while convert tilingContext to ifa context");
         return ret;
     }
     IFATiling ifaTiling(context);
@@ -2070,10 +2112,14 @@ static ge::graphStatus IsMla(const gert::TilingContext *context)
     auto qRope = context->GetOptionalInputTensor(QUERY_ROPE_INDEX);
     auto kRope = context->GetOptionalInputTensor(KEY_ROPE_INDEX);
     OP_CHECK_IF((qRope != nullptr && kRope == nullptr),
-        OP_LOGE(context->GetNodeName(), "keyRope is null, but queryRope exists, they should be both null or exist."),
+        ({ OP_LOGE(context->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context->GetNodeName(), "keyRope is null, but queryRope exists, they should be both null or exist."); }),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((qRope == nullptr && kRope != nullptr),
-        OP_LOGE(context->GetNodeName(), "queryRope is null, but keyRope exists, they should be both null or exist."),
+        ({ OP_LOGE(context->GetNodeName(),
+                "The op [%s] received bad params, the reason is: [%s]",
+                context->GetNodeName(), "queryRope is null, but keyRope exists, they should be both null or exist."); }),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2121,7 +2167,9 @@ static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const stri
             return ge::GRAPH_FAILED);
     }
     if (inputLayoutStr == "SH") {
-        OP_LOGE(context->GetNodeName(), "SH layout is not supported!");
+        OP_LOGE(context->GetNodeName(),
+                "In op [%s], [%s] is not supported, got [%s]",
+                context->GetNodeName(), "feature", "SH layout is not supported!");
         return ge::GRAPH_FAILED;
     }
     // check Q DimNum
@@ -2150,7 +2198,9 @@ static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const stri
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
+        OP_LOGE("FusedInferAttentionScore",
+                "The op [%s] received bad params, the reason is: [%s]",
+                "FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
