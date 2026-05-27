@@ -33,7 +33,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
     OPS_LOG_D(context->GetNodeName(), "gentask comm_mode: %s.", commModeStr.GetString());
     if (commModeStr == ge::AscendString("ccu")) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (commModeStr == ge::AscendString("aicpu")) {
+    } else if (commModeStr == ge::AscendString("ai_cpu")) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (commModeStr == ge::AscendString("")) {
         int64_t worldSize = 0;
@@ -43,7 +43,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         }
         commMode = (worldSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
-        OPS_LOG_E(context->GetNodeName(), "comm_mode only support empty string, 'ccu' or 'aicpu', unsupported comm_mode: %s.", commModeStr.GetString());
+        OPS_LOG_E(context->GetNodeName(), "comm_mode only support empty string, 'ccu' or 'ai_cpu', unsupported comm_mode: %s.", commModeStr.GetString());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
