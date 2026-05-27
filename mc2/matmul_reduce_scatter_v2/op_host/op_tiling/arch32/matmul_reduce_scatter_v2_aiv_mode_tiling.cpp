@@ -949,7 +949,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
     OP_TILING_CHECK(coreNum == 0,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
                     return ge::GRAPH_FAILED);
-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
+    int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
 
