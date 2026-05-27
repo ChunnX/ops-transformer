@@ -9,16 +9,17 @@ pytests/
 │   ├── gpu_impl.py            # GPU 实现（基于 flash_attn 库）
 │   └── npu_impl.py            # NPU 算子封装（npu_flash_attn + metadata）
 ├── test_cases/                # 测试用例定义
-│   ├── test_case.py            # 基础测试用例（BASE、BNSD、TND、PA 等）
-│   ├── test_case_fia_STC.py    # FIA STC 测试用例集（实际推理场景）
-│   ├── test_case_functional_single.py  # 单功能测试用例
-│   ├── test_case_redline_training.py       # flash_attn 训练红线用例
-│   ├── test_case_redline_training_TND.py   # flash_attn varlen 训练红线TND用例
-│   └── test_case_redline_inference.py      # FIA 推理红线用例
+│   ├── base.py                    # 基础测试用例（BASE、BNSD、TND、PA 等）
+│   ├── fia_stc.py                 # FIA STC 测试用例集（实际推理场景）
+│   ├── functional_stc.py          # 单功能测试用例
+│   ├── functional_redline_train.py      # flash_attn 训练红线用例
+│   ├── functional_redline_train_tnd.py  # flash_attn varlen 训练红线TND用例
+│   ├── functional_redline_infer.py      # FIA 推理红线用例
+│   └── performance_redline_infer.py     # 性能红线推理用例
 ├── tools/                      # 开发工具
 │   └── xlsx_to_testcase.py     # Excel → test case 转换器
 ├── test_flash_attn.py           # 主入口：命令行参数解析、流程编排、三方精度对比
-├── test_utils/                  # 工具函数包
+├── utils/                      # 工具函数包
 │   ├── data.py                  # 测试数据生成、mask 生成、layout 转换
 │   ├── compare.py               # 精度对比、结果检查、失败分布分析
 │   ├── io.py                    # Tensor 文件读写
@@ -191,7 +192,7 @@ python test_flash_attn.py --case_id case69 --fail_analysis --dump_tensors
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  失败元素分布分析: test_case_fia_STC/case69
+   失败元素分布分析: fia_stc/case69
   Shape: (16, 180, 253, 128)  FailElems: 6358919/93265920 (6.8181%)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -224,8 +225,8 @@ python test_flash_attn.py --case_id case69 --fail_analysis --dump_tensors
 
 | 测试集 | 文件 | 说明 |
 |---|---|---|---|
-| `TestCases` | `test_case.py` | 基础功能测试（BNSD/BSND/TND/PA）|
-| `TestCasesFIA` | `test_case_fia_STC.py` | FIA STC 场景（实际推理 case）|
+| `TestCases` | `base.py` | 基础功能测试（BNSD/BSND/TND/PA）|
+| `TestCasesFIA` | `fia_stc.py` | FIA STC 场景（实际推理 case）|
 
 ### 5.2 用例字段说明
 
@@ -469,7 +470,7 @@ python test_flash_attn.py --case_id BASE_01 --use_gpu
 
 ### Q3：PA case 运行报错 `block_size must be multiple of 256`
 
-**A**：flash_attn_with_kvcache 要求 `block_size` 必须是 256 的倍数。调整 test_case.py：
+**A**：flash_attn_with_kvcache 要求 `block_size` 必须是 256 的倍数。调整用例：
 ```python
 "block_size": 256,  # 不是 64
 "S2": 1024,         # block数 × block_size
@@ -504,12 +505,12 @@ python test_flash_attn.py --case_id BASE_01 --meta_only
 
 | 文件 | 你需要改它吗？ | 典型改动 |
 |---|---|---|---|
-| `test_cases/test_case.py` | **经常** | 新增/修改测试 case |
-| `test_cases/test_case_fia_STC.py` | **经常** | 添加 FIA STC 用例 |
+| `test_cases/base.py` | **经常** | 新增/修改测试 case |
+| `test_cases/fia_stc.py` | **经常** | 添加 FIA STC 用例 |
 | `test_flash_attn.py` | 偶尔 | 改参数、新增功能 |
-| `test_utils/compare.py` | 很少 | 精度对比 / 报告 / 失败分析 |
-| `test_utils/data.py` | 很少 | 测试数据生成 / mask / layout |
+| `utils/compare.py` | 很少 | 精度对比 / 报告 / 失败分析 |
+| `utils/data.py` | 很少 | 测试数据生成 / mask / layout |
 | `backends/cpu_impl.py` | 一般不改 | CPU golden 实现 |
 | `backends/gpu_impl.py` | 很少 | GPU API 封装、PA 支持 |
 | `backends/npu_impl.py` | 很少 | NPU 算子调用、metadata 解析 |
-| `test_utils/precision_visual.py` | 很少 | 改热力图样式 |
+| `utils/precision_visual.py` | 很少 | 改热力图样式 |
