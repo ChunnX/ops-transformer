@@ -1502,76 +1502,78 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allg
     }
 }
 
-// 更新tokenNumsOut tensor	 
-template <TemplateDispatchV2TypeClass>	 
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()	 
-{	 
-    if (aivId_ != FIRST_CORE) {	 
-        return;	 
-    }	 
-    // 等待 LocalWindowCopy 的 DataCopyPad(sendCountsGlobal_[..], outCountLocal=gatherMaskOutBuf_, ...)
-    // 异步MTE3 从gatherMaskOutBuf_读取完毕，再让本函数V pipe写入gatherMaskOutBuf_，避免覆盖。
+// 更新tokenNumsOut tensor
+// 双路径优化（保持4272279cb算法）：
+// - 8p倍数：单次GatherMask repeat=localStatusSectionNum 一次packed抽全部count
+// - 非8倍数：Duplicate清零padded count矩阵 + 逐expert GatherMask(rsvdCnt每行复位)
+// - 汇聚到一次 Sum{localExpertNum, epWorldSizeInner, epWorldSize_} 求行和
+// 顶部 SyncFunc<MTE3_V> 等LocalWindowCopy的 DataCopyPad(sendCountsGlobal_, gatherMaskOutBuf_)
+// 异步MTE3完成后再写V，避免UB race导致sendCountsOut错位。
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()
+{
+    if (aivId_ != FIRST_CORE) {
+        return;
+    }
+    // 等待 LocalWindowCopy 中 DataCopyPad(sendCountsGlobal_, gatherMaskOutBuf_) 的异步MTE3 读完，
+    // 再开始向 gatherMaskOutBuf_ 写入新数据，避免UB race。
     SyncFunc<AscendC::HardEvent::MTE3_V>();
 
-    uint32_t localExpertNum;	 
-    if (isShareExpertRankFlag_) {	 
-        localExpertNum = 1U;	 
-    } else {	 
-        localExpertNum = moeExpertNumPerRank_;	 
-    }	 
-    uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);	 
-    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,	 
-                                    static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};	 
-    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();	 
-    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);	 
-    SyncFunc<AscendC::HardEvent::MTE2_V>();	 
+    const uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    const uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);
+    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,
+        static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};
+    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
+    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
     LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    gatherTmpTensor.SetValue(0, 2); // 2=0b00000010，只选中8个元素中的下标1(count)，不选下标0(flag)
-    uint32_t mask = 2;              // mask覆盖flag/count两个字段，配合gatherTmpTensor使GatherMask只选中count
-    uint32_t epWorldSizeInner = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    // 2 = 0b00000010：每8 float组内只选中index 1 (count)，不选index 0 (flag)
+    gatherTmpTensor.SetValue(0, 2);
+    constexpr uint32_t kMask = 2;
+    const uint32_t epWorldSizeInner = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
     uint64_t rsvdCnt = 0;
     SyncFunc<AscendC::HardEvent::S_V>();
+
     if (epWorldSizeInner == epWorldSize_) {
-        // epWorldSize_是8的倍数时，每个expert的count行32B对齐，可用{1, localStatusSectionNum, 1, 0}连续取count
-        GatherMask(expertCountTensor, allStatusTensorFp32, gatherTmpTensor, true, mask,
+        // 8p倍数快路径：每行天然32B对齐，一次GatherMask packed取出全部expert的count
+        GatherMask(expertCountTensor, allStatusTensorFp32, gatherTmpTensor, true, kMask,
             {1, localStatusSectionNum, 1, 0}, rsvdCnt);
     } else {
-        Duplicate<float>(expertCountTensor, static_cast<float>(0.0), localExpertNum * epWorldSizeInner);
+        // 非8p泛化：先清零padded矩阵防Sum按alignedWidth读padding脏数据；
+        // 逐expert GatherMask 输出到独立行，rsvdCnt每行复位以隔离上一轮状态
+        Duplicate<float>(expertCountTensor, 0.0f, localExpertNum * epWorldSizeInner);
         PipeBarrier<PIPE_V>();
-        for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-            LocalTensor<float> expertStatusTensor = allStatusTensorFp32[
-                localExpertIdx * epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float))];
-            // 非8倍数EP卡数逐expert写count；先清零padding，并在每行GatherMask前清零rsvdCnt
+        for (uint32_t i = 0; i < localExpertNum; ++i) {
+            LocalTensor<float> expertStatusTensor =
+                allStatusTensorFp32[i * epWorldSize_ * UB_ALIGN / sizeof(float)];
             rsvdCnt = 0;
-            GatherMask(expertCountTensor[localExpertIdx * epWorldSizeInner], expertStatusTensor, gatherTmpTensor, true,
-                mask, {1, static_cast<uint16_t>(epWorldSize_), 1, 0}, rsvdCnt);
+            GatherMask(expertCountTensor[i * epWorldSizeInner], expertStatusTensor, gatherTmpTensor, true,
+                kMask, {1, static_cast<uint16_t>(epWorldSize_), 1, 0}, rsvdCnt);
         }
     }
     PipeBarrier<PIPE_V>();
+
+    // SumParams: 行数=localExpertNum, 行内32B对齐宽度=epWorldSizeInner, 有效rank数=epWorldSize_
     LocalTensor<float> expertTokenNumTensor = statusBuf_.Get<float>();
-    // SumParams含义：localExpertNum为行数，epWorldSizeInner为32B对齐行宽，epWorldSize_为有效rank数
-    SumParams sumParams{localExpertNum, epWorldSizeInner, epWorldSize_};
-    Sum(expertTokenNumTensor, expertCountTensor, sumParams);
+    Sum(expertTokenNumTensor, expertCountTensor, SumParams{localExpertNum, epWorldSizeInner, epWorldSize_});
     SyncFunc<AscendC::HardEvent::V_S>();
 
     int64_t expertTokenNumCumsum = 0;
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(localExpertIdx));
+    LocalTensor<int32_t> expertTokenNumTensorI32 = expertTokenNumTensor.ReinterpretCast<int32_t>();
+    for (uint32_t i = 0; i < localExpertNum; ++i) {
+        const int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensorI32.GetValue(i));
         expertTokenNumCumsum += expertTokenNum;
-        if(expertTokenNumsType_ == 0) {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
-        } else {
-            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
-        }
+        expertTokenNumsLocalTensor.SetValue(i,
+            (expertTokenNumsType_ == 0) ? expertTokenNumCumsum : expertTokenNum);
     }
-    SyncFunc<AscendC::HardEvent::S_MTE3>(); 
-    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 
-                                                0U, 0U, 0U}; 
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
+                                                0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
-}	 
+}
 
 template <TemplateDispatchV2TypeClass> 
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::AllGatherSetExpertTokenNumsAndTpRecvCount() 
