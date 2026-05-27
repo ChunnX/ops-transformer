@@ -118,7 +118,6 @@ public:
     __aicore__ inline void CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yType *yFp32Addr);
     __aicore__ inline void CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yScaleType *yScaleAddr);
     __aicore__ inline void TransMxScaleLayout(const BasicBlockOffsetParam &param);
-    __aicore__ inline void SetMTE3ToV();
     __aicore__ inline void End();
 
 private:
@@ -480,9 +479,6 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const Bas
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
 
     DataCopyPad2D(yFp32Global_[yGmOffset], yFp8Buffer_, mRealSize, nHalfSize, nHalfSize, param.nSize / DIVISOR_FACTOR_TWO);
-
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V);
-    WaitFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -523,12 +519,6 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::TransMxScaleLayout(const Basi
 
     TransMxScaleLayoutVf(quantScaleOutputInUbAddr, quantScaleBlockOutputInUbAddr,
                          static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(scaleBlockN));
-}
-
-GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SetMTE3ToV()
-{
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
