@@ -83,7 +83,6 @@ private:
         basicBlock_;
 
     uint64_t preOffset_ = 0;
-    uint64_t l1KDynamicConfigMThreshold_;
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_256 = 256;
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
@@ -92,6 +91,8 @@ private:
     static constexpr uint64_t M_L1 = 256;
     static constexpr uint64_t KB_L1_SIZE = 256;
     static constexpr uint64_t N_L1 = 256;
+    static constexpr uint64_t L1K_DYNAMIC_CONFIG_M_THRESHOLD = hasBias ? 
+        MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 : MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
 };
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -111,11 +112,6 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weigh
     yScaleGm_ = reinterpret_cast<__gm__ yScaleType *>(yScale);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
     basicBlock_.Init(tiling_->groupSize, yGm_, yScaleGm_);
-    if constexpr (hasBias) {
-        l1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240;
-    } else {
-        l1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
-    }
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -170,13 +166,13 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(
     offsetParam[0].kSize = tiling_->kSize;
     offsetParam[0].nSize = tiling_->nSize;
     offsetParam[0].kAlign = CeilAlign(tiling_->kSize, static_cast<uint64_t>(BLOCK_CUBE));
+    offsetParam[0].nAlign = CeilAlign(tiling_->nSize, static_cast<uint64_t>(BLOCK_CUBE));
+
     offsetParam[1].kbL1Size = KB_L1_SIZE;
     offsetParam[1].kaL1Size = offsetParam[0].kbL1Size;
     offsetParam[1].kSize = offsetParam[0].kSize;
     offsetParam[1].nSize = offsetParam[0].nSize;
     offsetParam[1].kAlign = offsetParam[0].kAlign;
-
-    offsetParam[0].nAlign = CeilAlign(tiling_->nSize, static_cast<uint64_t>(BLOCK_CUBE));
     offsetParam[1].nAlign = offsetParam[0].nAlign;
 }
 
@@ -191,8 +187,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         offsetParam[ctrlParam.processId].mOffset = ctrlParam.mOffset;
         offsetParam[ctrlParam.processId].mL1Size =
             ctrlParam.mOffset + ctrlParam.mL1Size > ctrlParam.mSize ?
-                ctrlParam.mSize - ctrlParam.mOffset :
-                ctrlParam.mL1Size;
+                ctrlParam.mSize - ctrlParam.mOffset : ctrlParam.mL1Size;
         offsetParam[ctrlParam.processId].nOffset =
             ctrlParam.nOffset +
             ((ctrlParam.curBasicBlockId - ctrlParam.basicBlockLimit) % basicBlockCount) * basicBlockSize;
@@ -204,7 +199,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
         offsetParam[ctrlParam.processId].yScaleGmAddr = reinterpret_cast<GM_ADDR>(yScaleGm_);
 
         offsetParam[ctrlParam.processId].kbL1Size =
-            (offsetParam[ctrlParam.processId].mL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 &&
+            (offsetParam[ctrlParam.processId].mL1Size <= L1K_DYNAMIC_CONFIG_M_THRESHOLD &&
              offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
                 MX_A8W4_L1_K_CONFIG_512 :
                 MX_A8W4_L1_K_CONFIG_256;
