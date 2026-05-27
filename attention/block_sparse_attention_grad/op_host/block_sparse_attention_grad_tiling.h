@@ -35,7 +35,7 @@ TILING_DATA_FIELD_DEF(uint64_t, dkSize);
 TILING_DATA_FIELD_DEF(uint64_t, dqWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dkWorkspaceOffset);
 TILING_DATA_FIELD_DEF(uint64_t, dvWorkspaceOffset);
-TILING_DATA_FIELD_DEF(uint64_t, sftgWorkspaceSize);
+TILING_DATA_FIELD_DEF(uint64_t, sftgWorkspaceOffset);
 TILING_DATA_FIELD_DEF(float, softmaxScale);
 TILING_DATA_FIELD_DEF(uint32_t, rsv);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradFrontTilingData);
