@@ -116,8 +116,8 @@ public:
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
-                                      const GlobalTensor<float> &dv_workspace, const GlobalTensor<float> &dy_gm,
-                                      const GlobalTensor<float> &out_gm, const GlobalTensor<float> &sftg_workspace,
+                                      const GlobalTensor<float> &dv_workspace, const GlobalTensor<INPUT_TYPE> &dy_gm,
+                                      const GlobalTensor<INPUT_TYPE> &out_gm, const GlobalTensor<float> &sftg_workspace,
                                       const TILING_CLASS *tilingData, TBuf<TPosition::VECCALC> &ub_buffer)
     {
         constexpr static uint32_t PRE_TILE_LEN = 20 * 1024; // PRE一次处理元素的个数
@@ -131,8 +131,13 @@ public:
         ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
         ComputeVecPre(dk_workspace, vec_in_ping_, info);
         ComputeVecPre(dv_workspace, vec_in_ping_, info);
+    }
 
-        // sftg front
+    __aicore__ inline void SendVecSftgFront(const GlobalTensor<INPUT_TYPE> &dy_gm,
+                                            const GlobalTensor<INPUT_TYPE> &out_gm,
+                                            const GlobalTensor<float> &sftg_workspace, const TILING_CLASS *tilingData,
+                                            TBuf<TPosition::VECCALC> &ub_buffer)
+    {
         SET_FLAG(MTE3, MTE2, EVENT_ID0);
         WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
