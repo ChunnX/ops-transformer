@@ -47,7 +47,7 @@ extern "C" {
  * @param numMaxTokenPerRank    [OPTIONAL] Maximum tokens per rank (default 0).
  * @param activation      [OPTIONAL]  Activation type (default "").
  * @param activationClamp [OPTIONAL]  Activation clamp (default INFINITY, double).
- * @param gmm2XDtype      [OPTIONAL]  GMM2 X dtype (default 0).
+ * @param activation_out_dtype      [OPTIONAL]  GMM2 X dtype (default 0).
  * @param transposeWeight1 [OPTIONAL] Transpose weight1 (default false).
  * @param transposeWeight2 [OPTIONAL] Transpose weight2 (default false).
  * @param weight1Interleave [OPTIONAL] Weight1 interleave (default 0).
@@ -65,7 +65,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnDispatchFFNCombineGetWor
     int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
     int64_t combineQuantMode, const char *commAlg, int64_t numMaxTokenPerRank,
-    const char *activation, float activationClamp, int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2,
+    const char *activation, float activationClamp, int64_t activation_out_dtype, bool transposeWeight1, bool transposeWeight2,
     int64_t weight1Interleave,
     aclTensor *yOut, aclTensor *expertTokenNumsOut,
     uint64_t *workspaceSize, aclOpExecutor **executor);

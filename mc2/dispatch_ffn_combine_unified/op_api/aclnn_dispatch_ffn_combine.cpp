@@ -57,7 +57,7 @@ aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
     int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,
     int64_t combineQuantMode, char *commAlg, int64_t numMaxTokenPerRank,
-    char *activation, float activationClamp, int64_t gmm2XDtype, bool transposeWeight1, bool transposeWeight2,
+    char *activation, float activationClamp, int64_t activation_out_dtype, bool transposeWeight1, bool transposeWeight2,
     int64_t weight1Interleave,
     aclTensor *yOut, aclTensor *expertTokenNumsOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
@@ -89,7 +89,7 @@ aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
         weightScales1, weightScales2, bias1, bias2, xActiveMask, scales,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutType, combineQuantMode,
-        commAlg, numMaxTokenPerRank, activation, activationClamp, gmm2XDtype,
+        commAlg, numMaxTokenPerRank, activation, activationClamp, activation_out_dtype,
         transposeWeight1, transposeWeight2, weight1Interleave,
         yOut, expertTokenNumsOut,
         workspaceSize, executor);

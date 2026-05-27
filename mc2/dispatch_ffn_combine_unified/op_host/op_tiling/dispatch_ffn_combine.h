@@ -93,7 +93,7 @@ struct DispatchFFNCombineConfig {
     uint32_t attrNumMaxTokenPerRankIndex    = 8U;
     uint32_t attrActivationIndex            = 9U;
     uint32_t attrActivationClampIndex       = 10U;
-    uint32_t attrGmm2XDtypeIndex            = 11U;
+    uint32_t attrActivationOutDtypeIndex      = 11U;
     uint32_t attrTransposeWeight1Index      = 12U;
     uint32_t attrTransposeWeight2Index      = 13U;
     uint32_t attrWeight1InterleaveIndex     = 14U;

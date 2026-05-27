@@ -38,9 +38,9 @@ __global__ __aicore__ void dispatch_ffn_combine(
     constexpr bool isNz = (FORMAT_WEIGHT1 == FORMAT_FRACTAL_NZ);
     constexpr bool isA2 = (TPL_ARCH == SOC_ASCEND910B);
     REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingDataNonQuant);
-    REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8) || (QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8)", DispatchFFNCombineTilingDataQuant);
+    REGISTER_TILING_FOR_TILINGKEY("(QuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR)", DispatchFFNCombineTilingDataQuant);
     if constexpr (isA2) {
-        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
+        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
@@ -62,8 +62,7 @@ __global__ __aicore__ void dispatch_ffn_combine(
             op.Process();
         }
     } else {
-        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8 ||
-                      TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8) {
+        if constexpr (TPL_QUANT_MODE == DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR) {
             GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
             DispatchFFNCombine<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y,
                                TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2,

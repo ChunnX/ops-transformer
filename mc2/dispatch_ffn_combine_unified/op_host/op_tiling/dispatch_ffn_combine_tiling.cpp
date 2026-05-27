@@ -111,7 +111,7 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
     auto activationClampPtr     = attrs->GetAttrPointer<float> (static_cast<int>(config.attrActivationClampIndex));
     auto transposeW1Ptr         = attrs->GetAttrPointer<bool>   (static_cast<int>(config.attrTransposeWeight1Index));
     auto transposeW2Ptr         = attrs->GetAttrPointer<bool>   (static_cast<int>(config.attrTransposeWeight2Index));
-    auto gmm2XDtypePtr          = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrGmm2XDtypeIndex));
+    auto activation_out_dtypePtr          = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrActivationOutDtypeIndex));
     auto weight1InterleavePtr   = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrWeight1InterleaveIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
@@ -171,7 +171,7 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
                                                                        std::numeric_limits<float>::infinity();
     info.isTransposeW1         = (*transposeW1Ptr) ? 1U : 0U;
     info.isTransposeW2         = (*transposeW2Ptr) ? 1U : 0U;
-    info.gmm2XDtype            = (gmm2XDtypePtr        != nullptr) ? static_cast<int32_t>(*gmm2XDtypePtr) :
+    info.activation_out_dtype            = (activation_out_dtypePtr        != nullptr) ? static_cast<int32_t>(*activation_out_dtypePtr) :
                                                                        static_cast<int32_t>(ge::DT_UNDEFINED);
     info.weight1Interleave     = (weight1InterleavePtr != nullptr) ? static_cast<uint32_t>(*weight1InterleavePtr) : 0U;
 
@@ -183,8 +183,8 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
             info.commAlgCode, info.numMaxTokenPerRank, info.activationCode, info.activationClamp);
     OP_LOGD(K_INNER_DEBUG, "isTransposeW1=%u, isTransposeW2=%u",
             info.isTransposeW1, info.isTransposeW2);
-    OP_LOGD(K_INNER_DEBUG, "gmm2XDtype=%d, weight1Interleave=%u",
-            info.gmm2XDtype, info.weight1Interleave);
+    OP_LOGD(K_INNER_DEBUG, "activation_out_dtype=%d, weight1Interleave=%u",
+            info.activation_out_dtype, info.weight1Interleave);
     OP_LOGD(K_INNER_DEBUG, "hasBias1=%u, hasBias2=%u",
             info.hasBias1, info.hasBias2);
 
@@ -216,6 +216,11 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     // other weight dtype (INT4, INT8, INT32-packed INT4) requires the input X
     // to be quantized to INT8 during routing.
     info.isQuantRouting = (wDataType == ge::DT_FLOAT16 || wDataType == ge::DT_BF16) ? 0U : 1U;
+    info.dispatchQuantMode = info.isQuantRouting ? DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR
+                                                  : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
+    if (info.isQuantRouting) {
+        info.dispatchQuantOutType = DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_INT8;
+    }
 
     uint32_t topK = topkIdsTensor->GetStorageShape().GetDim(1);
     uint32_t listLen = 0;
@@ -325,14 +330,18 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     context->SetBlockDim(blockDim);
 
     uint32_t quantMode = infoCommon.isQuantRouting != 0U
-        ? (infoCommon.dispatchQuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8
-            ? DISPATCH_FFN_COMBINE_QUANT_MODE_INT8
-            : DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8)
+        ? DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR
         : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
     uint32_t quantOutType = static_cast<uint32_t>(infoCommon.dispatchQuantOutType);
-    //  == static_cast<uint32_t>(ge::DT_UNDEFINED)
-    //     ? DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED
-    //     : DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_E4M3FN;
+    if (quantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT) {
+        OP_TILING_CHECK(quantOutType != DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED,
+            OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type must be UNDEFINED in non-quant mode, got %u",
+                    quantOutType), return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(quantOutType != DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_INT8,
+            OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type must be INT8 in quant mode, got %u",
+                    quantOutType), return ge::GRAPH_FAILED);
+    }
     uint32_t archCode = infoCommon.isA2 ? SOC_ASCEND910B : SOC_ASCEND910_93;
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(
