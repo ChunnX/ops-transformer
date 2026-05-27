@@ -178,7 +178,7 @@ public:
 
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
@@ -712,11 +712,13 @@ public:
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+            info.actVecMSizeAlign16 = info.actMSizeAlign32 >> 1;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
+            info.vecMbaseIdx = USE_DN ? info.actVecMSize : info.actVecMSizeAlign16;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 

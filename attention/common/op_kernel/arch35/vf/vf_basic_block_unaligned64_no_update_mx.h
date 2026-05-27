@@ -27,8 +27,8 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
 __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
     __ubuf__ T2 *expUb, __ubuf__ pseShiftType *pseUb, __ubuf__ T *maxUb, __ubuf__ T *maxUbStart, __ubuf__ T *srcUb,
     __ubuf__ T *expSumUb, __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *dropMaskUb,
-    const uint32_t blockStride, const uint32_t repeatStride, const uint32_t nPadding, uint32_t pltOriginalN,
-    float divValue, uint32_t pltSrcN, uint32_t pltSrcN16, const float dScale, const uint16_t m,
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t blockStride, const uint32_t repeatStride, const uint32_t nPadding,
+    uint32_t pltOriginalN, float divValue, uint32_t pltSrcN, uint32_t pltSrcN16, const float dScale, const uint16_t m,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
@@ -72,6 +72,9 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
     MaskReg preg_src_n = UpdateMask<float>(pltSrcN);
     MaskReg preg_src_n_b16 = UpdateMask<uint16_t>(pltSrcN16);
+    MaskReg preg_src_n_b8 = CreateMask<T2, MaskPattern::ALL>();
+    uint32_t maskLen = 128;
+    MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
 
     MaskReg preg_ori_src_n = UpdateMask<T>(pltOriginalN);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
@@ -213,9 +216,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
             RegTensor<fp8_e4m3fn_t> vreg_exp_f8e4m3;
             RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3;
-            MaskReg preg_src_n_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+            
             Cast<T2, T, castTraitRintZero>(vreg_exp_f8e4m3, vreg_exp, preg_all);
             LoadAlign(vreg_exp_merge_f8e4m3_indexes, indexesUb);
             Gather(vreg_exp_merge_f8e4m3, vreg_exp_f8e4m3, vreg_exp_merge_f8e4m3_indexes);
@@ -261,6 +262,10 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0(
         }
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)expSumUb), ureg_exp_sum, 0);
+    // todo pscale
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
+    Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_src_n_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_src_n_b8);
 }
 
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128,
@@ -533,8 +538,9 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
     const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb,
+    const float deSCaleKValue, const float sinkValue, const float pScale,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ pseShiftType *pseUb = (__ubuf__ pseShiftType *)pseTensor.GetPhyAddr();
@@ -550,7 +556,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
-
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
     __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
     __ubuf__ uint32_t *dropMaskUb = (__ubuf__ uint32_t *)dropTensor.GetPhyAddr();
 
@@ -569,7 +575,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64Mxfp8Fullquant(
     if (subLoop == 0) {
         ProcessVec1NoUpdateImpl64Mxfp8FullquantVFSubloop0<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                                                           pseMode, hasDrop, isMlaSgd, isMlaFullQuant, hasSink>(
-            expUb, pseUb, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, maskUb, dropMaskUb, blockStride, repeatStride,
+            expUb, pseUb, maxUb, maxUbStart, srcUb, expSumUb, indexesUb, maskUb, dropMaskUb, pScaleSubLoop0Ub, blockStride, repeatStride,
             nPadding, pltOriginalN, divValue, pltSrcN, pltSrcN16, dScale, m, pseStride, slopes, posShift, scale,
             dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
     } else {

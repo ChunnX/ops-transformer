@@ -393,41 +393,41 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
         mxfp8s2RealSize = subLoop == 0 ? mxfp8s2BaseSize : runInfo.s2RealSize - mxfp8s2BaseSize;
     }
 
-    if (unlikely(runInfo.s2LoopCount == 0)) {
-        if constexpr (isFp8) {
-            if (attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, mxfp8s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
-                    negativeFloatScalar, constInfo.keepProb, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                    subLoop);
-            } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, mxfp8s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
-                    negativeFloatScalar, constInfo.keepProb, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                    subLoop);
-            }
-        }
-    } else {
-        if constexpr (isFp8) {
-            if (attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, mxfp8s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize  / 2, mxfp8s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
-                    negativeFloatScalar, constInfo.keepProb, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
-            } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, mxfp8s2BaseSize>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize  / 2, mxfp8s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
-                    negativeFloatScalar, constInfo.keepProb, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
-            }
-        }
-    }
+    // if (unlikely(runInfo.s2LoopCount == 0)) {
+    //     if constexpr (isFp8) {
+    //         if (attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+    //             FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, mxfp8s2BaseSize>(
+    //                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+    //                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
+    //                 static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
+    //                 negativeFloatScalar, constInfo.keepProb, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
+    //                 subLoop);
+    //         } else {
+    //             FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, mxfp8s2BaseSize>(
+    //                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+    //                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
+    //                 static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
+    //                 negativeFloatScalar, constInfo.keepProb, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
+    //                 subLoop);
+    //         }
+    //     }
+    // } else {
+    //     if constexpr (isFp8) {
+    //         if (attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+    //             FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, mxfp8s2BaseSize>(
+    //                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+    //                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize  / 2, mxfp8s2RealSize,
+    //                 static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
+    //                 negativeFloatScalar, constInfo.keepProb, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+    //         } else {
+    //             FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, mxfp8s2BaseSize>(
+    //                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+    //                 ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize  / 2, mxfp8s2RealSize,
+    //                 static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
+    //                 negativeFloatScalar, constInfo.keepProb, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+    //         }
+    //     }
+    // }
     bmm1ResBuf.SetCrossCore();
 
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);

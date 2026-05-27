@@ -29,8 +29,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
     __ubuf__ T *srcUb, __ubuf__ T *expMaxUb, __ubuf__ T *inMaxUb, __ubuf__ T *expSumUb, __ubuf__ T *inExpSumUb,
     __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb, __ubuf__ T *tmpMaxUb2,
     __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb1, __ubuf__ uint32_t *maskUb2, __ubuf__ uint32_t *maskUb3,
-    __ubuf__ uint32_t *maskUb4, __ubuf__ uint32_t *dropMaskUb1, __ubuf__ uint32_t *dropMaskUb2,
-    __ubuf__ float *preLoopMaxUb, __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, const uint32_t nPadding,
+    __ubuf__ uint32_t *maskUb4, __ubuf__ uint32_t *dropMaskUb1, __ubuf__ uint32_t *dropMaskUb2, __ubuf__ float *preLoopMaxUb, 
+    __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t nPadding,
     const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2,
     const uint32_t tailN1, const uint32_t tailN2, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1,
     uint32_t pltTailN2, float divValue, uint32_t pltN, const uint16_t m, const uint32_t pseStride, const float slopes,
@@ -129,6 +129,9 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
+    MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+    uint32_t maskLen = 128;
+    MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -346,9 +349,6 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
             RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
             // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
             Cast<T2, T, castTraitRintTwo>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
@@ -392,6 +392,10 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb, vreg_exp_sum_brc,
                                                       preg_all); // 传给loop 1用于更新rowSum
+    // todo pscale
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
+    Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_all_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0, preg_all_b8);
 }
 
 template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 256,
@@ -402,7 +406,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     __ubuf__ T *tmpExpSumUb, __ubuf__ T *tmpExpSumUb2, __ubuf__ T *tmpMaxUb, __ubuf__ T *tmpMaxUb2,
     __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb1, __ubuf__ uint32_t *maskUb2, __ubuf__ uint32_t *maskUb3,
     __ubuf__ uint32_t *maskUb4, __ubuf__ uint32_t *dropMaskUb1, __ubuf__ uint32_t *dropMaskUb2,
-    __ubuf__ float *preLoopMaxUb, __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, const uint32_t nPadding,
+    __ubuf__ float *preLoopMaxUb, __ubuf__ float *preLoopSumUb, __ubuf__ float *firstLoopSumUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0, const uint32_t nPadding,
     const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN1, const uint32_t oriTailN2,
     const uint32_t tailN1, const uint32_t tailN2, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1,
     uint32_t pltTailN2, float divValue, uint32_t pltN, const uint16_t m, const uint32_t pseStride, const float slopes,
@@ -501,6 +505,13 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     MaskReg preg4;
     MaskReg preg5;
     MaskReg preg6;
+    MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
+    uint32_t maskLen = 128;
+    MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+    MaskReg preg_all_b8_half = CreateMask<int8_t, MaskPattern::ALL>();
+    uint32_t pScaleMaskLen = 8;
+    MaskReg preg_all_b8_8 = UpdateMask<fp8_e8m0_t>(pScaleMaskLen);
+    RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -715,11 +726,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3_2;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_1;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_f8e4m3_2;
-            RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
             // RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes_2;
-            MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
-            uint32_t maskLen = 128;
-            MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even1, preg_all);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_2, vreg_exp_even2, preg_all);
             Cast<T2, T, castTraitRintTwo>(vreg_exp_odd_f8e4m3_1, vreg_exp_odd1, preg_all);
@@ -762,6 +769,26 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Mul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all);
     Add(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_pre_sum, preg_all);
+    // todo pscale
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_pad;
+    Not(preg_all_b8_half, preg_all_b8_128, preg_all_b8);
+    Duplicate(vreg_p_scale_f8e8m0_pad, 0x7f, preg_all_b8_half);
+    Duplicate(vreg_p_scale, static_cast<float>(1.0f));
+    Mul(vreg_p_scale, vreg_subloop_update, vreg_p_scale, preg_all);
+    Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
+    Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all_b16);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+    Gather(vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0, vreg_exp_merge_f8e4m3_indexes);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_pad, preg_all_b8);
+    StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, preg_all_b8);
 }
 
 // update, 128 < originN <= 256
@@ -775,7 +802,8 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
     const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<float> &preLoopMaxTensor,
     const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
     const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
-    const T scale, const float dScaleQK, const T minValue, float keepProb, const float sinkValue, const float pScale)
+    const T scale, const float dScaleQK, const T minValue, float keepProb, const float sinkValue, const float pScale,
+    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -808,6 +836,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
     __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
 
     __ubuf__ float *preLoopMaxUb = (__ubuf__ T *)preLoopMaxTensor.GetPhyAddr();
     __ubuf__ float *preLoopSumUb = (__ubuf__ T *)preLoopSumTensor.GetPhyAddr();
@@ -824,7 +853,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
                                                                 pseMode, hasDrop, hasSink>(
             expUb1, expUb2, pseUb, maxUb, maxUbStart, srcUb, expMaxUb, inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
             tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4, dropMaskUb1, dropMaskUb2,
-            preLoopMaxUb, preLoopSumUb, firstLoopSumUb, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
+            preLoopMaxUb, preLoopSumUb, firstLoopSumUb, pScaleSubLoop0Ub, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
             tailN1, tailN2, pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, divValue, pltN, m, pseStride, slopes,
             posShift, scale, dScaleQK, minValue, sinkValue, pScale);
     } else {
@@ -832,7 +861,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
                                                                 pseMode, hasDrop, hasSink>(
             expUb1, expUb2, pseUb, maxUb, maxUbStart, srcUb, expMaxUb, inMaxUb, expSumUb, inExpSumUb, tmpExpSumUb,
             tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4, dropMaskUb1, dropMaskUb2,
-            preLoopMaxUb, preLoopSumUb, firstLoopSumUb, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
+            preLoopMaxUb, preLoopSumUb, firstLoopSumUb, pScaleSubLoop0Ub, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
             tailN1, tailN2, pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, divValue, pltN, m, pseStride, slopes,
             posShift, scale, dScaleQK, minValue, sinkValue, pScale);
     }
