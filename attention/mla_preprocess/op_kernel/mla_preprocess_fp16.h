@@ -17,7 +17,7 @@
 #define MLA_PREPROCESS_FP16_H
 
 #include "lib/matmul_intf.h"
-#include "mla_common.h"
+#include "mla_preprocess_mla_common.h"
 #include "mla_iterator.h"
 #include "mla_mem.h"
 #include "mla_mma.h"
@@ -93,13 +93,14 @@ constexpr uint64_t CONST_64 = 64;
 constexpr uint64_t CONST_128 = 128;
 
 constexpr uint64_t BLOCK_SIZE_INT8 = 32;
-}
+} // namespace
 
 template <typename T, bool WITH_BETA, bool FastComputeMode = false>
-class Quant
-{
+class Quant {
 public:
-    __aicore__ inline Quant() {}
+    __aicore__ inline Quant()
+    {
+    }
 
     __aicore__ inline void Init(AscendC::GlobalTensor<T> quantScaleGmTensor,
                                 AscendC::GlobalTensor<int8_t> quantOffsetGmTensor,
@@ -131,13 +132,11 @@ public:
             (num_col_ - input_stride_ + REPEAT_TIME_64 - 1) / REPEAT_TIME_64 * REPEAT_TIME_64;
     }
 
-    __aicore__ inline void Launch(const AscendC::LocalTensor<int8_t> &dstTensor,
-                                  const AscendC::LocalTensor<T> &srcTensor, const AscendC::LocalTensor<T> &gammaTensor,
-                                  const AscendC::LocalTensor<T> &betaTensor,
-                                  const AscendC::LocalTensor<T> &quantScaleTensor,
-                                  const AscendC::LocalTensor<int8_t> &quantOffsetTensor,
-                                  const AscendC::LocalTensor<float> &res1Tensor,
-                                  const AscendC::LocalTensor<float> &res3Tensor)
+    __aicore__ inline void
+    Launch(const AscendC::LocalTensor<int8_t> &dstTensor, const AscendC::LocalTensor<T> &srcTensor,
+           const AscendC::LocalTensor<T> &gammaTensor, const AscendC::LocalTensor<T> &betaTensor,
+           const AscendC::LocalTensor<T> &quantScaleTensor, const AscendC::LocalTensor<int8_t> &quantOffsetTensor,
+           const AscendC::LocalTensor<float> &res1Tensor, const AscendC::LocalTensor<float> &res3Tensor)
     {
         this->dstTensor = dstTensor;
         this->srcTensor = srcTensor;
@@ -150,20 +149,20 @@ public:
 
         SET_FLAG(MTE2, V, EVENT_ID1);
         AscendC::DataCopy(quantScaleTensor, quantScaleGmTensor,
-                          AscendC::DataCopyParams(1, 1, 0, 0));  // 7168 * 2 + 7168 * 2 + 32
+                          AscendC::DataCopyParams(1, 1, 0, 0)); // 7168 * 2 + 7168 * 2 + 32
         AscendC::DataCopy(quantOffsetTensor, quantOffsetGmTensor,
-                          AscendC::DataCopyParams(1, 1, 0, 0));  // 7168 * 2 + 7168 * 2 + 64
+                          AscendC::DataCopyParams(1, 1, 0, 0)); // 7168 * 2 + 7168 * 2 + 64
         SET_FLAG(MTE2, S, EVENT_ID0);
 
         uint64_t pid = 0;
         SET_FLAG(MTE3, MTE2, EVENT_ID0);
         while (pid < row_work_) {
-            uint64_t offset = pid * num_col_;  // + offset
+            uint64_t offset = pid * num_col_; // + offset
             uint64_t outOffset = pid * (num_col_ - input_stride_);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
             if (pid > 0) {
                 AscendC::DataCopy(srcTensor, inputGmTensor[gm_offset_ + offset],
-                                  AscendC::DataCopyParams(1, num_col_ / BLOCK_SIZE_16, 0, 0));  // 7168 * 2
+                                  AscendC::DataCopyParams(1, num_col_ / BLOCK_SIZE_16, 0, 0)); // 7168 * 2
                 SET_FLAG(MTE2, V, EVENT_ID0);
             }
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -225,7 +224,7 @@ private:
     uint32_t row_tail_{0};
     uint64_t gm_offset_{0};
     uint64_t gm_out_offset_{0};
-    float avg_factor_{1.0};  // 1/num_col_
+    float avg_factor_{1.0}; // 1/num_col_
     float input_scale_{1.0};
     float input_offset_{0};
     int32_t input_stride_{0};
@@ -244,7 +243,8 @@ private:
     uint32_t tail_copy_{0};
 };
 
-template <typename QkDtype, typename CosDtype, typename QOutDtype, int8_t CacheMode> class RopeFp16 {
+template <typename QkDtype, typename CosDtype, typename QOutDtype, int8_t CacheMode>
+class RopeFp16 {
 public:
     __aicore__ inline RopeFp16() : blockIdx_(AscendC::GetBlockIdx())
     {
@@ -305,10 +305,9 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (blockIdx_ >= realCore)
-        {
+        if (blockIdx_ >= realCore) {
             return;
-        }   
+        }
         uint64_t startCoreLineIndex = this->blockIdx_ * this->nlCoreRun; // 当前核处理head起始位置
         ExpandNeg(negLocal, this->maxNPerLoopForUb);
         // 遍历处理每轮数据
@@ -515,7 +514,8 @@ __aicore__ inline void ReduceSumCustom(const AscendC::LocalTensor<float> &dst_lo
 #endif
 }
 
-template <typename T, bool WITH_BETA, bool FastComputeMode = false, bool NEED_Q_DOWN = false> class RmsNormQuant {
+template <typename T, bool WITH_BETA, bool FastComputeMode = false, bool NEED_Q_DOWN = false>
+class RmsNormQuant {
 public:
     __aicore__ inline RmsNormQuant()
     {
@@ -526,7 +526,8 @@ public:
                                 AscendC::GlobalTensor<int8_t> quantOffsetGmTensor,
                                 AscendC::GlobalTensor<T> inputGmTensor, AscendC::GlobalTensor<int8_t> outputGmTensor,
                                 uint32_t stride, uint32_t num_col, float avg_factor, uint64_t gm_offset,
-                                uint64_t gm_out_offset, uint32_t row_work_, const MlaTilingData &mlaParams_, AscendC::GlobalTensor<T> &qDownGmTensor)
+                                uint64_t gm_out_offset, uint32_t row_work_, const MlaTilingData &mlaParams_,
+                                AscendC::GlobalTensor<T> &qDownGmTensor)
     {
         this->gammaGmTensor = gammaGmTensor;
         this->betaGmTensor = betaGmTensor;
@@ -604,10 +605,10 @@ public:
         this->betaTensor = betaTensor;
         this->fp32_xy = res1Tensor;
         this->buf = res3Tensor;
-        AscendC::LocalTensor<float> g = buf[OFFSET_GAMMA * num_col_align_withStride_fp32];        // 0
-        AscendC::LocalTensor<float> sqx = buf[OFFSET_GAMMA * num_col_align_withStride_fp32];      // 0
-        AscendC::LocalTensor<float> sum = buf[OFFSET_GAMMA * num_col_align_withStride_fp32];        // 0
-        AscendC::LocalTensor<float> work = buf[OFFSET_SQX * num_col_align_withStride_fp32];     // 1
+        AscendC::LocalTensor<float> g = buf[OFFSET_GAMMA * num_col_align_withStride_fp32];   // 0
+        AscendC::LocalTensor<float> sqx = buf[OFFSET_GAMMA * num_col_align_withStride_fp32]; // 0
+        AscendC::LocalTensor<float> sum = buf[OFFSET_GAMMA * num_col_align_withStride_fp32]; // 0
+        AscendC::LocalTensor<float> work = buf[OFFSET_SQX * num_col_align_withStride_fp32];  // 1
 
         AscendC::DataCopy(srcTensor, inputGmTensor[gm_offset_],
                           AscendC::DataCopyParams(1, num_col_ / BLOCK_SIZE_16, 0, 0));
@@ -666,8 +667,8 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
 
             Cast(buf[OFFSET_GAMMA * num_col_align_withStride_fp32], gammaTensor, AscendC::RoundMode::CAST_NONE,
-                    REPEAT_TIME_64, num_col_align_withStride_fp32 / REPEAT_TIME_64,
-                    {1, 1, AscendC::DEFAULT_REPEAT_STRIDE, AscendC::DEFAULT_REPEAT_STRIDE / OFFSET_SUM});
+                 REPEAT_TIME_64, num_col_align_withStride_fp32 / REPEAT_TIME_64,
+                 {1, 1, AscendC::DEFAULT_REPEAT_STRIDE, AscendC::DEFAULT_REPEAT_STRIDE / OFFSET_SUM});
             AscendC::PipeBarrier<PIPE_V>();
             if (pid == 0) {
                 WAIT_FLAG(MTE2, S, EVENT_ID0);
@@ -690,14 +691,15 @@ public:
                      AscendC::DEFAULT_REPEAT_STRIDE});
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            if constexpr (NEED_Q_DOWN){
-                AscendC::LocalTensor<T> q_down = buf[OFFSET_Q_DOWN * num_col_align_withStride_fp32].ReinterpretCast<T>();
+            if constexpr (NEED_Q_DOWN) {
+                AscendC::LocalTensor<T> q_down =
+                    buf[OFFSET_Q_DOWN * num_col_align_withStride_fp32].ReinterpretCast<T>();
                 AscendC::Cast(q_down, fp32_xy, AscendC::RoundMode::CAST_RINT, num_col_align_withStride_fp32);
                 SET_FLAG(V, MTE3, EVENT_ID0);
                 WAIT_FLAG(V, MTE3, EVENT_ID0);
 
                 AscendC::DataCopy(qDownGmTensor[gm_out_offset_ + outOffset], q_down,
-                            AscendC::DataCopyParams(1, (num_col_ - input_stride_) / BLOCK_SIZE_16, 0, 0));
+                                  AscendC::DataCopyParams(1, (num_col_ - input_stride_) / BLOCK_SIZE_16, 0, 0));
                 SET_FLAG(MTE3, V, EVENT_ID0);
                 WAIT_FLAG(MTE3, V, EVENT_ID0);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -711,10 +713,11 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::LocalTensor<half> tmpfp16 =
-                buf.ReinterpretCast<half>()[OFFSET_GAMMA * num_col_align_withStride_fp32 * 2]; // 2: half类型每个元素2字节
+                buf.ReinterpretCast<half>()[OFFSET_GAMMA * num_col_align_withStride_fp32 *
+                                            2]; // 2: half类型每个元素2字节
             CastFrom32To16(tmpfp16, fp32_xy, num_col_align_withStride_fp32);
             AscendC::PipeBarrier<PIPE_V>();
-            
+
             CastFromF16ToI8(dstTensor, tmpfp16, quantMin_, num_col_align_withStride_fp16);
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
@@ -782,17 +785,20 @@ __aicore__ inline uint64_t Max(const uint64_t a, const uint64_t b)
     return a > b ? a : b;
 }
 
-template <uint64_t Base> __aicore__ inline uint64_t RoundUp(const uint64_t val)
+template <uint64_t Base>
+__aicore__ inline uint64_t RoundUp(const uint64_t val)
 {
     return (val + Base - 1) / Base * Base;
 }
 
-template <uint64_t Divisor> __aicore__ inline uint64_t CeilDiv(const uint64_t dividend)
+template <uint64_t Divisor>
+__aicore__ inline uint64_t CeilDiv(const uint64_t dividend)
 {
     return (dividend + Divisor - 1) / Divisor;
 }
 
-template <typename InDtype, typename ScaleDtype> class EinSumQuant {
+template <typename InDtype, typename ScaleDtype>
+class EinSumQuant {
 public:
     __aicore__ explicit EinSumQuant()
     {
@@ -1657,9 +1663,11 @@ PpMatmulW8a8<transA, transB, withBias, swizzleDir, formatA, formatB>::GetOffsetB
         }
     } else {
         if constexpr (transB) {
-            return batch_idx * RoundUp<BLOCK_SIZE_16>(n) * RoundUp<BLOCK_SIZE_32>(k) + k_idx * k0 * RoundUp<BLOCK_SIZE_16>(n) + n_idx * n0 * CONST_32;
+            return batch_idx * RoundUp<BLOCK_SIZE_16>(n) * RoundUp<BLOCK_SIZE_32>(k) +
+                   k_idx * k0 * RoundUp<BLOCK_SIZE_16>(n) + n_idx * n0 * CONST_32;
         } else {
-            return batch_idx * RoundUp<BLOCK_SIZE_16>(k) * RoundUp<BLOCK_SIZE_32>(n) + n_idx * n0 * RoundUp<BLOCK_SIZE_16>(k) + k_idx * k0 * CONST_32;
+            return batch_idx * RoundUp<BLOCK_SIZE_16>(k) * RoundUp<BLOCK_SIZE_32>(n) +
+                   n_idx * n0 * RoundUp<BLOCK_SIZE_16>(k) + k_idx * k0 * CONST_32;
         }
     }
 }
@@ -1723,22 +1731,22 @@ __aicore__ inline void PpMatmulW8a8<transA, transB, withBias, swizzleDir, format
         }
     } else {
         if constexpr (transB) {
-            CopyGmToCbuf<formatB, DataFormat::NZ>(dstTensor,       // dst
-                                                  srcTensor,       // src
-                                                  n_actual,        // nTileActual
-                                                  n_round,         // nTileCeil
+            CopyGmToCbuf<formatB, DataFormat::NZ>(dstTensor,                  // dst
+                                                  srcTensor,                  // src
+                                                  n_actual,                   // nTileActual
+                                                  n_round,                    // nTileCeil
                                                   RoundUp<BLOCK_SIZE_16>(n),  // nVal
-                                                  k_actual,        // dTileActual
-                                                  k_round,         // dTileCeil
+                                                  k_actual,                   // dTileActual
+                                                  k_round,                    // dTileCeil
                                                   RoundUp<BLOCK_SIZE_32>(k)); // dVal
         } else {
-            CopyGmToCbuf<formatB, DataFormat::NZ>(dstTensor,       // dst
-                                                  srcTensor,       // src
-                                                  k_actual,        // nTileActual
-                                                  k_round,         // nTileCeil
+            CopyGmToCbuf<formatB, DataFormat::NZ>(dstTensor,                  // dst
+                                                  srcTensor,                  // src
+                                                  k_actual,                   // nTileActual
+                                                  k_round,                    // nTileCeil
                                                   RoundUp<BLOCK_SIZE_16>(k),  // nVal
-                                                  n_actual,        // dTileActual
-                                                  n_round,         // dTileCeil
+                                                  n_actual,                   // dTileActual
+                                                  n_round,                    // dTileCeil
                                                   RoundUp<BLOCK_SIZE_32>(n)); // dVal
         }
     }
@@ -2212,7 +2220,7 @@ public:
         qGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ qOutDtype *>(qGm));
         qGmTensor2.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(qGm2));
         bias2gmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(bias2Gm));
-        if(q_down_out_flag){
+        if (q_down_out_flag) {
             qDownGmTensor.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(qDownGm));
         }
 
@@ -2241,27 +2249,27 @@ public:
         }
         float avg_factor = float(1.0) / num_col_1;
         if (mlaParams.doRmsNorm) {
-            rmsNormQuant1.Init(gamma1GmTensor, beta1GmTensor, quantScale1GmTensor, quantOffset1GmTensor,
-                            hiddenStateGmTensor, s1GmTensor, 0, num_col_1, avg_factor,
-                            vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1,
-                            vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1, row_work_, mlaParams, qDownGmTensor); 
+            rmsNormQuant1.Init(
+                gamma1GmTensor, beta1GmTensor, quantScale1GmTensor, quantOffset1GmTensor, hiddenStateGmTensor,
+                s1GmTensor, 0, num_col_1, avg_factor, vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1,
+                vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1, row_work_, mlaParams, qDownGmTensor);
         } else {
             quant.Init(quantScale1GmTensor, quantOffset1GmTensor, hiddenStateGmTensor, s1GmTensor, 0, num_col_1,
                        avg_factor, vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1,
                        vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_1, row_work_, mlaParams);
         }
         if (q_down_out_flag) {
-            rmsNormQuant2QDownOut.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor, s3GmTensor,
-                                       s1GmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
+            rmsNormQuant2QDownOut.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
+                                       s3GmTensor, s1GmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
                                        vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                                       vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
-                                       row_work_, mlaParams, qDownGmTensor);
+                                       vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_,
+                                       mlaParams, qDownGmTensor);
         } else {
             rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor, s3GmTensor,
                                s1GmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
                                vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                               vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
-                               row_work_, mlaParams);
+                               vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_,
+                               mlaParams);
         }
         ropeFp16.RopeInit(s2GmTensor, cos2GmTensor, sin2GmTensor, qGmTensor, qGmTensor2, mlaParams);
         einSumQuant.Init(s1Gm, gmQnopeScale, qGm, mlaParams);
@@ -2512,7 +2520,7 @@ private:
 #endif
 
 #ifdef __DAV_C220_VEC__
-    Quant<half, true, false> quant;    
+    Quant<half, true, false> quant;
     RmsNormQuant<half, true, false, false> rmsNormQuant1;
     RmsNormQuant<half, true, false, false> rmsNormQuant2;
     RmsNormQuant<half, true, false, true> rmsNormQuant2QDownOut;
@@ -2597,11 +2605,11 @@ __aicore__ inline void MLAOperation<cacheMode, weightFormat1, weightFormat2, wei
             mm1_out_size_ * 2 + split_size_two_ * 2 + split_size_two_ * 2 + 64 + num_col_align_f32 * 4 +
             BUF_FACTOR * num_col_align_f32 * 4 + 32);
         if (q_down_out_flag) {
-            rmsNormQuant2QDownOut.Launch(output_tensor, input_tensor, gamma_tensor, beta_tensor, scale_tensor, offset_tensor,
-                             res1_tensor, res3_tensor);
+            rmsNormQuant2QDownOut.Launch(output_tensor, input_tensor, gamma_tensor, beta_tensor, scale_tensor,
+                                         offset_tensor, res1_tensor, res3_tensor);
         } else {
             rmsNormQuant2.Launch(output_tensor, input_tensor, gamma_tensor, beta_tensor, scale_tensor, offset_tensor,
-                             res1_tensor, res3_tensor);
+                                 res1_tensor, res3_tensor);
         }
     }
     FftsCrossCoreSync<PIPE_MTE3, 0>(MM2);
@@ -2619,7 +2627,7 @@ __aicore__ inline void MLAOperation<cacheMode, weightFormat1, weightFormat2, wei
             mm1_out_size_ * 2 + SPLIT_RMSNRORM_SIZE_ONE * 2 + SPLIT_RMSNRORM_SIZE_TWO * 4);
         int32_t rms3_ub_offset =
             mm1_out_size_ * 2 + SPLIT_RMSNRORM_SIZE_ONE * 2 + SPLIT_RMSNRORM_SIZE_TWO * 4 + 4096 * 32;
-            // 4096 * 32为slotMapping大小
+        // 4096 * 32为slotMapping大小
         AscendC::LocalTensor<float> tmp32_tensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(rms3_ub_offset);
 
         int32_t out_ub_offset = mm1_out_size_ * 2 + SPLIT_RMSNRORM_SIZE_ONE * 2 + SPLIT_RMSNRORM_SIZE_TWO * 4 +

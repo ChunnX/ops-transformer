@@ -18,7 +18,7 @@
 #define _CUBE_OP_H_
 
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "flash_attention_score_grad_common_header.h"
 
 using namespace AscendC;
 
@@ -209,7 +209,7 @@ private:
     LocalTensor<TYPE> l1_b1_pong_tensor;
     LocalTensor<TYPE> l1_b2_ping_tensor;
     LocalTensor<TYPE> l1_b2_pong_tensor;
-    
+
     // L0 tensor
     LocalTensor<TYPE> l0_a_ping_tensor;
     LocalTensor<TYPE> l0_a_pong_tensor;
@@ -223,7 +223,7 @@ private:
     LocalTensor<float> l0_c1_pong_tensor;
     LocalTensor<float> l0_c2_ping_tensor;
     LocalTensor<float> l0_c2_pong_tensor;
-    
+
     // ping pong flag
     uint32_t ping_pong_flag_l1_a_ = 0;
     uint32_t ping_pong_flag_l1_b_ = 0;
@@ -241,8 +241,8 @@ private:
 };
 
 template <typename TYPE>
-__aicore__ inline void
-CubeOp<TYPE>::Init(TPipe *pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint64_t headDimIn, uint64_t sparseMode)
+__aicore__ inline void CubeOp<TYPE>::Init(TPipe *pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint64_t headDimIn,
+                                          uint64_t sparseMode)
 {
     pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
@@ -326,7 +326,8 @@ CubeOp<TYPE>::Cube3Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ 
 
 template <typename TYPE>
 __aicore__ inline __attribute__((always_inline)) void
-CubeOp<TYPE>::Cube23Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right1, __gm__ TYPE *right2, __gm__ float *out1, __gm__ float *out2)
+CubeOp<TYPE>::Cube23Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right1, __gm__ TYPE *right2,
+                            __gm__ float *out1, __gm__ float *out2)
 {
     pingPongIdx = addrs.taskId % 2;
     globalBlockOffset = GetBlockIdx() * BLOCK_WORKSPACE * 2 + pingPongIdx * BLOCK_WORKSPACE;

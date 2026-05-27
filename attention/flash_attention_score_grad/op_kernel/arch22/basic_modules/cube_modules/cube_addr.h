@@ -14,7 +14,7 @@
  */
 #ifndef _CUBE_ADDR_H_
 #define _CUBE_ADDR_H_
-#include "../common_header.h"
+#include "../flash_attention_score_grad_common_header.h"
 
 namespace CUBE_ADDR {
 class CubeAddr {
@@ -285,7 +285,8 @@ public:
 
                                 record_cube3(s1Idx, s2Idx, kx, ROW_4, kx * ROW_4 - have_ur_block, ur, lastBatchQSum,
                                              lastBatchKSum);
-                                record(s1Idx, s2Idx, kx, ROW_2, kx * ROW_2 - have_ur_block, ur, lastBatchQSum, lastBatchKSum);
+                                record(s1Idx, s2Idx, kx, ROW_2, kx * ROW_2 - have_ur_block, ur, lastBatchQSum,
+                                       lastBatchKSum);
                                 num += kx * ROW_2 - have_ur_block;
                                 record(s1Idx + ROW_2, s2Idx, kx, ROW_2, kx * ROW_2, true, lastBatchQSum, lastBatchKSum);
                                 num += kx * ROW_2;
@@ -323,10 +324,10 @@ public:
                         lastBatchQSum = getTotalLen(batchIdx, seqLenQ);
                         lastBatchKSum = getTotalLen(batchIdx, seqLenK);
                         batchIdx += 1;
-                        if(batchIdx < batchNum){
+                        if (batchIdx < batchNum) {
                             s1 = getSeqLen(batchIdx, seqLenQ);
                             s2 = getSeqLen(batchIdx, seqLenK);
-                        }else{
+                        } else {
                             s1 = 0;
                             s2 = 0;
                         }

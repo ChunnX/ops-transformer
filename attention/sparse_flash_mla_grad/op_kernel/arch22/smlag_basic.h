@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #include "basic_modules/cube_op.h"
 #include "basic_modules/vec_op.h"
-#include "basic_modules/common_header.h"
+#include "basic_modules/sparse_flash_mla_grad_common_header.h"
 #include "post.h"
 
 namespace SMLAG_BASIC {
@@ -33,16 +33,14 @@ class SparseFlashMlaGrad {
 public:
     __aicore__ inline SparseFlashMlaGrad(){};
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, 
-                                   GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
-                                   GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, 
-                                   GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
+                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR cu_seqlens_q,
+                                   GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq,
+                                   GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace,
+                                   const TILING_CLASS *__restrict tilingData);
 
 private:
-    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, 
-                                const GM_ADDR cu_seqlens_q, 
-                                const GM_ADDR cu_seqlens_ori_kv, 
-                                const GM_ADDR cu_seqlens_cmp_kv);
+    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, const GM_ADDR cu_seqlens_q,
+                                const GM_ADDR cu_seqlens_ori_kv, const GM_ADDR cu_seqlens_cmp_kv);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
     __aicore__ inline void UpdateGmOffset(int64_t task, int32_t loop);
@@ -141,9 +139,8 @@ private:
 
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__restrict tilingData,
-                                                           const GM_ADDR cu_seqlens_q, 
-                                                           const GM_ADDR cu_seqlens_ori_kv, 
-                                                           const GM_ADDR cu_seqlens_cmp_kv)
+                                                        const GM_ADDR cu_seqlens_q, const GM_ADDR cu_seqlens_ori_kv,
+                                                        const GM_ADDR cu_seqlens_cmp_kv)
 {
     dimB = tilingData->opInfo.B;
     dimS1 = tilingData->opInfo.S1;
@@ -192,10 +189,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
-    GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
-    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+__aicore__ inline void
+SparseFlashMlaGrad<SMLAGT>::Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
+                                    GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR cu_seqlens_q,
+                                    GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR sinks, GM_ADDR dq,
+                                    GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR workspace,
+                                    const TILING_CLASS *__restrict tilingData)
 {
     Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv);
 
@@ -241,8 +240,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
     if ASCEND_IS_AIV {
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
-        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, workspace, tilingData, &pipeVec);
+        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cu_seqlens_q,
+                   cu_seqlens_ori_kv, cu_seqlens_cmp_kv, workspace, tilingData, &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -342,7 +341,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
         runInfo[mmPingPongIdx].curS3 = curS3;
     }
     runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
-    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : 
+    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk :
                                                        cmpKeyGmOffset + blkCntOffset * dimN2 * dimDqk;
     runInfo[mmPingPongIdx].task = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
@@ -352,9 +351,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     runInfo[mmPingPongIdx].mm12GmOffset = mm12GmOffset;
     runInfo[mmPingPongIdx].mm345GmOffset = mm345GmOffset;
     runInfo[mmPingPongIdx].dqOutGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].actualSelCntOffset = runInfo[mmPingPongIdx].isOri ? 
-                                                (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset : oriSelectedCount - blkCntOffset) :
-                                                (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset : cmpSelectedCount - blkCntOffset);
+    runInfo[mmPingPongIdx].actualSelCntOffset =
+        runInfo[mmPingPongIdx].isOri ?
+            (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset :
+                                                                      oriSelectedCount - blkCntOffset) :
+            (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset :
+                                                                      cmpSelectedCount - blkCntOffset);
     runInfo[mmPingPongIdx].lastBlockSize = 1;
     runInfo[mmPingPongIdx].isLastBasicBlock = false;
     runInfo[mmPingPongIdx].s1Index = s1Index;
@@ -409,7 +411,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         while (t1Idx >= curT1) {
             curT1 = ((__gm__ int32_t *)cu_seqlens_q)[++bIdx];
         }
-        
+
         t1Offset = ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
         t2Offset = ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx - 1];
         curS1 = ((__gm__ int32_t *)cu_seqlens_q)[bIdx] - ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
@@ -449,7 +451,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop)
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx,
+                                                                     int32_t &curS2Loop)
 {
     oriWinDiagOffset = curS2 - curS1;
     oriWinEnd = Min(s1Index + (curLoopS1Basic - 1) + oriWinRight + 1 + oriWinDiagOffset, curS2);
