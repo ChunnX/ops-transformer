@@ -25,6 +25,7 @@ is_full_core = 1
 core_num = 16 if not is_full_core else 32
 aic_core_num = core_num
 aiv_core_num = core_num * 2
+aiv_num = aiv_core_num
 # endregion
 
 # region 性能检测配置
@@ -286,7 +287,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, dstrank_id, group, world_size, max_bs, mode, aiv_core_num, comm_alg):
+    def forward(self, x, dstrank_id, group, world_size, max_bs, mode, aiv_num, comm_alg):
         output = npu_ops_transformer.ops.npu_bandwidth_test(
             x=x,
             dstrank_id=dstrank_id,
@@ -294,7 +295,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
             world_size=world_size,
             max_bs=max_bs,
             mode=mode,
-            aiv_core_num=aiv_core_num
+            aiv_num=aiv_num,
             comm_alg=comm_alg
         )
         return output
@@ -484,7 +485,7 @@ def run_bandwidth_test_npu(queue, rank, x, dstrank_id, is_perf_mode=False, test_
             'world_size': test_world_size,
             'max_bs': test_max_bs,
             'mode': test_mode,
-            'aiv_core_num': aiv_core_num,
+            'aiv_num': aiv_num,
             'comm_alg': comm_alg
         }
 
