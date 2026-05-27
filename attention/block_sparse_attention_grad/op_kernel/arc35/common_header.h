@@ -13,12 +13,16 @@ namespace BSA_ARC35 {
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 
-static constexpr int32_t C0_SIZE = 16;
-static constexpr int32_t FLAG_C1_V1 = 0;     // cube(qk) -> vec(softmax)
-static constexpr int32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
-static constexpr int32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
-static constexpr int32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
-static constexpr int32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t BSND = 0;
+static constexpr uint32_t BNSD = 1;
+static constexpr uint32_t TND = 2;
+
+static constexpr uint32_t C0_SIZE = 16;
+static constexpr uint32_t FLAG_C1_V1 = 0;     // cube(qk) -> vec(softmax)
+static constexpr uint32_t FLAG_C2_V2 = 1;     // cube(dyV) -> vec(softmaxGrad)
+static constexpr uint32_t FLAG_V1_C3 = 2;     // vec(softmax) -> cube(dv)
+static constexpr uint32_t FLAG_V2_C45 = 3;    // vec(softmaxGrad) -> cube(dq\dk)
+static constexpr uint32_t FLAG_CUBE_POST = 4; // vec(softmaxGrad) -> cube(dq\dk)
 
 struct RunTimeInfo {
     int32_t taskId{0};
@@ -34,7 +38,7 @@ struct RunTimeInfo {
     uint64_t queryGmOffset{0}; // query gm offset
     uint64_t keyGmOffset{0};   // key gm offset
     uint64_t lseGmOffset{0};   // lse gm offset
-    int32_t loop_finish{0};    // 是否遍历完所有任务
+    int32_t need_compute{0};   // 是否存在任务需要计算
 };
 
 template <typename T>

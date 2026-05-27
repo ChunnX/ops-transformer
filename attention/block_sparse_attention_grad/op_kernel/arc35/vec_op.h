@@ -12,9 +12,20 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
+struct EvenCoreInfo {
+    uint32_t data_size{0};        // 总共需要处理的元素个数
+    uint32_t start_idx{0};        // 每个core处理的起始idx
+    uint32_t len{0};              // 每个core处理的元素个数
+    uint32_t loop_num{0};         // 每个core需要循环的次数
+    uint32_t max_process_size{0}; // 每个core单次循环最大处理的元素个数
+    uint32_t align_tail{0};       // 每个core处理的对齐尾块, tail = align_tail + pad_tail
+    uint32_t pad_tail{0};         // 每个core处理的pad尾块, tail = align_tail + pad_tail
+};
+
 template <typename BSA_TYPE>
 class VecOp {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
 
@@ -50,6 +61,7 @@ private:
     static constexpr uint32_t C0_SIZE = 16;
     static constexpr uint32_t BLOCK_FP32 = BLOCK_SIZE / sizeof(float);
     static constexpr uint32_t BLOCK_INPUT = BLOCK_SIZE / sizeof(INPUT_TYPE);
+    constexpr static uint32_t PRE_TILE_LEN = 60 * 1024;  // pre一次处理元素的个数
     constexpr static uint32_t POST_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
 
 public:
@@ -81,7 +93,7 @@ public:
         // gm_tensor
         lse_gm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         // local_tensor
-        lse_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m, ub_offset);
+        lse_tensor_ = ub_buffer.GetWithOffset<float>(vec_base_m * BLOCK_FP32, ub_offset);
         ub_offset += vec_base_m * BLOCK_FP32 * sizeof(float);
 
         softmax_res_tensor_ = ub_buffer.GetWithOffset<INPUT_TYPE>(vec_base_m * vec_base_n, ub_offset);
@@ -90,38 +102,38 @@ public:
         ub_offset += vec_base_m * vec_base_n * sizeof(INPUT_TYPE);
     }
 
+    __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
+                                      const GlobalTensor<float> &dv_workspace, const TILING_CLASS *tilingData,
+                                      TBuf<TPosition::VECCALC> &ub_buffer)
+    {
+        constexpr static uint32_t PRE_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
+        EvenCoreInfo info;
+        vec_in_ping_ = ub_buffer.GetWithOffset<float>(PRE_TILE_LEN, 0);
+        Duplicate(vec_in_ping_, (float)0.0, PRE_TILE_LEN);
+        SET_FLAG(V, MTE3, EVENT_ID0);
+        WAIT_FLAG(V, MTE3, EVENT_ID0);
+
+        ComputeEvenCoreInfo(info, tilingData->dqSize, PRE_TILE_LEN);
+        ComputeVecPre(dq_workspace, vec_in_ping_, info);
+
+        ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
+        ComputeVecPre(dk_workspace, vec_in_ping_, info);
+        ComputeVecPre(dv_workspace, vec_in_ping_, info);
+    }
+
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
                                           const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
-        CrossCoreWaitFlag<4, PIPE_V>(FLAG_C1_V1);
         ComputeSoftmax(dst_l1_tensor, src_ub_tensor, runTimeInfo);
-        CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
     }
 
     __aicore__ inline void SendVecSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
+                                              const LocalTensor<float> &softmax_ub_tensor,
                                               const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
-        // int32_t mLoop = runTimeInfo->s1Loop;
-        // int32_t nLoop = runTimeInfo->s2Loop;
-        // int32_t mTail = runTimeInfo->s1Tail;
-        // int32_t nTail = runTimeInfo->s2Tail;
-
-        // for (int32_t nIdx = 0; nIdx < nLoop; nIdx++) {
-        //     int32_t nProcess = (nIdx == nLoop - 1) ? nTail : 128;
-        //     int32_t n_process_align = RoundUp(nProcess, 16);
-
-        //     for (int32_t mIdx = 0; mIdx < mLoop; mIdx++) {
-        //         int32_t mProcess = (mIdx == mLoop - 1) ? mTail : 128;
-        //         int32_t mProcessAlign = RoundUp(mProcess, 16);
-
-        //         CrossCoreWaitFlag<2, PIPE_FIX>(FLAG_C1_V1);
-        //         ping_pong_flag_inner = 1 - ping_pong_flag_inner;
-        //     }
-
-        //     ping_pong_flag_outer = 1 - ping_pong_flag_outer;
-        // }
+        // 计算时softmaxGrad时softmax必然计算完
+        ComputeSoftmaxGrad(dst_l1_tensor, src_ub_tensor, runTimeInfo);
     }
-
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
                                        const GlobalTensor<INPUT_TYPE> &dk_out_gm,
@@ -141,7 +153,9 @@ public:
         vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
         ub_offset = POST_TILE_LEN * sizeof(INPUT_TYPE);
 
-        ComputeVecPost<false>(dv_out_gm, dv_workspace, tilingData->dkSize);
+        EvenCoreInfo info;
+        ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
+        ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
     }
 
 private:
@@ -154,19 +168,19 @@ private:
        * dtype:       float
        */
         int32_t m_process = runTimeInfo.s1Len;
-        int32_t sub_m_process = runTimeInfo.s1LenAlign / 2;
+        int32_t m_process_align = runTimeInfo.s1LenAlign;
         int32_t n_process_align = runTimeInfo.s2LenAlign;
+        int32_t sub_m_process = m_process_align / 2;
         int32_t data_size = sub_m_process * n_process_align;
         int32_t sub_real_m_process =
             v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
         uint64_t lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process * q_head_num_;
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
-        printf("lse_offset: %d\n", lse_offset);
 
         Muls(src_ub_tensor, src_ub_tensor, softmax_scale_, data_size);
         PipeBarrier<PIPE_V>();
 
-        CopyInLSE(lse_tensor_, lse_gm_[lse_offset], sub_real_m_process, 0);
+        CopyInLSE(lse_tensor_, lse_gm_[lse_offset], sub_real_m_process);
         SET_FLAG(MTE2, V, EVENT_ID0);
         WAIT_FLAG(MTE2, V, EVENT_ID0);
 
@@ -178,7 +192,6 @@ private:
 
         Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
         PipeBarrier<PIPE_V>();
-        DumpTensor(src_ub_tensor, 0, 32);
 
         ND2NZ(softmax_res_nz_tensor_, softmax_res_tensor_, sub_m_process, n_process_align);
         PipeBarrier<PIPE_V>();
@@ -189,12 +202,120 @@ private:
         dataCopyParams.blockCount = n_process_align / C0_SIZE;
         dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (m_process - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
         DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
     }
 
+    __aicore__ inline void ComputeSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
+                                              const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
+    {
+        /*
+         * function: Compute softmaxGrad
+         * input shape：[s1LenAlign / 2, s2LenAlign]
+         * out shape:   [s1LenAlign / 2, s2LenAlign]
+         * dtype:       float
+         */
+
+        // do something..
+    }
+
+    __aicore__ inline void ComputeVecPre(const GlobalTensor<float> &dst_tensor, const LocalTensor<float> &src_tensor,
+                                         const EvenCoreInfo &info)
+    {
+        if (info.start_idx >= info.data_size) {
+            return;
+        }
+        uint32_t process_size = info.max_process_size;
+        for (uint32_t i = 0; i < info.loop_num; i++) {
+            if (unlikely(i == info.loop_num - 1)) {
+                process_size = info.align_tail;
+                if (process_size == 0) {
+                    break;
+                }
+            }
+
+            uint64_t gm_offset = info.start_idx + i * info.max_process_size;
+            DataCopy(dst_tensor[gm_offset], src_tensor, process_size);
+        }
+
+        if (info.pad_tail > 0) {
+            uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
+            DataCopyParams copyParam;
+            copyParam.blockCount = 1;
+            copyParam.blockLen = info.pad_tail * sizeof(float);
+            copyParam.srcStride = 0;
+            copyParam.dstStride = 0;
+            DataCopyPad(dst_tensor[gm_offset], src_tensor, copyParam);
+        }
+    }
+
+    template <bool MULS>
+    __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
+                                          const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info)
+    {
+        if (info.start_idx >= info.data_size) {
+            return;
+        }
+
+        LocalTensor<float> vecIn = vec_in_ping_;
+        LocalTensor<INPUT_TYPE> vecOut = vec_out_ping_;
+        uint32_t process_size = info.max_process_size;
+
+        for (uint32_t i = 0; i < info.loop_num; i++) {
+            if (unlikely(i == info.loop_num - 1)) {
+                process_size = info.align_tail;
+                if (process_size == 0) {
+                    break;
+                }
+            }
+            uint64_t gm_offset = info.start_idx + i * info.max_process_size;
+
+            DataCopy(vecIn, src_tensor[gm_offset], process_size);
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+
+            if constexpr (MULS) {
+                Muls(vecIn, vecIn, softmax_scale_, process_size);
+                PipeBarrier<PIPE_V>();
+            }
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, process_size);
+            PipeBarrier<PIPE_V>();
+
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            DataCopy(dst_tensor[gm_offset], vecOut, process_size);
+            SET_FLAG(MTE3, MTE2, EVENT_ID0);
+            WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        }
+
+        if (info.pad_tail > 0) {
+            uint64_t gm_offset = info.start_idx + (info.loop_num - 1) * info.max_process_size + info.align_tail;
+            uint32_t pad_tail_align = RoundUp<uint32_t>(info.pad_tail, 16);
+            DataCopyParams copyParam;
+            copyParam.blockCount = 1;
+            copyParam.blockLen = info.pad_tail * sizeof(float);
+            copyParam.srcStride = 0;
+            copyParam.dstStride = 0;
+            DataCopyPad(vecIn, src_tensor[gm_offset], copyParam, {false, 0, 0, 0});
+            SET_FLAG(MTE2, V, EVENT_ID0);
+            WAIT_FLAG(MTE2, V, EVENT_ID0);
+            if constexpr (MULS) {
+                Muls(vecIn, vecIn, softmax_scale_, pad_tail_align);
+                PipeBarrier<PIPE_V>();
+            }
+
+            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, pad_tail_align);
+            PipeBarrier<PIPE_V>();
+
+            SET_FLAG(V, MTE3, EVENT_ID0);
+            WAIT_FLAG(V, MTE3, EVENT_ID0);
+            copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
+            DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
+        }
+    }
+
     __aicore__ inline void CopyInLSE(const LocalTensor<float> &dstTensor, const GlobalTensor<float> &srcTensor,
-                                     const int32_t count, const int32_t srcStride)
+                                     const int32_t count)
     {
         /*
          * function: Copy lse from global memory to local memory
@@ -202,10 +323,18 @@ private:
          * out shape:   (s, 8)
          * dtype:       float
          */
+        uint32_t src_stride;
+        if constexpr (INPUT_LAYOUT == BSND) {
+            src_stride = 0;
+        } else if (INPUT_LAYOUT == BNSD) {
+            src_stride = 0;
+        } else if (INPUT_LAYOUT == TND) {
+            src_stride = (q_head_num_ - 1) * sizeof(float);
+        }
 
         DataCopyPad(dstTensor, srcTensor,
                     {static_cast<uint16_t>(count), static_cast<uint32_t>(1 * sizeof(float)),
-                     static_cast<uint32_t>(srcStride), 0, 0},
+                     static_cast<uint32_t>(src_stride), 0, 0},
                     {false, 0, 0, 0});
     }
 
@@ -215,9 +344,8 @@ private:
     {
         /*
          * function: dstTensor = src0Tensor - src1Tensor
-         * input shape：[m_align, n_align]
-         * out shape:   [m_align, n_align]
-         * dtype:       float
+         * input shape： src0Tensor[row, col], src1Tensor[row, 8]
+         * out shape:    [row, col]
          */
         for (uint32_t i = 0; i < row; i++) {
             float sub_value = src1Tensor.GetValue(i * BLOCK_FP32);
@@ -247,80 +375,28 @@ private:
         }
     }
 
-    template <bool MULS>
-    __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
-                                          const GlobalTensor<float> &src_tensor, uint64_t totalElem)
+
+    __aicore__ inline void ComputeEvenCoreInfo(EvenCoreInfo &info, const uint32_t data_size,
+                                               const uint32_t max_process_size)
     {
-        LocalTensor<float> vecIn = vec_in_ping_;
-        LocalTensor<INPUT_TYPE> vecOut = vec_out_ping_;
-        uint64_t perCoreElem = (totalElem + v_core_num_ - 1) / v_core_num_;
-        uint64_t coreStart = v_core_idx_ * perCoreElem;
-        uint64_t coreEnd = (coreStart + perCoreElem > totalElem) ? totalElem : (coreStart + perCoreElem);
-        uint32_t coreElem = coreEnd - coreStart;
-        if (coreStart >= totalElem) {
-            return;
-        }
-        uint32_t loop = CeilDiv<uint64_t>(coreElem, POST_TILE_LEN);
-        uint32_t process_size = POST_TILE_LEN;
-        uint32_t tail = coreElem % POST_TILE_LEN;
+        /*
+         * function: even process data_size
+         */
+        uint32_t per_core_size = CeilDiv<uint32_t>(data_size, v_core_num_);
+        info.start_idx = v_core_idx_ * per_core_size;
+        info.len = (info.start_idx + per_core_size > data_size) ? data_size - info.start_idx : per_core_size;
+        info.max_process_size = max_process_size;
+        info.data_size = data_size;
+        info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
+
+        uint32_t tail = info.len % max_process_size;
         // 由于DataCopyPad最多处理65535，因此tail部分分成align_tail和pad_tail计算
-        uint32_t pad_tail, align_tail;
         if (tail <= 65535) {
-            pad_tail = tail;
-            align_tail = 0;
+            info.align_tail = 0;
+            info.pad_tail = tail;
         } else {
-            align_tail = tail / 16 * 16;
-            pad_tail = tail - align_tail;
-        }
-
-        for (uint64_t i = 0; i < loop; i++) {
-            if (unlikely(i == loop - 1)) {
-                if (align_tail == 0) {
-                    break;
-                }
-                process_size = align_tail;
-            }
-            uint64_t gm_offset = coreStart + i * POST_TILE_LEN;
-
-            DataCopy(vecIn, src_tensor[gm_offset], process_size); // dataSize(fp32) align 32B
-            SET_FLAG(MTE2, V, EVENT_ID0);
-            WAIT_FLAG(MTE2, V, EVENT_ID0);
-
-            if constexpr (MULS) {
-                Muls(vecIn, vecIn, softmax_scale_, process_size);
-                PipeBarrier<PIPE_V>();
-            }
-            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, process_size);
-            PipeBarrier<PIPE_V>();
-
-            SET_FLAG(V, MTE3, EVENT_ID0);
-            WAIT_FLAG(V, MTE3, EVENT_ID0);
-            DataCopy(dst_tensor[gm_offset], vecOut, process_size);
-        }
-
-        if (pad_tail > 0) {
-            uint32_t pad_tail_align = RoundUp<uint32_t>(pad_tail, 16);
-            uint64_t gm_offset = coreStart + (loop - 1) * POST_TILE_LEN + align_tail;
-            DataCopyParams copyParam;
-            copyParam.blockCount = 1;
-            copyParam.blockLen = pad_tail * sizeof(float);
-            copyParam.srcStride = 0;
-            copyParam.dstStride = 0;
-            DataCopyPad(vecIn, src_tensor[gm_offset], copyParam, {false, 0, 0, 0});
-            SET_FLAG(MTE2, V, EVENT_ID0);
-            WAIT_FLAG(MTE2, V, EVENT_ID0);
-            if constexpr (MULS) {
-                Muls(vecIn, vecIn, softmax_scale_, pad_tail_align);
-                PipeBarrier<PIPE_V>();
-            }
-
-            Cast(vecOut, vecIn, AscendC::RoundMode::CAST_RINT, pad_tail_align);
-            PipeBarrier<PIPE_V>();
-
-            SET_FLAG(V, MTE3, EVENT_ID0);
-            WAIT_FLAG(V, MTE3, EVENT_ID0);
-            copyParam.blockLen = pad_tail * sizeof(INPUT_TYPE);
-            DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
+            info.align_tail = tail / 16 * 16;
+            info.pad_tail = tail - info.align_tail;
         }
     }
 };

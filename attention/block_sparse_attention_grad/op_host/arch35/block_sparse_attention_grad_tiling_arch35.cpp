@@ -11,6 +11,7 @@
 #include "../block_sparse_attention_grad_tiling.h"
 
 namespace optiling {
+namespace BSA_ARC35 {
 
 template <typename... Args>
 bool IsSameShape(Args... shapes)
@@ -60,12 +61,12 @@ public:
 
 private:
     const char *layout_;
+    ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
     static constexpr const char *BSH_STR = "BSH";
-    static constexpr const char *SBH_STR = "SBH";
-    static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *BSND_STR = "BSND";
+    static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *TND_STR = "TND";
 
 protected:
@@ -73,6 +74,11 @@ protected:
     {
         if (context_->GetDeterministic() == 1) {
             OP_LOGE(context_, "BlockSparseAttentionGrad not support Deterministic.");
+            return false;
+        }
+
+        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
+            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support DT_FLOAT16 and DT_BF16.");
             return false;
         }
 
@@ -85,6 +91,7 @@ protected:
         int32_t q_batch_num, q_group, q_head_num, q_seq_len, q_head_dim;
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
+        auto qInputDesc = context_->GetInputDesc(1);
         const gert::StorageShape *queryShape = context_->GetInputShape(1);
         const gert::StorageShape *keyShape = context_->GetInputShape(2);
         const gert::StorageShape *valueShape = context_->GetInputShape(3);
@@ -92,6 +99,13 @@ protected:
         const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         layout_ = qInputLayout;
+
+        if (qInputDesc == nullptr) {
+            OP_LOGE(context_->GetNodeName(), "Query inputDesc is null");
+            return ge::GRAPH_FAILED;
+        } else {
+            dataType_ = qInputDesc->GetDataType();
+        }
 
         if (strcmp(qInputLayout, kvInputLayout) != 0) {
             OP_LOGE(context_->GetNodeName(), "kvInputLayout must same as qInputLayout.");
@@ -230,7 +244,7 @@ protected:
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
-        cubeCoreNum = 1;
+        cubeCoreNum = 4;
         tilingData_.set_cubeCoreNum(cubeCoreNum);
         tilingData_.set_baseM(128);
         tilingData_.set_baseN(128);
@@ -293,13 +307,32 @@ protected:
 
     uint64_t GetTilingKey() const override
     {
-        printf("tilingKey_ is %lu\n", tilingKey_);
-        return tilingKey_;
+        uint64_t default_key = 1000;
+        /*
+         *  000: BF16 BSND
+         *  001: FP16 BSND
+         *  010: BF16 BNSD
+         *  011: FP16 BNSD
+         *  100: BF16 TND
+         *  101: FP16 TND
+         */
+        default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
+
+        if (strcmp(layout_, BSH_STR) == 0 || strcmp(layout_, BSND_STR) == 0) {
+            default_key += 0b000;
+        } else if (strcmp(layout_, BNSD_STR) == 0) {
+            default_key += 0b010;
+        } else if (strcmp(layout_, TND_STR) == 0) {
+            default_key += 0b100;
+        }
+
+        printf("default_key is %lu\n", default_key);
+        return default_key;
     }
 };
 
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(BlockSparseAttentionGrad, BlockSparseAttentionGradArch35Tiling,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);
-
+} // namespace BSA_ARC35
 } // namespace optiling

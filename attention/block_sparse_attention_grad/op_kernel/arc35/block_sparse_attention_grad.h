@@ -17,9 +17,10 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
-template <typename INPUT_TYPE, class TILING_CLASS, bool DETERMINISTIC_ENABLE>
+template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE>
 struct BSA_TYPE {
     using input_type = INPUT_TYPE;
+    static constexpr uint32_t input_layout = INPUT_LAYOUT;
     using tiling_class = TILING_CLASS;
     static constexpr bool deterministic_enable = DETERMINISTIC_ENABLE;
 };
@@ -27,21 +28,27 @@ struct BSA_TYPE {
 template <typename BSA_TYPE>
 class BlockSparseAttentionGradArch35 {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
 
 private:
-    RunTimeInfo runTimeInfo_;
+    RunTimeInfo runTimeInfo_[2];
     AddrComputeModule<BSA_TYPE> addr_;
     GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_;
     GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
     GlobalTensor<float> dq_workspace_, dk_workspace_, dv_workspace_;
     TBuf<TPosition::VECCALC> ub_buffer_;
     TBuf<TPosition::A1> l1_buffer_;
-    LocalTensor<float> mm1_res_ub_tensor_ping_;
-    LocalTensor<float> mm1_res_ub_tensor_pong_;
-    LocalTensor<INPUT_TYPE> softmax_res_l1_tensor_ping_;
-    LocalTensor<INPUT_TYPE> softmax_res_l1_tensor_pong_;
+    LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
+    LocalTensor<float> mm2_res_ub_tensor_ping_, mm2_res_ub_tensor_pong_;
+    LocalTensor<float> mm1_res_ub_tensor_, mm2_res_ub_tensor_;
+    LocalTensor<INPUT_TYPE> p_l1_tensor_ping_, p_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> ds_l1_tensor_ping_, ds_l1_tensor_pong_;
+    LocalTensor<INPUT_TYPE> p_l1_tensor_, ds_l1_tensor_;
+    uint32_t taskId = 0;
+    uint32_t ping_pong_idx = 0;
+    uint32_t last_ping_pong_idx = 0;
     uint32_t ub_offset_ = 0;
     uint32_t l1_offset_ = 0;
     static constexpr int32_t UB_SIZE = 247 * 1024;
@@ -60,9 +67,6 @@ public:
         uint32_t base_n = tilingData->baseN;
         uint32_t vec_base_m = base_m / 2;
         uint32_t vec_base_n = base_n;
-        uint64_t dq_workspace_offset = tilingData->dqWorkspaceOffset;
-        uint64_t dk_workspace_offset = tilingData->dkWorkspaceOffset;
-        uint64_t dv_workspace_offset = tilingData->dvWorkspaceOffset;
 
         query_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)q);
         key_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)k);
@@ -71,35 +75,44 @@ public:
         dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
         dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
         dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
-        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + dq_workspace_offset));
-        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + dk_workspace_offset));
-        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + dv_workspace_offset));
+        dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
+        dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
+        dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
 
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
-        // ub_buffer
+        // ub_buffer [base_m * base_n * sizeof(float) * 2]
         mm1_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
         mm1_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
         ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
-        // l1_buffer
-        softmax_res_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
+        mm2_res_ub_tensor_ping_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
+        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
+        mm2_res_ub_tensor_pong_ = ub_buffer_.GetWithOffset<float>(vec_base_m * vec_base_n, ub_offset_);
+        ub_offset_ += vec_base_m * vec_base_n * sizeof(float);
+        // l1_buffer [base_m * base_n * sizeof(INPUT_TYPE) * 4]
+        p_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
-        softmax_res_l1_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
+        p_l1_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
+        l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
+        ds_l1_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
+        l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
+        ds_l1_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
 
+
         if ASCEND_IS_AIC {
-            printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
+            // printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                         actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
-            printf("====================================================\n\n");
+            // printf("====================================================\n\n");
         }
         if ASCEND_IS_AIV {
-            printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
+            // printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
             VectorProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
                           actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
-            printf("====================================================\n\n");
+            // printf("====================================================\n\n");
         }
     }
 
@@ -109,21 +122,40 @@ public:
                                        GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData,
                                        TPipe *tPipe)
     {
-        uint32_t taskId = 0;
         CubeOp<BSA_TYPE> cubeOp;
         cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_);
+        CrossCoreWaitFlag(FLAG_CUBE_POST);
 
         while (true) {
-            addr_.GetRunTimeInfo(&runTimeInfo_);
-            if (runTimeInfo_.loop_finish) {
+            ping_pong_idx = taskId % 2;
+            last_ping_pong_idx = 1 - ping_pong_idx;
+            mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
+            mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
+            p_l1_tensor_ = last_ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
+            ds_l1_tensor_ = last_ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
+            addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
+
+            if (runTimeInfo_[ping_pong_idx].need_compute) {
+                // mm12
+                cubeOp.SendMatmulQK(query_gm_, key_gm_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C1_V1);
+                cubeOp.SendMatmulDyV(dout_gm_, val_gm_, mm2_res_ub_tensor_, runTimeInfo_[ping_pong_idx], ping_pong_idx);
+                CrossCoreSetFlag<2, PIPE_FIX>(FLAG_C2_V2);
+            }
+
+            if (taskId > 0 && runTimeInfo_[last_ping_pong_idx].need_compute) {
+                // mm345
+                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V1_C3);
+                cubeOp.SendMatmulDv(p_l1_tensor_, dv_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                CrossCoreWaitFlag<2, PIPE_MTE1>(FLAG_V2_C45);
+                cubeOp.SendMatmulDq(ds_l1_tensor_, dq_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+                cubeOp.SendMatmulDk(ds_l1_tensor_, dk_workspace_, runTimeInfo_[last_ping_pong_idx], last_ping_pong_idx);
+            }
+
+            if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
-            cubeOp.SendMatmulQK(query_gm_[runTimeInfo_.queryGmOffset], key_gm_[runTimeInfo_.keyGmOffset],
-                                mm1_res_ub_tensor_ping_, runTimeInfo_);
-            // cubeOp.SendMatmulDyV(dout_gm_[runTimeInfo_.queryGmOffset], val_gm_[runTimeInfo_.keyGmOffset],
-            //                      mm1_res_ub_tensor_ping_, runTimeInfo_);
-            cubeOp.SendMatmulDv(softmax_res_l1_tensor_ping_, dout_gm_[runTimeInfo_.queryGmOffset],
-                                dv_workspace_[runTimeInfo_.keyGmOffset], runTimeInfo_);
+            taskId++;
         }
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
@@ -135,17 +167,47 @@ public:
                                          const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t taskId = 0;
+        uint32_t ping_pong_idx = 0;
+        uint32_t last_ping_pong_idx = 0;
         VecOp<BSA_TYPE> vecOp;
         vecOp.Init(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
                    actualKvseqlen, dq, dk, dv, workspace, tilingData, ub_buffer_, ub_offset_);
 
+        vecOp.SendVecPre(dq_workspace_, dk_workspace_, dv_workspace_, tilingData, ub_buffer_);
+        PipeBarrier<PIPE_ALL>();
+        SyncAll();
+        /*
+         * I don't know why I need this, but if I don't set this flag, the precision will be failed.
+         * If someone can explain this, I will be very grateful.
+         */
+        AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
+
         while (true) {
-            addr_.GetRunTimeInfo(&runTimeInfo_);
-            if (runTimeInfo_.loop_finish) {
+            ping_pong_idx = taskId % 2;
+            last_ping_pong_idx = 1 - ping_pong_idx;
+            mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
+            mm2_res_ub_tensor_ = ping_pong_idx ? mm2_res_ub_tensor_ping_ : mm2_res_ub_tensor_pong_;
+            p_l1_tensor_ = ping_pong_idx ? p_l1_tensor_ping_ : p_l1_tensor_pong_;
+            ds_l1_tensor_ = ping_pong_idx ? ds_l1_tensor_ping_ : ds_l1_tensor_pong_;
+            addr_.GetRunTimeInfo(runTimeInfo_[ping_pong_idx]);
+
+            if (runTimeInfo_[ping_pong_idx].need_compute) {
+                SET_FLAG(MTE3, V, EVENT_ID0);
+                WAIT_FLAG(MTE3, V, EVENT_ID0);
+                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
+                vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
+                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
+
+                CrossCoreWaitFlag<2, PIPE_V>(FLAG_C2_V2);
+                vecOp.SendVecSoftmaxGrad(ds_l1_tensor_, mm1_res_ub_tensor_, mm2_res_ub_tensor_,
+                                         runTimeInfo_[ping_pong_idx]);
+                CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V2_C45);
+            }
+
+            if (runTimeInfo_[ping_pong_idx].need_compute == false) {
                 break;
             }
-            vecOp.SendVecSoftmax(softmax_res_l1_tensor_ping_, mm1_res_ub_tensor_ping_, runTimeInfo_);
-            // vecOp.SendVecSoftmaxGrad(softmax_res_l1_tensor_ping_, mm1_res_ub_tensor_ping_, &runTimeInfo_);
+            taskId++;
         }
 
         PipeBarrier<PIPE_ALL>();
