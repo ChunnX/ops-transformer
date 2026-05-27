@@ -481,7 +481,8 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAllGetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        const_cast<char*>(str_group), worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
+        const_cast<char*>(str_group), worldSize, alltoAllAxesOptional, enumYDtype,
+        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
         transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
