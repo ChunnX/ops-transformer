@@ -21,9 +21,9 @@ namespace ops {
 static ge::graphStatus InferShapeSparseFlashMlaMetadata(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
-    // output shape (SFMLA_METADATA_T, )
+    // output shape (SMLA_METADATA_T, )
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SFMLA_META_SIZE);
+    oShape->SetDim(0, optiling::SMLA_METADATA_SIZE);
     return GRAPH_SUCCESS;
 }
 

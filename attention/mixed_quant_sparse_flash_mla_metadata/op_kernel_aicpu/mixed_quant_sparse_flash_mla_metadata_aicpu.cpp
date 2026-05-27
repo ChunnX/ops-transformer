@@ -278,14 +278,14 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bId
     return cmpRatio_ > 0 ? static_cast<uint32_t>(kvSeqSize_ / cmpRatio_) : static_cast<uint32_t>(kvSeqSize_);
 }
 
-uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetRevertS2Size(uint32_t bIdx)
+uint64_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetRevertS2Size(uint32_t bIdx)
 {
     uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
     if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
         const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
-        return static_cast<uint32_t>(cmpS2Size * cmpRatio_ + residualPtr[bIdx]);
+        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_ + residualPtr[bIdx];
     } else {
-        return static_cast<uint32_t>(cmpS2Size * cmpRatio_);
+        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_;
     }
 }
 
@@ -338,7 +338,7 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriNextTokenLeftUp(uint32
     }
 }
 
-int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size)
 {
     auto mode = static_cast<SparseMode>(cmpMaskMode_);
     if (mode == SparseMode::BAND) {
@@ -347,7 +347,7 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_
     return cmpPreToken_;
 }
 
-int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size)
 {
     auto mode = static_cast<SparseMode>(cmpMaskMode_);
     switch (mode) {
@@ -424,11 +424,7 @@ Range<int64_t> MixedQuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint3
     uint32_t hasMask = 1;
     int64_t s2Size = isCmpKv ? static_cast<int64_t>(batchCache.cmpRevertS2Size) :
         static_cast<int64_t>(batchCache.oriS2Size);
-    if (isCmpKv) {
-    	hasMask = cmpAttentionMode_;
-    } else {
-    	hasMask = oriAttentionMode_;
-    }
+    hasMask = isCmpKv ? cmpAttentionMode_ : oriAttentionMode_;
     if (!hasMask) { //attentionMaskFlag ?
         return std::make_pair(0, s2Size - 1);
     }
@@ -591,10 +587,11 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t>
     } else {
         cmpS2LastToken = Clip(cmpS2LastToken, static_cast<int64_t>(0),
             static_cast<int64_t>(batchCache.cmpRevertS2Size - 1U));
-        uint32_t cmpS2LastTokenSize = (cmpS2LastToken + 1) / cmpRatio_;
+        uint64_t cmpS2LastTokenSize = (cmpS2LastToken + 1) / cmpRatio_;
         // cmpS2LastToken 与 topk 取最小
         uint32_t cmpTopkSize = GetCmpTopkLength();
-        uint32_t actCmpS2LastTokenSize = hasCmpTopk ? std::min(cmpS2LastTokenSize, cmpTopkSize) : cmpS2LastTokenSize;
+        uint32_t actCmpS2LastTokenSize = hasCmpTopk ?
+            std::min(cmpS2LastTokenSize, static_cast<uint64_t>(cmpTopkSize)) : cmpS2LastTokenSize;
         // 将 token 长度转化为 token 索引，然后由 token 索引计算 s2 索引
         s1GCache.cmpS2End = (actCmpS2LastTokenSize == 0) ?
             s1GCache.cmpS2Start : s1GCache.cmpS2Start + (actCmpS2LastTokenSize - 1) / s2BaseSize_ + 1U;
@@ -1094,8 +1091,6 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRe
             if (i >= splitRes.usedCoreNum) {
                 metadataPtr->faMetadata[2 * i][FA_CORE_ENABLE_INDEX] = 0; // AIC disenable
                 metadataPtr->faMetadata[2 * i + 1][FA_CORE_ENABLE_INDEX] = 0; // AIC disenable
-                metadataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum; // 单核s2基本块最大数量
-                metadataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum; // 单核s2基本块最大数量
                 continue;
             }
             metadataPtr->faMetadata[2 * i][FA_CORE_ENABLE_INDEX] = 1; // AIC enable
@@ -1128,7 +1123,6 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRe
         for (size_t i = 0; i < aicCoreNum_; ++i) {
             if (i >= splitRes.usedCoreNum) {
                 metadataPtr->faMetadata[i][FA_CORE_ENABLE_INDEX] = 0; // AIC disenable
-                metadataPtr->faMetadata[i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum; // 单核s2基本块最大数量
                 continue;
             }
             metadataPtr->faMetadata[i][FA_CORE_ENABLE_INDEX] = 1; // AIC enable
@@ -1140,7 +1134,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRe
             metadataPtr->faMetadata[i][FA_BN2_END_INDEX] = splitRes.bN2End[i];
             metadataPtr->faMetadata[i][FA_M_END_INDEX] = splitRes.gS1End[i];
             metadataPtr->faMetadata[i][FA_S2_END_INDEX] = splitRes.s2End[i];
-            //
+            // firstFdDataWorkspace
             metadataPtr->faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
         }
     }

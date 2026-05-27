@@ -23,7 +23,7 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QSMLA_META_SIZE = 1024;
+constexpr uint32_t QSMLA_METADATA_SIZE = 1024;
 using QSMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
@@ -74,7 +74,7 @@ namespace detail {
     };
 };
 
-static_assert(QSMLA_META_SIZE * sizeof(QSMLA_METADATA_T) >= sizeof(detail::QsmlaMetadata));
+static_assert(QSMLA_METADATA_SIZE * sizeof(QSMLA_METADATA_T) >= sizeof(detail::QsmlaMetadata));
 };
 
 #endif // MIXED_QUANT_SPARSE_FLASH_MLA_METADATA_H
