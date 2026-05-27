@@ -16,7 +16,6 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
 
-#include "flash_attn_kernel_base_gqa_common.h"
 #include "flash_attn_kernel_base_gqa_cube.h"
 #include "flash_attn_kernel_base_gqa_vector.h"
 
@@ -39,85 +38,6 @@ public:
     GlobalTensor<int32_t> seqUsedGmQ;
     GlobalTensor<int32_t> seqUsedGmKv;
 
-    __aicore__ inline FlashAttentionNoQuantGqaKernel()
-    {
-    }
-
-    __aicore__ inline void InitConstInfoWithPA()
-    {
-        if ASCEND_IS_AIC {
-            cubeProc.InitConstInfo();
-        } else {
-            vectorProc.InitConstInfo();
-        }
-    }
-
-    __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
-    {
-        if ASCEND_IS_AIC {
-            cubeProc.InitMMResBuf(workspace);
-        } else {
-            vectorProc.InitMMResBuf(workspace);
-        }
-    }
-
-    __aicore__ inline void InitQCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            if ASCEND_IS_AIC {
-                cubeProc.InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
-            }
-            if ASCEND_IS_AIV {
-                vectorProc.InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
-            }
-        } else {
-            if ASCEND_IS_AIC {
-                cubeProc.InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
-            }
-            if ASCEND_IS_AIV {
-                vectorProc.InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
-            }
-        }
-    }
-
-    __aicore__ inline void InitKvCuSeqLensParser()
-    {
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            if ASCEND_IS_AIC {
-                cubeProc.InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
-            }
-            if ASCEND_IS_AIV {
-                vectorProc.InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
-            }
-        } else {
-            if ASCEND_IS_AIC {
-                cubeProc.InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
-            }
-            if ASCEND_IS_AIV {
-                vectorProc.InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
-            }
-        }
-    }
-
-    __aicore__ inline void InitCube(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                    __gm__ uint8_t *blockTable)
-    {
-        if ASCEND_IS_AIC {
-            cubeProc.InitCubeBlock(query, key, value, blockTable);
-        }
-    }
-
-    __aicore__ inline void InitVector(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                      __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
-                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                      __gm__ uint8_t *workspace, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv)
-    {
-        if ASCEND_IS_AIV {
-            vectorProc.InitVectorBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink,
-                                        softmaxLse, attentionOut, workspace, seqUsedQ, seqUsedKv);
-        }
-    }
-
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
@@ -130,77 +50,34 @@ public:
         vectorProc.pipe = tPipe;
         vectorProc.tilingData = tiling;
 
-        this->InitConstInfoWithPA();
-
-        cubeProc.keyPtr = key;
-        vectorProc.keyPtr = key;
-
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             cuSeqLensGmQ.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ,
                                           tiling->flashAttnBaseParams.cuSeqLensQSize + 1);
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
                                         tiling->flashAttnBaseParams.seqUsedQSize);
             cuSeqLensGmKv.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensKv,
-                                           tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
+                                            tiling->flashAttnBaseParams.cuSeqLensKVSize + 1);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                         tiling->flashAttnBaseParams.seqUsedKvSize);
+                                          tiling->flashAttnBaseParams.seqUsedKvSize);
         } else {
             seqUsedGmQ.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ,
                                         tiling->flashAttnBaseParams.seqUsedQSize);
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv,
-                                         tiling->flashAttnBaseParams.seqUsedKvSize);
+                                          tiling->flashAttnBaseParams.seqUsedKvSize);
         }
 
-        this->InitQCuSeqLensParser();
-        this->InitKvCuSeqLensParser();
+        cubeProc.Init(query, key, value, blockTable, fiaMetaData, seqUsedQ, seqUsedKv,
+                       cuSeqLensGmQ, seqUsedGmQ, cuSeqLensGmKv, seqUsedGmKv, workspace);
 
-        this->InitMMResBuf(workspace);
-
-        uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
-        cubeProc.sectionNum = sectionNum;
-        vectorProc.sectionNum = sectionNum;
-
-        cubeProc.faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                               FA_AIC_CORE_NUM * 16U * sectionNum);
-        vectorProc.faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                                 FA_AIC_CORE_NUM * 16U * sectionNum);
-
-        if ASCEND_IS_AIC {
-            this->InitCube(query, key, value, blockTable);
-        } else {
-            vectorProc.isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
-            if (vectorProc.isFd) {
-                __gm__ uint32_t *fdMetaDataPtr = (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                                                      FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM *
-                                                                          sectionNum * sizeof(uint32_t));
-                vectorProc.vecFdBlock.SetFdMetaDataGm(fdMetaDataPtr, sectionNum);
-            }
-            this->InitVector(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut, workspace,
-                             seqUsedQ, seqUsedKv);
-        }
+        vectorProc.Init(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut,
+                        workspace, fiaMetaData, seqUsedQ, seqUsedKv,
+                        cuSeqLensGmQ, seqUsedGmQ, cuSeqLensGmKv, seqUsedGmKv, key);
     }
 
     __aicore__ inline void Process()
     {
-        if ASCEND_IS_AIV {
-            if (vectorProc.constInfo.aicIdx < vectorProc.tilingData->flashAttnBaseParams.coreNum) {
-                vectorProc.CrossCoreBufferInit();
-            }
-        }
-
-        for (uint32_t sectionIdx = 0; sectionIdx < cubeProc.sectionNum; sectionIdx++) {
-            if ASCEND_IS_AIC {
-                cubeProc.ProcessCube(sectionIdx);
-            } else {
-                vectorProc.ProcessVector(sectionIdx);
-            }
-        }
-
-        if ASCEND_IS_AIC {
-            if (cubeProc.constInfo.aicIdx < cubeProc.tilingData->flashAttnBaseParams.coreNum) {
-                cubeProc.CrossCoreBufferUnInit();
-            }
-        }
+        cubeProc.Process();
+        vectorProc.Process();
     }
 };
 

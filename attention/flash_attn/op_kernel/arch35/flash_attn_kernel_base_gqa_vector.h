@@ -16,7 +16,27 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_VECTOR_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_VECTOR_H_
 
-#include "flash_attn_kernel_base_gqa_common.h"
+#include "../../../common/op_kernel/fia_public_define.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "../utils/flash_attn_common_def.h"
+#include "../utils/flash_attn_utils.h"
+
+#include "flash_attn_block_vec_noquant_gqa.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
+#include "flash_attention_noquant_block_vec_flashdecode.h"
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+
+#include "flash_attn_tiling_data.h"
+
+using namespace AscendC;
+using namespace optiling;
+using namespace AscendC::Impl::Detail;
+using namespace regbaseutil;
 
 namespace BaseApi {
 
@@ -245,6 +265,56 @@ public:
             }
             FlashDecodeVector(sectionIdx);
             vecFaBlock.FreeEventID();
+        }
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                GlobalTensor<int32_t> cuSeqLensGmQ, GlobalTensor<int32_t> seqUsedGmQ,
+                                GlobalTensor<int32_t> cuSeqLensGmKv, GlobalTensor<int32_t> seqUsedGmKv,
+                                __gm__ uint8_t *key)
+    {
+        if ASCEND_IS_AIV {
+            InitConstInfo();
+            keyPtr = key;
+
+            this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
+            this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
+
+            this->InitMMResBuf(workspace);
+
+            uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
+            this->sectionNum = sectionNum;
+
+            faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                          FA_AIC_CORE_NUM * 16U * sectionNum);
+
+            isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+            if (isFd) {
+                __gm__ uint32_t *fdMetaDataPtr = (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                                                      FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM *
+                                                                          sectionNum * sizeof(uint32_t));
+                vecFdBlock.SetFdMetaDataGm(fdMetaDataPtr, sectionNum);
+            }
+
+            this->InitVectorBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink,
+                                  softmaxLse, attentionOut, workspace, seqUsedQ, seqUsedKv);
+        }
+    }
+
+    __aicore__ inline void Process()
+    {
+        if ASCEND_IS_AIV {
+            if (constInfo.aicIdx < tilingData->flashAttnBaseParams.coreNum) {
+                this->CrossCoreBufferInit();
+            }
+
+            for (uint32_t sectionIdx = 0; sectionIdx < this->sectionNum; sectionIdx++) {
+                this->ProcessVector(sectionIdx);
+            }
         }
     }
 

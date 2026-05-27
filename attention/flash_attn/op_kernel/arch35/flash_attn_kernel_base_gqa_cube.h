@@ -16,7 +16,26 @@
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_CUBE_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_CUBE_H_
 
-#include "flash_attn_kernel_base_gqa_common.h"
+#include "../../../common/op_kernel/fia_public_define.h"
+#include "kernel_operator_list_tensor_intf.h"
+#include "../utils/flash_attn_common_def.h"
+#include "../utils/flash_attn_utils.h"
+
+#include "flash_attn_block_cube_noquant_gqa.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
+
+#include "flash_attn_tiling_data.h"
+
+using namespace AscendC;
+using namespace optiling;
+using namespace AscendC::Impl::Detail;
+using namespace regbaseutil;
 
 namespace BaseApi {
 
@@ -208,6 +227,45 @@ public:
                 FlashAttentionCube(sectionIdx);
             }
             cubeBlock.FreeEventID();
+        }
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                GlobalTensor<int32_t> cuSeqLensGmQ, GlobalTensor<int32_t> seqUsedGmQ,
+                                GlobalTensor<int32_t> cuSeqLensGmKv, GlobalTensor<int32_t> seqUsedGmKv,
+                                __gm__ uint8_t *&workspace)
+    {
+        if ASCEND_IS_AIC {
+            InitConstInfo();
+            keyPtr = key;
+
+            this->InitQCuSeqLensParser(cuSeqLensGmQ, seqUsedGmQ);
+            this->InitKvCuSeqLensParser(cuSeqLensGmKv, seqUsedGmKv);
+
+            this->InitMMResBuf(workspace);
+
+            uint32_t sectionNum = ((__gm__ uint32_t *)fiaMetaData)[0];
+            this->sectionNum = sectionNum;
+
+            faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                          FA_AIC_CORE_NUM * 16U * sectionNum);
+
+            this->InitCubeBlock(query, key, value, blockTable);
+        }
+    }
+
+    __aicore__ inline void Process()
+    {
+        if ASCEND_IS_AIC {
+            for (uint32_t sectionIdx = 0; sectionIdx < this->sectionNum; sectionIdx++) {
+                this->ProcessCube(sectionIdx);
+            }
+
+            if (constInfo.aicIdx < tilingData->flashAttnBaseParams.coreNum) {
+                this->CrossCoreBufferUnInit();
+            }
         }
     }
 
