@@ -24,6 +24,8 @@ const int VC_L1_EVENT[2] = {6, 7};
 const int VC_MM1RES_EVENT[2] = {8, 9};
 const int VC_MM2RES_EVENT[2] = {10, 15};
 
+const int ANTI_VMTE2_EVENT = 1;
+
 #include "util_regbase.h"
 
 #if __has_include("../../../common/op_kernel/matmul.h")
@@ -222,6 +224,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             this->vecBlock.antiquantPerHeadFlag = inputParamsRegbase.antiquantPerHeadFlag;
         }
         this->vecBlock.UbToL1Event = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        SetFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
     }
     if constexpr (hasRope) {
         constInfo.s1DR = constInfo.s1Size * constInfo.dSizeRope;
@@ -647,6 +650,9 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             multiCoreInnerIdx++;
         }
         gS1StartIdx = 0;
+    }
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::V_MTE2>(ANTI_VMTE2_EVENT);
     }
     if constexpr (isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();
