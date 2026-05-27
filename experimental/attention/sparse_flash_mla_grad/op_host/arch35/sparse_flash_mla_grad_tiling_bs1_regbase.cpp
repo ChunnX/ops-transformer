@@ -626,7 +626,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     } else {
-        auto ori_selected_block_count = 0;
+        auto ori_selected_block_count = tmpData.s2;
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     }
@@ -644,7 +644,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     } else {
-        auto cmp_selected_block_count = 0;
+        auto cmp_selected_block_count = tmpData.s3;
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     }

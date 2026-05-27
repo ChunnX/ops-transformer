@@ -35,7 +35,7 @@ private:
     __aicore__ inline bool GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
                                         int64_t &accumS1Len, int64_t &accumS2Len, int64_t &accumS3Len, 
                                         int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
-                                        int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount, int64_t taskId, FagConstInfo &constInfo);
+                                        int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount, int64_t &winStart, int64_t taskId, FagConstInfo &constInfo);
     __aicore__ inline void GetRunInfo(int64_t bIdx, int64_t s1Idx, FagRunInfo &runInfo, FagConstInfo &constInfo,
                                         int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensOriK, int32_t actualSeqLensCmpK);
     __aicore__ inline int32_t GetActualSeqLens(int64_t bIdx, GlobalTensor<int32_t> &actualSeqLensGm,
@@ -285,6 +285,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     int64_t actualSeqLensCmpK = 0;
     int64_t actualOriSelectedBlockCount = 0;
     int64_t actualCmpSelectedBlockCount = 0;
+    int64_t winStart = 0;
     GlobalTensor<CALC_TYPE> dkWorkSpaceGm;
     GlobalTensor<int32_t> topkIndicesGm;
     int64_t currentSelectedBlockCount;
@@ -307,7 +308,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
         usedBS1Index = runInfo.sTaskId * usedCoreNum + idx;
         if (!GetBS1Index(usedBS1Index, bIdx, s1Idx, bS1Index, accumS1Len, accumS2Len, accumS3Len, actualSeqLensQ,
-            actualSeqLensOriK, actualSeqLensCmpK, actualOriSelectedBlockCount, actualCmpSelectedBlockCount, runInfo.sTaskId, constInfo)) 
+            actualSeqLensOriK, actualSeqLensCmpK, actualOriSelectedBlockCount, actualCmpSelectedBlockCount, winStart, runInfo.sTaskId, constInfo)) 
         {
             continue;
         }        
@@ -369,6 +370,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                 int s2Idx = 0;
                 if (!runInfo.isSparse) {
                     // todo 非sparse场景
+                    s2Idx = winStart + s2SrcOffset + loop * UB_ROW_SIZE + row;
                 } else {
                     s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
                 }
@@ -403,6 +405,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
             int32_t s2Idx = 0;
             if (!runInfo.isSparse) {
                 // todo 非sparse场景
+                s2Idx = winStart + s2SrcOffset + row;
             } else {
                 s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
             }
@@ -431,7 +434,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Index, int64_t &bIdx, int64_t &s1Idx, int64_t &bS1Index,
                                                          int64_t &accumS1Len, int64_t &accumS2Len, int64_t &accumS3Len, 
                                                          int64_t &actualSeqLensQ, int64_t &actualSeqOriLensK, int64_t &actualSeqCmpLensK,
-                                                         int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount, int64_t taskId, FagConstInfo &constInfo)
+                                                         int64_t &actualOriSelectedBlockCount, int64_t &actualCmpSelectedBlockCount, 
+                                                         int64_t &winStart, int64_t taskId, FagConstInfo &constInfo)
 {
     int64_t t1Offset = 0;
     int64_t t2Offset = 0;
@@ -568,6 +572,7 @@ __aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Ind
     accumS1Len = t1Offset;
     accumS2Len = t2Offset;
     accumS3Len = t3Offset;
+    winStart = oriWinStart;
     return true;
 }
  	 
