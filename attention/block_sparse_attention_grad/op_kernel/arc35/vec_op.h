@@ -319,7 +319,8 @@ private:
 
     __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_gm,
                                                    const GlobalTensor<INPUT_TYPE> &dy_gm,
-                                                   const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info)
+                                                   const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info,
+                                                   const TILING_CLASS *tilingData)
     {
         if (info.start_idx >= info.data_size) {
             return;
@@ -352,15 +353,16 @@ private:
             copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
             copyParam.srcStride = 0;
             copyParam.dstStride = process_size * (src_stride - head_dim_) * sizeof(INPUT_TYPE);
-            DataCopyPad(dy_tensor, dy_gm[gm_offset], copyParam, {false, 0, 0, 0});
-            DataCopyPad(attention_tensor, out_gm[gm_offset], copyParam, {false, 0, 0, 0});
+            DataCopyPad(dy_tensor, dy_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
+            DataCopyPad(attention_tensor, out_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
             WAIT_FLAG(MTE2, V, EVENT_ID0);
 
-            Cast(dy_out_tensor, dy_tensor, RoundMode::None, process_size * head_dim_);
-            Cast(attention_out_tensor, attention_tensor, RoundMode::None, process_size * head_dim_);
+            Cast(dy_out_tensor, dy_tensor, RoundMode::CAST_NONE, process_size * head_dim_);
+            Cast(attention_out_tensor, attention_tensor, RoundMode::CAST_NONE, process_size * head_dim_);
             PipeBarrier<PIPE_V>();
 
+            bool isBasicBlock = process_size % 8 == 0;
             if (likely(isBasicBlock)) {
                 SoftmaxGradFront<float, true>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
                                               tilingData->softmaxGradFrontTilingData);
