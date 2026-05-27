@@ -219,7 +219,7 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     info.dispatchQuantMode = info.isQuantRouting ? DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR
                                                   : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
     if (info.isQuantRouting) {
-        info.dispatchQuantOutType = DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_INT8;
+        info.dispatchQuantOutType = static_cast<int32_t>(ge::DT_INT8);
     }
 
     uint32_t topK = topkIdsTensor->GetStorageShape().GetDim(1);
@@ -332,7 +332,10 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     uint32_t quantMode = infoCommon.isQuantRouting != 0U
         ? DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR
         : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
-    uint32_t quantOutType = static_cast<uint32_t>(infoCommon.dispatchQuantOutType);
+    uint32_t quantOutType = DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED;
+    if (infoCommon.dispatchQuantOutType == static_cast<int32_t>(ge::DT_INT8)) {
+        quantOutType = DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_INT8;
+    }
     if (quantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT) {
         OP_TILING_CHECK(quantOutType != DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED,
             OP_LOGE(K_INNER_DEBUG, "dispatch_quant_out_type must be UNDEFINED in non-quant mode, got %u",

@@ -60,7 +60,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnDispatchFFNCombineGetWor
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2,
     const aclTensorList *weightScales1, const aclTensorList *weightScales2,
-    const aclTensor *bias1, const aclTensor *bias2,
+    const aclTensorList *bias1, const aclTensorList *bias2,
     const aclTensor *xActiveMask, const aclTensor *scales,
     int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutType,

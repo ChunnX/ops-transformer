@@ -9,6 +9,7 @@
  */
 
 #include <algorithm>
+#include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
@@ -48,6 +49,18 @@ aclTensorList* ConvertTensorListToInt4(const aclTensorList* input, aclOpExecutor
     return newInput;
 }
 
+static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList,
+                              aclTensorList *&outList, aclOpExecutor *executor)
+{
+    if (ioList == nullptr) {
+        std::vector<aclTensor*> emptyTensors;
+        aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
+        emptyTensors.emplace_back(emptyTensor);
+        outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+        ioList = outList;
+    }
+}
+
 aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2,
@@ -83,6 +96,20 @@ aclnnStatus aclnnDispatchFFNCombineGetWorkspaceSize(
         }
         uniqueExecutor.ReleaseTo(executor);
     }
+
+    // 确保 executor 已创建，以便调用 CreateEmptyTensor
+    if (*executor == nullptr) {
+        auto uniqueExec = CREATE_EXECUTOR();
+        uniqueExec.ReleaseTo(executor);
+    }
+
+    // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
+    aclTensorList *tmpBiasList = nullptr;
+    aclTensorList *tmpScaleList = nullptr;
+    CreateEmptyTensor(ACL_FLOAT, bias1, tmpBiasList, *executor);
+    CreateEmptyTensor(ACL_FLOAT, bias2, tmpBiasList, *executor);
+    CreateEmptyTensor(ACL_INT64, weightScales1, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_INT64, weightScales2, tmpScaleList, *executor);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerDispatchFFNCombineGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
