@@ -993,7 +993,7 @@ public:
 
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
-        uint64_t l1ScaleOffset = baseK / 32 * runInfo.actMSizeAlign32;
+        uint64_t l1ScaleOffset = baseK / 32 * 128;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {

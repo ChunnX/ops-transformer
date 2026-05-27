@@ -382,8 +382,8 @@ public:
             this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
             this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
             uint64_t copyBlockCount = actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE / blockBytes;
-            uint64_t vecOffset = constInfo.subBlockIdx * actVecMSizeAlign16 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
-            uint64_t subLoopOffset = actVecMSizeAlign16 * mxfp8s2BaseSize / blockBytes * 2;
+            uint64_t vecOffset = constInfo.subBlockIdx * 64 * mxfp8s2BaseSize / MXFP_GROUP_SIZE;
+            uint64_t subLoopOffset = 64 * mxfp8s2BaseSize / blockBytes * 2;
             uint16_t copyCount = actVecMSizeAlign16 / 16;
             uint16_t dstStride = mxfp8s2BaseSize / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
