@@ -190,7 +190,6 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
     N = 1024
     topK = 6
     num_experts = 8
-    max_recv_token_num = BS * topK * 2
 
     server_num = 1
     rank_per_dev = 2
@@ -221,32 +220,6 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
         ep_hcomm_info = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
         
         return ep_hcomm_info, ep_group
-
-    class MOE_DISTRIBUTE_GRAPH_Model(torch.nn.Module):
-        def __init__(self, group_ep, context_mode):
-            super().__init__()
-            self.group = group_ep
-            self.con_mode = context_mode
-            self.distribute_buffer = MoeDistributeBuffer(group_ep, context_mode=context_mode)
-
-        def forward(self, x, topk_ids, topk_weights, weight1, weight_scales1, weight2,
-                    weight_scales2, moe_expert_num, max_recv_token_num, comm_alg, dispatch_quant_mode,
-                    dispatch_quant_out_type):
-            output_npu = self.distribute_buffer.npu_low_latency_mega_moe(
-                x=x,
-                topk_ids=topk_ids,
-                topk_weights=topk_weights,
-                weight1=weight1,
-                weight2=weight2,
-                weight_scales1=weight_scales1,
-                weight_scales2=weight_scales2,
-                moe_expert_num=moe_expert_num,
-                max_recv_token_num=max_recv_token_num,
-                comm_alg=comm_alg,
-                dispatch_quant_mode=dispatch_quant_mode,
-                dispatch_quant_out_type=dispatch_quant_out_type
-            )
-            return output_npu
 
 
     def get_megamoe_kwargs(
@@ -291,7 +264,6 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
             ep_group, num_experts=num_experts,
             num_max_tokens_per_rank=0, num_topk=topK,
             hidden=H, intermediate_hidden=0,
-            max_recv_token_num=max_recv_token_num,
             dispatch_quant_mode=4, dispatch_quant_out_type=23
         )
         # 运行mega_moe
