@@ -34,6 +34,7 @@ output/
 *.pyc
 __pycache__
 MANIFEST.in
+*.egg-info/
 
 # third_party
 third_party/

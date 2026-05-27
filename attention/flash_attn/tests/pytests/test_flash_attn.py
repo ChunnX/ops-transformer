@@ -17,13 +17,13 @@ import itertools
 import torch
 import numpy as np
 from backends.cpu_impl import tforward
-from test_utils.data import generate_qkv, generate_npu_mask, trans_bnsd_to_layout, gen_block_table
-from test_utils.compare import data_compare_benchmark_new, Result, check_result, analyze_fail_distribution
-from test_utils.io import save_tensor_to_txt, load_tensor_from_txt
+from utils.data import generate_qkv, generate_npu_mask, trans_bnsd_to_layout, gen_block_table
+from utils.compare import data_compare_benchmark_new, Result, check_result, analyze_fail_distribution
+from utils.io import save_tensor_to_txt, load_tensor_from_txt
 
-_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_func_stc",
-                        "test_case_func_redline_training_TND", "test_case_func_redline_training",
-                        "test_case_func_redline_inference", "test_case_perf_redline_inference"]
+_DEFAULT_CASE_FILES = ["base", "fia_stc", "functional_stc",
+                        "functional_redline_train_tnd", "functional_redline_train",
+                        "functional_redline_infer", "performance_redline_infer"]
 
 # ─────────────────── 动态导入 GPU / NPU 实现 ───────────────────
 GPU_AVAILABLE = False
@@ -69,7 +69,7 @@ def load_case_modules(module_names):
 
 
 def normalize_case(raw):
-    """将 test_case.py 字段转换为 call_flash_attn 所需 kwargs 格式。"""
+    """将 test_cases 模块字段转换为 call_flash_attn 所需 kwargs 格式。"""
     c = dict(raw)
     layout_q = c.get("layout_q", "BNSD")
     c["input_layout"] = layout_q
@@ -326,7 +326,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
 
     if visualize:
         try:
-            from test_utils.precision_visual import visualize_from_tensors
+            from utils.precision_visual import visualize_from_tensors
             if npu_out is not None:
                 visualize_from_tensors(out_cpu_out_layout.float(), npu_out.float(), case_name=test_name, out_dir=viz_dir)
             if gpu_out is not None:
