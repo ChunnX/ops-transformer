@@ -210,7 +210,8 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", 3) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
-    } else if (std::strncmp(commMode_, "", 0) == 0) { // empty string
+    } else if (std::strlen(commMode_) == 0) { // empty string
+        OP_LOGD(opName_, "Tiling GetTilingKey commMode_ is  empty string.");
         if (rankSize_ <= 8) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }

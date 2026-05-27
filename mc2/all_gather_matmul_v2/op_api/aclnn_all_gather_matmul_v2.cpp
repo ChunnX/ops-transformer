@@ -441,8 +441,9 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", 3) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strncmp(commMode, "", 0) == 0) {
+    } else if (std::strlen(commMode) == 0) {
         // 空字符串: rankSize 小于等于8走CCU，否则走AICPU 
+        OP_LOGD(opName_, "Tiling GetTilingKey commMode_ is  empty string.");
         commModeEnum = (rankSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "comm_mode only support empty string, 'ccu' or 'aicpu', current comm_mode is %s", commMode);

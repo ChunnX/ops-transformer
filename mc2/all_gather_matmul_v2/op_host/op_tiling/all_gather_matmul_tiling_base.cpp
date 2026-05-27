@@ -735,7 +735,8 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     if (npuArch_ == NpuArch::DAV_3510) {    
         if (std::strncmp(commMode_, "ccu", 3) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strncmp(commMode_, "", 0) == 0) { // empty string
+        } else if (std::strlen(commMode_) == 0) { // empty string
+            OP_LOGD(opName_, "Tiling GetTilingKey commMode_ is  empty string.");
             if (rankSize_ <= 8){
                 commMode = Mc2Comm::COMM_MODE_CCU;
             }

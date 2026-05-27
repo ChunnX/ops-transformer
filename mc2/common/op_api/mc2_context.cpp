@@ -533,7 +533,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
 
 aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
 {
-    OP_LOGD("Start to get Mc2RankSize Tensor");
+    OP_LOGD("Start to get Mc2RankSize");
     auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
