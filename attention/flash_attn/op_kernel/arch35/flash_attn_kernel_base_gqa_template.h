@@ -103,6 +103,7 @@ public:
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t executedTaskCount = 0U;
+    uint32_t validTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
 
@@ -406,7 +407,8 @@ public:
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
-        while (shouldDispatchTask || shouldExecuteTask) {
+        validTaskCount = 0;
+        while (shouldDispatchTask || validTaskCount) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
             if (shouldDispatchTask) {
@@ -415,6 +417,7 @@ public:
                     // 创建任务
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
+                    validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                     if ASCEND_IS_AIV {
@@ -428,10 +431,12 @@ public:
                 }
             }
             // 执行任务
-            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
-            if (shouldExecuteTask) {
+            if (validTaskCount) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
+                if (executedTaskCount > PRELOAD_N) {
+                    validTaskCount--;
+                }
             }
         }
     }
