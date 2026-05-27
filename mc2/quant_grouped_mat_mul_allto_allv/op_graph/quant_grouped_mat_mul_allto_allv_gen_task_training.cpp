@@ -23,26 +23,49 @@
 #include "mc2_comm_utils.h"
 
 namespace ops {
+static const size_t ATTR_COMM_MODE_INDEX = 15;
+static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
+static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, int64_t &rankSize,
+                                            std::string &commMode) {
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (attrs == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    if (epWorldSizePtr == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "epWorldSizePtr pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    rankSize = *epWorldSizePtr;
+    const char* commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
+    if (commModePtr == nullptr) {
+        OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
+        return ge::GRAPH_FAILED;
+    }
+    commMode = commModePtr;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
+    int64_t rankSize = 0;
+    std::string commMode;
+    ge::Status status = GetRankSizeAndSetCommmode(context, rankSize, commMode);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     const char* serverType = nullptr;
     const char* streamType = nullptr;
-
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
- 	 
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        streamType = "kfc_stream";
-        serverType = "aicpu kfc server";
-        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");
-    } else if (isArch35) {
-        streamType = "ccu_stream";
+    if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
         serverType = "ccu server";
-        OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
-    } else {
-        streamType = "kfc_stream";
+        streamType = "ccu_stream";
+        OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvCalcParamFunc use CCU GenTask");
+    } else if ((isArch35 &&  commMode == "aicpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "")) {
         serverType = "aicpu kfc server";
-        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, use AICPU GenTask");
+        streamType = "kfc_stream";
+        OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvCalcParamFunc use AICPU GenTask");
     }
 
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
@@ -51,18 +74,20 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
 ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
+    int64_t rankSize = 0;
+    std::string commMode;
+    ge::Status status = GetRankSizeAndSetCommmode(context, rankSize, commMode);
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (!isArch35) {
-        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, always use AICPU GenTask");
+    if ((!isArch35) || (isArch35 && commMode == "aicpu") || (isArch35 && rankSize > 8 && commMode == "")) {
+        OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvGenTaskFunc use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+    } else if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
+        OPS_LOG_D(context->GetNodeName(), "QuantGroupedMatMulAlltoAllvGenTaskFunc use CCU GenTask");
+        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     }
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        OPS_LOG_D(context->GetNodeName(), "Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU GenTask");
-        return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
-    }
-    OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
-    return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
 // new ver

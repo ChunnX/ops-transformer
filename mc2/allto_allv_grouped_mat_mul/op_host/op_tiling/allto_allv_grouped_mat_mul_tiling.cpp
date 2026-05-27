@@ -60,6 +60,7 @@ constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
 constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
 constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
+constexpr uint32_t ATTR_COMM_MODE_INDEX = 7;
 
 constexpr int64_t BEST_L1_PARTA = 256 * 1024;
 constexpr int64_t BEST_L1_PARTB = 128 * 1024;
@@ -676,6 +677,32 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context, uint8_t &commMode, const char *commModeStr)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."),
+                    return ge::GRAPH_FAILED);
+    int64_t rankDim = *epWorldSizePtr;
+    if (std::strcmp(commModeStr, "aicpu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        commMode = Mc2Comm::COMM_MODE_CCU;
+    } else if (std::strcmp(commModeStr, "") == 0) {
+        if (rankDim <= 8) {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        }
+        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+    } else {
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* context) const
 {
     (void)context; // Unused
@@ -701,16 +728,29 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
+    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
+                    return ge::GRAPH_FAILED);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
-    }
-    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        uint8_t commMode = 0;
+        if (GetAndConvertCommMode(context, commMode, commModeStr) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        }
+    } else {
+        // OP_TILING_CHECK(std::strcmp(commModeStr, "") != 0, OP_LOGE(context->GetNodeName(), "In arch22, the input attr comm_mode must be ''."),
+        //                 return ge::GRAPH_FAILED);
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
+
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
         return ge::GRAPH_FAILED);
