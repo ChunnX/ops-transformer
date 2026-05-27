@@ -1073,10 +1073,15 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 
 ### HostAPI接口约束
 
-<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-    <col style="width: 50px">
-    <col style="width: 50px">
-    <col style="width: 50px">
+<table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
+    <col style="width: 150px">
+    <col style="width: 100px">
+    <col style="width: 350px">
+    <col style="width: 200px">
+    <col style="width: 100px">
+    <col style="width: 100px">
+    <col style="width: 190px">
+    <col style="width: 100px">
     </colgroup>
     <thead>
         <tr>
