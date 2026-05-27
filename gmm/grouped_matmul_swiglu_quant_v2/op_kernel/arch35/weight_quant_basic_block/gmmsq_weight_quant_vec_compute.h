@@ -473,7 +473,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const Bas
     yFp32Global_.SetGlobalBuffer(yFp32Addr);
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
-    uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * (param.nSize / DIVISOR_FACTOR_TWO) + param.nOffset;
+    uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) * CeilDivide(param.nSize , DIVISOR_FACTOR_TWO) + param.nOffset / 2;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -492,7 +492,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const Basi
     uint64_t nGroupCount = CeilDivide(param.nL1Size / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
     uint64_t nTotalGroupCount = CeilDivide(param.nSize / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
 
-    uint64_t scaleGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * param.mL1Size / 2) * nTotalGroupCount + param.nOffset / MX_GROUPSIZE;
+    uint64_t scaleGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) * nTotalGroupCount + (param.nOffset / 2) / MX_GROUPSIZE;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
