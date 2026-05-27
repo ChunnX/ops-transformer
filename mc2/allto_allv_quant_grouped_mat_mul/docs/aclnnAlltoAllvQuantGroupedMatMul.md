@@ -56,7 +56,6 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     int64_t            mmXQuantMode,
     int64_t            mmWeightQuantMode,
     const char*        group,
-    const char*        commMode,
     int64_t            epWorldSize,
     const aclIntArray* sendCounts,
     const aclIntArray* recvCounts,
@@ -264,16 +263,6 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>输入</td>
         <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
         <td>通过Hccl提供的接口“extern HcclResult HcclGetCommName(HcclComm comm, char* commName);”获取，其中commName即为group。</td>
-        <td>STRING</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>commMode</td>
-        <td>输入</td>
-        <td>指定当前通信类型。</td>
-        <td>支持输入"default"、"aicpu"和"ccu"。</td>
         <td>STRING</td>
         <td>-</td>
         <td>-</td>

@@ -50,8 +50,6 @@ extern "C" {
  * @param [in] mmXQuantMode: 共享专家matmul计算中的左矩阵的量化模式，同上，当前仅支持配置为1或6。
  * @param [in] mmWeightQuantMode: 共享专家matmul计算中的右矩阵的量化模式，同上，当前仅支持配置为1或6。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域。
- * @param [in] commMode: 计算输入，str。通信引擎参数，指定当前通信类型，支持输入""、"aicpu"和"ccu"
- * @param [in] epWorldSize: 计算输入，int。ep通信域size
  * @param [in] epWorldSize: 计算输入，int。ep通信域size。
  * @param [in] sendCounts: 计算输入，list int。通信发送的数据量。
  * @param [in] recvCounts: 计算输入，list int。通信接受的数据量。
@@ -90,7 +88,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
     bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
     aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
