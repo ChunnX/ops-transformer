@@ -76,7 +76,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS2CmpSize = actualS2CmpSize;
     if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpResidual = cmpResidualKvAddr[bIdx];
-        runParam.nextTokensPerBatchCmp = runParam.actualS2CmpSize - runParam.actualS1Size / constInfo.cmpRatio;
+        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio) + runParam.cmpResidual - runParam.actualS1Size / constInfo.cmpRatio;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
@@ -247,8 +247,8 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
         runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
-            (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.cmpResidual) / constInfo.cmpRatio +
-            runParam.nextTokensPerBatchCmp, 0, runParam.actualS2CmpSize);
+            (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio,
+            0, runParam.actualS2CmpSize);
         if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
             runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, runParam.actualS2CmpSize);
             runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;

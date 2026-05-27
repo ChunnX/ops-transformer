@@ -532,8 +532,8 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.tileSize = 64;
     sasInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
     sasInfo.softmaxScale = *opParamInfo_.softmaxScale;
-    sasInfo.oriKvStride = 81920;
-    sasInfo.cmpKvStride = 0;
+    sasInfo.oriKvStride = oriKvStride_;
+    sasInfo.cmpKvStride = cmpKvStride_;
     sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
     sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
