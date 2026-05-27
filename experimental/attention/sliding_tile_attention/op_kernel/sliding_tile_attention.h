@@ -23,6 +23,7 @@ constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t VECTOR_FP32_REPEAT_ELEMS = 64;
 constexpr int64_t STA_SOFTMAX_ROW_CHUNK = 8;
+constexpr int64_t STA_OUTPUT_ROW_CHUNK = 8;
 constexpr int64_t BUFFER_NUM = 1;
 constexpr int64_t STA_2D_SOFTMAX_HEAD_DIM = 64;
 constexpr int64_t SCORE_HANDOFF_UB_OFFSET_2D_SOFTMAX = 96 * 1024;
@@ -237,7 +238,7 @@ public:
         scale_ = tiling_->scale;
 
         (void)workspace;
-        pipe_.InitBuffer(yDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
+        pipe_.InitBuffer(yDataBuf_, STA_OUTPUT_ROW_CHUNK * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(outTileFloatBuf_, GetSubBlockRows(tiling_->qBlock, GetTaskRatioValue()) *
                                                tiling_->headDimAlign * sizeof(float));
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
@@ -488,6 +489,25 @@ private:
         DataCopy(probHandoff, probLocal, copyCount);
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
+    }
+
+    __aicore__ inline void StoreFloatRows(int64_t offset, LocalTensor<float> &floatLocal, uint32_t rowCount,
+                                          uint32_t alignedHeadDim)
+    {
+        const uint32_t copyCount = rowCount * alignedHeadDim;
+        LocalTensor<DataType> dataLocal = yDataBuf_.Get<DataType>();
+        if constexpr (IS_BF16) {
+            Cast(dataLocal, floatLocal, RoundMode::CAST_RINT, copyCount);
+        } else {
+            Cast(dataLocal, floatLocal, RoundMode::CAST_ROUND, copyCount);
+        }
+        PipeBarrier<PIPE_V>();
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+
+        DataCopy(yDataGm_[offset], dataLocal, copyCount);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
     }
 
     __aicore__ inline void StoreProbBlock(LocalTensor<float> &weightLocal, uint32_t copyCount,
@@ -975,11 +995,13 @@ private:
             PipeBarrier<PIPE_V>();
         }
 
-        for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+        for (int64_t row = rowBegin; row < validRowEnd; row += STA_OUTPUT_ROW_CHUNK) {
+            const uint32_t rowCount =
+                static_cast<uint32_t>(MinInt64(STA_OUTPUT_ROW_CHUNK, validRowEnd - row));
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
-            LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-            StoreFloatRow(qBase, accRow, alignedHeadDim, static_cast<uint32_t>(row % BUFFER_NUM));
+            LocalTensor<float> accRows = accTileFloatBuf_.Get<float>()[row * alignedHeadDim];
+            StoreFloatRows(qBase, accRows, rowCount, alignedHeadDim);
         }
     }
 
