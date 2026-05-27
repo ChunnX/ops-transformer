@@ -37,6 +37,17 @@ const size_t PERM_SIZE_THREE = 3;
 const size_t PERM_SIZE_FOUR = 4;
 const size_t PERM_SIZE_ONE = 1;
 
+static std::string ShapeToStr(const ge::Shape &shape) {
+    std::string str = "[";
+    auto dims = shape.GetDims();
+    for (size_t i = 0; i < dims.size(); ++i) {
+        str += std::to_string(dims[i]);
+        if (i < dims.size() - 1) str += ", ";
+    }
+    str += "]";
+    return str;
+}
+
 enum MC2InputIdx {
     K_GMM_X = 0,
     K_GMM_WEIGHT = 1,
@@ -366,33 +377,44 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replacement(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Enter Replacement ===");
+    
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;
     if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed.");
         return nullptr;
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Got %zu subgraph inputs", subgraphInputs.size());
 
     std::vector<ge::Shape> inputShapes;
     std::vector<ge::DataType> inputDTypes;
     std::vector<ge::Format> inputFormats;
     GetInputsInfo(subgraphInputs, inputShapes, inputDTypes, inputFormats);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Got %zu input shapes/dtypes", inputShapes.size());
 
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
     int64_t inputIdx = 0;
     auto rGmmX = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                   inputShapes[inputIdx].GetDims());
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Created input gmm_x, idx=%d, shape=%s", 
+              inputIdx, ShapeToStr(inputShapes[inputIdx]).c_str());
     ++inputIdx;
+    
     auto rGmmWeight = replaceGraphBuilder.CreateInput(inputIdx, "gmm_weight", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                        inputShapes[inputIdx].GetDims());
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Created input gmm_weight, idx=%d, shape=%s", 
+              inputIdx, ShapeToStr(inputShapes[inputIdx]).c_str());
     ++inputIdx;
+    
     auto rGmmXScale = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x_scale", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                        inputShapes[inputIdx].GetDims());
     ++inputIdx;
+    
     auto rGmmWeightScale = replaceGraphBuilder.CreateInput(inputIdx, "gmm_weight_scale", inputDTypes[inputIdx],
                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     ++inputIdx;
+    
     ge::es::EsTensorHolder rSendCountsTensor = nullptr;
     ge::es::EsTensorHolder rRecvCountsTensor = nullptr;
     ge::es::EsTensorHolder rMmX = nullptr;
@@ -404,6 +426,10 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
     OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Capture AlltoAllvQuantGroupedMatMul node failed.");
     ge::GNode mc2Node = mc2NodeIo.node;
+    
+    ge::AscendString mc2NodeName;
+    mc2Node.GetName(mc2NodeName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Got MC2 node, name=%s", mc2NodeName.GetString());
 
     ge::AscendString group = "";
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
@@ -432,12 +458,15 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
     bool transGmmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_gmm_weight", transGmmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_gmm_weight failed.");
-    transGmmWeight = !transGmmWeight;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight before flip = %d", transGmmWeight);
+    transGmmWeight = !transGmmWeight;  // 关键：翻转属性
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight after flip = %d (SHOULD BE TRUE)", transGmmWeight);
 
     bool transMmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_mm_weight", transMmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_mm_weight failed.");
-    transMmWeight = !transMmWeight;
+    transMmWeight = !transMmWeight;  // 关键：翻转属性
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_mm_weight after flip = %d", transMmWeight);
 
     bool permuteOutFlag = false;
     OP_LOGE_IF(mc2Node.GetAttr("permute_out_flag", permuteOutFlag) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
@@ -471,18 +500,24 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
         gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
 
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Created new MC2 node with flipped attributes");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight=%d, trans_mm_weight=%d", 
+              transGmmWeight, transMmWeight);
+
     auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.gmm_y});
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Build replace graph failed.");
         return nullptr;
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: BuildAndReset SUCCESS");
 
     if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShape failed.");
         return nullptr;
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: InferShape SUCCESS");
 
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Replacement SUCCESS ===");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Replacement SUCCESS - Transpose should be eliminated ===");
     return std::move(replaceGraph);
 }
 
