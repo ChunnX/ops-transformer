@@ -53,7 +53,9 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
         handler->Initialize(interfaceName, params, workspaceSize, executor);
         return handler->Process();
     } else {
-         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "interfaceName failed: the soc verison is not support");
+         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                 "In op [%s], [%s] is not supported, got [%d].",
+                 interfaceName, "SoC version", static_cast<int32_t>(npuArch));
     }
 
     return ACLNN_ERR_PARAM_INVALID;

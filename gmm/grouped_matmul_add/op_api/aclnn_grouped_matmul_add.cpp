@@ -148,7 +148,7 @@ static aclnnStatus ParamsDataContiguous(gmm_add_advanced::GroupedMatmulAddParams
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params)
+static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params, const char *opName)
 {
     auto xDtype = params.x->GetDataType();
     auto weightDtype = params.weight->GetDataType();
@@ -159,31 +159,35 @@ static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params)
                "Input groupList dtype should be INT64, actual dtype is %s.",
                op::ToString(params.groupList->GetDataType()).GetString());
     if ((xDtype != DataType::DT_FLOAT16 && xDtype != DataType::DT_BF16) || (xDtype != weightDtype)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "case with x dtype %s and weight dtype %s is not supported.",
-                op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "In op [%s], the data types of [%s...] are mismatched, the reason is: [case with x dtype %s and "
+                "weight dtype %s is not supported. This operator supports the non-quant add case with "
+                "x/weight dtype FLOAT16 or BF16 only].",
+                opName, "x, weight", op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParams(gmm_add_advanced::GroupedMatmulAddParams params)
+static aclnnStatus CheckParams(gmm_add_advanced::GroupedMatmulAddParams params, const char *opName)
 {
     CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckDtype(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSizeCommon(gmm_add_advanced::GroupedMatmulAddParams params,
-                                                               uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                               uint64_t *workspaceSize, aclOpExecutor **executor,
+                                                               const char *opName)
 {
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto executorPtr = uniqueExecutor.get();
     // 固定写法，参数检查
-    auto ret = CheckParams(params);
+    auto ret = CheckParams(params, opName);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     // any axis is zero return empty tensor
@@ -219,7 +223,7 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(const aclTensor *x, const aclT
     // Standard syntax, Check parameters.
     L2_DFX_PHASE_1(aclnnGroupedMatmulAdd, DFX_IN(x, weight, groupList, yRef, transposeX, transposeWeight, groupType),
                    DFX_OUT(yRef));
-    return aclnnGroupedMatmulAddGetWorkspaceSizeCommon(params, workspaceSize, executor);
+    return aclnnGroupedMatmulAddGetWorkspaceSizeCommon(params, workspaceSize, executor, __FUNCTION__);
 }
 
 aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(const aclTensor *x, const aclTensor *weight,
@@ -233,7 +237,7 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(const aclTensor *x, const ac
     L2_DFX_PHASE_1(aclnnGroupedMatmulAddV2,
                    DFX_IN(x, weight, groupList, yRef, transposeX, transposeWeight, groupType, groupListType),
                    DFX_OUT(yRef));
-    return aclnnGroupedMatmulAddGetWorkspaceSizeCommon(params, workspaceSize, executor);
+    return aclnnGroupedMatmulAddGetWorkspaceSizeCommon(params, workspaceSize, executor, __FUNCTION__);
 }
 
 aclnnStatus aclnnGroupedMatmulAdd(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
