@@ -1,18 +1,16 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
  
  /*!
- * \file decode_update_3.h
- * \brief 基于 decode_update_2.h，将 CopyInSp 拆分为更小的 helper 函数
- *        拆分策略：将对齐/非对齐的差异下沉到 per-sp helper 内部，
- *        消除主循环的对齐分支分裂，减少重复代码
+ * \file decode_update.h
+ * \brief
  */
 
 #ifndef ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_3_H_
@@ -70,7 +68,7 @@ public:
             if (spLoopCount == NUM1) {
                 CopyInSp(i, 0, spFirstLoop, spFirstLoop);
                 Compute(spFirstLoop);
-                CopyOut(i, false);
+                CopyOut(i);
             } else {
                 LocalTensor<float> outAccLocal = lseexpBroadcastBuffer.Get<float>();
                 for (int32_t spLoop = 0; spLoop < spLoopCount; spLoop++) {
@@ -89,7 +87,8 @@ public:
                     Compute(effectiveSp);
                     SaveAcc(outAccLocal);
                 }
-                CopyOut(i, true);
+                WriteAcc(outAccLocal);
+                CopyOut(i);
             }
         }
     }
@@ -292,6 +291,22 @@ private:
         outQueueOut.FreeTensor(outLocal);
     }
 
+    __aicore__ inline void WriteAcc(LocalTensor<float>& outAccLocal)
+    {
+        LocalTensor<float> lseAccLocal = lseexpsumBuffer.Get<float>();
+        LocalTensor<float> outLocal = outQueueOut.AllocTensor<float>();
+        LocalTensor<float> lseoutLocal = outQueueLse.AllocTensor<float>();
+        
+        uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
+        DataCopy(outLocal, outAccLocal, curLength * hDim);
+        PipeBarrier<PIPE_V>();
+        DataCopy(lseoutLocal, lseAccLocal, curLengthPad);
+        PipeBarrier<PIPE_V>();
+        
+        outQueueOut.EnQue(outLocal);
+        outQueueLse.EnQue(lseoutLocal);
+    }
+
     __aicore__ inline void ProcessLseInfReplacement(LocalTensor<float>& lseLocal, uint32_t effectiveSp)
     {
         LocalTensor<uint8_t> selMask = selMaskBuffer.Get<uint8_t>();
@@ -407,59 +422,33 @@ private:
         inQueueIn.FreeTensor(inLocal);
     }
 
-    __aicore__ inline void CopyOut(int32_t progress, bool fromAccBuffer)
+    __aicore__ inline void CopyOut(int32_t progress)
     {
-        if (fromAccBuffer) {
-            LocalTensor<float> outAccLocal = lseexpBroadcastBuffer.Get<float>();
-            if constexpr (std::is_same<outType, float>::value) {
-                DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outAccLocal, curLength * hDim);
-            } else if constexpr (std::is_same<outType, bfloat16_t>::value){
-                LocalTensor<outType> outLocal16 = outAccLocal.template ReinterpretCast<outType>();
-                Cast(outLocal16, outAccLocal, RoundMode::CAST_RINT, curLength * hDim);
-                PipeBarrier<PIPE_V>();
-                DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-            } else {
-                LocalTensor<outType> outLocal16 = outAccLocal.template ReinterpretCast<outType>();
-                Cast(outLocal16, outAccLocal, RoundMode::CAST_NONE, curLength * hDim);
-                PipeBarrier<PIPE_V>();
-                DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-            }
-            if (updateType == 1) {
-                LocalTensor<float> lseAccLocal = lseexpsumBuffer.Get<float>();
-                uint32_t lseoutGmStart = gmStartOffset + progress * tileLength;
-                uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
-                DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
-                DataCopyPad(lseoutGm[lseoutGmStart], lseAccLocal, copyParams);
-            }
+        LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
+        if constexpr (std::is_same<outType, float>::value) {
+            DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
+        } else if constexpr (std::is_same<outType, bfloat16_t>::value){
+            LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
+            Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
+            PipeBarrier<PIPE_V>();
+            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
+                        {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
         } else {
-            LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
-            if constexpr (std::is_same<outType, float>::value) {
-                DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
-            } else if constexpr (std::is_same<outType, bfloat16_t>::value){
-                LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
-                Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
-                PipeBarrier<PIPE_V>();
-                DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-            } else {
-                LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
-                Cast(outLocal16, outLocal, RoundMode::CAST_NONE, curLength * hDim);
-                PipeBarrier<PIPE_V>();
-                DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-            }
-            outQueueOut.FreeTensor(outLocal);
-            LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
-            if (updateType == 1) {
-                uint32_t lseoutGmStart = gmStartOffset + progress * tileLength;
-                uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
-                DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
-                DataCopyPad(lseoutGm[lseoutGmStart], lseoutLocal, copyParams);
-            }
-            outQueueLse.FreeTensor(lseoutLocal);
+            LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
+            Cast(outLocal16, outLocal, RoundMode::CAST_NONE, curLength * hDim);
+            PipeBarrier<PIPE_V>();
+            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
+                        {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
         }
+        outQueueOut.FreeTensor(outLocal);
+        LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
+        if (updateType == 1) {
+            uint32_t lseoutGmStart = gmStartOffset + progress * tileLength;
+            uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
+            DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
+            DataCopyPad(lseoutGm[lseoutGmStart], lseoutLocal, copyParams);
+        }
+        outQueueLse.FreeTensor(lseoutLocal);
     }
 
 private:
