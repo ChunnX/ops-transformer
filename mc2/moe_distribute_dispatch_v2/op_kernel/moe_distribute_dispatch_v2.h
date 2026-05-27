@@ -45,6 +45,25 @@ using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
+
+enum class ExpertFilterType {
+    ZERO_COMPUTE_EXPERT,
+    NEGATIVE_EXPERT_IDS
+};
+
+struct DispatchExpertFilterCondition {
+    ExpertFilterType filterType;
+    int32_t compareVal;
+    AscendC::CMPMODE compareMode;
+
+    __aicore__ inline static DispatchExpertFilterCondition ZeroComputeExpert(int32_t moeExpertNum) {
+        return {ExpertFilterType::ZERO_COMPUTE_EXPERT, moeExpertNum, AscendC::CMPMODE::LT};
+    }
+    __aicore__ inline static DispatchExpertFilterCondition NegativeId() {
+        return {ExpertFilterType::NEGATIVE_EXPERT_IDS, -1, AscendC::CMPMODE::NE};
+    }
+};
+
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:
@@ -85,8 +104,9 @@ private:
     __aicore__ inline void CalValidBSCnt(LocalTensor<bool> maskStrideTensor);
     __aicore__ inline void CalValidExpIdx(LocalTensor<bool> maskInputTensor);
     __aicore__ inline void GenerateGatherMaskTensor(uint32_t maskCnt);
-    __aicore__ inline void MaskZeroComputeExpert(uint32_t maskCnt);
+    __aicore__ inline void MaskExpert(uint32_t maskCnt, DispatchExpertFilterCondition cond);
     __aicore__ inline void ZeroComputeExpertMaskCal();
+    __aicore__ inline void NegativeExpMaskCal();
     __aicore__ inline void SetStatus();
     __aicore__ inline void BufferInit();
     __aicore__ inline void WaitDispatch();
@@ -877,7 +897,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Expe
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::MaskZeroComputeExpert(uint32_t maskCnt)
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::MaskExpert(uint32_t maskCnt, DispatchExpertFilterCondition cond)
 {
     LocalTensor<int32_t> expertsIndexTensor = dstExpBuf_.Get<int32_t>();
     int32_t maskTensorInt16Cnt = Ceil(expertIdsCnt_, UB_ALIGN / 2);
@@ -899,7 +919,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Mask
     PipeBarrier<PIPE_V>();
     uint32_t calcCnt = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
     // 逐元素比较一个tensor中的元素和另一个Scalar的大小，如果比较后的结果为真，则输出结果的对应比特位为1，否则为0。筛掉零计算量专家
-    CompareScalar(maskTensorInt8, expertIdsTensorCast, static_cast<half>(moeExpertNumInt32), AscendC::CMPMODE::LT, calcCnt);
+    CompareScalar(maskTensorInt8, expertIdsTensorCast, static_cast<half>(cond.compareVal), cond.compareMode, calcCnt);
     PipeBarrier<PIPE_V>();
     LocalTensor<uint16_t> maskTensorInt16 = validExpertIndexBuf_.Get<uint16_t>(); // 空间bs*k*1
     LocalTensor<uint16_t> gatherMaskTensorint16 = gatherMaskTBuf_.Get<uint16_t>(); // 空间bs*k*4
@@ -911,6 +931,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Mask
     PipeBarrier<PIPE_V>();
     GatherMask(validExpertIndexTensor_, expertsIndexTensor, gatherMaskTensor_, true, maskCnt, {1, 1, 0, 0}, sendToMoeExpTokenCnt_);
     SyncFunc<AscendC::HardEvent::V_S>();
+    isExpertMaskFlag_ = true;
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -935,7 +956,26 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Zero
     }
 
     // 零计算量专家剪枝
-    MaskZeroComputeExpert(maskCnt);
+    // MaskZeroComputeExpert(maskCnt);
+    DispatchExpertFilterCondition condition = DispatchExpertFilterCondition::ZeroComputeExpert(moeExpertNum_);
+    MaskExpert(maskCnt, condition);
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::NegativeExpMaskCal()
+{
+    uint32_t maskCnt = expertIdsCnt_;
+    if (isTokenMaskFlag_) { // 一维
+        maskCnt = activeMaskBsCnt_ * axisK_;
+    }
+
+    if (!isExpertMaskFlag_) { // 非二维要生成gatherMaskTensor_
+        GenerateGatherMaskTensor(maskCnt);
+    }
+    
+    // Negative expert ids pruning
+    DispatchExpertFilterCondition condition = DispatchExpertFilterCondition::NegativeId();
+    MaskExpert(maskCnt, condition);
 }
 
 /*
@@ -961,15 +1001,15 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allt
     if (zeroComputeExpertNum_ != 0) {
         ZeroComputeExpertMaskCal();
     }
+
+    // Processing expertIds -1
+ 	NegativeExpMaskCal();
     // 后面的核向共享专家发数据
     bool isSendShared = (aivId_ >= moeUsedAivNum_) && (sharedExpertRankNum_ != 0);
     if (isSendShared) {
         SendToSharedExpert();
     }
 
-    if (zeroComputeExpertNum_ != 0) {
-        isExpertMaskFlag_ = true;
-    }
     DataCopyExtParams expertIdsCntParams = {1U, static_cast<uint32_t>(expertIdsCnt_ * sizeof(uint32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> expertIdsCntCopyPadParams{false, 0U, 0U, 0U};
     if (isExpertMaskFlag_) {
