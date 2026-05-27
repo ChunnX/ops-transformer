@@ -16,6 +16,7 @@
 #ifndef GQMM_TENSOR_API_MX_KERNEL_H
 #define GQMM_TENSOR_API_MX_KERNEL_H
 
+
 #include <stdio.h>
 
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
