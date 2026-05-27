@@ -1561,7 +1561,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
         workspaces[0] += AlignUp(cvS2Inner * value_dAlign * FP32_BYTES * fBaseParams.aicNum * DB_NUM, GM_ALIGN);
     }
 
-    return ge::GRAPH_SUCCESS;
+    return CheckFagWorkspaceSize(context_, static_cast<uint64_t>(workspaces[0]));
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::PostTiling()

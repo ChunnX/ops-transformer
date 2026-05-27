@@ -220,6 +220,14 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckFagWorkspaceSize(gert::TilingContext *context, uint64_t workspaceSize)
+{
+    OP_CHECK_IF(workspaceSize > MAX_FAG_WORKSPACE_BYTES,
+                OP_LOGE(context, "workspace size %lu exceeds limit %lu.", workspaceSize, MAX_FAG_WORKSPACE_BYTES),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d)
 {
     if (context == nullptr) {
