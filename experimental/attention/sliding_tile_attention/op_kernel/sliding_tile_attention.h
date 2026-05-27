@@ -1013,15 +1013,16 @@ private:
 
         if (rowBegin < validRowEnd) {
             LocalTensor<float> invDenomLocal = oldScaleFloatBuf_.Get<float>();
-            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                DuplicateRowState(invDenomLocal, row, 1.0F / denomLocal.GetValue(GetRowStateOffset(row)));
-            }
-            PipeBarrier<PIPE_V>();
             const uint32_t rowCount = static_cast<uint32_t>(validRowEnd - rowBegin);
+            const int64_t stateBegin = GetRowStateOffset(rowBegin);
+            const uint32_t stateCount = rowCount * VECTOR_FP32_BLOCK_ELEMS;
+            Duplicate(invDenomLocal[stateBegin], 1.0F, stateCount);
+            PipeBarrier<PIPE_V>();
+            Div(invDenomLocal[stateBegin], invDenomLocal[stateBegin], denomLocal[stateBegin], stateCount);
+            PipeBarrier<PIPE_V>();
             LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
             fa_base_vector::RowMuls(accTile[rowBegin * alignedHeadDim], accTile[rowBegin * alignedHeadDim],
-                                    invDenomLocal[GetRowStateOffset(rowBegin)], rowCount, alignedHeadDim,
-                                    alignedHeadDim);
+                                    invDenomLocal[stateBegin], rowCount, alignedHeadDim, alignedHeadDim);
             PipeBarrier<PIPE_V>();
         }
 
