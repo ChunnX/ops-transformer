@@ -65,7 +65,7 @@ def npu_bandwidth_test(x, dst_rank_id, group, world_size, max_bs, mode, aiv_num=
     Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return op_module.npu_bandwidth_test(x, dst_rank_id, group, world_size, max_bs, aiv_num, mode, comm_alg)
+    return op_module.npu_bandwidth_test(x, dst_rank_id, group, world_size, max_bs, mode, aiv_num, comm_alg)
 
 
 # GE Converter for Graph Mode

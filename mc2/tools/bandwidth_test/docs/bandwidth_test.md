@@ -41,6 +41,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     int64_t          worldSize,
     int64_t          maxBs,
     int64_t          mode,
+    int64_t          aivNum,
     const char*      commAlg,
     aclTensor*       y,
     aclTensor*       receiveCnt,
@@ -138,6 +139,16 @@ aclnnStatus aclnnBandwidthTest(
     <td>输入</td>
     <td>运行模式。</td>
     <td>取值范围<code>[0, 1]</code>：<ul><li>0：精度模式（完整流程），执行发送、同步、接收和输出拷贝。</li><li>1：纯发模式，仅执行发送和同步，用于单向带宽测试。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>aivNum</td>
+    <td>输入</td>
+    <td>使用核数。</td>
+    <td>可选参数，用于指定核数。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>

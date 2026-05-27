@@ -10,6 +10,7 @@ import traceback
 import time
 import pandas as pd
 import numpy as np
+from math import ceil
 from typing import List, Tuple, Dict, Any
 
 import npu_ops_transformer
