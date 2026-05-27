@@ -149,12 +149,32 @@ public:
         }
     }
 
+    // 静态Tensor编程模式：使用预定义静态事件ID，无需TPipe/AllocEventID
+    __aicore__ inline void InitStatic(uint32_t p2cEventId, uint32_t c2pEventId) {
+        if ASCEND_IS_AIC {
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                p2cEventId_ = p2cEventId;
+                c2pEventId_ = c2pEventId;
+                SetFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+            }
+        }
+    }
+
     __aicore__ inline void UnInit() {
         if ASCEND_IS_AIC {
             if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
                 WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
                 GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
                 GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
+            }
+        }
+    }
+
+    // 静态Tensor编程模式：仅WaitFlag排干流水，不ReleaseEventID（静态ID无需释放）
+    __aicore__ inline void UnInitStatic() {
+        if ASCEND_IS_AIC {
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
             }
         }
     }
