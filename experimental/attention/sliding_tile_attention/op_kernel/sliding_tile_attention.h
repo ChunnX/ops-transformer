@@ -10,6 +10,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "experimental/attention/common/op_kernel/vector_common.h"
 #include "sliding_tile_attention_tiling_data.h"
 
 namespace SlidingTileAttentionKernel {
@@ -634,11 +635,10 @@ private:
             for (uint32_t row = 0; row < chunkRows; ++row) {
                 const float rowMax = GetRowReduceValue(rowReduceLocal, row);
                 maxLocal.SetValue(rowBase + row, rowMax);
-                Duplicate(reduceTile[static_cast<int64_t>(row) * columnCount], rowMax, columnCount);
             }
             PipeBarrier<PIPE_V>();
 
-            Sub(weightTile, scoreTile, reduceTile, elemCount);
+            fa_base_vector::RowSub(weightTile, scoreTile, rowReduceLocal, chunkRows, columnCount, columnCount);
             PipeBarrier<PIPE_V>();
             Exp(weightTile, weightTile, elemCount);
             PipeBarrier<PIPE_V>();
