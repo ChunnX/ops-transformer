@@ -62,6 +62,26 @@ const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataTy
 const std::initializer_list<DataType> WEIGHT_ASSIST_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 const std::initializer_list<DataType> SMOOTH_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
+inline const char *GetDsqBaseScenarioName(const GroupedMatmulSwigluQuantParamsBase &params)
+{
+    if (params.x == nullptr || params.weight == nullptr || params.weight->Size() == 0 ||
+        (*params.weight)[0] == nullptr) {
+        return "unknown";
+    }
+    DataType xDtype = params.x->GetDataType();
+    DataType weightDtype = (*params.weight)[0]->GetDataType();
+    if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
+        return "A8W8";
+    }
+    if (params.isA8W4) {
+        return "A8W4";
+    }
+    if (params.isA4W4) {
+        return "A4W4";
+    }
+    return "unsupported";
+}
+
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
     bool CheckInputOutDimsA8W8()
@@ -99,11 +119,17 @@ protected:
     bool CheckInputOutDimsA4W4orA8W4()
     {
         OP_CHECK_WRONG_DIMENSION(gmmDsqParams_.x, X_DIM_LIMIT, return false);
+        const char *scenario = GetDsqBaseScenarioName(gmmDsqParams_);
         if (gmmDsqParams_.isA4W4 && gmmDsqParams_.weightAssistMatrix != nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the A4W4 scenario, the weightAssistMatrix input must be nullptr.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The op [%s] received bad params, the reason is: [weightAssistMatrix must be nullptr in %s case].",
+                    interfaceName_.c_str(), scenario);
             return false;
         } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.weightAssistMatrix == nullptr) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the A8W4 scenario, the weightAssistMatrix input must not be nullptr.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "The op [%s] received bad params, the reason is: [weightAssistMatrix must not be nullptr in "
+                    "%s case].",
+                    interfaceName_.c_str(), scenario);
             return false;
         }
         size_t wLength = gmmDsqParams_.weight->Size();
@@ -163,32 +189,39 @@ protected:
         op::Format storageFormat = w->GetStorageFormat();
         if (IsPrivateFormat(wFormat)) {
             if (!(w->GetViewShape() == weightNZExpectShape1 || w->GetViewShape() == weightNZExpectShape2)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for weight to have same size as %s or %s, but got %s.",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[expected %s or %s].",
+                        interfaceName_.c_str(), "weight in A8W8 NZ case", op::ToString(w->GetViewShape()).GetString(),
                         op::ToString(weightNZExpectShape1).GetString(),
-                        op::ToString(weightNZExpectShape2).GetString(),
-                        op::ToString(w->GetViewShape()).GetString());
+                        op::ToString(weightNZExpectShape2).GetString());
                 return false;
             }
         } else {
             if (!(w->GetViewShape() == weightNDExpectShape1 || w->GetViewShape() == weightNDExpectShape2)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for weight to have same size as %s or %s, but got %s.",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[expected %s or %s].",
+                        interfaceName_.c_str(), "weight in A8W8 ND case", op::ToString(w->GetViewShape()).GetString(),
                         op::ToString(weightNDExpectShape1).GetString(),
-                        op::ToString(weightNDExpectShape2).GetString(),
-                        op::ToString(w->GetViewShape()).GetString());
+                        op::ToString(weightNDExpectShape2).GetString());
                 return false;
             }
 
             if (IsPrivateFormat(storageFormat) && (k % NZ_ALIGN_K != 0 || n % NZ_ALIGN_N != 0)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In W8a8 Nz mode, k should align to 16, n align to 32");
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], the shape of [%s...] is not supported, got [K %ld, N %ld]. Constraint:[K "
+                        "should align to 16 and N should align to 32 in A8W8 NZ case].",
+                        interfaceName_.c_str(), "weight, x", k, n);
                 return false;
             }
         }
 
         if (!(wScale->GetViewShape() == weightScaleExpectShape1 || wScale->GetViewShape() == weightScaleExpectShape2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for weight_scale to have same size as %s or %s, but got %s.",
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[expected %s or %s in "
+                    "A8W8 case].",
+                    interfaceName_.c_str(), "weightScale", op::ToString(wScale->GetViewShape()).GetString(),
                     op::ToString(weightScaleExpectShape1).GetString(),
-                    op::ToString(weightScaleExpectShape2).GetString(),
-                    op::ToString(wScale->GetViewShape()).GetString());
+                    op::ToString(weightScaleExpectShape2).GetString());
             return false;
         }
         return true;
@@ -216,7 +249,10 @@ protected:
             } else {
                 OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(w, weightNDExpectShape, return false);
                 if (IsPrivateFormat(storageFormat) && (k % NZ_ALIGN_K != 0 || n % NZ_ALIGN_N != 0)) {
-                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In W8a8 Nz mode, k should align to 16, n align to 32");
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                            "In op [%s], the shape of [%s...] is not supported, got [K %ld, N %ld]. Constraint:[K "
+                            "should align to 16 and N should align to 32 in A8W8 NZ case].",
+                            interfaceName_.c_str(), "weight, x", k, n);
                     return false;
                 }
             }
@@ -248,7 +284,10 @@ protected:
             e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
         }
         if (n % SPLIT != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, N is %ld , not an even number.", interfaceName_.c_str(), n);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[N must be even in "
+                    "A8W8 case].",
+                    interfaceName_.c_str(), "weightScale", n);
             return false;
         }
         int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -274,27 +313,29 @@ protected:
         int64_t groupListLen = gmmDsqParams_.groupList->GetViewShape().GetDim(0);
         if (groupListLen > e) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s A8W8, Length of 'groupList' out of range (expected to be in range of [1, "
-                    "%ld], but got %ld)", interfaceName_.c_str(),
-                    e, groupListLen);
+                    "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[groupList length "
+                    "should be in range of [1, %ld] in A8W8 case].",
+                    interfaceName_.c_str(), "groupList", groupListLen, e);
             return false;
         }
         if (n > N_LIMIT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s A8W8: The current version does not support the scenario that "
-                    "N(%ld) is greater than %ld.", interfaceName_.c_str(),
-                    n, N_LIMIT);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[N must be less than or "
+                    "equal to %ld in A8W8 case].",
+                    interfaceName_.c_str(), "weightScale", n, N_LIMIT);
             return false;
         }
         if (k >= K_LIMIT_A8W8) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s A8W8, The current version does not support the scenario."
-                    "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                    interfaceName_.c_str(), k, K_LIMIT_A8W8);
+                    "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[tail "
+                    "axis dimension must be lower than %ld in A8W8 case].",
+                    interfaceName_.c_str(), "x", k, K_LIMIT_A8W8);
             return false;
         }
         if (gmmDsqParams_.smoothScale != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s, smoothScale must be nullptr in A8W8 scenario.", interfaceName_.c_str());
+                    "The op [%s] received bad params, the reason is: [smoothScale must be nullptr in A8W8 case].",
+                    interfaceName_.c_str());
             return false;
         }
         return true;
@@ -323,13 +364,17 @@ protected:
             OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(weightAssistMatrix, weightAssistMatrixExpectShape, return false);
         }
         op::Format weightViewFormat = w->GetViewFormat();
+        const char *scenario = GetDsqBaseScenarioName(gmmDsqParams_);
         if (IsPrivateFormat(weightViewFormat)) {
             if (!(w->GetViewShape() == weightNZExpectShape || w->GetViewShape() == weightNZTransposeExpectShape1 || w->GetViewShape() == weightNZTransposeExpectShape2)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for weight to have same size as %s %s or %s, but got %s.",
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[expected %s, %s or "
+                        "%s in %s NZ case].",
+                        interfaceName_.c_str(), "weight", op::ToString(w->GetViewShape()).GetString(),
                         op::ToString(weightNZExpectShape).GetString(),
                         op::ToString(weightNZTransposeExpectShape1).GetString(),
                         op::ToString(weightNZTransposeExpectShape2).GetString(),
-                        op::ToString(w->GetViewShape()).GetString());
+                        scenario);
                 return false;
             }
         } else {
@@ -409,6 +454,7 @@ protected:
         int64_t KGroupSize = k;  // K轴每组的元素个数
         op::Shape weightScaleExpectShape;
         size_t wLength = gmmDsqParams_.weight->Size();
+        const char *scenario = GetDsqBaseScenarioName(gmmDsqParams_);
         if (gmmDsqParams_.dequantMode == 0 && wLength == static_cast<size_t>(1)) {
             e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
             // weightScale入参在perchannel单tensor场景期望shape [E, N]
@@ -437,14 +483,17 @@ protected:
         if (KGroupCount == 0 || k % KGroupCount != 0) {
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
-                "%s, "
-                "The number of groups along the k-axis is %ld, and the length of the k-axis is %ld, which is illegal. "
-                "The number of groups must be greater than 0, and k-axis length %% number of groups == 0 must be true.",
-                interfaceName_.c_str(), KGroupCount, k);
+                "The op [%s] received bad params, the reason is: [the number of groups along the k-axis is %ld, "
+                "and the length of the k-axis is %ld. The number of groups must be greater than 0, and k-axis length "
+                "%% number of groups == 0 must be true in %s case].",
+                interfaceName_.c_str(), KGroupCount, k, scenario);
             return false;
         }
         if (n % SPLIT != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s, N is %ld , not an even number.", interfaceName_.c_str(), n);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[N must be even in "
+                    "%s case].",
+                    interfaceName_.c_str(), "weightScale", n, scenario);
             return false;
         }
         int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -473,22 +522,23 @@ protected:
         int64_t groupListLen = gmmDsqParams_.groupList->GetViewShape().GetDim(0);
         if (groupListLen > e) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s A8W4 or A4W4, Length of 'groupList' out of range (expected to be in range of [1, "
-                    "%ld], but got %ld)", interfaceName_.c_str(),
-                    e, groupListLen);
+                    "In op [%s], the shape of [%s] is not supported, got [length %ld]. Constraint:[groupList length "
+                    "should be in range of [1, %ld] in %s case].",
+                    interfaceName_.c_str(), "groupList", groupListLen, e, scenario);
             return false;
         }
         if (n > N_LIMIT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s A8W4 or A4W4: The current version does not support the scenario that "
-                    "N(%ld) is greater than %ld.", interfaceName_.c_str(),
-                    n, N_LIMIT);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[N must be less than or "
+                    "equal to %ld in %s case].",
+                    interfaceName_.c_str(), "weightScale", n, N_LIMIT, scenario);
             return false;
         }
         if (k >= K_LIMIT_A8W4) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s A8W4 or A4W4, The current version does not support the scenario."
-                    "The tail axis dimension of input0(x) is %ld, which need lower than %ld.",
-                    interfaceName_.c_str(), k, K_LIMIT_A8W4);
+                    "In op [%s], the shape of [%s] is not supported, got [tail axis dimension %ld]. Constraint:[tail "
+                    "axis dimension must be lower than %ld in %s case].",
+                    interfaceName_.c_str(), "x", k, K_LIMIT_A8W4, scenario);
             return false;
         }
         if (gmmDsqParams_.isA4W4) {
@@ -497,7 +547,8 @@ protected:
             }
         } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.smoothScale != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "%s, smoothScale must be nullptr in A8W4 scenario.", interfaceName_.c_str());
+                    "The op [%s] received bad params, the reason is: [smoothScale must be nullptr in A8W4 case].",
+                    interfaceName_.c_str());
             return false;
         }
         (void)KGroupSize;

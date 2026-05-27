@@ -510,7 +510,7 @@ ge::graphStatus GMMTiling::Init(const gert::TilingContext* context) {
   tilingData.gmmBaseParams.set_groupType(static_cast<int32_t>(groupType_));
   tilingData.gmmBaseParams.set_activeType(actType_);
   tilingData.gmmBaseParams.set_quantParam(perTokenOrPerGroupSize_);
-  tilingData.gmmBaseParams.set_groupListType(groupListType_);
+  tilingData.gmmBaseParams.set_groupListType(static_cast<uint32_t>(groupListType_));
   tilingData.gmmBaseParams.set_k(maxK_);
   tilingData.gmmBaseParams.set_n(maxN_);
   OP_LOGI(context->GetNodeName(), "GMM_tiling: groupNum_ is %u, maxM_ is %ld, maxK_ is %ld, maxN_ is %ld.",
@@ -1166,7 +1166,7 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
                                                 GetTplDataType(yDtype_),
                                                 transposeX_? 1UL : 0UL,
                                                 transposeWeight_? 1UL : 0UL,
-                                                groupListType_,
+                                                static_cast<uint64_t>(groupListType_),
                                                 isStaticTilingApi,
                                                 a8w4KernelTemplate,
                                                 a16w8KernelTemplate,
@@ -1187,7 +1187,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   const int64_t* groupTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
   const int64_t* splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_SPLIT_ITEM);
   const int64_t* actTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
-  const uint32_t* groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+  const int64_t* groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
   const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
   transposeWeight_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
   transposeX_ = transposeXPtr != nullptr ? *transposeXPtr : false;
@@ -1757,7 +1757,7 @@ ge::graphStatus GMMTiling::A16W4MsdTiling(gert::TilingContext *context, const GM
     if (CheckA16W4MsdEnable(mSize, antiquantGroupNum, context, compileInfoPtr) != ge::GRAPH_SUCCESS) {
         return GRAPH_PARAM_INVALID;
     }
-    OP_LOGD(context->GetNodeName(), "A16W4 enable msd. groupListType: %u. ", groupListType_);
+    OP_LOGD(context->GetNodeName(), "A16W4 enable msd. groupListType: %ld. ", groupListType_);
     GMMTilingData tilingDataA16W4;
     tilingDataA16W4.mmTilingData.set_dbL0B(1);
     tilingDataA16W4.mmTilingData.set_dbL0C(1);
@@ -1786,7 +1786,8 @@ ge::graphStatus GMMTiling::A16W4MsdTiling(gert::TilingContext *context, const GM
     context->SetBlockDim(compileInfoPtr->aicNum);
     context->SetScheduleMode(1);  // set as batchmod for template using SyncAll
     context->SetTilingKey(GET_TPL_TILING_KEY(
-        GMM_TPL_BF16, GMM_TPL_INT4, GMM_TPL_BF16, 0, 1, groupListType_, 0, GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE,
+        GMM_TPL_BF16, GMM_TPL_INT4, GMM_TPL_BF16, 0, 1, static_cast<uint64_t>(groupListType_), 0,
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE,
         GROUPED_MATMUL_A16W4_KERNEL_TEMPLATE_MSD_ANTIQUANT_GS32, GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
     tilingDataA16W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingDataA16W4.GetDataSize());

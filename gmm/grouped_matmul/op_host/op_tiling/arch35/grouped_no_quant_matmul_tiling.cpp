@@ -238,14 +238,18 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         return SeparatedXSeparatedWeight(context);
     }
     OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+            "In non-quant case, groupType is not supported, got groupType=%d, singleWeight=%d, singleX=%d, "
+            "singleY=%d.",
+            groupType_, isSingleWeight_, isSingleX_, isSingleY_);
     return false;
 }
 
 bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const
 {
-    OP_CHECK_IF(numInOneBlk <= 0, OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
+    OP_CHECK_IF(numInOneBlk <= 0,
+                OP_LOGE(context->GetNodeName(),
+                        "In non-quant NZ case, numInOneBlk should be positive, but actual is %ld.", numInOneBlk),
+                return false);
     uint32_t i = 0;
     while (true) {
         auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i++);
@@ -255,7 +259,9 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
         size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
         OP_CHECK_IF((kValue % numInOneBlk != 0 || nValue % numInOneBlk != 0),
                     OP_LOGE(context->GetNodeName(),
-                    "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+                            "In non-quant NZ case, the N and K dims of weight should be multiples of %ld, but actual "
+                            "N is %zu and K is %zu.",
+                            numInOneBlk, nValue, kValue),
                     return false);
     }
     return true;
@@ -299,7 +305,7 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // no-quant from weight-quant cases.
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
                 OP_LOGE(context->GetNodeName(),
-                        "In no quant case, groupListType does not support value %u(sparse), but actual is %u.",
+                        "In non-quant case, groupListType does not support value %u(sparse), but actual is %u.",
                         GroupedMatmul::GROUPLIST_TYPE_SPARSE_M, groupListType_),
                 return false);
     return true;
@@ -309,10 +315,11 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
                                                  const GMMCompileInfo *compileInfoPtr)
 {
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
-        OP_LOGE(context->GetNodeName(), "GMM no quant group num cannot less than 1 or larger than 1024.");
+        OP_LOGE(context->GetNodeName(),
+                "In non-quant case, group num should be in range [1, 1024], but actual is %u.", groupNum_);
         return false;
     }
-    OP_CHECK_IF(kZero, OP_LOGE(context->GetNodeName(), "GMM no quant case does not support input K is 0."),
+    OP_CHECK_IF(kZero, OP_LOGE(context->GetNodeName(), "In non-quant case, input K should not be 0."),
                 return false);
     OP_CHECK_IF(!CalBaseMMTiling(context, compileInfoPtr),
                 OP_LOGE(context->GetNodeName(), "Unable to calculate BaseMMTiling."), return false);
@@ -422,8 +429,9 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
         return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
     OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+            "In non-quant split-M case, tensor list layout is not supported, got groupType=%d, singleWeight=%d, "
+            "singleX=%d, singleY=%d.",
+            groupType_, isSingleWeight_, isSingleX_, isSingleY_);
     return false;
 }
 
@@ -440,8 +448,9 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+            "In non-quant split-K case, tensor list layout is not supported, got groupType=%d, singleWeight=%d, "
+            "singleX=%d, singleY=%d.",
+            groupType_, isSingleWeight_, isSingleX_, isSingleY_);
     return false;
 }
 
@@ -545,7 +554,7 @@ bool GroupedNoQuantMatmulTiling::SplitKSingleXSingleWeightSingleY(const gert::Ti
 
     auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
     if (groupListTensor == nullptr) {
-        OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr");
+        OP_LOGE(context->GetNodeName(), "In non-quant split-K case, groupList tensor must not be nullptr.");
         return false;
     }
     gert::Shape groupListShape = groupListTensor->GetStorageShape();
