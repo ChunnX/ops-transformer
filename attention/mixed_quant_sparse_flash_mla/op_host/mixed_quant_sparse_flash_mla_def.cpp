@@ -27,12 +27,12 @@ public:
             .AutoContiguous();
         this->Input("ori_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
+            .DataType({ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("cmp_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
+            .DataType({ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("ori_sparse_indices")
@@ -118,16 +118,16 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("quant_mode").AttrType(REQUIRED).Int(1);
-        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int(64); // rope_head_dim默认值64
-        this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
-        this->Attr("cmp_ratio").AttrType(REQUIRED).Int(1);
-        this->Attr("ori_mask_mode").AttrType(REQUIRED).Int(4); // ori_mask_mode默认值4
-        this->Attr("cmp_mask_mode").AttrType(REQUIRED).Int(3); // cmp_mask_mode默认值3
-        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(127); // ori_win_left默认值127
-        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(0);
+        this->Attr("quant_mode").AttrType(OPTIONAL).Int();
+        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int();
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float();
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int();
+        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
+        this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("PA_ND");
+        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
         this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
         this->Attr("batch_invariant").AttrType(OPTIONAL).Int(0);

@@ -22,7 +22,7 @@ using std::string;
 using std::pair;
 namespace optiling {
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureWinKV() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureWinKV() const
 {
     OP_CHECK_IF(oriWinLeft_ != 127, // 127:当前不泛化
         OP_LOGE(opName_, "oriWinLeft_ only support 127, but got %u", oriWinLeft_),
@@ -35,13 +35,13 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureWinKV() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantShape() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
 {
     OP_CHECK_IF(bSize_ <= 0,
         OP_LOGE(opName_, "batch_size should be greater than 0, but got %u", bSize_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == SASLayout::TND),
+    OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSMLALayout::TND),
             OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
             return ge::GRAPH_FAILED);
 
@@ -77,7 +77,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantLayout() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantLayout() const
 {
     const std::vector<std::string> layoutSupportList = {
         "BSND",
@@ -90,17 +90,17 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantLayout() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantDtype() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
     OP_CHECK_IF(qType_ != ge::DT_BF16,
         OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            SASDataTypeToSerialString(ge::DT_BF16).c_str(), SASDataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            SASDataTypeToSerialString(qType_).c_str()),
+            QSMLADataTypeToSerialString(ge::DT_BF16).c_str(), QSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
+            QSMLADataTypeToSerialString(qType_).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     // 1 for fp8_e4m3fn per-tile and 10 for hif8 per-tensor
     OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 10,
@@ -126,8 +126,11 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantPa() const
 {
+    if (kvLayout_ != QSMLALayout::PA_ND) {
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
         OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%ld) should be in range (0, %u].",
         oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
@@ -140,7 +143,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantPa() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquant() const
+ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquant() const
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureAntiquantAttr() ||
         ge::GRAPH_SUCCESS != CheckFeatureAntiquantShape() ||
@@ -153,7 +156,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckFeature() const
+ge::graphStatus QSMLATilingCheck::CheckFeature() const
 {
     return CheckFeatureAntiquant();
 }

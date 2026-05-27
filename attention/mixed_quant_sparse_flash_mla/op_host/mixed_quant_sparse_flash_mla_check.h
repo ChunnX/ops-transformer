@@ -43,26 +43,28 @@ const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string SEQUSED_KV_NAME = "seqused_kv";
+const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
+const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
+const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
 
 // // ------------------公共定义--------------------------
-struct SASTilingRequiredParaInfo {
+struct QSMLATilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
 };
 
-struct SASTilingOptionalParaInfo {
+struct QSMLATilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
 
-enum class SASLayout : uint32_t {
+enum class QSMLALayout : uint32_t {
     BSND = 0,
     TND = 1,
     PA_ND = 2
 };
 
-enum class SASAxis : uint32_t {
+enum class QSMLAAxis : uint32_t {
     B = 0,
     S = 1,
     N = 2,
@@ -73,7 +75,7 @@ enum class SASAxis : uint32_t {
     Bs = 7 // block size
 };
 
-enum class SASTemplateMode : uint32_t {
+enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
     SCFA_TEMPLATE_MODE = 2
@@ -85,7 +87,7 @@ enum class KvStorageMode : uint32_t {
     PAGE_ATTENTION = 2
 };
 
-struct KvQuantSASTilingShapeCompareParam {
+struct QSMLATilingShapeCompareParam {
     int64_t B = 1;
     int64_t S = 1;
     int64_t N = 1;
@@ -197,40 +199,42 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // dt_variant type
 };
 
-const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
-    {SASLayout::BSND, {SASAxis::B, SASAxis::S, SASAxis::N, SASAxis::D}},
-    {SASLayout::TND, {SASAxis::T, SASAxis::N, SASAxis::D}},
-    {SASLayout::PA_ND, {SASAxis::Bn, SASAxis::Bs, SASAxis::N, SASAxis::D}},
+const std::map<QSMLALayout, std::vector<QSMLAAxis>> QSMLA_LAYOUT_AXIS_MAP = {
+    {QSMLALayout::BSND, {QSMLAAxis::B, QSMLAAxis::S, QSMLAAxis::N, QSMLAAxis::D}},
+    {QSMLALayout::TND, {QSMLAAxis::T, QSMLAAxis::N, QSMLAAxis::D}},
+    {QSMLALayout::PA_ND, {QSMLAAxis::Bn, QSMLAAxis::Bs, QSMLAAxis::N, QSMLAAxis::D}},
 };
 
-const std::map<SASLayout, size_t> SAS_LAYOUT_DIM_MAP = {
-    {SASLayout::BSND, DIM_NUM_FOUR},
-    {SASLayout::TND, DIM_NUM_THREE},
-    {SASLayout::PA_ND, DIM_NUM_FOUR},
+const std::map<QSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
+    {QSMLALayout::BSND, DIM_NUM_FOUR},
+    {QSMLALayout::TND, DIM_NUM_THREE},
+    {QSMLALayout::PA_ND, DIM_NUM_FOUR},
 };
 
-std::string SASDataTypeToSerialString(ge::DataType type);
-std::string KvQuantSASLayoutToSerialString(SASLayout layout);
+std::string QSMLADataTypeToSerialString(ge::DataType type);
+std::string QSMLALayoutToSerialString(QSMLALayout layout);
 std::string GetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
-struct KvQuantSASParaInfo {
-    SASTilingRequiredParaInfo q = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
-    SASTilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
-    SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
-    SASTilingRequiredParaInfo attnOut = {nullptr, nullptr};
+struct QSMLAParaInfo {
+    QSMLATilingRequiredParaInfo q = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
+    QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
     const int64_t *kvQuantMode = nullptr;
     const int64_t *tileSize = nullptr;
@@ -248,11 +252,11 @@ struct KvQuantSASParaInfo {
 };
 
 // -----------算子Tiling入参信息类---------------
-class KvQuantSASTilingInfo {
+class QSMLATilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    KvQuantSASParaInfo opParamInfo;
+    QSMLAParaInfo opParamInfo;
 
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -269,8 +273,9 @@ public:
     uint32_t maxActualseq = 0;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
-    bool isSameActualseq = true;
-    uint32_t actualLenDimsKV = 0;
+    uint32_t actualLenDimsOriKV = 0;
+    uint32_t actualLenDimsCmpKV = 0;
+    uint32_t cmpResidualKVSize = 0;
 
     int64_t kvQuantMode = 0;
     int64_t tileSize = 0;
@@ -308,22 +313,22 @@ public:
     ge::DataType outputType = ge::DT_FLOAT16;
 
     // Layout
-    SASLayout qLayout = SASLayout::BSND;
-    SASLayout kvLayout = SASLayout::PA_ND;
-    SASLayout outLayout = SASLayout::BSND;
+    QSMLALayout qLayout = QSMLALayout::BSND;
+    QSMLALayout kvLayout = QSMLALayout::PA_ND;
+    QSMLALayout outLayout = QSMLALayout::BSND;
 };
 
-class KvQuantSASInfoParser {
+class QSMLAInfoParser {
 public:
-    explicit KvQuantSASInfoParser(gert::TilingContext *context) : context_(context) {}
-    ~KvQuantSASInfoParser() = default;
+    explicit QSMLAInfoParser(gert::TilingContext *context) : context_(context) {}
+    ~QSMLAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        SASLayout &layout, const std::string &name) const;
+        QSMLALayout &layout, const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -337,7 +342,7 @@ public:
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetKvLayout();
-    void SetSASShape();
+    void SetQSMLAShape();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
@@ -355,18 +360,18 @@ public:
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
     ge::graphStatus GetSinks();
-    void GenerateInfo(KvQuantSASTilingInfo &sasInfo);
-    ge::graphStatus Parse(KvQuantSASTilingInfo &sasInfo);
+    void GenerateInfo(QSMLATilingInfo &qsmlaInfo);
+    ge::graphStatus Parse(QSMLATilingInfo &qsmlaInfo);
 
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    KvQuantSASParaInfo opParamInfo_;
+    QSMLAParaInfo opParamInfo_;
 
-    bool HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const;
+    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
+    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
@@ -383,16 +388,18 @@ public:
     int64_t sparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
-    uint32_t actualLenDimsKV_ = 0;
+    uint32_t actualLenDimsOriKV_ = 0;
+    uint32_t actualLenDimsCmpKV_ = 0;
+    uint32_t cmpResidualKVSize_ = 0;
     uint32_t actualLenDimsQ_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
     uint32_t oriKvStride_ = 0;
     uint32_t cmpKvStride_ = 0;
     // Layout
-    SASLayout qLayout_ = SASLayout::BSND;
-    SASLayout outLayout_ = SASLayout::BSND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    QSMLALayout qLayout_ = QSMLALayout::BSND;
+    QSMLALayout outLayout_ = QSMLALayout::BSND;
+    QSMLALayout kvLayout_ = QSMLALayout::PA_ND;
     // PageAttention
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -417,17 +424,17 @@ public:
     gert::Shape cmpSparseIndicesShape_{};
 };
 
-class KvQuantSASTilingCheck {
+class QSMLATilingCheck {
 public:
-    explicit KvQuantSASTilingCheck(const KvQuantSASTilingInfo &sasInfo) : sasInfo_(sasInfo) {};
-    ~KvQuantSASTilingCheck() = default;
+    explicit QSMLATilingCheck(const QSMLATilingInfo &qsmlaInfo) : qsmlaInfo_(qsmlaInfo) {};
+    ~QSMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
 private:
     void Init();
-    bool HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const;
+    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
+    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
@@ -442,15 +449,15 @@ private:
         const std::vector<size_t> &expectDimNumList, const std::string &name) const;
     ge::graphStatus CheckShapeNumSupport(const gert::StorageShape *shape,
         const std::vector<int64_t> &expectShapeNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const SASLayout &layout,
+    ge::graphStatus CheckDimNumInLayoutSupport(const QSMLALayout &layout,
         const gert::StorageShape *shape, const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<SASLayout> &expectLayoutList,
-        const SASLayout &actualLayout, const std::string &name) const;
+    void LogErrorLayoutSupport(const std::vector<QSMLALayout> &expectLayoutList,
+        const QSMLALayout &actualLayout, const std::string &name) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
-    const KvQuantSASTilingShapeCompareParam &param, const SASLayout &layout) const;
-    ge::graphStatus CompareShape(KvQuantSASTilingShapeCompareParam &param,
-        const gert::Shape &shape, const SASLayout &layout, const std::string &name) const;
-    ge::graphStatus CheckLayoutSupport(const SASLayout &actualLayout, const std::string &name) const;
+    const QSMLATilingShapeCompareParam &param, const QSMLALayout &layout) const;
+    ge::graphStatus CompareShape(QSMLATilingShapeCompareParam &param,
+        const gert::Shape &shape, const QSMLALayout &layout, const std::string &name) const;
+    ge::graphStatus CheckLayoutSupport(const QSMLALayout &actualLayout, const std::string &name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
@@ -458,6 +465,7 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
+    ge::graphStatus CheckSingleParaCmpResidualKv() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqLensQ() const;
     ge::graphStatus CheckSingleParaSequsedKv() const;
@@ -470,7 +478,7 @@ private:
     ge::graphStatus CheckParaExistence();
     ge::graphStatus CheckCmpRatioExistence();
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const SASLayout &layout, const std::string &name) const;
+        const QSMLALayout &layout, const std::string &name) const;
     ge::graphStatus CheckSWAExistence();
     ge::graphStatus CheckCFAExistence();
     ge::graphStatus CheckSCFAExistence();
@@ -506,13 +514,13 @@ private:
     ge::graphStatus CheckFeatureAntiquant() const;
     ge::graphStatus CheckFeature() const;
 
-    void SetSASShapeCompare();
+    void SetQSMLAShapeCompare();
 
 private:
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    KvQuantSASParaInfo opParamInfo_;
-    const KvQuantSASTilingInfo &sasInfo_;
+    QSMLAParaInfo opParamInfo_;
+    const QSMLATilingInfo &qsmlaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
@@ -548,9 +556,9 @@ private:
 
     int64_t cmpRatio_ = 0;
 
-    uint32_t dSize_ = sasInfo_.dSize;
-    uint32_t dSizeV_ = sasInfo_.dSizeV;
-    uint32_t dSizeVInput_ = sasInfo_.dSizeVInput;
+    uint32_t dSize_ = qsmlaInfo_.dSize;
+    uint32_t dSizeV_ = qsmlaInfo_.dSizeV;
+    uint32_t dSizeVInput_ = qsmlaInfo_.dSizeVInput;
 
     uint32_t dSizeOriKvInput_ = 0;
     uint32_t dSizeCmpKvInput_ = 0;
@@ -558,9 +566,9 @@ private:
     uint32_t oriMaskMode_ = 0;
     uint32_t cmpMaskMode_ = 0;
 
-    SASLayout qLayout_ = SASLayout::BSND;
-    SASLayout outLayout_ = SASLayout::BSND;
-    SASLayout kvLayout_ = SASLayout::PA_ND;
+    QSMLALayout qLayout_ = QSMLALayout::BSND;
+    QSMLALayout outLayout_ = QSMLALayout::BSND;
+    QSMLALayout kvLayout_ = QSMLALayout::PA_ND;
 
     uint32_t oriMaxBlockNumPerBatch_ = 0;
     uint32_t cmpMaxBlockNumPerBatch_ = 0;
@@ -579,7 +587,7 @@ private:
     ge::DataType cmpKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
 
-    SASTemplateMode perfMode_;
+    QSMLATemplateMode perfMode_;
 
     gert::Shape queryShapeCmp_{};
     gert::Shape keyShapeCmp_{};

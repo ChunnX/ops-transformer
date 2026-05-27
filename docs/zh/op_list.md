@@ -143,7 +143,7 @@
     <td>✗</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+    <td>支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -175,7 +175,17 @@
     <td>AI Core</td>
     <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
   </tr>
-    <tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/mixed_quant_sparse_flash_mla/README.md">mixed_quant_sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
+  </tr>
+  <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>

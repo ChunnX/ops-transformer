@@ -10,29 +10,57 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import math
-import random
 import logging
+import math
 import torch
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
 def check_valid_param(params):
-    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-    block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-    cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
-
-    # 依次校验参数合法性
-
-    if q_type not in [torch.bfloat16]:
+    if params.get('q_type') not in [torch.bfloat16]:
         raise ValueError("q_type should be: bfloat16")
 
-    if layout_q not in ["BSND", "TND"]:
-        raise ValueError(f"不支持的Q shape: {layout_q}")
+    if params.get('layout_q') not in ["BSND", "TND"]:
+        raise ValueError(f"不支持的Q shape: {params.get('layout_q')}")
 
-    if layout_kv not in ["PA_ND"]:
-        raise ValueError(f"不支持的KV shape: {layout_kv}")
+    if params.get('layout_kv') not in ["PA_ND", "TND"]:
+        raise ValueError(f"不支持的KV shape: {params.get('layout_kv')}")
 
-    if template_run_mode not in ["SCFA","CFA","SWA"]:
-        raise ValueError(f"不支持的template_run_mode: {template_run_mode}")
+    if params.get('template_run_mode') not in ["SCFA", "CFA", "SWA"]:
+        raise ValueError(f"不支持的template_run_mode: {params.get('template_run_mode')}")
+
+    B = params.get('B')
+    cmp_ratio = params.get('cmp_ratio')
+
+    if params.get('layout_q') == "TND":
+        cu_seqlens_q = params.get('cu_seqlens_q')
+        T1 = params.get('T1')
+        if cu_seqlens_q is None or T1 is None:
+            raise ValueError("layout_q为TND时，cu_seqlens_q和T1不能为None")
+        if cu_seqlens_q[-1] != T1:
+            raise ValueError(f"cu_seqlens_q最后一维({cu_seqlens_q[-1]})与T1({T1})不一致")
+        if len(cu_seqlens_q) != B + 1:
+            raise ValueError(f"cu_seqlens_q长度({len(cu_seqlens_q)})应等于B+1({B + 1})")
+
+    if params.get('layout_kv') == "TND":
+        cu_seqlens_ori_kv = params.get('cu_seqlens_ori_kv')
+        if cu_seqlens_ori_kv is None:
+            raise ValueError("layout_kv为TND时，cu_seqlens_ori_kv不能为None")
+        T2 = cu_seqlens_ori_kv[-1]
+        if len(cu_seqlens_ori_kv) != B + 1:
+            raise ValueError(f"cu_seqlens_ori_kv长度({len(cu_seqlens_ori_kv)})应等于B+1({B + 1})")
+        if not all(cu_seqlens_ori_kv[i] <= cu_seqlens_ori_kv[i + 1] for i in range(len(cu_seqlens_ori_kv) - 1)):
+            raise ValueError(f"cu_seqlens_ori_kv必须单调递增: {cu_seqlens_ori_kv}")
+
+        cu_seqlens_cmp_kv = params.get('cu_seqlens_cmp_kv')
+        if cu_seqlens_cmp_kv is not None:
+            T3 = cu_seqlens_cmp_kv[-1]
+            if len(cu_seqlens_cmp_kv) != B + 1:
+                raise ValueError(f"cu_seqlens_cmp_kv长度({len(cu_seqlens_cmp_kv)})应等于B+1({B + 1})")
+            if not all(cu_seqlens_cmp_kv[i] <= cu_seqlens_cmp_kv[i + 1] for i in range(len(cu_seqlens_cmp_kv) - 1)):
+                raise ValueError(f"cu_seqlens_cmp_kv必须单调递增: {cu_seqlens_cmp_kv}")
+            if cmp_ratio is not None and cmp_ratio != 1:
+                expected_T3 = math.floor(T2 / cmp_ratio)
+                if T3 != expected_T3:
+                    raise ValueError(f"cu_seqlens_cmp_kv最后一维({T3})与预期T3({expected_T3})不一致, T2={T2}, cmp_ratio={cmp_ratio}")

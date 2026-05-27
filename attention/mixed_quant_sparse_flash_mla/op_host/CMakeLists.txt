@@ -11,6 +11,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
+    set(mixed_quant_sparse_flash_mla_depends attention/common CACHE INTERNAL "Dependencies for mixed_quant_sparse_flash_mla")
     target_sources(op_host_aclnn PRIVATE
         mixed_quant_sparse_flash_mla_def.cpp
     )

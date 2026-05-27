@@ -22,7 +22,7 @@ using std::string;
 using std::pair;
 namespace optiling {
 
-std::string SASDataTypeToSerialString(ge::DataType type)
+std::string QSMLADataTypeToSerialString(ge::DataType type)
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
@@ -33,12 +33,12 @@ std::string SASDataTypeToSerialString(ge::DataType type)
     }
 }
 
-std::string KvQuantSASLayoutToSerialString(SASLayout layout)
+std::string QSMLALayoutToSerialString(QSMLALayout layout)
 {
     switch (layout) {
-        case SASLayout::BSND: return "BSND";
-        case SASLayout::TND: return "TND";
-        case SASLayout::PA_ND: return "PA_ND";
+        case QSMLALayout::BSND: return "BSND";
+        case QSMLALayout::TND: return "TND";
+        case QSMLALayout::PA_ND: return "PA_ND";
         default: return "UNKNOWN";
     }
 }
@@ -57,104 +57,107 @@ std::string GetShapeStr(gert::Shape shape)
     return oss.str();
 }
 
-bool KvQuantSASTilingCheck::HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const
+bool QSMLATilingCheck::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const
 {
-    const auto& layoutIt = SAS_LAYOUT_AXIS_MAP.find(layout);
-    if (layoutIt == SAS_LAYOUT_AXIS_MAP.end()) {
+    const auto& layoutIt = QSMLA_LAYOUT_AXIS_MAP.find(layout);
+    if (layoutIt == QSMLA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<SASAxis>& axes = layoutIt->second;
+    const std::vector<QSMLAAxis>& axes = layoutIt->second;
     const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
-    const auto& dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
-    if (dimIt == SAS_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
+    const auto& dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
+    if (dimIt == QSMLA_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
         return false;
     }
     return true;
 }
 
-size_t KvQuantSASTilingCheck::GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const
+size_t QSMLATilingCheck::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const
 {
-    const std::vector<SASAxis>& axes = SAS_LAYOUT_AXIS_MAP.find(layout)->second;
+    const std::vector<QSMLAAxis>& axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
     const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t KvQuantSASTilingCheck::GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const
+uint32_t QSMLATilingCheck::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
-void KvQuantSASTilingCheck::Init()
+void QSMLATilingCheck::Init()
 {
-    opName_ = sasInfo_.opName;
-    platformInfo_ = sasInfo_.platformInfo;
-    opParamInfo_ = sasInfo_.opParamInfo;
-    socVersion_ = sasInfo_.socVersion;
+    opName_ = qsmlaInfo_.opName;
+    platformInfo_ = qsmlaInfo_.platformInfo;
+    opParamInfo_ = qsmlaInfo_.opParamInfo;
+    socVersion_ = qsmlaInfo_.socVersion;
 
-    bSize_ = sasInfo_.bSize;
-    bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
-    n1Size_ = sasInfo_.n1Size;
-    n2Size_ = sasInfo_.n2Size;
-    s1Size_ = sasInfo_.s1Size;
-    s2Size_ = sasInfo_.s2Size;
-    gSize_ = sasInfo_.gSize;
-    qkHeadDim_ = sasInfo_.qkHeadDim;
-    qTSize_ = sasInfo_.qTSize;
+    qLayout_ = qsmlaInfo_.qLayout;
+    kvLayout_ = qsmlaInfo_.kvLayout;
+    outLayout_ = qsmlaInfo_.outLayout;
 
-    dSize_ = sasInfo_.dSize;
-    dSizeV_ = sasInfo_.dSizeV;
+    if (opParamInfo_.oriBlockTable.tensor != nullptr) {
+        bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    } else {
+        bSize_ = qsmlaInfo_.bSize;
+    }
+    n1Size_ = qsmlaInfo_.n1Size;
+    n2Size_ = qsmlaInfo_.n2Size;
+    s1Size_ = qsmlaInfo_.s1Size;
+    s2Size_ = qsmlaInfo_.s2Size;
+    gSize_ = qsmlaInfo_.gSize;
+    qkHeadDim_ = qsmlaInfo_.qkHeadDim;
+    qTSize_ = qsmlaInfo_.qTSize;
+
+    dSize_ = qsmlaInfo_.dSize;
+    dSizeV_ = qsmlaInfo_.dSizeV;
     if (opParamInfo_.oriKv.tensor != nullptr) {
-        dSizeOriKvInput_ = GetAxisNum(opParamInfo_.oriKv.tensor->GetStorageShape(), SASAxis::D, kvLayout_);
+        dSizeOriKvInput_ = GetAxisNum(opParamInfo_.oriKv.tensor->GetStorageShape(), QSMLAAxis::D, kvLayout_);
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
-        dSizeCmpKvInput_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), SASAxis::D, kvLayout_);
+        dSizeCmpKvInput_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::D, kvLayout_);
     }
 
-    actualLenDimsQ_ = sasInfo_.actualLenDimsQ;
-    maxActualseq_ = sasInfo_.maxActualseq;
+    actualLenDimsQ_ = qsmlaInfo_.actualLenDimsQ;
+    maxActualseq_ = qsmlaInfo_.maxActualseq;
 
-    ropeHeadDim_ = sasInfo_.ropeHeadDim;
-    oriMaxBlockNumPerBatch_ = sasInfo_.oriMaxBlockNumPerBatch;
-    cmpMaxBlockNumPerBatch_ = sasInfo_.cmpMaxBlockNumPerBatch;
+    ropeHeadDim_ = qsmlaInfo_.ropeHeadDim;
+    oriMaxBlockNumPerBatch_ = qsmlaInfo_.oriMaxBlockNumPerBatch;
+    cmpMaxBlockNumPerBatch_ = qsmlaInfo_.cmpMaxBlockNumPerBatch;
 
-    oriBlockSize_ = sasInfo_.oriBlockSize;
-    cmpBlockSize_ = sasInfo_.cmpBlockSize;
+    oriBlockSize_ = qsmlaInfo_.oriBlockSize;
+    cmpBlockSize_ = qsmlaInfo_.cmpBlockSize;
 
-    sparseBlockCount_ = sasInfo_.sparseBlockCount;
-    sparseBlockSize_ = sasInfo_.sparseBlockSize;
+    sparseBlockCount_ = qsmlaInfo_.sparseBlockCount;
+    sparseBlockSize_ = qsmlaInfo_.sparseBlockSize;
 
-    tileSize_ = sasInfo_.tileSize;
+    tileSize_ = qsmlaInfo_.tileSize;
 
-    cmpRatio_ = sasInfo_.cmpRatio;
-    oriWinLeft_ = sasInfo_.oriWinLeft;
-    oriWinRight_ = sasInfo_.oriWinRight;
+    cmpRatio_ = qsmlaInfo_.cmpRatio;
+    oriWinLeft_ = qsmlaInfo_.oriWinLeft;
+    oriWinRight_ = qsmlaInfo_.oriWinRight;
 
-    oriMaskMode_ = sasInfo_.oriMaskMode;
-    cmpMaskMode_ = sasInfo_.cmpMaskMode;
+    oriMaskMode_ = qsmlaInfo_.oriMaskMode;
+    cmpMaskMode_ = qsmlaInfo_.cmpMaskMode;
 
-    qType_ = sasInfo_.qType;
-    oriKvType_ = sasInfo_.oriKvType;
-    cmpKvType_ = sasInfo_.cmpKvType;
-    outputType_ = sasInfo_.outputType;
-
-    qLayout_ = sasInfo_.qLayout;
-    kvLayout_ = sasInfo_.kvLayout;
-    outLayout_ = sasInfo_.outLayout;
+    qType_ = qsmlaInfo_.qType;
+    oriKvType_ = qsmlaInfo_.oriKvType;
+    cmpKvType_ = qsmlaInfo_.cmpKvType;
+    outputType_ = qsmlaInfo_.outputType;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
-        perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = SASTemplateMode::SCFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::SCFA_TEMPLATE_MODE;
     } else {
-        perfMode_ = SASTemplateMode::CFA_TEMPLATE_MODE;
+        perfMode_ = QSMLATemplateMode::CFA_TEMPLATE_MODE;
     }
 }
 
-ge::graphStatus KvQuantSASTilingCheck::Process()
+ge::graphStatus QSMLATilingCheck::Process()
 {
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS ||
