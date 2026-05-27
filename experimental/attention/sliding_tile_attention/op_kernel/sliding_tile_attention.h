@@ -143,6 +143,16 @@ __aicore__ inline float GetRowReduceValue(LocalTensor<float> &rowReduceLocal, ui
     return rowReduceLocal.GetValue(static_cast<int64_t>(row) * VECTOR_FP32_BLOCK_ELEMS);
 }
 
+__aicore__ inline int64_t GetRowStateOffset(int64_t row)
+{
+    return row * VECTOR_FP32_BLOCK_ELEMS;
+}
+
+__aicore__ inline void DuplicateRowState(LocalTensor<float> &stateLocal, int64_t row, float value)
+{
+    Duplicate(stateLocal[GetRowStateOffset(row)], value, VECTOR_FP32_BLOCK_ELEMS);
+}
+
 __aicore__ inline void StaRowMax(LocalTensor<float> &dstUb, LocalTensor<float> &srcUb, uint32_t dealRowCount,
                                  uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -250,8 +260,8 @@ public:
         }
         pipe_.InitBuffer(maxFloatBuf_, tiling_->qBlock * sizeof(float));
         pipe_.InitBuffer(denomFloatBuf_, tiling_->qBlock * sizeof(float));
-        pipe_.InitBuffer(oldScaleFloatBuf_, tiling_->qBlock * sizeof(float));
-        pipe_.InitBuffer(blockSumFloatBuf_, tiling_->qBlock * sizeof(float));
+        pipe_.InitBuffer(oldScaleFloatBuf_, tiling_->qBlock * VECTOR_FP32_BLOCK_ELEMS * sizeof(float));
+        pipe_.InitBuffer(blockSumFloatBuf_, tiling_->qBlock * VECTOR_FP32_BLOCK_ELEMS * sizeof(float));
     }
 
     __aicore__ inline void Process()
@@ -585,21 +595,23 @@ private:
         LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
         LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
         if (rowBegin < validRowEnd) {
-            const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
-            const int64_t alignedEnd = MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
-            const uint32_t alignedCount = static_cast<uint32_t>(alignedEnd - alignedBegin);
-            Exp(oldScaleLocal[alignedBegin], oldScaleLocal[alignedBegin], alignedCount);
+            const uint32_t rowCount = static_cast<uint32_t>(validRowEnd - rowBegin);
+            const int64_t stateBegin = GetRowStateOffset(rowBegin);
+            const uint32_t stateCount = rowCount * VECTOR_FP32_BLOCK_ELEMS;
+            Exp(oldScaleLocal[stateBegin], oldScaleLocal[stateBegin], stateCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
-            Mul(denomLocal[alignedBegin], denomLocal[alignedBegin], oldScaleLocal[alignedBegin], alignedCount);
+
+            LocalTensor<float> accTileLocal = accTileFloatBuf_.Get<float>();
+            fa_base_vector::RowMuls(accTileLocal[rowBegin * alignedHeadDim], accTileLocal[rowBegin * alignedHeadDim],
+                                    oldScaleLocal[stateBegin], rowCount, alignedHeadDim, alignedHeadDim);
             PipeBarrier<PIPE_V>();
-            Add(denomLocal[alignedBegin], denomLocal[alignedBegin], blockSumLocal[alignedBegin], alignedCount);
-            PipeBarrier<PIPE_V>();
+
             for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                const float oldScale = oldScaleLocal.GetValue(row);
-                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
-                Muls(accRow, accRow, oldScale, alignedHeadDim);
-                PipeBarrier<PIPE_V>();
+                const int64_t stateOffset = GetRowStateOffset(row);
+                const float oldScale = oldScaleLocal.GetValue(stateOffset);
+                const float blockSum = blockSumLocal.GetValue(stateOffset);
+                denomLocal.SetValue(row, denomLocal.GetValue(row) * oldScale + blockSum);
             }
         }
     }
@@ -724,28 +736,22 @@ private:
                 AccumulateVisibleScoreBlockDeferred(kvCount, calcCount, scoreCopyCount, rowInSubBlock,
                                                     maxScore, newMaxScore, scaleDelta, blockSum,
                                                     hasKvTail, bufferIdx);
-                oldScaleLocal.SetValue(row, scaleDelta);
-                blockSumLocal.SetValue(row, blockSum);
+                DuplicateRowState(oldScaleLocal, row, scaleDelta);
+                DuplicateRowState(blockSumLocal, row, blockSum);
                 if (newMaxScore != maxScore) {
                     maxLocal.SetValue(row, newMaxScore);
                     hasScaleDelta = true;
                 }
             }
+            PipeBarrier<PIPE_V>();
             if (hasScaleDelta) {
-                const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
-                const int64_t alignedEnd =
-                    MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
-                DuplicateTailFp32(oldScaleLocal, alignedBegin, static_cast<uint32_t>(rowBegin), 0.0F);
-                DuplicateTailFp32(oldScaleLocal, validRowEnd, static_cast<uint32_t>(alignedEnd), 0.0F);
-                PipeBarrier<PIPE_V>();
                 ApplyDeferredAccScaleAndDenom(rowBegin, validRowEnd, alignedHeadDim, denomLocal, bufferIdx);
             } else {
-                const int64_t alignedBegin = (rowBegin / VECTOR_FP32_BLOCK_ELEMS) * VECTOR_FP32_BLOCK_ELEMS;
-                const int64_t alignedEnd =
-                    MinInt64(AlignUpInt64(validRowEnd, VECTOR_FP32_BLOCK_ELEMS), tiling_->qBlock);
-                Add(denomLocal[alignedBegin], denomLocal[alignedBegin], blockSumLocal[alignedBegin],
-                    static_cast<uint32_t>(alignedEnd - alignedBegin));
-                PipeBarrier<PIPE_V>();
+                SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+                WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+                for (int64_t row = rowBegin; row < validRowEnd; ++row) {
+                    denomLocal.SetValue(row, denomLocal.GetValue(row) + blockSumLocal.GetValue(GetRowStateOffset(row)));
+                }
             }
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx, subBlock));
