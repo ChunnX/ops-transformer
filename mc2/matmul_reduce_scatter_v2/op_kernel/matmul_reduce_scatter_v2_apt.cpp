@@ -91,7 +91,12 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
                                                     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 // david算子模板
+// 910_96(__NPU_ARCH__==9201) 的 cube:vector 配比为 1:1，950(3510) 为 1:2，需区分设置
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
     auto context = GetHcclContext<0>();
     GET_TILING_DATA(tilingData, tilingGM); 

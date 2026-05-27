@@ -76,8 +76,8 @@ constexpr uint32_t TRANSPOSEB_INDEX = 3;
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
+    if (npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201) {
+        OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510/9201.");
         return false;
     }
     // geAType 和 geBType 为fp8e4m3/fp8e5m2/hif8时, 走该tiling流程
@@ -868,7 +868,8 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
         return scatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        SocVersion inputSocVersion =
+            (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
@@ -876,7 +877,8 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 }
 //注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling, \
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
+                                   std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510), \
+                                                         static_cast<int32_t>(NpuArch::DAV_9201)}), 1);
 } // namespace
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

@@ -71,7 +71,8 @@ static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataT
 
 static inline bool IsAscend950(void)
 {
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+    auto curNpuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    return curNpuArch == NpuArch::DAV_3510 || curNpuArch == NpuArch::DAV_9201;
 }
 
 static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
@@ -82,12 +83,13 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
 
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
+               GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
         uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
         NnopbaseHcclServerType serverType = (commMode == Mc2Comm::COMM_MODE_AICPU)
             ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
             : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
-        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510.",
+        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510/DAV_9201.",
                 (commMode == Mc2Comm::COMM_MODE_AICPU) ? "AICPU" : "CCU");
         NnopbaseSetHcclServerType(executor, serverType);
     }
@@ -467,7 +469,8 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
                                                        aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {

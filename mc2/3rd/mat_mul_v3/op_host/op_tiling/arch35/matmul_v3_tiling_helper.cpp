@@ -53,6 +53,7 @@ using ResetBaseFunc = void (*)(const Mc2MatmulV3CompileInfo &, const Mc2MatMulV3
 
 const static std::map<NpuArch, ResetBaseFunc> ResetBaseFuncMap = {
     {NpuArch::DAV_3510, ResetBase91095},
+    {NpuArch::DAV_9201, ResetBase91095},
 };
 
 // ------------------------------ CalL1Tiling -------------------------------------------//
@@ -166,6 +167,7 @@ using GetL0C2OutFunc = Mc2MatMulV3L0C2Out (*)(const Mc2MatmulV3CompileInfo &, co
 
 const static std::map<NpuArch, GetL0C2OutFunc> GetL0C2OutFuncMap = {
     {NpuArch::DAV_3510, GetL0C2Out91095},
+    {NpuArch::DAV_9201, GetL0C2Out91095},
 };
 
 // ------------------------------ CheckIfDoubleAswt -------------------------------------------//
@@ -195,6 +197,7 @@ using CheckIfDoubleAswtFunc = bool (*)(const Mc2MatMulV3Args &, const uint64_t);
 
 const static std::map<NpuArch, CheckIfDoubleAswtFunc> CheckIfDoubleAswtFuncMap = {
     {NpuArch::DAV_3510, CheckIfDoubleAswt91095},
+    {NpuArch::DAV_9201, CheckIfDoubleAswt91095},
 };
 }  // namespace
 

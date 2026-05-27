@@ -229,6 +229,7 @@ const std::map<ge::DataType, mc2tiling::HcclDataType> HCCL_DATA_TYPE = {
     {NpuArch::DAV_2002, {1, 2, 4}},
     {NpuArch::DAV_2201, {1, 2, 4, 8}},
     {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+    {NpuArch::DAV_9201, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {
@@ -256,7 +257,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex, bool isLayered)
 {
     auto attrs = context->GetAttrs();
-    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
+    auto curNpuArch = mc2tiling::GetNpuArch(context);
+    if (curNpuArch == NpuArch::DAV_3510 || curNpuArch == NpuArch::DAV_9201) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
         // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
         hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
@@ -276,21 +278,21 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     return ge::GRAPH_SUCCESS;
 }
 
-// 临时判断是否为标卡4p形态(4卡，950)
+// 临时判断是否为标卡4p形态(4卡，950/910_96)
 inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch) {
-    return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201));
 }
 
-// 判断是否为8P形态(8卡，950)
+// 判断是否为8P形态(8卡，950/910_96)
 inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((rankDim == EIGHT_P_8P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == EIGHT_P_8P) && (npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201));
 }
 
 // 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
 inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((npuArch == NpuArch::DAV_3510) &&
+    return ((npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201) &&
             (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
 }
 }  // namespace mc2tiling
