@@ -95,15 +95,22 @@ void QSMLATilingCheck::Init()
     opParamInfo_ = qsmlaInfo_.opParamInfo;
     socVersion_ = qsmlaInfo_.socVersion;
 
-    bSize_ = qsmlaInfo_.bSize;
-    bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
-    n1Size_ = qsmlaInfo_.n1Size;
-    n2Size_ = qsmlaInfo_.n2Size;
-    s1Size_ = qsmlaInfo_.s1Size;
-    s2Size_ = qsmlaInfo_.s2Size;
-    gSize_ = qsmlaInfo_.gSize;
-    qkHeadDim_ = qsmlaInfo_.qkHeadDim;
-    qTSize_ = qsmlaInfo_.qTSize;
+    qLayout_ = sasInfo_.qLayout;
+    kvLayout_ = sasInfo_.kvLayout;
+    outLayout_ = sasInfo_.outLayout;
+
+    if (opParamInfo_.oriBlockTable.tensor != nullptr) {
+        bSize_ = opParamInfo_.oriBlockTable.tensor->GetShape().GetStorageShape().GetDim(0);
+    } else {
+        bSize_ = sasInfo_.bSize;
+    }
+    n1Size_ = sasInfo_.n1Size;
+    n2Size_ = sasInfo_.n2Size;
+    s1Size_ = sasInfo_.s1Size;
+    s2Size_ = sasInfo_.s2Size;
+    gSize_ = sasInfo_.gSize;
+    qkHeadDim_ = sasInfo_.qkHeadDim;
+    qTSize_ = sasInfo_.qTSize;
 
     dSize_ = qsmlaInfo_.dSize;
     dSizeV_ = qsmlaInfo_.dSizeV;
@@ -136,14 +143,10 @@ void QSMLATilingCheck::Init()
     oriMaskMode_ = qsmlaInfo_.oriMaskMode;
     cmpMaskMode_ = qsmlaInfo_.cmpMaskMode;
 
-    qType_ = qsmlaInfo_.qType;
-    oriKvType_ = qsmlaInfo_.oriKvType;
-    cmpKvType_ = qsmlaInfo_.cmpKvType;
-    outputType_ = qsmlaInfo_.outputType;
-
-    qLayout_ = qsmlaInfo_.qLayout;
-    kvLayout_ = qsmlaInfo_.kvLayout;
-    outLayout_ = qsmlaInfo_.outLayout;
+    qType_ = sasInfo_.qType;
+    oriKvType_ = sasInfo_.oriKvType;
+    cmpKvType_ = sasInfo_.cmpKvType;
+    outputType_ = sasInfo_.outputType;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
         perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;

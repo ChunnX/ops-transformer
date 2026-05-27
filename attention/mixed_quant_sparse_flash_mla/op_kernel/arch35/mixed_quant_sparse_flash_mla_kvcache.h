@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
  * \file mixed_quant_sparse_flash_mla_kvcache.h
@@ -27,52 +27,74 @@ using namespace AscendC::Impl::Detail;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t * actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *cuSeqlensCmpKvAddr,
+    __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqOriKvlenAddr, __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
     int32_t actualS1Size = 0;
-    int32_t actualS2Size = 0;
+    int32_t actualS2OriSize = 0;
+    int32_t actualS2CmpSize = 0;
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
-    int32_t sIdx = runParam.boIdx;
-    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-        // actual seq length first
-        actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[sIdx + 1] - cuSeqlensQAddr[sIdx]) :
-            actualSeqQlenAddr[sIdx];
+    int32_t bIdx = runParam.boIdx;
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[bIdx + 1] - cuSeqlensQAddr[bIdx]) :
+            actualSeqQlenAddr[bIdx];
     } else {
         actualS1Size = (actualSeqQlenAddr == nullptr) ? constInfo.s1Size :
-            actualSeqQlenAddr[sIdx];
+            actualSeqQlenAddr[bIdx];
     }
 
-    if (constInfo.isActualLenDimsKVNull) {
-        actualS2Size = constInfo.s2Size;
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+        if (actualSeqOriKvlenAddr != nullptr) {
+            actualS2OriSize = actualSeqOriKvlenAddr[bIdx];
+        } else {
+            actualS2OriSize = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
+        }
     } else {
-        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-            actualS2Size = actualSeqKvlenAddr[sIdx];
-            if ((sIdx > 0) && (!isPa)) {
-                actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
+        actualS2OriSize = (actualSeqOriKvlenAddr == nullptr) ? constInfo.s2Size :
+            (constInfo.actualLenDimsOriKV == actualSeqKVMin) ? actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
+    }
+
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            if (actualSeqCmpKvlenAddr != nullptr) {
+                actualS2CmpSize = actualSeqCmpKvlenAddr[bIdx];
+            } else if (cuSeqlensCmpKvAddr != nullptr) {
+                actualS2CmpSize = cuSeqlensCmpKvAddr[bIdx + 1] - cuSeqlensCmpKvAddr[bIdx];
+            } else {
+                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
-            actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
-                actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+            actualS2CmpSize = (actualSeqCmpKvlenAddr == nullptr) ? (actualS2OriSize / constInfo.cmpRatio) :
+                (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ? actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
         }
     }
 
     runParam.actualS1Size = actualS1Size;
-    runParam.actualS2Size = actualS2Size;
-    runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
+    runParam.actualS2OriSize = actualS2OriSize;
+    runParam.actualS2CmpSize = actualS2CmpSize;
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        runParam.cmpResidual = cmpResidualKvAddr[bIdx];
+        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
+    }
+    runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
         runParam.preTokensPerBatch = runParam.actualS1Size;
     } else {
-        runParam.preTokensPerBatch = -(runParam.actualS2Size - runParam.actualS1Size - constInfo.oriWinLeft);
+        runParam.preTokensPerBatch = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
     }
     runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
 }
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *cuSeqlensCmpKvAddr,
+    __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *actualSeqOriKvlenAddr, __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, actualSeqQlenAddr, actualSeqKvlenAddr);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, cuSeqlensOriKvAddr, cuSeqlensCmpKvAddr, actualSeqQlenAddr,
+        actualSeqOriKvlenAddr, actualSeqCmpKvlenAddr, cmpResidualKvAddr);
 }
 
 TEMPLATE_INTF
@@ -83,9 +105,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? \
         (constInfo.s1BaseSize / constInfo.gSize) : 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;
-    if (runParam.nextTokensPerBatch < 0) {
-        int64_t gs1LoopStartIdx =
-            runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+    if (runParam.nextTokensPerBatchOri < 0) {
+        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -175,9 +196,8 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
     uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
-    if (runParam.nextTokensPerBatch < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) /
-            runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+    if (runParam.nextTokensPerBatchOri < 0) {
+        if (runParam.s1oIdx < (runParam.nextTokensPerBatchOri * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }
@@ -189,7 +209,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr)
+__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr) 
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
@@ -211,7 +231,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
 {
-    if (runParam.actualS2Size == 0) {
+    if (runParam.actualS2OriSize == 0) {
         runParam.oriKvLoopEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
@@ -219,21 +239,27 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
     }
     uint32_t s2BaseSize = constInfo.s2BaseSize;
 
-    runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
-        runParam.cubeSOuterOffset - runParam.preTokensPerBatch, 0, runParam.actualS2Size);
-    runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
-        runParam.cubeSOuterOffset + runParam.nextTokensPerBatch + runParam.s1RealSize, 0, runParam.actualS2Size);
-    runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
-    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
+        0, runParam.actualS2OriSize);
+    runParam.s2LineOriEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatchOri +
+        runParam.s1RealSize, 0, runParam.actualS2OriSize);
+    runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
+
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
+            (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio,
+            0, runParam.actualS2CmpSize);
+        if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
+            runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, runParam.actualS2CmpSize);
+            runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
+        } else { // SCFA_TEMPLATE_MODE
+            runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, constInfo.sparseBlockCount);
+            runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, runParam.actualS2CmpSize);
+            runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
+        }
+    } else {
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
-        runParam.s2CmpLineEndIdx = runParam.s2LineEndIdx / constInfo.cmpRatio;
-        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
-    } else { // SCFA_TEMPLATE_MODE
-        // 当前LI输出的block size只可能是1
-        runParam.s2CmpLineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, constInfo.sparseBlockCount);
-        runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     }
     runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx + runParam.cmpKvLoopEndIdx;
     return false;
@@ -244,14 +270,20 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
+    runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
+    runInfo.actualS2OriSize = runParam.actualS2OriSize;
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
+        runInfo.cmpResidual = runParam.cmpResidual;
+    }
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
-    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
+    if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
+        runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
+        runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
+    }
 }
 
 #endif  // MIXED_QUANT_SPARSE_FLASH_MLA_KVCACHE_H

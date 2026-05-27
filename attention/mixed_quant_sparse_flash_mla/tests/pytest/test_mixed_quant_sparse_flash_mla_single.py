@@ -18,170 +18,82 @@ import check_valid_param
 import mixed_quant_sparse_flash_mla_golden
 from batch import mixed_quant_sparse_flash_mla_process
 import pytest
-import random
 import pandas as pd
 from pathlib import Path
 import numpy as np
-import math
 import os
 import multiprocessing as mp
 import concurrent.futures
 import utils
 
-pt_save_path = "qsas_testcase"
+pt_save_path = "qsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
 
-locals()["param_combinations"] = []
-for _, params in enumerate(ENABLED_PARAMS):
-    # 将params的所有字段注册为局部变量
-    for key, value in params.items():
-        locals()[f"param_{key}"] = value
+param_combinations = []
+for params in ENABLED_PARAMS:
+    param_values = {
+        "Testcase_Name": params.get("Testcase_Name", [None]),
+        "layout_q": params.get("layout_q"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": params.get("q_type"),
+        "ori_kv_type": params.get("ori_kv_type"),
+        "cmp_kv_type": params.get("cmp_kv_type", [None]),
+        "B": params.get("B"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2", [None]),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K", [None]),
+        "block_num1": params.get("block_num1", [None]),
+        "block_num2": params.get("block_num2", [None]),
+        "block_size1": params.get("block_size1"),
+        "block_size2": params.get("block_size2", [None]),
+        "seqused_q": params.get("seqused_q", [None]),
+        "cu_seqlens_q": params.get("cu_seqlens_q", [None]),
+        "seqused_ori_kv": params.get("seqused_ori_kv", [None]),
+        "seqused_cmp_kv": params.get("seqused_cmp_kv", [None]),
+        "cu_seqlens_ori_kv": params.get("cu_seqlens_ori_kv", [None]),
+        "cu_seqlens_cmp_kv": params.get("cu_seqlens_cmp_kv", [None]),
+        "cmp_residual_kv": params.get("cmp_residual_kv", [None]),
+        "softmax_scale": params.get("softmax_scale"),
+        "cmp_ratio": params.get("cmp_ratio", [None]),
+        "ori_mask_mode": params.get("ori_mask_mode"),
+        "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
+        "ori_win_left": params.get("ori_win_left"),
+        "ori_win_right": params.get("ori_win_right"),
+        "kv_quant_mode": params.get("kv_quant_mode"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "template_run_mode": params.get("template_run_mode"),
+        "actlen_mode": params.get("actlen_mode"),
+        "S1EQS2": params.get("S1EQS2", [False]),
+    }
 
-    param_names = [
-        "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_kv", "softmax_scale", "cmp_ratio",
-        "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
-        "template_run_mode", "actlen_mode", "S1EQS2",
-    ]
+    param_names = list(param_values.keys())
+    values_lists = [param_values[name] for name in param_names]
 
-    param_values = [
-        locals()["param_Testcase_Name"],
-        locals()["param_layout_q"],
-        locals()["param_layout_kv"],
-        locals()["param_q_type"],
-        locals()["param_ori_kv_type"],
-        locals()["param_cmp_kv_type"],
-        locals()["param_B"],
-        locals()["param_S1"],
-        locals()["param_S2"],
-        locals()["param_N1"],
-        locals()["param_N2"],
-        locals()["param_D"],
-        locals()["param_K"],
-        locals()["param_block_num1"],
-        locals()["param_block_num2"],
-        locals()["param_block_size1"],
-        locals()["param_block_size2"],
-        locals()["param_cu_seqlens_q"],
-        locals()["param_seqused_kv"],
-        locals()["param_softmax_scale"],
-        locals()["param_cmp_ratio"],
-        locals()["param_ori_mask_mode"],
-        locals()["param_cmp_mask_mode"],
-        locals()["param_ori_win_left"],
-        locals()["param_ori_win_right"],
-        locals()["param_kv_quant_mode"],
-        locals()["param_tile_size"],
-        locals()["param_rope_head_dim"],
-        locals()["param_template_run_mode"],
-        locals()["param_actlen_mode"],
-        locals()["param_S1EQS2"],
-    ]
-
-    # 生成所有的组合，并转换为字典列表
-    for combo in itertools.product(*param_values):
-        param_dict = dict(zip(param_names, combo))
-        locals()["param_combinations"].append(param_dict)
-    print(locals()["param_combinations"])
+    for combo in itertools.product(*values_lists):
+        combination = dict(zip(param_names, combo))
+        param_combinations.append(combination)
 
 case_id = 0
-def qsmla(param_combinations):   # 初始化参数和tensor
+def qsmla(param_combinations):
     global case_id
-    Testcase_Name = param_combinations['Testcase_Name']
-    layout_q = param_combinations['layout_q']
-    layout_kv = param_combinations['layout_kv']
-    q_type = param_combinations['q_type']
-    ori_kv_type = param_combinations['ori_kv_type']
-    cmp_kv_type = param_combinations['cmp_kv_type']
-    B = param_combinations['B']
-    S1 = param_combinations['S1']
-    S2 = param_combinations['S2']
-    N1 = param_combinations['N1']
-    N2 = param_combinations['N2']
-    D = param_combinations['D']
-    K = param_combinations['K']
-    block_num1 = param_combinations['block_num1']
-    block_num2 = param_combinations['block_num2']
-    block_size1 = param_combinations['block_size1']
-    block_size2 = param_combinations['block_size2']
-    cu_seqlens_q = param_combinations['cu_seqlens_q']
-    seqused_kv = param_combinations['seqused_kv']
-    softmax_scale = param_combinations['softmax_scale']
-    cmp_ratio = param_combinations['cmp_ratio']
-    ori_mask_mode = param_combinations['ori_mask_mode']
-    cmp_mask_mode = param_combinations['cmp_mask_mode']
-    ori_win_left = param_combinations['ori_win_left']
-    ori_win_right = param_combinations['ori_win_right']
-    kv_quant_mode = param_combinations['kv_quant_mode']
-    tile_size = param_combinations['tile_size']
-    rope_head_dim = param_combinations['rope_head_dim']
-    template_run_mode = param_combinations['template_run_mode']
-    actlen_mode = param_combinations['actlen_mode']
-    S1EQS2 = param_combinations['S1EQS2']
-
-    ops_mode = 'prefill' if S1 > 4 else "decode"
-    q_type_str = "BF16"
-    if q_type == torch.float16:
-        q_type_str = "FP16"
-    kv_type_str = "FP8_E4M3FN"
-    if ori_kv_type == torch.uint8:
-        kv_type_str = "HIF8"
-    if Testcase_Name ==None :
-        Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
-
-    # 生成actLen
-    QS = [0]
-    KVS = []
-    if cu_seqlens_q == None or seqused_kv == None:
-        if layout_q == "TND":
-            for i in range(B):
-                if actlen_mode == "random":
-                    tmpS1 = S1 - random.randint(0, S1 - 1)
-                    QS.append(tmpS1 + QS[-1])
-                    if S1EQS2: #  qs=kvs
-                        tmpS2 = tmpS1
-                    else: # qs != kvs
-                        tmpS2 = S2 - random.randint(0, math.ceil(S2/2) - 1)
-                    KVS.append(tmpS2)
-                elif actlen_mode == "full":  ## 走该分支
-                    tmpS1 = S1
-                    QS.append(tmpS1 + QS[-1])
-                    KVS.append(S2)
-        elif layout_q == "BSND":
-            for i in range(B):
-                QS.append(S1 + QS[-1])
-                if actlen_mode == "random":
-                    tmpS2 = S2 - random.randint(0, math.ceil(S2/2) - 1)
-                else:
-                    tmpS2 = S2
-                KVS.append(tmpS2)
-
-        cu_seqlens_q = QS
-        seqused_kv = KVS
-    T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
-
-    # maxSeqLen / block_size向上取整
-    ori_block_num_per_batch = []
-    ori_block_num_sum = 0
-    cmp_block_num_per_batch = []
-    cmp_block_num_sum = 0
-    for cur_ori_act_kv in seqused_kv:
-        cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
-        ori_block_num_per_batch.append(cur_ori_kv_block_num)
-        ori_block_num_sum += cur_ori_kv_block_num
-
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
-        cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
-        cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
-        cmp_block_num_sum += cur_cmp_kv_block_num
-    block_num1 = ori_block_num_sum
-    block_num2 = cmp_block_num_sum
-
-    params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-             block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-             cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
+    
+    # 填充None参数的默认值
+    params = utils.fill_none_params(param_combinations)
+    
+    # 生成测试用例名称
+    Testcase_Name = params['Testcase_Name']
+    if Testcase_Name is None:
+        ops_mode = 'prefill' if params['S1'] > 4 else "decode"
+        q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
+        kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+        Testcase_Name = f"mixedQuantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
+        params['Testcase_Name'] = Testcase_Name
 
     # 输入参数的合法性校验
     try:
@@ -194,7 +106,8 @@ def qsmla(param_combinations):   # 初始化参数和tensor
 
     # 获得cpu结果(真值)和算子结果（测试值）
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_sas_quant_process_ci(test_data, device_id=device_id)
+        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+            test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         print("NPU ERROR：", e)
@@ -204,12 +117,23 @@ def qsmla(param_combinations):   # 初始化参数和tensor
     case_id += 1
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    
+    if result in ("NPU ERROR", "Failed"):
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
 
-    if(result == "NPU ERROR"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']}")
+def _gen_testcase_id(params, idx):
+    name = params.get('Testcase_Name')
+    if name is not None:
+        return name
+    ops_mode = 'prefill' if params['S1'] > 4 else "decode"
+    q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
+    kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+    return f"{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_B{params['B']}_S1{params['S1']}_S2{params['S2']}_D{params['D']}_K{params['K']}_{idx:06d}"
+
+testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)]
 
 @pytest.mark.ci
-@pytest.mark.parametrize("param_combinations", locals()["param_combinations"])
+@pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
 def test_mixed_quant_sparse_flash_mla(param_combinations):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

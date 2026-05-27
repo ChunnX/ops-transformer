@@ -300,17 +300,17 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLens()
 
 ge::graphStatus QSMLATilingCheck::CheckActualSeqLensDType()
 {
-    if (opParamInfo_.sequsedKv.tensor == nullptr) {
+    if (opParamInfo_.sequsedOriKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (opParamInfo_.sequsedKv.desc == nullptr) {
-        OP_LOGE(opName_, "sequsedKv is not empty,"
-            "but sequsedKv's dtype is nullptr.");
+    if (opParamInfo_.sequsedOriKv.desc == nullptr) {
+        OP_LOGE(opName_, "sequsedOriKv is not empty,"
+            "but sequsedOriKv's dtype is nullptr.");
             return ge::GRAPH_FAILED;
     }
-    if (opParamInfo_.sequsedKv.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "sequsedKv's dtype is %s, it should be DT_INT32.",
-            QSMLADataTypeToSerialString(opParamInfo_.sequsedKv.desc->GetDataType()).c_str());
+    if (opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32) {
+        OP_LOGE(opName_, "sequsedOriKv's dtype is %s, it should be DT_INT32.",
+            SASDataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -318,16 +318,16 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensDType()
 
 ge::graphStatus QSMLATilingCheck::CheckActualSeqLensShape()
 {
-    if (opParamInfo_.sequsedKv.tensor == nullptr) {
+    if (opParamInfo_.sequsedOriKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     uint32_t shapeSize = 0;
-    if (GetActualSeqLenSize(shapeSize, opParamInfo_.sequsedKv.tensor, kvLayout_, "sequsedKv") !=
+    if (GetActualSeqLenSize(shapeSize, opParamInfo_.sequsedOriKv.tensor, kvLayout_, "sequsedOriKv") !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (shapeSize != bSize_) {
-        OP_LOGE(opName_, "sequsedKv shape size is %u, it should be equal to batch size[%u].",
+        OP_LOGE(opName_, "sequsedOriKv shape size is %u, it should be equal to batch size[%u].",
             shapeSize, bSize_);
         return ge::GRAPH_FAILED;
     }

@@ -43,7 +43,9 @@ const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
-const std::string SEQUSED_KV_NAME = "seqused_kv";
+const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
+const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
+const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
 
 // // ------------------公共定义--------------------------
 struct QSMLATilingRequiredParaInfo {
@@ -215,22 +217,24 @@ std::string GetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
-struct QSMLAParaInfo {
-    QSMLATilingRequiredParaInfo q = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
-    QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
-    QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+struct KvQuantSASParaInfo {
+    SASTilingRequiredParaInfo q = {nullptr, nullptr};
+    SASTilingOptionalParaInfo oriKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
+    SASTilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
+    SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
+    SASTilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
     const int64_t *kvQuantMode = nullptr;
     const int64_t *tileSize = nullptr;
@@ -269,8 +273,9 @@ public:
     uint32_t maxActualseq = 0;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
-    bool isSameActualseq = true;
-    uint32_t actualLenDimsKV = 0;
+    uint32_t actualLenDimsOriKV = 0;
+    uint32_t actualLenDimsCmpKV = 0;
+    uint32_t cmpResidualKVSize = 0;
 
     int64_t kvQuantMode = 0;
     int64_t tileSize = 0;
@@ -383,7 +388,9 @@ public:
     int64_t sparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
-    uint32_t actualLenDimsKV_ = 0;
+    uint32_t actualLenDimsOriKV_ = 0;
+    uint32_t actualLenDimsCmpKV_ = 0;
+    uint32_t cmpResidualKVSize_ = 0;
     uint32_t actualLenDimsQ_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
@@ -458,6 +465,7 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
+    ge::graphStatus CheckSingleParaCmpResidualKv() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
     ge::graphStatus CheckSingleParaCuSeqLensQ() const;
     ge::graphStatus CheckSingleParaSequsedKv() const;

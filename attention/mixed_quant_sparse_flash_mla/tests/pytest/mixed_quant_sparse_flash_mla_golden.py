@@ -95,7 +95,8 @@ HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
 
 class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
-                 block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
+                 block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_ori_kv, cu_seqlens_cmp_kv,
+                 cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
                  ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode):
         self.layout_q = layout_q
         self.layout_kv = layout_kv
@@ -114,7 +115,12 @@ class GeneralizedSFAQuant:
         self.block_size1 = block_size1
         self.block_size2 = block_size2
         self.cu_seqlens_q = cu_seqlens_q
-        self.seqused_kv = seqused_kv
+        self.seqused_q = seqused_q
+        self.seqused_ori_kv = seqused_ori_kv
+        self.seqused_cmp_kv = seqused_cmp_kv
+        self.cu_seqlens_ori_kv = cu_seqlens_ori_kv
+        self.cu_seqlens_cmp_kv = cu_seqlens_cmp_kv
+        self.cmp_residual_kv = cmp_residual_kv
         self.softmax_scale = softmax_scale
         self.cmp_ratio = cmp_ratio
         self.ori_mask_mode = ori_mask_mode
@@ -126,17 +132,19 @@ class GeneralizedSFAQuant:
         self.rope_head_dim = rope_head_dim
         self.template_run_mode = template_run_mode
 
-    def calculate_by_bnsd(self, q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q, seqused_kv, sinks):
+    def calculate_by_bnsd(self, q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         B = q_bnsd.shape[0]
-        act_q = prefix_sum_to_original(cu_seqlens_q)
+        act_q = self.seqused_q
         G = int(self.N1 / self.N2)
         s2_base_size = 128
 
         for i_B in range(B):
             print(f"i_B = {i_B}/{B}")
             cur_act_q = act_q[i_B]
-            cur_ori_act_kv = seqused_kv[i_B]
+            cur_ori_act_kv = seqused_ori_kv[i_B]
+            cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
+            cur_cmp_residual = cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G:(i_N2 + 1) * G]
@@ -283,7 +291,7 @@ class GeneralizedSFAQuant:
         x_sum = y.sum(dim=-1, keepdims=True) + torch.exp(sinks - x_max)
         return y, x_sum
 
-    def trans_shape_to_bnsd(self, tensor, shape, layout, act_seq=None):
+    def trans_shape_to_bnsd(self, tensor, shape, layout, cu_seqlens_q=None, seqused_q=None):
         if layout in ["BSND"]:
             B = shape[0]
             S = shape[1]
@@ -295,62 +303,58 @@ class GeneralizedSFAQuant:
             T = shape[0]
             N = shape[1]
             D = shape[2]
-            B = len(act_seq) - 1  # TND act_q is cumulative
-            max_s1 = get_max_adjacent_diff(act_seq)
-            act_seq_per_batch = prefix_sum_to_original(act_seq)
+            B = len(cu_seqlens_q) - 1
+            max_s1 = get_max_adjacent_diff(cu_seqlens_q)
+            seqused_per_batch = seqused_q if seqused_q is not None else prefix_sum_to_original(cu_seqlens_q)
             new_tensor = torch.zeros((B, N, max_s1, D), dtype=tensor.dtype)
-            t_start = 0
             for b_index in range(B):
-                cur_act_seq = act_seq_per_batch[b_index]
-                t_end = t_start + cur_act_seq
-                if cur_act_seq == 0:
+                t_start = int(cu_seqlens_q[b_index])
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
                     continue
                 for n_index in range(N):
-                    new_tensor[b_index, n_index, 0:cur_act_seq, :] = tensor[t_start:t_end, n_index, :]
-                t_start += cur_act_seq
+                    new_tensor[b_index, n_index, 0:cur_seqused, :] = tensor[t_start:t_start + cur_seqused, n_index, :]
             return new_tensor, [B, N, max_s1, D]
         else:
             return tensor, shape
 
-    def trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
+    def trans_bnsd_to_target_layout(self, tensor, layout, cu_seqlens_q=None, seqused_q=None):
         if layout in ["BSND"]:
             output = tensor.permute(0, 2, 1, 3).contiguous()
             return output
         elif layout in ["TND"]:
-            T = act_seq[-1]
+            T = cu_seqlens_q[-1]
             B = tensor.shape[0]
             N = tensor.shape[1]
             D = tensor.shape[3]
+            seqused_per_batch = seqused_q if seqused_q is not None else prefix_sum_to_original(cu_seqlens_q)
             output = torch.zeros((T, N, D), dtype=torch.float)
-            t_start = 0
-            act_seq_per_batch = prefix_sum_to_original(act_seq)
             for b_index in range(B):
-                cur_act_seq = act_seq_per_batch[b_index]
-                t_end = t_start + cur_act_seq
-                if cur_act_seq == 0:
+                t_start = int(cu_seqlens_q[b_index])
+                cur_seqused = int(seqused_per_batch[b_index])
+                if cur_seqused == 0:
                     continue
                 for n_index in range(N):
-                    output[t_start:t_end, n_index, :] = tensor[b_index, n_index, :cur_act_seq, :]
-                t_start += cur_act_seq
+                    output[t_start:t_start + cur_seqused, n_index, :] = tensor[b_index, n_index, :cur_seqused, :]
             return output
         else:
             return tensor
 
-    def forward(self, q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks):
+    def forward(self, q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks):
         print("cpu执行中...")
         print(f"template_run_mode = {self.template_run_mode}")
 
-        q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(q, q.shape, self.layout_q, cu_seqlens_q)
+        q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(q, q.shape, self.layout_q, cu_seqlens_q, self.seqused_q)
         cmp_sparse_indices_bnsd = None
         cmp_sparse_indices_bnsd_shape = None
         if self.template_run_mode == "SCFA" and cmp_sparse_indices is not None:
             cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(cmp_sparse_indices,
-                                                                    cmp_sparse_indices.shape, self.layout_q, cu_seqlens_q)
+                                                                    cmp_sparse_indices.shape, self.layout_q, cu_seqlens_q, self.seqused_q)
 
         attn_out = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q,
-                                         seqused_kv, sinks)
+                                         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks)
 
-        attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q)
+        attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q, self.seqused_q)
         return attn_out
 
 def prefix_sum_to_original(cu_seqlens_q):
@@ -412,15 +416,17 @@ def get_max_adjacent_diff(cu_seqlens_q):
 
     return max_diff
 
-def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mode):
+def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode):
     # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
+    # 参数：seqused_ori_kv为原始KV真实长度列表（压缩前的长度）
     cmp_sparse_indices = torch.full((B, S1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_act_kv = seqused_kv[i_B]
+        cur_ori_kv = seqused_ori_kv[i_B]  # 原始KV真实长度
         for i_N2 in range(N2):
             for i_S1 in range(S1):
                 if cmp_mask_mode == 3:
-                    cur_valid_s2_max = math.floor((cur_act_kv - S1 + i_S1 + 1) / cmp_ratio)
+                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
+                    cur_valid_s2_max = math.floor((cur_ori_kv - S1 + i_S1 + 1) / cmp_ratio)
                 else:
                     raise ValueError(f"cmp_mask_mode only support 3, which is {cmp_mask_mode}")
 
@@ -430,17 +436,17 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mo
                 cmp_sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
-def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, cmp_mask_mode):
-    # 有效索引在叠加了causal后有效tokens中选取，不足sparse_block_count，尾部填充-1
+def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode):
     cmp_sparse_indices = torch.full((T1, N2, K), fill_value=-1, dtype=torch.int32)
     for i_B in range(B):
-        cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
+        cur_act_q = seqused_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        cur_act_kv = seqused_kv[i_B]
+        cur_ori_kv = seqused_ori_kv[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
                 if cmp_mask_mode == 3:
-                    cur_valid_s2_max = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
+                    cur_valid_s2_max = math.floor((cur_ori_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
@@ -583,7 +589,7 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = 
     tensor_shape_size = in_tensor.numel()
     if tensor_shape_size == 1.0:
         tensor_shape_size = int(tensor_shape_size)
-
+    
     out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -674,7 +680,7 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
 def trans_hifuint8_tensor_to_float(in_tensor):
     tensor_shape = in_tensor.shape
     tensor_shape_size = in_tensor.numel()
-
+    
     out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -682,10 +688,19 @@ def trans_hifuint8_tensor_to_float(in_tensor):
     out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
     return out_tensor
 
+def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, d_aligned_128, kv_type):
+    total_t = int(cu_seqlens_kv[-1])
+    kv_tnd = torch.zeros((total_t, N2, d_aligned_128), dtype=kv_type)
+    for i_B in range(B):
+        t_start = int(cu_seqlens_kv[i_B])
+        cur_s = int(seqused_kv[i_B])
+        if cur_s > 0:
+            kv_tnd[t_start:t_start + cur_s, :, :] = kv_bnsd_npu[i_B, :, :cur_s, :].permute(1, 0, 2)
+    return kv_tnd
+
 def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
-               seqused_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode):
-    # ori_kv处理流程
+               seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_ND"):
     if kv_quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
         quant_range_left = quant_param
@@ -697,7 +712,6 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
         (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
-    # 分别生成bf16类型的nope合rope矩阵，为了模拟量化的过程，得到准确的量化参数
     if kv_quant_mode == 10:
         ori_k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
             (B, N2, ori_max_s2, nope_head_dim))).to(torch.float)
@@ -712,68 +726,65 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     ori_k_rope_bnsd = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
         (B, N2, ori_max_s2, rope_head_dim))).to(q_type)
 
-    # nope部分*scale，转成fp8，保存为bin文件，再转回bf16
     for d_loop in range(quant_scale_head_dim):
         for tile_loop in range(tile_size):
             offset = d_loop * tile_size + tile_loop
             ori_k_nope_bnsd[:, :, :, offset:offset+1] = torch.mul(ori_k_nope_bnsd[:, :, :, offset:offset+1], ori_kv_quant_param_tensor[:, :, :, d_loop:d_loop+1])
-    # bf16的nope+rope拼接在一起，得到ori_k_bnsd和cmp_k_bnsd
     ori_k_bnsd = torch.concat([ori_k_nope_bnsd, ori_k_rope_bnsd], dim=3)
 
     ori_pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, ori_max_s2, pad_d))).to(torch.float8_e8m0fnu)
     ori_k_bnsd_npu = torch.concat([ori_k_rope_bnsd.view(ori_kv_type), ori_k_nope_bnsd_npu, ori_kv_quant_param_tensor_npu.view(ori_kv_type), ori_pad_tensor.view(ori_kv_type)], dim=3)
 
-    ori_block_num_per_batch = []
-    ori_block_num_sum = 0
+    if layout_kv == "TND":
+        ori_k_in_pa_shape = trans_kv_bnsd_to_tnd(ori_k_bnsd_npu, cu_seqlens_ori_kv, seqused_ori_kv, B, N2, d_aligned_128, ori_kv_type)
+        ori_block_table = None
+    else:
+        ori_block_num_per_batch = []
+        ori_block_num_sum = 0
 
-    for cur_ori_act_kv in seqused_kv:
-        cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
-        ori_block_num_per_batch.append(cur_ori_kv_block_num)
-        ori_block_num_sum += cur_ori_kv_block_num
+        for cur_ori_act_kv in seqused_ori_kv:
+            cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / block_size1)
+            ori_block_num_per_batch.append(cur_ori_kv_block_num)
+            ori_block_num_sum += cur_ori_kv_block_num
 
-    if block_num1 < ori_block_num_sum:
-        raise ValueError(f"ori_kv actual_block_num < needed_block_num, which is {block_num1 < ori_block_num_sum}")
+        if block_num1 < ori_block_num_sum:
+            raise ValueError(f"ori_kv actual_block_num < needed_block_num, which is {block_num1 < ori_block_num_sum}")
 
-    ori_block_id_list = np.arange(block_num1)
-    ori_block_id_list = np.random.permutation(ori_block_id_list).astype(np.int32)
-    cur_block_id = 0
-    ori_block_table = np.full((B, ori_max_block_num_per_batch), fill_value=-1, dtype=np.int32)
-    batch_idx = 0
-    for cur_block_id_threshold in ori_block_num_per_batch:
-        for i_block_id in range(cur_block_id_threshold):
-            ori_block_table[batch_idx][i_block_id] = ori_block_id_list[cur_block_id]
-            cur_block_id += 1
-        batch_idx += 1
+        ori_block_id_list = np.arange(block_num1)
+        ori_block_id_list = np.random.permutation(ori_block_id_list).astype(np.int32)
+        cur_block_id = 0
+        ori_block_table = np.full((B, ori_max_block_num_per_batch), fill_value=-1, dtype=np.int32)
+        batch_idx = 0
+        for cur_block_id_threshold in ori_block_num_per_batch:
+            for i_block_id in range(cur_block_id_threshold):
+                ori_block_table[batch_idx][i_block_id] = ori_block_id_list[cur_block_id]
+                cur_block_id += 1
+            batch_idx += 1
 
-    # [B, S, N, D] expand to [B, ori_max_block_num_per_batch * block_size1, N, D]
-    ori_k_expand = torch.zeros((B, N2, ori_max_block_num_per_batch * block_size1, d_aligned_128), dtype=ori_kv_type)
-    ori_k_expand[:, :, :ori_max_s2, :] = ori_k_bnsd_npu
-    ori_k_in_pa_shape = torch.zeros((block_num1, block_size1, N2, d_aligned_128), dtype=ori_kv_type)
+        ori_k_expand = torch.zeros((B, N2, ori_max_block_num_per_batch * block_size1, d_aligned_128), dtype=ori_kv_type)
+        ori_k_expand[:, :, :ori_max_s2, :] = ori_k_bnsd_npu
+        ori_k_in_pa_shape = torch.zeros((block_num1, block_size1, N2, d_aligned_128), dtype=ori_kv_type)
 
-    for i_B in range(B):
-        for i_block, cur_block_id in enumerate(ori_block_table[i_B]):
-            block_start_pos = i_block * block_size1
-            if cur_block_id == -1:
-                continue
-            else:
-                for i_N2 in range(N2):
-                    ori_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
-                        ori_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size1, :]
+        for i_B in range(B):
+            for i_block, cur_block_id in enumerate(ori_block_table[i_B]):
+                block_start_pos = i_block * block_size1
+                if cur_block_id == -1:
+                    continue
+                else:
+                    for i_N2 in range(N2):
+                        ori_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
+                            ori_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size1, :]
 
-    ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
-
-    ori_v_bnsd = ori_k_bnsd.clone()
-    ori_v_in_pa_shape = ori_k_in_pa_shape.clone()
+        ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
 
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
 
 def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size,
                quant_scale_head_dim, d_aligned_128, pad_d, block_num2, block_size2, cmp_max_s2,
-               cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
-               quant_param_range_left, quant_param_range_right, kv_quant_mode):
+               cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv, cmp_ratio, cmp_mask_mode, template_run_mode,
+               quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv="PA_ND"):
     if cmp_max_s2 == 0:
         return None, None, None, None
-    # cmp kv处理
     if kv_quant_mode == 10:
         quant_param = random.uniform(quant_param_range_left, quant_param_range_right)
         quant_range_left = quant_param
@@ -808,55 +819,55 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
     cmp_pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, cmp_max_s2, pad_d))).to(torch.float8_e8m0fnu)
     cmp_k_bnsd_npu = torch.concat([cmp_k_rope_bnsd.view(cmp_kv_type), cmp_k_nope_bnsd_npu, cmp_kv_quant_param_tensor_npu.view(cmp_kv_type), cmp_pad_tensor.view(cmp_kv_type)], dim=3)
 
-    cmp_block_num_per_batch = []
-    cmp_block_num_sum = 0
+    if layout_kv == "TND":
+        cmp_k_in_pa_shape = trans_kv_bnsd_to_tnd(cmp_k_bnsd_npu, cu_seqlens_cmp_kv, seqused_cmp_kv, B, N2, d_aligned_128, cmp_kv_type)
+        cmp_block_table = None
+    else:
+        cmp_block_num_per_batch = []
+        cmp_block_num_sum = 0
 
-    for cur_ori_act_kv in seqused_kv:
-        cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
-        cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
-        cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
-        cmp_block_num_sum += cur_cmp_kv_block_num
+        for cur_cmp_act_kv in seqused_cmp_kv:
+            cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
+            cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
+            cmp_block_num_sum += cur_cmp_kv_block_num
 
-    if block_num2 < cmp_block_num_sum:
-        raise ValueError(f"cmp_kv actual_block_num < needed_block_num, which is {block_num2 < cmp_block_num_sum}")
+        if block_num2 < cmp_block_num_sum:
+            raise ValueError(f"cmp_kv actual_block_num < needed_block_num, which is {block_num2 < cmp_block_num_sum}")
 
-    cmp_block_id_list = np.arange(block_num2)
-    cmp_block_id_list = np.random.permutation(cmp_block_id_list).astype(np.int32)
-    cur_block_id = 0
-    cmp_block_table = np.full((B, cmp_max_block_num_per_batch), fill_value=-1, dtype=np.int32)
-    batch_idx = 0
-    for cur_block_id_threshold in cmp_block_num_per_batch:
-        for i_block_id in range(cur_block_id_threshold):
-            cmp_block_table[batch_idx][i_block_id] = cmp_block_id_list[cur_block_id]
-            cur_block_id += 1
-        batch_idx += 1
+        cmp_block_id_list = np.arange(block_num2)
+        cmp_block_id_list = np.random.permutation(cmp_block_id_list).astype(np.int32)
+        cur_block_id = 0
+        cmp_block_table = np.full((B, cmp_max_block_num_per_batch), fill_value=-1, dtype=np.int32)
+        batch_idx = 0
+        for cur_block_id_threshold in cmp_block_num_per_batch:
+            for i_block_id in range(cur_block_id_threshold):
+                cmp_block_table[batch_idx][i_block_id] = cmp_block_id_list[cur_block_id]
+                cur_block_id += 1
+            batch_idx += 1
 
-    # [B, S, N, D] expand to [B, cmp_max_block_num_per_batch * block_size1, N, D]
-    cmp_k_expand = torch.zeros((B, N2, cmp_max_block_num_per_batch * block_size2, d_aligned_128), dtype=cmp_kv_type)
-    cmp_k_expand[:, :, :cmp_max_s2, :] = cmp_k_bnsd_npu
-    cmp_k_in_pa_shape = torch.zeros((block_num2, block_size2, N2, d_aligned_128), dtype=cmp_kv_type)
+        cmp_k_expand = torch.zeros((B, N2, cmp_max_block_num_per_batch * block_size2, d_aligned_128), dtype=cmp_kv_type)
+        cmp_k_expand[:, :, :cmp_max_s2, :] = cmp_k_bnsd_npu
+        cmp_k_in_pa_shape = torch.zeros((block_num2, block_size2, N2, d_aligned_128), dtype=cmp_kv_type)
 
-    for i_B in range(B):
-        for i_block, cur_block_id in enumerate(cmp_block_table[i_B]):
-            block_start_pos = i_block * block_size2
-            if cur_block_id == -1:
-                continue
-            else:
-                for i_N2 in range(N2):
-                    cmp_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
-                        cmp_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size2, :]
+        for i_B in range(B):
+            for i_block, cur_block_id in enumerate(cmp_block_table[i_B]):
+                block_start_pos = i_block * block_size2
+                if cur_block_id == -1:
+                    continue
+                else:
+                    for i_N2 in range(N2):
+                        cmp_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
+                            cmp_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size2, :]
+
+        cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
 
     # generate cmp_sparse_indices
-    cmp_sparse_indices = None  # CFA
+    cmp_sparse_indices = None
     if template_run_mode == "SCFA" and cmp_max_s2 != 0:
         if layout_q == "BSND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, cmp_mask_mode)
+            cmp_sparse_indices = gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_ori_kv, cmp_mask_mode)
         elif layout_q == "TND":
-            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, cmp_mask_mode)
-
-    cmp_block_table = torch.tensor(cmp_block_table).to(torch.int32)
-    cmp_v_bnsd = cmp_k_bnsd.clone()
-    cmp_v_in_pa_shape = cmp_k_in_pa_shape.clone()
+            cmp_sparse_indices = gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_q, seqused_ori_kv, cmp_mask_mode)
 
     return cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices
 
@@ -867,15 +878,15 @@ def save_test_case(input_data, output_dir):
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data['Testcase_Name']
-
+    
     # 生成文件名
-    input_filename = f"sas_case_{case_name}.pt"
+    input_filename = f"qsmla_case_{case_name}.pt"
     input_filepath = os.path.join(output_dir, input_filename)
-
+    
     # 保存数据
     torch.save(input_data, input_filepath)
     print(f"测试用例已保存到: {input_filepath}")
-
+    
     return input_filepath
 
 def generate_and_save_testdata(params, save_pt=False, save_path=""):
@@ -885,41 +896,66 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return test_data
     '''
 
-    Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2, \
-    block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, \
-    ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode = params
+    Testcase_Name = params['Testcase_Name']
+    layout_q = params['layout_q']
+    layout_kv = params['layout_kv']
+    q_type = params['q_type']
+    ori_kv_type = params['ori_kv_type']
+    cmp_kv_type = params['cmp_kv_type']
+    B = params['B']
+    S1 = params['S1']
+    T1 = params['T1']
+    N1 = params['N1']
+    N2 = params['N2']
+    D = params['D']
+    K = params['K']
+    block_num1 = params['block_num1']
+    block_num2 = params['block_num2']
+    block_size1 = params['block_size1']
+    block_size2 = params['block_size2']
+    cu_seqlens_q = params['cu_seqlens_q']
+    seqused_q = params['seqused_q']
+    seqused_ori_kv = params['seqused_ori_kv']
+    seqused_cmp_kv = params['seqused_cmp_kv']
+    cu_seqlens_ori_kv = params['cu_seqlens_ori_kv']
+    cu_seqlens_cmp_kv = params['cu_seqlens_cmp_kv']
+    cmp_residual_kv = params['cmp_residual_kv']
+    softmax_scale = params['softmax_scale']
+    cmp_ratio = params['cmp_ratio']
+    ori_mask_mode = params['ori_mask_mode']
+    cmp_mask_mode = params['cmp_mask_mode']
+    ori_win_left = params['ori_win_left']
+    ori_win_right = params['ori_win_right']
+    kv_quant_mode = params['kv_quant_mode']
+    tile_size = params['tile_size']
+    rope_head_dim = params['rope_head_dim']
+    template_run_mode = params['template_run_mode']
+    topk_value_mode = params.get('topk_value_mode', 1)
+    return_softmax_lse = params.get('return_softmax_lse', False)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
+    seqused_q = torch.tensor(seqused_q).to(torch.int32)
+    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
+    seqused_cmp_kv = torch.tensor(seqused_cmp_kv).to(torch.int32) if seqused_cmp_kv is not None else None
 
     # generate q
     if layout_q == "BSND":
         q = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, (B, S1, N1, D))).to(q_type)
-        act_q = B * [S1]
     elif layout_q == "TND":
         q = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, (T1, N1, D))).to(q_type)
         if len(cu_seqlens_q) != (B + 1):
             raise ValueError(f"len(cu_seqlens_q) != B + 1, which is {len(cu_seqlens_q)} != {B + 1}")
-        else:
-            act_q = prefix_sum_to_original(cu_seqlens_q)
-            max_s1 = get_max_adjacent_diff(cu_seqlens_q)
     else:
         raise ValueError(f"layout_q is not support {layout_q}")
 
-    # generate ori_kv/cmp_kv (only support PA_ND)
-    if layout_kv == "PA_ND":
-        pass
+    if len(seqused_ori_kv) != B:
+        raise ValueError(f"len(seqused_ori_kv) != B, which is {len(seqused_ori_kv)} != {B}")
     else:
-        raise ValueError(f"layout_kv is not support {layout_kv}")
-
-    if len(seqused_kv) != B:
-        raise ValueError(f"len(seqused_kv) != B, which is {len(seqused_kv)} != {B}")
-    else:
-        ori_max_s2 = max(seqused_kv)
+        ori_max_s2 = int(get_max_adjacent_diff(cu_seqlens_ori_kv))
         ori_max_block_num_per_batch = math.ceil(ori_max_s2 / block_size1)
 
-        cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
-        cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
+        cmp_max_s2 = int(get_max_adjacent_diff(cu_seqlens_cmp_kv)) if cu_seqlens_cmp_kv is not None else 0
+        cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2) if cmp_max_s2 > 0 else 0
 
     if kv_quant_mode != 1 and kv_quant_mode != 10:
         raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1 and 10")
@@ -942,14 +978,14 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # generate ori_kv tensor
     ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim,
         nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, pad_d, block_num, block_size1, ori_max_s2,
-        ori_max_block_num_per_batch, seqused_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode)
+        ori_max_block_num_per_batch, seqused_ori_kv, cu_seqlens_ori_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv)
 
     # generate cmp_kv and sparse_indices
     if template_run_mode == "CFA" or template_run_mode == "SCFA":
         cmp_k_bnsd, cmp_k_in_pa_shape, cmp_block_table, cmp_sparse_indices = gen_cmp_kv(q_type, layout_q, cmp_kv_type,
             B, S1, T1, N2, D, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, pad_d,
-            block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_kv, cmp_ratio,
-            cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, kv_quant_mode)
+            block_num, block_size2, cmp_max_s2, cmp_max_block_num_per_batch, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv, cu_seqlens_cmp_kv,
+            cmp_ratio, cmp_mask_mode, template_run_mode, quant_param_range_left, quant_param_range_right, kv_quant_mode, layout_kv)
     else:
         cmp_k_in_pa_shape = None
         cmp_sparse_indices = None
@@ -964,43 +1000,51 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, : block_size1 * N2 * (d_combined + pad_d)].view(block_num, block_size1, N2, d_combined + pad_d)
         cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :].view(block_num, block_size2, N2, d_combined + pad_d)
 
-    test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
-        block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
+    test_qsmla = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
+        block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
-
+    cpu_result = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks)
+    
     print("mode:%s\n",template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
-    seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
+    seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
+    seqused_cmp_kv = torch.tensor(seqused_cmp_kv).to(torch.int32) if seqused_cmp_kv is not None else None
+    cu_seqlens_ori_kv = torch.tensor(cu_seqlens_ori_kv).to(torch.int32) if cu_seqlens_ori_kv is not None else None
+    cu_seqlens_cmp_kv = torch.tensor(cu_seqlens_cmp_kv).to(torch.int32) if cu_seqlens_cmp_kv is not None else None
+    cmp_residual_kv = torch.tensor(cmp_residual_kv).to(torch.int32) if cmp_residual_kv is not None else None
     max_seqlen_q = S1
     if layout_q == "TND":
         max_seqlen_q = cu_seqlens_q.max().item()
     else:
         cu_seqlens_q = None
         max_seqlen_q = S1
-    max_seqlen_kv = seqused_kv.max().item()
+    max_seqlen_ori_kv = seqused_ori_kv.max().item()
+    max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
 
-    # 保存pt
     input_data = {
-        # 命名用变量
         'Testcase_Name':Testcase_Name,
 
-        # 固定参数
         'params': params,
 
-        # 输入张量
         'metadata_input': {
             'num_heads_q': N1,
             'num_heads_kv': N2,
             'head_dim': D,
             'cu_seqlens_q': cu_seqlens_q,
-            'seqused_kv': seqused_kv,
+            'seqused_q': seqused_q,
+            'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
+            'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
+            'seqused_ori_kv': seqused_ori_kv,
+            'seqused_cmp_kv': seqused_cmp_kv,
+            'cmp_residual_kv': cmp_residual_kv,
             'batch_size': B,
             'max_seqlen_q': max_seqlen_q,
-            'max_seqlen_kv': max_seqlen_kv,
-            'topk': K if template_run_mode == "SCFA" else 0, # 仅SCFA需要
-            'cmp_ratio': cmp_ratio if template_run_mode != "SWA" else 1,  # 仅SWA 不需要
+            'max_seqlen_ori_kv': max_seqlen_ori_kv,
+            'max_seqlen_cmp_kv': max_seqlen_cmp_kv,
+            'topk': K if template_run_mode == "SCFA" else 0,
+            'cmp_ratio': cmp_ratio if template_run_mode != "SWA" else 1,
             'ori_mask_mode': ori_mask_mode,
             'cmp_mask_mode': cmp_mask_mode,
             'ori_win_left': ori_win_left,
@@ -1008,11 +1052,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'layout_q': layout_q,
             'layout_kv': layout_kv,
             'has_ori_kv': True,
-            'has_cmp_kv': False if template_run_mode == "SWA" else True,  # SWA 为false
+            'has_cmp_kv': False if template_run_mode == "SWA" else True,
             'kv_quant_mode': kv_quant_mode,
         },
 
-        'input': {
+        'op_input': {
             'q': q,
             'ori_kv': ori_k_in_pa_shape,
             'cmp_kv': cmp_k_in_pa_shape,
@@ -1020,7 +1064,12 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'ori_block_table': ori_block_table,
             'cmp_block_table': cmp_block_table,
             'cu_seqlens_q': cu_seqlens_q,
-            'seqused_kv': seqused_kv,
+            'seqused_q': seqused_q,
+            'cu_seqlens_ori_kv': cu_seqlens_ori_kv,
+            'cu_seqlens_cmp_kv': cu_seqlens_cmp_kv,
+            'seqused_ori_kv': seqused_ori_kv,
+            'seqused_cmp_kv': seqused_cmp_kv,
+            'cmp_residual_kv': cmp_residual_kv,
             'sinks': sinks,
             'kv_quant_mode': kv_quant_mode,
             'tile_size': 64,
@@ -1032,13 +1081,15 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'ori_win_left': ori_win_left,
             'ori_win_right': ori_win_right,
             'layout_q': layout_q,
-            'layout_kv': layout_kv
+            'layout_kv': layout_kv,
+            'topk_value_mode': topk_value_mode,
+            'return_softmax_lse': return_softmax_lse
         },
 
         'cpu_output': cpu_result
     }
 
-    if save_pt:
+    if save_pt:  
         save_test_case(input_data, save_path)
-
+        
     return input_data

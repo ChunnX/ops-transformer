@@ -37,15 +37,15 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {ORI_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
     {CMP_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
     {CU_SEQLENS_Q_NAME,              {ge::DT_INT32}},
-    {SEQUSED_KV_NAME,                {ge::DT_INT32}},
+    {SEQUSED_ORI_KV_NAME,            {ge::DT_INT32}},
     {SINKS_NAME,                     {ge::DT_FLOAT}},
 };
 
-const std::map<std::string, std::vector<QSMLALayout>> LAYOUT_SUPPORT_MAP = {
-    {QUERY_NAME,             {QSMLALayout::BSND, QSMLALayout::TND}},
-    {ORI_KV_NAME,            {QSMLALayout::PA_ND}},
-    {CMP_KV_NAME,            {QSMLALayout::PA_ND}},
-    {ATTEN_OUT_NAME,         {QSMLALayout::BSND, QSMLALayout::TND}},
+const std::map<std::string, std::vector<SASLayout>> LAYOUT_SUPPORT_MAP = {
+    {QUERY_NAME,             {SASLayout::BSND, SASLayout::TND}},
+    {ORI_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
+    {CMP_KV_NAME,            {SASLayout::PA_ND, SASLayout::TND}},
+    {ATTEN_OUT_NAME,         {SASLayout::BSND, SASLayout::TND}},
 };
 
 template <typename T>
@@ -198,13 +198,15 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
-        OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
-        oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+    if (kvLayout_ == SASLayout::PA_ND) {
+        OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
+            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
+            oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(oriBlockSize_ % 16 > 0,
-        OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.",
-        oriBlockSize_), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriBlockSize_ % 16 > 0,
+            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.",
+            oriBlockSize_), return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(dSizeOriKvInput_ != 640,
         OP_LOGE(opName_, "Dimension of OriKv only support 640, but got %u", dSizeOriKvInput_),
@@ -233,13 +235,15 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
             return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
-            OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be in range (0, %u].",
-            cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
-            OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be 16-aligned.",
-            cmpBlockSize_), return ge::GRAPH_FAILED);
+        if (kvLayout_ == SASLayout::PA_ND) {
+            OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
+                OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be in range (0, %u].",
+                cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+        
+            OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
+                OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%ld) should be 16-aligned.",
+                cmpBlockSize_), return ge::GRAPH_FAILED);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -293,7 +297,17 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpSparseIndices() const
+ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpResidualKv() const
+{
+    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
+        OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
+            OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio!=1"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpSparseIndices() const
 {
     const std::vector<size_t> cmpSparseIndicesDimNumList = {DIM_NUM_FOUR, DIM_NUM_THREE};
 
@@ -370,17 +384,16 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
-    OP_CHECK_IF(opParamInfo_.sequsedKv.tensor == nullptr,
-        OP_LOGE(opName_, "input sequsedKv can not be nullptr, but it's empty"),
+    OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+        OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"),
         return ge::GRAPH_FAILED);
 
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedKv.desc, SEQUSED_KV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF(opParamInfo_.sequsedKv.tensor->GetShapeSize() != bSize_,
-        OP_LOGE(opName_, "input sequsedKv's shapeSize is not equal to B: %u, it is %ld",
-            bSize_, opParamInfo_.sequsedKv.tensor->GetShapeSize()),
+    OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_,
+        OP_LOGE(opName_, "input sequsedOriKv's shapeSize is not equal to B: %u, it is %ld", bSize_, opParamInfo_.sequsedOriKv.tensor->GetShapeSize()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -418,6 +431,7 @@ ge::graphStatus QSMLATilingCheck::CheckSinglePara() const
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||

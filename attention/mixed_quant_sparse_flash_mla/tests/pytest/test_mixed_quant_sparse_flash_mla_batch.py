@@ -26,11 +26,11 @@ import check_valid_param
 from batch import mixed_quant_sparse_flash_mla_process
 import utils
 
-testcase_path = "qsas_testcase"
+testcase_path = os.environ.get("QSMLA_PT_DIR", "qsmla_testcase")
 result_path = Path('result.xlsx')
 device_id=0
 
-locals()["testcase_files"] = []
+testcase_files = []
 if os.path.isdir(testcase_path):
     pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
     if not pt_files:
@@ -39,14 +39,15 @@ if os.path.isdir(testcase_path):
         print(f"找到 {len(pt_files)} 个测试用例文件")
         for pt_file in pt_files:
             filepath = os.path.join(testcase_path, pt_file)
-            locals()["testcase_files"].append(filepath)
+            testcase_files.append(filepath)
 else:
     print(f"错误: 输出目录不存在: {testcase_path}")
-
+    
 def qsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_sas_quant_process_ci(test_data, device_id=device_id)
+        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+            test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         print("NPU ERROR：", e)
@@ -54,12 +55,14 @@ def qsmla(testcase_files):
         fulfill_percent = 0
 
     utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    
+    if result in ("NPU ERROR", "Failed"):
+        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
 
-    if(result == "NPU ERROR"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']}")
+testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in testcase_files]
 
 @pytest.mark.ci
-@pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
+@pytest.mark.parametrize("testcase_files", testcase_files, ids=testcase_ids)
 def test_mixed_quant_sparse_flash_mla(testcase_files):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -70,4 +73,3 @@ def test_mixed_quant_sparse_flash_mla(testcase_files):
                 result = future.result()
             except Exception as e:
                 pytest.fail(f"当前用例线程执行失败")
-

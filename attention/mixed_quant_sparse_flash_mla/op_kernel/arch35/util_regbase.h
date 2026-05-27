@@ -31,8 +31,9 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
     int64_t goIdx; \
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
-    int64_t s2LineEndIdx;          /* S2方向按行的结束位置 */ \
+    int64_t s2LineOriEndIdx;          /* S2方向按行的结束位置 */ \
     int64_t s2CmpLineEndIdx; \
+    int64_t s2LineCmpEndIdx; \
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t halfS1RealSize; \
@@ -42,7 +43,9 @@ constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
     uint32_t firstHalfMRealSize; \
     int64_t attentionOutOffset;    /* attentionOut的offset souter层确定 */ \
     int32_t actualS1Size;      /* Q的actualSeqLength */ \
-    int32_t actualS2Size    /* KV的actualSeqLength */ \
+    int32_t actualS2OriSize;      /* ori_kv的真实使用长度 */ \
+    int32_t actualS2CmpSize;   /* cmp_kv的真实使用长度 */ \
+    int32_t cmpResidual        /* cmp的余数，用于mask计算 */ \
 
 struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
@@ -51,7 +54,8 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t gs1LoopEndIdx;
     // BN循环生产的数据
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
-    int64_t nextTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
+    int64_t nextTokensPerBatchOri = MAX_PRE_NEXT_TOKENS; // ori 左上顶点的nexttoken
+    int64_t nextTokensPerBatchCmp = MAX_PRE_NEXT_TOKENS; // cmp 左上顶点的nexttoken
 
     // NBS1循环生产的数据
     int64_t sOuterOffset;               // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
@@ -93,9 +97,12 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     int64_t attentionOutOffset; \
     int32_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
-    int32_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
+    int32_t actualS2OriSize; /* ori_kv的真实使用长度 */ \
+    int32_t actualS2CmpSize; /* cmp_kv的真实使用长度 */ \
+    int32_t cmpResidual; /* cmp的余数，用于mask计算 */ \
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
-    int64_t nextTokensPerBatch; /* vector2 左上顶点的nexttoken */ \
+    int64_t nextTokensPerBatchOri; /* vector2 ori 左上顶点的nexttoken */ \
+    int64_t nextTokensPerBatchCmp; /* vector2 cmp 左上顶点的nexttoken */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \
@@ -189,12 +196,12 @@ struct RunInfo {
 #define INFER_CONST_INFO \
     /* 推理 */ \
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \
-    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */ \
     bool isSoftmaxLseEnable; \
-    bool rsvd1; \
     uint32_t sparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */ \
+    uint32_t actualLenDimsOriKV; /* seqused_ori_kv的维度 */ \
+    uint32_t actualLenDimsCmpKV; /* seqused_cmp_kv的维度 */ \
+    uint32_t cmpResidualKVSize; /* cmp_residual_kv的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \
     uint32_t cmpBlockSize; \
