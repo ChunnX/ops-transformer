@@ -199,6 +199,11 @@ class LightningIndexerGrad:
                 # 每行s有不同的KeyGather，使用einsum
                 relu_in = torch.einsum('sd,skd->sk', query_b.float(), key_gather_npu.float()).to(dtype)
                 
+                # 调试: 检查 relu_in
+                if n1 == 0:  # 只打印第一个头，避免太多输出
+                    print(f"[调试] relu_in: max={relu_in.abs().max().item():.2f}, "
+                          f"min={relu_in.min().item():.2f}, has_nan={torch.isnan(relu_in).any().item()}")
+                
                 # ========== 步骤3: Cube2 - Weights @ Dy ==========
                 # 每个Query头有独立的权重
                 weights_b = weights[b, :, n1]  # (S1,)
@@ -209,9 +214,19 @@ class LightningIndexerGrad:
                 # ReLU反向
                 relu_grad_out = self.kernel_relu_grad(relu_grad_in, relu_in)
                 
+                # 调试: 检查 relu_grad_out
+                if n1 == 0:
+                    print(f"[调试] relu_grad_in: max={relu_grad_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_in).any().item()}")
+                    print(f"[调试] relu_grad_out: max={relu_grad_out.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out).any().item()}")
+                
                 # ReduceSum计算dWeights - 每个Query头的权重梯度
                 relu_in_dy = relu_in * dy_b
                 d_weights_b = self.kernel_reduce(relu_in_dy)
+                
+                # 调试: 检查 d_weights
+                if n1 == 0:
+                    print(f"[调试] d_weights_b: max={d_weights_b.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b).any().item()}")
+                
                 d_weights[b, :, n1] = d_weights_b  # 存储到对应头的位置
                 
                 # ========== 步骤5: Cube3 - dQuery ==========
@@ -222,10 +237,23 @@ class LightningIndexerGrad:
                 # 每个位置s需要独立的(topk, D)值，因为scatter时indices不同，不能跨s求和
                 # relu_grad_out: (S1, topk), query_b: (S1, D) -> scatter_add: (S1, topk, D)
                 scatter_add = torch.einsum('sk,sd->skd', relu_grad_out.float(), query_b.float()).to(dtype)
+                
+                # 调试: 检查 scatter_add
+                if n1 == 0:
+                    print(f"[调试] scatter_add: max={scatter_add.abs().max().item():.2f}, has_nan={torch.isnan(scatter_add).any().item()}")
+                    print(f"[调试] scatter_add shape: {scatter_add.shape}")
 
                 # ========== 步骤7: Vec3 - ScatterAdd (CPU辅助) ==========
                 scatter_add_cpu = scatter_add.cpu().numpy()
                 d_key_cpu = d_key[b].cpu().numpy()
+                
+                # 调试: 检查 indices 范围
+                if n1 == 0:
+                    indices_b = indices_cpu[b]
+                    print(f"[调试] indices: min={indices_b.min()}, max={indices_b.max()}, seqlen_k={self.seqlen_k}")
+                    if indices_b.max() >= self.seqlen_k:
+                        print(f"[警告] indices 越界! max={indices_b.max()} >= seqlen_k={self.seqlen_k}")
+                
                 d_key_cpu = scatter_add_python(
                     d_key_cpu[np.newaxis, ...],       # (1, S2, head_num_k, D)
                     scatter_add_cpu[np.newaxis, ...], # (1, S1, topk, D)
@@ -234,6 +262,10 @@ class LightningIndexerGrad:
                     self.head_dim
                 )
                 d_key[b] = torch.from_numpy(d_key_cpu.squeeze(0)).to(device)
+                
+                # 调试: 检查最终 d_key
+                if n1 == 0:
+                    print(f"[调试] d_key (after scatter): max={d_key[b].abs().max().item():.2f}, has_nan={torch.isnan(d_key[b]).any().item()}")
         
         torch.npu.synchronize()
         
