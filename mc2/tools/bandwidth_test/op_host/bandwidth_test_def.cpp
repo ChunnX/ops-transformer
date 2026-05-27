@@ -24,7 +24,7 @@ public:
         .DataType({ge::DT_FLOAT16})
         .Format({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("expert_id")
+    this->Input("dst_rank_id")
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
         .Format({ge::FORMAT_ND})

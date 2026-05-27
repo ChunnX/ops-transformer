@@ -49,6 +49,7 @@ REG_OP(BandwidthTest)
     .REQUIRED_ATTR(mode, Int)
     .REQUIRED_ATTR(ccl_buffer_size, Int)
     .ATTR(comm_alg, String, "")
+    .ATTR(aiv_num, Int, -1)
     .OP_END_FACTORY_REG(BandwidthTest)
 
 }  // namespace ge
