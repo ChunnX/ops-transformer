@@ -274,11 +274,10 @@ protected:
         constexpr uint32_t element_num = 8 * 1024;
         uint32_t process_s1_size = element_num / head_dim_;
         auto input_shape = ge::Shape({process_s1_size, head_dim_});
-
         uint32_t tmp_space_size = AscendC::GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
         AscendC::SoftMaxGradTilingFunc(input_shape, sizeof(float), tmp_space_size,
                                        tilingData_.softmaxGradFrontTilingData, true);
-        std::cout << "tmp_space_size: " << tmp_space_size << std::endl;
+        tilingData_.set_sftgTmpSpaceSize(tmp_space_size); // 元素个数=8K时需要50K的临时空间
         return ge::GRAPH_SUCCESS;
     }
 
