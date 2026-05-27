@@ -28,11 +28,11 @@ static constexpr uint32_t DIM_1 = 1;
 static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
-ge::graphStatus KvQuantSASTilingCheck::CheckParaExistenceAntiquant() const
+ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
 {
-    if (kvLayout_ == SASLayout::BSND) {
+    if (kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
-    }  else if (kvLayout_ == SASLayout::PA_ND) {
+    }  else if (kvLayout_ == QSMLALayout::PA_ND) {
         OP_CHECK_IF(opParamInfo_.sequsedKv.tensor == nullptr,
             OP_LOGE(opName_, "when layout_kv is PA_ND, actualSeqLengthsKv must not be null"),
             return ge::GRAPH_FAILED);
@@ -43,7 +43,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckParaExistenceAntiquant() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckParaExistence()
+ge::graphStatus QSMLATilingCheck::CheckParaExistence()
 {
     if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() ||
         ge::GRAPH_SUCCESS != CheckSWAExistence() ||
@@ -57,7 +57,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckParaExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckUnrequiredParaExistence() const
+ge::graphStatus QSMLATilingCheck::CheckUnrequiredParaExistence() const
 {
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
                 OP_LOGE(opName_, "oriSparseIndices is not supported now, it must be nullptr."),
@@ -71,10 +71,10 @@ ge::graphStatus KvQuantSASTilingCheck::CheckUnrequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckCmpSparseIndicesExistence()
+ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        if (qLayout_ == SASLayout::BSND) {
+        if (qLayout_ == QSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512
                 && opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
                 OP_LOGE(opName_, "When qLayout is BNSD, topK should be 512 or 1024, but got %ld",
@@ -103,9 +103,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckCmpSparseIndicesExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckSWAExistence()
+ge::graphStatus QSMLATilingCheck::CheckSWAExistence()
 {
-    if (perfMode_ != SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr,
@@ -114,9 +114,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSWAExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckCFAExistence()
+ge::graphStatus QSMLATilingCheck::CheckCFAExistence()
 {
-    if (perfMode_ != SASTemplateMode::CFA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::CFA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr && opParamInfo_.cmpKv.tensor != nullptr,
@@ -142,9 +142,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckCFAExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckSCFAExistence()
+ge::graphStatus QSMLATilingCheck::CheckSCFAExistence()
 {
-    if (perfMode_ != SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::SCFA_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.cmpKv.tensor == nullptr
@@ -165,13 +165,13 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSCFAExistence()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckCmpRatioExistence()
+ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
 {
-    if (perfMode_ == SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1 && *opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
             OP_LOGE(opName_, "when SWA mode, cmpRatio must be 1 or 4 or 128, but got %u", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);
-    } else if (perfMode_ == SASTemplateMode::CFA_TEMPLATE_MODE) {
+    } else if (perfMode_ == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 128 && *opParamInfo_.cmpRatio != 4,
             OP_LOGE(opName_, "when CFA mode, cmpRatio must be 4 or 128, but got %u", *opParamInfo_.cmpRatio),
             return ge::GRAPH_FAILED);

@@ -22,24 +22,24 @@ using std::string;
 using std::pair;
 namespace optiling {
 
-ge::graphStatus KvQuantSASTilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
+ge::graphStatus QSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
     const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            SASDataTypeToSerialString(expectDtype).c_str(),
-            SASDataTypeToSerialString(actualDtype).c_str());
+            QSMLADataTypeToSerialString(expectDtype).c_str(),
+            QSMLADataTypeToSerialString(actualDtype).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const SASLayout &layout, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+    const QSMLALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.",
-            KvQuantSASLayoutToSerialString(layout).c_str(), name.c_str());
+            QSMLALayoutToSerialString(layout).c_str(), name.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
@@ -52,24 +52,24 @@ ge::graphStatus KvQuantSASTilingCheck::GetActualSeqLenSize(uint32_t &size, const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
-    const KvQuantSASTilingShapeCompareParam &param, const SASLayout &layout) const
+ge::graphStatus QSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
+    const QSMLATilingShapeCompareParam &param, const QSMLALayout &layout) const
 {
-    if (layout == SASLayout::BSND) {
+    if (layout == QSMLALayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
-    } else if (layout == SASLayout::TND) {
+    } else if (layout == QSMLALayout::TND) {
         shapeExpected = gert::Shape({param.T, param.N, param.D});
-    } else if (layout == SASLayout::PA_ND) {
+    } else if (layout == QSMLALayout::PA_ND) {
         shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
     } else {
-        OP_LOGE(opName_, "layout %s is unsupported", KvQuantSASLayoutToSerialString(layout).c_str());
+        OP_LOGE(opName_, "layout %s is unsupported", QSMLALayoutToSerialString(layout).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CompareShape(KvQuantSASTilingShapeCompareParam &param,
-    const gert::Shape &shape, const SASLayout &layout, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &param,
+    const gert::Shape &shape, const QSMLALayout &layout, const std::string &name) const
 {
     gert::Shape shapeExpected;
     if (GetExpectedShape(shapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -86,7 +86,7 @@ ge::graphStatus KvQuantSASTilingCheck::CompareShape(KvQuantSASTilingShapeCompare
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != shapeExpected.GetDim(i)) {
             OP_LOGE(opName_, "%s layout is %s, shape is %s, expected shape is %s.",
-                name.c_str(), KvQuantSASLayoutToSerialString(layout).c_str(),
+                name.c_str(), QSMLALayoutToSerialString(layout).c_str(),
                 GetShapeStr(shape).c_str(), GetShapeStr(shapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
@@ -95,7 +95,7 @@ ge::graphStatus KvQuantSASTilingCheck::CompareShape(KvQuantSASTilingShapeCompare
     return ge::GRAPH_SUCCESS;
 }
 
-void KvQuantSASTilingCheck::SetSASShapeCompare()
+void QSMLATilingCheck::SetQSMLAShapeCompare()
 {
     queryShapeCmp_ = opParamInfo_.q.shape->GetStorageShape();
     topkShapeCmp_ = opParamInfo_.cmpSparseIndices.tensor->GetShape().GetStorageShape();
@@ -104,12 +104,12 @@ void KvQuantSASTilingCheck::SetSASShapeCompare()
     attenOutShapeCmp_ = opParamInfo_.attnOut.shape->GetStorageShape();
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckBlockTable() const
+ge::graphStatus QSMLATilingCheck::CheckBlockTable() const
 {
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor != nullptr,
             OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
-                KvQuantSASLayoutToSerialString(kvLayout_).c_str(), ORI_BLOCK_TABLE_NAME.c_str()),
+                QSMLALayoutToSerialString(kvLayout_).c_str(), ORI_BLOCK_TABLE_NAME.c_str()),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
@@ -117,7 +117,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckBlockTable() const
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.cmpBlockTable.tensor != nullptr,
             OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
-                KvQuantSASLayoutToSerialString(kvLayout_).c_str(), CMP_BLOCK_TABLE_NAME.c_str()),
+                QSMLALayoutToSerialString(kvLayout_).c_str(), CMP_BLOCK_TABLE_NAME.c_str()),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
@@ -137,14 +137,14 @@ ge::graphStatus KvQuantSASTilingCheck::CheckBlockTable() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckTopkShape()
+ge::graphStatus QSMLATilingCheck::CheckTopkShape()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckAttenOutShape()
+ge::graphStatus QSMLATilingCheck::CheckAttenOutShape()
 {
-    KvQuantSASTilingShapeCompareParam shapeParams;
+    QSMLATilingShapeCompareParam shapeParams;
     shapeParams.B = bSize_;
     shapeParams.N = n1Size_;
     shapeParams.S = s1Size_;
@@ -156,7 +156,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckAttenOutShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckAttenOut()
+ge::graphStatus QSMLATilingCheck::CheckAttenOut()
 {
     if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.attnOut.desc->GetDataType(),
         qType_, ATTEN_OUT_NAME) ||
@@ -166,7 +166,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckAttenOut()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckTopK()
+ge::graphStatus QSMLATilingCheck::CheckTopK()
 {
     if (ge::GRAPH_SUCCESS != CheckTopkShape()) {
         return ge::GRAPH_FAILED;
@@ -174,9 +174,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckTopK()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckKVShapeForBatchContinuous()
+ge::graphStatus QSMLATilingCheck::CheckKVShapeForBatchContinuous()
 {
-    KvQuantSASTilingShapeCompareParam shapeParams;
+    QSMLATilingShapeCompareParam shapeParams;
     shapeParams.B = bSize_;
     shapeParams.N = n2Size_;
     shapeParams.S = s2Size_;
@@ -189,7 +189,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckKVShapeForBatchContinuous()
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t KvQuantSASTilingCheck::GetTypeSize(ge::DataType dtype) const
+uint32_t QSMLATilingCheck::GetTypeSize(ge::DataType dtype) const
 {
     uint32_t typeSize = NUM_BYTES_FLOAT16;
     switch (dtype) {
@@ -205,10 +205,10 @@ uint32_t KvQuantSASTilingCheck::GetTypeSize(ge::DataType dtype) const
     return typeSize;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckKVShapeForPageAttention()
+ge::graphStatus QSMLATilingCheck::CheckKVShapeForPageAttention()
 {
     int64_t blockNum = keyShapeCmp_.GetDim(0);
-    KvQuantSASTilingShapeCompareParam shapeParams;
+    QSMLATilingShapeCompareParam shapeParams;
     shapeParams.Bn = blockNum;
     shapeParams.N = n2Size_;
     shapeParams.Bs = bSize_;
@@ -221,7 +221,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckKVShapeForPageAttention()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckKVShape()
+ge::graphStatus QSMLATilingCheck::CheckKVShape()
 {
     if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
         return CheckKVShapeForBatchContinuous();
@@ -235,7 +235,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckKVShape()
     return ge::GRAPH_FAILED;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckKV()
+ge::graphStatus QSMLATilingCheck::CheckKV()
 {
     if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(cmpKvType_,
         oriKvType_, CMP_KV_NAME)) {
@@ -244,7 +244,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckKV()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQ()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQ()
 {
     if (ge::GRAPH_SUCCESS != CheckActualSeqLensQDType() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQShape()) {
@@ -253,7 +253,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQ()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQDType()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQDType()
 {
     if (opParamInfo_.cuSeqLensQ.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -265,13 +265,13 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQDType()
     }
     if (opParamInfo_.cuSeqLensQ.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE(opName_, "cuSeqLensQ's dtype is %s, it should be DT_INT32.",
-            SASDataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str());
+            QSMLADataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQShape()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQShape()
 {
     if (opParamInfo_.cuSeqLensQ.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -289,7 +289,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensQShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLens()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLens()
 {
     if (ge::GRAPH_SUCCESS != CheckActualSeqLensDType() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensShape()) {
@@ -298,7 +298,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLens()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensDType()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLensDType()
 {
     if (opParamInfo_.sequsedKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -310,13 +310,13 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensDType()
     }
     if (opParamInfo_.sequsedKv.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE(opName_, "sequsedKv's dtype is %s, it should be DT_INT32.",
-            SASDataTypeToSerialString(opParamInfo_.sequsedKv.desc->GetDataType()).c_str());
+            QSMLADataTypeToSerialString(opParamInfo_.sequsedKv.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensShape()
+ge::graphStatus QSMLATilingCheck::CheckActualSeqLensShape()
 {
     if (opParamInfo_.sequsedKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -334,9 +334,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckActualSeqLensShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASTilingCheck::CheckMultiParaConsistency()
+ge::graphStatus QSMLATilingCheck::CheckMultiParaConsistency()
 {
-    SetSASShapeCompare();
+    SetQSMLAShapeCompare();
     if (ge::GRAPH_SUCCESS != CheckKV() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||

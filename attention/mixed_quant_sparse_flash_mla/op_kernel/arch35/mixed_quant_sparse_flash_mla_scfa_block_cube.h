@@ -50,10 +50,10 @@ struct CubeCoordInfo {
     uint32_t s2Coord;
 };
 
-template <SAS_LAYOUT LAYOUT>
+template <QSMLA_LAYOUT LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == SAS_LAYOUT::BSND) {
+    if constexpr (LAYOUT == QSMLA_LAYOUT::BSND) {
         return GmFormat::BSNGD;
     } else {
         return GmFormat::TNGD;
@@ -173,10 +173,10 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(
     __gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo)
 {
-    if constexpr (LAYOUT_T == SAS_LAYOUT::BSND) {
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
-    } else {  // SAS_LAYOUT::TND
+    } else {  // QSMLA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,

@@ -34,7 +34,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
     int32_t sIdx = runParam.boIdx;
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         // actual seq length first
         actualS1Size = (actualSeqQlenAddr == nullptr) ? (cuSeqlensQAddr[sIdx + 1] - cuSeqlensQAddr[sIdx]) :
             actualSeqQlenAddr[sIdx];
@@ -46,7 +46,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     if (constInfo.isActualLenDimsKVNull) {
         actualS2Size = constInfo.s2Size;
     } else {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
             actualS2Size = actualSeqKvlenAddr[sIdx];
             if ((sIdx > 0) && (!isPa)) {
                 actualS2Size -= actualSeqKvlenAddr[sIdx - 1];
@@ -92,7 +92,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     }
 
     int32_t gs1LoopEndIdx = 0;
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SCFA_TEMPLATE_MODE) {
         gs1LoopEndIdx = runParam.actualS1Size; // 对于SCFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
     } else { // SWA/CFA
         // 不需要取topk, 每次计算gSize行, 循环qs次
@@ -153,14 +153,14 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
             seqOffset = cuSeqlensQAddr[sIdx];
         } else {
             seqOffset = sIdx * constInfo.s1Size;
         }
 
         int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
-        if constexpr (LAYOUT_T == SAS_LAYOUT::BSND || LAYOUT_T == SAS_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND || LAYOUT_T == QSMLA_LAYOUT::TND) {
             runParam.attentionOutOffset = attentionOutSeqOffset +
                 runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
                 runParam.goIdx * constInfo.dSizeV;
@@ -191,7 +191,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 TEMPLATE_INTF
 __aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr)
 {
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && cuSeqlensQAddr[runParam.boIdx + 1] - cuSeqlensQAddr[runParam.boIdx] == 0) {
             return true;
@@ -224,10 +224,10 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
         runParam.cubeSOuterOffset + runParam.nextTokensPerBatch + runParam.s1RealSize, 0, runParam.actualS2Size);
     runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
-    if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
-    } else if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
         runParam.s2CmpLineEndIdx = runParam.s2LineEndIdx / constInfo.cmpRatio;
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     } else { // SCFA_TEMPLATE_MODE

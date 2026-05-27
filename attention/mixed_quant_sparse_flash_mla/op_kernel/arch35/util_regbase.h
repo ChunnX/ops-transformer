@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef KV_QUANT_SAS_UTIL_REGBASE_H
-#define KV_QUANT_SAS_UTIL_REGBASE_H
+#ifndef QSMLA_UTIL_REGBASE_H
+#define QSMLA_UTIL_REGBASE_H
 
 #include "util.h"
 
@@ -215,4 +215,4 @@ struct ConstInfo{
 };
 }
 
-#endif // KV_QUANT_SAS_UTIL_REGBASE_H
+#endif // QSMLA_UTIL_REGBASE_H

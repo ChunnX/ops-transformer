@@ -43,7 +43,7 @@ if os.path.isdir(testcase_path):
 else:
     print(f"错误: 输出目录不存在: {testcase_path}")
 
-def sas(testcase_files):
+def qsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
         npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_sas_quant_process_ci(test_data, device_id=device_id)
@@ -63,7 +63,7 @@ def sas(testcase_files):
 def test_mixed_quant_sparse_flash_mla(testcase_files):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(sas, testcase_files)
+        futures = executor.submit(qsmla, testcase_files)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:

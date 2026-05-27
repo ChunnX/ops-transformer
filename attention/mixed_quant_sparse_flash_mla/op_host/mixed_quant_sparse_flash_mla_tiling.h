@@ -29,7 +29,7 @@
 
 namespace optiling {
 
-std::string KvQuantSASLayoutToSerialString(SASLayout layout);
+std::string QSMLALayoutToSerialString(QSMLALayout layout);
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(MixedQuantSparseFlashMlaBaseParams)
@@ -68,17 +68,17 @@ REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMla, MixedQuantSparseFlashMlaTil
 class MixedQuantSparseFlashMlaTiling {
 public:
     explicit MixedQuantSparseFlashMlaTiling(gert::TilingContext *context) : context_(context) {};
-    ge::graphStatus DoOpTiling(KvQuantSASTilingInfo *tilingInfo);
+    ge::graphStatus DoOpTiling(QSMLATilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
-    SASTemplateMode perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
+    QSMLATemplateMode perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
     MixedQuantSparseFlashMlaTilingData tilingData_;
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};
 
-    KvQuantSASTilingInfo *sasInfo_ = nullptr;
+    QSMLATilingInfo *qsmlaInfo_ = nullptr;
 };
 
 }

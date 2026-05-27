@@ -118,10 +118,10 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("quant_mode").AttrType(OPTIONAL);
-        this->Attr("rope_head_dim").AttrType(OPTIONAL);
-        this->Attr("softmax_scale").AttrType(OPTIONAL);
-        this->Attr("cmp_ratio").AttrType(OPTIONAL);
+        this->Attr("quant_mode").AttrType(OPTIONAL).Int();
+        this->Attr("rope_head_dim").AttrType(OPTIONAL).Int();
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float();
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int();
         this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1

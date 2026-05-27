@@ -23,13 +23,13 @@
 
 using namespace AscendC;
 
-enum class SAS_LAYOUT {
+enum class QSMLA_LAYOUT {
     BSND = 0,
     TND = 1,
     PA_ND = 2
 };
 
-enum class SASTemplateMode {
+enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
     SCFA_TEMPLATE_MODE = 2

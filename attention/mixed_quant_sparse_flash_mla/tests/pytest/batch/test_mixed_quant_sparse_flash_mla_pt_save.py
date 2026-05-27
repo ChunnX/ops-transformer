@@ -88,7 +88,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(locals()["param_combinations"])
 
 case_id = 0
-def sas(param_combinations):   # 初始化参数和tensor
+def qsmla(param_combinations):   # 初始化参数和tensor
     global case_id
     Testcase_Name = param_combinations['Testcase_Name']
     layout_q = param_combinations['layout_q']
@@ -195,7 +195,7 @@ def sas(param_combinations):   # 初始化参数和tensor
 def test_mixed_quant_sparse_flash_mla(param_combinations):   # 初始化参数和tensor
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = executor.submit(sas, param_combinations)
+        futures = executor.submit(qsmla, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:
