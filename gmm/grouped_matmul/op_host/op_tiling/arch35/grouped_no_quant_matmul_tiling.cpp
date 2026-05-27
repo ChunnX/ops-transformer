@@ -270,7 +270,7 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
     const bool *transposeXPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_X);
     const int32_t *groupTypePtr = attr->GetAttrPointer<int32_t>(ATTR_IDX_GROUPTYPE);
     const int64_t *splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_IDX_SPLIT_ITEM);
-    const uint32_t *groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_IDX_GROUP_LIST_TYPE);
+    const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_IDX_GROUP_LIST_TYPE);
     transposeWeight_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     transposeX_ = transposeXPtr != nullptr ? *transposeXPtr : false;
     groupType_ = groupTypePtr != nullptr ? *groupTypePtr : NO_SPLIT;
@@ -299,8 +299,8 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // no-quant from weight-quant cases.
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
                 OP_LOGE(context->GetNodeName(),
-                        "In no quant case, groupListType does not support value %u(sparse), but actual is %u.",
-                        GroupedMatmul::GROUPLIST_TYPE_SPARSE_M, groupListType_),
+                        "In no quant case, groupListType does not support value %ld(sparse), but actual is %ld.",
+                        static_cast<int64_t>(GroupedMatmul::GROUPLIST_TYPE_SPARSE_M), groupListType_),
                 return false);
     return true;
 }
@@ -339,7 +339,7 @@ void GroupedNoQuantMatmulTiling::SetGMMTiling()
     tilingData_.gmmNoQuantParam.groupNum = groupNum_;
     tilingData_.gmmNoQuantParam.hasBias = static_cast<uint32_t>(hasBias_);
     tilingData_.gmmNoQuantParam.groupType = groupType_;
-    tilingData_.gmmNoQuantParam.groupListType = groupListType_;
+    tilingData_.gmmNoQuantParam.groupListType = static_cast<uint32_t>(groupListType_);
     tilingData_.gmmNoQuantParam.singleWeight = static_cast<uint32_t>(isSingleWeight_);
     tilingData_.gmmNoQuantParam.singleX = static_cast<uint32_t>(isSingleX_);
     tilingData_.gmmNoQuantParam.singleY = static_cast<uint32_t>(isSingleY_);
