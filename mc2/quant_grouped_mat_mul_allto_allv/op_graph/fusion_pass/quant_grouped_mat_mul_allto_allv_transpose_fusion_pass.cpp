@@ -91,35 +91,6 @@ enum MC2InputIdx {
     K_COMM_QUANT_SCALE = 10
 };
 
-namespace {
-    typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
-    
-    EsTransposeFunc GetEsTransposeFunc()
-    {
-        void* handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
-        if (!handle) {
-            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "dlopen failed: %s", dlerror());
-            return nullptr;
-        }
-        dlerror();
-        auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
-        if (dlerror() != nullptr) {
-            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "dlsym EsTranspose failed");
-            return nullptr;
-        }
-        return func;
-    }
-    
-    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm)
-    {
-        static EsTransposeFunc func = GetEsTransposeFunc();
-        auto* builder = ge::es::ResolveBuilder(x, perm);
-        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
-            perm.ToTensorHolder(builder).GetCTensorHolder());
-        return result;
-    }
-}
-
 static bool GetTransposePerm(const ge::GNode &transposeNode, std::vector<int64_t> &permValue)
 {
     ge::AscendString nodeType("");
