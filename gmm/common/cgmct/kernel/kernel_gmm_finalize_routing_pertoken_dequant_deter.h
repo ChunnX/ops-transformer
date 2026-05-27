@@ -143,13 +143,13 @@ public:
         int32_t baseN;
         int32_t baseK;
         uint8_t hasBias;
-        uint8_t deterministicFlag;
+        uint32_t deterministicFlag;
         uint32_t deterWorkspaceSize;
         uint32_t coreNum;
         const TCubeTiling *__restrict matmulTiling;
         __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
-                             uint8_t hasBias_, uint8_t detFlag_, uint32_t deterWsSize_, uint32_t coreNum_)
+                             uint8_t hasBias_, uint32_t detFlag_, uint32_t deterWsSize_, uint32_t coreNum_)
             : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
               hasBias(hasBias_), deterministicFlag(detFlag_), deterWorkspaceSize(deterWsSize_), coreNum(coreNum_) {}
     };
