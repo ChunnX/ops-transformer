@@ -408,12 +408,13 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
     OP_LOGD(nodeName, "epSendCounts dim0 = %ld", epSendCountsStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE(nodeName, "expertScales is null."), return false);
-    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "expertScales must be 2-dimension, but got %lu dim",
-        expertScalesStorageShape->GetStorageShape().GetDimNum()), return false);
-    OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(0));
-    OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(1));
+    if (expertScalesStorageShape != nullptr) {
+        OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "expertScales must be 2-dimension, but got %lu dim",
+            expertScalesStorageShape->GetStorageShape().GetDimNum()), return false);
+        OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(0));
+        OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(1));
+    }
 
     return true;
 }
@@ -640,10 +641,11 @@ static bool CheckExpertTensorDataType(const gert::TilingContext *context, const 
             Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return false);
     }
     auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
-    OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
-        OP_LOGE(nodeName, "expertScales dataType is invalid, dataType should be float, but is %s",
-        Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str()), return false);
+    if (expertScalesDesc != nullptr) {
+        OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
+            OP_LOGE(nodeName, "expertScales dataType is invalid, dataType should be float, but is %s",
+            Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str()), return false);
+    }
     return true;
 }
 
@@ -760,10 +762,10 @@ static bool CheckInputTensorFormat(const gert::TilingContext *context, const cha
         ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "epSendCountsFormat is invalid"), return false);
 
     auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expertScalesFormat is invalid"), return false);
-
+    if (expertScalesDesc != nullptr) {
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "expertScalesFormat is invalid"), return false);
+    }
     return true;
 }
 
@@ -936,14 +938,16 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
 
     // 校验expertScales的维度
     const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-    int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
-    int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
-        OP_LOGE(nodeName, "expertScales's dim0 not equal to bs, expertScales's dim0 = %ld, bs = %ld",
-        expertScalesDim0, expertIdsDim0), return false);
-    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1, OP_LOGE(nodeName,
-        "expertScales's dim1 not equal to k, expertScales's dim1 = %ld, k = %ld",
-        expertScalesDim1, expertIdsDim1), return false);
+    if (expertScalesStorageShape != nullptr) {
+        int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
+        int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
+            OP_LOGE(nodeName, "expertScales's dim0 not equal to bs, expertScales's dim0 = %ld, bs = %ld",
+            expertScalesDim0, expertIdsDim0), return false);
+        OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1, OP_LOGE(nodeName,
+            "expertScales's dim1 not equal to k, expertScales's dim1 = %ld, k = %ld",
+            expertScalesDim1, expertIdsDim1), return false);
+    }
 
     // 校验sharedExpertX的维度
     const gert::StorageShape *sharedExpertXShape = context->GetOptionalInputShape(config.sharedExpertXIndex);
