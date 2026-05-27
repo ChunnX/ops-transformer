@@ -267,6 +267,11 @@ private:
         uint32_t batchIdx;
         int64_t writeCIdx;
     } deferred_;
+    struct CacheDeferredState {
+        bool active;
+        uint32_t batchIdx;
+        int64_t writeCIdx;
+    } cacheDeferred_; // deferred running cache for readCIdx==writeCIdx prefix batches
     uint32_t lastBatchIdx_;
     uint32_t firstBatchIdx_;
 };
@@ -393,6 +398,9 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     deferred_.active = false;
     deferred_.batchIdx = 0;
     deferred_.writeCIdx = 0;
+    cacheDeferred_.active = false;
+    cacheDeferred_.batchIdx = 0;
+    cacheDeferred_.writeCIdx = 0;
     lastBatchIdx_ = 0;
     firstBatchIdx_ = 0;
     apcState_.batchIdx = 0xFFFFFFFF; // sentinel: APC state not cached
@@ -695,9 +703,14 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 
     SyncAll();
 
-    FillApcCachePrefixChunks();
-
     WriteDeferredCacheSimple();
+
+    FillApcCachePrefixChunks();
+    SyncAll(); // cross-core barrier: ensure FillApc reads complete before deferred writes
+    if (cacheDeferred_.active) {
+        ExecuteDeferredRunningCache();
+        cacheDeferred_.active = false;
+    }
 
     // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
     if (inplace_) {
@@ -921,7 +934,21 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
 
         if (isBatchEnd) {
             bool crossCoreBE = (batchEnd > coreGlobalEnd);
-            if (crossCoreBE || (deferred_.active && curBatch == deferred_.batchIdx)) {
+            bool deferForPrefix = false;
+            if (batchLen >= stateLen_ && meta.readCIdx == meta.writeCIdx && apcEnabled_ && blockSize_ > 0) {
+                RefreshApcState(curBatch, batchLen);
+                if (apcState_.nBlockToFill > 0) {
+                    int32_t B = static_cast<int32_t>(blockSize_);
+                    int32_t firstBdy =
+                        apcState_.lastFull - (apcState_.nBlockToFill - 1) * B;
+                    deferForPrefix = (firstBdy > 0 && firstBdy < static_cast<int32_t>(K - 1));
+                }
+            }
+            if (deferForPrefix) {
+                cacheDeferred_.active = true;
+                cacheDeferred_.batchIdx = curBatch;
+                cacheDeferred_.writeCIdx = meta.writeCIdx;
+            } else if (crossCoreBE || (deferred_.active && curBatch == deferred_.batchIdx)) {
                 // Deferred: skip in-pipeline write; handled post-SyncAll
             } else {
                 // chunkEnd: one-past-last row of current chunk in xLocal
@@ -1073,6 +1100,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
         return;
     if (deferred_.writeCIdx == padSlotId_)
         return;
+    if (cacheDeferred_.active && cacheDeferred_.batchIdx == deferred_.batchIdx)
+        return; // running cache deferred to after prefix fill
 
     uint32_t batchIdx = deferred_.batchIdx;
     int64_t writeCIdx = deferred_.writeCIdx;
@@ -1139,6 +1168,43 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
     uint32_t tailRowOff = stateLen_ - totalRows;
     uint64_t csDstOff = (uint64_t)writeCIdx * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
     DataCopyExtParams wcp{static_cast<uint16_t>(totalRows), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
+                          cacheSkip * ALIGN_BYTES, 0};
+    DataCopyPad(cacheStatesGM_[csDstOff], tmpBuf, wcp);
+
+    xQueue_.FreeTensor(tmpBuf);
+}
+
+template <typename T>
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::ExecuteDeferredRunningCache()
+{
+    if (!cacheDeferred_.active)
+        return;
+    int64_t writeCIdx = cacheDeferred_.writeCIdx;
+    if (writeCIdx == padSlotId_)
+        return;
+
+    uint32_t batchIdx = cacheDeferred_.batchIdx;
+    uint64_t bEnd = (uint64_t)seqStartLocal_.GetValue(batchIdx + 1);
+
+    uint32_t dimStart = GetDimStart();
+    uint32_t dimSize = GetDimTotal();
+    uint32_t rowBlocks = dimSize * sizeof(T) / ALIGN_BYTES;
+    uint32_t xSkip = (xStride_ - dimSize) * sizeof(T) / ALIGN_BYTES;
+    uint32_t cacheSkip = (cacheStride1_ - dimSize) * sizeof(T) / ALIGN_BYTES;
+    DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+
+    // batchLen >= stateLen_ guaranteed by deferForPrefix: running cache is pure x suffix
+    LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
+    uint64_t xSrcOff = (bEnd - stateLen_) * xStride_ + dimStart;
+    DataCopyExtParams rcp{static_cast<uint16_t>(stateLen_), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES),
+                          xSkip * ALIGN_BYTES, 0, 0};
+    DataCopyPad(tmpBuf, xGM_[xSrcOff], rcp, padParams);
+
+    xQueue_.EnQue(tmpBuf);
+    tmpBuf = xQueue_.DeQue<T>();
+
+    uint64_t csDstOff = (uint64_t)writeCIdx * cacheStride0_ + dimStart;
+    DataCopyExtParams wcp{static_cast<uint16_t>(stateLen_), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
                           cacheSkip * ALIGN_BYTES, 0};
     DataCopyPad(cacheStatesGM_[csDstOff], tmpBuf, wcp);
 
