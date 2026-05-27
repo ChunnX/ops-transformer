@@ -60,6 +60,8 @@ constexpr uint32_t PREFIX_COMPRESS_S1_SIZE = 3072;
 constexpr uint32_t ATTEN_MASK_COMPRESS_LIMIT = 2048;
 constexpr uint32_t BOOL_BLOCK_NUMS = 32;
 constexpr uint32_t DROPOUT4BIT_LEN = 16;
+// FAG workspace upper bound aligned with single-card 64GB device memory budget.
+constexpr uint64_t MAX_FAG_WORKSPACE_BYTES = (64ULL << 30);
 const int64_t UB_BASIC_LIMIT_SIZE = 8 * 1024;
 const int64_t SAB_TND_SIZE = 1024;
 
@@ -264,6 +266,7 @@ ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
 ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
 ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
+ge::graphStatus CheckFagWorkspaceSize(gert::TilingContext *context, uint64_t workspaceSize);
 bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
 bool IsSameShapeButValueDLeEqD(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
 bool isTndSABHit(const gert::TilingContext *context);

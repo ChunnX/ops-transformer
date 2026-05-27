@@ -1113,7 +1113,7 @@ public:
         td_->opInfo.set_syncLen(syncLen);
         td_->opInfo.set_mm1WorkspaceLen(mm1WorkspaceLen);
         td_->opInfo.set_mm2WorkspaceLen(mm2WorkspaceLen);
-        return ge::GRAPH_SUCCESS;
+        return CheckFagWorkspaceSize(context_, workspaceSize_);
     }
 
     // 7、保存Tiling数据
