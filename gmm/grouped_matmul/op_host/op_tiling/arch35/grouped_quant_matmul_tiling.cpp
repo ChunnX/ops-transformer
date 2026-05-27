@@ -439,19 +439,20 @@ bool GroupedQmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &
     auto wScaleDimNum = wScaleShape.GetDimNum();
     // dim num 1 for the shape (g,), dim num 2 for the shape (g,1) or (g,n)
     OP_CHECK_IF(wScaleDimNum != 1 && wScaleDimNum != 2,
-                OP_LOGE(inputParams_.opName, "In non k axis group quant mode, the dim num of scale \
-should be 1 or 2, but the actual dim num is %zu.",
+                OP_LOGE(inputParams_.opName, "When A8W8 non-k-axis quant, the dim num of scale should be 1 or 2, \
+but the actual dim num is %zu.",
                         wScaleDimNum),
                 return false);
     if (inputParams_.cDtype == ge::DT_INT8) {
         OP_CHECK_IF(
             wScaleDimNum == 1,
-            OP_LOGE(inputParams_.opName, "When the dtype of output is INT8, the dim num of scale should not be 1."),
+            OP_LOGE(inputParams_.opName,
+                    "When A8W8 non-k-axis quant with INT8 output, the dim num of scale should not be 1."),
             return false);
         OP_CHECK_IF(wScaleShape.GetDim(0) != inputParams_.groupNum || wScaleShape.GetDim(1) != inputParams_.nSize,
                     OP_LOGE(inputParams_.opName,
-                            "When the dtype of output is INT8, the expected shape of scale is (%ld, %ld) , but actual \
-shape is (%ld, %ld).",
+                            "When A8W8 non-k-axis quant with INT8 output, expected shape of scale is (%ld, %ld), \
+but actual shape is (%ld, %ld).",
                             inputParams_.groupNum, inputParams_.nSize, wScaleShape.GetDim(0), wScaleShape.GetDim(1)),
                     return false);
     }
@@ -462,20 +463,19 @@ bool GroupedQmmTiling::CheckFp4Shape() const
 {
     OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
                 OP_LOGE(inputParams_.opName,
-                        "When the dtype of x is FLOAT4, the k size should be even number, but actual k size is %lu",
+                        "When MXFP4 quant, K size should be even, but actual K size is %lu.",
                         inputParams_.kSize),
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2, \
-but actual is 2."),
+                OP_LOGE(inputParams_.opName, "When MXFP4 quant, K size should not be 2, but actual is 2."),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
             inputParams_.nSize % EVEN_FACTOR != 0,
             OP_LOGE(inputParams_.opName,
-                    "When the dtype of x is FLOAT4 and weight is not transposed, the n size should be even number, \
-but actual n size is %lu",
+                    "When MXFP4 quant and weight is not transposed, N size should be even, but actual N size is \
+%lu.",
                     inputParams_.nSize),
             return false);
     }
@@ -486,13 +486,14 @@ bool GroupedQmmTiling::CheckBiasShape(const gert::StorageShape *biasStorageShape
 {
     auto &biasShape = biasStorageShape->GetStorageShape();
     OP_CHECK_IF(biasStorageShape->GetStorageShape().GetDimNum() != BIAS_DIMS,
-                OP_LOGE(inputParams_.opName, "The dim num of bias should be 2, but actual is %zu.",
+                OP_LOGE(inputParams_.opName, "When quant bias, dim num of bias should be 2, but actual is %zu.",
                         biasStorageShape->GetStorageShape().GetDimNum()),
                 return false);
     auto biasEDim = static_cast<uint64_t>(biasShape.GetDim(0));
     auto biasNDim = static_cast<uint64_t>(biasShape.GetDim(1));
     OP_CHECK_IF(biasEDim != inputParams_.groupNum || biasNDim != inputParams_.nSize,
-                OP_LOGE(inputParams_.opName, "The expected shape of bias is (%lu, %lu), but the actual is (%lu, %lu).",
+                OP_LOGE(inputParams_.opName,
+                        "When quant bias, expected shape of bias is (%lu, %lu), but actual is (%lu, %lu).",
                         inputParams_.groupNum, inputParams_.nSize, biasEDim, biasNDim),
                 return false);
     return true;
@@ -522,20 +523,20 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     auto wDimNum = wShape.GetDimNum();
     OP_CHECK_IF(wDimNum != WEIGHTNZ_DIM_NUM,
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the dimension number should be 5, actual is %zu.", wDimNum),
+                        "When quant weight NZ, weight dimension number should be 5, but actual is %zu.", wDimNum),
                 return false);
     const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                               inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
     const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
     OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the fifth dimension should be %u for %s "
-                        "weight, actual is %lld.",
+                        "When quant weight NZ, the fifth dimension should be %u for %s weight, but actual is "
+                        "%lld.",
                         weightNzLastDim, isWeight4Bit ? "4-bit" : "8-bit", wShape[WEIGHTNZ_FIFTH_DIM]),
                 return false);
     OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the forth dimension should be 16, actual is %lld.",
+                        "When quant weight NZ, the fourth dimension should be 16, but actual is %lld.",
                         wShape[WEIGHTNZ_FORTH_DIM]),
                 return false);
     auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
@@ -543,36 +544,36 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     if (!inputParams_.transB) {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
                     OP_LOGE(context_->GetNodeName(),
-                            "When the weight is in Nz format, the third dimension should be equal to ceil(kSize/16) = \
-%lu, actual is %lu.",
+                            "When quant weight NZ, the third dimension should be equal to ceil(kSize/16) = %lu, \
+but actual is %lu.",
                             CeilDiv(inputParams_.kSize, WEIGHTNZ_16), wShapeDimThird),
                     return false);
         OP_CHECK_IF(
             wShapeDimSecond != CeilDiv(inputParams_.nSize, weightNzLastDim),
             OP_LOGE(context_->GetNodeName(),
-                    "When the weight is in Nz format, the second dimension should be equal to ceil(nSize/%u) = \
-%lu, actual is %lu.",
+                    "When quant weight NZ, the second dimension should be equal to ceil(nSize/%u) = %lu, but \
+actual is %lu.",
                     weightNzLastDim, CeilDiv(inputParams_.nSize, weightNzLastDim), wShapeDimSecond),
             return false);
     } else {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_16),
                     OP_LOGE(context_->GetNodeName(),
-                            "When the weight is in Nz format, the third dimension should be equal to ceil(nSize/16) = \
-%lu, actual is %lu.",
+                            "When quant weight NZ, the third dimension should be equal to ceil(nSize/16) = %lu, \
+but actual is %lu.",
                             CeilDiv(inputParams_.nSize, WEIGHTNZ_16), wShapeDimThird),
                     return false);
         OP_CHECK_IF(
             wShapeDimSecond != CeilDiv(inputParams_.kSize, weightNzLastDim),
             OP_LOGE(context_->GetNodeName(),
-                    "When the weight is in Nz format, the second dimension should be equal to ceil(kSize/%u) = \
-%lu, actual is %lu.",
+                    "When quant weight NZ, the second dimension should be equal to ceil(kSize/%u) = %lu, but \
+actual is %lu.",
                     weightNzLastDim, CeilDiv(inputParams_.kSize, weightNzLastDim), wShapeDimSecond),
             return false);
     }
     // 逻辑上最后两根轴对应 N/K：Ascend950 MXFP4 weight NZ 文档要求 n、k 不能为 1；此处对所有 NZ weight 统一约束
     OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the last two logical axes n and k must not be 1 "
+                        "When quant weight NZ, the last two logical axes N and K must not be 1 "
                         "(MXFP4/FLOAT4 weight NZ: nSize>1 and kSize>1), actual nSize=%lu, kSize=%lu.",
                         inputParams_.nSize, inputParams_.kSize),
                 return false);
@@ -583,41 +584,40 @@ bool GroupedQmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStor
 {
     OP_CHECK_IF((inputParams_.aDtype != ge::DT_INT8) || (inputParams_.bDtype != ge::DT_INT8),
                 OP_LOGE(context_->GetNodeName(),
-                        "When the activation function is enabled, the dtype of x and weight should be DT_INT8, "
-                        "actual is %s and %s.",
+                        "When A8W8 quant activation, the dtype of x and weight should be DT_INT8, but actual is "
+                        "%s and %s.",
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
                 return false);
     if (inputParams_.cDtype == ge::DT_BF16) {
         OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT,
                     OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "scale should be DT_BF16 or DT_FLOAT, actual is %s.",
+                            "When A8W8 quant activation with BF16 output, scale dtype should be DT_BF16 or "
+                            "DT_FLOAT, but actual is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
                     return false);
         OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
                     OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "perTokenScale should be DT_FLOAT, actual is %s.",
+                            "When A8W8 quant activation with BF16 output, perTokenScale dtype should be DT_FLOAT, "
+                            "but actual is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
                     return false);
     } else if (inputParams_.cDtype == ge::DT_FLOAT16) {
         OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT,
                     OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "scale should be DT_FLOAT, actual is %s.",
+                            "When A8W8 quant activation with FP16 output, scale dtype should be DT_FLOAT, but "
+                            "actual is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
                     return false);
         OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
                     OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "perTokenScale should be DT_FLOAT, actual is %s.",
+                            "When A8W8 quant activation with FP16 output, perTokenScale dtype should be DT_FLOAT, "
+                            "but actual is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
                     return false);
     } else {
         OP_LOGE(inputParams_.opName,
-                "When the activation function is enabled, the dtype of output should be DT_BF16 or DT_FLOAT16, "
-                "actual is %s.",
+                "When A8W8 quant activation, output dtype should be DT_BF16 or DT_FLOAT16, but actual is %s.",
                 ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype).c_str());
         return false;
     }
@@ -627,11 +627,13 @@ bool GroupedQmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStor
 bool GroupedQmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape)
 {
     OP_CHECK_IF(inputParams_.actType == static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC),
-                OP_LOGE(context_->GetNodeName(), "Activation function does not support GELU_ERR_FUNC now."),
+                OP_LOGE(context_->GetNodeName(),
+                        "When A8W8 quant activation, GELU_ERR_FUNC activation is not supported."),
                 return false);
     OP_CHECK_IF(inputParams_.actType > static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_SILU) ||
                     inputParams_.actType < static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE),
-                OP_LOGE(context_->GetNodeName(), "Activation function only supports RELU/GELU_TANH/FASTGELU/SILU."),
+                OP_LOGE(context_->GetNodeName(),
+                        "When A8W8 quant activation, activation only supports RELU/GELU_TANH/FASTGELU/SILU."),
                 return false);
     OP_CHECK_IF(!CheckActiveModeDtype(xScaleStorageShape),
                 OP_LOGE(context_->GetNodeName(), "CheckActiveModeDtype failed."), return false);
@@ -641,29 +643,27 @@ bool GroupedQmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const ger
         auto xScaleDims = xScaleShape.GetDimNum();
         OP_CHECK_IF(xScaleDims != 1,
                     OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，perTorkenScale应该为1维
-                            "When the activation function is enabled, the dim of perTokenScale should be 1 or nullptr, "
+                            "When A8W8 quant activation, the dim of perTokenScale should be 1 or nullptr, but "
                             "actual is %d.",
                             xScaleDims),
                     return false);
         OP_CHECK_IF(static_cast<uint64_t>(xScaleShape[0]) != inputParams_.mSize,
                     OP_LOGE(context_->GetNodeName(),
-                            "When the activation function is enabled and the dim of perTokenScale is 1, "
-                            "the shape of perTokenScale should be (%d,), "
-                            "actual is (%d,).",
+                            "When A8W8 quant activation, when perTokenScale dim is 1, the shape of perTokenScale "
+                            "should be (%d,), but actual is (%d,).",
                             inputParams_.mSize, static_cast<uint64_t>(xScaleShape[0])),
                     return false);
     }
     OP_CHECK_IF(wScaleDims != 2,
                 OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，Scale应该为2维
-                        "When the activation function is enabled, the dim of Scale should be 2, "
-                        "actual is %d.",
+                        "When A8W8 quant activation, the dim of Scale should be 2, but actual is %d.",
                         wScaleDims),
                 return false);
     OP_CHECK_IF(static_cast<uint64_t>(wScaleShape[0]) != inputParams_.groupNum ||
                     static_cast<uint64_t>(wScaleShape[1]) != inputParams_.nSize,
                 OP_LOGE(context_->GetNodeName(),
-                        "When the activation function is enabled, the shape of Scale should be (%d, %d), "
-                        "actual is (%d, %d).",
+                        "When A8W8 quant activation, the shape of Scale should be (%d, %d), but actual is (%d, "
+                        "%d).",
                         inputParams_.groupNum, inputParams_.nSize, static_cast<uint64_t>(wScaleShape[0]),
                         static_cast<uint64_t>(wScaleShape[1])),
                 return false);
