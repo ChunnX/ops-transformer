@@ -192,6 +192,7 @@ private:
     TBuf<> subExpBuf_;
     TBuf<> waitStatusBuf_;
     TBuf<> workLocalBuf_;
+    TBuf<> setExpertTokenNumsResultBuf_; // SetExpertTokenNums batch ReduceSum中间结果专用，不复用gatherMaskOutBuf_避免与LocalWindowCopy的MTE3 race
     TBuf<> maskBuf_;
     TBuf<> validExpertIndexBuf_;
     TBuf<> validBsIndexTBuf_;
@@ -1087,11 +1088,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     // 内存复用，取大
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
-    // SetExpertTokenNums batch ReduceSum中间结果：每expert一个32B slot（ReduceSum dst需要32B对齐）
-    uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    uint64_t setExpertTokenNumsResultSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) * UB_ALIGN;
     uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
-    gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsResultSpace) ? gatherMaskOutSize : setExpertTokenNumsResultSpace;
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);                 // recStatusNumPerCore_32对齐后大小  * 32B
     totalUsedUB_ += gatherMaskOutSize;
     tpipe_->InitBuffer(sumCoreBuf_, aivNum_ * UB_ALIGN);                      // 48 * 32B
@@ -1133,6 +1130,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     uint32_t workLocalBufSize = Ceil(epWorldSize_, UB_ALIGN / sizeof(float)) * UB_ALIGN;
     tpipe_->InitBuffer(workLocalBuf_, workLocalBufSize);
     totalUsedUB_ += workLocalBufSize;
+    // SetExpertTokenNums batch ReduceSum结果专用buf：每expert一个32B slot。
+    // 不复用gatherMaskOutBuf_是为了避免与LocalWindowCopy的DataCopyPad(sendCountsGlobal_)的MTE3未完成读发生跨函数UB race。
+    uint32_t setExpertTokenNumsResultBufSize = (isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_) * UB_ALIGN;
+    tpipe_->InitBuffer(setExpertTokenNumsResultBuf_, setExpertTokenNumsResultBufSize);
+    totalUsedUB_ += setExpertTokenNumsResultBufSize;
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -1526,8 +1528,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    // batch ReduceSum 结果缓冲：每 expert 32B slot，复用 gatherMaskOutBuf_
-    LocalTensor<float> expertResultsTensor = gatherMaskOutBuf_.Get<float>();
+    // batch ReduceSum 结果缓冲：专用buf，避免与LocalWindowCopy的gatherMaskOutBuf_ MTE3读取发生UB race
+    LocalTensor<float> expertResultsTensor = setExpertTokenNumsResultBuf_.Get<float>();
     LocalTensor<float> workLocalTensor = workLocalBuf_.Get<float>();
     uint32_t mask = 2;
     constexpr uint32_t SLOT_FLOATS = UB_ALIGN / sizeof(float);  // 8 floats per 32B slot
