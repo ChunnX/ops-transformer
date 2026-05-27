@@ -61,7 +61,7 @@ namespace optiling {
 
 // ============ 输入输出索引常量 ============
 constexpr uint32_t INPUT_X_INDEX = 1U;          // 输入x的索引
-constexpr uint32_t INPUT_EXPERT_ID_INDEX = 2U;  // 输入expert_id的索引
+constexpr uint32_t INPUT_DST_RANK_ID_INDEX = 2U;  // 输入dst_rank_id的索引
 constexpr uint32_t OUTPUT_Y_INDEX = 0U;         // 输出y的索引
 constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
@@ -167,13 +167,11 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 
     group = std::string(groupPtr);
     tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
-    // tilingData.rank_id = static_cast<int32_t>(*rankIdPtr);
     tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
-    // OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
 
@@ -181,7 +179,7 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 }
 
 // 校验输入tensor shape
-// x: [bs, data_size], expert_id: [bs]
+// x: [bs, data_size], dst_rank_id: [bs]
 static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
@@ -203,17 +201,17 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     tilingData.max_bs = static_cast<int32_t>(xDim0);
     tilingData.data_size = static_cast<int32_t>(xDim1);
 
-    const gert::StorageShape *expertIdStorageShape = context->GetInputShape(INPUT_EXPERT_ID_INDEX);
-    OP_TILING_CHECK(expertIdStorageShape == nullptr,
-        OP_LOGE(nodeName, "expertIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "expert_id dims is invalid, should be 1, but got %zu.",
-        expertIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
+    OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
+        OP_LOGE(nodeName, "dstRankIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dstRankIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "dst_rank_id dims is invalid, should be 1, but got %zu.",
+        dstRankIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
-    const int64_t expertIdDim0 = expertIdStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(expertIdDim0 != xDim0,
-        OP_LOGE(nodeName, "expert_id dim0 should equal to x dim0, but got expert_id dim0=%ld, x dim0=%ld.",
-        expertIdDim0, xDim0), return ge::GRAPH_FAILED);
+    const int64_t dstRankIdDim0 = dstRankIdStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(dstRankIdDim0 != xDim0,
+        OP_LOGE(nodeName, "dst_rank_id dim0 should equal to x dim0, but got dst_rank_id dim0=%ld, x dim0=%ld.",
+        dstRankIdDim0, xDim0), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

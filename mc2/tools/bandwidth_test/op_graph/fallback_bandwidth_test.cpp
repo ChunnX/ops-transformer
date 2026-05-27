@@ -30,8 +30,8 @@ static graphStatus BandwidthTestExecuteFunc(OpExecuteContext* host_api_ctx)
   const auto x = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
   OP_CHECK_IF(x == nullptr, OP_LOGE(BandwidthTestInfo, "x is null"), return ge::GRAPH_FAILED);
 
-  const auto expert_id = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
-  OP_CHECK_IF(expert_id == nullptr, OP_LOGE(BandwidthTestInfo, "expert_id is null"), return ge::GRAPH_FAILED);
+  const auto dst_rank_id = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
+  OP_CHECK_IF(dst_rank_id == nullptr, OP_LOGE(BandwidthTestInfo, "dst_rank_id is null"), return ge::GRAPH_FAILED);
 
   const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(0));
   OP_CHECK_IF(y == nullptr, OP_LOGE(BandwidthTestInfo, "y is null"), return ge::GRAPH_FAILED);
@@ -48,16 +48,16 @@ static graphStatus BandwidthTestExecuteFunc(OpExecuteContext* host_api_ctx)
   const auto *world_size = attrs->GetInt(static_cast<size_t>(1));
   OP_CHECK_IF(world_size == nullptr, OP_LOGE(BandwidthTestInfo, "world_size is null"), return ge::GRAPH_FAILED);
 
-  const auto *rank_id = attrs->GetInt(static_cast<size_t>(2));
-  OP_CHECK_IF(rank_id == nullptr, OP_LOGE(BandwidthTestInfo, "rank_id is null"), return ge::GRAPH_FAILED);
-
-  const auto *max_bs = attrs->GetInt(static_cast<size_t>(3));
+  const auto *max_bs = attrs->GetInt(static_cast<size_t>(2));
   OP_CHECK_IF(max_bs == nullptr, OP_LOGE(BandwidthTestInfo, "max_bs is null"), return ge::GRAPH_FAILED);
 
-  const auto *mode = attrs->GetInt(static_cast<size_t>(4));
+  const auto *mode = attrs->GetInt(static_cast<size_t>(3));
   OP_CHECK_IF(mode == nullptr, OP_LOGE(BandwidthTestInfo, "mode is null"), return ge::GRAPH_FAILED);
 
-  const auto api_ret = EXEC_OPAPI_CMD(aclnnBandwidthTest, x, expert_id, group, *world_size, *rank_id, *max_bs, *mode, y, receive_cnt);
+  const auto *ccl_buffer_size = attrs->GetInt(static_cast<size_t>(4));
+  OP_CHECK_IF(ccl_buffer_size == nullptr, OP_LOGE(BandwidthTestInfo, "ccl_buffer_size is null"), return ge::GRAPH_FAILED);
+
+  const auto api_ret = EXEC_OPAPI_CMD(aclnnBandwidthTest, x, dst_rank_id, group, *world_size, *max_bs, *mode, *ccl_buffer_size, *comm_alg, y, receive_cnt);
   OP_CHECK_IF(api_ret != ge::GRAPH_SUCCESS, OP_LOGE(BandwidthTestInfo, "aclnn api error code %u", api_ret),
           return ge::GRAPH_FAILED);
 

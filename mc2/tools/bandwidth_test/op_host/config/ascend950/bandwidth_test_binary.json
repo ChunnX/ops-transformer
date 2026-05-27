@@ -5,6 +5,15 @@
             "bin_filename": "BandwidthTest_ND_ND_FP16_FP16",
             "inputs": [
                 {
+                    "name": "context",
+                    "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-1],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
                     "name": "x",
                     "index": 0,
                     "dtype": "float16",
@@ -14,7 +23,7 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "expert_id",
+                    "name": "dst_rank_id",
                     "index": 1,
                     "dtype": "int32",
                     "format": "ND",
@@ -55,11 +64,6 @@
                     "value": 0
                 },
                 {
-                    "name": "rank_id",
-                    "dtype": "int",
-                    "value": 0
-                },
-                {
                     "name": "max_bs",
                     "dtype": "int",
                     "value": 0
@@ -68,6 +72,16 @@
                     "name": "mode",
                     "dtype": "int",
                     "value": 0
+                },
+                {
+                    "name": "ccl_buffer_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "comm_alg",
+                    "dtype": "string",
+                    "value": ""
                 }
             ]
         },
@@ -75,8 +89,17 @@
             "bin_filename": "BandwidthTest_ND_ND_BF16_BF16",
             "inputs": [
                 {
-                    "name": "x",
+                    "name": "context",
                     "index": 0,
+                    "dtype": "int32",
+                    "format": "ND",
+                    "paramType": "required",
+                    "shape": [-1],
+                    "format_match_mode": "FormatAgnostic"
+                },
+                {
+                    "name": "x",
+                    "index": 1,
                     "dtype": "bfloat16",
                     "format": "ND",
                     "paramType": "required",
@@ -84,8 +107,8 @@
                     "format_match_mode": "FormatAgnostic"
                 },
                 {
-                    "name": "expert_id",
-                    "index": 1,
+                    "name": "dst_rank_id",
+                    "index": 2,
                     "dtype": "int32",
                     "format": "ND",
                     "paramType": "required",
@@ -125,11 +148,6 @@
                     "value": 0
                 },
                 {
-                    "name": "rank_id",
-                    "dtype": "int",
-                    "value": 0
-                },
-                {
                     "name": "max_bs",
                     "dtype": "int",
                     "value": 0
@@ -138,6 +156,16 @@
                     "name": "mode",
                     "dtype": "int",
                     "value": 0
+                },
+                {
+                    "name": "ccl_buffer_size",
+                    "dtype": "int",
+                    "value": 0
+                },
+                {
+                    "name": "comm_alg",
+                    "dtype": "string",
+                    "value": ""
                 }
             ]
         }
