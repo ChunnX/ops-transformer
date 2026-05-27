@@ -41,7 +41,7 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCache(
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         ScatterPaKvCache,
         OP_INPUT(key, keyCacheRef, slotMapping, value, valueCacheRef,
-                 compressLensOptional, compressSeqOffset, seqLensOptional),
+                 compressLensOptional, compressSeqOffsetOptional, seqLensOptional),
         OP_OUTPUT(keyCacheRef, valueCacheRef),
         OP_ATTR(cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional));
     if (ret != ACLNN_SUCCESS) {
