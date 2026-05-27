@@ -1,0 +1,3139 @@
+[33m0ba541718[m[33m ([m[1;36mHEAD -> [m[1;32m0525_FCC[m[33m, [m[1;31morigin/0525_FCC[m[33m)[m 修改md
+[33m5b1330073[m fix bsh
+[33mccc22fd0f[m head
+[33m7140979aa[m fix bsh 0527
+[33mcee7c127b[m 修改iNplacemd
+[33mb9bdb6d0b[m Merge branch '0525_FCC' of https://gitcode.com/xiapengcheng5/ops-transformer into 0525_FCC
+[33m4e02a37af[m fix bsh
+[33mf18938486[m 修改inplace的ut
+[33m5c3248cc5[m fix bsh
+[33mfba30801f[m fix bsh
+[33md9e52dffd[m fix bsh
+[33m4c0495b0c[m 修改ut
+[33m4b77a250a[m fix bsh
+[33mc3ab56379[m 修改doc
+[33m236bf2d68[m 修改md
+[33m6aa04c5f9[m 修改bh
+[33mc034812da[m 修复bsh
+[33m360c10380[m add inplace_fused_causal_conv1d
+[33mac2a0b7d0[m[33m ([m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m 修复distributebarrier变量未初始化
+[33m3bc54a395[m 新增grouped_matmul_swiglu_quant_v2  nz 调用示例
+[33m298666307[m layered_doc add bs limit
+[33m3c59e0d36[m 修改为twoshot且仅V核进行通信初始化
+[33md355fca56[m 增加A2 A2AQMM tiling中对smoothscale的shape校验
+[33md55bf28b0[m feat:kvnz【Fiav4】PageAttetion kvnz format格式输入
+[33mf5b76c410[m fix bug sparsemode 0 rowinvalid logic error
+[33mf2e49df2c[m prologV3 path3 kvcache 精度问题
+[33m626e59459[m chore(recurrent_gated_delta_rule): add CI config and clean up CMakeLists.txt
+[33md807b0d60[m take ffn ut offline
+[33m067301ebd[m sas&qsas&qli metadata：CMakeLists、README整改；回退proto、infershape；增加输出metadata相关校验
+[33md2fab4160[m [FIA][Mxfp8]  support D=64
+[33m6b3d8b44d[m fix: add else branch and dependencies for op_kernel UT object library targets
+[33ma3d1d42b4[m MoeGatingTopKSoftMaxV2与MhcPreSinkhorn算子调整UT
+[33mdede7f38d[m Revert: [GMM][QGMMIA]算子tilingData注册方式修改
+[33m2561363ec[m 修改ffn读取attr的类型
+[33m763efacd1[m fixdoc: clarify grouped matmul finalize routing docs
+[33mb6c66dabb[m 修复moe_gating_top_k算子示例代码存在未释放干净提前退出隐患问题
+[33m6aca51731[m oom报错修复
+[33m043818b44[m 修复moeGatingTopKSoftmax精度失败问题
+[33mb22fd225a[m refactor(fused_infer_attention): 统一伪量化场景的KvLayoutType枚举值
+[33m970270404[m gmm mx scalar进一步优化
+[33m886ef8cf7[m fix: 修复LI算子pytest single报错
+[33m477b9246a[m A3 SAS cfa/swa support mask&invalidRow, scfa decrease kv gm buf num
+[33mb61924dea[m 修复fused_causal_conv1d部分场景精度问题
+[33mc5d66fbf8[m [FIA]偶现精度问题修复
+[33m9e102fd67[m fix exp pytest bug
+[33mfe0096575[m 新增了moe_fused_topk算子的atk用例和executor
+[33m706bfafa4[m 调整alltoallv+gmm量化场景下最大支持卡数
+[33m75d5e758b[m 修复Dispatch输入低精度场景数据区偏移计算错误问题
+[33mf759284b9[m fix: skip failing operator UT builds by commenting out error test CMakeLists.txt
+[33m586c85f35[m gtest add scope
+[33me00ae44d4[m fused_causal_conv1d 第三波需求
+[33mca33e34f0[m fix quant_grouped_matmul_dequant op UT error
+[33me16269a14[m slig_add_ut
+[33m6ad4430d1[m fix bug:attenOut的singleInitOutputSize计算时将负数赋值给uint类型
+[33md798c102b[m 【NSAG】UT补充
+[33m0f16c111a[m nsa_compress/nsa_compress_grad/ring_attention_update 补充ut用例
+[33mf8d63abe7[m 增加类型校验
+[33m0308413b7[m 订正combinev2 tilingkey
+[33m3efa62a15[m [mc2] remove nd2nzLen for DAV_3510
+[33me1b10c2bb[m Fix Dlopen Bug
+[33m2c8789a41[m 通过add_cann_third_party下载三方库
+[33m7c6a4e513[m 修复mhc_sinkhorn ut 编译报错
+[33mc9c4b848b[m groupedmatmul bf16/fp16 dynamic tiling
+[33m50439a9ec[m SFAG UT补充
+[33m1bca63f29[m GQA分核和精度问题修复
+[33m9f012a1a7[m mxfp8 decode pscale修改
+[33ma1c775a32[m GQA非量化learnablesink问题修复
+[33me25ac4ab1[m [FIA][Mxfp8] add rope dtype check
+[33md1abe84e7[m del useless tiling
+[33md3875e53e[m [FIA] Fix attention copyout TQue aliasing
+[33m04aa5f92d[m GatherPaKvCache ut tiling重复定义bug修复
+[33m825514d4b[m 修复fused_causal_conv1d UT失败问题
+[33m0eeb6ac47[m context A5适配
+[33m71446fec5[m mlaprologV3 关闭PA参数非连续转连续开关
+[33mccba9fc07[m 优化 combine_v2 INT8 及 MXFP8 反量化路径
+[33m7eef4225c[m 删除 flash_attn deterministic 参数
+[33md25e7c6da[m fix scatter_pa_cache ut
+[33m06a96891f[m 新增matmul_all_reduce_add_rms_norm、matmul_reduce_scatter、matmul_reduce_scatter_v2算子UT用例
+[33m0605eff10[m 修复masked_causal_conv1d UT失败问题
+[33mf994b6478[m 提升quant_grouped_mat_mul_allto_allv算子ut覆盖率
+[33m0341adb8c[m FusedFloydAttention适配ut新框架
+[33ma76a69a28[m 补充MoeGatingTopKSoftmax资料
+[33mf071a78e9[m fix(gated_delta_rule): rename global test variables to avoid ODR violation in opapi UT
+[33m0af42d416[m [GMM][QGMMIA]算子tilingData注册方式修改
+[33m12207e9a0[m fix: build_static_lib支持verbose
+[33mfe225a67f[m [FAG] BN2S2 + deter init bug fix
+[33m562df7633[m 修复FA 伪量化sparsemode 0，maskbatch 1场景下maskub拷贝错误和拦截语法错误
+[33m3bbbf104d[m delete socVersion
+[33mfb0047021[m transformer support dev-tools
+[33mc847b7b31[m fix: cleancode
+[33m89e08d029[m fix(recurrent_gated_delta_rule): provide correct output shapes in tiling UT
+[33m753442ec3[m fix sfa crosscore sync id
+[33m469fe85f4[m mxfp8 prefill路由新模板
+[33m43c162480[m mxfp8 fix cross core event
+[33m633f41d37[m [FIA][Mxfp8] open rope tilingkey
+[33m5ea123fd1[m test: 增加 ApplyRotaryPosEmb 算子 BNSD 布局 tiling 用例
+[33m4cead529e[m fix: repair kv_rms_norm_rope_cache op_host UT build
+[33m8510a871c[m Performance imporved of  combine
+[33m008656b16[m MMRS AICPU时走 RS 通路
+[33med793d2cc[m FIA算子退出alibi相关tilingkey
+[33m3331d84e5[m 整改mc2部分仓内重名头文件现象
+[33mb761d3d66[m add lig readme
+[33m720f5fa80[m 提升all_gather_matmul_v2算子ut覆盖率
+[33meb3233317[m MatmulReduceScatterV2支持bias输入资料修改
+[33me579461fe[m fix: repair kv_rms_norm_rope_cache op_host UT build
+[33mba30feac5[m 批跑aicore解决：无效参数dsizerope删除
+[33mba3b5aa3a[m add atk case
+[33mbf9916596[m Dispatch V2 Host侧 op_tiling 超大函数告警清理
+[33m515c70213[m slig_doc_add_eod
+[33mc9d5473e5[m mxfp8 prefill fix rowInvalid
+[33m517130b5b[m docs(cann_sim): 与 ops-cv 对齐排版与文案
+[33ma5442d786[m flash_attn pytest gpu golden
+[33m1ba6a40a1[m flash_attetnion_score fix doc
+[33mbfe3d6ece[m update sas&qsas&qli metadata ParamCheck + CostFunction
+[33mdae340ced[m [FIA][Mxfp8] support rope
+[33me813c5727[m --run_example支持-v
+[33m5169c9ba7[m 修复compressor common_tool.h在seqused=0时部分场景的bug && 修复 cachemode=2 startpos+s<cmp_ratio时候的问题 && 修复pytest内state shape部分场景下构造错误
+[33m494a0f2a0[m 补充aclnnMhcPreSinkhornBackward.md错误码描述
+[33m0430b91c7[m eod场景pse校验问题优化
+[33m15208e1be[m qli 性能优化
+[33m25a8d4a81[m torch_aclgraph_bugfix
+[33m3c9bd1798[m fix: 修复天梯看板责任田同步问题
+[33m48b17d5ce[m V版本资料修改&&rgdr 资料修改
+[33ma11f0e9b8[m 修改LI资料
+[33mfaeda55da[m fix gmm a8w4 msd vector
+[33m945712c00[m [FIA][FULLQUANT] mxfp8 golden bug修改
+[33m0be5c3375[m [mc2] matmul_all_reduce keep longTileLen align baseM
+[33m0d8d5c91e[m cleanup: 删除flash_attn中无用的postQuantScale/postQuantOffset/NTD/NBSD/OUT_T/FLASH_DECODE代码
+[33m46e78c41a[m 修复PA用例
+[33m3de027b63[m 修复flash_attn基本块大小
+[33m3229b924a[m 修复mla精度问题
+[33m2599e8892[m 【fix】qsfa文档修改
+[33m61c036683[m 修复mc2头文件重复安装问题
+[33mfd965965a[m op_api_list增加aclnnQuantGroupedMatmulInplaceAdd资料
+[33m934fbdc91[m SMLA base
+[33mce46801bb[m build.sh中拼写错误和冗余代码修复
+[33m21f0abfb0[m fix double_page
+[33m8a9513a2a[m fix: 修正experimental/attention/Attention融合算子Experimental使用说明.md 中的环境部署路径错误
+[33md87f91959[m 修改setBuffFlag同步问题，以及setBuffFlag与checkBuffFlag同步问题
+[33m7fed464f7[m 补充mxfp8 ut
+[33m52f4a05d5[m 适配opbase头文件路径变化
+[33m1dc01ff97[m update golden
+[33m16ecda3aa[m 【A2/A3】【MC2】MatmulReduceScatterV2支持bias输入
+[33m1d7a14097[m qsfa/sfa fix N1=128 maxS2LoopCnt error
+[33med4171902[m pytest 调测适配  白盒用例适配
+[33mc0825626b[m fix multi batch tnd tiling mistake
+[33m01a56046a[m 修改mxfp8 quantscale的校验以及gs1合轴的准入条件
+[33m4f54b0636[m distribute barrier 与 combine_add_rms_norm C++语言规则告警清理
+[33mef03d96c6[m fix asan bug report in gen task
+[33m5a32325da[m feature: A2 Dispatch And Combine Support Exception Dump
+[33mc1b03be60[m 修复compresor A5 36核&28核场景切K错误
+[33m85809c810[m 新增SMLAG算子
+[33m96519c4c8[m update MxFP8 golden from numpy to torch
+[33m9393bbdcc[m Fix bug in FA antiquant and add tiling for Alibi
+[33m507d31436[m 修复sanitizer工具检测出的AllGatherMatmulV2 RAW风险
+[33ma5c08cc0e[m 为sinkhorn算子增加说明文档
+[33m925c74fc9[m update MxFP8 golden
+[33m45d004c28[m Combine V2 Host侧超大函数告警清理
+[33m2795ffb9e[m 修复自定义算子包安装失败的问题
+[33m9c9d42649[m FA mxfp8 pytest框架增加运行脚本.
+[33m46844c0e3[m fix: 修复sparse_attn_sharedkv文档问题
+[33md2914cf9e[m Dispatch&Combine A2 扩展moeExpertNum和hidden size的支持范围
+[33m86d6d6871[m compressor修改语法错误
+[33m0b71051cf[m alltoallv日志格式修改
+[33m988ba9fb5[m mhc算子 sinkhorn_norm搬出性能优化
+[33m9f4d4dbf5[m MatmulReduceScatter graph层适配AICPU
+[33mb367527e8[m 修复MLA全量化BNSD layout带mask偶现失败的问题
+[33m23ccc38b2[m SFA doc
+[33mbdda2cb1b[m 新增FIA mxFP8 pytest框架对比脚本
+[33mb9376f106[m [FIA]下架GQA int8 pertensor，删除多余函数
+[33m325b3bc50[m mhc_pre_sinkhorn_backward支持确定性计算
+[33m620a93867[m 添加aclnn头文件弃用警告功能
+[33m8b4b39be6[m fix bug-fix: ensure the sequence of endflag and tokenflag
+[33m5bd4637a8[m mc2算子op_kernel代码文件代际隔离
+[33m848fb9e3a[m add FIA
+[33m5fb61cc86[m adapt graph mc2 a5 aicpu launch
+[33m31b1a1d70[m mega_moe supports A8W4&A4W4
+[33mfdfa66c8c[m [feature] BSAGrad算子增加支持TND以及GQA
+[33ma7a3ec984[m dump数据解析适配V3接口变更
+[33m1a800bd2e[m [FAG] hifp8 add dtype intercept
+[33m089a0bfe3[m 新增FIA mxFP8 pytest测试框架
+[33mf959c83a0[m 【合入说明】lig支持eod
+[33mf48647dc8[m SFAG支持eod
+[33m6d4efaff4[m 修复attention update ut 编译报错
+[33ma54fc2135[m 打开moe_token_unpermute/mhc_post_backward的example验证
+[33m2bf9b9ccd[m aicpu走oneshot通路
+[33ma197a0696[m fix: correct log message from 'lse' to 'localOut' in attention_update
+[33m10f1c2fef[m pytest aclgraph 功能添加
+[33m37a91cd5f[m 资料修改算子README模板内容
+[33md4ade875f[m prolog splitM KN循环序 泛化
+[33m35800c40d[m update fa classify rule
+[33m08d6892f4[m lig support N <= 64
+[33m135fa1492[m 为AllGatherMatmul和AllGatherMatmulV2算子增加st用例
+[33m88345714b[m fix example doc
+[33md5098dcd0[m feat:aicpu算子信息库从json合并模式整改到opdef的形式
+[33m136abaaf8[m add skipping path of tilingkey check.
+[33m118279ef0[m 放开mxfp8 mask的qs限制
+[33maccd87432[m fix matmul_all_reduce case fail
+[33mb5b91d74f[m MoeFinalizeRoutingV2Grad fix:修复gradScale缓存逻辑错误
+[33mccaa10dfa[m fix: 注册AlltoAllvQuantGroupedMatMul和QuantGroupedMatMulAlltoAllv的group_cnt
+[33m15f038f8a[m Add ADump For A2 MC2 and some example
+[33mb4142896f[m 新增MMAA A2 ST
+[33m3383d1f2f[m aclnnGroupedMatmulSwigluQuantWeightNzV2.md约束补充
+[33m372201087[m add hccldatatype for aicpu.
+[33m88f679bdb[m MoeFinalizeRoutingV2 补充零专家范围文档说明
+[33m04f0a4662[m 【feature】moe_token_unpermute_with_routing_map_grad support non-topk
+[33mfc2ae45dd[m fix: replace ==None/!=None with is None/is not None
+[33m15e45fe1c[m mc2/allgathermmV2: kernel support InitV2 and AICPU
+[33m62295c60e[m fix flash attn
+[33mc356bbdca[m 修复grouped_matmul_add example
+[33meca574123[m alltoallv支持fp16通信
+[33m84498fdc8[m cmake arch32整改为arch22
+[33m218e22fea[m 修复distribute_barrier_extend算子编译问题
+[33m3f812de67[m 【FAG】fix same as input bug
+[33mba8b15bc6[m ut 把__FILE__编译选项改成绝对路径
+[33mde2f59bea[m 训推归一_flash_attn_后续修改
+[33m676322df6[m [FIA][Mxfp8] prefill and decode mix
+[33m8c4da55eb[m 修复MoeInitRoutingV3算子静态量化精度问题
+[33m5a10f8dd7[m MoeFinalizeRoutingV2 fix:添加零专家区间校验逻辑
+[33m1c0b04d1a[m mhc_sinkhorn_backward perf optimization
+[33mc37fa1084[m mxfp8 decode gs泛化
+[33m606cc4c8e[m fix Occasional Precision Loss Issue
+[33m7d52c89fc[m 修复AllGatherMatmul在非量化场景的精度问题
+[33m87649982e[m 【FAG】deter swizzle optimize
+[33m4f5f57a67[m slig_eod
+[33m528e42b6c[m [example更新]放开GMM&&GMMSwigluQuant算子的CI example
+[33m6aa88104f[m aclnn_grouped_matmul_swiglu_quant_weight_nz_v2约束更新
+[33m51e661b8a[m common目录结构整改
+[33mbd57e649f[m megamoe host a4w4 adapt
+[33mc79210793[m 使用公共仓api进行打包构建
+[33md39198c55[m [SLIG]Update docs:A5 support Nidx1=8
+[33m7fda91c97[m MoeReRouting算子约束资料补充
+[33meb1cc60d6[m 新增SFAG算子readme及example
+[33m54e5af24b[m FIA 修正MLA tensorlist场景shape校验
+[33m1703dd469[m add ut case
+[33m6a243db47[m 提升moe_distribute_combine_v2，moe_update_expert等算子ut覆盖率
+[33mb9609e20a[m MatmulAllReduce AICPU适配
+[33mb94a602ed[m Fix GmmAddv2 doc
+[33m855568e4b[m LI A5 Cube侧oom越界修复
+[33meb31532ad[m SLIG：weight dtype support FP32 and N1 support 32 and Nidx1支持8，16
+[33m24286c7f5[m MhcPostBackward去掉图模式
+[33m216cbc497[m 开启rope_with_sin_cos_cache example测试
+[33mc4eb1c823[m adapt new opbase open path of external include files
+[33mbabf41340[m 修复mc2算子编kernel的ut编译出错的问题
+[33m3bb7be9c2[m fix ScatterPaKvCache doc
+[33m40c7f5b28[m 关闭mc2算子的example测试
+[33m047505e5c[m 修改FA/FAG/SFAG/slikloss的arch32为arch22
+[33m6e58fff99[m maxOutputSize check in mega_moe kernel
+[33mec5f4328f[m 修复eod确定性计算问题
+[33mf1d2078c6[m fix A5 qli_oom_error
+[33mec5c641a4[m add fia noquant tiny rdv
+[33mf629d1bc9[m 修复FP32精度不达标
+[33m55a64174d[m 新增本地编译FAQ&&新增ascend950算子列表&&quick_op_invocation整改
+[33m3611c1115[m 支持--example_name指定example名字
+[33m13f587832[m qsas v0 tque改tbuf
+[33mc96285e84[m 关闭 matmul_all_reduce_add_rms_norm 的 example 测试
+[33m0e28b6f7d[m aclnnGroupedMatmulWeightNz与aclnnQuantGroupedMatmulInplaceAdd接口doc与头文件注释修正
+[33mc45be6b1e[m 训推归一-flash_attn_metadata
+[33m2798cde84[m LI A5 同步问题修复
+[33m377d26715[m 回退D&C算子context修改
+[33m2177b3737[m dense_lightning_indexer_softmax_lse perf optimization
+[33m13c80d080[m tilingkey缺失修复
+[33m571db42e2[m [QLI/LI AICPU] 新增QLI/LI V2前置AICPU metadata算子
+[33m07a9a47ac[m QLI支持HiF8
+[33m21d901d91[m SLIG tiling support s2Size 1~512K
+[33m99de012e6[m gmm_swiglu_quant_v2约束修改
+[33m3e671f9b8[m [FIA][Mxfp8] fix vscale bug when noPA
+[33m87e9060de[m [FIA]MLA fp8全量化算子原型定义补全
+[33m2b9df4588[m enable moe_finalize_routing_v2 example validation
+[33ma3859593a[m fix bug:伪量化FD开启时s1LoopTimes修正
+[33mc0e463514[m mlaprolog 拆分架构代码
+[33m5ead363f7[m 修复当layout为BSH时图模式路径5输出为空的问题
+[33m9aef4757a[m not use socVersion in arch38
+[33mb21470345[m fix test_config.yaml
+[33m4ddd1c5b8[m fix lse set/wait flag
+[33m3d0a8ac93[m LSE输出精度问题修复
+[33m20882bbe2[m sfag A5 dk和dv拆分
+[33m533286e83[m 增加除零保护
+[33m78c93c67b[m fix: add add_graph_plugin_sources() to enable proto generation for 6 operators
+[33m884013d92[m MhcSinkHorn 功能问题修复--修复infershape错误把动态标签识别为真实值的问题
+[33m7f34ea292[m [SLIG] bug fix
+[33me5803cf7b[m 【FAG】fix inner pse bug
+[33mda8908cae[m 新增MhcPreSinkhorn算子950实现
+[33m1b3c9b763[m 增加MMAA 910B OP_API UT
+[33md2d148819[m MatmulReduceScatterV2 切换AICPU通信引擎
+[33mab5814368[m [FAG] deter sync fix
+[33m1c94f5faf[m del_key: 删除5个TND/NTD last=true的tilingkey及相关INVOKE/REGISTER
+[33m872f86966[m fix bug profiling ops type
+[33m8450e1808[m 修复A3默认AICPU通信引擎方式
+[33m192ebbfaf[m aclnn接口校验补充
+[33m793b329d3[m revert old template row invalid
+[33mb7e2d2a20[m 打开FIA/PFA/IFA的example验证
+[33mb3d15a678[m fix sfa sync eventId init error
+[33m04e4e8c39[m Singular Value Decomposition (SVD)
+[33m7ece3dd77[m fix sfa/qsfa softmaxScale error
+[33m4137a3640[m gmmalltoallv算子AICPU适配
+[33m27d6729c1[m workspace alloc fix
+[33m817c8cffa[m delete experimental dsv4 op
+[33m5e15db511[m D&C Fix Communication Engine Index
+[33m08b644954[m Add an offset of 512B for each dest win addr
+[33mae3748728[m bugfix: groupSize
+[33mff7f4e104[m 整改st目录下的atk用例统一目录格式
+[33m01cb02bca[m 增加mxfp8 innerprecise 拦截，增加quantScale1支持范围
+[33m9fd419383[m 拦截报错信息修改
+[33mc74762b9c[m fix slig cp
+[33m6a833b5ea[m 订正D&C算子CMake依赖
+[33m1fa3b1faa[m fix: 修复arch32整改为arch22后责任田不匹配问题
+[33m0470a6f15[m 修复matmulalltoall量化场景bias非bf时精度出错的问题
+[33mbd9880edf[m mx fp8 decode S1 泛化
+[33me79374796[m fix rotary_position_embedding, rotary_position_embedding_grad tnd bug
+[33m5ae30ff6c[m 修复输入不连续时，会出现报错拦截的问题
+[33m95f1ea9b1[m moe_init_routing_v3 高精度向低精度cast使用饱和模式
+[33m077cfe81d[m kRope拷贝合入AntiquantVF循环以减少UB读写开销
+[33mbf4c70ffc[m delete unsed code
+[33me8cbabafa[m arch35 fia gqa noquant enable new template
+[33mcfb121852[m fix compile ccache
+[33mc79edc34c[m [FIA]Delete GQA INT8 Per-Tensor def and docs
+[33m016d3fadf[m 优化CheckS1OutSplit判断逻辑
+[33m17ebd3b6a[m 增加mmalltoall校验和ut用例
+[33ma59158f11[m aicpu
+[33m7128245f3[m fix: code-check issues in grouped_matmul_finalize_routing and grouped_matmul
+[33m425fc95ef[m [AICPU] MatmulAlltoAll算子根据环境变量选择commMode通信引擎
+[33mffeeb9cb8[m gmmfr weightnz v2：修改编译告警，修改文档错误
+[33mf1e677033[m quant_all_reduce/quant_reduce_scatter 动态分块性能优化
+[33md6afbe6f4[m fix A5 SFA tiling check
+[33m4ee2db3ec[m 【attention】将!= None 改为 is not None
+[33mc9d9c5dc9[m fix flash_attention_score docx
+[33me74eca1f2[m combine support 10240 hidden size and 1024 moe expert num
+[33mc3a3f2823[m mega_moe tiling refine
+[33m0211ab3e2[m MoeInitRoutingV3 非量化全载排除MXFP类型
+[33m786b95719[m 修复A2A3环境下EsTranspose和aclrtGetArgsFromExceptionInfo符号未定义问题
+[33m3aa749c73[m moe_masked_scatter、moe_inplace_index_add、moe_token_permute_with_routing_map将SIMT编程api转换为C风格
+[33m4030ed219[m 伪量化per-tensor-head模式拦截日志增加int32信息
+[33m56fa5ad6a[m [AICPU] 算子根据环境变量选择commMode通信引擎
+[33m7bb5c941d[m GMMFR 增加AIC：AIV 为1：2 的校验
+[33m1087fe185[m gmmalltoallv增加通信引擎说明
+[33me82ce9c74[m generalize PFA IFA arch38
+[33m926a438f8[m kv_quant_sparse_attn_sharedkv topk getvalue 取值优化
+[33m02db43dc3[m fix chunk_gated_delta_rule example bug
+[33md17448306[m mxfp8 decode s2非对齐
+[33mdabf0271e[m handle tiling data in both vector and cube for qsas
+[33m726fb3a28[m 修改Dspatch&combine红线问题
+[33md41918fad[m 提升moe_distribue_dispatch_setup,moe_distribue_dispatch_teardown算子以及相关依赖ut覆盖率
+[33m46ac78123[m qsas support hif8 kv quant
+[33mf8aba635e[m restore UT for 9 verified operators
+[33ma6347c37d[m fix: 修复asan和ut的强关联
+[33m8f3acd4e3[m distributebarrier算子在A5上context结构体切换
+[33m2e91eb138[m gmm类算子torch通路资产剥离
+[33m60d82b28d[m fix: 修改common/FIA/IFA/PFA算子下面的arch32为arch22
+[33m4cea6f816[m GMM算子全量化部分Infershape校验scale非空时添加非INT32输出
+[33ma3ac66cae[m GMM全量化算子mx scale的shape带1时不再校验
+[33md4afcf83c[m ut生成覆盖率适配lcov2.0
+[33m260afc47b[m fix select_attention_operators compatibility with aarch64
+[33m4b6fdcba3[m 添加 sub_pipline_support.yaml 工作流配置
+[33mdc40282b5[m 修改CANNLab描述
+[33mf9ac04bb4[m MLA性能问题修复
+[33ma5ae83728[m FIA oom bugfix, unmatched tilingdata struct
+[33m12632c8e8[m mlaprologv3 readme整改
+[33mf80a816d2[m fix infer pa kvlen calculation
+[33m4a5780afc[m 修正moe_gating_top_k算子文档说明
+[33me898eb95f[m 训推归一-flash_attn
+[33m0d086b757[m 检视意见修改
+[33m0b0c21a1b[m mhc_pre_sinkhorn算子性能优化增加切M分支
+[33me1b3015f6[m dense_lightning_indexer_softmax_lse adapt for 950
+[33maecd8a800[m moe_init_routing simt整改
+[33m3e3871c05[m [FIA] fix init
+[33m3d36c7042[m fix-ccusmoke
+[33mc8bed754b[m bugfix: modify const auto attrs to const gert::RuntimeAttrs* attrs
+[33m939326621[m LI/QLI A5 aicore问题修复
+[33m9c5bdd0c2[m kv_quant_sparse_flash_attention_pioneer算子迁移到pangu自定义算子仓，因此主线下线该算子
+[33m520f370a4[m 修改非量化行无效处理判断条件
+[33m58bf8a609[m MoeInitRoutingV3算子 mxfp4动态图shape校验错误 && 算子资料更新
+[33m527211725[m mla int8全量化修复oom aicore
+[33m4a82a8970[m del op attention_pioneer
+[33mc3a421391[m 整改遗漏的OP_LOGE日志
+[33m58d9ccd46[m Fix bug in LOGE and CalcSinner in FIA
+[33me631e9335[m refact arch:根据代际隔离要求重构matmulalltoall
+[33mbb140b1e1[m 修复fia ifa pfa ut
+[33mb1722ecc5[m [FIA][FULLQUANT] fix codecheck for mxfp8
+[33m44e21009f[m fix bug in alltoallquantmatmul mx quant type and ut cmake.
+[33ma8056b8f4[m MoeFinalizeRoutingV2 重构超大函数
+[33m3255a5654[m 修复moe_gating_top_k算子bug
+[33m8e914592b[m rotary_position_embedding, rotary_position_embedding_grad support TND for Ascend950
+[33mb24bc4ee8[m 新增experimental 950看护
+[33m6fc042391[m mhc_post_backward整改arch32->arch22
+[33m14719e58d[m 清理cmake多余依赖
+[33m1e46ffd86[m [FIA][FULLQUANT] MXfp8 decode
+[33mbe02f20b9[m FIA代码检视修改
+[33mfb90eb7bd[m fix_antiquant_attentionoutoffset
+[33mb70788661[m 删除冗余tilingkey
+[33mee10beb75[m [FIA]删除GQA int8 pertensor模板
+[33m7e6fb7265[m 修改sfa的文档，N1支持1~64和128
+[33m3d791b85f[m MatmulAlltoAll和AlltoAllMatmul增加通信引擎约束描述
+[33m0266a8257[m [修复] MRS算子日志双空格问题 - 移除OP_LOGD消息字符串中的多余前导空格
+[33mb95d84f4d[m modify SFA N1 tiling intercept
+[33m8eda64c6b[m mlaprolog资料整改
+[33ma28b833f7[m 【FAG算子】修复FAG算子A2/A3上的精度问题
+[33m7da55583f[m 修复swin_attention_score_quant算子UT用例
+[33ma0b35e905[m [文档] 补充4个算子的通信引擎约束说明
+[33m6c6d52f6d[m fix Ascend950 doc
+[33mf444ea215[m matmul_reduce_scatter_v2的doc文档修正
+[33m4c759ba40[m 优化AllGatherMatmulV2算子量化场景workspace大小
+[33me2ffbfd52[m 【FAG】Add newly supported shapes to the error log printed when pse encounters an invalid shape.
+[33m497d60ff6[m change notifyNum to default num
+[33mf2c738057[m 修复moe_init_routing_v3 UT部分代码
+[33m5973fe969[m 看板ut用例不同芯片类型分开执行
+[33m53b8211fe[m 修改编译选项"-ffunction-sections -fdata-sections"
+[33m2eb163183[m 修改文档
+[33m553ff01c0[m 优化gmm mx scalar
+[33m67ce59408[m modify quant_reduce_scatter & quant_all_reduce markdown
+[33m43cdc3214[m op_api_list.md/op_list.md添加FusedFloydAttention正反向接口
+[33m1b143bf44[m 【FAG】aclnnFlashAttentionScoreGradV4 document supplementary information for dpseout
+[33mf90f5f2b0[m QLI/LI pytest acl_graph
+[33m5e33b5d0a[m docs: 补充生态算子精度标准引用
+[33m7ddd77d71[m gmmalltoallv资料变量名修改
+[33mac1806f50[m revert：对mc2的tilingKey进行宏编译处理
+[33m8b7c1cc11[m 修复mla模板BNSD格式下aicerr问题
+[33m851bb81e2[m megaMoe算子rowIndex bugfix
+[33m851fef0cb[m fix md error description
+[33mf410a9def[m optimize OP_LOGE
+[33mc04a29c7f[m gmmalltoallv添加类型约束说明
+[33m0f27cad33[m SFA删除Testcase_Number，添加从excel读取文件和保存结果return_softmax_lse支持
+[33m2139a2af9[m fia gqa enable balance split core to improve perf
+[33m96de5e5b4[m LI A5 UB复用优化
+[33m396a2808b[m 删除冗余tilingkey
+[33m6ff8a826f[m [fix] op_api_list 新增ROPEV2文档描述
+[33me69fb05a5[m 支持算子单独适配arch
+[33m028a7f33f[m [FAG & SLIG] doc modify & bug fix
+[33mf12040a2e[m fix: 修改SFA/LI/QSFA/QLI/mla_prolog算子下面的arch32为arch22
+[33mdc3b0a374[m 修复gmmfr文档中ascend950系列数据类型表格描述错误
+[33mef0d1b2c0[m 修复ut失败用例
+[33m7345d7197[m moeGatingTopKSoftmaxV2问题修复
+[33m5e49b3319[m add UT of mega_moe
+[33m9847b7798[m bugfix: LI doc and SASG tiling
+[33m7f0040f58[m MhcSinkHorn 资料修改
+[33m616697a0a[m 【BSA】【950】算子任务下发遍历逻辑优化&块间流水重排&vf手动双发射
+[33m4d2414cc3[m 修改SFAG算子文档
+[33m403f0c9f5[m a2avquantgmm添加类型约束说明
+[33m186b8e960[m d128 rope64场景aicore问题修复
+[33m9c944f930[m mmalltoall代际隔离
+[33m132ed6c02[m 书写错误修改
+[33mbdf330647[m AAMM与MMAA文档描述不准确修复
+[33m05d99df7d[m QLI算子LD特性修正参数表达
+[33m5168e5cb0[m common目录整改代码合入后，与新合入代码的冲突解决，解决编译失败问题
+[33ma73da443a[m slig_add_readme
+[33mc583ecaf8[m modify const auto attrs to const const gert::RuntimeAttrs* attrs
+[33m683b06097[m common目录整改
+[33m788298813[m 修改MhcPostBackward aclnn example
+[33m29d782cc1[m 增加非量化PFA GS1合轴支持sparse4功能
+[33m2bc728def[m recurrent_gated_delta_rule opapi整改&&arch22整改
+[33mb4610ab9f[m SFA infershape fix
+[33m8e35e5667[m 【GroupedMatmul】修复k轴分组pertensor-perchannel场景量化模式设置错误
+[33m90ea55244[m 新增chunk_gated_delta_rule的文档
+[33m27942aa17[m support aicpu const folding flow.
+[33mef3eb4eb8[m FAG确定性band场景性能优化
+[33m4252bd691[m 添加异常ut用例，提高ut覆盖率
+[33m93b617cb8[m all_gather_matmul算子UT重构
+[33mdd078e2b2[m up dsv4 train op
+[33m9376b6612[m 移除gawk依赖，使用shell内置命令替代
+[33m4f47bb332[m fix: 修复 KvRmsNormRopeCache 重计算 RoPE 尾块 UB 非对齐访问
+[33ma6b124e52[m add FfnWorkerBatching README.md
+[33m063a38113[m 对mc2的tilingKey进行宏编译处理
+[33m706db9c7f[m QLI支持LD特性
+[33m9b281f627[m 新增ScatterPaKvCache算子的一种模式增加资料
+[33m5e0582c07[m 打屏重复问题修复 profiling文件搜索路径优化 topk检测新增重复值检测
+[33mcc96ed035[m 新增融合算子mhc_pre_sinkhorn_backward
+[33m14a560f74[m readme support A5
+[33md586f4cda[m 重构测试框架：sparse_flash_attention lse适配及路径3适配
+[33me02005a6b[m 修复mc2全量ut
+[33m8d518802f[m fixbug: modify const auto attrs to const gert::RuntimeAttrs* attrs
+[33m179ac0d32[m SFAG算子支持N1泛化
+[33mdd61ad66d[m support SLIG  N1/Ni generalization
+[33m754d47593[m 修改部分moe算子的aclnn_inner调用方式为include头文件
+[33mb4cc10dbb[m 修复QuantFAG文档格式
+[33m5d15ada0e[m A5 fia fix flash decode
+[33mb23799277[m MC2 exception dump fit beta cann version
+[33me24a2b1a9[m 修正sfag算子host侧空指针检查
+[33m5b26cbb08[m 修改了aclnnNormRopeConcat.md中调用代码的问题
+[33m2ed57931a[m change_FAG_NTD_doc
+[33md79c86f2a[m AAMM连续性校验修复
+[33m3feffabce[m 36核问题修复
+[33m8e495e582[m qli资料整改 & 增加examples
+[33m06e583723[m Add UT cases for Dispatch Setup/Teardown
+[33me1b6dc6cd[m 资料修改
+[33mabe060f33[m 修复MatmulReduceScatterV2\AllGatherMatmul bf16输入bias精度问题
+[33ma0f40ad28[m matmulAllReduce 8p性能优化公式化tiling
+[33m780b4aac1[m fix: The constant name "WS_DOBULE" is misspelled and readme errors
+[33mafc49072b[m pse log fix
+[33mb03224569[m mla prolog V3算子：BS >= 8K，输入格式为MXFP8，走核间切M模板
+[33m0669d3303[m fix: REG_OP没生效
+[33ma8114553d[m LI pytest 增加sprsevalue对比
+[33mb8bd13830[m fix cut bug in alltoallmatmul
+[33mf50d17668[m add sfa & li doc
+[33m48d1c55ec[m <<<>>>支持dispatch、combine调用算子文档修改
+[33meba38c889[m mhc_post_backward A2/A3支持4D输入
+[33m432f09355[m fix scatterPaKvCache example
+[33m5ceaa64ff[m [FAG] fix sporadic aic-error
+[33mec025df4f[m MoeReRouting支持HIF8 + FP4
+[33m39e92775d[m megamoe torch接口新增ccl_buffer_size计算接口以及对应接口文档
+[33m5a061139d[m [FAG] TND swizzle fix
+[33mcc5e47c05[m ChunkGatedDeltaRule算子性能优化
+[33mff1f8e48e[m mlaprolog支持饱和模式
+[33m8c35d2375[m docs of MegaMoe
+[33mcfeb2ae2d[m 使用blaze+tensor_api实现mega_moe中的两个gmm
+[33mb5526a9b1[m add grouped_matmul_swiglu_quant_v2 mxquant nz
+[33mfc04f943c[m Support sharedkv kv layouts and topk 1024
+[33m211c60e74[m agent实现combine v2 UT补充
+[33m40755f3e9[m 补充dispatchv2 UT
+[33m682e7b703[m inputlayout aclnn 通路传参大小写适配 & 一些日志描述规范
+[33maa74149da[m fix flash_attention_score docx
+[33mca4633c9b[m 修复learnablesink OOM问题
+[33m336e01dd9[m 【FAG】enable unitflag & presfmg
+[33m02c5eca46[m 修复sparsemode9 MLA全量化精度问题
+[33m0ee24cf56[m gmminplaceadd算子 ut 重构
+[33mc730db2ce[m GQA perblock Tiling512补充拦截
+[33mecbe2ce53[m 资料修改
+[33m3c8316029[m fix A3 compile error
+[33m5cd8dd75a[m modify all_to_all_out infershape func
+[33mb0b51d0ec[m 修正moe_distribute_combine的A5的CheckEpWorldSize
+[33m64a8623d6[m 提前DimNum检查时机
+[33m624784d18[m [FIA][FULLQUANT] MxFP8 资料修改
+[33m235fc1a34[m feat: add weightScale contiguous processing for transpose scenario
+[33mf4bdba729[m fix coord 0428
+[33m08ba63cd3[m MLA actualseq 全0 aicore问题修复
+[33mded821ddf[m fix: QSFA review
+[33m59a675311[m MoeInitRoutingV3 全载模版
+[33m7a6c31b33[m fix the model of alltoallmatmul tiling
+[33m6bc1fe23e[m modify mlapo readme
+[33mfdbcd2061[m OP_LOGE日志reason规范化
+[33m44032160c[m MoeReRouting算子在mxfp8输入时支持3维
+[33mce35ae912[m 添加校验：FIA tensorlist场景 key和keyRope的N相等
+[33me703f33e6[m MaskedCausalConv1d&MaskedCausalConv1dBackward文档修改
+[33m93332c50a[m fix: correct smoothScales buffer allocation size for pergroup quantization
+[33m72909c871[m log
+[33m2093b92a1[m Add the mxfp4 quant feature && the new dtype float4_e2m1 for the input x in the MoeInitRoutingV3 Op.
+[33mcb6101750[m 【QuantGroupedMatmulInplaceAdd】支持输入为hifloat8的pertensor-pertensor 量化
+[33mc17bcdd87[m mc2代际隔离V2
+[33m18fcac3dc[m GQA fullquant support mxfp8 quant mode.
+[33m49cc232d6[m GMM mxfp4场景切换低阶api + 支持weightNZ
+[33m3e7af543d[m SFA修复kv_layout为TND时，N1为128的lse精度
+[33m768122d8f[m [SLIG] modify SLIG doc
+[33mf6ac791b8[m 修复LI pytest batch批跑功能bug
+[33m8bd5df4c0[m 补充 mask, postquant相对应UT,增加UT覆盖率
+[33m637e6036f[m 引入blaze，为mega moe支持做准备
+[33maa8202929[m 引入tensor api，为mega moe支持做准备
+[33m0fd6d8811[m ops-transformer安装效率优化
+[33mb7cb7f7f7[m alltoallmatmul 公式化tiling
+[33md47fa09a8[m A5 SFA_LSE FIX
+[33md596e9be5[m add kernel to mega moe
+[33m796bcc99a[m update op_api_list.md
+[33mb31a81cf0[m 新增torch_extension mega_moe接口
+[33m76d153f19[m A5 sfa fix workspace
+[33m9ce9e81a2[m 修复mte方案mc2算子setbuffflag函数的潜在同步问题
+[33mdf8273b36[m fix ut fail
+[33mf60ce3fcf[m modify op_api_list.md
+[33mb5caeab27[m Modify the op_api_list.md
+[33m142d75486[m 补全op_api_list.md中alltoallvquantgmm和quantgmmalltoallv描述
+[33m2b15636c1[m GMMFR MxA8W4 review意见修改
+[33m1a7203fc3[m add aclnnSwinTransformerLnQkvQuant in op api list
+[33mf36569c33[m LI A5重构重复代码
+[33m4d8f10220[m MLA全量化性能修复
+[33m93c949d24[m antiquantMode枚举取值个数减少
+[33md492e631e[m 补充BlockSparseAttention和SwinAttentionScoreQuant至op_api_list
+[33ma7917c2cd[m [GMM]aclnnGroupedMatmulWeightNz.md文档修改，涉及公式与表格角标
+[33m5bd98edb6[m 修改MhcPostBackward文件目录结构
+[33m7fc0a9eff[m moeGatingTopK支持softplus
+[33m92065a84e[m dispatch&combine兼容商用分支
+[33mbd7cdb781[m grouped_matmul_finalize_routing  UT重构
+[33m191f157df[m 资料示例代码修正
+[33m454d1a705[m 补充gmmAddV2相关资料至opapi_list.md
+[33md5ea04b63[m 【FAG】 InferShape4FlashAttentionScoreGrad Update print logic when inputlayout is an empty string
+[33m61f7fdc0d[m matmulAlltoAll标卡及8卡公式化tiling适配优化
+[33m03c045b7b[m pref: CombineSetup性能优化
+[33m43cec1cbf[m ScatterPaKvCache support nz omni nct
+[33mecbd8f052[m fix aclnnRotaryPositionEmbeddingV2 md
+[33ma0473d806[m kv_rmsnorm hifp8 改成饱和模式
+[33m5bc53da1a[m 新融合算子mhc_pre_sinkhorn
+[33m79f7f3d5f[m MoeInitRoutingV3输入K支持0
+[33ma7f71dac8[m 伪量化拦截对齐A3
+[33m10aa520b6[m 修复NsaCompress资料
+[33m9a8d664fe[m GMMFR MxA8W4 32对齐
+[33mbbb478224[m mlapo qlora、nope维度泛化
+[33m2517e8ec9[m 修复test_config.yaml中缺少依赖的问题
+[33mf387cdbd5[m A5 SFA 支持lse
+[33m3f90a9f30[m common目录调整Phase 1: common/op_kernel目录调整
+[33m15b54a25e[m aicore问题修复，enableKVPrefix需要对actualS1Size修正
+[33m48370370b[m excel表删除
+[33me5d0a28ee[m common 拷贝提取成一个target,解决并发拷贝冲突
+[33m8be8a65d8[m 修复GMMswimGluquant算子在grouplist全0情况下卡死的问题
+[33m81d8bed52[m [mc2] matmulAllReduce fix int64_t to uint64_t bugs
+[33mc4747ae4c[m alltoallvquantgroupedmatmul mx图模式
+[33m21ea2514c[m fia non quant kernel refactor
+[33m5254c91a6[m sparse_flash_attention golden及kv_quant_sparse_flash_attention golden冗余代码删除、test_run功能增强
+[33m6075536a8[m A5 SFA N128 bugfix
+[33mee71f1b06[m LI 性能优化及UB复用
+[33m32c432f12[m gmmalltoallv mxquant graph
+[33ma1e0560f6[m support graph compile and add tilingCheck
+[33m6e054a99e[m MlaProlog LoadData API 兼容9.0.0-beta2
+[33m947ea80c7[m 补充li算子pytest golden
+[33m69362adfc[m add host asan option
+[33m702ce7ed8[m Tiling For MegaMoe
+[33mf9c9ecc88[m LI文档更新
+[33m913a0690b[m 修复了aclnnNormRopeConcat.md中的文档错误
+[33md4b611dc2[m 修复线上失败UT用例
+[33mcafc717a3[m 新增MhcPostBackward算子
+[33m3b45396bf[m[33m ([m[1;32mmaster[m[33m)[m moe_finalize_routing_v2配置文件修复
+[33mc92b36cff[m attention和posembedding类部分算子OP_LOGE整改
+[33m572c6aaca[m fix SFA
+[33m4ddf5b260[m quantgroupedmatmulalltoallv算子性能优化
+[33m073939442[m A5 qsfa bugfix
+[33m1fa3c8fbb[m 修改mc2目录下的arch32为arch22
+[33m6356b1055[m graph_plog_readme_change
+[33mbfbe91006[m 对于未启动的核  不应该进行后续kernel执行
+[33m0abb24986[m fix nsaCompressGrad examples
+[33mc6d451016[m 修复dispatch V3部分类型不支持的问题
+[33m2651222bc[m FIA 伪量化场景不支持合并rope
+[33m4eb6029af[m DenseLightningIndexerSoftmaxLse算子QKV不等长TND格式适配
+[33md867ae5db[m mhc_post_backward A2/A3支持
+[33meabcc788e[m Update Dispatch v3v4 docs
+[33mb3726b77b[m 【FIA&BSA&RFA】优化coord.h基础运算重载符编译期展开
+[33m8597d217c[m QLI资料整改
+[33m7f0a5afcd[m modify mhcSinkHorn tiling and infershape
+[33m953394157[m the framework of MegaMoe
+[33mec9d30103[m feat: add mhc_sinkhorn_backward and mhc_sinkhorn_common modules
+[33mb039162dd[m 增加combine setup teardown的ut触发配置
+[33m95fe72bb3[m GMMFR Aclnn支持MxA8W4
+[33m651ec2947[m mhc_post算子同步问题修复
+[33mbbba97357[m FA pScale添加校验
+[33m88c3c8c3e[m QLI add aclnn接口
+[33mec8ba2778[m quantgroupedmatmulalltoallv算子UT重构：采用csv表方式进行改造，解决硬编码cpp文件膨胀问题
+[33ma99cb3e89[m add intercept of blocksize > 0
+[33m3c9592232[m 【FAG】aclnnFlashAttentionScoreGradV4 document supplement
+[33m1bbca2c45[m sfa n128 基础通路
+[33m1281d7f98[m GMMFR MxA8W4
+[33ma305a49a9[m GMMFR更新MxA8W4数据流部分文档
+[33m309e422b6[m fix mlaprolog fp8 bug
+[33me9eb7f453[m 修复mc2全量ut
+[33m6ab18d117[m 修改整仓产品名问题
+[33m8ce4c46ce[m [FAG] sink add protection
+[33m632ca56fa[m Fix the OP_TYPE of CombineV3
+[33mbfb390c8d[m FA bugFix:normal scenario is incorrectly identified as maxworkspaceSize
+[33md2f27a454[m ut失败用例修复
+[33mba8379253[m modify coord.hpp
+[33mde224c097[m 移除exp目录下表格
+[33me613fbd6a[m implement of FlashAttentionGradGetMaxWorkspace
+[33mc2d23624d[m add profiling adapt
+[33m83f7c8d72[m 修复算子并行拷贝偶现问题
+[33m734abab5d[m [FIA]GQA perblock 支持Tiling 512
+[33m38b423033[m SFAG add deter
+[33m7f36cbb35[m change_slig_example
+[33mf10e13e35[m graph_plog_analysize
+[33mb3a5e1cd9[m [Docs] modify public profile of QUICKSTART
+[33mf5247e0b6[m qli pytest支持key_layout为BSND && TND
+[33mc5d7a296c[m grouped_matmul 与 grouped_matmul_swiglu_quant_v2 剩余未改的UT改为 CSV 驱动覆盖方案，解决硬编码cpp文件膨胀问题
+[33maefcd69d8[m agent add mc2 ut case
+[33md36b22c3d[m [CANNBot]agent提升mc2 ut覆盖率
+[33m94cc9f884[m SFA A5
+[33m3ef3d4ac0[m 重构 KV Quant Sparse Flash Attention 测试框架，新增 CPU Golden 实现
+[33m59ec3149d[m 新增稀疏Attention等高效融合算子支持DeepSeekV4
+[33m9a7959d58[m cmake 修复全量编译 common_scr_copy偶现失败
+[33m1b323764f[m sparsemode9 修复模板参数引入的精度问题
+[33m9f432a5d0[m 修复D&C算子在跨server场景下存在失败的问题
+[33m09245e25e[m Add scalesDim1 check in Dispatch
+[33mf4074eaee[m [SLIG] fix slig deter bug
+[33m23423eb97[m attentionOut empty bugfix
+[33mbe5b74dfa[m 修复grouped_matmul_add告警报错
+[33m06a68a6c4[m fix grouped_matmul_swiglu_quant_v2
+[33mcddd15e02[m 基础依赖步骤调整
+[33m6e0b3ac3c[m add aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize
+[33m61c925979[m 修复GMMAdd算子未处理输入输出shape不一致、k轴为0的遗留问题
+[33m95359f661[m dispatch&combine v2v3重复编译问题解决
+[33m00a5d8585[m 【FAG】fix swizzle bug
+[33m8467b3fc6[m [FIA]GQA Perblock Fullquant 基线代码迁移exp目录
+[33m718d7837c[m 增加fused_infer_attention_score算子 splitefuse部分pse输入的校验
+[33m61c739e2c[m 删除FLashAttentionScoreV4 aclnn接口涉及fp8类型的相关描述
+[33m8aff13fac[m 前置依赖资料修改&&build.sh --help提示&&requirement.txt明确依赖版本
+[33mf492fa38e[m SFA
+[33m1b044cee6[m gmm weight nz aclnn shape check fix
+[33m3b3f5759c[m A5 SFA基础能力构建
+[33mb0dfaea8b[m 添加ut用例，修改fia pfa ifa算子ut触发条件
+[33m1d88fefe7[m 修复FIA非量化分核mask相关信息计算错误
+[33mcc32a68d5[m MoeComputeExpertTokens精度问题修复
+[33mc799ec6aa[m 增加GQA非量化learnablesink VHeadDim 校验&&aclnnFusedInferAttentionScoreV5文档learnablesink修改
+[33m08cf884bd[m tiling校验适配HCCL_BUFFSIZE修改
+[33m04cc8f641[m 修复最后一轮存在多个group时尾轮切分的精度问题
+[33ma1c45a36c[m 修改mlaprolog ut范围
+[33ma39888748[m 【bug修复】修复GroupedMatmul算子 A4W4场景特殊场景误拦截问题
+[33m1f7470686[m [FIA]修改TND格式needInit为false
+[33mb1a23500f[m fix: 修复matmul_reduce_scatter_v2两个tiling逻辑bug
+[33m8e413cb67[m 更新op_ap_list.md中ascend950确定性计算描述
+[33md3730b74c[m fix_intercept
+[33m4ff02bb4b[m build.sh去除-j指定大小超过环境核数时的限制
+[33m3fa14a71e[m [bugfix] 修复matmulAllReduce整形溢出、变量名称用错等问题
+[33m6f669b470[m [BugFix][MhcPreBackward]: MhcPreBackward kernel代码中uint64_t变量存在被截断风险和使用未初始化MaskReg会造成偶现的精度问题
+[33ma4218db13[m 修改FFA/FFAG README.md，保持与docx文件一致
+[33m45032c965[m moeInitingRoutingV3非量化模式新增mxfp8类型透传 && 支持 数据非64对齐场景下的搬运
+[33m289170d00[m agent扫描添加A5确定性计算说明
+[33mac856a6a8[m 【FAG】fix old deter bug
+[33mf13f09d64[m MoeFinalizeRoutingV2Grad fix:InferDtype推导逻辑不符合ASCEND950要求
+[33m36929ebac[m quantgmmalltoallv算子原型调整
+[33m5baaaa50f[m repair def
+[33m45327c48c[m move fallback files to op graph lib
+[33m54ec017ed[m add double page for gmmswigluquantv2
+[33m902c38220[m bug修复：提取CSV中bool变量写死小写导致判断不准确
+[33m2ccd8db4f[m 修复gmm finalize routing prologue中shared input copyout后的同步问题
+[33mece066968[m fix: Moe算子原型在ops-transformer仓缺失geir原型注册
+[33m2d9b68d74[m TND场景，kv序列为空时导致精度错误修复
+[33mda3b20b8f[m MC2部分算子新增golden / inputs适配
+[33m5e1db8f4d[m fixed code review
+[33m7ab64e4ee[m 删除GMM全量化Infershape中关于空Tensor的相关校验
+[33mb16a23fea[m [feature] dsa train support qkv T > actual seq len
+[33mc50c98ca9[m 增加keyrope非空校验
+[33m1df13faa7[m 修复多卡场景下sink+FAG因为不连续导致的view copy失败问题
+[33m333335367[m [mc2] fix weightMatmul tiling bug
+[33m0d7f76171[m Dispatch文档修正
+[33m9a0d95c88[m 四月sc清理
+[33m8b596bf73[m fix: 文档中moe_init_routing_v3的expandedScaleOut描述错误 && quantmode为6、7、8描述缺失
+[33m5c08df2a3[m 调整FIA tiling侧行无效判断条件
+[33mabcad4d11[m Modify the aclnn and readme issue
+[33mc424af40e[m 修复全量ut
+[33m6693844ff[m 新增PFA arch32 op_host侧 UT (实现对asc-devkit仓softmax_tiling.cpp高级api函数打桩)
+[33m0f2c54474[m mla全量化fp8性能劣化修复
+[33m2a439fef3[m dispatch triple optimization
+[33mfcd0d92fe[m Bugfix: fix Dispatch Setup/Teardown quantmode validation
+[33m7e87b70ab[m arch32 LI 目录整改
+[33m64a922001[m 编译框架优化
+[33m7f24e1efb[m QLI N1=8拦截放开
+[33m717c42471[m [FIA] splitfuse pa fd support headdim 256
+[33m96e7e36f7[m AllGatherAdd资料问题修改
+[33m64f1638aa[m [PLZ]新增MhcPreBackward算子
+[33mfc90ad5f2[m qkv_rms_norm_rope_cache: fix aclnn not casting double to float for epsilon
+[33m50b278ecc[m fix A5 ringAttentionUpdate example error
+[33mfb21d42e7[m fused_causal_conv1d 性能优化V2
+[33m5dddeea88[m 修复attenMask shape S轴校验逻辑
+[33md7281c9c3[m fix oom bug
+[33m3e8a29072[m 增加GMM A8W4 异常场景warning
+[33m2c94a507b[m 【A5】新增MaskedCausalConv1d/MaskedCausalConv1dBackward算子
+[33m6939304da[m A5 dispatch modify SyncCntOnCore and GetCumSum
+[33m062a01570[m QSFA A5 支持int8
+[33m27ac589a7[m 修复aclnnMoeGatingTopK.md文档
+[33m959e8caad[m FA TND支持一维非压缩PSE输入；FAG TND 一维非压缩PSE 偏移量调整修复。
+[33m215dc798b[m LI A5
+[33mdae1969bc[m 让麒麟的两款芯片以及mc62cm12a不编译mc2的文件
+[33ma9197148b[m add QLI stride attr
+[33m9d2c108d9[m D&C 示例代码修复
+[33m612745a47[m system_prefix_checker使用白名单管理支持的inputLayout
+[33md9f52f040[m 补充aicpu相关的资料
+[33m11a461150[m 补充combine setup teardown测试用例
+[33mf07281d3b[m 修复pta调用问题
+[33mfc4ddd37d[m add mhcsinkhorn kernel with normout for backward
+[33m478da5b61[m 修复线上UT
+[33m5a829f8cf[m ifa/pfa cmakelist整改
+[33ma43ef6ca2[m 更新recurrent_gated_delta_rule 输入范围要求
+[33m860cd02bf[m 修复agent扫描文档问题
+[33m6b6e61f86[m 修复越界问题
+[33m207efa546[m 删除 cgmct 冗余install && static git init冗余子模块
+[33m3de546164[m [PLZ]MhcPre支持训练场景
+[33me42255cde[m fix: change Temp_A_Offset type to uint64_t to prevent overflow
+[33mb2f5a21e5[m mc2 doc fix
+[33mc62a9c81f[m 修改gmmfr v3中的转置描述。
+[33m76e9bb280[m QLI A5适配支持Q/K int8类型
+[33m2968145be[m li vf
+[33m92d909a49[m dense_lightning_indexer_softmax_lse算子增加测试用例
+[33md745553a9[m actualSharedPrefixLen数值放开等于0
+[33m7a61a4af5[m tiling拦截修改
+[33m24029e454[m sc debug
+[33m6357fbb97[m [SLIG] adapt SLIG deter
+[33mb1146c745[m QLI gloden补充weight数据类型参数
+[33mb2393514a[m 删除level2里面重复安装的新算子
+[33mf9dae3072[m fix codecheck warning
+[33m140eef7c3[m renew recurrent_gated_delta_rule docs
+[33m087c9cc1b[m mask shape校验第一维更改为1或B，S轴约束考虑systemPrefixLen
+[33macbead9e6[m add QLI example
+[33mfcc81a039[m add QSFA example
+[33mfbf5090b1[m moeGatingTopK支持renorm=1场景
+[33m17e3f5b9d[m per-block场景下线添加告警&资料修改
+[33m67399f2c6[m 950 sfa kernel
+[33m3081f44d5[m sfa function in 950
+[33meaecaa0e1[m slig_input_uncontiguous
+[33m7f80990ba[m add QLI golden
+[33m7ac0de2d0[m 修复A3平台在整网 MLA 全量化场景下，因 syncall() 调用导致控核卡死
+[33m6379dd71d[m update qsfap aclnn_test
+[33m9ac4584f8[m sfa vf
+[33m66b0e7ff0[m 修改MoeFinalizeRoutingV3变量名
+[33m7346759b1[m FAG算子 sab_basic_add_releaseID
+[33m7ec393230[m FAG算子修改mask校验逻辑
+[33m88bb7d17e[m 修改了文档表述错误与相关的示例代码
+[33m99114e2e0[m delete redundant function, improve fia tiling sink aicpu task perf
+[33m5f1062b91[m MoeInitRoutingV3更新文档支持特性
+[33m6a29eaed4[m ci 子包编译动态从def文件获取，静态配置算子分组
+[33m5587c968a[m MhcPost算子支持A2/A3
+[33me40546eae[m 【FAG】update aclnnFlashAttentionScoreGradV4.md dropMask
+[33mbcb5dba74[m [FAG] fix bn2 opt
+[33m4d4bd64cd[m alltoallvquantgmm文档内容增添MXFP4场景描述
+[33m8f9ad7f43[m 修复mc62cm12a找不到matmul_reduce_scatter_v2函数的问题
+[33m027e35a94[m 【FAG】fix fp32 dv write bug
+[33med0ed73c0[m FA & Floyd资料修改
+[33m25c96f7b6[m 删除experimental仓中dispatch、combine_shmem示例代码
+[33me8c74afc6[m 修改tiling key中ASCENDC_TPL_BOOL_DECL为ASCENDC_TPL_BOOL_SEL
+[33mb4fe64622[m aclnnInplaceAttentionWorkerScheduler资料更新
+[33m08e7316e0[m Dispatch&Combine V2 示例代码修改
+[33m3eb3e5130[m fix(moe): 修正padded模式下workspace大小计算错误
+[33m200de5a1f[m transformer并行解压编译优化
+[33m41c8a7c4a[m feature:代码回退
+[33mf6bc6621b[m 修复fiaInfo.maxActualSeq获取错误 & needInit赋值问题
+[33m9e93b6b12[m cann scan ai扫描修复——mmreducescatter
+[33md1a242b72[m aiv_dpu context结构体切换
+[33m15ccfc219[m fix s1LoopTimes for mla
+[33mb01398b0d[m MlaProlog资料修改
+[33m170bbc793[m AllGatherMatmulV2算子修复模型扫描发现的截断与校验问题
+[33m1295291f5[m lightning_indexer_grad 约束补齐
+[33me5a702520[m add ut case for dense_lightning_indexer_grad_kl_loss
+[33mf69ac0e30[m matmul_reduce_scatter_v2 aclnn md fix
+[33mffdac0b06[m aclnnFlashAttentionScoreGradV4资料整改
+[33mbdf7d4788[m 资料修复
+[33m5469ae481[m fix_gqa_attenmaskcopyforgs
+[33mbb51b5683[m Floyd和Nsa算子资料修改
+[33m3e572ba8e[m AlltoAllvQuantGroupedMatmul 算子新增mxfp4量化场景
+[33m320632128[m add scenario info in error check
+[33m2ebe42c53[m tailsize修复
+[33m70a25f584[m apply_rotary_pos_emb 算子适配
+[33m2df103091[m MoeFinalizeRoutingV2支持空专家及零计算量专家
+[33m89c98832b[m Qgmmalltoallv 图模式删除不必要的校验
+[33m34d1fec38[m 项目readme大纲结构调整
+[33mc547fc037[m 修复路径6伪量化在query layout为TND或NTD时被误拦截 & 清理无效KV合并场景校验代码
+[33m94b1e71bd[m FIA S1 split bugfix
+[33m911e0f10d[m 开启 GQA 非量化行无效修正
+[33m86cea4607[m Added the UT case of op_host for QLI/QSFA, repairing LI/SFA UT
+[33ma89b8a61f[m 【FAG】update aclnnFlashAttentionScoreGradV4.md softmaxInLayout
+[33m5ca8ab75f[m incre_flash_attention_metadata添加参数校验防御
+[33m8e048c6f2[m 修复norm_rope_concat搬运问题
+[33mc363f2278[m fix prologv3 kvCache精度失败bug
+[33mc77042df5[m 补充system_prefix_checker缺失约束
+[33m5139c3b87[m 删除多余打印
+[33mb500aabd3[m aclnnRingAttentionUpdate.md资料修复：修改示例代码的参数类型const char*为char*
+[33m4a06d2e25[m 修复资料产品差异化描述、补充attenMask约束说明等问题
+[33m33d004ba2[m 修改swin_attention_ffn/swin_transformer_ln_qkv算子文档
+[33m32c965fc5[m 修复norm_rope_concat_grad非对齐搬运下的内存问题
+[33md34937bab[m quant_gmm_alltoallv算子mxfp4_check_dtype+def
+[33m5fdb4f125[m FlashAttentionScoreGrad修复空tensor场景oom问题
+[33m7843cf558[m all_gather_add算子添加aclnn接口说明文档
+[33md3e4a4c36[m mla全量化 fp8 pa场景增加拦截和资料修改
+[33m32d8fd399[m add setuptools requirement
+[33m1253902c2[m 对函数添加注释
+[33m142260787[m 补充aclnnFusedInferAttentionScoreV5.md关于pScale的描述
+[33m19112b75e[m <<<>>>直调dispatch、combine支持输入值校验
+[33m03400a159[m Dispatch FullmeshV2变量名更正
+[33mc60ef33f3[m feature:fix a3 interception
+[33mc60f28679[m 修复tiling key找不到的问题
+[33m4ec6b519e[m [FIA][FULLQUANT] opt vsel index init
+[33mad0e415f7[m renew pytest rdv case
+[33m678ab06e1[m 资料 断链问题修复
+[33m8d3dd5fd7[m fix_gqa_attenmaskcopy
+[33m8e08506fc[m block_sparse_attention_grad 新增算子进行性能优化
+[33m2228e5dea[m MlaProlog支持GLM(hcq支持2048，d支持192)
+[33m6fa9e824e[m 修正moe_init_routing_v2文档问题
+[33m02a79dac0[m aclnn层增加mla_prolog_v3 kvCacheQuantMode参数校验拦截
+[33m50dcfd5d8[m splitfuse pa decode场景路由条件修改
+[33me242a660c[m QLI aicore fix
+[33mde455eb30[m quantGroupedMatmulDeuqant move opapi to parent dir
+[33m117baa0aa[m [Documentation|文档反馈]: quant gmm alltoallv docs fix
+[33mdb8dd58bb[m transformer资料修改
+[33m82428831d[m rain_fusion_attention资料 修复断链问题
+[33m9e5b219d8[m add QSFAP 调用说明
+[33m2c0e12e7c[m 【update】aclnnBlockSparseAttention算子资料修改
+[33me3e713aef[m change_rope_doc_0408
+[33m929a0c636[m update QSFA doc
+[33m43223297b[m fix: update HCCL buffer size error handling to use warning logs
+[33m8bfde1f30[m fix SLIG example bug （#1839）
+[33m7ecf859b4[m add LI pytest
+[33m136ce778b[m 量化场景不支持D不等长的拦截修复
+[33m034857749[m matmul alltoall fusion pass from canndev to transformer
+[33m28a3a075d[m 修复dv非16对齐，偶现结果为nan的精度问题
+[33m4b8aa1779[m 同步代码回退
+[33m4e7cd9eb2[m 【update】block_sparse_attention/fused_infer_attention_score等算子资料修改
+[33mfb9f42e20[m QSFA add n128
+[33mebf8e05e8[m mc2 docs fix
+[33mc6148af92[m 修改资料,补充ut
+[33mba082fb3c[m 删除memcopy中的mask copy
+[33m0280daa3f[m send cqe last wqe
+[33m4443e29e6[m fix_gqa_attenmaskcopy
+[33m2c04d12d9[m <<<>>>直调dispatch、combine支持profiling dump tensor shape
+[33m0fd60e804[m a2av quant gmm资料添加mxfp8描述
+[33m99f04dee1[m FIA host 文件责任田整理
+[33mc984b6558[m 修复后量化及伪量化拦截信息
+[33mc738af634[m FIA算子全量化，伪量化examples补充
+[33md19d7c31a[m fused_causal_conv1d性能优化v1
+[33me92d17e25[m 修复异常使能flash decode问题
+[33meb062d8ff[m Add dependency installation recommendations
+[33m056264cab[m add driver constraint description
+[33m353ccfc4a[m gmmv5资料输入去除float32限制
+[33m1e1a7471e[m AIV 直驱 DPU kernel及其优化
+[33ma7e54018a[m per-block全量化QS拦截资料修复
+[33mcc0e0c5e4[m 修复资料描述及超链接问题
+[33m3cce47ff6[m 增加matmulAllReduceAddRmsNorm废弃声明
+[33ma9b638fc1[m mc2 docs fix
+[33mcd0a60ef9[m gmmfr tilingkey modify
+[33mac8a38ddc[m fix A5  combine v2 mxfp8 quant err
+[33m8b227a3f6[m refactor: mla_prolog op_api/op_graph目录结构调整
+[33m135d954cf[m 迁移fallback ffn到op_graph路径
+[33m1c8faa2e5[m [FAG] modify aclnnFlashAttentionScoreGradV4.md
+[33m4010961b0[m 修复mc2的一些文档中出现的断链问题
+[33m719b83afb[m combine算子UT代码
+[33m61094e460[m 多token一把搬运
+[33m16e15ae5c[m 工程问题整改：删除未包含源码目录下的CMakeList，以准确反映代码的物理架构
+[33m50097bd3e[m 修改extern引用为通过头文件引用
+[33m3b27463bb[m SFA添加Pytest测试框架
+[33m55096c03e[m transformer仓mlapo/mlapov2文档低错问题修复
+[33meed3c860b[m 添加a4w4场景对于n和k的校验
+[33mfb2a6f01c[m Fit MC2 Win Dump Conflict (9.0.0 和 8.5.x 混装)
+[33me949516bf[m fix(doc): update aclnn md
+[33mb0eb04002[m 修复arch35平台下，MLA全量化INT8场景时，图模式路径6/7 tiling下沉场景，当layout=TND/TND_NTD, QS=1，actual_seq_length_q最大值大于1时，传入sparse=0+nomask时被误拦截的问题
+[33m44c8a07c8[m paged_attention_checker补充tiling重构后缺失约束
+[33m7a924272f[m aclnnScatterPaKvCache 文档修改
+[33m60217fefa[m 修复310p编译问题
+[33m75155ef90[m RecurrentGatedDeltaRule资料补充&&拦截完善
+[33m52b1f2b94[m Modify the aclnnDenseLightningIndexerGradKLLoss.md
+[33mf7a7ba915[m fix weight_quant_matmul_allreduce empty_k
+[33m07e1cf75f[m Update Dispatch/Combine Docs
+[33m7bb3d2474[m qgmmalltoallv proto原型和def定义对齐
+[33m0bee4977f[m A5 FIA learnablesink 新增 Fp16 字段
+[33m2a6abfe12[m [MC2] tiling代码芯片隔离
+[33m796ae969a[m cmake kernel编译添加对generate_compile_cmd依赖
+[33m71d1fff65[m 修复P矩阵静态量化sub和max的顺序
+[33mf607a52d0[m 【MC2】修改mc2的aclnninner调用方式
+[33m2db020ff1[m 资料换行修改及资料补充说明
+[33m452292116[m fused_infer_attention_score 同步代码
+[33mb0e84189b[m docsfix
+[33m1d433d3d5[m QLI hif8 sparse_count拦截修复
+[33m7e51b6769[m fix: validate grouplist dimensions by grouplisttype
+[33m99d1db310[m 修复attenMask shape校验逻辑
+[33meea41c229[m fix fallback
+[33mc5ddb2d5b[m 删除双页表判断的冗余判断和无效UT
+[33ma09e1ba6d[m A5 qli 性能优化
+[33m053466755[m 修复qsfa和qsfap在sparse mode为3，且多batch中有actualQ>actualKv的场景时精度fail的问题
+[33mde5010798[m MLA非量化lastBN判断 bugfix
+[33m3b64814c1[m arch35 MLA全量化场景，资料对齐约束，同时补齐相关拦截
+[33m8d04c3a44[m [mc2] matmul_all_reduce adjust HCCL limit for pertile quant mode
+[33m9f435118f[m QSFA&&QSFAP 优化 hifloat8 拦截
+[33m14f979ab3[m FA <<<>>> 迁移目录至examples
+[33ma95c93f45[m mmRS 8p 性能优化公式化tiling
+[33mff5fd65e4[m 修改aclnnFusedInferAttentionScoreV5资料中learnablesink部分
+[33m226d8b936[m 代码回退
+[33medd6c5b43[m experimental fia opapi fallback整改
+[33m5e43a31b6[m recurrent_gated_delta_rule增加state维度拦截
+[33mbacdc9f9f[m 修复tilingkey找不到问题
+[33m264fc7a42[m [GMM] 修改aclnnGroupedMatmulWeightNz文档描述
+[33mdafe8d8f3[m fix tiling and cleancode
+[33m77411e652[m 文档补充
+[33m05bd7c062[m *routing*相关算子新增l0接口，*permute*算子l2接口转发到*routing*l0接口
+[33macdb0b14a[m 增加recurrent_gated_delta_rule拦截
+[33mee222145c[m 修改 QSFA / QLI README.md 资料
+[33m962d05d59[m 修复mla prolog算子同步问题
+[33m7ac87f804[m 增加ge属性数量判断，解决运行matmulAlltoAll时的error_log问题
+[33m036e61114[m qli A5性能问题修复
+[33m10345e058[m 修复kv rmsnorm 算子量化int场景饱和模式精度问题
+[33mf9b4c85a5[m arch35 mla全量化支持hifp8及fp8转置和g泛化
+[33m130d05251[m fix qgmmdq perf
+[33m822f8e3f4[m MoeInitRoutingV3  cleancode整改
+[33me57417bbb[m 修改内存增加和Q K的S不等长时性能劣化的问题
+[33mdb3bbbd47[m bugfix unaligned scene oom
+[33m3aa1a190e[m 添加fia算子arch32 ut用例
+[33m28c6baa9d[m 修复qsfa和qsfap中actualQ和actualKV传入空指针时报错问题
+[33mff6b501bf[m 通过gitmodules引入third_party/catlass
+[33me8ed4c8d0[m /lgtm
+[33m521e4bb9c[m [fia] V5资料格式错误修复
+[33m8bbcf7268[m norm_rope_concat_grad连续性整改
+[33mbefea9ebd[m 调整文档
+[33mb86d01fe5[m Gmm Add算子V2支持groupListType = 1
+[33mb8d2dd84b[m FIA tiling重构，责任田文件更新
+[33m221bedfb6[m nsa 增加空tensor输入输出校验
+[33m64f4a3e7e[m fix actualQ type
+[33m637d2790a[m 整改推理FA的classifyrule
+[33mca6c8e785[m FIA伪量化资料修改
+[33mc1aa10ccf[m 修复伪量化inputLayout拦截问题
+[33mba81b9407[m MLA非量化模板BNSD格式sparse0 bugfix
+[33m241cb17b7[m A3注册opFile.value名需要和A2保持一致
+[33md0123797a[m dispatchV2 CompareScalar入参类型修改
+[33mfe5c1458e[m Added the UT case of op_host 910b for PFA/LI/SFA (PFA tiling is missing)
+[33m354f0fac6[m fix gmm no quant case perf on 950
+[33m011ee4850[m fix op_debug_prof.md: change performance tuning part
+[33m8ab2f8453[m add double page for qgmm mx
+[33m7bfb2731c[m 补充AllGatherMatmul的readme和aclnn头文件中关于int4的描述
+[33mfab5ea2a2[m Modify the aclnnDenseLightningIndexerGradKLLoss.md
+[33m1da9a8642[m MoeFinalizeRoutingV2 cleancode整改
+[33me93de91de[m fix ut test case
+[33m5cbfcd920[m A2/A3blockSize资料修改
+[33mdd0b77a3a[m refactor(gmm): relocate swiglu quant v2 arch35 examples
+[33m65404a904[m QLI修复OOM包越界内容
+[33mf275579db[m feature:fix a2 tensorlist interception
+[33m1d2f362ae[m 增加aicpu和aicpu_kernel编译选项
+[33mf76b3d9a9[m 【bug修复】grouped_matmul_swiglu_quant_v2算子 A8W4和A8W8的权重转置拦截&&新增UT
+[33m0b5fc2106[m fix doc ScatterPaCache
+[33m94b625d6b[m A5修改blocksize校验
+[33mfdfd5f5d9[m modify all_to_all_mm & mm_all_to_all check func
+[33me9692b13e[m 修复prefix_checker拦截信息错误
+[33mc06844594[m doc(kv_rms_norm_rope_cache): fix incorrect function signature in aclnnKvRmsNormRopeCache doc
+[33m6954710cf[m add sfa service cube
+[33m2b7604e04[m fix FusedCausalConv1d资料
+[33m34abe397e[m 修复SFAG确定性分支同步问题
+[33m233adaf34[m Modify the aclnn
+[33mbea6af90c[m LightningIndexer修复aclnn资料描述
+[33m20cb8019c[m 修改A2/A3blockSize范围
+[33mf3ea0d8eb[m [FAG] deter band GQA fix
+[33m887ee8638[m 更新AIV直驱DPU代码
+[33mbc7d921f6[m docs: 修复moe_init_routing_quant_v2、moe_token_permute_with_routing_map文档中的拼写错误和大小写问题
+[33m53a7e6d3b[m 在arch35下，MLA 全量化int8场景中，当layout 为 TND 或 TND_NTD 且 q_s=1 时，放开sparse 必须为 0 且不得传入 mask的限制
+[33md46d67153[m 修复文档缩进格式问题
+[33m915d6fdb6[m Modify the dense ligtning indexer grad kl loss readme
+[33m827adacc0[m ops-transfomer clean code 330
+[33m8101340b3[m MC2算子资料完善
+[33m1743c7914[m 修复文档 A5相关描述
+[33m95519c2af[m 新增AlltoAllMatmul ophost ut用例
+[33m81a702e0d[m 修复 kv_quant_sparse_flash_attention 算子 Tiling 拦截日志
+[33m60d828689[m QSFA添加Pytest测试框架（支持NPU）
+[33mccb2e1017[m Bugfix for mutiple write operations to the same UB
+[33m89ecea205[m 补充CombineSetup的opapi和tiling UT
+[33m0e79b6b96[m tiling增加命名空间&examples增加执行成功日志
+[33m209b6b43e[m 修复文档问题
+[33mc25c2fc6c[m fix mla 576 last bn s2 = 0
+[33m53ae170fc[m apply_rotary_pos_emb 算子信息库适配
+[33m782e34139[m 【重构】Grouped_matmul_swiglu_quant算子 搬移opapi目录迁移至ophost外
+[33m9d3ad1522[m 删除建议python版本
+[33m1b9d5726e[m Fix CrossCore Synchronization issue & Change LoadData to LoadDataWithStride
+[33m70d8f312f[m GMM文档低错修改
+[33md81f8d109[m aclnnGroupedMatmulWeightNz 说明文档描述和格式错误修改
+[33ma0aa513d0[m [experimental]修改AllGatherMatmul算子样例README
+[33ma8238288f[m modify determinstic flag get method
+[33m8c1e90b04[m slig doc error modify
+[33m825de3ec2[m 解决了部分算子如grouped_matmul_finalize_routing运行opkernel的ut时报错链接不到gert库的问题
+[33ma40030246[m QLI aclnn接口&def回退
+[33m0f6a10252[m layered核数校验更新
+[33m7247f1359[m SALS V1
+[33mf1d836034[m 伪量化资料修改
+[33ma0e48bc16[m 增加pre-commit配置，commit代码时完成代码格式化及OAT扫描
+[33mc4d793f43[m 补充softmaxLayout接口资料
+[33m4cd41917f[m moe_init_routing_v3 超大函数拆分
+[33mdc52ad16f[m moe_re_routing 抽取公共函数
+[33me1e99f483[m [FIA] splitfuse pa 纯decode场景性能优化
+[33meb57bb071[m 【A2】mc2算子添加非连续性校验
+[33m251144336[m MoeGatingTopK 整改超大函数
+[33m452a9d97b[m fix qkv docs
+[33m044e6f74e[m fix: fix empty tensor bugs
+[33m52f361879[m decodemla场景gs合轴取消s1轴限制
+[33m83bf7db30[m 修改mlapo和SwinTransformerLnQkvQuant文档不恰当的表述
+[33m829539b2e[m per-token-group拦截信息修复
+[33m569e6e610[m FA正向训练算子flash_attention_score支持sink功能doc更新
+[33me6de066e2[m [kernel] attention_update process INF in lse
+[33mbb4e5fd97[m LightningIndexer aclnn示例修改
+[33m64fac7a72[m 检视意见修改
+[33m6084357f8[m 修复编译产物包含多余文件
+[33mab2e16127[m 删除MC2中未使用的TLA模板
+[33mf55237d79[m MatmulAllReduce Fp8通信场景，动态量化逻辑优化
+[33m7a588ef85[m feature:fix ut
+[33m010a96df4[m fix acl
+[33mfc2e70de4[m recurrent_gated_delta_rule 拦截keyShape.GetDim(DIM_1)修改成nk
+[33m3bf12c562[m 【Feature】Introduce bsa on 950
+[33md1bffe826[m moe_distribute_dispatch、moe_distribute_combine算子资料修改
+[33m533cbbb95[m BSAGrad性能优化
+[33meddf6b01c[m AllGatherMatmulV2 A4W4场景调整tiling策略以获得更优效果
+[33m05e76442c[m 修复moe部分算子文档中低错问题
+[33me7f7ad8ff[m 修复moe_token_unpermute_with_routing_map小算子用BF16进行atomicAdd计算时的精度损失
+[33m6b8d48873[m 修复tiling重构拦截问题
+[33m89f7a548d[m qli pytest
+[33md29d11791[m [gmm common]code clean
+[33ma183aa690[m cmake 添加编译依赖
+[33m04edf9928[m 【MatmulAlltoAll和AlltoAllMatmulUT重构】将测试用例硬编码到cpp文件中这种方式修改为使用csv的方式
+[33m309f61411[m Add missing #include for moe_distribute_dispatch_v2_quant.h
+[33mf47998917[m Wsl_transform资料修改
+[33m60c1cae84[m [FAG] cleancode modify
+[33macbd692f9[m fix mxfp4 md
+[33ma2c225346[m modify .md&tiling
+[33m96926bd47[m 调整文档说明
+[33mcc2730d5f[m remove soc infos
+[33ma5af639f2[m add gmm_noQuant UT
+[33mfe1f19d5f[m swin_transformer_ln_qkv_quant tiling获取参数接口风险整改
+[33m366de007a[m repare kernel
+[33me619f7c91[m Revert mc2非连续性校验
+[33m2ae7a5e62[m move template
+[33mf07a9281d[m QSFAP算子支持盘古kv_sink需求 add tiling
+[33m4f355cdca[m add fused operator RotaryStride
+[33m71d536b39[m Bugfix: Fix alignment mask bug
+[33ma235d05bf[m feature:fia tiling reconstruct
+[33mb3c3ac3f9[m 删除3rd目录下aclnn文件
+[33m9ec1fa8bc[m 【A2】mc2算子添加非连续输入合法性校验
+[33m66400f543[m 修改文档格式
+[33mbf0c41f88[m fix moe_token_unpermute_with_routing_map_grad a5 initoutput
+[33mfb8eafa1a[m MoeInitRoutingV3支持cumsum
+[33m0e678e9ae[m 根据asc_devkit的版本号选择opc和asc_opc
+[33m3699a7064[m UT of dispatchV3 and combineV3
+[33m3cf94609e[m add check tensor x2 is contiguous
+[33m81efa47c5[m Fix ChunkGatedDeltaRule Tiling
+[33m319f6e7e0[m MoeInitRoutingV3支持静态量化
+[33mf16ac991f[m 合轴条件修改
+[33mb6f0b7d7b[m [PLZ]QauntGmmAllToAllv aclnn 评审意见修改；docx资料补充Mx量化内容
+[33m1bbd98fca[m refactor(gmm): move fallback sources to op_graph
+[33me1fabc37e[m 整仓大模型低错问题修改
+[33ma7158e18f[m prologv3 support hifloat8
+[33m5cb4453e2[m [FIA]修改FA的aclnninner调用通过头文件方式
+[33mdca761fdd[m add x1.k and x2.k check func
+[33mfcd3a23c7[m feature:Supplementary sparse and sink interception
+[33mda3677c3a[m 伪量化sparse拦截/int4拦截/资料修改
+[33ma309ed34e[m 伪量化fp8 per-token拦截/资料修改
+[33m55b811035[m Bugfix for Overflow issue in type declaration of LIG
+[33m83b5eb3c5[m attention common matmul.h MatmulKM 函数中的循环计算错误修复
+[33m8c90d0ef1[m GmmAdd算子在tiling策略中校验yShape的维度并告警
+[33mfd1aa80ad[m 资料修复
+[33mbe3d3db6f[m fix npu_ops_transformer compile error for invalid datatype
+[33m28787b718[m modify UT
+[33m1380a8041[m FA正向算子SameAB模版Matmul：低阶改高阶实现（headDim=64场景）
+[33maf5309ec5[m 修改aclnnFusedFloydAttentionGrad、aclnnSparseLightningIndexerGradKLLoss的接口定义一致性
+[33m6e5452884[m cross platform migration guide markdowns
+[33m96dc7bebe[m 规范化OAT.xml中许可证声明形式
+[33mce6b031b5[m MC2算子资料完善
+[33m051116fda[m DenseLightningIndexerGradKLLoss算子日志整改 & 修复FP32场景的同步问题
+[33m64f2e6971[m 【FIAV4】GQA TND sparsemode=4，pa场景blocksize泛化error修复
+[33m03e3a1fa2[m ut用例csv重构
+[33mf147670e6[m fix MoeGatingTopKSoftmax compile failed
+[33mb34b003bc[m SFA 目录优化
+[33m1a817882a[m re_readMe_dispatchV2_combineV2
+[33m3d4a55553[m fix moe_gating_top_k headfile
+[33m414bf4246[m mc2/allgathermm: fixup null tensor blocked issue
+[33m2190e461f[m FIA s1 split out
+[33m71ed7c612[m <<<>>>直调dispatch、combine支持sk调用
+[33m53eb19801[m dispatchv1 infershape 数据类型订正
+[33m57d66f233[m FAG magic number clean
+[33m8255723ac[m 修改GMM伪量化场景对int64属性的错误取值
+[33m71f5eef24[m 增加tiling校验与资料修改
+[33m08a38a3b8[m mlaprolog v3 资料修改
+[33mdf278dd60[m GMM W4A8场景bias传空时不走MSD方案
+[33me6f1ac7a8[m improve decode mla perf, reduce scalar and sync instr
+[33mc6164b64b[m experimental readme 拼写错误修改
+[33mc65c24d9b[m support msd-dd tnd inputlayout资料修改
+[33m36898c686[m A3 GQA伪量化AICPU tiling+<<<>>>+aclgraph+SK demo 修复readme
+[33m102ea0f0b[m Add ChunkGatedDeltaRule
+[33mbe30dd90f[m fix: commType tiling拦截修改
+[33ma1f0ec27b[m AllGatherMatmul算子样例适配主线
+[33m2687bb676[m 【FIA算子】fix sparse9代码导致sparse4+learnablesink用例精度不达标 bug
+[33m28c943584[m FusedFloydAttentionGrad算子localWorkSpaceSize计算修正
+[33mdb36f7d66[m 修复arch35条件下，MLA全量化由于G泛化导致的mask矩阵拷贝复用而引起连续点出现精度失败的问题
+[33m95d8dd0bb[m fix perf of mla
+[33m0d5aab896[m 修复moe_inplace_index_add SIMT分支中的计算Bug
+[33mcf27bf66d[m Attention_pionner算子代码整改
+[33mdb9e70216[m 【NSA算子性能优化】importance score计算性能优化
+[33mb4a824ed1[m update QSFA&QSFAP
+[33m280317e76[m [FAG] fix fp32 deter bug
+[33maec2c9c61[m [FAG] add sparse5\6\7\8 deter sink
+[33m266fb23d8[m FA bugfix: LOG level fix
+[33m8006b577f[m [IFA Prolog] readme 资料修复
+[33m8daf3baf9[m 修正NSA Compress With Cache算子format校验
+[33m5d0f5fea3[m fix grouped_matmul README
+[33m66680fc1c[m Transformer仓GroupedMatmul类算子定制输入和Golden剥离
+[33m98a065ff6[m 修复MoeTokenPermuteGrad文档
+[33me0a3d8bfa[m 添加perblock量化P矩阵静态量化相关的描述
+[33mdf77db710[m fix combine v2 compile err
+[33ma1567d628[m fix fag post
+[33m32dc26dab[m delete inner opapi ut test
+[33mfc4d2a5e4[m Dispatch V2适配mxfp4量化
+[33m70f9efe3e[m alltoallvquantgmm support mx quant mode
+[33md6e920571[m A5 combine v2 support mxfp8 quant
+[33me961fd454[m FA bugfix：FA L2 cache fix
+[33m43eafead2[m revert: win区排布
+[33m4daddd410[m adapt to multi custom package
+[33mf2c33debd[m 优化moeInitRoutingV3 非量化gatherOut场景
+[33m93780e9d9[m doc Tools工具扫描问题修改
+[33m4045c20df[m performance test
+[33m6e8b80b9e[m 设置batch mode模式，增加S_MTE3同步
+[33mf114cbff7[m fag modify sparseMode-5/6/7/8 deter to base api
+[33mfa9aa6557[m 修复sparsemode=4场景下计算冗余基本块的问题
+[33m979247bfa[m FAG确定性问题修复
+[33me66f56796[m flash_attention_score fa正向训练支持sink输入
+[33m066de9e89[m 修改手动搭建场景下的驱动和cann安装说明/增加静态库链接库
+[33m02368385e[m ScatterPaKvCache修改资料-体现支持5维
+[33m5368c7ab2[m <<<>>>调用dispatch、combine的Bufgix
+[33m75f24c06b[m add moe_gating_top_k_softmax
+[33m5ad6ce6a4[m 添加moe_inplace_index_add_with_sorted A5配置
+[33m15b549d7f[m fix sync problem of dispatch v1
+[33m80a299b4c[m 修改版权头
+[33mf8e1cab8d[m doc Tools工具扫描问题修改
+[33m52c785501[m 【GMM】mxfp8量化支持weightNZ资料
+[33m1f0dcd5af[m QLI目录整改
+[33m0fd99c560[m 移动opapi目录
+[33mca3753d7e[m 修改prompt_flash_attention_tilingkey.h的路径
+[33m3feaa868c[m QGMM支持grouplisttype为2
+[33m2bafe3efc[m delete hccl size Align
+[33m97733392d[m feature:Tiling Reconstruction
+[33m2552d8697[m cleancode
+[33me578fb2b3[m Change Template Linear Algebra
+[33m7d624deb0[m doc Tools扫描问题修改
+[33md4c9adf54[m SFA提示等级降低
+[33m7d149f995[m kv_rmsnorm_repo_cache算子放开Norm模式下cache块BN维度限制
+[33mc4cfe796d[m add dispatch s&t quantmode
+[33m8102407bd[m modify sk get blocknum
+[33m45a150504[m add mxfp4 aclnn ut
+[33mc32ce5267[m MLA非量化资料修改
+[33me3a29401a[m 伪量化QS=1时sparseMode非0场景拦截以及pertensor拦截
+[33me4109e72d[m dispatch&combinev3v4示例代码不支持动态缩容
+[33m6b48553a0[m doc tools 工具扫描问题修改
+[33mf4e960118[m 【A5】新增FusedCausalConv1d算子
+[33mc079a76b3[m wsl_transformer_readme修改
+[33mb17e6387d[m profiling性能分析工具
+[33mcaabc7750[m add mxfp4 support description in md
+[33m91d56136e[m doc tools工具扫描问题修改
+[33mcc968f30d[m mlaProlog V3：fix bug（VectorBufferInit）和资料修改
+[33m7d8d6902b[m grouped_matmul 与 grouped_matmul_swiglu_quant_v2  UT 统一补充为 CSV 驱动覆盖方案，扩展并补齐原有手写 UT 场景
+[33mf90fa0737[m add gmm mxfp8 with basicapi and weight nz
+[33m179c14cf5[m 【BSA】fix Block Sparse Attention bug
+[33mdd903c750[m 去掉QLI和QSFA头文件
+[33m050b5d1cf[m alltoallv_quant_gmm UT适配与mx量化Tiling适配
+[33mbb88f9cdf[m 修改GQA rope只支持64
+[33mc76b0464a[m 修改pfa tilingdata
+[33m9f6cea38d[m doc Tools扫描错误修改
+[33m6aaf72da6[m 增加mc2单卡测试mock server的能力
+[33m86aa5f7ac[m 非量化groupedmatmul算子兼容K分组单多多场景
+[33m1cb0e276f[m 新增reshape_and_cache模式，head在第2维block_size在第三维
+[33m54b9af254[m recurrent_gated_delta_rule cleancode
+[33m191293646[m 【GMM】mxfp8量化支持weightNZ aclnn通路
+[33m8aed21a27[m fix aclnnGroupedMatmulSwigluQuantWeightNzV2.md
+[33m2e5c31470[m 将mc2下的算子中gen_task包含3-8包编译部分的内容删除
+[33md86c58411[m 增加指针判空
+[33m9071301a3[m 修复CombineSetup/Teardown算子输入Bs过大时导致UB空间越界
+[33mf1c25821e[m add mxfp4 for alltoallmatmul
+[33mfb3d03c82[m MoeInitRouting资料更新
+[33m813d26b17[m recurrent_gated_delta_rule 支持ascend950
+[33mc03835a6e[m AttentionPioneer算子
+[33ma09499f00[m qsfap支持盘古sink 地址偏移问题修复
+[33m03ddf2d1f[m 增加FusedFloydAttention算子不亲和场景说明
+[33m4aee754e8[m QLI支持kCache非连续
+[33m05fd9b32b[m Revert "【Fiav4】PageAttetion kvnz format格式输入"
+[33m147ecdfbf[m recurrent_gated_delta_rule 补充可选参数拦截
+[33m1447ba87b[m 补充UT和MD资料
+[33m99a8f66b6[m 修复set_compute_unit_option改成只支持一个soc后导致ut失败的问题
+[33m0cb217b9f[m fix grouped_matmul_swiglu_quant_v2 a4w4 signal
+[33m2320c251d[m fix the god header file in the code
+[33m151cffcba[m 修改dim判断逻辑，适配pta
+[33m6478d1ede[m recurrent_gated_delta_rule pytest
+[33m101c58cb6[m 新增支持mhc_pre算子
+[33m988aff7ed[m quantgmmalltoallv补充README文档
+[33m341e5049a[m 算子接口文档与算子头文件不一致修复
+[33mf71cd15d9[m AllGatherMatmulV2算子A4W4场景Tiling策略优化
+[33mdd4630e63[m 修复precomile找不到文件的问题
+[33m95770c347[m A5 FP8 Per-Token伪量化支持
+[33m233c2d8fb[m QLI N1支持<=64
+[33m0b0eef32b[m 【bugfix】GroupedMatmul文档格式修改
+[33m4c6ac93f8[m mc2/allgathermmV2: fixup mxfp and pertensor tiling M value
+[33m095f0f250[m update LI doc
+[33mcfc3e2133[m revert//add 310p topkSoftmax
+[33me55d1e738[m fix FA&FAG EOD
+[33m82dac531e[m MoeComputeExpertTokens资料更新
+[33mc688c3057[m recurrent_gated_delta_rule pytest
+[33m5c97b3cce[m 【PLZ】QuantGmmAlltoallv支持MX量化场景
+[33md72517fdb[m 全量化资料修改
+[33mecc532864[m recurrent_gated_delta_rule 新增tiling拦截
+[33m3f0046ec6[m 后量化补充拦截，修改资料
+[33me128cdff4[m 修复编译时传入多个soc导致判断失效的bug
+[33mb992a49c9[m GatherPaKvCache支持float8_e4m3fn的key和bfloat16的value
+[33m1c878d425[m 【Fiav4】PageAttetion kvnz format格式输入
+[33m5c2f648cc[m 修复moe_init_routing_quant算子文档NUM_ROWS大小写不一致问题
+[33mf52f41d45[m 修复单线程串行编译场景失败的问题
+[33m2ec52f0cc[m 【BSA】Block Sparse Attention support backward
+[33m66c8619ea[m AlltoAllvQuantGroupedMatmul & QuantGroupedMatmulAlltoAllv Support Graph
+[33mac42edb3a[m A3 GQA伪量化AICPU tiling+<<<>>>+aclgraph+SK demo
+[33m689ccbf4d[m 添加aclnn_quant_grouped_matmul_dequant_weight_nz
+[33m631b4c21f[m ringAttentionUpdate算子shape拦截范围修改
+[33mbe52af7c6[m 修改BSA算子文档，新增入参约束，重构tiling代码
+[33m52240b254[m add 310p moe_top_k_softmax
+[33me3f013332[m update SFA doc
+[33m607065df5[m dispatch_v3 &combine_v3 ccl_buffer_size bugfix
+[33mb7190119b[m add block sparse attention A3 pack yaml
+[33m35af4e435[m A5 recurrent_gated_delta_rule vf删除__VEC_SCOPE__
+[33mc4948202a[m 增补AlltoAllMatmul opapi ut用例
+[33maaae99cf5[m 【FIA】修复tiling中的整数类型不匹配问题
+[33m50fe3d565[m update cann_sim.md：delete log in output
+[33m8ad405f8c[m 修复MlaPrologV3通过cannsim运行example时的段错误问题
+[33m7a67facea[m A5 recurrent_gated_delta_rule mainLoop opt
+[33mbdc1d35a7[m Arch35 MLA全量化INT8实现
+[33mfef2b4b53[m 下架v1和v2的950ut
+[33mc5ad31ed6[m sfag文档错误修改
+[33m0d5ee48b7[m 修正AIcore开发文档部分文件路径和文件名
+[33mc36036e63[m IFA算子新增sparsemode类型9，支持树形mask输入
+[33m10230ba78[m fix type bug when using GetAttrPointer
+[33m335664050[m extract mc2 platform info common files
+[33me9f5ddb86[m QuantGroupedMatlMulAlltoAllv问题单修复： aclnn校验信息 + 资料修改
+[33m72de46d42[m qsfap支持盘古sink sp3问题修复
+[33m43183a557[m 同步nn仓inplace_index_add修改
+[33m33d8f49d7[m moe_token_permute_with_routing_map添加SIMT 实现以优化小规模数据性能
+[33m676343a6b[m 修改反向确定性模板SBH格式下Q和KV, head_num不等场景下的精度问题
+[33md1e73e55b[m del 950 def PFA&&IFA
+[33m1365ab492[m 解决quantgmmalltoallv TT量化场景泛化用例精度问题
+[33mcee76d702[m gmmalltoallv非量化场景增加mmdata与gmmdata数据一致性校验
+[33m7efe3b889[m 添加LSE、prefix拦截，添加伪量化PA相关拦截
+[33m1a9d28e69[m GMM类算子SC告警清理。
+[33m8c6db82b1[m add x1.k and x2.k check func
+[33m920d00031[m LI修改拦截等级
+[33maf467b906[m softmax置零
+[33m301abc4fc[m add gmm readme
+[33m32268c604[m A5 QSFAP update
+[33m3adc4e420[m mc2与common目录内头文件引用整改
+[33mf78814e27[m 为add_example增加infershape和kernel UT
+[33mc02a5163a[m 【bugfix】moe_token_unpermute_with_routing_map_grad fix 950 performance
+[33m9e1590230[m ringAttentionUpdate算子增加shape拦截
+[33m0cbef808f[m 【GroupedMatmul】 md文档拼写错误修改
+[33m4a00446ed[m 【attention common】头文件保证8.5.2兼容性
+[33m267638690[m fix QSFAP
+[33mefb0ba3a7[m fix(rotary_position_embedding): fix uint16 overflow caused by oversized stride on 310p
+[33m5eaa9865f[m 整仓文档表述不清晰、拼写错误、标点等低错问题修改
+[33m6b639daa0[m UT
+[33m6361c70fb[m 修复MoeDistributeCombineAddRmsNorm静态图模式，错误进入AICPU任务流程
+[33m282c3cf58[m fix mla_prolog_v3 example
+[33ma17e439c9[m GMM添加INT8输出场景下对维度的限制
+[33m69a45b9fb[m [BugFix][MhcPost] Fix null check order in InferDataTypeForMhcPost
+[33m9a050a0fe[m Distributebarrier在950上支持更多的数据类型
+[33m1105bad45[m softmaxSum save as TN8
+[33m2ae1a8f76[m cumsum增加流水同步
+[33meffeea78a[m opbase下载根据commit id
+[33mdb8dedaa8[m aclnnRotaryPositionEmbedding 资料格式修复
+[33m2c64ac440[m GMM资料添加INT8输出不支持pertensor场景
+[33m5405340d4[m fix doc QuantMatmulAllReduce
+[33m6aff86a27[m A5 recurrent_gated_delta_rule replace VF
+[33mc3f5c3864[m install文档描述调整
+[33ma458b6d24[m alltoallmatmul mxfp4 tiling
+[33m91eae9dc0[m 修改gmm全量化K轴分组填0接口
+[33m9d1f3147c[m [FAG] add sink lanjie
+[33m85522a149[m GQA 8bit support static quant of PMatrix
+[33m340fabb2e[m [bugFix] solve sync problem in deterministic situation
+[33m4487a2b0a[m fix: clean code
+[33m120133374[m [attention common] 使用统一对外头文件
+[33m607436f3f[m 增加-Wl,-Bsymbolic编译参数，防止多个so存在同名static变量时，互相共享内存
+[33m4c57274bc[m modify ActSqLen to actualSeqLen
+[33m21ed6c31b[m Performance Optimization Implementation of Lightning Indexer Grad After Enabling Determinism
+[33mba5c2fd27[m A5 recurrent_gated_delta_rule add vf_vec_mul_mat
+[33m7c52055fc[m 修复moe_init_routing_v2 gatherout问题
+[33m5ace6f5f8[m aclnnmlaprologv1 interface remove const
+[33mce2faf1b1[m mxfp4数据类型公式化tiling适配
+[33md388c57d5[m mla_preprocess算子替换开源头文件
+[33mef3ba33d6[m 添加A5 INT8伪量化拦截，antiquantMode=2/3/4/5时不支持qs>1
+[33m40128654c[m fix bug in alltoallmatmul dynamic-kc-quant
+[33m4ded7448b[m 修改aclnnFusedInferAttentionScoreV4资料格式和aclnnBlockSparseAttention资料问题
+[33m508f613a7[m Modify the aclnnDenseLightningIndexerGradKLLoss.md
+[33mb8b5ac3aa[m A5 QSFAP支持kvCache非连续
+[33mec77a2931[m 删除SFAG当中短序列优化的Cube冗余代码
+[33m6a228f931[m FusedFloydAttentionGrad和FFN算子tensor类型入参添加转连续操作
+[33m992c1693f[m A5 recurrent_gated_delta_rule add vf_outer_add
+[33mc6229ba59[m 更新离线编译第三方库下载脚本，添加opbase相关
+[33mb8cf6ef65[m 当dispatchV3算子执行发生异常时，该功能能够捕获并保存关键的通信窗口信息，以辅助后续的问题诊断和调试。
+[33me76d6d59e[m 修复AlltoAllvQuantGroupedMatmul异常退出和共享专家精度问题
+[33md2d3fc198[m add gmm mxfp8 with basicapi kernel
+[33m8bda37264[m fix prologue bug
+[33m69b61fec0[m GatherPaKvCache kernel bug修复
+[33m781fbdba4[m 添加soc_spec.h头文件
+[33m74590205b[m 修改moe类和gmm类算子文档问题
+[33m0b5c26353[m a2avgmm文档修改
+[33m310552c8e[m a2avgmm 384专家
+[33m606e70d47[m 【FAG】tnd support max sum same as input
+[33mf41ffc7b9[m FlashAttentionScore算子补充proto文件
+[33mb39d3d926[m 更新文档，新增GMM/GMM SwigluQuant A4W4关于NZ转置和tuningConfig的约束描述
+[33m6d7cb67fb[m moe算子一站式定位工具readme资料口语化描述修改
+[33m1e1850285[m GMM 伪量化场景清理存量code check
+[33mc8b18ecb2[m 为解决nsa_selected_attention_infer算子运行ut时找不到CheckLogLevel的问题，在log.h中引用dlog_pub.h。
+[33mf6233c98b[m 将kernel_event.h和kernel_macros.h的引用改成kernel_operator.h
+[33m3d59c012c[m Improve sink performance
+[33m0f195c13d[m FAG sab模板性能优化sab_basic_mm34
+[33m2638e1185[m 950 support online compile
+[33me81222190[m 新增A5 recurrent_gated_delta_rule
+[33me6b3701e2[m MMAllReduce 算子修复流同步可能导致的精度偶现问题
+[33m9c5405e83[m gmmalltoallv mx tiling
+[33m73c945ffa[m MC2切换加载HCCL接口的so
+[33me5355a0bd[m [FAG] adapt sink optional
+[33m7760eed78[m enable proto headers in Transformer
+[33m33e62ff21[m 修改datacopy溢出问题
+[33mb33638e3f[m 修改infershape用例格式
+[33mba5d4d4ed[m 排查Attention算子获取整形属性GetAttrPointer潜在风险fix GetAttrPointerInt potential risk
+[33m6b47e9076[m 修复算力分组场景（aicore num为6时)卡死问题单
+[33m3c07b09cf[m kv_rms_norm_rope_cache算子在量化fp8时，应当设置为饱和模式
+[33m0694529d7[m QLI vf整改、文档更新、冗余代码删除
+[33mc8277cd34[m 重写GMMV4部分文档的表述
+[33me30839302[m 修复AlltoallvGroupedMatMul、AlltoallvQuantGroupedMatMul资料问题、删除冗余aclnn校验
+[33m62f51c697[m moe_token_permute提升行覆盖率
+[33m40e534734[m 修正GMM类算子关于K = 0空Tensor处理的逻辑
+[33mc66bf5442[m gmm splitK k zero check delete
+[33m38399ffc3[m mc2/allgathermmV2: bugfix perblock quant mode offset problem
+[33mf9d8864d2[m add dispatch s_t kernel
+[33mc6619f377[m fix cann_sim.md：add description for chip support
+[33m490fafd51[m 增加尾轮切分接口
+[33m220509d90[m Modify the aclnnDenseLightningIndexerSoftmaxLse.md
+[33m7b7c0625f[m mxfp4 kernel
+[33m8628eb823[m attenout刷0逻辑优化
+[33mdd64e1ad2[m add interleave rope doc
+[33mc0ece468d[m ReduceSum计算掩盖
+[33mdd614dad9[m mc2/allgathermm: cleanup magic number and namespace issue
+[33ma36b02e7e[m [bugfix]fix gmm fast kernel
+[33m240d021c4[m Update Dispatch/Combine v3 and v4 docs for 950 support
+[33m21e4cb6c8[m Modify the aclnnDenseLightningIndexerGradKLLoss.md and aclnnQuantGroupedMatmulDequant.md.
+[33mcb743e108[m efeature:fix datatype
+[33mdd87222fb[m OBP上mlaprolog v3支持GLM(hcq支持2048，d支持192)
+[33m02aaa5538[m Fix Mlaprolog KernelUt Error
+[33mb243bd8c8[m 本次PR旨在解决在acl仓下线编译环境下，因运行时库头文件路径或名称变更而导致的构建失败问题。
+[33m4fcb9067c[m modify rank_size data type
+[33mfa4fcaf9b[m cleancode_in_mc2_moe
+[33m8f0040de7[m experimental添加allgatherMM算子样例
+[33m77b8e2d58[m 伪量化场景增加BNSD_BSND拦截
+[33m1802c22fd[m tiling拦截提示优化
+[33m9668f4df6[m A5伪量化INT8场景约束向A2/A3对齐
+[33m341103d35[m dispatchV2 combineV2算子新增<<<>>>直调
+[33m13e3feef2[m 解决ifa模块的扫描目录冲突问题
+[33m5ca89a1c2[m quant gmm alltoallv tiling fix && log
+[33mf311e7fcb[m 修复CANN 8.5.2 补丁版本的兼容性问题
+[33mbf57202ba[m 修复日志空指针错误解引用问题
+[33m87c2993e5[m add dispatchv2 and combinev2 ut case
+[33m6bc0edbdf[m FIA tiling refactor, bugfix
+[33mc3ff44e56[m AAMM修复空指针校验
+[33md6bd15a42[m target source gen task files to opgraph lib
+[33m4111329db[m fix mhcSinkhorn empty input check
+[33m3435fbffb[m 同步问题修复
+[33m51b4b0d3b[m fix: GMMFR WeightNzV2接口空指针校验及日志错误改正
+[33m9596e75d1[m UT覆盖率看板新增展示算子
+[33m359d61b9b[m gmm目录内头文件引用整改
+[33m74f7b9833[m change_apply_slig_doc
+[33ma826fcd13[m [MC2] support the fit-based balance tiling for MatmulReduceScatter & MatmulAllReduce in 950.
+[33mdce632f83[m 修复AlltoAllvGroupedMatmul、AlltoAllvQuantGroupedMatmul、MatmulReduceScatter、MatmulReduceScatterV2资料问题
+[33m7ad6b880e[m 移除一系列未在本地文件中实际调用的Nnopbase系列外部函数声明
+[33m085eda869[m LI资料补充说明
+[33m4b506ea6e[m A4W4优化
+[33m2d6452617[m Revert "fix type bug when using GetAttrPointer"
+[33m5a565bba1[m combineAddRmsNormV2示例代码修改
+[33mecb5b3fa0[m GMMSQ移动grouped_matmul_swiglu_quant空tensor代码判断位置
+[33mfb6b4bd21[m bsa kvs block enlarge to 1024
+[33ma5ab3d96e[m 修复mx场景下A转置/B不转置下的清零问题引起的精度异常
+[33m93666b1e1[m BlitzSparseAttention - Add high performance Block-Sparse Prompt-Flash-Attention to experimental kernels
+[33m4f6f04de0[m Revert "[FIA][FULLQUANT] add buffer uninit"
+[33m73dde91ac[m QLI weight/qScale/kScale支持fp16类型
+[33m8a0aa619f[m FAG tscm performance improve
+[33maafb4af9f[m checkWinSize提取
+[33m49c6d5fae[m bugfix for uninitialized dq and dweight when s1 > s2
+[33mdc1f2993f[m 修复AlltoAllvQuantGroupedMatmul shape拦截范围
+[33m29c22f583[m 空指针校验逻辑调整
+[33m80b2538d7[m delete mlaprolog unavailable interface
+[33m0d270d8f3[m fix FAGV4 docs
+[33m7e90d83a7[m 增加debug语句
+[33ma47964590[m 修复mc2/common导入错误
+[33ma0a0228f3[m [FIA][FULLQUANT] add buffer uninit
+[33m15bafb470[m 调整MOE算子UT覆盖率统计配置
+[33mf10e57441[m matmulalltoall算子增加mxfp4量化场景数据类型和相关校验
+[33m2f32b17a4[m 调整common目录结构
+[33m047cd28f3[m GMMSQ算子weightAssistMatrix入参转连续
+[33m7508699a3[m fixbug: modify attrs->GetAttrPointer<int>
+[33mbbd0cd42b[m 修改MicroAPI为RegBase并仅支持A5
+[33me946406d0[m MoeGatingTopK算子文档修改
+[33mb97e30d54[m cleancode_in_mc2_moe
+[33m7a48e410f[m 【资料问题单修改】aclnnMhcSinkhorn支持950
+[33m83ad62e13[m kernel侧完成
+[33mcc0e16006[m Replace marco def for npu arch
+[33m0d8ab4292[m adapt 3101 to 3510
+[33m660d5812e[m fix bug
+[33mc75713827[m 修复SFAG topkGmOffset计算问题
+[33mdee7a707c[m 代码回退：删除softmax_max和sum对sfa算子的负影响
+[33m67f24d50d[m 修复dense_lightning_indexer_softmax_lse小shape卡死问题
+[33m8063e34fb[m 修复moe_init_routing算子文档错误
+[33m67cfe179b[m [ci] 增加特定分组兜底方案
+[33m899615f1e[m 资料问题单修改
+[33m66d21aa0f[m 全量化添加拦截
+[33m113babe24[m fix type bug when using GetAttrPointer
+[33m56f43c95a[m Adjust quickStart and installation md
+[33madcc2843c[m 修复GMM伪量化静态图场景编译告警问题
+[33m44ded7680[m 【PFA&AttentionUpdate】ascendc内部头文件整改
+[33mbf507cfb0[m [mc2] clean code
+[33ma0e25476b[m slig clean code
+[33ma5d2e543c[m 增加自定义算子包使用--install-path安装时使用set_env.sh的资料说明
+[33mc0639506a[m add_check_in_deepep
+[33m4527fd0f5[m ut编译隔离不同芯片
+[33m120f5b07d[m dispatch flag clean&sync bugfix
+[33m08d01157f[m moe_unpermute_routing_map文档修正warning描述
+[33m0a8f64bed[m 精度问题修复
+[33m7176ba773[m 在quick_op_invocation.md中关于ut的使用说明中增加了对add_example算子的ut说明
+[33m1933d6d14[m A5 QSFA
+[33m6e0d272af[m FAG/NSAG/SFAG删除多余头文件
+[33md02202d7d[m 为MOE和GMM 调整attr
+[33ma411792f0[m normropeconcat算子输入整改连续
+[33m02264176a[m SFAG资料添加约束
+[33mb8a733751[m splitfused pa decode 大batch场景 性能优化
+[33m5b886154f[m moe_unpermute_routing_map文档增加warning描述
+[33m277e123d6[m 修复伪量化m_s1>qs时的精度问题
+[33mda980c16b[m Bug fix ：将原有静态量化分支加回
+[33mba47ea399[m mc2/allgathermm: modify GetAttrPointer type
+[33me6d6f83e5[m fix gmm head
+[33m2aa757ef0[m remove BUFFER_ALIGN in LOG
+[33m426b0ac58[m [FAG] add fp8 lanjie
+[33m55f659a63[m mhc_sinkhorn_infershape
+[33mc13005665[m ascendc使用内部头文件整改
+[33mecd2d7ff9[m fix hccl buffer size for A2 layered
+[33m7bc66ef1a[m fix classify rule
+[33m039bd82ab[m 修改GQA layout泛化范围
+[33mded5c5eee[m modify all_to_all_matmul & matmul_all_to_all graph pipeline
+[33m1dc66d2f0[m A2 删除冗余tilingkey编译
+[33m1e455e01d[m fix aclnnAlltoAllQuantMatmul.md A5 example error
+[33m00be1eebf[m GatherPaKvCache: arch35: 支持float8_e4m3fn的key和float16的value
+[33m7e7f8f92a[m GetAttrPointer Check
+[33m65a345796[m modify matmul_all_to_all & all_to_all_matmul ge ir
+[33m5fd2706da[m add MlaProlog opApi Tiling
+[33md0e24898d[m 修改moe_init_routing_v2文档dropmode/activeNum参数描述
+[33m00f6c2fcf[m [RotaryPositionEmbeddingGrad] 适配REDUCE_TPL_PARAM，功能失败问题修改
+[33ma00ba8e56[m fix: 修复permute算子资料问题
+[33ma898ad61a[m [FAG] clean code
+[33mf897510ff[m moe_token_unpermute_with_routing_map补充部分warning
+[33mf56a2f32c[m D&C V1 Host侧cleancode
+[33m156765f35[m AlltoAllvGroupedMatmul & AlltoAllvQuantGroupedMatmul TT量化问题修复
+[33m84ad664c8[m 修正mhc_sinkhorn算子信息库的内容
+[33m2dc790a12[m add FAG interception for T
+[33me8d52ffb8[m [mc2]matmul_all_reduce clean code
+[33m5a45e0b61[m 修复mm2LoadDataA，mm2LoadDataB搬运为奇数时导致的越界和NAN问题
+[33m29c513846[m 新增AlltoAllvQuantGroupedMatmul、QuantGroupedMatmulAlltoAllv算子
+[33ma6acd6fcd[m codecheck clean
+[33m9d27e681a[m 添加pa nz无rope场景下的d的拦截
+[33m4775c7bf5[m fix GMMSwigluQunatV2 A8W8 multiTensor
+[33m3543b1562[m 新增支持MhcSinkhorn算子
+[33ma7256b813[m Dispatch No Quant Cast To HIFP8
+[33mc2c8e1f5d[m fix bsa document aclnn sample code
+[33md03135b61[m [PLZ]aiv直驱dpu代码
+[33m39fcb6ac2[m A5 QSFAP
+[33m68ba01248[m BlockSparseAttention document & README修改
+[33m570a96761[m rm qkv warning
+[33md9f0ce73e[m support cv11 for gmm
+[33m519d2b356[m 新增 mhcPost 算子
+[33m23b938699[m 950上moeinitrouting v3 算子hif8量化模板 降低代码重复率
+[33ma6afc73ea[m 修复allToAllMatmul场景，smoothQuant功能
+[33m5a9b836aa[m alltoallmatmul&matmulalltoall算子获取整型属性风险整改
+[33m27673927f[m dav3510检查aic和aic核数比
+[33m1bdd7212d[m [aicore]整改
+[33m939b8c440[m quantgmmalltoallv para del offset
+[33m43fc9c760[m FIA tiling refactor, bugfix
+[33m39fd3d6ee[m fix blocksparseattention precison bug when low precison
+[33m1dedc5f9e[m gs1合轴
+[33m438e3741e[m cleancode
+[33mf8eb3c971[m fix bug:big shape sync fail.
+[33m69689656b[m mlaprolog修改kvchache仅v3算子支持fp8 e4m3格式
+[33m0fa5a6c9d[m 修复D小于32导致的dealrowcount超过255导致的精度问题
+[33m64a5f3864[m 后量化添加行无效和offset拦截
+[33m42601e4a6[m moe_token_permute_with_routing_map_grad添加输入格式告警
+[33m88e0d6da0[m delete QSFAP
+[33m4ff6805ad[m bugfix in QSFAP
+[33m809fc00e7[m mc2: fix output limit check of AllGatherMMV2 and MMReduceScatterV2
+[33m19d601358[m fixbug in QSFP
+[33m33a7a7f2c[m QLI 回合主线
+[33m35e60a61d[m [问题修复]：当mmX和mmWeight相关参数都不输入时，mmXQuantMode无需判空
+[33m9047d7915[m Change annotation table
+[33m8d66e303a[m Delete PipeBarrier of SendDataToServer
+[33mc12ff6bf3[m aclnnMoeFusedTopk对输入tensor先进行转连续
+[33m5a217f2dc[m fix type bug when using GetAttrPointer
+[33m76b93e9f1[m 社区文档了新版本号9.0.0，修改工程中相关路径描述
+[33me6b316f43[m add QLI topk vf
+[33mc955ebbe7[m allgatheradd添加ci看护
+[33m41617112e[m 新增mambav2 推理prefill阶段所需的关键算子
+[33m8709a41ab[m The groupSize checking is moved to tiling side and supports automatic derivation as quantmatmul
+[33m42c6ade2a[m operator-QSFAP
+[33mafe632172[m 检视意见修改
+[33m1e5565227[m 文档为公式前后增加空行
+[33m9f018b051[m GMMFR 以及 GMMSQ 清理sc
+[33m83ab1f700[m Fix Bug Add MlaProlog Example
+[33mc57ce8d72[m [GMM] CheckCoreNum函数中补充注释
+[33m0889195e4[m 【cleancode】删除分层Dispatch的PipeAll
+[33m753493b90[m add QLI topk 16 gather vf
+[33mb5e71ab14[m sfag算子资料新增约束
+[33m43d288415[m add QLI vector1 VF
+[33ma5b412515[m add vf folder for QLI
+[33m834aa033e[m fix repackage error
+[33md442b32ed[m aclnnInner不打包
+[33m7efa30a13[m 优化ut编写指南
+[33m7ba8b27a4[m 优化A5上norm_rope_concat性能
+[33md17117e5d[m add sync for LI
+[33m3ea61e4f5[m sfa_aclnn直调拦截
+[33m916aa93c1[m combineV2 tiling big function split
+[33m460c6f48f[m aclnn_quant_grouped_mat_mul_allto_allv  SocVersion整改
+[33mede39810b[m CIE:修复线下编译错误未打印和指定tilingKey编译被kill问题
+[33mce6a82cf3[m enable blocksparseAttention double buffer in softmax low prec
+[33m1c7c4603d[m 去除classify_rule.yaml中的重复组件
+[33m3abe7446d[m mc2/allgathermm: add check for m-value
+[33mbc1558128[m softmax_max和sum初始化
+[33m9a6ffcf50[m add mxfp8 blockmmad
+[33m5f02a2cd5[m 修复GMM切K场景多tensor有空tensor即返回的问题
+[33m8b3cb387e[m modify mxquant formula
+[33m3618c10a4[m Bugfix for LIG over large S2 case
+[33ma7620fb5b[m BasicDet模版支持SBH以及BNSD格式
+[33mdc548b111[m 修复opbase打包路径
+[33m20b4a1784[m GMMSwigluQuantV2：异常拦截报错修复
+[33m2dc7b2037[m Fix Codecheck PR1726
+[33m96330ab35[m 去除冗余代码
+[33m2d0b5565c[m GroupedMatmul 算子 weight-quant 场景 tiling UT 增补
+[33mcf203caca[m 修订pfa/ifa 的ops-transformer仓库的扫描规则
+[33me8456da70[m 补充quantgmmalltoallv算子文档
+[33m5b7cb518d[m [GMM]部分头文件命名错误，不应该出现aclnn前缀
+[33mbc74c0fd5[m fix gmmfr infershape_check
+[33ma36bdd8c2[m 修复因缩进格式修改错误导致的表格问题
+[33mbb9cc9555[m dispatchV2 fullmesh模板新增tiling侧UB buffersize校验
+[33m2e23c04c3[m re_tiling_moe_mc2
+[33m2d8c8747a[m GroupedMatmulSwigluQuantV2 Tiling获取OriginShape
+[33me608754f2[m es graph for transformer
+[33m48da35411[m MatMulReduceScatter 支持all2all+ vec reducesum
+[33maaac8dd48[m sab_basic
+[33mb25143b41[m fix aclnnRopeWithSinCosCache error code in bad case
+[33m4b50b5f4d[m fix attention ops schedule mode
+[33m011598211[m 修改Grouped_matmul相关头文件名
+[33m7cd86bcd7[m Fix compatibility
+[33m93b5f722a[m MLA非量化支持s1泛化、act_seq_len_q
+[33mf5be32873[m 更新learnablesink拦截逻辑文档
+[33m8bf3cf085[m 【FIA&IFA】危险函数整改
+[33mc53a1e2c5[m [FIA][FULLQUANT] opt code format
+[33m0959dbbac[m [FAG] cleancode for fp8
+[33m9ec2d1dd5[m mc2/allgathermm: fix specification description for v1 and v2
+[33m915920fe4[m CI编译报错不终止并提示报错算子，线下编译报错终止
+[33m55856eb15[m 易用性需求：资料类修改不触发CI
+[33mc41190050[m fix exception cases bugs
+[33m4d9f85f37[m [bugfix] 删除mc2未使用的aclnn头文件&&checker.h重命名
+[33m2a2321f9a[m FIAV4&V5 revise G range
+[33m9654d55c0[m RotaryPositionEmbedding fix null out
+[33m933b0adce[m 修复moeinitroutingv3 quantmode=2 if条件判断错误问题
+[33mdbc29adcd[m fia tiling reconstruct code pre-embedding, add checkers, add tiling impl
+[33m4b0404443[m 恢复--tiling_key入参编译&&适配Hcomm路径&&优化pr类型标签样式
+[33maee8622a8[m DeepEp add buffsize calculation
+[33m0974a82e6[m 修改aclnnGroupedMatmul接口资料文档中描述不正确的地方
+[33m6c4794d34[m [FIA] refactor arch35 fullquant MLA & GQA
+[33m7d01ba757[m GMM MxA8W4 a 多倍载入
+[33me7ae485b4[m 删除在tiling key中未使用的模板参数kernel type
+[33m5d50c4ae5[m alltoallquantmatmul complete the aclnn ut test cases
+[33m90c929c1b[m set p pre time & enable p double buffer
+[33m26ec07a21[m 伪量化KV不分离模式下线
+[33mbbcedac19[m LI N<=64
+[33m10a87dfae[m [Reduce模板] Reduce算子模板tilingKey宏统一修改
+[33m57dac3ddc[m feature:fix G Generalization fp8 postquant precision
+[33mb0608f7d2[m 修复 aclnnAttentionUpdate.md 标题缩进
+[33m5bf33338e[m 【BSA】Block Sparse Attention support softmax LSE
+[33m2cd3080cb[m fix: MOE整改风险接口 GetAttrPointer<int>()
+[33mf80c75795[m Revert "Bugfix for LIG over large S2 case"
+[33m7d78c9208[m mlaprolog v3接口资料修改参数说明
+[33me82c5660e[m Context support fullmeshV2 of dispatchV3/combineV3
+[33md762f31d3[m 修改文档格式
+[33mecf3a6d86[m 950上 补充 aclnnMoeInitRoutingV3.md资料
+[33maee1f894e[m add deepep doc
+[33m8ccdcd99c[m add gmm quant opinfo factory to avoid repeated parsing of op info
+[33mce277f50f[m opbase.so解耦
+[33md8aac810e[m add mrope hunyuan md
+[33m1e10719fb[m Bugfix for LIG over large S2 case
+[33mb62d92112[m 新增编译选项的资料修改
+[33mc71ad7ce0[m fa infer/train noquant template split
+[33m4e9721c11[m 补充950上MoeInitRoutingV3 hif8量化资料
+[33mca735d278[m fia tiling reconstruct, disable failed ut cases
+[33m51466a036[m [FAG] tiling split
+[33mb6a95cecb[m SLIG SFAG算子支持非连续场景
+[33m344520099[m 修复FAG HIFP8短序列精度问题
+[33m60d9f6535[m Revert "es graph lib v2"
+[33m7772339a9[m fia tiling reconstruct, add ut testcases for tilingsink, pa nz
+[33m94579a940[m fia tiling reconstruct, add ut testcases for mla fullquant
+[33m4836503cc[m fia tiling reconstruct, add ut testcases for antiquant and fullquant
+[33mdf80e2e01[m fia tiling reconstruct, add ut testcases for pse, decode mla
+[33m2ff654e25[m add_md_moeV3
+[33m852f9bc26[m fix: clean code
+[33mb12707539[m FAG cleanCode 修改
+[33m8a8b1863b[m fia tiling reconstruct, add ut testcases for softmaxlse, leftpadding and postquant
+[33m9df455a11[m fia tiling reconstruct, pa checker add ut testcases
+[33mb01988ae4[m fia tiling reconstruct, pse checker add ut testcases
+[33m6996a28ad[m fia tiling reconstruct, add testcases for shape checker and rope checker
+[33m44cc999cb[m 去掉aclnn冗余校验 & 补充非量化校验mmType和gmmType一致
+[33mf98393fab[m 3rd内算子A5隔离
+[33m91a876279[m fia tiling reconstruct, add paged attention testcases
+[33m937375ea7[m add ut for fia op, mla cases
+[33m1b13f74bf[m add ut for FIA op
+[33md594901ed[m add ccl buff size check for dispatch and combine
+[33mfdfa7835c[m fix fp8 postquant precision
+[33m5d02b0bb3[m 修复MatmulReduceScatterV2资料问题
+[33mcdbc99f64[m GQA per-tensor int8全量化支持pse=0
+[33mcd6862bb4[m 确定性模版支持BSH格式
+[33ma17923101[m 【FA】整改非对外发布的aclnn前缀头文件
+[33m6d7cc4a97[m RopeQuantKvcache接口误开处理
+[33md0fc78654[m Fix D/C v3 graph failure
+[33m59bf2c89f[m codecheck 添加注释
+[33md4c4e5ef0[m fix some bug about sum
+[33ma9209ec8e[m 新增MatmulAlltoAllA3
+[33m471a613f7[m fix apply_rotary_pos_emb doc
+[33mad1c69f47[m 调整FIA example v5接口目录
+[33m95e213a4d[m GQA per-block添加AlibiPse拦截，修改对应资料
+[33m25ed17ca2[m 补充alltoallmatmul算子UT测试
+[33m428fb9954[m sparseMode传入负数，异常拦截信息整形翻转问题修复
+[33m151eb4313[m es graph lib v2
+[33m0499e9325[m gmm head file after apt change
+[33mb30c45d54[m add error code description
+[33m2677ff096[m 增加分层模板对于特殊专家 动态缩容 二维mask PerformanceInfo的拦截
+[33m4b9179712[m moeFinalizeRoutingV2 文档低错
+[33me5134b14b[m 完善prolog拦截和资料单
+[33m389c55620[m FAG算子HIFP8短序列性能优化
+[33m1dafce938[m clean code 降低attention/common下超大函数和圈复杂度
+[33mad6bca525[m [ci] 适配moe ci切换问题
+[33m57efdb5d2[m 添加拦截GQA pertensor不支持后量化
+[33m2bd3ff8c3[m 修复静态图mmy空tensor拦截报错
+[33m80e1599f7[m cleancode magic numbers
+[33me2004aa58[m [mc2]modify aclnnQuantMatmulAllReduceV4 doc
+[33m34ebe69bc[m 责任田补充vf和伪量化文件
+[33m6f3acc60f[m check_ut
+[33m09d1170e4[m add ut for aclnn in the mxquant scenario
+[33m59216ac8b[m 修正GMMSwigluQuantV2资料中对xScale和weightScale关于空Tensor的描述
+[33mce93e6c23[m MoeComputeExpertTokens、MoeFinalizeRoutingV2Grad文档修改
+[33m3e55bd5b7[m 适配rope hunyuan
+[33m928fa914a[m 耗时统计脚本支持任意路径
+[33m7ae8a8042[m 修改文档格式
+[33m549819082[m 修复线上910无法编译的问题
+[33m60bf02c7e[m FIAV5接口增加examples
+[33m8a88dd6ff[m Add context as an input to dispatch/combine
+[33m42f4efa92[m allto_all_matmul算子A3暂时规避_apt编译问题
+[33m1288da300[m PA blockSize范围限定拦截
+[33m1a6718f5f[m 支持按模板参数编译算子kernel、支持编译入参调试异常与调优参数
+[33mc3791ca60[m 资料修改
+[33mba810f71f[m add_update_context
+[33m049d0823a[m 整改GMM类算子关于空Tensor处理的资料
+[33m1f2960e22[m feature: infer FA, Ascend950, deprecate api IFAV4/PFAV3
+[33m73e01410c[m Bugfix for Dispatch/Combine V3 compile
+[33m565688792[m 更新moe算子的README.md，格式优化
+[33ma851b9d3b[m 将aclnn_*_base.h/cpp文件统一重命名为*_base.h/cpp
+[33ma54e99226[m check_compile_version
+[33m4e533eeae[m 支持编译aicpu算子
+[33mccd5c1c48[m support block sparse attention operator
+[33m4da9f907c[m alltoallmatmul算子A5npuarch芯片号更改
+[33ma7ea11bc9[m fix compile moe_distribute_combine
+[33m8a31cb7e2[m Fix debug: cross read rdma token
+[33maaae31282[m [mc2]clean code: clean up some unused/redundant header files, fix some null pointer risks
+[33m03ae4cd31[m QLI tiling侧 SocVersion整改为NpuArch
+[33mb46da9838[m LightningIndexer算子增加输出shape的拦截
+[33m8fa8e2760[m groupedmatmulfinalizeroutingweightnzv2：修复pertoken_scale为空的情况下，正常用例被当成异常用例拦截的情况
+[33m0e9f63abf[m add post quant limlit
+[33m4f95a5464[m Revert "es graph lib"
+[33m025e00f7d[m adapt 3101 to 3510
+[33me347fe617[m 修改quantallreduce&quantreducescatter量化方式缩写
+[33me0f062c6a[m 【GMM】aclnn资料markdown 语法导致显示问题修复
+[33m61586a422[m alltoallmatmul A4W4场景int32被校验退出
+[33mf77d3df56[m update the description of jit command and WebIDE
+[33m1ffe43be8[m feature:修复G泛化开启FD后精度失败
+[33ma4ff6d960[m fix: combine teardown编译依赖解耦
+[33m1dd9ac43d[m 修正moe_fused_topk CMakeLists.txt
+[33m0d9b9fd9a[m 修复moe_gating_top_k算子文档描述
+[33m1d8102a3b[m [FAG] hifp8 whitelist
+[33mc1882cc29[m mlaprolog v3接口文档针对 David 参数说明更新补充
+[33m23b36ac9e[m 修复PFA模板UpdateTilingKeyPFAMatMulType没有对d进行对齐的bug
+[33m07cfdeb7d[m FIA V5资料修改
+[33md02c60ccd[m fix: clear fia_vx
+[33mefe69d5ad[m es graph lib
+[33m37a14ab71[m fix debug
+[33m27cbe00d8[m fix error compile A5
+[33mbb44d77ad[m op kernel of mc2Context
+[33mfb2bcb8b9[m fix gmm_apt
+[33m0ff2fed13[m fix GMMFR docs
+[33m2d31f3fca[m update aclnnGroupedMatmulSwigluQuantV2 A4W4 md
+[33m60edaa420[m 修复GMMFRweightnzv2 资料若干问题
+[33m0c3b3d415[m GmmmatmulFinalizeRouting v3修复weightscale参数针对format非ND场景，响应结果无明显错误提示
+[33m7ed02a86c[m 【fiav4】 滑动窗口注意力同步问题修复
+[33m1ed2a0da7[m 【update】FlashAttentionSocre/FlashAttentionScoreGrad等算子资料修改
+[33m3b556c0d8[m 修复kernel编译耗时脚本bug
+[33m3edec1bbe[m 将Inner与Outer移到eprecvCount适配分层方案
+[33ma1b320d1e[m 整改buildCheck指标&C++语言规则
+[33m65c132d8c[m fix: compile fail
+[33ma12244bca[m add check in FA tiling for hifloat8 input and fix docs problems
+[33m0f071b83f[m 修复FAG s1s2模板isSparse场景性能问题
+[33mc72d9a819[m GQA修改D、layout拦截
+[33m85c6c39ba[m fix ci broken  issue
+[33md4cb8dc0f[m convert opc to asc_opc
+[33m2de0ef328[m LI算子输出shape校验
+[33md72c1e7e6[m Co-authored-by: DaiHN<daihuina1@huawei.com>
+[33m9173cba1d[m aclnnQuantReduceScatter增加确定性描述
+[33m6f45a9b62[m sink qheaddim return
+[33mbd33bbd03[m LI算子输出shape校验
+[33m62c8f715f[m FA N = 1场景负载均衡
+[33m50dc4e69f[m [ci] A5 _apt需要特殊处理
+[33mdadb897f9[m A5伪量化int8/int4/int32场景约束与A3对齐
+[33m569597d0d[m atamm算子新增A3非量化特性
+[33mdc78378ce[m 修复moe_gating_top_k_softmax_v2算子的readme文档错误
+[33m77411b7de[m Refactoring of the A2 Dispatch and Combine Hierarchy Scheme on HCCL Buffer
+[33ma4bee4613[m FAG 文档约束更新
+[33m42e8f435a[m fia codecheck
+[33mb5ea55b87[m [ci] 增加算子级编译列表
+[33m8b8e8cbbe[m ScatterPakvCache support slotmap neg numbers
+[33mb4e7e2002[m ScatterPaCache文档更新
+[33m59a216464[m 修改FFN文档格式
+[33mc97dccaad[m 修复GroupedMatmul切K场景不支持K为0的问题
+[33m417f857a2[m feature:修复PFA合轴精度
+[33mbe473696d[m 补充ut和文档
+[33m14172d227[m FusedInferAttentionScore支持alibi fullmask
+[33ma28c2cc8e[m add FAG docs and tiling check
+[33m31f75695c[m grouped_matmul_swiglu_quant_v2 A4W4
+[33mfd7b9181a[m 修改算子资料，增加dweight支持float32
+[33m33df96c05[m change align size restriction
+[33m28eaba346[m [FAG] modify tiling datatype
+[33mc6d00bb1e[m MoeTokenPermuteWithRoutingMapGrad文档修改
+[33m52aeed20c[m [Requirement|需求建议]: gmm类算子废弃特性说明：使用到预废弃的接口时，在编译时和运行时打印告警信息提示该接口将要废弃，告警内容包含推荐或替换的接口
+[33mb0b40fca9[m FFN 文档更新
+[33mf72869929[m revise magic numbers
+[33m0591acfad[m 废弃AlogCheckDebugLevel接口，使用CheckLogLevel替换
+[33mb9d04a80e[m fix: onetrack clean code
+[33m27d629628[m fix: clean code
+[33m5ef233f9b[m 【FAG】block swizzle
+[33mad0c0a9bc[m alltoallmatmul A16W4和A16W8性能修复
+[33mfdbbdf494[m 整改GMM类算子的空Tensor校验
+[33mc727c8647[m 小K场景优化，GMMSwigluQuantV2引入右矩阵NZ转置格式支持，以及动态分块优化
+[33m902ba1724[m GQA非量化支持learnsink放开fp16数据类型
+[33m514414e07[m [docs] aclnnRotaryPositionEmbedding.md supports 310p.
+[33mcba3ae92f[m modified the mxquant formula
+[33m272a7b0fa[m sparse kl loss weight/dweight support fp32
+[33m6d741732d[m remove microapi namespace
+[33m07b880481[m 修复aclnnGroupedMatmulV3和V5的资料描述缺失问题
+[33m7bb85eb6b[m moe_token_unpermute_with_routing_map支持950
+[33mbc7ae5a3d[m feat(build): 支持Built-in包打包npu_ops_transformer whl
+[33m06460d081[m FIA gsize拦截约束
+[33m69178c59c[m gmmalltoallv pertensor 量化特性支持 hif8，kernel 部分代码
+[33m69eb711f7[m Update Disppatch/Combine V3/V4 docs
+[33m39489deda[m GMM A4W4优化，新增动态分块优化，调整singleCoreN、全载矩阵减少搬运数据量
+[33mab75e6f26[m 修改grouped_matmul算子<<<>>>用例链接
+[33m7dc4fa194[m rope half mode supports 310p.
+[33m7046fa249[m 资料修改
+[33m351b1afd3[m FAI路由&&PSE导致DDR问题修改
+[33mae9b51465[m 新增拦截A5 PA场景不支持query dtype为int8
+[33m04f557e97[m [FAG] del sensitive words
+[33m8d389da21[m alltoall matmul mx量化 kernel代码
+[33m1d56549a8[m [FIA IFA PFA]资料废弃接口格式修改
+[33mcc7b351d6[m MoeInitRoutingV3:非量化场景支持hif8 & quantMode为6支持bf16/fp16输入转hif8输出
+[33m2915abfe5[m feature:G泛化放开D约束
+[33mfe0bee0d2[m 修复dequant_quant_kvcache算子
+[33ma45281d35[m md type修改
+[33m6a6a1fceb[m ring_attention算子文档更新
+[33m5079260ea[m feature:修复pfa合轴精度问题
+[33m6a573aa2f[m 修复ROPEV2中json的可选项设置
+[33m1149c0d50[m 新增quant_all_reduce算子<<<>>>直调工程
+[33ma882f8c0a[m alltoallvgmm 修复量化 模板转置问题 & aclnn 共享转置问题
+[33mc3cf4d962[m 修复maskshape支持范围
+[33maaa32e55d[m mask约束资料补充
+[33med2685c64[m quantgmmalltoallv aclnn/tiling
+[33m775356b9f[m [mc2] allgather adjust x1 size
+[33m32862fa14[m combineAddRmsNormV2资料修改
+[33meeb62e6f4[m add mxquant scenario md
+[33md556ab6da[m cleancode清理
+[33me983cac26[m add moe_distribute_combine_teardown
+[33m633498533[m add moe_distribute_combine_setup
+[33mc473a9198[m 新增MoeDistributeDispatchTeardown算子host侧实现
+[33m738497cd7[m 新增MoeDistributeDispatchSetup算子host侧实现
+[33m742ebd1f3[m attention目录 sensitive word去除TODO
+[33ma15b323c0[m feat: 新增combine setup&teardown 950 AIV直驱URMA通信方式
+[33me8ffb3b9f[m sfa添加aclnn接口
+[33m1216e10ac[m grouped_matmul_finalize_routing：去掉pertoken_scale输入必须存在拦截
+[33m5fb8213eb[m fix error description in aclnnFusedInferAttentionScoreV4.md
+[33m0bf84aacd[m 资料修改
+[33mea1c14d95[m 优化mc2下部分注释内容
+[33m5b8c2d645[m [FAG] clean code
+[33m0ab491263[m 【FIA】splitfuse mha功能泛化 支持 mask传入
+[33m3477da0cf[m FlashAttentionScoreGrad算子新增HIFP8场景
+[33m2d1a0a002[m 本次PR主要增加了experimental目录下文件变更后的CI构建流程验证
+[33m984d8a727[m 修复rotaryDim!=headSzie时同步问题
+[33m53c21a1d3[m npu_ops_transformer_ext算子与老写法算子隔离
+[33mf14d02840[m [FIA] pse,mask 非对齐场景拷贝越界修复
+[33m956eb8c8c[m 为aclnnRopeWithSinCosCacheV2接口补充说明资料
+[33m8e9fe1714[m fix antiquant BNSD_BSND bug
+[33m206660c3f[m LI算子aclnn检视意见修改
+[33m151ca8027[m fix combineARN精度问题
+[33me7805f5c9[m alltoallvgmm算子hccl v2 接口替换
+[33m407aa4f9f[m FA fp8 support 512tiling
+[33m63f9fff6a[m fix gmm no quant l2 cache
+[33mae4c91e34[m 追加伪量化责任田
+[33mcca0e0038[m [prologv1 prologv2] aclnn接口退出告警
+[33md8220538d[m alltoallmatmul 修复文档 aclnn返回值描述修改
+[33m51d31c390[m prolog v3 资料修改
+[33m67c6db482[m gmmswigluquantv2 删除x/xscale空tensor判断
+[33m00dc7fe7b[m LI算子aclnn接口文档修改
+[33me711d0d79[m add Kirin macro in grouped_matmul_utils.h
+[33m5f2651021[m cleancode 清理
+[33m8e09f6618[m 迁移inplace_index_add、masked_scatter，添加moe_token_permute_with_routing_map_grad支持a5
+[33mdd753f179[m [GMMSQV2]修改gmmswiglu_quant_v2算子不规范结构体名称
+[33m91ef89b4a[m GroupedmatmulFinalizerouting  pertoken 量化，weightnz模式 aclnn通路。
+[33m7fbc7bc39[m GMMSQ算子异常场景提交
+[33m108b4dd38[m [experimental FIA] 编译报错修复&&cmakelist整改
+[33m234c1c8ba[m rope_with_sin_cos_cache fix 950 devide 0 error
+[33m9e0130a95[m GMM全量化部分支持INT8输入INT8输出及INT32输出资料
+[33mac44cabf0[m A5 QLI 算子适配FP8_E4M3及HFP8量化功能
+[33mea1472dac[m LI算子新增Inner接口
+[33m563e2c86c[m rope V2接口
+[33maf418dfc4[m 魔鬼数字问题修改
+[33mc2250fc9e[m 修复FAG aclnn非连续场景下获取ShapeSize问题
+[33m28671df1d[m ROPE 修复kernel侧拦截问题
+[33m7292d79e4[m add pertoken mode kernel files of op GMMFR
+[33mddd7b7b41[m [FIA]资料描述修改
+[33m8a09dcd07[m 修改classify_rule路径配置错误
+[33mb9ea58fef[m 【GroupedMatmulFinalizeRouting】支持K-C/T-C weightnz特性tiling部分
+[33m7026d0047[m remove the check of alltoallquantmatmul x1Scale and x2Scale must have the same k-value
+[33m9c10eb6aa[m aclnnGroupedMatmulFinalizeRoutingV3 文档命名格式化更新
+[33m14a289de9[m fix constraint of ratio between numHeads and numKeyValueHeads
+[33mec9aef407[m 使用模板修改资料
+[33mf73c0505c[m 输入异常分析
+[33m831ab1702[m S1G invalidrows bug code review
+[33mac45dff14[m add dynamicquant and dequant
+[33m967fed57c[m 编译头文件包含路径bugfix
+[33mf38d4a496[m NTD_TND Dsize拦截信息修复
+[33m4d4c8880f[m GMM全量化部分支持INT8输入INT8输出及INT32输出
+[33m613ae40bf[m revert//新增ROPEV2接口支持辅助矩阵输入
+[33mb4bfabfd1[m per-tensor全量化tiling拦截修改
+[33m65d67a49d[m cleancode清理
+[33mbda4209b0[m 增加NTD NTD_TND D不等长拦截
+[33m7150fffd8[m AllGatherAdd算子详细设计实现文档
+[33mda61be504[m fa infershape修改
+[33m84b2387f5[m FIA clean code去除多余空格和头文件
+[33m02eea9657[m alltoallvgmm support hif8 pertensor quant mode：Optimization and Rectification
+[33mce6c6a972[m alltoallmatmul A2量化模式，bias可输入空指针
+[33m2f6d1e8b4[m 增加950上moeinitrouting v3算子 hif8 pertensor、pertoken量化需求
+[33m1065427e7[m fix_transformer_graph_extension
+[33mceea70639[m add mx matmulalltoall kernel
+[33ma44e3e7e1[m 修复使能PA时获取VD错误
+[33m238296f69[m 补充ApplyRotaryPosEmb ut用例
+[33m79a2aced3[m fix: fix warnings
+[33m988a83a94[m aclnnGroupedMatmulV3接口兼容int8输入,int8输出场景
+[33m95c526dfb[m adapt tnd partial rope
+[33m9da9b9605[m 新增伪量化场景对传入rope的拦截&&删除sparse=4时的无效校验
+[33m09b62a576[m clean codecheck warning
+[33m8df8fe65a[m 新增ROPEV2接口支持辅助矩阵输入
+[33m2baa012e5[m 【FIA】FIA splitfuse mha功能泛化资料修改
+[33m6d7b27333[m remote todo comments in ffn folder
+[33m28daf0ab0[m feature: infer FA, Ascend950, deprecate api
+[33m5e8817a7d[m fix bug for TND
+[33m2719a73dd[m 【update】FusedFloydAttention正反向算子增加不支持shape的拦截以及相关资料修改
+[33m9a6b40ffc[m GMM 新增校验tensorlist内元素为空指针
+[33m1968e0db7[m partial rope
+[33mbe6bcad78[m 【日志优化】gmm算子AlogCheckDebugLevel废弃日志接口替换
+[33m4d3bbf03a[m 编译头文件包含路径bugfix
+[33mbd618b601[m 修改公共文档描述
+[33mf9d9de0ea[m [mc2] fix readme where 950PR is lost
+[33m1f31d8ac3[m [FIA IFA PFA]fa ut相关格式整改
+[33m229a2030b[m 补充tilingkey
+[33m498342e08[m GQA perblock全量化添加拦截
+[33m0104fc64d[m 修复GQA非量化tiling下沉误拦截
+[33mf5f79a3e2[m 【FAG】fix tnd s1s2 exist zero
+[33m621df65fd[m [310p]PFA support actualSeqLenKV
+[33mfcff1be79[m [bugfix] 修复TND问题&修复资料问题
+[33me46032f71[m update error msg process
+[33m4a9a00525[m GMM MxA8W4 AntiQuantScale and PerTokenScale support 3d
+[33mead29fd46[m alltoallmatmul合并核函数头文件
+[33md364c3d65[m 全量化Tiling拦截补充
+[33m05e3ba288[m ifa pfa kernel_operator.h 最后清理
+[33m8ba7706ab[m mlaprologUT cleancode
+[33ma93adfacc[m apply_rotary_pos_emb support TND layout
+[33mf004fe0d5[m 更新Third_Party_Open_Source_Software_List.yaml中的三方开源软件版本信息
+[33mbde6a8b19[m mc2 template refactor
+[33m629e11097[m 兼容性修改，兼容c25 toolkit编译
+[33m7a6d04d72[m combine fa offset calculator
+[33mf655f5c58[m 修改norm_rope_concat算子aclnn错误码资料
+[33m259eb7a0a[m Add FFN figures for link of FFN markdowns
+[33mef6c2115c[m moe_token_permute_with_routing_map support ascend950
+[33me48d41722[m 【描    述】  fix bug for eigen 5.0.0's line endings
+[33md133798e7[m Modify the README
+[33m33b40f607[m [GMM算子]Add AiCoreNum check in specific scenario
+[33m814f12f6a[m [FIA]PA+TND/NTD场景拦截修改
+[33mb9896f416[m alltoallvgmm support hif8 pertensor quant mode
+[33m89a58c3ae[m 修复拦截问题
+[33m38c7162c5[m 【PFA】删除keydim1 < blockNumValid的校验
+[33m1a27b76d5[m 增加dense_lightning_indexer_softmax_lse算子调用示例和修改资料
+[33m5b3aa9f6d[m alltoallmm&mmalltoall add mxquant scenario
+[33med44265e9[m 更新离线编译文档，重构了“算子调用”文档中关于第三方软件依赖和离线编译的章节，补充了离线编译扩展包的下载脚本
+[33m85afaa7c8[m add moe_token_unpermute_with_routing_map_grad 950 support
+[33m33f36ed39[m 增加编译耗时统计脚本
+[33mdfb2189ce[m mlaprolog支持he,cachemode泛化
+[33mf9ef9af1b[m [FIA IFA PFA] aclnn接口废弃增加第一次运行时告警
+[33m01a9a93e3[m 本次PR旨在优化CMake构建脚本中GoogleTest第三方库的集成逻辑
+[33m8e73c75de[m [FIA]代码检视意见修改
+[33m68af3c153[m aclnnGroupedMatmulV5接口支持量化场景
+[33mb4966ec6e[m update doc
+[33m1ffefbceb[m add inferGroupSize for mmar mmrs & agmm
+[33m3ace60595[m 约束BNSD_BSND16对齐
+[33me89311f4a[m MC2算子资料修复
+[33m5e81cc780[m alltoallmatmulMX量化tiling
+[33mdfb8e8df8[m 增加matmulalltoall算子mxfp8量化场景tiling代码
+[33m5a9b7759b[m ScatterPaCache修改原型约束说明
+[33m7ad74417b[m Distribuebarrier算子支持950
+[33m57a30f3a1[m 修复GroupedMatmulAdd算子参数不完全匹配问题
+[33me2a1534cf[m feature:【FIA】v5接口检视意见修改
+[33m922a02c5b[m add mhc
+[33m0e5130d7e[m fa common memory copy opt
+[33mf19cf5a16[m aclnn：example以及aclnn文档
+[33m696303959[m fa性能优化，d192，dv128
+[33ma0733b247[m repair S1G InvalidRows boundary condition
+[33m0a9017e33[m dispatch_fullmesh cumsum分核代码
+[33ma1d04448d[m [MC2] support the fit-based balance tiling for AllGatherMatmul in 950.
+[33m7d4e53a15[m alltoallmatmul为PTA适配torch.tensor的int32输入
+[33m1a62a495d[m [FIA] aclnnFusedInferAttentionScoreV4 (splitfusepa) 算子MHA场景功能泛化
+[33m6f9b701cf[m 修改GQA per-block全量化V5接口资料
+[33mcf2a33d10[m 修复GQA perblock 全量化qs=1下的拦截信息不匹配问题
+[33mb0182bb32[m [FIX]修复s1RealSize为0时没有特殊处理的问题
+[33m9081122ab[m fix invalid link
+[33m2e3ab4114[m Update Dispatch/Combine docs
+[33m0162cad4e[m [mc2] fix wqmmar supported data type in pertensor scenario
+[33m7af7c963b[m kv fix check shape
+[33m0c2344643[m 修改上帝头文件，增加宏
+[33m00b42c4c2[m QSFA支持FP8/HiF8
+[33mb5d7c0fe9[m [FAG] fix rope empty tensor bug
+[33m0bfbfdf90[m 950 上增加moe initroutingv3 pertoken pertensor hif8量化功能
+[33m3e056c8d2[m 修复GroupedMatmulSwigluQuantV2 、GroupedMatmulV4 、GroupedMatmulV3算子问题
+[33m5c48d0be2[m 补充groupListType描述
+[33m8f3a57475[m 修改整仓错误链接及错误产品名称
+[33ma2e9b44cb[m moeinitrouting v3 950上支持 hif8 pertensor和pertoken量化
+[33m6154f79ee[m cleancode
+[33meb9e5b301[m 增加malprologUT覆盖率
+[33mb69e5bfd4[m moe_init_routing support fp8
+[33m1f3291bfa[m fix FA empty tensor n2=0 and d =0 div 0 problem
+[33m44e84d52f[m 【FIA】修复tensorlist场景B全为0被误拦截，添加非量化4维mask第2维异常校验
+[33ma4dc606a2[m grouped_quant_matmul日志描述整改
+[33ma8f043187[m 修改接口文档格式错误问题
+[33mab3ec092b[m PANZ per-token-group量化系数的搬入UB时32字节对齐
+[33m0c90fb3cf[m 修复CMake构建脚本中JSON库头文件包含路径设置错误的问题
+[33m8e9babb1d[m 修复aclnnNsaSelectedAttentionInfer文档调用示例
+[33m9cc29aebe[m dispatch & combine 跨超
+[33m04a72243a[m quant_all_reduce&quant_reduce_scatter归一hccl通信结构体
+[33m8ceb72b6e[m grouped_matmul_swiglu_quant_v2在输入不支持的数据类型时，提示 dtype is not support。修复日志提示不合理的问题
+[33m010843d48[m [FIA] 增加include<set>
+[33m368c73258[m fix ScatterPaKvCache 同步问题
+[33m8aacc22fa[m combineAddRmsNorm算子资料与示例代码修改
+[33m349083a79[m Revert "修改了all_gather_matmul算子ut的op_host组件的用例输入方式，改成csv表格"
+[33me426f5a58[m win区dump数据解析工具资料
+[33md69cb77e8[m /lgtm
+[33m44338c144[m 修复alltoallmatmul的api校验
+[33m24050af39[m 修改aclnnGroupedMatmul，支持a3
+[33mfbffd8b1c[m 修复部分moe文档中的描述问题
+[33mdacc584e3[m moe文档修复
+[33m12b9e4d3f[m cleancode清理
+[33mbd65dfcc8[m 修改GmmSwigluQuantV2算子aclnn通路调用宏函数输出报错信息不明确的异常
+[33m4efbd43d4[m 空tensor初始化添加同步
+[33ma143b0383[m MmA2A算子资料_更新161002错误码的涵盖范围
+[33meb8f0ac73[m MLA非量化mask bugfix
+[33m9bb73d4cc[m [FAG] error info modify
+[33m4573c2e12[m ActSeqLen拦截信息修复
+[33mca2959609[m [ci]支持自动分组编译脚本
+[33m3f7ce4e45[m 修复 SwinTransformerLnQkvQuant 算子aclnn文档文本问题
+[33m46bdb1938[m 补充grouplistType描述
+[33m3881d5c01[m gmm算子aclnn异常场景拦截打印日志修复
+[33ma6aa6f178[m revert//优化头文件
+[33m0c3b9b386[m Fix Debug: Min HCCL_BUFFSIZE may result in cleaning bufferId.
+[33mf8ca3c8bf[m matmulalltoall&alltoallmatmul图模式修改
+[33mcc85a74e8[m 修改了all_gather_matmul算子ut的op_host组件的用例输入方式，改成csv表格
+[33m54df45bbb[m 优化头文件
+[33m1734ac98d[m 修正pr_1711对moe算子的修改错误
+[33m5be96ccdc[m 【FIA】mask资料修改
+[33m974e55604[m 修复确定性场景FAG算子在SparseMode=1情况下的越界访问
+[33m9d746b5f2[m 离线编译修改文档
+[33me30daef63[m SOC_MAP_EXT add kirin9030
+[33m14b7a4cf9[m MC2 dump implementation 编译宏
+[33m218a8edfd[m arch35gentask stub for compiling master with c25 toolkit
+[33m1685d89c3[m 【fiav4】 滑动窗口注意力边界值修改拦截和代码整改
+[33mbcfb6a770[m 整改GMM资料中的若干问题
+[33mab17952f6[m 【FIA】二维mask规格调整
+[33md650ef8f9[m 修复GMM V4问题
+[33m0c83c6cf3[m moe_finalize_routing 文档问题修复
+[33m5023d7a81[m moe_finalize_routing_v2 md fix
+[33m3d3283ded[m 【doc】swin attention score quant模板整改
+[33md3460fbf0[m 回退 ROPEV2 文档， 后续跟随算子上库再上库
+[33me68a8d08f[m 修改离线编译cmake
+[33m853ce34a1[m 【FAG】empty tensor bug
+[33m7084b8124[m 回退 "【新增支持】ROPE新增V2接口支持辅助矩阵输入"
+[33md3aa49604[m 修复matmulReduceScatter/matmulReduceScatterV2文档和参数校验更正
+[33md92356c78[m MLA decode 全量化输出softmaxLse cleancode
+[33m2d4975495[m 修复GMM问题，提升易用性
+[33mf4dc1e420[m [PFA] 使用ASC统一提供的__aicore__
+[33m3df82a5b2[m include ut coverage for gmm ops
+[33mcbb4ee9bd[m 修改V5接口资料
+[33m546920723[m gmm伪量化放开n=0场景拦截
+[33mc0682f260[m up moe op md
+[33m046aef30f[m 【bugfix】FusedFloydAttention算子workspace大小修正
+[33ma8ef09049[m 提炼公共代码到框架，方便其它ut用例重构
+[33mb50a6d62b[m unsupport芯片适配优化后的打包脚本
+[33m4047b3e1c[m 【新增支持】ROPEV2接口支持辅助矩阵输入
+[33m20557d671[m [build.sh] 静态库编译成功，增加相关提示与资料保持一致
+[33m64dedf373[m 修复scatterPaKvCache算子aicore问题
+[33macd1e325d[m V5、V4资料中learnable sink的shape信息更正一致
+[33mf147598e4[m V5增加MLA全量化约束
+[33m162847b77[m gmm类算子#include "kernel_basic_intf.h"兼容性适配，适配8.5版本CANN包
+[33m7023a5809[m 取消GroupedMatmul算子激活拦截
+[33maa9faa8ce[m 修复mla全量化场景qs>1输入sparsemode非3的报错提示
+[33md29806ac0[m 【A2】Layered CombineA2 TokenNum Upper to 512.
+[33m336ffa3e5[m MmA2A算子_增加空tensor效验拦截
+[33mf709aa8d2[m 调整aclnnMoeFinalizeRoutingV2Grad描述
+[33ma9a251596[m fix alltoallquantmatmul A5 example
+[33mcc81564f7[m [feat] Support 512 Dispatch Layer
+[33mff71371eb[m 更新打包脚本
+[33m48a92d6ba[m add platform soc_spec.h
+[33mf15841991[m add matmul_reduce_scatter_v2 A2 example
+[33m2b2c5f489[m [FIA IFA PFA] aclnn接口废弃资料更新
+[33m0385e307b[m weights增加FP32类型
+[33me22dd5210[m [FAG] modify BN2 tiling & clean code
+[33maf854dcd3[m fix GMMSQ && GMMweightNZ && GMMV5算子问题
+[33m7ea5a3697[m 【描    述】  eigen update to 5.0.0
+[33me23f3b2a9[m 检视意见修改
+[33m6b173d1a4[m 将blockDim修改为numBlocks
+[33m4143b07a6[m 修复 GMM && MOEInitRouting算子问题
+[33m57addf003[m MatmulAllReduce A5 Use Mc2InitTiling & Mc2CcTiling
+[33m5980e181b[m [FIA IFA PFA]将blockDim修改为numBlocks
+[33m021f83526[m add error message for invalid quantmode parameters
+[33m11e82892e[m 修复GMMV4中，报错信息未打印具体支持的数据类型的问题
+[33m0cd4607fb[m GMMSwigluQuant资料修改，修改文档中公式中错误的公式描述，统一文档中的变量名写法，将Ascend 950PR/Ascend 950DT芯片中部分公有约束上移
+[33m148247749[m BugFix: KvRmsNormRopeCache算子大shape AicError问题修改
+[33mc983a390b[m GMM MxA8W4性能优化-mxScale支持多倍载入
+[33me0837fc24[m update .h
+[33m925de7d63[m V5 转置layout MLA相关资料补充
+[33mb1d8f8d28[m update socversion to npuarch
+[33m9538f565e[m fix the inaccurate description of the aclnn md
+[33ma6f37acaf[m mlaprolog支持qc_qr_scale/kc_scale
+[33m1203afa6e[m 软件包依赖关系修改
+[33mbe9aacf44[m add contributing of document
+[33m4e6a25a20[m update slig/sfag output校验
+[33mb59cf016b[m [Fix] fix small s2 tail basic block
+[33m4432130bb[m transformer仓ut数据恢复
+[33m60c179eab[m 修复QuantGroupedMatmulInplaceAdd算子aclnn资料中scale1参数维度描述错误
+[33mf29be4899[m attention算子资料补充芯片支持说明
+[33m7cab8a6a6[m 修复MoeGatingTopKSoftmaxV2算子finished参数为true时，expertIdxOut取值不对问题
+[33md8791e157[m add check for aclnn_moe_token_permute_with_routing_map
+[33m9844c1209[m MoeInitRoutingQuantV2 support empty tensor
+[33med55776d1[m [FIA IFA PFA] aclnn接口退出告警
+[33m80329f3a5[m fix: scatter_pa_cache not compiling
+[33m3c508d748[m 删除冗余函数，修复在非910b的CANN环境中ut用例执行失败的问题
+[33mfd0ed91f8[m Change Doc, single machine dc
+[33m658e59474[m A2 MoeDistributeDispatchV2 Support <= 256 Moe/PerRank, when epWorldSize <= 8
+[33m5242182a5[m 修改v5资料
+[33m002aa7263[m recurrent_gated_delta_rule算子支持参数gk
+[33m3ea26544f[m fix(kv_rms_norm_rope_cache)：修改910B平台上，tilingkey判断分支，提高部分场景算子性能
+[33m70f8039e9[m remove socversion
+[33m93583c366[m fia算子kernel代码修改
+[33me1a5e9868[m 降低fia offset计算函数圈复杂度
+[33mfb785dff9[m 补充a2amm资料
+[33mec41272fc[m 补充AllGatherMatmulV2 A4W4资料
+[33m5a4dc61b9[m compile with ci
+[33m7cab2d2f4[m V5 NTD相关资料补充
+[33md5e339d86[m fia非量化代码
+[33m4948b75dd[m 调整MOE_ROPE_ACLNN接口描述
+[33m15ff14768[m gmm_add aclnn description fix
+[33m5ab1d4426[m MxA8W4拦截信息补充
+[33m4e4f91685[m 【fix】moe_token_unpermute_with_routing_map_grad约束公式添加括号
+[33mfae98e6f4[m GMM算子整改空Tensor校验
+[33m2d05412ee[m quant_reduce_scatter资料和报错信息区分二维时BS与三维时B*S
+[33m3816e3ef2[m MC2 SetScheduleMode
+[33m613510ad2[m 修复MoeInitRoutingV2 geir问题
+[33m08fbc029a[m [fix]自适应install_deps.sh 的 sudo, 避免找不到 sudo 报错
+[33m6acd4fce8[m 修正gmm算子的资料，增加A8W8时，仅Ascend 950PR/Ascend 950DT支持bias为bf16的说明
+[33mbc5b2bcaa[m 资料修改
+[33m8654045f4[m 非直调算子，取消自动生成aclnn
+[33mce9234089[m Dispatch MX Quant Mode Add Saturation Mode
+[33m7cb66a217[m SLIG、SFAG算子不支持非连续场景
+[33mce04d3e61[m doc: sync document for AllGatherMatmul
+[33mbdf7202ad[m Modify the README
+[33m2844ccc3b[m AllGatherMatmulV2算子支持A4W4特性
+[33m03f734051[m sfag/slig infershape及校验修改
+[33m27b24aff3[m 同步双通信域算子文档
+[33mac0860f79[m Fix A3 fullmesh bug
+[33mf853e62ae[m MatmulReduceScatter文档同步
+[33m18c3ea3f6[m multi-version of alcnn
+[33mb2c53b511[m 重构matmul_all_reduce opapi用例
+[33m88d7a2a8f[m feature:G泛化需求资料补充
+[33me830af995[m 修复文档有关GMMFR中sharedInput描述错误的问题
+[33mbb9a81596[m SFAG optim
+[33m1fa23e282[m modify information for layout and blocksize constrain
+[33m73c4fdaa5[m FIA的learnablesink的host越界报错修复
+[33mba793731e[m V5 innerprecise资料更新
+[33m7b38c8e6b[m 三方库下载缓存
+[33m096526e61[m 修复mc2算子ut的opapi因打桩变更引起的问题
+[33mbd4b2d3e2[m 修复BNSD_NBSD尾块搬出异常&&资料补充
+[33m0592827f5[m Capability enhancement: noaicpu option is supported.
+[33mf46f04960[m 修改scatterPaKvCache的tiling校验以支持cacheMode为pa_nz时cache的5维输入/输出
+[33m3c3386e61[m 【FAG】bn2s2 tnd swizzle optmize
+[33m5a508e940[m 删除grouped_matmul、grouped_matmul_swiglu_quant_v2、grouped_matmul_finalize_routing中不必要的数据流，缩短编译时长
+[33mf42d66079[m A5expert,barrier算子dev仓资料移至开源仓
+[33m71798b1bc[m fix code spelling error
+[33m84ef7bb3a[m MatmulAllReduce CommFp8 Adapt CCU All2All DataCnt Limit
+[33m2773934ce[m [tiling] attention_update A5修改日志打印占位符
+[33mee7d01250[m modify rank_size valid value
+[33m6131adfce[m fix the inaccurate error description for alltoallmatmul&matmulalltoall
+[33m7fcdbe14e[m MC2 GEIR from fusion ops to proto
+[33m5080903c6[m 【fix】moe_token_unpermute_with_routing_map_grad补充参数描述
+[33m9aa05a4bc[m fix gmmsqv2
+[33mc69a34632[m [FIA]资料修改，mla场景不支持pse
+[33m36391f24a[m (register)replace socversion with npuArch
+[33m76a273c5e[m GQA非量化支持AttentionSink拦截补充&sink非FD分支计算逻辑修改&V5资料中新增sink描述
+[33me8b3dfbc1[m FIA FD init optimize
+[33m0d2c731b6[m sfag增加sparse_block_size校验拦截
+[33m423540d49[m 修复moe_token_unpermute文档
+[33m20ea81afa[m FIA splitfuse的learnablesink考虑行无效
+[33m19c834c69[m MLA decode全量化 LSE输出修改
+[33m9a1b1506d[m dense_lightning_indexer_softmax_lse输入weight支持float32
+[33mc4385241b[m [FIA] fix oom bug for antiquant
+[33m06869f7ab[m quant_reduce_scatter和quant_all_reduce资料修改，增加通信域约束
+[33mf28bba3de[m add qkv_rms_norm_rope_cache
+[33mef322ad78[m 优化MOE接口说明
+[33mfc9db6ff7[m FIA nonquant init optimize
+[33m1ceed2753[m fix debug for single machine
+[33md452dde69[m 修复MLA非量化sparse0/4分核错误
+[33md78096ed1[m fa_fag_add_input_error_log
+[33ma35250f1c[m improving code readability
+[33m64a244743[m FIA consistent naming style for bool
+[33m99740c694[m GroupedMatmul使用的SocVerison整改为NpuArch新接口
+[33ma4d7e7bfe[m MLA decode 全量化输出softmaxLse
+[33m7b1a669a6[m FIA splitFuse PA FD 修改使能FD特性的条件
+[33mec58c0ed5[m [FIA]feature:Add V5 interface
+[33m96dd6a112[m 清理编译告警
+[33m156446e31[m MlaProlog fix tilingkey-not-found issue in per-tile scenario
+[33m17b6713c5[m layout泛化增加约束拦截
+[33me9cfd9328[m UT格式+blockDim变量名修改
+[33m84aaadfce[m optimize RingAttentionUpdate small S
+[33m81213d246[m fix leftpadding
+[33m444806abc[m moe算子文档修改
+[33ma4ce8d44e[m moe类算子文档修改
+[33m6b664aa83[m update moe op md
+[33m7e5221d9b[m fix doc
+[33m8adc6e89f[m AllGatherAdd bugfix
+[33m3cbec10d6[m mlaprologblocksize泛化
+[33m17362b037[m 同步qbmmia算子规范资料到transfomer仓
+[33mb268de8fb[m undefined symbol
+[33m62be34548[m 修改GQA伪量化支持prefix中的prefixloopcount判断条件
+[33m8a8529180[m GQA非量化非BNSD格式actualS1Size计算bugfix
+[33m30762d935[m AllGatherMatmulV2算子tilingkey整改
+[33m4e3b3cfa4[m dsa op support deterministic
+[33m49c60620d[m 优化aclnnFusedInferAttentionScoreV4约束说明格式
+[33m8f4dbd410[m 修复GMM激活函数精度问题，补充tiling处acttye枚举值
+[33mb5166124e[m restore ut for coveraging
+[33m37ee34fc1[m combine同步等token
+[33m15eccf038[m 本次PR旨在解决测试程序中环境变量检查逻辑的警告信息指引性不足的问题。当ENV_DEV_NUM环境变量未设置时，原有的通用警告信息无法帮助用户快速定位问题根源和获取解决方案，影响了调试效率和用户体验。
+[33m9f27358b9[m delete fia pse useless code
+[33m460fd0968[m kv cache optimize
+[33m1fade901a[m last bn逻辑修改
+[33m0fec6c47e[m MatmulAllReduce A5 Use mc2InitTiling and mc2CcTiling
+[33mb4ff7a333[m slig/sfag tiling修改为芯片架构注册
+[33m92b1a3b78[m quant_reducescatter报错信息打印实际shape和预期的shape
+[33m7c9641a57[m [mc2] weightQuantMatmulAllReduce doc modify
+[33maf754ecee[m 对mc2算子的ut用例进行代际隔离
+[33m0d9584d81[m add ascendC shmem code
+[33m11031c076[m 修复examples目录下示例执行失败问题
+[33madafaef21[m Update AttentionToFFN/FFNToAttention docs
+[33m2aad8b3e1[m AttentionToFFN performance optimization
+[33m7e8c30fa2[m moe_gating_top_k_softmax精度问题处理
+[33m9d2684ca3[m allToAllQuantMatmul支持A16W8/A16W4/smoothQuant
+[33m1c6cbd44b[m 更新A5伪量化约束
+[33me747156af[m 【fix】moe_token_unpermute_with_routing_map_grad约束公式补充括号/芯片支持情况表格显示修复
+[33mdb7957d45[m [FIA]experimental fia删除多余代码
+[33m16bc59a1c[m [FIX] Modify the GQA per-block fullquant offset calculation
+[33mc25b4a437[m FIA splitFuse 场景算子scalar耗时增加问题修复
+[33m5b3eca4a7[m aclnnGroupedMatmulWeightNz伪量化为空的参数删除actType
+[33ma5f8edd26[m fix gmmsq sync
+[33m8c28a2b60[m [feature] dense support weight = fp32
+[33m17beabaea[m MatmulAllReduce相关算子aclnn资料补齐算子源码链接以及产品支持情况。
+[33m236a5fdb7[m gmm add empty tensor check
+[33mf8882f78b[m [FIA]fixbug:float8_e5m2拦截
+[33m2cf2d7b63[m 文档修复
+[33m6eee6b630[m dispatch_dfx
+[33m99a876f97[m 修复计算attenOut的singleCoreSize时可能出现减翻的问题
+[33m662f162cf[m fix a synchronization issue of dispatch v2 fullmesh
+[33m65cafae00[m fix syncAll
+[33m1188b6fd6[m FIA scalar optimize
+[33m7a0329163[m [FIA] fix GQA per-block omm bug
+[33m473010ebb[m FIA constinfo struct optimize
+[33m15f8434a4[m FIA delete unused code
+[33m8c1f71ff5[m 修复moe_init_routing_v2_grad累加精度丢失问题
+[33m6978efa77[m 整改L0接口内QuantGroupedMatmulInplaceAdd的Infershape入参顺序
+[33m7fe0dd66d[m 新增算子attention_worker_combine和ffn_worker_batching
+[33m25a0a1825[m delete experimental无效文件
+[33m9ce0840ff[m 空tensor支持
+[33m45a7ea1d8[m offset计算代码优化
+[33m17de35a6c[m (tiling+gentask+infershape+register)replace socVersion with npuArch
+[33mea8f90e1e[m 优化全核同步
+[33mfbf471b1a[m SFAG example问题修复
+[33md2fffb6d7[m 修复QuantGroupedMatmulInplaceAdd算子aclnn资料中scale1参数维度描述错误
+[33me1f6f5619[m 修复gmm文档缩进问题
+[33m6cce8b906[m fix scatter_pa_kv_cache ub tiling
+[33me61e5b812[m fix tensorlist bug
+[33m10009be89[m fix license
+[33mccd9bc9bc[m fix rowinvalid
+[33md1ad954c4[m 修改SFAG算子deterministic获取方式
+[33mf314395a8[m 【aclnnGroupedMatmulFinalizeRoutingV3】修复文档中的错误信息；修改aclnn通路中部分场景报错信息不准确的问题
+[33m4901717a1[m 提升moe_gating_top_k_softmax性能
+[33md76a776a5[m fix pipe V_S
+[33m9691bcc3f[m dispatch v2 fullmesh 2-dim mask fix bug
+[33mbf58fb604[m PFA tilingkey补全
+[33m8d027744e[m tiling shape校验修改
+[33mb9e4731b1[m feature:nQ and kv cache check
+[33m2f88f2c15[m 修复recurrent_gated_delta_rule算子READM文档问题
+[33m020a767b3[m docs文档同步修改
+[33m0c1863b17[m MLA非量化资料修改
+[33mcaa1bac12[m recurrent_gated_delta_rule资料修改
+[33mcfa918caa[m GS1合轴判断条件使用函数判断
+[33mdd2c27dad[m add ScatterPaCache
+[33me3ba65148[m 【bugfix/update】ffag支持D为特殊值/ffa examples修改
+[33m69698404f[m [FAG] fix old deter workspace size bug
+[33ma84a7769d[m [FAG] fix TND max/sum layout check and doc
+[33me5dc9ee02[m fix bug : empty tensor——init post quant output size
+[33m77113c063[m [FIA]回合mla/pse拦截和tensorlist拦截
+[33me454ffd10[m 权限更新，删除原权限配置
+[33m5f9a67290[m dispatch&combine资料修改
+[33m21c0a5ccb[m matmul_all_reduce ut用例参数中增加对芯片版本的支持
+[33m9b12d59b3[m 【update/bugfix】ffa/ffag算子资料格式、描述等错误更正;ffag输入校验判断修复
+[33m30ea2ca7d[m 支持examples新增算子编译和执行
+[33m846731c51[m 修复GMM文档错误
+[33me233e1066[m 修复PFA tiling侧accumOutSize计算公式不配套的问题
+[33m033acdbdf[m combineAddRmsNorm资料修改
+[33mdfd1838a6[m fix isPerformanceFlag
+[33mb2683f857[m synchronize MD from dev
+[33m49af78d0a[m dispatch v2 适配 fullmesh
+[33ma2c8371cc[m aclnnGroupedMatmulV4 资料中weightnz内容删除并迁移接口拦截
+[33m96c775666[m matmul_all_reduce ut用例参数化重构
+[33m650bed1a8[m gmm部分日志打印语法错误
+[33m76d0d2f5e[m 修复gmm文档中若干说明不规范问题
+[33mcdc4fdd74[m 修复文档offsetoptional描述不准确的问题
+[33md11d86245[m 易用性需求：提示用户使用的硬件信息
+[33m05f535a77[m [FIA]回退代码
+[33m80c79c6c7[m 在softmax场景下支持renorm
+[33m33f612962[m 调整算子MD文档与README
+[33m3ca57b446[m 修复sink PSE场景下的精度问题
+[33m6c84682fd[m 修复GMM/MOE相关文档芯片支持类型
+[33m532fd3de2[m 修复rope_with_sin_cos_cache文档
+[33mfe22d1e68[m 【新增需求】use npuarch to replace socversion
+[33mbaf49f52c[m A5 QS=1支持innerprecise=2/3
+[33m0cbacb4d2[m SLIG deter optermize
+[33m12821635e[m Modify the aclnn issues
+[33m0dee2c282[m 修改norm_rope_concat&norm_rope_concat_grad文档
+[33mc4fa9e4f0[m 修复GQA非量化支持AttentionSink特性的拦截误改
+[33md865fe6d0[m 整网场景下MLA全量化中，为了避免出现s2过长时计算过程中出现Inf，重新对FD负载均衡限制了出口条件
+[33m406e3ef51[m slig/sfag doc文档整改
+[33m55101f890[m [FA/FAG] doc update
+[33m6ed5ed33e[m fix call
+[33mcf4e7dae1[m tiling_sink_task 任务优化
+[33m53b023445[m update for perf
+[33m8c74b0bb2[m fix path 6
+[33mf2dc64c56[m matmulalltoall&alltoallmatmul图模式
+[33m50b9e21de[m modify kvRmsNormRopeCache aclnn md and proto description
+[33mb115d1992[m 对mc2算子ut文件进行整改：包括命名风格、缩进和花括号使用等格式问题和一些导致构建错误的语法问题
+[33m9a766d206[m LI\QLI\SFA\QSFA算子设置batchmode
+[33ma75a92e26[m perblock量化场景串行修改
+[33m8ade8c3e3[m Revert "dispatch优化syncall"
+[33mf91e8dee1[m alltoallmatmul修复
+[33m35ca59613[m 修改yaml，放开ut拦截
+[33m2651e10fe[m 增加非量化泛化模板后量化Dtype拦截
+[33m829841796[m add kirin9030 ops
+[33m00aa5aebb[m mv grouped matmul to mc2 directory
+[33mf69aa2544[m fix bugs : PSE feature, qs==1 pseshifts1 > qs, copy falut
+[33m81ef49227[m dispatch优化syncall
+[33m4b6e703c6[m ffn2attn fix Sync bug
+[33m782826354[m fixup bug uint64_t to int64_t for quant_all_reduce
+[33m9f5201bf0[m add quant_reduce_scatter graph
+[33m447c7e38a[m 后量化和行无效顺序替换
+[33mdc9b81412[m alltoallmatmul&matmulalltoall support transX2 not contiguous
+[33m648691a4b[m ataKcQuantMatmul:alltoallMatmul动态量化（包含host与kernel提交，各部分均已检视）
+[33m9a528dfcf[m MC2 exception dump implementation
+[33mbf801a31d[m alltoallquantmatmul aclnn add A5 adaptation
+[33m2b7aad926[m combineAddRmsNorm适配
+[33m93e71beb5[m [FIA]fixbug:打印信息不清晰
+[33mcea3f28f9[m [FIA] fix GQA per-block fullquant pse bug
+[33mc7d7f6b96[m [FIA]: fixbug pse\tensorlist\fp8e5m2相关场景拦截
+[33m8274b557f[m add grouped_mat_mul_all_reduce
+[33mf6ac99f98[m splitFuse PA FD
+[33me5988e2b8[m revert
+[33mbb9457dcf[m [FIA] 新增配置innerprecise=2/3时拦截，pse特性交叉的时候配置psetype=0时拦截
+[33m8765e0d73[m [FIA] add check qkv scale null
+[33m33202735f[m 修复GMM算子日志打印的若干问题
+[33m605504521[m alltoallmatmul 修复int4 8卡性能
+[33mf65a3bf57[m QuantGroupedMatmulInplaceAdd整改空Tensor处理
+[33mdadd01606[m gmmAdd v1 and v2 docs fix
+[33m0c3e58c93[m mlaprolog v3 ut测试修改case的芯片版本为950
+[33m99342fa48[m win区dump解析工具bugfix
+[33m5cb7a5c13[m update opapi ut stub
+[33m05220bd65[m update attention_to_ffn&ffn_to_attention
+[33m731c9344d[m GMMSwigluQuant pertoken量化模式 支持 aclnn通路
+[33m57884a9be[m support dfx: mc2_win
+[33m78e073008[m 修复算子MoeTokenUnpermuteWithRoutingMap在空tensor临界情况与标杆输出存在差异的问题
+[33m1983be65e[m add quant_all_reduce graph
+[33mfcba77230[m MLA非量化支持sparse 0,3,4，G泛化支持1,2,4,8,16,32,64,128
+[33m33eb18979[m alltoallmatmul&matmulalltoall support empty tensor
+[33m0b621cb64[m [FAG] fix bn2 sprasemode3 bug
+[33md1d95dfb9[m [mc2]fix matmul_all_reduce ub conflict
+[33m5dce387d8[m MatmulAllReduce CommFp8 Sync Fix
+[33me0a7830d1[m update common
+[33ma3a76213f[m kvrmsnormropecache support fp8 hif8 quant and recompute fix
+[33m4a845675c[m [kernel] attention_update 950 optimize performance
+[33m04ff54bca[m GQA非量化支持AttentionSink特性
+[33md9caa9d73[m 增加FIAv4 ATK工程看护用例，并扩展golden中的部分场景未适配问题
+[33m47949e7cc[m Add MoeDistributeDispatchV2 to npu_ops_transformer
+[33m89f942ec3[m feature:g generalization
+[33m2ae20c9f1[m add alltoallmatmul.h
+[33m1e0a213d0[m mlaprolog BS合轴及fp8 pertile量化资料修改
+[33mf365a34d2[m update license and add examples
+[33mfdbf8af9b[m moe算子编译选项修改
+[33m372b8e80e[m 修改prefix拦截&&FIAV4mask资料修改
+[33mc4ececa0a[m fix log and check
+[33mfb1ca54b6[m sfag支持确定性
+[33mb2bba3060[m 修改moe资料中的约束 修复mdStorm编辑器渲染表格异常
+[33m3f21ad630[m dispatch v2 fix winIn addr and sync bug
+[33md2329a32d[m support activation aclnn check
+[33maf1fa96e7[m act kernel
+[33m3f2a1a889[m modify gmm initbuffer
+[33m6ca2ac6bd[m [FIA] int to int32_t
+[33m21e3b6c91[m 【FIA】更新FIA产品支持情况
+[33m35d0716d8[m alltoallmatmul tiling与A4W4性能修复
+[33ma8bc96675[m GMMFR，文档格式修复，主要是中文格式文档格式以及表格排布的修改相关
+[33mc04bfe859[m 修复archname
+[33m3bb756781[m feature:fix fia bug
+[33m52bb0401e[m CeilDivision replace
+[33m195bfb500[m MLA prologV3算子，添加fp8全量化per_tile场景
+[33mc8de391ca[m all_gather_add通算融合示例算子代码优化
+[33mcc53d81b2[m win区dump解析工具
+[33m4f8bc97cb[m fix matmulallReduce
+[33m864d16311[m Add pertoken-perchannel dequant and pertoken quant mode of op GMMSwigluQuantV2
+[33m59ac7ad84[m Arch编码更新
+[33mf195e8f63[m group list upper 128 and weight l2 cache on 950PR/DT
+[33mfafe6a648[m clean code 调整变量定义位置
+[33ma0e333dbb[m modify classify rule
+[33mc6d4e4077[m gather pa kv cache fix
+[33m749731dd5[m prolog v3 fp8 full quantsupport qnorm out gm
+[33m79052e5fc[m [FIA] fullquant add tiling check follow a2/a3
+[33macd150e20[m GMM 切K场景BASEM小于M时校验报错
+[33m826d92e02[m 修复后量化gm init
+[33mfdeb53fbf[m 【GMM】weightNz aclnn适配
+[33m4832d06d4[m kvrmsnormropecache 支持下一代芯片特性
+[33md0a870ea2[m 修复MXFP8量化Cast时SAT_MODE不生效导致的精度差异
+[33m454df3798[m fix kernel select bugs of  grouped_matmul
+[33m8575461e6[m Decode MLA支持TND_NTD
+[33m8b84d6dfb[m 解决MoeInitRouting/MoeInitRoutingQuantV2算子精度问题
+[33md79d17921[m add new ops: alltoallMM; update MMalltoall to support Ascend950
+[33m4b9056039[m fix ScatterPaKvCache tiling dual-in-out
+[33m69f8dff29[m fix GmmAddCgmct
+[33m6334ca543[m build.sh 同步example ut 分soc执行
+[33mb96fd79d9[m feature:fix g generalization
+[33mec910261b[m install_deps.sh 新增attr jinja2依赖
+[33mf2173684e[m cgmct_fix
+[33md9de172a6[m add ut for aicpu
+[33me767c3fb9[m add new ops: quant all reduce; update alltoallvGMM&GMMalltoallv support Ascend950
+[33mbac6aaef7[m add david slig
+[33m3bd28e7f2[m advcance compile for transformer
+[33m30b7c2608[m 【fix】修复docs/zh/op_list.md对号呈现问题
+[33m53263b830[m Add the AI CPU implementation of FfnWorkerScheduler and AttentionWorkerScheduler
+[33m7f3d8f545[m add conditions FIA route to IFA
+[33m6b476886e[m MmA2A_算子描述文档更新
+[33ma18c40ba4[m 新增QuantGroupedMatmulDequant算子
+[33m4eca50199[m 修复sink NZ场景下的精度问题
+[33mf11e4d6bf[m dispatch和combine同步至开源仓
+[33mb3ebb5b8d[m barrier的example运行出现问题，进行修复
+[33m06de2033d[m feature:g generalization
+[33m901e50f29[m 修正gmm actType资料描述不清晰的问题
+[33m6b31281b8[m add new ops: all_gather_mamtul_v2、matmul_reduce_scatter_v2；update all_gather_mamtul、matmul_reduce_scatter、matmul_all_reduce、moe_update_expert to support Ascend950
+[33m0d0200f05[m delete unused file
+[33m471e07f2e[m DequantRopeQuantKvcache 新模板整改
+[33me721fd864[m 删除gmm多余的文件
+[33m79c5d19c6[m 修正gmm activetype报错描述不清晰的问题
+[33me21a3ec16[m GMMFR MX aclnn通路提交
+[33m95d675c4b[m [FIA]修改experimental下A2/A3demo的md说明
+[33m36c2599ae[m [FIA ]int4(int32) 伪量化场景拦截
+[33m2a50ea0e4[m add check
+[33m66e91c756[m Update general document description
+[33ma825ca296[m 新增静态库资料
+[33md432bc05a[m clean code
+[33ma18d240cd[m 修改非量化泛化模板pse和左padding维度拦截
+[33m0e1f7c2d0[m add schedulemode
+[33m9cc118d56[m fix: remove common/act
+[33m14d6e3f03[m 删除barrier、combineArn、combineV2和dispatchV2内aclnn内的重复代码
+[33mbb1ca6f9e[m 【gmm】【groupedmatmulinplaceadd】修改报错信息存在空行
+[33m05edda843[m GMM int8 支持 WeightNz
+[33me2ba8a5dd[m 修改低错问题
+[33m4f95ce7e1[m mc2_ut框架适配
+[33m9b60bd2ac[m GMM 类算子blockdim相关概念统一为numBlocks
+[33mb52442efd[m 交叉检视意见修改
+[33m872cb148f[m [FAG] sync merge from https://gitcode.com/cann/ops-transformer-dev/pull/5711
+[33m422763a53[m fix gmmsqV1
+[33m05088f5b7[m Cmertric_clean-GMM 超大函数清理
+[33m3d375e7ca[m allgether/reducescatter 适配
+[33mc2d880ba4[m Fix SyncFunc EventId Type
+[33mf4fb85501[m [FIA] optimiize mla fullquant tiling fd condition
+[33mbc5e43c17[m 涉及核间同步的算子必须设置schedule_mode为1,修复空tensor场景
+[33md5a63af86[m 【FIA】滑动窗口注意力计算在非mask时的边界判断的逻辑和接口文档修改
+[33meb69011d1[m experimental目录增加A2/A3性能优化demo
+[33m539360a20[m transformer support aicpu kernel compile
+[33meb5996733[m moe类算子文档修改
+[33mdb76bed48[m A5静态图接口适配
+[33m88145c608[m 同步开源修改
+[33me9830dee1[m dispatch、combine算子文档添加performanceInfoOptional
+[33m153a214d6[m Add fallback file of op GMMFinalizeRouting
+[33m6d33d1e7b[m [FAG] clean code
+[33mada9091d4[m 修复MoeTokenUnpermute
+[33me5800acad[m 【GroupMatMul】Gmm模板库相关更名为cgmct
+[33mba75a9bc9[m [kernel] attention_update optimize exp precision
+[33mf79693b4b[m add daivd sfag
+[33m8192e6440[m quant_reduce_scatter ut
+[33mda0dfb6a3[m add tilingKey
+[33mc03c66cd5[m dispatch&combine性能打点问题修复
+[33m9ac8cd9f6[m 增加A5算子
+[33m5202e30b5[m 修复MoeTokenPermuteWithRoutingMapGrad
+[33ma7a4ce290[m quant_reduce_scatter tiling
+[33md13010683[m bugfix: fix doc op list.md
+[33mee9b2bcb1[m 同步rotary_position_embedding和attention_update优化修改
+[33mc1ab22a8a[m dispatch&combine v3 v4接口资料修改
+[33m2f93a0d1f[m SyncAll算子设置batchmode--涉及IFA/PFA
+[33mfdbae3be8[m proto add platform
+[33ma558b7857[m Support A2 Dispatch, epWorldSize <= 8
+[33mc8d350c98[m 修改README和aclnn资料问题
+[33m4f89beb40[m 修改DenseLightningIndexerSoftmaxLse tiling key获取方式
+[33mff5d680d0[m GQA NTD后量化拦截放开
+[33me44028b15[m fix deter casual GQA
+[33m53470bd8e[m 编译运行样例适配custom
+[33m84a0ccebf[m dispatch文档修改
+[33m8321e4e6d[m update moe_token_permute_with_ep's md and  SetScheduleMode(1);
+[33md6057b44c[m Update moe_compute_expert_tokens、moe_finalize_routing_v2、moe_finalize_routing_v2_grad、moe_fused_topk、moe_gating_top_k、moe_gating_top_k_softmax、moe_gating_top_k_softmax_v2
+[33m87b1db69e[m Update moe_init_routing、moe_init_routing_v2、moe_init_routing_v2_grad、moe_init_routing_v3
+[33m1fb3429c0[m quant_reduce_scatter kernel
+[33me92cf73a9[m 新增swin transformer ln qkv quant 算子
+[33m60a38fbbe[m quant_reduce_scatter host config
+[33m74a210a2d[m GMM MxA8W4泛化场景性能优化
+[33m8a64e1030[m 【FAG】swizzle block num optimize
+[33mc2f64f56e[m MC2算子整改(barrier)
+[33mc361ba28c[m MC2算子整改(dispatch、combine、update_expert)
+[33mbb2704c27[m 更新 FIA aclnn文档
+[33m3ba8ef567[m [FAG] fix old deter 28 core error and clean code
+[33mb6f4655c2[m 新增MatmulAllToAll/QuantMatmulAllToAll融合算子，注册进框架
+[33me3e73b20b[m prolog
+[33m3b7270cdc[m update tiling_case_executor.cpp
+[33mfdea562db[m 修改公共文档问题
+[33m66f8affac[m 增加拦截、流水优化特性
+[33m8d7c985dc[m gmm文件整改和代码整改
+[33mbae8edd72[m 修复算子用例、文档更新
+[33mb481f7c3b[m fix sfa race bug
+[33ma509ca19c[m GMM算子适配fp32输入
+[33m4217f6d32[m bugfix
+[33m685562ccc[m 修复aclnn storageShape导致的问题
+[33m05cb5d9a8[m Update AttentionToFFN/FFNToAttention License
+[33m94acef0db[m GroupedMatmulFinalizeRouting tiling增加dtype，属性值合法性校验
+[33m50905de18[m GroupedMatmulFinalizeRouting prologue代码优化
+[33md2f148880[m sycn dev code
+[33m78272790f[m fix AttentionToFFN/FFNToAttention aclnn demo and cmake
+[33ma9aa6c3ff[m gmm编译优化：replace_gmm_head
+[33mb58c6cbfe[m aclnnGroupedMatmul多多多说明
+[33m88cbb28e9[m build.sh放开310编译
+[33ma4922e716[m 去除上帝头文件，优化编译速度
+[33m0325cff8c[m GMM全量化部分去除冗余.o
+[33meb45b39f0[m moe_token_unpermute_with_routing_map支持混精
+[33m0d12c6072[m aclnnFIAv4接口资料修改
+[33mbe3ba62ff[m 新增DenseLightningIndexerSoftmaxLse算子
+[33m96e8ecffb[m sfag算子修复精度问题，算子性能优化，放开k=2048的限制
+[33m4f45bba68[m mrope算子流水优化
+[33m7690c00c7[m 【opensource】swin_attention_score_quant
+[33mf4bbe4817[m clean code fix
+[33m11d23e821[m 更新nsa_selected_attention_infer aclnn文档与readme
+[33m9d7977063[m 更新nsa_compress_attention_infer aclnn文档与readme
+[33m46dd9ae8f[m 更新nsa_compress_with_cache aclnn文档与readme
+[33m8dcf58699[m 更新rain_fusoin_attention aclnn aclnn文档与readme
+[33m56c8f2f75[m 更新attention_update aclnn文档与readme
+[33ma9827fa36[m 更新IFA aclnn文档与readme
+[33m42a5d2a27[m 更新PFA aclnn文档与readme
+[33mde5cbac4d[m 更新FIA aclnn文档与readme
+[33mec96c6af5[m LI TOPK8192
+[33m33d0b7bcc[m 修复MoeFinalizeRouting算子问题
+[33maca8f4088[m update FA/FAG
+[33mf55c12a14[m Transformer 更新Latest News
+[33me670c5622[m 代码规范修改，拦截遗漏修改
+[33m902939cc1[m build depend on new nnopbase
+[33mac89f5360[m 更新贡献指南
+[33ma44a06da0[m moe_init_routing_quant_v2 moe_init_routing_quant moe_token_permute moe_token_permute_with_routing_map 支持新特性及更新文档
+[33m884950fa0[m mrope_section 支持[8,12,12][24,20,20]泛化
+[33m26daba7c3[m gmm add check on 950PR and gmm add v1 support 950PR
+[33m91f9fd6fc[m [feature] 新增denseLightningIndexerGradKLLoss算子
+[33m23291d0b2[m add moe_token_unpermute_with_routing_map_grad mix prob
+[33mdcc515a44[m 优化GroupedMatmul算子A8W4,A4W4
+[33m5409407a4[m gmm核函数入口分离
+[33m99755a1bb[m 【A2】Layered Dispatch And Combine Bug Fix
+[33m1c635788c[m fix-debug combine layered
+[33m61dd2348e[m SLIG性能优化
+[33m802af2fb9[m SFA删除无效shape校验
+[33m586779575[m soc version整改
+[33ma54af6d2e[m bugfix: fix libopai undefined symbol
+[33mef949c3b3[m fix: apply_rotary_pos_emb资料修改
+[33mad627275f[m NTD 叠加特性修复
+[33m2ab1d3624[m update: 更新文件 platform.cpp
+[33mfd4fdd10d[m 修复GMM算子V1-V5及WeightNz资料描述
+[33me169da66b[m 更新部分moe算子的aclnn文档
+[33m018617cfe[m aclnnFusedInferAttentionScoreV4资料修改
+[33m9e2d453c4[m update experimental/npu_ops_transformer_ext
+[33m154706c44[m 修改了swin_attention_ffn的readme
+[33m04eedcaf2[m MmA2A_init
+[33me3f2946f1[m ring_attention_update ascend950 opensource
+[33me13d1ec19[m modify datacopy overflow
+[33m3127f77c5[m close mc2 opapi ut
+[33m5295c476a[m [kernel] attention_update 910_95 add perf template
+[33mdb8368ebe[m add npuarch interface,  replace the socversion
+[33m652f8c8b3[m update grouped_matmul_swiglu_quant_v2
+[33mac5b88d97[m VF优化
+[33ma3f45fa0d[m 同步 ifa/pfa
+[33mbfef435e6[m remove blocksize and layout constrain for no quant
+[33m273fcab72[m 补充未使用参数说明
+[33m2df5e03c7[m fix pse datacopy error due to large s2
+[33m0103a6afd[m 新增FusedFloydAttn/FusedFloydAttnGrad算子实现
+[33me5dbe5b5c[m moe_finalize_routing_v2 DB分支问题修复
+[33m9cd82f484[m solve the problem of garbled characters in the doc
+[33m3c78a86cb[m install_deps.sh支持openeuler
+[33m07dfd9c3e[m GQA per-block全量化支持NTD_TND
+[33me34c52dfb[m ffn主线代码同步
+[33m3c413a90f[m bugfix: empty tensor tilingdata reset
+[33me544e9d86[m mla_preprocess消除无用的编译日志
+[33m82013a396[m sink tiling bug
+[33m70898673b[m FAG sink精度修复
+[33m03909dce5[m Fix FAG Sink MM12 Nzout Bug
+[33m5f8f4d5fa[m fix gmmsqV1 ut
+[33mc5420168d[m MLAPO,MLAPOV2 hostUT、kernelUT新框架修改
+[33mab7c48a6c[m fix scatter_pa_kv_cache oom aic
+[33m679d2353a[m feature:pfa support mask fp16
+[33ma248cefc1[m fix CheckFeatureLse function
+[33m24078a36e[m MxA8W4 64倍补偿
+[33md0ede159b[m fix v3 infershape
+[33m0c9151922[m NormRopeConcat支持RmsNorm&A5支持NormRopeConcat&NormRopeConcatGrad
+[33m367988b1e[m FfnWorkScheduler AttentionWorkScheduler supports new chip
+[33m35d014504[m adapter ge new path
+[33mef22ac8f1[m 修复cust example 头文件引用优先级问题
+[33ma58c8a0b9[m FA算子B模板同步问题bugfix
+[33m006cacd34[m improve perf
+[33m3173e8695[m opensource, FIA/PFA/IFA/MLAPROLOG A5 synchronization
+[33mf826e17cc[m alltoall_allgather_bmm/bmm_alltoall_reducescatter整改
+[33m25c72d064[m Fix RecurrentGatedDeltaRule UT
+[33me5aced81a[m RainFusion support BNSD kvcache nullptr && TND check
+[33m65fdd1ff1[m mlapo算子example和aclnn接口同步
+[33m0ee9effe8[m AtttentionToFFN 异步场景性能优化
+[33mb48e75b7c[m AllReduceMM/MMReduceScatter_fix
+[33mb5023d8fe[m 拦截 sink 场景下 QKV float32入参的情况（文档+aclnn）
+[33m73f54f02a[m 整改产品名称
+[33md428f2fe4[m 开源仓主线框架测归一
+[33mc79715514[m nsa compress with cache 校验修复
+[33mf736fef3f[m modify gsAxis performance debug
+[33m312d30359[m Post tilingdata 结构体64位对齐
+[33mc3d301162[m 添加unlikely，减少sink分支可能带来的性能影响
+[33m51359a22f[m update opapi ut soft_link
+[33m23d4b8e93[m select_attention_operators - "Quest"-based block-sparse mask predictor kernels for efficient LLM decoding
+[33m10f8a80b7[m fix gather_pa_kv_cache ut
+[33m49a816e70[m moe_gating_top_k等算子资料更新
+[33m9be387c56[m fix fia aclnn sample for opensource master
+[33md331b868e[m fix attention_worker_scheduler、ffn_worker_scheduler docs
+[33m0736ae72b[m cmake update
+[33medd2099ff[m 补充过滤脚本遗漏的内容
+[33m7da5e5332[m 同步grouped_matmul_add代码
+[33m957b5e0a7[m fix gmm doc
+[33m3639e55e7[m fix ops-transformer/moe/moe_token_permute_with_routing_map/examples/test_aclnn_moe_token_permute_with_routing_map.cpp
+[33mc65fdcacb[m fix opapi ut bugs
+[33m0881958a7[m fia noquant refactor
+[33m5c5fc0cfc[m FIA算子报错信息修正
+[33mac749d96a[m add for ifa and splitfuse
+[33md97dd36dc[m fix moe文档markdown
+[33mceba401aa[m 增加PFA 后量化场景 quantoffset为空的校验
+[33mdc0a79801[m MC2算子文档修正
+[33m6000e8553[m 优化FIA非量化GQA TND 非行无效场景的性能
+[33m90cc4df64[m Bugfix: A2 dispatch&combine add SetBlockDim for gentask
+[33m1d2a9e552[m mlaprolog资料修改
+[33mfbade778b[m fix experimental depends
+[33mc0224370e[m fix: opensource, fix mlaprolog A5 example
+[33m2d6722f5d[m Fix doc error about NZ format support for MatMulAllReduce
+[33m36bf167a3[m update_mc2_aclnn_install_and_example_compile
+[33m1e5298595[m 开源仓添加编译选项
+[33m70e5be5f5[m 修复UT批跑编译失败问题
+[33mc1a1bd362[m 资料修改
+[33mb0bf9fa2f[m fix experimental depend bug
+[33mae0dcd1d9[m 修改aclnnMoeTokenPermuteWithEp文档中注释问题
+[33m611e9f1f8[m fix spell problem for splitFuse at openSource code
+[33m7fb813a9e[m dispatch combine v4 demo fix
+[33m5be4d6c57[m attention_to_ffn/ffn_to_attention文档改正
+[33mc3c787779[m 修改version info
+[33mbfa3ede6e[m del kfc ops for kirin
+[33m8d72712c2[m fix ring_attention_update ophost ut
+[33m7ee592d19[m fix: opensource, fix soc default value
+[33m9756eeafc[m 修改GMMSwigluQuant算子aclnn文档链接
+[33mb818e7b29[m add gmm fast kernel
+[33m448d9fb36[m [MlaProlog] replace pipe_all with correct sync flag
+[33m8a72fdf22[m 关闭 cmake 默认编译选项；安装校验失败ERROR 级别改为 WARNING 级别
+[33ma740c5c88[m fix: opensource, fix fia/ifa warnings
+[33ma34c995a5[m 相关环境部署资料更新
+[33mad30e69c3[m remove unnecessary annovations
+[33maac27c3ef[m fix:add conditional constraints in tnd module
+[33m475f14857[m TyphoonMLA
+[33m8b74a69a6[m 增加attention/common,以及开启推理fa的compile看护
+[33m83be205f2[m fix rt_kb
+[33m34a2a609b[m fix memory leak
+[33ma145f37b1[m 在 gitignore 里屏蔽 third_party
+[33md8681ad10[m fix AttentionToFFN Addr
+[33m47beeea95[m GMM支持A16W4 MSD
+[33mab0dceb86[m gpt-oss sink doc modify
+[33mff2c9f586[m new
+[33ma911707e8[m bugfix: ffn example support fp16
+[33m35a8d1457[m use int64 instead of int32 in offset
+[33mb82b3f8f2[m update moeinitroutingv2 ut
+[33mfd27e7374[m update PFA docs
+[33m562581605[m Dispatch Combine 增加A2组网约束
+[33mb9e99accb[m fix: opensource, fix pfa warnings
+[33m95dde2d3f[m tiling ut support set aiv/aic num
+[33m181d25f54[m fix issue 修复genop生成目录问题
+[33m6b029d5f5[m 修复GM偏移量的数据类型为int64
+[33m0860ac151[m add kirinx90 ops
+[33m71889bd31[m 修复gather_pa_kv_cache文档路径问题
+[33m515c7447d[m install deps support euleros
+[33m84ca56e9a[m 修复moe_init_routing_v3/moe_re_routing子包编译问题
+[33m358bd5f1a[m 删除IFA/common下_NPU_ARCH_==5102
+[33m60af08bd4[m add QUCIKSTART.md
+[33mf8af029f4[m cannsim资料新增指令流水图
+[33m66b12bf2f[m fix cv1:1 sk
+[33mdf1df31e1[m alltoallAllGatherBMM/BMMReduceScatterAlltoall tilingkey模板化修改
+[33mb7edbe45e[m 子包编译
+[33md2ae9c6b4[m all_gather_add编译修复
+[33mea2460e9b[m FIA/IFA/PFA unused head files
+[33m70c7cdd2d[m transformer类onnx算子插件支持
+[33m6c46a2674[m delete A5确定性说明
+[33m28a0fb567[m apply_rotary_pos_emb/interleave_rope/kv_rms_rope_cache资料补齐
+[33ma9c76ed2e[m rotary_position_embedding、rotary_position_embedding_grad资料补齐
+[33mff19f91dc[m fix moe doc describetion
+[33md27eab565[m 修复experimental下的attention目录
+[33m05c401f9d[m[33m ([m[1;31morigin/8.5.0-beta.1[m[33m)[m MIRV2新增模板适配
+[33m03e9d1471[m 下一代支持MoeFinalizeRoutingV2Grad算子
+[33ma45f2eae7[m 950 support MoeInitRouting
+[33m3d7bf252b[m 为下一代算子更新op_list
+[33m9cff0e489[m fix_gmm
+[33m1bc7f8dc3[m fix: update version for FIA/IFA/PFA/MlaProlog readme && delete FIA_vx
+[33m4191ca4a8[m 删除attention目录下的pytest，已经移动到了fia算子目录下
+[33ma5d6f9dca[m 下一代MoeInitRoutingV2Grad算子支持
+[33me0075f6e0[m rotary_position_embedding、rotary_position_embedding_grad资料补齐
+[33me995ab651[m apply_rotary_pos_emb、interleave_rope、kv_rms_norm_rope_cache资料补齐
+[33m66d4efefb[m 删除catlass遗留的tla相关
+[33mac64f8990[m 公共资料修改
+[33md674ee39b[m MoeFinalizeRoutingV2算子支持ascend950实现
+[33mbc4750a40[m delete
+[33m0bbf5a78c[m add grouped_matmul_swiglu_quant_v2 A8W8 cumsum
+[33m7fb8e6ac3[m Rename docs of LIG
+[33m30d0a0a3c[m experimental编包验证适配
+[33mb24a234a8[m moe类算子资料支持Ascend 950
+[33m948c8a380[m MOE类算子添加资料
+[33m412d97af2[m nerut
+[33m5ba841bd7[m gmm_docs
+[33me811bb6f1[m fix: update version for FIA/IFA/PFA/MlaProlog readme
+[33m56b73b3e0[m 增加950系列产品使用仿真运行样例指导
+[33mc288a92f0[m 类变量与函数变量重名修改
+[33m66d76fee7[m 修改OAT.xml文件
+[33m355c07fa2[m update: 更新文件 op_debug_prof.md
+[33m8c34a8737[m 文档格式整改
+[33mb11cce045[m fix FA compile error for arch32
+[33m6c25c2745[m update FA/FAG README
+[33m68411f9bb[m build offline
+[33m10697b779[m fix delete setenv.sh bug
+[33mad9d52225[m A5 下包链接更新
+[33md521b906e[m update FA/FAG aclnn docs
+[33me814569da[m FIA/PFA/IFA/MLA_PROLOG算子迁移
+[33m468e17eb2[m dispatch v2 fullmeshv2 support token mask
+[33m24239d770[m add ffnToAttention、AttentionToffn
+[33m83566545e[m add return
+[33m18ec6ffcb[m delete docs of detection op
+[33m4cdd13856[m fix doc
+[33m4c8fa4bfd[m modify gmmfr nzv2 interface
+[33m451d51199[m update FA/FAG doc
+[33mbeae9015a[m MlaProlog修改loaddata结构体
+[33mbfbbec839[m 修改 moe_gating_top_k_softmax算子的BlockReduceSumIntrinsicsImpl、BlockReduceMaxIntrinsicsImpl接口
+[33m9c7dcdc97[m fix gmm 文档
+[33m327324763[m fix nQueryIndex = 8 MTE address out of range bug
+[33m8de0be337[m update docs
+[33maa9e816d2[m ut
+[33m32747f385[m add 950PR/950DT FA/FAG
+[33m0387ed9ae[m 修复pfa example执行失败&&static脚本不支持3.7
+[33m19de45cce[m [MlaProlog] Fix preicision issue when queryNormFlag is set to true
+[33mf33d3cecc[m update docs
+[33mf8ab55053[m revert add_example
+[33m43749026e[m mc2适配hccl接口变更
+[33m4138bd36d[m version.info add required_package info
+[33mf05c02421[m 修复tiling下沉编译失败
+[33m8ab6568be[m aclnnFlashAttentionScoreV3部分链接修复
+[33mb760391b4[m 更新cann包安装配置
+[33m2ff66c1c2[m docs资料描述错误需要更改
+[33mff5a9a04b[m 新增Ascend950相关资料
+[33m7ab1fa158[m 更新license
+[33m861b535e4[m LI\QLI\SFA\QSF update
+[33m4801ecb20[m attentionupdate支持lse inf输入
+[33m775e8eb3b[m docs文档修复
+[33mb84e336a1[m Fix inconsistencies between doc and API of lacking comma
+[33m23614c5ee[m 更新protobuf版本
+[33md8e8c382a[m opapi_math 替换opapi.so
+[33m6d8abc8d6[m fix:aclnnFusedInferAttentionScoreV4GetWorkspaceSize add learnableSinkOptional
+[33m3c17e96ed[m Fix inconsistencies between documentation and API interfaces
+[33m8aa7012c9[m moe_token_permute_with_routing_map_grad文档接口对齐
+[33mef8ac892a[m 修复aclnn文档与头文件参数不匹配的问题
+[33mc0fe0fda2[m kirinx90
+[33m3fb9207b1[m 驱动与固件资料更新
+[33m33fbd4dd3[m 紧急合入  删除oplegacy打桩
+[33m2b8485939[m 修改version.info版本号
+[33me40a41768[m 修复aclnn接口入参顺序
+[33md99c36a52[m custom包使用安装脚本更新
+[33m808679ccb[m 修复issue 265中描述的资料问题
+[33m24c1e12bc[m run包支持安装到版本目录下
+[33m29b7f908b[m 匹配最新cann包，进行资料更新
+[33m50e9ae990[m 同步GMM代码
+[33m2d2b3feb8[m combinev2文档添加返回码
+[33m7a076d412[m dispatch combine资料修改
+[33m4149b2437[m update doc
+[33m8f2ef4611[m 上线新版本推理fa算子
+[33m78b9a9e72[m Fix inconsistencies between documentation and API interfaces
+[33m1fe18fbd6[m GMM公共模板代码合入开源仓
+[33me05d98c2f[m 匹配最新cann版本，上线新版本attention/ffn/moe/posembedding算子
+[33m8d92c5424[m mc2新特性开发
+[33m4f59f2f2e[m /lgtm
+[33m76bb8b026[m 适配最新cann版本，更新编译选项
+[33ma6a5cb982[m 兼容修改，GroupedMatmulAdd算子新增group_list_type可选属性
+[33mb20a79f8a[m 适配最新cann版本，更新编译选项
+[33m506afd36c[m moe_distribute_combine_add_rms_norm 头文件修正
+[33md9840b72e[m update: 更新文件 pkg_parser.py
+[33mafccb8588[m feat: update tiling sink library name and path
+[33m0a278590b[m 修复FlashAttentionScore和FlashAttentionScoreGrad文件中aclnn文档问题
+[33m130ff5d94[m IFA接口文档numKeyValueHeads描述修正
+[33meeae633f8[m 修改算子调用描述
+[33m88c2d46dc[m 修复gmm和attention文件中aclnn文档问题
+[33mbefd8bcd3[m fix bug for datacopysoftmaxlse bsnd layout
+[33mdcc883f9b[m 增加ifav4接口的kvPaddingsize约束说明
+[33m57f81b047[m experimental目录结构调整
+[33m881ed56a5[m MlaPrologV3算子拦截问题修复
+[33m6916b369a[m 匹配最新cann版本，更新编译选项
+[33m15b754cbf[m 代码同步
+[33me71e9b7d1[m Fix cust example
+[33m88a950a28[m 修复quick_install描述
+[33m8ad8b330d[m 更新文档说明
+[33m517136c75[m add moetokenunpermute check
+[33mc8f0308f6[m update example for aclnn_moe_token_permute_with_routing_map
+[33me58798834[m support softmaxlse for mla
+[33m197fcc7e3[m ophost.so&opgraph.so add Bsymbolic option
+[33m615303d60[m move nn norm/kv_rms_norm_rope_cache to ops-transformer posembedding
+[33mcfbaab1a1[m 更新ops-math包下载链接
+[33m4040f2194[m readme添加说明
+[33md0d8e1b8e[m 修改文档描述问题
+[33m4be336c87[m moe_update_expert and distribute_barrier tilingkey修改
+[33m53ade2d41[m update doc
+[33ma8ac47bb2[m issue of combineARN docs
+[33m1005700cd[m rm version.info required_package
+[33ma07e0b56a[m 适配修改dispatch oom编译宏变量名
+[33md9df547b9[m combineArn tilingkey修改
+[33m2eed6b576[m 删除MC2算子说明
+[33m56b05626c[m aclnnAllGatherMatmul算子资料修改
+[33m29b08607b[m 修复 moe_token_unpermute_grad和moe_token_unpermute_with_routing_map中op_api的UT
+[33m8b2df6819[m pytest测试框架第一版上库，文件夹位置放到attention目录下，合并excel代码文件
+[33md40b1d16f[m doc fix
+[33mab99ebe61[m docs fix
+[33m82930c43c[m update toolkit legacy pkg
+[33ma4e02b395[m tp issue
+[33mc362f74b6[m modify fd invalidrows And fix compile issue
+[33m5aed5a334[m 新增pr的模板
+[33md54725b00[m 修改文档中不支持场景的修改
+[33m66130cd35[m 修改文档链接失效
+[33m391807399[m 增加zh路径，修改对应算子说明链接
+[33maf5873849[m fix moe_token_unpermute_with_routing_map_grad md
+[33m7b5ad59f5[m mask_copy优化和GQA模板同步优化
+[33md2d3af607[m fa docs update
+[33m2adb25264[m fix cmake for custom
+[33m7330db7c8[m update the document restriction description
+[33mf61275e10[m add_example sup 910_93
+[33mb6b9c7824[m Add fused operator ScoreNormalize
+[33m96ad6eba7[m 修复 gmm readme文档
+[33m94575c1c9[m 【资料修改】GQA伪量化NZ场景支持G泛化，修复G=1时调用超时问题
+[33mcd483c3e2[m GQA non quant and MLA non quant merge
+[33m578ed128f[m fix: deqScale2 dataType name
+[33m5ceafb4c0[m all_gather_add通算融合示例算子资料修改
+[33mec00dc969[m add_example 编译修改
+[33mc81d0b6d9[m 更新MoeFinalizeRoutingV2算子文档
+[33mf4382b313[m 更新MoeInitRoutingV2算子文档修改
+[33m7ba3ece72[m GMM算子更新说明文档
+[33mbfcce237a[m 同步代码
+[33m5ca3ac19e[m SFA/QSFA/LI/QLI资料整改
+[33m054c31af1[m nsacompressattentioninfer算子tiling侧actualQSeqLengths校验修复
+[33m9f5283f9c[m fix ut and permute indices size  修正moe 算子的ut问题及申请正确的indice大小
+[33mee640d687[m delete_rotary_docs
+[33m7ea209591[m 支持分通信域配置hccl buffersize
+[33m98680619c[m add a description of supernode
+[33mf738c414a[m 增加experimental环境依赖信息
+[33m1545be7de[m 添加自定义算子包和ops-transformer包的卸载方式
+[33m62ff8d25e[m 修复首页md目录问题
+[33meef91d7c0[m Fix string issues and update the document
+[33mc856abaa9[m 代码规范修改
+[33m59c9c74fb[m add_example mod
+[33madf46183a[m 修改epWorldSize描述
+[33m51d25ccb1[m SFA/QSFA/LI/QLI迁仓
+[33m942d5acda[m 128P问题gmmalltoallv修复
+[33mc9ff3fe71[m Modify the data type used for address offsets
+[33m9d7545b93[m A2 DispatchV2和CombineV2支持零专家特性
+[33mffd40a2a4[m 资料低错修改
+[33m28ee37ef3[m HCCL_BUFFSIZE docs fixed
+[33md99241343[m add depends for moe_token_unpermute/moe_token_permute_grad
+[33m7d33082a5[m docs: optimize contributing guide for new operators
+[33m1d91a6c57[m alltoallvgmm/gmmalltoallv tilingkey template
+[33mc035c6d7b[m moeTokenUnpermute修改Tpipe定义位置
+[33mdc931ecbe[m combine、combineARN常量专家语义参数修改
+[33meb8dda976[m fix moe_init_routing md
+[33ma46890ac2[m fix moe_init_routing_quant md
+[33me416eec80[m MoeDistributeDispatchV2 A2算子不分层添加单卡Moe专家校验
+[33mdec34df48[m fix moe readme
+[33m64be6dd6e[m nsa_compress_attention_infer  fix example by fixing mem.h InitBuffer
+[33m69bc876ce[m 打印日志修正
+[33me7b38127e[m mc2 v2 diagnose performance
+[33m2f4ff5496[m 文档易用性问题修复
+[33m0b12dd13f[m fix moe_gating_top_k_softmax_v2 md
+[33mcb655e0aa[m fix moe_compute_expert_tokens md
+[33mce60c7d87[m fix moe_finalize_routing_v2_grad md
+[33md2e6b8278[m fix ut bug & support infer_datatype/infer_shaperange
+[33m7e63c0b5a[m add  moe_token_permute depand
+[33m485c3e65e[m 新增通算融合入门样例all_gather_add
+[33m32020dffd[m mc2 opapi目录切换else
+[33mf4c5b2f30[m add new operator ropematrix
+[33mb2c282386[m delete commercial_release docs
+[33m2ea1c8d9c[m 将fa/fag算子的op_api移出op_host目录，修改相关构建脚本, 做兼容性修改.
+[33m56fbb487d[m 1029 开源仓同步 opapi目录切换
+[33mec558c1d3[m 整改部分文档易用性问题
+[33m6e16f3dc8[m nsa_selected_attention_infer fix example
+[33m859ef8789[m 整改部分文档的易用性问题
+[33m2af6508a9[m mc2 op_kernel 头文件顺序修正
+[33mbb6b6b735[m combine/dispatch example support A2&A3
+[33m8e66948c5[m 放开ifa gqa伪量化场景 qhead kvhead限制
+[33ma853492f8[m 解除matmulAllReduce的example中对transMatmulWeight算子的依赖
+[33m8b73026b5[m fix example
+[33m8e55c8d55[m ifa&fia docs fix
+[33m965e94173[m 修改需求模板
+[33m8d4f3c1d6[m moe_token_permute_with_routing_map_grad/moe_token_permute_grad ut整改
+[33m4800225f5[m 新框架groupedMatmul算子ut适配
+[33m912ce7667[m 故障检测流程中，reset根据是否全卡同步设置batchmode
+[33m470dcd1cd[m 修改FIA, NSA等cpp文件注释中.cc后缀为.cpp后缀
+[33mc29bc1069[m 【nsa_select_attention_infer: rename】
+[33m47926d5a5[m fix gmm_add_clean_code
+[33m124619738[m 修复rope_with_sin_cos_cache example
+[33m882e12770[m tpRecvCountsShape计算方法修正
+[33m807caa4c7[m NpuOpsTransformerExt 支持
+[33m61f544c09[m 修改MC2文档中表格间距、表述模糊等问题
+[33m47530dec6[m delete_rope_redundancy_file
+[33m4f5aeb897[m mc2 ut kernel fix
+[33mb6da9b43b[m docs supplement
+[33m20ba9bcc1[m 修改collect文档
+[33m0843f69c5[m reset检测算子文档删除detection逻辑，保留reset单算子用例
+[33m5a4737c12[m 整改算子moe_token_unpermute_with_ep_grad的README文档易用性
+[33m602f588eb[m docs fixed
+[33mdcf93d6af[m [MlaProlog] 设计文档修改
+[33m658993201[m 优化readme易用性
+[33mf6c15f3da[m Dispatch和Combine文档整改
+[33mc6a0dec30[m 修复README文档描述
+[33m33ba09784[m moe finalize routing readme补充shape说明
+[33me8411775e[m [feature] support op project generation
+[33m7b44fa41b[m 冒烟功能的看护优化
+[33mbce4a6b61[m delete kernel files
+[33med6586b6f[m update moe/moe_token_permute/README.md for sortedindices
+[33m6390d44c0[m rope_with_sin_cos_cache文档
+[33m9ac275b53[m FIA set schedulemode
+[33me96b7b2a0[m 修复PFA的非32B对齐情况下的精度问题
+[33m368e6c630[m nsa_compress_attention_infer fix docs
+[33ma812ed71b[m barrier超时检测功能分离 单核做本地计数 其余核做全卡同步
+[33m55adcbebf[m 移除冗余输出
+[33ma26de5ce7[m 修复gmm readme文档
+[33m24d5f4bb0[m 回黄和builtin add_subdirectory统一，以attention为例
+[33md518d730c[m feat: 新增汇总头文件aclnn_ops_transfomer[_vendor-name].h，简化算子头文件引用
+[33m76f7605a7[m README 文档修复
+[33mb4aada9f4[m fix sequential bug in gqa antiquant kvnz
+[33m9e11e3c3e[m barrier资料修改
+[33m6c7079c13[m Add FullMesh Template for DispatchV2
+[33m74901dfce[m 修改文档环境设置
+[33m23b7944c7[m support more ranknum and fix aivnum
+[33mc8f181eb5[m revert//schedule
+[33m067f767b1[m combineV2/ARN 特殊专家场景 x数据类型不一致tiling拦截
+[33mff21f09b7[m set schedule mode
+[33md2e7976fb[m 修改资料链接指导版本号编译选项
+[33m2090000ec[m fix:修复mla_prolog_v3 资料 & exampe 执行报错
+[33m9c9d397a8[m gmm template tilingKey rectify
+[33mf66e305f2[m fix md jump link
+[33m376d2533d[m delete mla_prolog op_graph dir
+[33m3f37241a3[m fia add build options for custom
+[33m8e4a58793[m 资料优化
+[33m38b758a0d[m Add documentation, kernel, and configuration items for the test operator
+[33mea47405a5[m elastic_receivable_info_collect功能
+[33made842d49[m 修改-编译与运行样例.md
+[33m3037d2825[m 修正mc2下部分example缺失打印信息的问题
+[33m4fd317313[m add:nsa_select_attention_infer_example
+[33m77a8929f7[m 新增moe_distribute_buffer_reset
+[33m79cd3244f[m bugfix:nsa_select_infer_ut
+[33m1cfcb3697[m MC2 ut
+[33mc05e6505a[m Barrier支持故障检测新增elasticInfo和timeOut可选输入
+[33ma7010fc94[m fix ut for moe_init_routing_v3, moe_re_routing, moe_gating_top_k, interleave_rope
+[33mfc29fc0c5[m fix:nsa_select_attention_infer_ut_example
+[33m0d036a818[m add syncall
+[33m0941b78c9[m 修复GMMFR算子文档中变量名错误以及描述不通顺的问题
+[33me03da471c[m [bugfix]NsaCompressAttentionWithCache UT 整改
+[33m61ca689a4[m nsa_compress_attention_infer fix ut
+[33m644978aee[m nsa_compress_attention_infer and nsa_compress_with_cache example fix
+[33m1b417c599[m 修改推理FA资料资料描述，并移除不相关UT用例
+[33m31eef1da3[m 在op_list.md中删除 swin_transformer_ln_qkv_quant算子
+[33m5d423d415[m moe_token_permute_with_ep_grad_ut
+[33mdeefaff4a[m moe_token_unpermute_ut
+[33mb9a02e9d9[m fix rope_with_sin_cos_cache ut
+[33m55ea73d2e[m fix_rope_quant_kvcache_ut
+[33m68b44c1e7[m fix_moe_token_permute_with_routing_map_grad_ut
+[33m0b64cffc0[m moe_token_permute_grad ut
+[33m0024f3458[m 修改FIA的tiling和kernel UT用例
+[33m1e927dbf4[m [Bug-Report|缺陷反馈]: PromptFlashAttention缺少kernel部分UT用例
+[33m3a0b2610f[m 修改IFA的tiling和kernel UT用例
+[33m220c351cf[m 调整DequantRopeQuantKvcache和MoeGatingTopKSoftmaxV1/V2 UT用例
+[33m76f3af8fe[m DFX_dataStatus
+[33m5dc9c594a[m add FAG ut
+[33m0392ef264[m delete
+[33m1aa3bcb8b[m 修改了 ffn & swin attention ffn & swin transformer ln qkv ophost下的CMakeLists，补充了对应算子的ut和geir调用示例，补充了readme中geir调用说明。
+[33m95a6b3128[m FA/FAG/ARPE算子文档整改
+[33m8bfb5c84a[m 修复算子的kernel_ut：moe_token_unpermute_grad,moe_token_unpermute_with_routing_map,moe_token_unpermute_with_ep_grad
+[33m580b23ded[m 修改文档中默认路径
+[33m4f16fd6e4[m FA算子readme补充约束说明
+[33mcf6f276be[m 修复gmm文档链接问题
+[33m959643c64[m fia ifa pfa tilingkey整改 ut 适配
+[33m7bf5bee9f[m CMAKE_BUILD_MODE 调试
+[33m6aa4c33cf[m 解决magicValue整数反转问题
+[33m75b8e6aa4[m gmmsq-opapi-UT
+[33m70ae0bdb1[m 新增算子mla_prolog_v3
+[33m9a120a7c5[m moe_finalize_routing_ut
+[33m8dc40bd3d[m 修正example编译问题
+[33m8b0fedd4b[m 新增kernelut
+[33m1f20f8f90[m dispatchV2/combineV2支持超时检测
+[33m80b56bc2a[m fix gmmswigluquant readme 文档
+[33me15b92648[m Enable nsa_compress_attention, nsa_selected_attention operator kernel UT
+[33m5cd9e4130[m fix UT of moeinitrouting moetokenpermute 系列算子
+[33m233466dd6[m bugfix_for_gmm_gragh
+[33m8ef799363[m 修复ut报错
+[33mf1a24bdba[m fix moe_token_unpermute_with_routing_map_grad ut
+[33m535a2749b[m FIA IFA PFA tilingkey 模版化整改
+[33m5644a7bf0[m fix precision error under super-kernel
+[33m84dd6e9e7[m gmmalltoallv hcclCcTilingConfig入参增加
+[33m5a4ec4c5f[m 修改aclnnFusedInferAttentionScoreV4.md文档格式
+[33m0a1c8893f[m rope_add_kernelUT
+[33mab59261b5[m 修改依赖的版本号信息
+[33mb8cad111c[m 【bugfix】PFA、IFA冗余模板删除
+[33m601bce1e6[m fix_gmm_add_ut
+[33m5405ee1ae[m docs:modify_aclnnPromptFlashAttention文档参数限制修改
+[33mfbe45cf2d[m 修改DispatchV2/CombineARN中MAX_UB_SIZE类型为uint32_t
+[33mb22f88606[m fix op-host cmake for [interleave_rope/moe_init_routing_v3/moe_re_routing]
+[33me677067f7[m PFA IFA  fix example
+[33m9836c5020[m PFA IFA FIA docs fix
+[33m4fd755b69[m FIA IFA PFA tilingkey revert
+[33m59a58ebe3[m delete moetokenpermute unuse files
+[33md6dd88389[m tilingkey revert
+[33m68669579d[m 解决部分算子编译告警问题
+[33mb9d73612a[m 修复GMM A8W4 tiling key路由错误
+[33ma2522f015[m MC2 matmul allreduce A2 built-in graph func release
+[33m10e26452c[m elastic_moe_md
+[33mb3b1f3770[m FIA PFA IFA模板化tiling key
+[33ma8c22c3ca[m 【Bugfix】新增处理keyAntiquantScale和valueAntiquantScale输入(B, S)的情况
+[33m21377be38[m FA反向算子readme整改
+[33mb59721132[m FA算子的example补充
+[33m26f56688d[m 优化README和算子文档等描述说明
+[33mdcdec78b2[m 【文档更新】NsaCompressAttentionInfer文档整改
+[33m4251efa76[m 修复tnd模板gs1合轴精度问题
+[33m17a6c083c[m fix-算子文档问题若干
+[33mc2904d1c3[m 资料缺陷修复
+[33m1626e43a0[m 更新下载链接，增加算子执行位置字段
+[33mb5ce77bb9[m PFA、IFA、FIA - fix warning
+[33m4aee01d4b[m 修正编译问题
+[33m2b7873015[m 算子支持产品型号更新
+[33m3d4843639[m moe finalize routing v2 grad 添加UT
+[33m301658f72[m finish ut moe_token_unpermute_grad, moe_token_permute_with_ep_grad
+[33m403b551b3[m 补充GMM和GMMSwigluQuant-UT
+[33m33bb0254f[m NULL_TENSOR整改
+[33m9bd9a2b5b[m Correct the formatting problem in the NSA document
+[33mcae6d04f6[m 增加experimental相关目录
+[33m898d2fbc5[m moveso
+[33m985796372[m fix warn
+[33m0d1fffd76[m add_v1_ut
+[33maaf1cdb07[m add moe ut
+[33mc5f697427[m add ut for moetokenpermute moe_init_routing_quant moe_token_permute_with_routing_map  moe_token_permute_with_ep
+[33m4d24f605a[m fix moeinitroutingv2 310p
+[33mb70d4f836[m add ut
+[33mc028534ae[m 为MOE添加UT
+[33m104e925c5[m ut
+[33m216557ede[m 资料修改
+[33m1ed58baa9[m add_ut
+[33mf4ff79495[m aclnnFusedInferAttentionScore doc fix
+[33mc3933b092[m weightMatmulAllreduceFixed
+[33mbe2a4cbaa[m distribute combine ARN built-in graph func release
+[33mfe350c5ad[m ut support infer_datatype/infer_shaperange
+[33mb4baa0d29[m [SplitCore] Sync bugfix code
+[33m81a7df903[m 同步ut、example
+[33ma1647060b[m Add example cases for NSA kernels
+[33m5dfdc9c02[m add_rope_fa_nsa_ut_1011
+[33m6a79e69d2[m allgathermatmul example
+[33m789fc6e47[m 修改文档算子描述
+[33m3e2925a97[m 删除GroupedMatMulAllReduce相关文档
+[33ma8c9d5009[m 公共资料整改v4.0
+[33mec503a500[m fix mem.h InitBuffer
+[33ma27885224[m Merge branch 'master' of git@gitcode.com:wuyao51511/ops-transformer.git into 'master'
+[33mf8bce6555[m mc2 gen task 线下编译静态图算子功能
+[33mdd4ca56ab[m add template_tiling_key
+[33m4b3d29a2f[m mc2文档格式修改
+[33m629b1a550[m deal libopgraph_transformer.so problem
+[33m4be343f7f[m add aclnn md
+[33mb89685c83[m 【nsa_select_attention_infer】资料修改
+[33m4bbc13de0[m fix tilingKey
+[33m45bbbf12e[m 修改了MoeDistributeCombine、MoeDistributeDispatch、MatMulAllReduceAddRmsNorm README文档
+[33m465009167[m modify swinTransformerLnQKVQuant readme
+[33m6020f3f73[m [attention][pfa] add basicapi mla tiling key
+[33m780fe236d[m dev仓mc2_doc同步
+[33mf05dea28c[m 适配dlog_pub.h文件路径变动
+[33m6c485f233[m 优化aclnnQuantMatmulAllReduce资料描述
+[33mc9be7e974[m fix_rope_doc
+[33m50aaff272[m graph修改
+[33ma32675448[m matmulAllreduce非量化场景不支持B矩阵Nz格式，除了310P
+[33m5cc79b2f2[m 增加moe init routing v3相关md
+[33m8cd3a8625[m 删除v2
+[33m80309c42f[m 文档适配V3新增
+[33md3bb7789f[m MlaProlog tiling key模板化
+[33m9e57c8832[m 修改aclnn_all_to_all_all_gather_batch_matmul文件名
+[33mb7ff6fa25[m fix_add_2dims
+[33mbe08b0668[m 修改deps安装描述
+[33m214c47f5b[m modify GQA antiquant 8 buffer and fix bugs for gqa antiquant pertoken
+[33m39b7b4ce6[m add Third_Party
+[33m6cef41c60[m fix ut bug
+[33m46e19caaf[m add dispatch combine docs
+[33mb16361ae7[m const clean code
+[33m3622638be[m CopyRight
+[33mfde8a91a2[m built-in help 说明更正
+[33mcc102524f[m using template for UT kernel func
+[33mad83ed633[m ifa&pfa aclnn md
+[33m0d63c2d2d[m standard -h output
+[33m9c461b257[m mc2单词拼写错误修改
+[33m0708f156f[m build_lib支持-j, --jit支持自定义算子
+[33mde7da3c25[m add
+[33me0c8472f0[m 修改资料语病，优化资料描述内容
+[33m3aeb7984e[m add example
+[33m1a22fcb92[m secure_c 使用新版本，protobuf使用gitcode链接
+[33m6e03c9946[m delete some product support in readme
+[33m8c0034088[m feature: add gmmfr example and ut, fix bugfix for docs
+[33m66dcdfd18[m modify swin_attention_ffn readme
+[33m60a57476e[m 修正custom包名
+[33mbd4cc7012[m 修复example找不到头文件的错误
+[33m46e97226a[m 修改interleave_rope,moe_init_routing_v3,gating_top_k,re_routing
+[33md127892f8[m update aclnn
+[33mb599a0886[m [推理FA]整改FIA相关tilingkey
+[33m6bc748ed7[m tiling sink built-in
+[33m26b26b62d[m mc2告警清理和json命名整改
+[33m9fbe9cb28[m test
+[33m9c6d12844[m fix interleave_rope,moe_gating_top_k,moe_re_routing,moe_init_routing_v3
+[33m5c38f9c59[m fa compile waring fix
+[33me1104fc54[m 添加rope_grad UT
+[33m17f335baa[m Update dependency installation description
+[33mad59701b9[m modify fag copyright/cmake
+[33m926734466[m 修改格式
+[33mf834737be[m api_ret clean code
+[33m7d1f015a5[m ut support noexec
+[33m3e3039fcf[m 编译告警清理-shadow
+[33ma9f422420[m update md
+[33m331264b21[m 资料修改
+[33m7ed8fea36[m -j命令取消空格
+[33mb122ed222[m init
+[33m7ddf9751b[m Initial commit
