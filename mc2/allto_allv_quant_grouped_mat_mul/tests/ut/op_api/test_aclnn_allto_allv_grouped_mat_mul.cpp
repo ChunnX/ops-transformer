@@ -36,7 +36,7 @@ TEST_P(AclnnAlltoAllvQuantGroupedMatMulTest, param)
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(param.gmmX, param.gmmWeight, param.gmmXScale, param.gmmWeightScale, nullptr, nullptr, param.mmXOptional,
               param.mmWeightOptional, param.mmXScaleOptional, param.mmWeightScaleOptional, param.gmmXQuantMode, param.gmmWeightQuantMode,
-              param.mmXQuantMode, param.mmWeightQuantMode, param.group.c_str(), param.epWorldSize, param.sendCounts, param.recvCounts, param.transGmmWeight, param.transMmWeight,
+              param.mmXQuantMode, param.mmWeightQuantMode, param.group.c_str(), param.commMode.c_str(), param.epWorldSize, param.sendCounts, param.recvCounts, param.transGmmWeight, param.transMmWeight,
               param.groupSize, param.permuteOutFlag),
         OUTPUT(param.gmmY, param.mmYOptional, param.permuteOutOptional)
     );

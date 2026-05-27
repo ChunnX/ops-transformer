@@ -43,6 +43,7 @@ struct AlltoAllvQuantGroupedMatMulApiUtParam {
     TensorDesc mmYOptional;
     TensorDesc permuteOutOptional;
     std::string group = "group";
+    std::string comm_mode = "ccu";
     op::SocVersion soc;
     aclnnStatus expectResult;
 

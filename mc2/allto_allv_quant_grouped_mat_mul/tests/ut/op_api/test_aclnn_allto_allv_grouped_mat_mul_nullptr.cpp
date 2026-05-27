@@ -57,6 +57,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -65,7 +66,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(nullptr, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -101,6 +102,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -109,7 +111,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, nullptr, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -145,6 +147,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -153,7 +156,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, nullptr, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -189,6 +192,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -197,7 +201,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, nullptr, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -233,6 +237,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -241,7 +246,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -277,6 +282,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -285,7 +291,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, recvCountsTensorOptional, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutFlag),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -321,6 +327,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -329,7 +336,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, 0),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
@@ -365,6 +372,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -373,7 +381,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutOptional),
         OUTPUT(gmmY, mmYOptional, nullptr)
     );
@@ -409,6 +417,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     TensorDesc mmYOptional = {{4096, 4096}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc permuteOutOptional = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
     const char* group = "group";
+    const char* commMode = "ccu";
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
@@ -417,7 +426,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
         aclnnAlltoAllvQuantGroupedMatMul,
         INPUT(gmmX, gmmWeight, gmmXScale, gmmWeightScale, nullptr, nullptr, mmXOptional,
               mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, 0, gmmWeightQuantMode,
-              mmXQuantMode, mmWeightQuantMode, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
+              mmXQuantMode, mmWeightQuantMode, group, commMode, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight,
               groupSize, permuteOutOptional),
         OUTPUT(gmmY, mmYOptional, permuteOutOptional)
     );
