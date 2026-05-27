@@ -11,6 +11,12 @@ from .sparse_flash_mla_grad import npu_sparse_flash_mla_grad
 from .sparse_flash_mla_grad_metadata import npu_sparse_flash_mla_grad_metadata
 from .moe_distribute_dispatch import npu_moe_distribute_dispatch
 from .moe_distribute_combine import npu_moe_distribute_combine
+from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
+from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
+from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
+from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+from .moe_distribute_dispatch_v4 import npu_moe_distribute_dispatch_v4
+from .moe_distribute_combine_v4 import npu_moe_distribute_combine_v4
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
