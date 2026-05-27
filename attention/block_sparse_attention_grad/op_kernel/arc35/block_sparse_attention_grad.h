@@ -188,7 +188,7 @@ public:
          */
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
 
-        {
+        while (true) {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
             mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;
