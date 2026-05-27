@@ -43,7 +43,7 @@ ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
-SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
+SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend910_96" "ascend310p" "kirinx90" "kirin9030" "mc62cm12a")
 CMAKE_BUILD_MODE=""
 BUILD_TYPE=""
 VERSION=""
@@ -324,7 +324,11 @@ function help_info() {
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
+<<<<<<< HEAD
     echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62], A3(--soc=ascend910_93)"
+=======
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend910_96 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
+>>>>>>> 059ee4215 (new commit)
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -548,15 +552,15 @@ function build_example()
         return 1
     fi
     # Obtain the example file corresponding to the input soc unit.
-    if [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
-        # 1. ascend950/ascend950 example is independent of other soc units.
+    if [[ "$ASCEND_SOC_UNITS" == "ascend950" || "$ASCEND_SOC_UNITS" == "ascend910_96" ]]; then
+        # 1. ascend950/ascend910_96 example is independent of other soc units (arch35).
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/arch35/${pattern}*.cpp"))
         if [[ -z "$files" ]]; then
-            # 2. Example is shared with other soc units, or the current operator only supports ascend950/ascend950.
+            # 2. Example is shared with other soc units, or the current operator only supports arch35.
             files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
         fi
     else
-        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared. 
+        # Except for arch35 soc units, the examples of other soc units are temporarily shared.
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
@@ -860,6 +864,7 @@ function process_soc_input(){
         [ascend910_93]="Atlas A3"
         [ascend310p]="Atlas Inference"
         [ascend950]="Ascend 950PR/Ascend 950DT"
+        [ascend910_96]="Ascend 910_96"
     )
 
     if [[ ${SOC_HARDWARE_MAP[$ASCEND_SOC_UNITS]} ]]; then
