@@ -245,6 +245,8 @@ TILING_DATA_FIELD_DEF(int64_t, bOuterSize);
 TILING_DATA_FIELD_DEF(int32_t, n2BaseSize);
 TILING_DATA_FIELD_DEF(int32_t, bmm1Num);
 TILING_DATA_FIELD_DEF(int32_t, bmmv2Num);
+TILING_DATA_FIELD_DEF(int32_t, bmm1Loops);
+TILING_DATA_FIELD_DEF(int32_t, bmmAddLoops);
 TILING_DATA_FIELD_DEF(int32_t, n2BaseTailSize);
 TILING_DATA_FIELD_DEF(int64_t, n2OuterSize);
 TILING_DATA_FIELD_DEF(int32_t, gBaseSize);
