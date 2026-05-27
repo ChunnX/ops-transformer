@@ -53,16 +53,15 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
     using ProblemShape = Cgmct::Gemm::MatmulShape;
     using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
-    template <typename Scheduler>
-    using MmadBuilder = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutBias,
-                                                L1TileShape, L0TileShape, Scheduler, MatmulMultiBlock<>,
-                                                Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
         SetSysWorkspace(workspaceGM);
         GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
 
         using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler;
-        using BlockMmadBuilder = MmadBuilder<BlockScheduler>;
+        using BlockMmadBuilder = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType,
+                                                         LayoutBias, L1TileShape, L0TileShape, BlockScheduler,
+                                                         MatmulMultiBlock<>,
+                                                         Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
         using BlockEpilogueDequant =
             Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRoutingDeter<CType, C1Type, weightscaleType, xscaleType,
                                                                           BiasType, rowIndexType>;
@@ -98,7 +97,9 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     }
 
     using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
-    using BlockMmadBuilder = MmadBuilder<BlockScheduler>;
+    using BlockMmadBuilder = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutBias,
+                                                     L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlock<>,
+                                                     Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
     using BlockEpilogueDequant =
         Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRouting<CType, C1Type, weightscaleType, xscaleType, BiasType,
                                                                 rowIndexType>;
