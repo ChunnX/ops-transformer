@@ -40,8 +40,7 @@ ge::graphStatus GetMlaPrologShapeDim(const gert::InferShapeContext *context, Mla
     }
 
     OP_CHECK_IF(((tokenXShape->GetDimNum() != DIM_NUM_3) && (tokenXShape->GetDimNum() != DIM_NUM_2)),
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "tokenX", std::to_string(tokenXShape->GetDimNum()),
-                                            "{2, 3}"),
+                OP_LOGE(context->GetNodeName(), "tokenXShape is not 2 or 3, but %zu", tokenXShape->GetDimNum()),
                 return ge::GRAPH_FAILED);
 
     if (tokenXShape->GetDimNum() == DIM_NUM_3) { // BS
@@ -113,14 +112,10 @@ ge::graphStatus InferShapeMlaProlog(gert::InferShapeContext *context)
 
     MlaPrologProtoShapeParam shapeParam{};
     auto apiRet = GetMlaPrologShapeDim(context, shapeParam);
-    if (apiRet != GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context get input shape failed"), return ge::GRAPH_FAILED);
 
     apiRet = SetMlaPrologShapeDim(shapeParam, context);
-    if (apiRet != GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context set output shape failed"), return ge::GRAPH_FAILED);
 
     OP_LOGI(context->GetNodeName(), "MlaProlog infershape end.");
     return GRAPH_SUCCESS;
