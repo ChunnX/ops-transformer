@@ -123,6 +123,8 @@ class MatmulReduceScatterV2 : public OpDef {
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
         .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
     this->AICore().AddConfig("ascend950", aicore_config);
+    // 910_96 由 950 演进，复用 950 的 aicore 配置（opFile 同为 apt 模板）
+    this->AICore().AddConfig("ascend910_96", aicore_config);
     this->MC2().HcclGroup("group");
 
     OpAICoreConfig aicore_config_910b;

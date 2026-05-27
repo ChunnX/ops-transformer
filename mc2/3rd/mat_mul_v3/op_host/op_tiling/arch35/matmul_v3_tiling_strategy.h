@@ -35,6 +35,8 @@ constexpr int32_t BASE = 999;
 const static std::map<NpuArch, std::vector<int32_t>> MatMulV3PrioritiesMap = {
     { NpuArch::DAV_3510,
     { strategy::BASIC_STREAM_K, strategy::STREAM_K, strategy::BASIC_ASWT, strategy::FULL_LOAD_BASE} },
+    { NpuArch::DAV_9201,
+    { strategy::BASIC_STREAM_K, strategy::STREAM_K, strategy::BASIC_ASWT, strategy::FULL_LOAD_BASE} },
     { NpuArch::DAV_RESV, {strategy::BASE} }, //supportMmadS8S4平台
 };
 

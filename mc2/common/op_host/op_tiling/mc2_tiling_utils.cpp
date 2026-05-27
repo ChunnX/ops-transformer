@@ -171,7 +171,8 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
     return COMM_ALG_DEFAULT;
   }
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-  if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+  auto curNpuArch = ascendcPlatform.GetCurNpuArch();
+  if (curNpuArch == NpuArch::DAV_3510 || curNpuArch == NpuArch::DAV_9201) {
     return COMM_ALG_FULL_MESH;
   }
 
@@ -234,6 +235,7 @@ bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize) {
           {NpuArch::DAV_2002, {1, 2, 4}},
           {NpuArch::DAV_2201, {1, 2, 4, 8}},
           {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+          {NpuArch::DAV_9201, {1, 2, 4, 8, 16, 32, 64}},
       };
   auto it = SUPPORT_RANK_SIZE_SET.find(npuArch);
   if (it != SUPPORT_RANK_SIZE_SET.end()) {
@@ -275,6 +277,7 @@ ge::graphStatus GetMatmulV3PriorityPolicy(
   const static std::map<NpuArch, std::vector<int32_t>>
       MATMUL_V3_PRIOR_MAP = {
           {NpuArch::DAV_3510, {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
+          {NpuArch::DAV_9201, {optiling::mc2_matmul_v3_advanced::strategy::BASE}},
       };
   if (MATMUL_V3_PRIOR_MAP.find(npuArch) != MATMUL_V3_PRIOR_MAP.end()) {
     priorities = MATMUL_V3_PRIOR_MAP.at(npuArch);
