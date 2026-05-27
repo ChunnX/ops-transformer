@@ -57,12 +57,24 @@ private:
     LocalTensor<float> vec_in_pong_;
     LocalTensor<INPUT_TYPE> vec_out_ping_;
     LocalTensor<INPUT_TYPE> vec_out_pong_;
+    // sftg
+    LocalTensor<INPUT_TYPE> dy_in_ping_;
+    LocalTensor<INPUT_TYPE> dy_in_pong_;
+    LocalTensor<INPUT_TYPE> attention_in_ping_;
+    LocalTensor<INPUT_TYPE> attention_in_pong_;
+    LocalTensor<float> dy_out_ping_;
+    LocalTensor<float> dy_out_pong_;
+    LocalTensor<float> attention_out_ping_;
+    LocalTensor<float> attention_out_pong_;
+    LocalTensor<float> sftg_tmp_tensor;
     static constexpr uint32_t BLOCK_SIZE = 32;
     static constexpr uint32_t C0_SIZE = 16;
     static constexpr uint32_t BLOCK_FP32 = BLOCK_SIZE / sizeof(float);
     static constexpr uint32_t BLOCK_INPUT = BLOCK_SIZE / sizeof(INPUT_TYPE);
     constexpr static uint32_t PRE_TILE_LEN = 60 * 1024;  // pre一次处理元素的个数
     constexpr static uint32_t POST_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
+    GM_ADDR act_seq_q_len;
+
 
 public:
     __aicore__ inline VecOp(){};
@@ -87,6 +99,7 @@ public:
         this->base_n = tilingData->baseN;
         this->vec_base_m = tilingData->baseM / 2;
         this->vec_base_n = tilingData->baseN;
+        this->act_seq_q_len = actualQseqlen;
         v_core_idx_ = GetBlockIdx();
         v_sub_core_idx_ = GetSubBlockIdx();
 
@@ -103,21 +116,73 @@ public:
     }
 
     __aicore__ inline void SendVecPre(const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
-                                      const GlobalTensor<float> &dv_workspace, const TILING_CLASS *tilingData,
-                                      TBuf<TPosition::VECCALC> &ub_buffer)
+                                      const GlobalTensor<float> &dv_workspace, const GlobalTensor<float> &dy_gm,
+                                      const GlobalTensor<float> &out_gm, const GlobalTensor<float> &sftg_workspace,
+                                      const TILING_CLASS *tilingData, TBuf<TPosition::VECCALC> &ub_buffer)
     {
-        constexpr static uint32_t PRE_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
+        constexpr static uint32_t PRE_TILE_LEN = 20 * 1024; // PRE一次处理元素的个数
         EvenCoreInfo info;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(PRE_TILE_LEN, 0);
         Duplicate(vec_in_ping_, (float)0.0, PRE_TILE_LEN);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
-
         ComputeEvenCoreInfo(info, tilingData->dqSize, PRE_TILE_LEN);
         ComputeVecPre(dq_workspace, vec_in_ping_, info);
         ComputeEvenCoreInfo(info, tilingData->dkSize, PRE_TILE_LEN);
         ComputeVecPre(dk_workspace, vec_in_ping_, info);
         ComputeVecPre(dv_workspace, vec_in_ping_, info);
+
+        // sftg front
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
+        uint32_t ub_offset = 0;
+        dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        attention_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+
+        dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        attention_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+
+        sftg_tmp_tensor = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+
+        for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
+            for (uint32_t n1_idx = 0; n1_idx < q_head_num_; n1_idx++) {
+                uint64_t in_gm_offset, out_gm_offset;
+                uint32_t q_seq_len;
+                if constexpr (INPUT_LAYOUT == BSND) {
+                    q_seq_len = q_seq_len_;
+                    in_gm_offset = b_idx * q_seq_len_ * q_head_num_ * head_dim_ + n1_idx * head_dim_;
+                    out_gm_offset = b_idx * q_head_num_ * q_seq_len_ * 8 + n1_idx * q_seq_len_ * 8;
+                } else if constexpr (INPUT_LAYOUT == BNSD) {
+                    q_seq_len = q_seq_len_;
+                    in_gm_offset = b_idx * q_head_num_ * q_seq_len_ * head_dim_ + n1_idx * q_seq_len_ * head_dim_;
+                    out_gm_offset = b_idx * q_head_num_ * q_seq_len_ * 8 + n1_idx * q_seq_len_ * 8;
+                } else if constexpr (INPUT_LAYOUT == TND) {
+                    q_seq_len = GetSeqLen(b_idx, act_seq_q_len);
+                    uint64_t last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx, act_seq_q_len);
+                    in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
+                    out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * q_seq_len_ * 8;
+                }
+
+                ComputeEvenCoreInfo(info, q_seq_len, SFTG_TILE_LEN);
+                ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info);
+                SET_FLAG(MTE3, MTE2, EVENT_ID0);
+                WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+            }
+        }
     }
 
     __aicore__ inline void SendVecSoftmax(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
@@ -248,47 +313,67 @@ private:
         }
     }
 
-    __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_tensor,
-                                                   const GlobalTensor<INPUT_TYPE> &dy_tensor,
-                                                   const GlobalTensor<INPUT_TYPE> &out_tensor, const EvenCoreInfo &info)
+    __aicore__ inline void ComputeSoftmaxGradFront(const GlobalTensor<float> &dst_gm,
+                                                   const GlobalTensor<INPUT_TYPE> &dy_gm,
+                                                   const GlobalTensor<INPUT_TYPE> &out_gm, const EvenCoreInfo &info)
     {
         // if (info.start_idx >= info.data_size) {
         //     return;
         // }
-        // LocalTensor<INPUT_TYPE> vecIn = vec_in_ping_;
-        // LocalTensor<float> vecOut = vec_out_ping_;
-        // uint32_t process_size = info.max_process_size;
+        // LocalTensor<INPUT_TYPE> dy_tensor = dy_in_ping_;
+        // LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
+        // LocalTensor<float> dy_out_tensor = dy_out_ping_;
+        // LocalTensor<float> attention_out_tensor = attention_out_ping_;
+        // uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
+        // uint32_t src_stride;
+        // if constexpr (INPUT_LAYOUT == BSND) {
+        //     src_stride = q_head_num_ * head_dim_;
+        // } else if constexpr (INPUT_LAYOUT == BNSD) {
+        //     src_stride = head_dim_;
+        // } else if constexpr (INPUT_LAYOUT == TND) {
+        //     src_stride = q_head_num_ * head_dim_;
+        // }
 
         // for (uint32_t i = 0; i < info.loop_num; i++) {
         //     if (unlikely(i == info.loop_num - 1)) {
-        //         process_size = info.align_tail;
+        //         process_size = info.align_tail + info.pad_tail;
         //         if (process_size == 0) {
         //             break;
         //         }
         //     }
-        //     uint64_t gm_offset = info.start_idx + i * info.max_process_size * head_dim_;
+        //     uint64_t in_gm_offset = (info.start_idx + i * info.max_process_size) * src_stride;
 
         //     DataCopyParams copyParam;
         //     copyParam.blockCount = 1;
         //     copyParam.blockLen = process_size * head_dim_ * sizeof(INPUT_TYPE);
         //     copyParam.srcStride = 0;
-        //     copyParam.dstStride = (q_head_num_ - 1) * process_size * head_dim_;
-        //     DataCopyPad(vecIn, dy_tensor[gm_offset], copyParam, {false, 0, 0, 0});
-        //     DataCopyPad(vecIn, out_tensor[gm_offset], copyParam, {false, 0, 0, 0});
-        //     Cast(vecOut, vecIn, RoundMode::None, process_size * head_dim_);
-        //     Cast(vecIn, vecOut, RoundMode::None, process_size * head_dim_);
+        //     copyParam.dstStride = process_size * (src_stride - head_dim_) * sizeof(INPUT_TYPE);
+        //     DataCopyPad(dy_tensor, dy_gm[gm_offset], copyParam, {false, 0, 0, 0});
+        //     DataCopyPad(attention_tensor, out_gm[gm_offset], copyParam, {false, 0, 0, 0});
+        //     SET_FLAG(MTE2, V, EVENT_ID0);
+        //     WAIT_FLAG(MTE2, V, EVENT_ID0);
+
+        //     Cast(dy_out_tensor, dy_tensor, RoundMode::None, process_size * head_dim_);
+        //     Cast(attention_out_tensor, attention_tensor, RoundMode::None, process_size * head_dim_);
         //     PipeBarrier<PIPE_V>();
 
         //     if (likely(isBasicBlock)) {
-        //         SoftmaxGradFront<float, true>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
-        //                                       tilingData->softmaxGradTilingData);
+        //         SoftmaxGradFront<float, true>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+        //                                       tilingData->softmaxGradFrontTilingData);
         //     } else {
-        //         SoftmaxGradFront<float, false>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
-        //                                        tilingData->softmaxGradTilingData);
+        //         SoftmaxGradFront<float, false>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+        //                                        tilingData->softmaxGradFrontTilingData);
         //     }
-
         //     PipeBarrier<PIPE_V>();
-        //     uint8_t repeat_time = WholeReduceSum(vecOut, vecOut, 64, );
+
+        //     uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
+        //     copyParam.blockCount = 1;
+        //     copyParam.blockLen = process_size * 8 * sizeof(float);
+        //     copyParam.srcStride = 0;
+        //     copyParam.dstStride = 0;
+        //     DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, copyParam);
+        //     SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        //     WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         // }
     }
 

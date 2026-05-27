@@ -35,9 +35,9 @@ class BlockSparseAttentionGradArch35 {
 private:
     RunTimeInfo runTimeInfo_[2];
     AddrComputeModule<BSA_TYPE> addr_;
-    GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_;
+    GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_, attention_out_gm_;
     GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
-    GlobalTensor<float> dq_workspace_, dk_workspace_, dv_workspace_;
+    GlobalTensor<float> dq_workspace_, dk_workspace_, dv_workspace_, sftg_workspace_;
     TBuf<TPosition::VECCALC> ub_buffer_;
     TBuf<TPosition::A1> l1_buffer_;
     LocalTensor<float> mm1_res_ub_tensor_ping_, mm1_res_ub_tensor_pong_;
@@ -72,12 +72,14 @@ public:
         key_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)k);
         val_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)v);
         dout_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dout);
+        attention_out_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)attention_out);
         dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
         dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
         dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
         dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
         dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
+        sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
 
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
@@ -173,7 +175,8 @@ public:
         vecOp.Init(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
                    actualKvseqlen, dq, dk, dv, workspace, tilingData, ub_buffer_, ub_offset_);
 
-        vecOp.SendVecPre(dq_workspace_, dk_workspace_, dv_workspace_, tilingData, ub_buffer_);
+        vecOp.SendVecPre(dq_workspace_, dk_workspace_, dv_workspace_, dout_gm_, attention_out_gm_, sftg_workspace_,
+                         tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
         SyncAll();
         /*
@@ -182,7 +185,7 @@ public:
          */
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
 
-        while (true) {
+        {
             ping_pong_idx = taskId % 2;
             last_ping_pong_idx = 1 - ping_pong_idx;
             mm1_res_ub_tensor_ = ping_pong_idx ? mm1_res_ub_tensor_ping_ : mm1_res_ub_tensor_pong_;

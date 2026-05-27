@@ -53,7 +53,7 @@ inline __aicore__ T RoundUp(const T val, const T align)
     return (val + align - 1) / align * align;
 }
 
-__aicore__ inline int64_t getSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
+__aicore__ inline int64_t GetSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
 {
     int64_t actualSeqlen;
     if (i == 0) {
@@ -64,7 +64,7 @@ __aicore__ inline int64_t getSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
     return actualSeqlen;
 }
 
-__aicore__ inline int64_t getTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
+__aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
 {
     int64_t actualTotalSeqlen = ((__gm__ int64_t *)seq_Len)[i];
     return actualTotalSeqlen;

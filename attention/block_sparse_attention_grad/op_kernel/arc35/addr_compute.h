@@ -90,16 +90,16 @@ public:
 private:
     __aicore__ inline void UpdateSeqLen()
     {
-        cur_q_seq_len_ = getSeqLen(bIdx_, actualQseqlen_);
-        cur_kv_seq_len_ = getSeqLen(bIdx_, actualKvseqlen_);
+        cur_q_seq_len_ = GetSeqLen(bIdx_, actualQseqlen_);
+        cur_kv_seq_len_ = GetSeqLen(bIdx_, actualKvseqlen_);
         while ((cur_q_seq_len_ == 0 || cur_kv_seq_len_ == 0) && bIdx_ < batch_num_ - 1) {
             bIdx_++;
-            cur_q_seq_len_ = getSeqLen(bIdx_, actualQseqlen_);
-            cur_kv_seq_len_ = getSeqLen(bIdx_, actualKvseqlen_);
+            cur_q_seq_len_ = GetSeqLen(bIdx_, actualQseqlen_);
+            cur_kv_seq_len_ = GetSeqLen(bIdx_, actualKvseqlen_);
         }
         if (bIdx_ > 0) {
-            last_q_seq_sum_ = getTotalLen(bIdx_ - 1, actualQseqlen_);
-            last_kv_seq_sum_ = getTotalLen(bIdx_ - 1, actualKvseqlen_);
+            last_q_seq_sum_ = GetSeqTotalLen(bIdx_ - 1, actualQseqlen_);
+            last_kv_seq_sum_ = GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_);
         }
     }
 

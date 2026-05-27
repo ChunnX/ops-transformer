@@ -284,7 +284,7 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
-        uint64_t dq_size, dk_size, dv_size;
+        uint64_t dq_size, dk_size, dv_size, sftg_size;
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
@@ -293,16 +293,20 @@ protected:
             dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
             dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
+            sftg_size = batch_num_ * q_head_num_ * q_seq_len_ * 8;
         } else if (strcmp(layout_, TND_STR) == 0) {
             dq_size = q_seq_len_ * q_head_num_ * head_dim_;
             dk_size = kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
+            sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSH or BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
+        tilingData_.set_sftgWorkspaceSize(sftg_size);
+        usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dq_size * sizeof(float);
         tilingData_.set_dkWorkspaceOffset(usr_workspace_offset);
