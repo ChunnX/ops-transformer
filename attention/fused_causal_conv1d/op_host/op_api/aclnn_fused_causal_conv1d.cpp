@@ -25,17 +25,16 @@ using namespace op;
 
 namespace {
 
-template <bool IsInplace>
-aclnnStatus FusedCausalConv1dCommonProcessImpl(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
-                                               const aclTensor *queryStartLoc, const aclTensor *cacheIndices,
-                                               const aclTensor *initialStateMode, const aclTensor *bias,
-                                               const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
-                                               const aclTensor *blockIdxFirstScheduledToken,
-                                               const aclTensor *blockIdxLastScheduledToken,
-                                               const aclTensor *initialStateIdx, int64_t activationMode,
-                                               int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-                                               int64_t residualConnection, int64_t blockSize, int64_t convMode,
-                                               aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus FusedCausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
+                                           const aclTensor *queryStartLoc, const aclTensor *cacheIndices,
+                                           const aclTensor *initialStateMode, const aclTensor *bias,
+                                           const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
+                                           const aclTensor *blockIdxFirstScheduledToken,
+                                           const aclTensor *blockIdxLastScheduledToken,
+                                           const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId,
+                                           int64_t runMode, int64_t maxQueryLen, int64_t residualConnection,
+                                           int64_t blockSize, int64_t convMode, aclTensor *y, uint64_t *workspaceSize,
+                                           aclOpExecutor **executor)
 {
     auto uniqueExecutor = CREATE_EXECUTOR();
 
@@ -72,52 +71,16 @@ aclnnStatus FusedCausalConv1dCommonProcessImpl(const aclTensor *x, const aclTens
     const aclTensor *blockIdxLastFinal = ensureContiguous(blockIdxLastScheduledToken);
     const aclTensor *initialStateIdxFinal = ensureContiguous(initialStateIdx);
 
-    // For inplace mode, y is not exposed at L2; pass x as the effective y to L0
-    // so that the OpDef output registration remains valid.
-    aclTensor *yEffective = IsInplace ? const_cast<aclTensor *>(xFinal) : y;
-
     bool ok = l0op::FusedCausalConv1d(xFinal, weightFinal, convStatesFinal, queryStartLocFinal, cacheIndicesFinal,
                                       initialStateModeFinal, biasFinal, numAcceptedTokensFinal, numComputedTokensFinal,
                                       blockIdxFirstFinal, blockIdxLastFinal, initialStateIdxFinal, activationMode,
                                       padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
-                                      IsInplace, yEffective, uniqueExecutor.get());
+                                      y, uniqueExecutor.get());
     CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
-}
-
-aclnnStatus FusedCausalConv1dCommonProcess(const aclTensor *x, const aclTensor *weight, aclTensor *convStates,
-                                           const aclTensor *queryStartLoc, const aclTensor *cacheIndices,
-                                           const aclTensor *initialStateMode, const aclTensor *bias,
-                                           const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
-                                           const aclTensor *blockIdxFirstScheduledToken,
-                                           const aclTensor *blockIdxLastScheduledToken,
-                                           const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId,
-                                           int64_t runMode, int64_t maxQueryLen, int64_t residualConnection,
-                                           int64_t blockSize, int64_t convMode, aclTensor *y, uint64_t *workspaceSize,
-                                           aclOpExecutor **executor)
-{
-    return FusedCausalConv1dCommonProcessImpl<false>(
-        x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-        numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, y, workspaceSize, executor);
-}
-
-aclnnStatus InplaceFusedCausalConv1dCommonProcess(
-    aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
-    const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
-    const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
-    const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
-    const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode, uint64_t *workspaceSize, aclOpExecutor **executor)
-{
-    // Inplace variant: no explicit y; pass nullptr which the template resolves to xFinal.
-    return FusedCausalConv1dCommonProcessImpl<true>(
-        x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-        numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, nullptr, workspaceSize, executor);
 }
 
 } // namespace
@@ -153,35 +116,6 @@ ACLNN_API aclnnStatus aclnnFusedCausalConv1d(void *workspace, uint64_t workspace
                                              aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFusedCausalConv1d);
-    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
-}
-
-// ============================================
-// Inplace L2 two-phase APIs
-// ============================================
-
-ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1dGetWorkspaceSize(
-    aclTensor *x, const aclTensor *weight, aclTensor *convStates, const aclTensor *queryStartLoc,
-    const aclTensor *cacheIndices, const aclTensor *initialStateMode, const aclTensor *bias,
-    const aclTensor *numAcceptedTokens, const aclTensor *numComputedTokens,
-    const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
-    const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode, int64_t maxQueryLen,
-    int64_t residualConnection, int64_t blockSize, int64_t convMode, uint64_t *workspaceSize, aclOpExecutor **executor)
-{
-    L2_DFX_PHASE_1(aclnnInplaceFusedCausalConv1d,
-                   DFX_IN(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-                          numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
-                   DFX_OUT(convStates));
-    return InplaceFusedCausalConv1dCommonProcess(
-        x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
-        numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx, activationMode,
-        padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, workspaceSize, executor);
-}
-
-ACLNN_API aclnnStatus aclnnInplaceFusedCausalConv1d(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream)
-{
-    L2_DFX_PHASE_2(aclnnInplaceFusedCausalConv1d);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
