@@ -322,9 +322,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
 }
 
 template <typename MLAPT>
-__aicore__ inline void MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
-                                                            __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
-                                                            __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut)
+__aicore__ inline void
+MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
+                                     __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
+                                     __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut)
 {
     qrOutGm_.SetGlobalBuffer((__gm__ ropeOutputType *)queryRopeOut);
     if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) ||

@@ -124,12 +124,12 @@ private:
                                         int64_t curStepBatchSize);
     __aicore__ inline void RmsNormCq(int64_t tokenIndex, int64_t rmsNormCqOffset, int64_t rmsNormCqResOffset,
                                      int64_t curVecToken, int64_t curBlockTokenOffset);
-    __aicore__ inline void CopyDequantScaleCq(uint64_t dequantScaleCqElementNum, 
+    __aicore__ inline void CopyDequantScaleCq(uint64_t dequantScaleCqElementNum,
                                               LocalTensor<dequantScaleType> &dequantScaleQcQr,
                                               int64_t curVecToken,
                                               int64_t curBlockTokenOffset);
-    __aicore__ inline void CopyQueryNormScale(int64_t stepTokenIndex, 
-                                              LocalTensor<dequantScaleType> &dequantScaleQcQr, 
+    __aicore__ inline void CopyQueryNormScale(int64_t stepTokenIndex,
+                                              LocalTensor<dequantScaleType> &dequantScaleQcQr,
                                               int64_t curVecToken);
     __aicore__ inline void RopeAndScatterKr(LocalTensor<float> &dequantScaleXLocal, LocalTensor<uint8_t> &shareTmpUb,
                                             LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,

@@ -246,7 +246,8 @@ ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
             static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE),
             static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE)
         };
-        OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
+        OP_CHECK_IF(
+            supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
             OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.",
                 ConvertContainerToString(supportedQuantModes).c_str(), static_cast<uint32_t>(scenarioInfo_.quantMode_)),
             return ge::GRAPH_FAILED);
@@ -293,17 +294,21 @@ ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         uint32_t supportedDtileSize = baseShapeInfo_.hckvSize;
         if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
-            supportedDtileSize += baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize +=
+                baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (*(context_.quantScaleRepoMode) == static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
-            supportedDtileSize += baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) * (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize += 
+                baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) *
+                    (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (baseShapeInfo_.dtileSize != supportedDtileSize) {
             if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 OP_LOGE(context_.opName, "When kvQuantMode is PER_TILE, dtileSize allows only %u, got %u.",
                     supportedDtileSize, baseShapeInfo_.dtileSize);
             } else {
-                OP_LOGE(context_.opName, "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
+                OP_LOGE(context_.opName,
+                    "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
                     supportedDtileSize, baseShapeInfo_.dtileSize);
             }
             return ge::GRAPH_FAILED;
