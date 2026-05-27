@@ -750,7 +750,7 @@ int main() {
     ScopeGuard argsGuard([&] { DestroyArgs(context); });
 
     // 3. 调用CANN算子库API，需要修改为具体的API
-    // 调用aclnnLightningIndexerV2Metadata第一段接口
+    // 调用aclnnSparseFlashMlaMetadata第一段接口
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
@@ -777,7 +777,7 @@ int main() {
         }
     });
     
-    // 调用aclnnLightningIndexerV2Metadata第二段接口
+    // 调用aclnnSparseFlashMlaMetadata第二段接口
     ret = aclnnSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnSparseFlashMlaMetadata failed. ERROR: %d\n", ret);
 
