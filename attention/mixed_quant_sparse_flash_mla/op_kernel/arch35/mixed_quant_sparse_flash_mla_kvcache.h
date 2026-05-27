@@ -76,7 +76,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS2CmpSize = actualS2CmpSize;
     if constexpr (TEMPLATE_MODE != SASTemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpResidual = cmpResidualKvAddr[bIdx];
-        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio) + runParam.cmpResidual - runParam.actualS1Size / constInfo.cmpRatio;
+        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
