@@ -103,16 +103,16 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
     auto gmmGroupListGM = workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize;
-    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, yGM, gmmGroupListGM, workspaceGM,
-                   tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false);
+    computeOp.Init(gmmxGM, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, workspaceGM, gmmGroupListGM, tilingData_,
+                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false);
     // sharedmm
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                        mmArrayAddr_, tilingGM);
     SharedGmmExpertOpType shareComputeOp;
     auto mmGroupListGM =
         workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize + tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
-    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
-                        mmGroupListGM, workspaceGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
+    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM, mmGroupListGM,
+                        tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
     gmmA2avScheduler.Process();
 }
