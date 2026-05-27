@@ -706,7 +706,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     if (mmadParams.m == 1) {
         mmadParams.m = 16;
     }
-
+ 
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
