@@ -24,7 +24,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]（无作用）
@@ -51,7 +51,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -78,7 +78,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -105,7 +105,7 @@
     weight: [K, dim]，其中K=3
     conv_states: [-1, K-1+m, dim]
     query_start_loc: [batch+1]
-    cache_indices: 不开APC:[batch], 开APC:[block, maxNumBlocks]
+    cache_indices: 不开APC:[batch]或None, 开APC:[block, maxNumBlocks]
     initial_state_mode: [batch]
     bias: [dim]（无作用）
     num_accepted_tokens: [batch]
@@ -476,6 +476,8 @@
         - blockIdxFirstScheduledToken[i] <= blockIdxLastScheduledToken[i]
   - num_accepted_tokens分为None和非None，非None情况下长度为batch，每个元素取值不超过当前batch的token个数且大于0。
   - Pangu V2 模式（conv_mode = 1）下，首次运行 numComputedTokens 不能为 None。
+  - 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+  - 算子输入不支持有±inf和nan的情况。
   
   ## 调用说明
   
