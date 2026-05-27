@@ -74,7 +74,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
 
-    if (std::strcmp(commModeStr, "aicpu") == 0) {
+    if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
@@ -87,7 +87,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
         }
         OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(opName, "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
+        OP_LOGE(opName, "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
         return ge::GRAPH_FAILED;
     }
 
