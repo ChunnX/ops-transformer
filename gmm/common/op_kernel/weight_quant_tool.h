@@ -48,6 +48,7 @@ enum class QuantType {
 
 // buffer相关定义
 static constexpr int32_t QUADRUPLE_BUFFER_NUM = 4;
+
 static constexpr int32_t DOUBLE_BUFFER_NUM = 2;
 static constexpr int32_t SINGLE_BUFFER_NUM = 1;
 static constexpr int64_t L1_SIZE = 512;
