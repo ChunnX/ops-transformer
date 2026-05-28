@@ -79,7 +79,7 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     expertNum_ = tilingData_->taskTilingInfo.expertNum;
     gmmxScaleGm_ = gmmxScaleGM;
     uint64_t a2avLaunchNum = CeilDiv(e_, expertNum_);
-    uint64_t a2avLimit = MX_QUANT_MODE ? CeilDiv(MAX_HCCL_PREPARE_NUM, 2) : MAX_HCCL_PREPARE_NUM;
+    constexpr uint64_t a2avLimit = MX_QUANT_MODE ? MX_MAX_HCCL_PREPARE_NUM : MAX_HCCL_PREPARE_NUM;
     expertNum_ = a2avLaunchNum > a2avLimit ? CeilDiv(e_, a2avLimit) : expertNum_;
     isNeedPermute_ = expertNum_ > 1;
     uint64_t workspaceOffset = 0;

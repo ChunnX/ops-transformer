@@ -31,6 +31,7 @@ static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
 static constexpr uint16_t MAX_HCCL_PREPARE_NUM = 63U;
+static constexpr uint16_t MX_MAX_HCCL_PREPARE_NUM = 63U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
