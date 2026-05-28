@@ -20,10 +20,6 @@
 #if (__CCE_AICORE__ == 310)
     #include "arch35/quant_lightning_indexer_kernel.h"
 
-#else
-    #include "arch22/quant_lightning_indexer_kernel.h"
-#endif
-
 using namespace QLIKernel;
 
 #define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                         \
@@ -35,6 +31,7 @@ using namespace QLIKernel;
                 sparseIndices, user, tiling_data, &tPipe);                                                   \
         op.Process();                                                                                        \
     } while (0)
+#endif
 
 template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int Q_LAYOUT_T, int K_LAYOUT_T>
 __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
@@ -43,11 +40,11 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
                                                    __gm__ uint8_t *blocktable, __gm__ uint8_t *sparseIndices,
                                                    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
+#if (__CCE_AICORE__ == 310)
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-#if (__CCE_AICORE__ == 310)
     if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
         if (ORIG_DTYPE_WEIGHTS == DT_FLOAT16) {
             INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
@@ -67,8 +64,5 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
                                 PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
                                 half, half, int32_t);
     }
-#else
-    INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, int8_t, int8_t, int32_t,
-                                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T));
 #endif
 }
