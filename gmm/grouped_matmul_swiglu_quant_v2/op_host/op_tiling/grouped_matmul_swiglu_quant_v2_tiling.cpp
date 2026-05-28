@@ -39,15 +39,15 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
     GMMSQ_FUSING_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_BASE_TILING_TEMPLATE = 1;
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling, 
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling,
     GMMSQ_BASE_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_950_TILING_TEMPLATE = 2;
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950, 
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950,
     GMMSQ_950_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling, 
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
     GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
