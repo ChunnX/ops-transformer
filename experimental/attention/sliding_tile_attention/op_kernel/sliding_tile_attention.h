@@ -1127,15 +1127,15 @@ public:
         const int64_t blockIdx = GetBlockIdx();
         const int64_t ratio = GetTaskRatioValue();
         const int64_t subBlockRows = GetSubBlockRows(tiling_->qBlock, ratio);
+        qkMatmul_.SetOrgShape(subBlockRows, tiling_->maxKvBlock, tiling_->headDim, tiling_->headDim,
+                              tiling_->maxKvBlock);
+        pvMatmul_.SetOrgShape(subBlockRows, tiling_->headDim, tiling_->maxKvBlock, tiling_->maxKvBlock,
+                              tiling_->headDim);
         for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
             CubeTaskContext task = MakeCubeTaskContext(taskIdx, ratio, subBlockRows);
             if (task.seq >= tiling_->validSeqLen) {
                 continue;
             }
-            qkMatmul_.SetOrgShape(subBlockRows, tiling_->maxKvBlock, tiling_->headDim, tiling_->headDim,
-                                  tiling_->maxKvBlock);
-            pvMatmul_.SetOrgShape(subBlockRows, tiling_->headDim, tiling_->maxKvBlock, tiling_->maxKvBlock,
-                                  tiling_->headDim);
             int64_t textBegin = 0;
             int64_t textEnd = 0;
             GetTextScanRange(textBegin, textEnd);
