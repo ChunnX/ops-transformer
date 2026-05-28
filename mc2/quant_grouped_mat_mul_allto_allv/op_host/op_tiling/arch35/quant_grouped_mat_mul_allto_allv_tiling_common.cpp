@@ -346,25 +346,29 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckFormat()
     if (mmWeightDesc != nullptr) {
         OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                         OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeight",
-                            Ops::Base::ToString(mmWeightDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
+                            Ops::Base::ToString(mmWeightDesc->GetStorageFormat()).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
     }
     auto mmXScaleDesc = context_->GetOptionalInputDesc(MM_X_SCALE_OPTIONAL_INDEX);
     if (mmXScaleDesc != nullptr) {
         OP_TILING_CHECK(mmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                         OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmXScale",
-                            Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
+                            Ops::Base::ToString(mmXScaleDesc->GetStorageFormat()).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
     }
     auto mmWeightScaleDesc = context_->GetOptionalInputDesc(MM_WEIGHT_SCALE_OPTIONAL_INDEX);
     if (mmWeightScaleDesc != nullptr) {
         OP_TILING_CHECK(mmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                         OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmWeightScale",
-                            Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
+                            Ops::Base::ToString(mmWeightScaleDesc->GetStorageFormat()).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
     }
     auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
     if (mmYDesc != nullptr) {
         OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::Format::FORMAT_ND,
                         OP_LOGE_FOR_INVALID_FORMAT(opName_, "mmY",
-                            Ops::Base::ToString(mmYDesc->GetStorageFormat()).c_str(), "ND"), return ge::GRAPH_FAILED);
+                            Ops::Base::ToString(mmYDesc->GetStorageFormat()).c_str(), "ND"),
+                        return ge::GRAPH_FAILED);
     }
     OP_LOGD(opName_, "end CheckFormat.");
     return ge::GRAPH_SUCCESS;
@@ -400,23 +404,27 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationGmmT
     if (localParams_.isGmmWeightTrans) {
         OP_TILING_CHECK(localParams_.H1 != localParams_.gmmWeightDim2,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "gmmX and gmmWeight",
-                            (std::to_string(localParams_.H1) + " vs " + std::to_string(localParams_.gmmWeightDim2)).c_str(),
+                            (std::to_string(localParams_.H1) + " vs " +
+                             std::to_string(localParams_.gmmWeightDim2)).c_str(),
                             "The K dim of gmmX should match the K dim of gmmWeight"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(localParams_.N1 != localParams_.gmmWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "y and gmmWeight",
-                            (std::to_string(localParams_.N1) + " vs " + std::to_string(localParams_.gmmWeightDim1)).c_str(),
+                            (std::to_string(localParams_.N1) + " vs " +
+                             std::to_string(localParams_.gmmWeightDim1)).c_str(),
                             "The N dim of y should match the N dim of gmmWeight"),
                         return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(localParams_.H1 != localParams_.gmmWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "gmmX and gmmWeight",
-                            (std::to_string(localParams_.H1) + " vs " + std::to_string(localParams_.gmmWeightDim1)).c_str(),
+                            (std::to_string(localParams_.H1) + " vs " +
+                             std::to_string(localParams_.gmmWeightDim1)).c_str(),
                             "The K dim of gmmX should match the K dim of gmmWeight"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(localParams_.N1 != localParams_.gmmWeightDim2,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "y and gmmWeight",
-                            (std::to_string(localParams_.N1) + " vs " + std::to_string(localParams_.gmmWeightDim2)).c_str(),
+                            (std::to_string(localParams_.N1) + " vs " +
+                             std::to_string(localParams_.gmmWeightDim2)).c_str(),
                             "The N dim of y should match the N dim of gmmWeight"),
                         return ge::GRAPH_FAILED);
     }
@@ -482,23 +490,27 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsRelationMmTr
     if (localParams_.isMmWeightTrans) {
         OP_TILING_CHECK(localParams_.H2 != localParams_.mmWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "mmX and mmWeight",
-                            (std::to_string(localParams_.H2) + " vs " + std::to_string(localParams_.mmWeightDim1)).c_str(),
+                            (std::to_string(localParams_.H2) + " vs " +
+                             std::to_string(localParams_.mmWeightDim1)).c_str(),
                             "The K dim of mmX should match the K dim of mmWeight"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(localParams_.N2 != localParams_.mmWeightDim0,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "mmY and mmWeight",
-                            (std::to_string(localParams_.N2) + " vs " + std::to_string(localParams_.mmWeightDim0)).c_str(),
+                            (std::to_string(localParams_.N2) + " vs " +
+                             std::to_string(localParams_.mmWeightDim0)).c_str(),
                             "The N dim of mmY should match the N dim of mmWeight"),
                         return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(localParams_.H2 != localParams_.mmWeightDim0,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "mmX and mmWeight",
-                            (std::to_string(localParams_.H2) + " vs " + std::to_string(localParams_.mmWeightDim0)).c_str(),
+                            (std::to_string(localParams_.H2) + " vs " +
+                             std::to_string(localParams_.mmWeightDim0)).c_str(),
                             "The K dim of mmX should match the K dim of mmWeight"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK(localParams_.N2 != localParams_.mmWeightDim1,
                         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "mmY and mmWeight",
-                            (std::to_string(localParams_.N2) + " vs " + std::to_string(localParams_.mmWeightDim1)).c_str(),
+                            (std::to_string(localParams_.N2) + " vs " +
+                             std::to_string(localParams_.mmWeightDim1)).c_str(),
                             "The N dim of mmY should match the N dim of mmWeight"),
                         return ge::GRAPH_FAILED);
     }
