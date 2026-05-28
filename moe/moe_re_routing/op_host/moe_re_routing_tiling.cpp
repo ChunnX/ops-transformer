@@ -35,13 +35,15 @@ ge::graphStatus TilingPrepare4MoeReRouting(gert::TilingParseContext *context)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->coreNum = ascendcPlatform.GetCoreNumAiv();
     OP_CHECK_IF(compileInfo->coreNum <= 0,
-        OP_LOGE(context->GetNodeName(), "coreNum must be greater than 0."),
+        OP_LOGE_FOR_INVALID_VALUE(
+            context->GetNodeName(), "compileInfo->coreNum", std::to_string(compileInfo->coreNum).c_str(), "> 0"),
         return ge::GRAPH_FAILED);
     uint64_t ubSize = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = ubSize;
     OP_CHECK_IF(compileInfo->ubSize <= 0,
-        OP_LOGE(context->GetNodeName(), "ubSize must be greater than 0."),
+        OP_LOGE_FOR_INVALID_VALUE(
+            context->GetNodeName(), "compileInfo->ubSize", std::to_string(compileInfo->ubSize).c_str(), "> 0"),
         return ge::GRAPH_FAILED);
     compileInfo->socVersion = ascendcPlatform.GetSocVersion();
     OP_LOGD(context, "coreNum: %ld, ubSize: %ld", compileInfo->coreNum, compileInfo->ubSize);
