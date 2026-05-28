@@ -311,11 +311,6 @@ public:
                                          RunInfoX runInfo, uint32_t subLoop)
     {
         LocalTensor<uint8_t> attenMaskUb;
-        if constexpr (HAS_MASK) {
-            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttenMaskCopyInDn(attenMaskUb, 0, runInfo.actVecMSize, runInfo, subLoop); // 全量拷贝
-        }
-
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[0];
         LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>()[0];
@@ -334,6 +329,11 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
+        if constexpr (HAS_MASK) {
+            attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
+            LocalTensor<uint8_t> attenMaskUbPre = stage1CastTensor.template ReinterpretCast<uint8_t>();
+            AttenMaskCopyInDn(attenMaskUb, attenMaskUbPre, 0, runInfo.actVecMSize, runInfo, subLoop);
+        }
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (!isSkipMask) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, mxfp8s2BaseSize>(
@@ -1080,6 +1080,7 @@ public:
     }
 
     __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
+                                           LocalTensor<uint8_t> attenMaskUbPre,
                                            uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
@@ -1113,25 +1114,25 @@ public:
         bool isSkipMaskForNext = IsSkipAttentionmask(maskInfo);
         bool isSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
         isSkipMask = isSkipMaskForNext && isSkipMaskForPre;
-        uint32_t maskSize = (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur;
+        uint32_t activeMaskSize = (maskInfo.gs1dealNum >> 1) * Align(maskInfo.s2dealNum, 4U);
         if (isSkipMask) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), activeMaskSize);
             return;
         }
 
         if (!isSkipMaskForNext) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+            if (maskInfo.sparseMode == RIGHT_DOWN_CAUSAL || maskInfo.sparseMode == BAND) {
+                InvertMaskDn(attenMaskUb, activeMaskSize);
+            }
         } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskSize);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), activeMaskSize);
         }
 
         if (!isSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre =
-                this->stage1OutQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
                 maskInfo, true);
-            MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
-            this->stage1OutQue[runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
+            OrMaskDn(attenMaskUb, attenMaskUbPre, activeMaskSize);
         }
     }
 
