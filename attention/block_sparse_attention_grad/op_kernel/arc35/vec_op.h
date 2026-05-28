@@ -237,12 +237,16 @@ public:
         ub_offset = POST_TILE_LEN * sizeof(INPUT_TYPE);
 
         EvenCoreInfo info;
-        ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
+        ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
         ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
         SET_FLAG(MTE3, MTE2, EVENT_ID0);
         WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
-        ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
         ComputeVecPost<true>(dk_out_gm, dk_workspace, info);
+
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
+        ComputeVecPost<true>(dq_out_gm, dq_workspace, info);
     }
 
 private:
