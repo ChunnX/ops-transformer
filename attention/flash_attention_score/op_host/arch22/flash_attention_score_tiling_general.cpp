@@ -2750,8 +2750,12 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
-        // s1BasicBlock = (l2CacheSize == B4_1_L2_CACHESIZE) ? std::min(64L, alignedS1) : std::min(128L, alignedS1); // PERFORMANCE OPT
-        s1BasicBlock = std::min(64L, alignedS1); // PERFORMANCE OPT
+        auto optimCond = (l2CacheSize == B4_1_L2_CACHESIZE) &&
+                         (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
+                         (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND);
+        s1BasicBlock = optimCond ? std::min(64L, alignedS1) : std::min(128L, alignedS1); // PERFORMANCE OPT
         s2BasicBlock = std::min(128L, alignedS2);
     }
 
@@ -3233,8 +3237,12 @@ protected:
 
     void CalcNRatio() override
     {
-        // nRatio = (l2CacheSize == B4_1_L2_CACHESIZE) ? 4L : 8L;
-        nRatio = 4L;
+        auto optimCond = (l2CacheSize == B4_1_L2_CACHESIZE) &&
+                         (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
+                         (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND);
+        nRatio = optimCond ? 4L : 8L;
         // s2Size (1025, 1040]
         if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L) {
             nRatio = 5L;
