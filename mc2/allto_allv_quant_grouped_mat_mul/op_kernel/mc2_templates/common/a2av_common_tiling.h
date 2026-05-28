@@ -27,10 +27,10 @@ static constexpr uint32_t MAX_EP_RANK_SIZE = 8U;
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
-static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
+static constexpr uint16_t MAX_HCCL_PREPARE_NUM = 63U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
