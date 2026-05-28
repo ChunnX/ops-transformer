@@ -343,29 +343,8 @@ static bool CheckAMaxOutVaild(const aclTensor *x1, const aclTensor *amaxOut)
     }
     return true;
 }
-<<<<<<< HEAD
+
 static aclnnStatus DealWithX1Empty(uint64_t* workspaceSize, aclOpExecutor** executor)
-=======
-
-// fp8/hif8场景不支持空tensor输入
-static bool DealEmptyTensor(const aclTensor *x1, const aclTensor *x2)
-{
-    if (x1->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AllGahterMatmulV2 not support empty tensor x1 when input datatype is fp8/hif8.");
-        return false;
-    }
-
-    if (x2->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AllGahterMatmulV2 not support empty tensor x2 when input datatype is fp8/hif8.");
-        return false;
-    }
-    return true;
-}
-
-static aclnnStatus DealWithX1Empty(uint64_t *workspaceSize, aclOpExecutor **executor)
->>>>>>> 0ed30e3a0... 增加allgathermatmulv2算子通信引擎comm_mode参数适配
 {
     OP_LOGD("AllGatherMatmulV2 dealing with empty tensor.");
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -410,24 +389,10 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
 
 static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 {
-<<<<<<< HEAD
     const auto kValX1 = x1->GetViewShape().GetDim(1);
     if (kValX1 != 0) {
         if (x1->IsEmpty()) {
             return true;
-=======
-    if (CheckSupportDtype(x1, FP8_DTYPE_SUPPORT_LIST)) {
-        CHECK_RET(DealEmptyTensor(x1, x2), ACLNN_ERR_PARAM_INVALID);
-    } else {
-        const auto kValX1 = x1->GetViewShape().GetDim(1);
-        if (kValX1 != 0) {
-            if (x1->IsEmpty()) {
-                return true;
-            }
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "Does not support the case where x1 and x2 are empty tensors when k is 0.");
->>>>>>> 0ed30e3a0... 增加allgathermatmulv2算子通信引擎comm_mode参数适配
         }
     } else {
         // k will be checked again in following CheckShape()
