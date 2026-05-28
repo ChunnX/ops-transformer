@@ -1089,62 +1089,69 @@ public:
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
     }
 
-    __aicore__ inline void SoftmaxInitBuffer(LocalMemAllocator<Hardware::UB> &allocator)
+    __aicore__ inline void SoftmaxInitBuffer(uint32_t off_sm)
     {
-        softmaxSumBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-        softmaxSumBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-        softmaxSumBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-
-        softmaxMaxBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-        softmaxMaxBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-        softmaxMaxBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-
-        softmaxExpBuf[0] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
-        softmaxExpBuf[1] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
-        softmaxExpBuf[2] = allocator.Alloc<TPosition::VECIN, T, 256 / sizeof(T)>();
-
-        maxBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
-        sumBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
+        // softmaxSum×3 + softmaxMax×3 + softmaxExp×3，各 256 bytes；maxBrdcst/sumBrdcst 各 2048 bytes
+        softmaxSumBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm,          256U).template ReinterpretCast<float>();
+        softmaxSumBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 256U,   256U).template ReinterpretCast<float>();
+        softmaxSumBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 512U,   256U).template ReinterpretCast<float>();
+        softmaxMaxBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 768U,   256U).template ReinterpretCast<float>();
+        softmaxMaxBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1024U,  256U).template ReinterpretCast<float>();
+        softmaxMaxBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1280U,  256U).template ReinterpretCast<float>();
+        softmaxExpBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1536U,  256U).template ReinterpretCast<T>();
+        softmaxExpBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1792U,  256U).template ReinterpretCast<T>();
+        softmaxExpBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 2048U,  256U).template ReinterpretCast<T>();
+        maxBrdcstBuf     = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 2304U,  2048U).template ReinterpretCast<float>();
+        sumBrdcstBuf     = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 4352U,  2048U).template ReinterpretCast<float>();
     }
 
     __aicore__ inline void InitBuffers()
     {
-        LocalMemAllocator<Hardware::UB> allocator;
-        // 跳过 bmm1/bmm2 UB 区域（内核的 ubBufferManager 占用）
+        // 完全自主管理：使用 LocalTensor 构造函数直接指定绝对字节偏移，
+        // 无需 LocalMemAllocator 线性分配器。所有偏移为编译期常量。
         constexpr uint32_t mm1Sz = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         constexpr uint32_t mm2Sz = bmm2Write2Ub ?
             (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
-        (void)allocator.Alloc<TPosition::VECIN, uint8_t, mm1Sz * 2U + mm2Sz * 2U>();
 
+        // mm2InBuf：仅 !bmm2Write2Ub 时存在，固定偏移在 bmm1/2 结果区末尾
         if constexpr (!bmm2Write2Ub) {
-            mm2InBuf = allocator.Alloc<TPosition::VECIN, T, 32768 / sizeof(T)>();
-        }
-        attenMaskBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();
-        attenMaskBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();
-        stage2OutBuf    = allocator.Alloc<TPosition::VECIN, uint8_t, 32768>().template ReinterpretCast<T>();
-        stage1OutBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>().template ReinterpretCast<INPUT_T>();
-        stage1OutBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>().template ReinterpretCast<INPUT_T>();
-
-        if constexpr (s2BaseSize == 256) {
-            if constexpr (mBaseSize == 128) {
-                SoftmaxInitBuffer(allocator);
-            } else {
-                SoftmaxInitBuffer(allocator);
-                commonBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 512>();
-            }
-        } else {
-            SoftmaxInitBuffer(allocator);
-            if constexpr (!useDn) {
-                commonBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 512>();
-            }
+            mm2InBuf = LocalTensor<uint8_t>(TPosition::VECIN, mm1Sz * 2U + mm2Sz * 2U,
+                           32768U).template ReinterpretCast<T>();
         }
 
+        // FA/FD 共享区起始偏移（跳过 bmm1/bmm2/mm2In 区域）
+        constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
+        constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
+
+        // attenMask ping/pong（各 8192 bytes）
+        attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE,          8192U);
+        attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 8192U,  8192U);
+        // stage2 输出（32768 bytes）
+        stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U).template ReinterpretCast<T>();
+        // stage1 输出 ping/pong（各 33024 bytes）
+        stage1OutBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 49152U, 33024U).template ReinterpretCast<INPUT_T>();
+        stage1OutBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 82176U, 33024U).template ReinterpretCast<INPUT_T>();
+
+        // Softmax 中间值：6400 bytes，紧跟 stage1[1] 末尾（BASE + 115200）
+        SoftmaxInitBuffer(BASE + 115200U);
+
+        // commonBuf：compile-time 条件，512 bytes（BASE + 121600）
+        constexpr bool hasCommonBuf = (s2BaseSize == 256U) ? (mBaseSize != 128U) : (!useDn);
+        if constexpr (hasCommonBuf) {
+            commonBuf = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 121600U, 512U);
+        }
+
+        // lseBuf / sinkBuf：runtime 条件，地址已在编译期固定（始终位于 commonBuf 区末尾之后）
+        constexpr uint32_t commonBufSz = hasCommonBuf ? 512U : 0U;
+        constexpr uint32_t OFF_LSE = BASE + 121600U + commonBufSz;
+        constexpr uint32_t LSE_BUF_SZ = (mBaseSize >> 1U) * 8U * sizeof(float);
         if (constInfo.isSoftmaxLseEnable) {
-            lseBuf = allocator.Alloc<TPosition::VECIN, float, (mBaseSize >> 1U) * 8U>();
+            lseBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE,
+                         LSE_BUF_SZ).template ReinterpretCast<float>();
         }
-
         if (constInfo.learnableSinkFlag) {
-            sinkBuf = allocator.Alloc<TPosition::VECIN, INPUT_T, 256 / sizeof(INPUT_T)>();
+            sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE + LSE_BUF_SZ,
+                          256U).template ReinterpretCast<INPUT_T>();
         }
     }
 
