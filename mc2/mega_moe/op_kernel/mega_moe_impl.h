@@ -27,8 +27,8 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/block/block_mmad_mx.h"
 #include "blaze/block/block_scheduler_swizzle.h"
-#include "blaze/block/weight_quant_grouped_matmul_mxfp8fp4_block_mmad_split_m.h"
-#include "blaze/prologue/weight_quant_grouped_matmul_mxfp8fp4_block_prologue_split_m.h"
+#include "blaze/block/block_mmad_mx_fp8fp4.h"
+#include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 #include "blaze/utils/layout_struct.h"
 
 #include "mega_moe_combine_send.h"
