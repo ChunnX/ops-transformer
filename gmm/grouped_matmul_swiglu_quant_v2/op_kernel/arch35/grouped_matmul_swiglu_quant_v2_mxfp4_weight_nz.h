@@ -77,60 +77,6 @@ private:
     BlockMmadMxOp mmadOp_;
 };
 
-template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_,
-          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_ = MatmulWithScale<>,
-          class TileCopyParam_ = void, typename Enable_ = void>
-class BlockMxLowLevelMmAicToAivBuilder {
-    static_assert(AscendC::Std::always_false_v<BlockMatmulPolicy_>,
-                  "BlockMxLowLevelMmAicToAivBuilder is not implemented for this BlockMatmulPolicy");
-};
-
-template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_,
-          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
-          class TileCopyParam_>
-class BlockMxLowLevelMmAicToAivBuilder<
-    AType_, LayoutA_, BType_, LayoutB_, BiasType_, CType_, LayoutC_, L1TileShape_, L0TileShape_, BlockScheduler_,
-    BlockMatmulPolicy_, TileCopyParam_,
-    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulWithScale<>, BlockMatmulPolicy_>>> {
-public:
-    using AType = AType_;
-    using BType = BType_;
-    using CType = CType_;
-    using BiasType = BiasType_;
-    using L1TileShape = L1TileShape_;
-    using L0TileShape = L0TileShape_;
-    using LayoutA = LayoutA_;
-    using LayoutB = LayoutB_;
-    using LayoutC = LayoutC_;
-    using BlockMatmulPolicy = BlockMatmulPolicy_;
-    using TileCopyParam = TileCopyParam_;
-
-    static constexpr bool transA = TagToTrans<LayoutA>::value;
-    static constexpr bool transB = TagToTrans<LayoutB>::value;
-    static constexpr CubeFormat formatA = TagToFormat<LayoutA>::format;
-    static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr CubeFormat formatC = TagToFormat<LayoutC>::format;
-
-    using BlockMmadMxOp = Block::BlockMmadMx<BlockMatmulPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType,
-                                             LayoutB, CType, LayoutC, BiasType, layout::RowMajor, TileCopyParam>;
-    using BlockMmadOp = Block::BlockMmadMxToUbAdapter<BlockMmadMxOp>;
-
-    static constexpr int64_t l1M = GetIntegralConstant<MNK_M, L1TileShape>();
-    static constexpr int64_t l1N = GetIntegralConstant<MNK_N, L1TileShape>();
-    static constexpr int64_t l1K = GetIntegralConstant<MNK_K, L1TileShape>();
-
-    struct Arguments {
-        GM_ADDR aGmAddr{nullptr};
-        GM_ADDR bGmAddr{nullptr};
-        GM_ADDR x2ScaleGmAddr{nullptr};
-        GM_ADDR x1ScaleGmAddr{nullptr};
-        GM_ADDR cGmAddr{nullptr};
-        GM_ADDR groupListGmAddr{nullptr};
-        GM_ADDR biasGmAddr{nullptr};
-    };
-
-    using Params = Arguments;
-};
 } // namespace Block
 } // namespace Gemm
 } // namespace Cgmct
@@ -142,8 +88,7 @@ __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR
 {
     GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, mmTilingData, mmTilingData_, tiling);
-    using L1TileShape = AscendC::Shape<_0, _0, _0>;
-    using L0TileShape = AscendC::Shape<_0, _0, _0>;
+
     using AType = DTYPE_X;
     using BType = DTYPE_WEIGHT;
     using CType = DTYPE_Y;
@@ -152,28 +97,44 @@ __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR
     using LayoutC = layout::RowMajorAlign;
     using WeightScaleType = AscendC::fp8_e8m0_t;
     using BiasType = float;
-    using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
     using C1Type = float;
-    using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
-    using BlockEpilogue = Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType,
-                                                          WeightScaleType, true>;
+    using L1TileShape = AscendC::Shape<_0, _0, _0>;
+    using L0TileShape = AscendC::Shape<_0, _0, _0>;
+    using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
+    using BlockMatmulPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
+    using BlockMmadMxOp = Cgmct::Gemm::Block::BlockMmadMx<BlockMatmulPolicy, L1TileShape, L0TileShape, AType, LayoutA,
+                                                          BType, LayoutB, CType, LayoutC, BiasType, layout::RowMajor,
+                                                          void>;
+    using BlockMmadOp = Cgmct::Gemm::Block::BlockMmadMxToUbAdapter<BlockMmadMxOp>;
+    using BlockEpilogue = Cgmct::Gemm::Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType,
+                                                                        WeightScaleType, true>;
     using ProblemShape = MatmulShape;
-    using BlockMmad = Block::BlockMxLowLevelMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type,
-                                                              LayoutC, L1TileShape, L0TileShape, BlockScheduler,
-                                                              BlockMmadPolicy, void>;
-    using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
-    using Params = typename QGmmKernel::Params;
+    using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmadOp, BlockEpilogue,
+                                                               BlockScheduler>;
+
+    struct Params {
+        GM_ADDR aGmAddr{nullptr};
+        GM_ADDR bGmAddr{nullptr};
+        GM_ADDR x2ScaleGmAddr{nullptr};
+        GM_ADDR x1ScaleGmAddr{nullptr};
+        GM_ADDR cGmAddr{nullptr};
+        GM_ADDR groupListGmAddr{nullptr};
+        GM_ADDR biasGmAddr{nullptr};
+    };
+
     using GMMTiling = typename QGmmKernel::GMMTiling;
     GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum, gmmSwigluQuantParams_.groupListType, mmTilingData_.baseM,
                         mmTilingData_.baseN, mmTilingData_.baseK};
     gmmParams.matmulTiling = &mmTilingData_;
+
     Params params = {{1, 1, 1, 1},
                      {x, weight, weightScale, xScale, y, groupList},
                      {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
                       static_cast<uint32_t>(mmTilingData_.baseN)},
                      gmmParams};
+
     QGmmKernel op;
     op(params);
 }
 
-#endif
+#endif // GROUPED_MATMUL_SWIGLU_QUANT_V2_MXFP4_WEIGHT_NZ_H
