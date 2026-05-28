@@ -21,24 +21,91 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+
+// 批量扫描版 combine send。
+// ----------------------------------------------------------------------------
+// 旧版按 row 逐条发,每行 1 次 DataCopyPad,256 行的 tile 要 ~256 次 MTE3 startup,
+// 单次 startup ~150ns 累积 ~38us。
+//
+// 新版按"同 toRankId + 同 dst-pos-stride"的连续段批量发:
+//   - tile 内每行 dst pos = tokenIdx * topK + topkIdx,在 dispatchRevData 顺序下
+//     单调递增(stripe 写入 + mask 顺序返回保证)。
+//   - 同 src/dst rank 的连续段内,如果相邻行 dst pos 差是常数,就用 DataCopyPad
+//     的 blockCount + dstStride 一把发掉(blockLen 写整行 N 个元素,dstStride
+//     补齐到 stride_pos × n 个元素之间的字节间隔)。
+//   - 一旦 toRankId 变 / stride 变,就 flush 当前段、起新段。
+//
+// 最差情况(随机路由,每对相邻行 stride 都变):退化成每段 1 行,与旧版相同。
+// 典型情况(一个 token 多个 topk 都落同一 expert,或连续 token 同 expert 同 topk
+// 槽):runLen 普遍 2-8,MTE3 op 数减少到原来的 1/3 - 1/8。
+// ----------------------------------------------------------------------------
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokensOptimize(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t expertIdx, uint32_t rankId, LocalTensor<int32_t>& tripleTensor,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const ParamsOptimize& params)
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
+    uint32_t N = static_cast<uint32_t>(Get<N_VALUE>(actualBlockShape));
+    uint32_t topK = static_cast<uint32_t>(params.tilingData->topK);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
-    uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr; // rankSyncInWorldPtr是起始地址
+    uint64_t gmRemoteBaseOffset =
+        params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+    constexpr uint64_t kElemBytes = sizeof(ElementMMadOut2);
+
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
-    ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);        // N_VALUE是当前tile块的n长度
-    for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
-        uint32_t toRankId = tripleTensor.GetValue(tileIdx * 8);
-        uint32_t tokenIdx = tripleTensor.GetValue(tileIdx * 8 + 1);
-        uint32_t topkIdx = tripleTensor.GetValue(tileIdx * 8 + 2);
-        gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
-        uint64_t gmDstOffset = (tokenIdx * params.tilingData->topK + topkIdx) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+    ub2GmParams.blockLen = N * kElemBytes;
+
+    int32_t i = 0;
+    while (i < lenTile) {
+        // 段首
+        uint32_t curRank = tripleTensor.GetValue(i * 8);
+        uint32_t tokI = tripleTensor.GetValue(i * 8 + 1);
+        uint32_t tkI = tripleTensor.GetValue(i * 8 + 2);
+        uint64_t posI = static_cast<uint64_t>(tokI) * topK + tkI;
+        uint64_t prevPos = posI;
+
+        // 找尾部能并进同一段的最大 j
+        //   段内要求: tripleTensor[k].rank == curRank, 且相邻 row 的 dst-pos 差恒定。
+        //   stridePos < 0 时表示段内只有 1 行,还没确定 stride。
+        int32_t j = i + 1;
+        int64_t stridePos = -1;
+        while (j < lenTile) {
+            uint32_t r = tripleTensor.GetValue(j * 8);
+            if (r != curRank) break;
+            uint32_t tok = tripleTensor.GetValue(j * 8 + 1);
+            uint32_t tk  = tripleTensor.GetValue(j * 8 + 2);
+            uint64_t pos = static_cast<uint64_t>(tok) * topK + tk;
+            int64_t step = static_cast<int64_t>(pos) - static_cast<int64_t>(prevPos);
+            if (stridePos < 0) {
+                stridePos = step;
+            } else if (step != stridePos) {
+                break;
+            }
+            prevPos = pos;
+            ++j;
+        }
+
+        int32_t runLen = j - i;
+        gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(
+            GetRankWinAddrWithOffset(curRank, gmRemoteBaseOffset)));
+        uint64_t gmDstOffset = posI * n + nLoc;
+
+        ub2GmParams.blockCount = static_cast<uint16_t>(runLen);
+        if (runLen > 1) {
+            // dst 第 k 行起点(字节) = (posI + k * stridePos) * n * kElemBytes + nLoc * kElemBytes
+            // DataCopyPad 第 k 行起点(字节) = k * (blockLen + dstStride) = k * (N + dstStride/kElemBytes) * kElemBytes
+            //   ⇒ N + dstStride/kElemBytes = stridePos * n
+            //   ⇒ dstStride = (stridePos * n - N) * kElemBytes
+            ub2GmParams.dstStride = static_cast<uint32_t>(
+                static_cast<uint64_t>(stridePos) * static_cast<uint64_t>(n) * kElemBytes
+                - static_cast<uint64_t>(N) * kElemBytes);
+        } else {
+            ub2GmParams.dstStride = 0;
+        }
+
+        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[i * N], ub2GmParams);
+
+        i = j;
     }
 }
 // 把整个 tile 从 GM (gmm2OutAddr) 搬到 UB
