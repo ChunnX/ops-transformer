@@ -965,7 +965,7 @@ public:
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
             if (constInfo.sparseMode == static_cast<uint32_t>(BAND)) {
                 if constexpr (USE_DN) {
-                    tPipe->InitBuffer(attenMaskInQue[1], 1, 8192); // 128 * 64
+                    tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // (128 / 2) * 256
                 } else {
                     tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // 256 * 64
                 }
