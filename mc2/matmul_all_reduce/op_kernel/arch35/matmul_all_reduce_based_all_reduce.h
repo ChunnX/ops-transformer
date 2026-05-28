@@ -16,8 +16,8 @@
 #define MATMUL_ALL_REDUCE_BASED_ALL_REDUCE_H
 #include "matmul_all_reduce_base.h"
 namespace MatmulAllReduceImpl {
-template <typename XType, typename YType, Mc2CoreType CoreType>
-class MatmulAllReduceBase<XType, YType, CoreType, false>
+template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
+class MatmulAllReduceBase<XType, YType, CoreType, false, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceBase(
@@ -73,12 +73,12 @@ public:
         }
 
         if (notifyFlag_) {
-            tileInfo_.hcclHandleId = hccl_.AllReduce(
+            tileInfo_.hcclHandleId = hccl_.template AllReduce(
                 addrs_->cGM, addrs_->outputGM, tileInfo_.cOffset, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM,
                 paramInTiling_->tileCnt);
             if (tailFlag_) {
                 const uint64_t offset = tileInfo_.cAddrOffset * paramInTiling_->tileCnt;
-                tailInfo_.hcclHandleId = hccl_.AllReduce(
+                tailInfo_.hcclHandleId = hccl_.template AllReduce(
                     addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOffset, HCCL_DATA_TYPE,
                     AscendC::HCCL_REDUCE_SUM, paramInTiling_->tailCnt);
             }
@@ -148,7 +148,7 @@ protected:
     MC2TileInfo tileInfo_, tailInfo_;
     MC2TilingHeader* tilingData_;
     TPipe* tPipe_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_;
     bool addFlag_;
     bool tailFlag_;

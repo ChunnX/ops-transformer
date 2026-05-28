@@ -222,13 +222,13 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    uint32_t qlayout = optiling::fa_tiling_util::LAYOUT_BNSD;
+    uint32_t qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BNSD;
     if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
-        qlayout = optiling::fa_tiling_util::LAYOUT_BSH;
+        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_BSH;
     } else if (baseInfo.layoutQuery == Layout::TND) {
-        qlayout = optiling::fa_tiling_util::LAYOUT_TND;
+        qlayout = optiling::flash_attn::fa_tiling_util::LAYOUT_TND;
     }
-    optiling::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize, baseInfo.kvSeqSize,
+    optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize, baseInfo.kvSeqSize,
                                                     baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken,
                                                     qlayout, mBaseSize_, s2BaseSize_);
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio

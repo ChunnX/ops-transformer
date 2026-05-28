@@ -20,13 +20,17 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
 ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 {
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        }
     }
     OPS_LOG_D(context->GetNodeName(), "Do general CalcParamFunc");
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
@@ -35,9 +39,12 @@ ge::Status MatmulAllReduceCalcParamFunc(gert::ExeResGenerationContext *context)
 ge::Status MatmulAllReduceGenTaskFunc(const gert::ExeResGenerationContext *context,
                                       std::vector<std::vector<uint8_t>> &tasks)
 {
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
+            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        }
     }
     OPS_LOG_D(context->GetNodeName(), "Do general GenTaskFunc");
     return MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(context, tasks);

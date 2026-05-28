@@ -22,7 +22,7 @@
 #include "op_host/data_copy_transpose_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "flash_attention_score_tiling_common.h"
-#include "../op_kernel/arch32/flash_attention_score_tiling.h"
+#include "../op_kernel/arch22/flash_attention_score_tiling.h"
 #include "../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 
 
@@ -265,7 +265,7 @@ static bool IsEmptyInputRegbase(gert::TilingContext *context)
         regbaseEmptyInputTiling->set_softmaxMaxTailCoreDataSize(emptyArgs.softmaxMaxTailCoreDataSize);
         regbaseEmptyInputTiling->set_attentionOutLastCoreDataSize(emptyArgs.attentionOutLastCoreDataSize);
         regbaseEmptyInputTiling->set_attentionOutLastCoreIndex(emptyArgs.attentionOutLastCoreIndex);
-        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1));
+        context->SetTilingKey(GET_TPL_TILING_KEY(TILING_KEY_1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0));
         context->SetBlockDim(compileInfoPtr->aicNum);
         size_t *workspaces = context->GetWorkspaceSizes(1);
         // workspace上预留100M

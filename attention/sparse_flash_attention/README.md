@@ -200,6 +200,7 @@
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
+- 当前只支持query_rope和key_rope传入，不支持rope为空。
 - 支持sparse_block_size整除block_size。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 只支持sparse_block_size为1。

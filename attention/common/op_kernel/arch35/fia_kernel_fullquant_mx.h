@@ -46,7 +46,6 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
-    static constexpr bool SPLITD = CubeBlockType::SPLITD;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
@@ -230,6 +229,13 @@ public:
         constInfo.s2Size = fiaBaseParams.s2Size;
         constInfo.dSize = fiaBaseParams.dSize;
         constInfo.dSizeV = fiaBaseParams.dSizeV;
+        if constexpr (USE_DN) { // prefill不合轴
+            constInfo.realN2Size = constInfo.n2Size * constInfo.gSize;
+            constInfo.realGSize = 1;
+        } else { // decode合轴
+            constInfo.realN2Size = constInfo.n2Size;
+            constInfo.realGSize = constInfo.gSize;
+        }
         if constexpr (HAS_ROPE) {
             constInfo.dSizeRope = fiaBaseParams.dSizeRope;
         } else {
@@ -434,7 +440,7 @@ public:
     {
         bool isFirstTask =
             (bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart) && (s2Cur == constInfo.s2OStart);
-        uint32_t bIdx = bN2Cur / constInfo.n2Size;
+        uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
             if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
@@ -445,7 +451,7 @@ public:
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
@@ -528,14 +534,14 @@ public:
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.realGSize)) -
                                1;
 
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.realGSize);
+            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.realGSize);
         } else {
             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
                 // start and end locate in one G
@@ -652,13 +658,14 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = bN2Cur / (constInfo.realN2Size);
+        info.n2Idx = (bN2Cur / (constInfo.realN2Size / constInfo.n2Size)) % constInfo.n2Size;
+        info.realN2Idx = bN2Cur % constInfo.realN2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
+            info.s1Idx = info.gS1Idx / constInfo.realGSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
@@ -668,7 +675,7 @@ public:
         info.actS2Size = actSeqLensKv;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        uint64_t gS1Size = info.actS1Size * constInfo.realGSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
@@ -733,9 +740,8 @@ public:
                                           uint32_t &s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
         // 当前S2未处理完
         if (s2Cur + 1 < s2LoopTimes) {
             s2Cur++;
@@ -785,7 +791,6 @@ public:
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock.AllocEventID();
-        vecFdBlock.InitDecodeParams();
         SyncAll();
         vecFdBlock.FlashDecode(fdParams);
         vecFdBlock.FreeEventID();

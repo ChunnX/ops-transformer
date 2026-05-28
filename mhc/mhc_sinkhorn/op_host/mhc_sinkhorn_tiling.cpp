@@ -44,10 +44,11 @@ constexpr int64_t N_NUM_6 = 6;
 constexpr int64_t N_NUM_8 = 8;
 
 constexpr int64_t DOUBLE_SIZE = 2;
+constexpr int64_t TRIPLE_SIZE = 3;
 constexpr int64_t SIMD_RESERVED_SIZE = static_cast<uint64_t>(8) * 1024;
 constexpr int64_t ASCENDC_TOOLS_WORKSPACE = 0;
 constexpr int64_t MASK_BUFFER = 64;
-constexpr int64_t MAX_BUFFER = 256 * DOUBLE_SIZE;
+constexpr int64_t MAX_BUFFER = 256 * TRIPLE_SIZE;
 
 static const std::set<ge::DataType> X_DTYPE = {ge::DT_FLOAT};
 

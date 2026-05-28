@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
-#include "../flash_attn_tiling_constants.h"
 #include "fa_checker.h"
+#include "common_checker.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -36,8 +36,7 @@ using namespace arch35FA;
 // 新增 checker 时在此方法中添加: checkers_.push_back(std::make_unique<XxxChecker>());
 void FAChecker::RegisterCheckers()
 {
-    checkers_.push_back(std::make_unique<LayoutChecker>());
-    checkers_.push_back(std::make_unique<ShapeChecker>());
+    checkers_.push_back(std::make_unique<CommonChecker>());
     checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
@@ -104,7 +103,7 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 

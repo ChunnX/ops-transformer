@@ -326,7 +326,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</td>
         <td>UINT64、FLOAT、FLOAT16、BFLOAT16、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1、2、3</td>
+        <td>1、2、3、4</td>
         <td>√</td>
       </tr>
       <tr>
@@ -359,7 +359,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>-</td>
         <td>FLOAT、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、3</td>
         <td>√</td>
       </tr>
       <tr>
@@ -470,7 +470,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>-</td>
         <td>FLOAT、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、3</td>
         <td>√</td>
       </tr>
       <tr>

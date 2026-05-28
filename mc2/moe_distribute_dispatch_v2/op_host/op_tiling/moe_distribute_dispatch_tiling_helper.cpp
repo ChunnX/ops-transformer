@@ -15,7 +15,6 @@
 
 #include "moe_distribute_dispatch_tiling_helper.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_log.h"
 
 using namespace ge;
 
@@ -449,7 +448,7 @@ ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispa
 }
 
 ge::graphStatus MoeDistributeDispatchTilingHelper::TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
-    const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask)
+    const bool isScales, const uint32_t quantMode, const bool isTokenMask)
 {
     // nodeName已在调用处判空
     const char *nodeName = context->GetNodeName();

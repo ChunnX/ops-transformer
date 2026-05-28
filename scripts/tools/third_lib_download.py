@@ -57,7 +57,8 @@ if __name__ == "__main__":
         "https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz",
         ("https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/"
          "20230802.1/abseil-cpp-20230802.1.tar.gz"),
-        "https://gitcode.com/cann/opbase.git"   # Git 仓库
+        "https://gitcode.com/cann/opbase.git",   # Git 仓库
+        "https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-007.tar.gz"
     ]
 
     down_files_native(my_urls)

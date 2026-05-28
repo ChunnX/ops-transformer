@@ -16,7 +16,7 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "../flash_attn_tiling_constants.h"
+#include "../fa_tiling_info.h"
 #include "base_checker.h"
 namespace optiling {
 namespace flash_attn {

@@ -16,7 +16,7 @@
 #include "torch_npu/csrc/framework/utils/OpPreparation.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "op_host/incre_flash_attention_tiling_impl.h"
-#include "op_kernel/incre_flash_attention_arch32.h"
+#include "op_kernel/incre_flash_attention_arch22.h"
 namespace ascend_ops {
 namespace custom {
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)

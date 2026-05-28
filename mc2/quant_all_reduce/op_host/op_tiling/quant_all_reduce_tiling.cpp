@@ -28,7 +28,7 @@ using namespace ge;
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static void PrintTilingDataInfo(gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
+static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "bs is %lu in quant_all_reduce.", tilingData.quantAllReduceTilingInfo.bs);
@@ -154,9 +154,10 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 
 struct QuantAllReduceCompileInfo {};
 
-ge::graphStatus TilingParseForQuantAllReduce(gert::TilingParseContext *context) { 
+ge::graphStatus TilingParseForQuantAllReduce(gert::TilingParseContext *context)
+{
     (void)context;
- 	return ge::GRAPH_SUCCESS; 
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(QuantAllReduce)

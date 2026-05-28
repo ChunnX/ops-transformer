@@ -9,9 +9,9 @@
   */
 
 /* !
-* \file gmm_a2av_scheduler.h
-* \brief
-*/
+ * \file gmm_a2av_scheduler.h
+ * \brief
+ */
 
 #ifndef MC2_GMMA2AV_PIPELINE_TEMPLATE_COMM_COMPUTE_H
 #define MC2_GMMA2AV_PIPELINE_TEMPLATE_COMM_COMPUTE_H
@@ -27,9 +27,9 @@ namespace MC2KernelTemplate {
 template <typename CommOpType, typename ComputationOpType, typename SharedComputationOpType, bool IsNeedMM>
 class GmmA2avScheduler {
 public:
-    __aicore__ inline GmmA2avScheduler(const CommOpType& hcclOp, const ComputationOpType& computeOp,
-        const SharedComputationOpType& shareComputeOp, TaskTilingInfo* taskTilingInfo):hcclOp_(hcclOp),
-        computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
+    __aicore__ inline GmmA2avScheduler(CommOpType &hcclOp, ComputationOpType &computeOp,
+                                       SharedComputationOpType &shareComputeOp, TaskTilingInfo *taskTilingInfo)
+        : hcclOp_(hcclOp), computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
     __aicore__ inline void Init();
 
     __aicore__ inline void Process()
@@ -66,10 +66,10 @@ public:
     }
 
 private:
-    CommOpType hcclOp_;
-    ComputationOpType computeOp_;
-    SharedComputationOpType shareComputeOp_;
+    CommOpType &hcclOp_;
+    ComputationOpType &computeOp_;
+    SharedComputationOpType &shareComputeOp_;
     const TaskTilingInfo *taskTilingInfo_;
 };
-}
+} // namespace MC2KernelTemplate
 #endif

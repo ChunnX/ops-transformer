@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FLASH_ATTN_TILING_REGBASE_H_
-#define FLASH_ATTN_TILING_REGBASE_H_
+#ifndef FLASH_ATTN_TILING_DATA_H_
+#define FLASH_ATTN_TILING_DATA_H_
 
 
 namespace optiling {
@@ -57,8 +57,10 @@ struct FlashAttnBaseParams {
     uint32_t dSize;
     uint32_t dSizeV;
     uint32_t dSizeRope;
-    uint32_t cuSeqLengthsQSize;
-    uint32_t cuSeqLengthsKVSize;
+    uint32_t cuSeqLensQSize;
+    uint32_t cuSeqLensKVSize;
+    uint32_t seqUsedQSize;
+    uint32_t seqUsedKvSize;
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
@@ -66,6 +68,7 @@ struct FlashAttnBaseParams {
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;
+    bool needInitOutput;
 };
 
 struct FlashAttnAttenMaskParams {
@@ -75,38 +78,13 @@ struct FlashAttnAttenMaskParams {
     uint32_t attenMaskBatch = 0;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
-    uint8_t isRowInvalidOpen = 0;
     uint8_t isExistRowInvalid = 0;
-};
-
-struct FlashAttnPseParams {
-    uint8_t pseShiftByBatch;
-    uint32_t pseS1Size;
-    uint32_t pseS2Size;
-    uint32_t pseStride;
-    uint32_t qStartIdx;
-    uint32_t kvStartIdx;
-};
-
-struct FlashAttnSystemPrefixParams {
-    uint8_t iscuSharedPrefixLenNull;
-    uint32_t prefixSeqInnerSize;
 };
 
 struct FlashAttnPageAttentionParams {
     uint8_t paLayoutType;
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
-};
-
-struct FlashAttnLeftPaddingParams {
-    uint8_t isQHasLeftPadding;
-    uint8_t isKVHasLeftPadding;
-};
-
-struct FlashAttnPostQuantParams {
-    uint8_t isPostQuantPerChnl;
-    uint8_t isPostQuantBF16;
 };
 
 struct FlashAttnWorkspaceParams {
@@ -119,13 +97,6 @@ struct FlashAttnS1OuterSplitCoreParams {
     uint64_t totalSize;
 };
 
-struct FlashAttnEmptyTensorParams {
-    uint32_t singleCoreSize;
-    uint8_t needInit;
-    uint64_t totalOutputSize;
-    uint64_t totalSoftMaxLseOutputSize;
-};
-
 struct FlashAttnMetaData {
     uint32_t FAMetadata[FA_AIC_CORE_NUM][FLASH_ATTN_METADATA_SIZE];
     uint32_t FDMetadata[FA_AIV_CORE_NUM][FA_FD_METADATA_SIZE];
@@ -135,14 +106,9 @@ class FlashAttnNoQuantTilingArch35 {
 public:
     FlashAttnBaseParams flashAttnBaseParams;
     FlashAttnAttenMaskParams flashAttnAttenMaskParams;
-    FlashAttnPseParams flashAttnPseParams;
-    FlashAttnSystemPrefixParams flashAttnSystemPrefixParams;
     FlashAttnPageAttentionParams flashAttnPageAttentionParams;
-    FlashAttnLeftPaddingParams flashAttnLeftPaddingParams;
-    FlashAttnPostQuantParams flashAttnPostQuantParams;
     FlashAttnWorkspaceParams flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams flashAttnS1OuterSplitCoreParams;
-    FlashAttnEmptyTensorParams flashAttnEmptyTensorParams;
 };
 
 class FlashAttnTilingData {

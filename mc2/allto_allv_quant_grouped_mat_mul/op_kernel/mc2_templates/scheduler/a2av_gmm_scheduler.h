@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -79,12 +79,12 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     expertNum_ = tilingData_->taskTilingInfo.expertNum;
     gmmxScaleGm_ = gmmxScaleGM;
     uint64_t a2avLaunchNum = CeilDiv(e_, expertNum_);
-    constexpr uint64_t a2avLimit = MX_QUANT_MODE ? CeilDiv(MAX_HCCL_PREPARE_NUM, 2) : MAX_HCCL_PREPARE_NUM;
+    uint64_t a2avLimit = MX_QUANT_MODE ? CeilDiv(MAX_HCCL_PREPARE_NUM, 2) : MAX_HCCL_PREPARE_NUM;
     expertNum_ = a2avLaunchNum > a2avLimit ? CeilDiv(e_, a2avLimit) : expertNum_;
     isNeedPermute_ = expertNum_ > 1;
     uint64_t workspaceOffset = 0;
     uint64_t gmmxSize = Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                                PACK_FACTOR), TENSOR_LIST_SIZE);
+                                PACK_FACTOR) * X_TYPE_SIZE, TENSOR_LIST_SIZE);
     if (!tilingData_->isPermuteOut) {
         commOutGm_ = workspaceGM + workspaceOffset;
         workspaceOffset += gmmxSize;
