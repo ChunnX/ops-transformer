@@ -233,7 +233,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
     UpdateTilingKeyLayout();
     UpdateTilingKeyConfig();
     UpdateTilingKeyKvLayout();
-    tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == 3) ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = ( faInfo_->maskMode == 3 || faInfo_->maskMode == 4) ? 1 : 0;
 }
 
 void FlashAttnTilingImpl::GenTilingKey()
@@ -317,7 +317,7 @@ void FlashAttnTilingImpl::FillTiling()
 void FlashAttnTilingImpl::ComputeTilingData()
 {
     tilingData_.baseTiling.flashAttnAttenMaskParams.sparseMode = faInfo_->maskMode;
-    tilingKeyInfo_.hasAttenMask = faInfo_->maskMode == 3 ? 1 : 0;
+    tilingKeyInfo_.hasAttenMask = ( faInfo_->maskMode == 3 || faInfo_->maskMode == 4) ? 1 : 0;
 
     if (tilingKeyInfo_.hasAttenMask) {
         uint64_t maskBatch = 1;
