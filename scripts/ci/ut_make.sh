@@ -116,6 +116,7 @@ for OP_REPO in $OP_REPO_LIST; do
 
         cd $CODE_PATH
         if [ "$OP_REPO" = "mc2" ]; then
+            export ASCEND_GLOBAL_LOG_LEVEL=0
             run_mc2_ut_case() {
                 local test_type=$1
                 local soc_param=$2
@@ -153,6 +154,7 @@ for OP_REPO in $OP_REPO_LIST; do
                     echo "host cannot be executed temporarily" &>> $LOG_PATH/op_test/$OP.log
                 fi  
             done
+            export ASCEND_GLOBAL_LOG_LEVEL=3
         else
             timeout $TIMEOUT bash build.sh -u --ops=$op_option_list --cov --soc=ascend310p,ascend910b,ascend910_93,ascend950 &> $LOG_PATH/op_test/$OP.log
             if [ $? -ne 0 ]; then
