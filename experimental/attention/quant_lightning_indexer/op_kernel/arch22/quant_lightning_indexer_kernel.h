@@ -312,7 +312,7 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
     uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(aiCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
     ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
     if ASCEND_IS_AIV {
-        uint32_t vecCoreIdx = aiCoreIdx; // 此时代表vectoe核数
+        uint32_t vecCoreIdx = tmpBlockIdx; // 此时代表vectoe核数
         uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, LD_CORE_ENABLE_INDEX, true);
         ldInfo.isLdCoreEnable = metadataGm.GetValue(ldCoreEnableIndex);
         
@@ -338,7 +338,8 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
         ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
         uint64_t actualSeqQPrefixSum = 0;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(ldInfo.bIdx - 1);
+            uint32_t actualSeqLengthsGmQIdx = (constInfo.batchSupperFlag) ? ldInfo.bIdx : ldInfo.bIdx - 1;
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(actualSeqLengthsGmQIdx);
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
         }
@@ -476,7 +477,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
         tempLoopInfo.validS2Len = tempLoopInfo.actS2Size;
     }
     tempLoopInfo.s2LoopEnd = (isEnd && constInfo.s2End != 0) ? constInfo.s2End : s2BlockNum;
-    if (constInfo.s2Start > 0 || tempLoopInfo.s2LoopEnd < s2BlockNum - 1) {
+    if (constInfo.s2Start > 0 || tempLoopInfo.s2LoopEnd < s2BlockNum) {
         tempLoopInfo.isNeedLD = true;
     } else {
         tempLoopInfo.isNeedLD = false;
@@ -519,7 +520,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.bN2Idx = tempLoopInfo.bN2Idx;
     runInfo.isValid = s2LoopIdx < tempLoopInfo.s2LoopEnd;
     runInfo.isNeedLD = tempLoopInfo.isNeedLD;
-    if (runInfo.isNeedLD && s2LoopIdx == tempLoopInfo.s2LoopEnd) {
+    if (runInfo.isNeedLD && s2LoopIdx + 1 == tempLoopInfo.s2LoopEnd) {
         runInfo.saveWorkSpaceIdx = ldInfo.saveWorkSpaceIdx;
         ldInfo.saveWorkSpaceIdx++;
     }
@@ -633,9 +634,15 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
     if (constInfo.bN2Start == constInfo.bN2End) {
         if (constInfo.gS1Start != constInfo.gS1End || constInfo.s2Start != constInfo.s2End) {
             constInfo.bN2End += 1;
+            if (constInfo.s2End != 0) {
+                constInfo.gS1End += 1;
+            }
         }
     } else if ((constInfo.gS1End != 0) || (constInfo.s2End != 0)){
         constInfo.bN2End += 1;
+        if (constInfo.s2End != 0) {
+            constInfo.gS1End += 1;
+        }
     }
 
     uint32_t gloop = 0;
