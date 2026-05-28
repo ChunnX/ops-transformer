@@ -785,7 +785,7 @@ private:
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
                                                                          blockStride, pRegUint8All);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * ELE_NUM_PER_C0_FP8 * BLOCK_REP_SIZE, pVreg4,
+                    expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * HALF_VECTOR_SIZE, pVreg4,
                     blockStride, pRegUint8All);
             } else {
                 Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);

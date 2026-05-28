@@ -398,7 +398,8 @@ public:
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag, uint64_t deqScalar)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
-        CopyL0CToDst copyL0CToDst;
+        CopyL0CToDst copyL0CToDstSub0;
+        CopyL0CToDst copyL0CToDstSub1;
 
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[1];
