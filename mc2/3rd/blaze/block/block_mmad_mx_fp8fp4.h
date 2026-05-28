@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file weight_quant_grouped_matmul_mxfp8fp4_block_mmad_split_m.h
+ * \file block_mmad_mx_fp8fp4.h
  * \brief MMAD block implementation for weight-quant grouped matmul split-M pipeline.
  */
 #pragma once

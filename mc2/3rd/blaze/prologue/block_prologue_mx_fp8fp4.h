@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file weight_quant_grouped_matmul_mxfp8fp4_block_prologue_split_m.h
+ * \file block_prologue_mx_fp8fp4.h
  * \brief Weight-quantized grouped matmul prologue with MXFP8/FP4 casting
  *
  * ## Overview
