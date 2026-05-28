@@ -46,9 +46,9 @@ public:
     __aicore__ inline void InitConstInfoWithPA(const __gm__ FlashAttnNoQuantTilingArch35 *tilingData)
     {
         if ASCEND_IS_AIC {
-            cubeData->InitConstInfo(tilingData);
+            cubeData.InitConstInfo(tilingData);
         } else {
-            vectorData->InitConstInfo(tilingData);
+            vectorData.InitConstInfo(tilingData);
         }
     }
 
@@ -77,7 +77,7 @@ public:
 
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSizeCalc = mBaseSize * this->tilingData->flashAttnBaseParams.dSizeV;
-            int64_t prevCoretotalOffset = this->constInfo.aicIdx * 3 * mm2ResultSizeCalc;
+            int64_t prevCoretotalOffset = cubeData.constInfo.aicIdx * 3 * mm2ResultSizeCalc;
             workspace = workspace + this->tilingData->flashAttnBaseParams.coreNum * 3 * mm2ResultSizeCalc * sizeof(T);
         }
     }
@@ -210,7 +210,7 @@ public:
         this->pipe = tPipe;
         this->tilingData = tiling;
 
-        this->InitConstInfoWithPA();
+        this->InitConstInfoWithPA(tiling);
 
         this->keyPtr = key;
 
@@ -237,8 +237,13 @@ public:
 
         this->sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
 
-        this->faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                           FA_AIC_CORE_NUM * 16U * this->sectionNum_);
+        if ASCEND_IS_AIC {
+            cubeData.faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                               FA_AIC_CORE_NUM * 16U * this->sectionNum_);
+        } else {
+            vectorData.faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                                 FA_AIC_CORE_NUM * 16U * this->sectionNum_);
+        }
 
         if ASCEND_IS_AIC {
             this->InitCube(query, key, value, blockTable);
@@ -258,7 +263,7 @@ public:
     __aicore__ inline void Process()
     {
         if ASCEND_IS_AIV {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (vectorData.constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 vectorProc.CrossCoreBufferInit();
             }
         }
@@ -272,7 +277,7 @@ public:
         }
 
         if ASCEND_IS_AIC {
-            if (this->constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
+            if (cubeData.constInfo.aicIdx < this->tilingData->flashAttnBaseParams.coreNum) {
                 cubeProc.CrossCoreBufferUnInit();
             }
         }

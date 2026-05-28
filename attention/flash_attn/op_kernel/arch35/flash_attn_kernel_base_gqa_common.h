@@ -21,6 +21,17 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
+namespace BaseApi {
+
+struct UnifiedVecConstInfo {
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t dBasicBlock;
+};
+
+}
+
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
@@ -117,6 +128,16 @@ public:
     uint32_t createdTaskCount = 0;
     uint32_t executedTaskCount = 0;
     uint32_t mloop = 0;
+    uint32_t accGS1Loops = 0;
+    uint32_t prevBN2Idx = 0;
+    uint32_t prevGS1Idx = 0;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t prevBIdx = 0;
+    uint32_t curS2Start = 0;
+    uint32_t curS2End = 0;
 
     CubeBlockType cubeBlock;
     FlashAttentionGqaContext* ctx;
@@ -192,6 +213,16 @@ public:
     uint32_t createdTaskCount = 0;
     uint32_t executedTaskCount = 0;
     uint32_t mloop = 0;
+    uint32_t accGS1Loops = 0;
+    uint32_t prevBN2Idx = 0;
+    uint32_t prevGS1Idx = 0;
+    bool headS2Split = false;
+    bool tailS2Split = false;
+    uint64_t actSeqLensKv = 0;
+    uint64_t actSeqLensQ = 0;
+    uint32_t prevBIdx = 0;
+    uint32_t curS2Start = 0;
+    uint32_t curS2End = 0;
     uint32_t coreFirstTmpOutWsPos_ = 0;
 
     VecFaBlockType vecFaBlock;

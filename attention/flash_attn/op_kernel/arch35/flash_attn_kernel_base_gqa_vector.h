@@ -78,8 +78,8 @@ private:
             vectorData->prevBN2Idx = bN2Cur;
             vectorData->prevGS1Idx = gS1Cur;
             
-            vectorData->coreFirstTmpOutWsPos_ = vectorData->ctx->faMetaDataGm.GetValue(
-                vectorData->ctx->GetFAMetaDataIndex(vectorData->constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
+            vectorData->coreFirstTmpOutWsPos_ = vectorData->faMetaDataGm.GetValue(
+                vectorData->GetFAMetaDataIndex(vectorData->constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
 
             bool shouldDispatchTask = true;
             bool shouldExecuteTask = false;
@@ -112,7 +112,7 @@ private:
     __aicore__ inline bool ShouldDispatchTaskVector(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         if ASCEND_IS_AIV {
-            return ((bN2Cur != vectorData->ctx->bN2End_) || (gS1Cur != vectorData->ctx->gS1OEnd_) || (s2Cur != vectorData->ctx->s2OEnd_));
+            return ((bN2Cur != vectorData->bN2End_) || (gS1Cur != vectorData->gS1OEnd_) || (s2Cur != vectorData->s2OEnd_));
         }
         return false;
     }
@@ -134,26 +134,26 @@ private:
         if ASCEND_IS_AIV {
             bool isFirstTask = (bN2Cur == vectorData->bN2Start_) && (gS1Cur == vectorData->gS1OStart_) && (s2Cur == vectorData->s2OStart_);
             uint32_t bIdx = bN2Cur / vectorData->ctx->tilingData->flashAttnBaseParams.n2Size;
-            if (isFirstTask || vectorData->ctx->prevBIdx != bIdx) {
-                vectorData->ctx->prevBIdx = bIdx;
+            if (isFirstTask || vectorData->prevBIdx != bIdx) {
+                vectorData->prevBIdx = bIdx;
                 if (vectorData->ctx->tilingData->flashAttnBaseParams.cuSeqLensKVSize == 0 && vectorData->ctx->tilingData->flashAttnBaseParams.seqUsedKvSize == 0 &&
                     !vectorData->ctx->tilingData->flashAttnBaseParams.isKvContinuous) {
-                    vectorData->ctx->actSeqLensKv = SeqLenFromTensorList<VectorData::LAYOUT_KV>(vectorData->ctx->keyPtr, bIdx);
+                    vectorData->actSeqLensKv = SeqLenFromTensorList<VectorData::LAYOUT_KV>(vectorData->ctx->keyPtr, bIdx);
                 } else {
                     if constexpr (VectorData::LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
-                        vectorData->ctx->actSeqLensKv = vectorData->kvCuSeqLensParser.GetActualSeqLength(bIdx);
+                        vectorData->actSeqLensKv = vectorData->kvCuSeqLensParser.GetActualSeqLength(bIdx);
                     } else {
-                        vectorData->ctx->actSeqLensKv = vectorData->kvSeqUsedParser.GetActualSeqLength(bIdx);
+                        vectorData->actSeqLensKv = vectorData->kvSeqUsedParser.GetActualSeqLength(bIdx);
                     }
                 }
                 if constexpr (VectorData::LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                    vectorData->ctx->actSeqLensQ = vectorData->qCuSeqLensParser.GetActualSeqLength(bIdx);
+                    vectorData->actSeqLensQ = vectorData->qCuSeqLensParser.GetActualSeqLength(bIdx);
                 } else {
-                    vectorData->ctx->actSeqLensQ = vectorData->qSeqUsedParser.GetActualSeqLength(bIdx);
+                    vectorData->actSeqLensQ = vectorData->qSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
-            uint64_t s2LoopTimes = (vectorData->ctx->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
-            uint64_t gS1Size = vectorData->ctx->actSeqLensQ * vectorData->ctx->tilingData->flashAttnBaseParams.gSize;
+            uint64_t s2LoopTimes = (vectorData->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
+            uint64_t gS1Size = vectorData->actSeqLensQ * vectorData->ctx->tilingData->flashAttnBaseParams.gSize;
             uint64_t gS1LoopTimes = (gS1Size + VectorData::mBaseSize - 1) / VectorData::mBaseSize;
             if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
                 if (gS1Cur == 0 && s2Cur == 0) {
@@ -172,15 +172,15 @@ private:
                 vectorData->prevGS1Idx = gS1Cur;
             }
 
-            if (vectorData->ctx->curS2Start < vectorData->ctx->curS2End && s2Cur >= vectorData->ctx->curS2End) {
+            if (vectorData->curS2Start < vectorData->curS2End && s2Cur >= vectorData->curS2End) {
                 return TASK_DEAL_MODE::S2_END;
             }
 
-            if (s2Cur < vectorData->ctx->curS2Start || s2Cur >= vectorData->ctx->curS2End) {
+            if (s2Cur < vectorData->curS2Start || s2Cur >= vectorData->curS2End) {
                 return TASK_DEAL_MODE::SKIP;
             }
 
-            if (s2Cur == vectorData->ctx->curS2Start) {
+            if (s2Cur == vectorData->curS2Start) {
                 vectorData->mloop++;
             }
 
@@ -213,17 +213,17 @@ private:
     __aicore__ inline void CalcCurS2StartEndNoSparseVector(uint32_t bN2Cur, uint32_t gS1Cur)
     {
         if ASCEND_IS_AIV {
-            vectorData->ctx->curS2Start = 0U;
-            vectorData->ctx->curS2End = (static_cast<uint32_t>(vectorData->ctx->actSeqLensKv) + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
+            vectorData->curS2Start = 0U;
+            vectorData->curS2End = (static_cast<uint32_t>(vectorData->actSeqLensKv) + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
 
             if ((bN2Cur == vectorData->bN2Start_) && (gS1Cur == vectorData->gS1OStart_)) {
                 vectorData->headS2Split = vectorData->s2OStart_ != 0U;
-                vectorData->ctx->curS2Start = vectorData->s2OStart_;
+                vectorData->curS2Start = vectorData->s2OStart_;
             }
 
-            if ((bN2Cur == vectorData->ctx->bN2End_) && (gS1Cur == vectorData->ctx->gS1OEnd_)) {
-                vectorData->tailS2Split = vectorData->ctx->s2OEnd_ != 0U;
-                vectorData->ctx->curS2End = vectorData->ctx->s2OEnd_;
+            if ((bN2Cur == vectorData->bN2End_) && (gS1Cur == vectorData->gS1OEnd_)) {
+                vectorData->tailS2Split = vectorData->s2OEnd_ != 0U;
+                vectorData->curS2End = vectorData->s2OEnd_;
             }
         }
     }
@@ -233,11 +233,11 @@ private:
         if ASCEND_IS_AIV {
             int64_t preTokenLeftUp = 0;
             int64_t nextTokenLeftUp = 0;
-            GetPreNextTokenLeftUpVector(vectorData->ctx->actSeqLensQ, vectorData->ctx->actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+            GetPreNextTokenLeftUpVector(vectorData->actSeqLensQ, vectorData->actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
 
             int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(VectorData::mBaseSize);
             int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(VectorData::mBaseSize),
-                                        static_cast<int64_t>(vectorData->ctx->actSeqLensQ) * static_cast<int64_t>(vectorData->ctx->tilingData->flashAttnBaseParams.gSize)) -
+                                        static_cast<int64_t>(vectorData->actSeqLensQ) * static_cast<int64_t>(vectorData->ctx->tilingData->flashAttnBaseParams.gSize)) -
                                     1;
             int64_t s1FirstToken = 0;
             int64_t s1LastToken = 0;
@@ -245,12 +245,12 @@ private:
                 s1FirstToken = static_cast<int64_t>(s1GFirstToken / vectorData->ctx->tilingData->flashAttnBaseParams.gSize);
                 s1LastToken = static_cast<int64_t>(s1GLastToken / vectorData->ctx->tilingData->flashAttnBaseParams.gSize);
             } else {
-                if (s1GFirstToken / static_cast<int64_t>(vectorData->ctx->actSeqLensQ) == s1GLastToken / static_cast<int64_t>(vectorData->ctx->actSeqLensQ)) {
-                    s1FirstToken = s1GFirstToken % static_cast<int64_t>(vectorData->ctx->actSeqLensQ);
-                    s1LastToken = s1GLastToken % static_cast<int64_t>(vectorData->ctx->actSeqLensQ);
+                if (s1GFirstToken / static_cast<int64_t>(vectorData->actSeqLensQ) == s1GLastToken / static_cast<int64_t>(vectorData->actSeqLensQ)) {
+                    s1FirstToken = s1GFirstToken % static_cast<int64_t>(vectorData->actSeqLensQ);
+                    s1LastToken = s1GLastToken % static_cast<int64_t>(vectorData->actSeqLensQ);
                 } else {
                     s1FirstToken = 0;
-                    s1LastToken = static_cast<int64_t>(vectorData->ctx->actSeqLensQ);
+                    s1LastToken = static_cast<int64_t>(vectorData->actSeqLensQ);
                 }
             }
 
@@ -259,28 +259,28 @@ private:
             int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
             int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
 
-            if (s2FirstToken >= static_cast<int64_t>(vectorData->ctx->actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
-                vectorData->ctx->curS2Start = 0U;
-                vectorData->ctx->curS2End = 0U;
+            if (s2FirstToken >= static_cast<int64_t>(vectorData->actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+                vectorData->curS2Start = 0U;
+                vectorData->curS2End = 0U;
                 return;
             }
 
-            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(vectorData->ctx->actSeqLensKv - 1));
-            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(vectorData->ctx->actSeqLensKv - 1));
+            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(vectorData->actSeqLensKv - 1));
+            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(vectorData->actSeqLensKv - 1));
 
             s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / VectorData::s2BaseSize;
             s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / VectorData::s2BaseSize + 1U;
 
-            vectorData->ctx->curS2Start = s2StartWithSparse;
-            vectorData->ctx->curS2End = s2EndWithSparse;
+            vectorData->curS2Start = s2StartWithSparse;
+            vectorData->curS2End = s2EndWithSparse;
 
             if (bN2Cur == vectorData->bN2Start_ && gS1Cur == vectorData->gS1OStart_) {
                 vectorData->headS2Split = vectorData->s2OStart_ > s2StartWithSparse ? true : false;
-                vectorData->ctx->curS2Start = Max(s2StartWithSparse, vectorData->s2OStart_);
+                vectorData->curS2Start = Max(s2StartWithSparse, vectorData->s2OStart_);
             }
-            if (bN2Cur == vectorData->ctx->bN2End_ && gS1Cur == vectorData->ctx->gS1OEnd_) {
-                vectorData->tailS2Split = vectorData->ctx->s2OEnd_ > 0U ? true : false;
-                vectorData->ctx->curS2End = vectorData->ctx->s2OEnd_ > 0U ? Min(s2EndWithSparse, vectorData->ctx->s2OEnd_) : s2EndWithSparse;
+            if (bN2Cur == vectorData->bN2End_ && gS1Cur == vectorData->gS1OEnd_) {
+                vectorData->tailS2Split = vectorData->s2OEnd_ > 0U ? true : false;
+                vectorData->curS2End = vectorData->s2OEnd_ > 0U ? Min(s2EndWithSparse, vectorData->s2OEnd_) : s2EndWithSparse;
             }
         }
     }
@@ -341,8 +341,8 @@ private:
             info.n2Idx = bN2Cur % vectorData->ctx->tilingData->flashAttnBaseParams.n2Size;
             info.gS1Idx = gS1Cur * VectorData::mBaseSize;
             info.s2Idx = s2Cur * VectorData::s2BaseSize;
-            info.actS1Size = vectorData->ctx->actSeqLensQ;
-            info.actS2Size = vectorData->ctx->actSeqLensKv;
+            info.actS1Size = vectorData->actSeqLensQ;
+            info.actS2Size = vectorData->actSeqLensKv;
 
             info.actMSize = VectorData::mBaseSize;
             uint64_t gS1Size = info.actS1Size * vectorData->ctx->tilingData->flashAttnBaseParams.gSize;
@@ -356,16 +356,16 @@ private:
             info.actSingleLoopS2SizeAlign =
                 Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(typename VectorData::INPUT_T)));
 
-            GetPreNextTokenLeftUpVector(vectorData->ctx->actSeqLensQ, vectorData->ctx->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+            GetPreNextTokenLeftUpVector(vectorData->actSeqLensQ, vectorData->actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
-            info.isFirstS2Loop = ((loop == 0) || (s2Cur == vectorData->ctx->curS2Start));
+            info.isFirstS2Loop = ((loop == 0) || (s2Cur == vectorData->curS2Start));
             info.isS2SplitCore = false;
             info.faTmpOutWsPos = vectorData->coreFirstTmpOutWsPos_;
-            info.isLastS2Loop = (s2Cur + 1 == vectorData->ctx->curS2End);
+            info.isLastS2Loop = (s2Cur + 1 == vectorData->curS2End);
 
             info.actVecMSize = (info.actMSize + 1) >> 1;
             info.vecMbaseIdx = 0;
-            if (vectorData->ctx->constInfo.subBlockIdx == 1) {
+            if (vectorData->constInfo.subBlockIdx == 1) {
                 info.vecMbaseIdx = info.actVecMSize;
                 info.actVecMSize = info.actMSize - info.actVecMSize;
             }
@@ -373,12 +373,12 @@ private:
             info.gIdx = 0;
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
 
-            if (vectorData->bN2Start_ == vectorData->ctx->bN2End_ && vectorData->gS1OStart_ == vectorData->ctx->gS1OEnd_) {
+            if (vectorData->bN2Start_ == vectorData->bN2End_ && vectorData->gS1OStart_ == vectorData->gS1OEnd_) {
                 info.isS2SplitCore = true;
             } else {
                 if (vectorData->headS2Split && (bN2Cur == vectorData->bN2Start_) && (gS1Cur == vectorData->gS1OStart_)) {
                     info.isS2SplitCore = true;
-                } else if (vectorData->tailS2Split && (bN2Cur == vectorData->ctx->bN2End_) && (gS1Cur == vectorData->ctx->gS1OEnd_)) {
+                } else if (vectorData->tailS2Split && (bN2Cur == vectorData->bN2End_) && (gS1Cur == vectorData->gS1OEnd_)) {
                     info.isS2SplitCore = true;
                     info.faTmpOutWsPos = vectorData->headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
                 }
@@ -390,8 +390,8 @@ private:
                                                 uint32_t &s2Cur)
     {
         if ASCEND_IS_AIV {
-            uint64_t s2LoopTimes = (vectorData->ctx->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
-            uint64_t gS1Size = vectorData->ctx->actSeqLensQ * vectorData->ctx->tilingData->flashAttnBaseParams.gSize;
+            uint64_t s2LoopTimes = (vectorData->actSeqLensKv + VectorData::s2BaseSize - 1) / VectorData::s2BaseSize;
+            uint64_t gS1Size = vectorData->actSeqLensQ * vectorData->ctx->tilingData->flashAttnBaseParams.gSize;
             uint64_t gS1LoopTimes = (gS1Size + VectorData::mBaseSize - 1) / VectorData::mBaseSize;
 
             if (s2Cur + 1 < s2LoopTimes) {
