@@ -67,6 +67,8 @@ private:
     LocalTensor<float> dy_out_pong_;
     LocalTensor<float> attention_out_ping_;
     LocalTensor<float> attention_out_pong_;
+    LocalTensor<float> sftg_front_ping_;
+    LocalTensor<float> sftg_front_pong_;
     LocalTensor<uint8_t> sftg_tmp_tensor;
     static constexpr uint32_t BLOCK_SIZE = 32;
     static constexpr uint32_t C0_SIZE = 16;
@@ -142,6 +144,7 @@ public:
     {
         EvenCoreInfo info;
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
+        uint32_t process_s1_size = SFTG_TILE_LEN / head_dim_;
         uint32_t ub_offset = 0;
         dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
@@ -160,6 +163,10 @@ public:
         ub_offset += SFTG_TILE_LEN * sizeof(float);
         attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
         ub_offset += SFTG_TILE_LEN * sizeof(float);
+        sftg_front_ping_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8, ub_offset);
+        ub_offset += process_s1_size * 8 * sizeof(float);
+        sftg_front_pong_ = ub_buffer.GetWithOffset<float>(process_s1_size * 8, ub_offset);
+        ub_offset += process_s1_size * 8 * sizeof(float);
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
@@ -182,7 +189,7 @@ public:
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * q_seq_len_ * 8;
                 }
 
-                ComputeEvenCoreInfo(info, q_seq_len, SFTG_TILE_LEN / head_dim_);
+                ComputeEvenCoreInfo(info, q_seq_len, process_s1_size);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
                                         tilingData);
                 SET_FLAG(MTE3, MTE2, EVENT_ID0);
@@ -314,12 +321,12 @@ private:
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
 
-        // DataCopyParams dataCopyParams;
-        // dataCopyParams.blockCount = n_process_align / C0_SIZE;
-        // dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        // dataCopyParams.srcStride = 0;
-        // dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        // DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = n_process_align / C0_SIZE;
+        dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
         PipeBarrier<PIPE_ALL>();
     }
 
@@ -365,6 +372,7 @@ private:
         LocalTensor<INPUT_TYPE> attention_tensor = attention_in_ping_;
         LocalTensor<float> dy_out_tensor = dy_out_ping_;
         LocalTensor<float> attention_out_tensor = attention_out_ping_;
+        LocalTensor<float> sftg_front_tensor = sftg_front_ping_;
         uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个数
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
@@ -398,18 +406,24 @@ private:
             Cast(attention_out_tensor, attention_tensor, RoundMode::CAST_NONE, process_size * head_dim_);
             PipeBarrier<PIPE_V>();
 
+            uint32_t intput_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(head_dim_)};
+            uint32_t out_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(8)};
+
+            dy_out_tensor.SetShape(2, intput_shape_arry, AscendC::DataFormat::ND);
+            attention_out_tensor.SetShape(2, out_shape_arry, AscendC::DataFormat::ND);
+
             bool isBasicBlock = process_size % 8 == 0;
             if (likely(isBasicBlock)) {
-                SoftmaxGradFront<float, true>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+                SoftmaxGradFront<float, true>(sftg_front_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
                                               tilingData->softmaxGradFrontTilingData);
             } else {
-                SoftmaxGradFront<float, false>(dy_out_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
+                SoftmaxGradFront<float, false>(sftg_front_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
                                                tilingData->softmaxGradFrontTilingData);
             }
             PipeBarrier<PIPE_V>();
 
             uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
-            DataCopy(dst_gm[out_gm_offset], dy_out_tensor, process_size * 8);
+            DataCopy(dst_gm[out_gm_offset], sftg_front_tensor, process_size * 8);
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         }
