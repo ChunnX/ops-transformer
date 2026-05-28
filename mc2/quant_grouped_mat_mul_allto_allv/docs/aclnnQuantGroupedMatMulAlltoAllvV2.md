@@ -320,7 +320,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
                 <td>commMode</td>
                 <td>输入</td>
                 <td>指定当前通信类型。</td>
-                <td>支持输入"default"、"aicpu"和"ccu"。</td>
+                <td>支持输入""、"ai_cpu"和"ccu"。</td>
                 <td>char*</td>
                 <td>-</td>
                 <td>-</td>

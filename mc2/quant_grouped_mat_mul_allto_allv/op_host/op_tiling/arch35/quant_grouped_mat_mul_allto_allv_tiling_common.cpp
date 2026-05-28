@@ -811,7 +811,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommM
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is '', and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+        OP_LOGI(context->GetNodeName(), "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
         return ge::GRAPH_FAILED;

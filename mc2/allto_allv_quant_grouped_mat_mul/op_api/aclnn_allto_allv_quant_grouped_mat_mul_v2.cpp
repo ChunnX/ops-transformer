@@ -58,6 +58,7 @@ enum class QuantModeType : int64_t {
 // 需要使用的常量定义
 static constexpr size_t TWO_DIMS = 2U;
 static constexpr size_t THREE_DIMS = 3U;
+static constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 
 static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
                             const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
@@ -418,7 +419,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (std::strcmp(commModeStr, "") == 0) {
-            if (rankSize <= 8) {
+            if (rankSize <= RANK_DIM_BOUNDARY) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
                 commModeEnum = Mc2Comm::COMM_MODE_AICPU;
