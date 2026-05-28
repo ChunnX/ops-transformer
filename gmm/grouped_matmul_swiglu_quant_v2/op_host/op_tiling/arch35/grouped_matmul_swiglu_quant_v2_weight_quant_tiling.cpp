@@ -80,6 +80,34 @@ bool GetContext(GMMSQWeightQuantInputParams& params, const gert::TilingContext& 
     return true;
 }
 
+bool CheckDynamicInputShapeNotEmpty(const gert::TilingContext& context, uint32_t inputIndex, const char* inputName)
+{
+    const auto *shapePtr = context.GetDynamicInputShape(inputIndex, 0);
+    OP_CHECK_IF(shapePtr == nullptr,
+        OP_LOGE(&context, "Dynamic input shape of %s is nullptr.", inputName),
+        return false);
+
+    const auto &storageShape = shapePtr->GetStorageShape();
+    OP_CHECK_IF(storageShape.GetShapeSize() == 0,
+        OP_LOGE(&context, "Not yet support empty tensor for %s.", inputName),
+        return false);
+    return true;
+}
+
+bool CheckDynamicInputShapeEmpty(const gert::TilingContext& context, uint32_t inputIndex, const char* inputName)
+{
+    const auto *shapePtr = context.GetDynamicInputShape(inputIndex, 0);
+    if (shapePtr == nullptr) {
+        return true;
+    }
+
+    const auto &storageShape = shapePtr->GetStorageShape();
+    OP_CHECK_IF(storageShape.GetShapeSize() != 0,
+        OP_LOGE(&context, "Dynamic input shape of %s must be empty.", inputName),
+        return false);
+    return true;
+}
+
 ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
 {
     const auto *attrs = context.GetAttrs();
@@ -96,8 +124,14 @@ ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSi
     OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc groupList is nullptr."),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "Invalid dynamic input shape of weight."),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc weight is nullptr."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "Invalid dynamic input shape of weightScale."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_SCALE_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc weightScale is nullptr."),
@@ -109,15 +143,15 @@ ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSi
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "OutputDesc yScale is nullptr."),
         return ge::GRAPH_FAILED);
 
-    if (context.GetInputDesc(WEIGHT_ASSIST_MATRIX_INDEX) != nullptr) {
-        OP_LOGW(context.GetNodeName(), "weight_assist_matrix is not supported, please pass in a null pointer");
-    }
-    if (context.GetOptionalInputDesc(BIAS_INDEX) != nullptr) {
-        OP_LOGW(context.GetNodeName(), "bias is not supported, please pass in a null pointer");
-    }
-    if (context.GetInputDesc(SMOOTH_SCALE_INDEX) != nullptr) {
-        OP_LOGW(context.GetNodeName(), "smooth_scale is not supported, please pass in a null pointer");
-    }
+    OP_CHECK_IF(!CheckDynamicInputShapeEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX, "weight_assist_matrix"),
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "weight_assist_matrix must be empty."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.GetOptionalInputDesc(BIAS_INDEX) != nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "bias is not supported, please pass in a null pointer."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.GetOptionalInputDesc(SMOOTH_SCALE_INDEX) != nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "smooth_scale is not supported, please pass in a null pointer."),
+        return ge::GRAPH_FAILED);
 
     const auto *rawTiling = context.GetRawTilingData();
     OP_CHECK_IF(rawTiling == nullptr,
@@ -242,6 +276,8 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
         return false);
 
     const auto *xShapePtr = context.GetInputShape(X_INDEX);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
+        OP_LOGE(&context, "Check dynamic input shape of weight failed."), return false);
     const auto *wShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(xShapePtr == nullptr || wShapePtr == nullptr,
                 OP_LOGE(&context, "Required input shape is nullptr."), return false);
@@ -250,10 +286,8 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     const gert::Shape &wShape = wShapePtr->GetOriginShape();
     auto xShapeLen = xShape.GetDimNum();
     auto wShapeLen = wShape.GetDimNum();
-    OP_CHECK_IF(xShape.GetShapeSize() == 0 || wShape.GetShapeSize() == 0,
+    OP_CHECK_IF(xShape.GetShapeSize() == 0,
         OP_LOGE(&context, "Not yet support empty tensor for x"), return false);
-    OP_CHECK_IF(wShape.GetShapeSize() == 0,
-        OP_LOGE(&context, "Not yet support empty tensor for weight"), return false);
     OP_CHECK_IF(xShapeLen != DIM_NUM_X,
         OP_LOGE(&context, "input dimension of x should be %zu, but got %zu", DIM_NUM_X, xShapeLen),
         return false);
@@ -375,17 +409,19 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
         return false;
     }
 
-    auto* weightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto* xScaleShapePtr = context.GetInputShape(X_SCALE_INDEX);
     auto* groupListShapePtr = context.GetInputShape(GROUPLIST_INDEX);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
+        OP_LOGE(&context, "Check dynamic input shape of weight failed."), return false);
+    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
+        OP_LOGE(&context, "Check dynamic input shape of weightScale failed."), return false);
+    auto* weightShapePtr = context.GetDynamicInputShape(WEIGHT_INDEX, 0);
     auto* weightScaleShapePtr = context.GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
 
     OP_CHECK_IF(xScaleShapePtr == nullptr,
         OP_LOGE(params.opName, "xScaleShape should not be null"), return false);
     OP_CHECK_IF(groupListShapePtr == nullptr,
         OP_LOGE(params.opName, "groupListShape should not be null"), return false);
-    OP_CHECK_IF(weightScaleShapePtr == nullptr,
-        OP_LOGE(params.opName, "weightScaleShape should not be null"), return false);
 
     auto& xScaleShape = xScaleShapePtr->GetOriginShape();
     auto& groupListShape = groupListShapePtr->GetOriginShape();
