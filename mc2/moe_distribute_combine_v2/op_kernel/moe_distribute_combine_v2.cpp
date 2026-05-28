@@ -30,12 +30,14 @@
 #include "moe_distribute_combine_v2_tiling.h"
 #include "moe_distribute_combine_v2.h"
 #include "moe_distribute_combine_v2_layered.h"
+#include "moe_distribute_combine_v2_a5_mte.h"
 
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
 using namespace MoeDistributeCombineA2Impl;
 #endif // __NPU_ARCH__ == 3510
 
 using namespace MoeDistributeCombineV2Impl;
+using namespace MoeDistributeCombineV2A5MteImpl;
 using namespace Mc2Kernel;
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -51,7 +53,11 @@ __aicore__ inline void ExecMoeDistributeCombineV2(GM_ADDR expandX, GM_ADDR exper
                                                 GM_ADDR workspaceGM, GM_ADDR tilingGM, TPipe *pipePtr)
 {
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    MoeDistributeCombineV2A5Mte<A5MteCombineTypeFunc> op;
+#else
     MoeDistributeCombineV2<CombineMC2TypeFunc> op;
+#endif
     op.Init(nullptr, expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, nullptr, nullptr,
             scales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1, 
             constExpertAlpha2, constExpertV, performanceInfo, nullptr, nullptr, XOut, workspaceGM, pipePtr, &tilingData);
