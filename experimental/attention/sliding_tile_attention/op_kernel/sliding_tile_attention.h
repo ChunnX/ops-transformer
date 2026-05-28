@@ -134,7 +134,17 @@ __aicore__ inline int64_t MinInt64(int64_t a, int64_t b)
     return a < b ? a : b;
 }
 
+__aicore__ inline uint32_t MinUint32(uint32_t a, uint32_t b)
+{
+    return a < b ? a : b;
+}
+
 __aicore__ inline int64_t AlignUpInt64(int64_t value, int64_t align)
+{
+    return ((value + align - 1) / align) * align;
+}
+
+__aicore__ inline uint32_t AlignUpUint32(uint32_t value, uint32_t align)
 {
     return ((value + align - 1) / align) * align;
 }
@@ -152,25 +162,25 @@ __aicore__ inline void GetSubBlockRowRangeByIndex(int64_t qCount, int64_t ratio,
     rowEnd = MinInt64(rowBegin + rowsPerSubBlock, qCount);
 }
 
-__aicore__ inline void DuplicateTailFp32(LocalTensor<float> &tensor, int64_t begin, uint32_t end, float value)
+__aicore__ inline void DuplicateTailFp32(LocalTensor<float> &tensor, uint32_t begin, uint32_t end, float value)
 {
-    if (begin >= static_cast<int64_t>(end)) {
+    if (begin >= end) {
         return;
     }
 
-    int64_t offset = begin;
-    const int64_t lane = offset % VECTOR_FP32_BLOCK_ELEMS;
+    uint32_t offset = begin;
+    const uint32_t lane = offset % static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
     if (lane != 0) {
-        const int64_t alignedOffset = offset - lane;
+        const uint32_t alignedOffset = offset - lane;
         const uint32_t firstCount =
-            static_cast<uint32_t>(MinInt64(VECTOR_FP32_BLOCK_ELEMS - lane, static_cast<int64_t>(end) - offset));
+            MinUint32(static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS) - lane, end - offset);
         uint64_t mask[2] = {((1ULL << firstCount) - 1ULL) << static_cast<uint32_t>(lane), 0};
         Duplicate(tensor[alignedOffset], value, mask, 1, 1, VECTOR_FP32_BLOCK_ELEMS);
         offset += firstCount;
     }
 
-    if (offset < static_cast<int64_t>(end)) {
-        Duplicate(tensor[offset], value, end - static_cast<uint32_t>(offset));
+    if (offset < end) {
+        Duplicate(tensor[offset], value, end - offset);
     }
 }
 
@@ -201,7 +211,12 @@ __aicore__ inline int64_t GetRowStateOffset(int64_t row)
     return row * VECTOR_FP32_BLOCK_ELEMS;
 }
 
-__aicore__ inline void DuplicateRowState(LocalTensor<float> &stateLocal, int64_t row, float value)
+__aicore__ inline uint32_t GetRowStateOffset(uint32_t row)
+{
+    return row * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
+}
+
+__aicore__ inline void DuplicateRowState(LocalTensor<float> &stateLocal, uint32_t row, float value)
 {
     Duplicate(stateLocal[GetRowStateOffset(row)], value, VECTOR_FP32_BLOCK_ELEMS);
 }
@@ -342,16 +357,20 @@ private:
         return static_cast<int64_t>(GetSubBlockIdx());
     }
 
-    __aicore__ inline void GetSubBlockRowRange(int64_t qCount, int64_t &rowBegin, int64_t &rowEnd) const
+    __aicore__ inline void GetSubBlockRowRange(uint32_t qCount, uint32_t &rowBegin, uint32_t &rowEnd) const
     {
         const int64_t ratio = GetTaskRatioValue();
         const int64_t subBlock = GetSubBlockIdxValue();
-        GetSubBlockRowRangeByIndex(qCount, ratio, subBlock, rowBegin, rowEnd);
+        int64_t rowBegin64 = 0;
+        int64_t rowEnd64 = 0;
+        GetSubBlockRowRangeByIndex(static_cast<int64_t>(qCount), ratio, subBlock, rowBegin64, rowEnd64);
+        rowBegin = static_cast<uint32_t>(rowBegin64);
+        rowEnd = static_cast<uint32_t>(rowEnd64);
     }
 
     __aicore__ inline uint32_t AlignedHeadDim() const
     {
-        return static_cast<uint32_t>(AlignUpInt64(tiling_->headDim, VECTOR_ALIGN_ELEMS));
+        return AlignUpUint32(static_cast<uint32_t>(tiling_->headDim), static_cast<uint32_t>(VECTOR_ALIGN_ELEMS));
     }
 
     __aicore__ inline int64_t TensorOffset(int64_t batch, int64_t head, int64_t seq, int64_t dim) const
@@ -585,11 +604,11 @@ private:
         return accTile[static_cast<int64_t>(rowInBlock) * tiling_->headDimAlign];
     }
 
-    __aicore__ inline void InitOnlineStateRows(int64_t rowBegin, int64_t rowEnd, LocalTensor<float> &maxLocal,
+    __aicore__ inline void InitOnlineStateRows(uint32_t rowBegin, uint32_t rowEnd, LocalTensor<float> &maxLocal,
                                                LocalTensor<float> &denomLocal)
     {
         if (rowBegin < rowEnd) {
-            const uint32_t stateCount = static_cast<uint32_t>((rowEnd - rowBegin) * VECTOR_FP32_BLOCK_ELEMS);
+            const uint32_t stateCount = (rowEnd - rowBegin) * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
             Duplicate(maxLocal[GetRowStateOffset(rowBegin)], NEG_INF, stateCount);
             Duplicate(denomLocal[GetRowStateOffset(rowBegin)], 0.0F,
                       stateCount);
@@ -597,26 +616,26 @@ private:
         }
     }
 
-    __aicore__ inline int64_t GetValidRowEnd(int64_t seq, int64_t rowBegin, int64_t rowEnd) const
+    __aicore__ inline uint32_t GetValidRowEnd(int64_t seq, uint32_t rowBegin, uint32_t rowEnd) const
     {
         const int64_t validRows = tiling_->validSeqLen - seq;
-        if (validRows <= rowBegin) {
+        if (validRows <= static_cast<int64_t>(rowBegin)) {
             return rowBegin;
         }
-        return MinInt64(rowEnd, validRows);
+        return MinUint32(rowEnd, static_cast<uint32_t>(validRows));
     }
 
-    __aicore__ inline uint32_t ScoreCalcCount(int64_t kvCount) const
+    __aicore__ inline uint32_t ScoreCalcCount(uint32_t kvCount) const
     {
-        return static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_ALIGN_ELEMS));
+        return AlignUpUint32(kvCount, static_cast<uint32_t>(VECTOR_ALIGN_ELEMS));
     }
 
-    __aicore__ inline uint32_t ScoreCopyCount(int64_t kvCount) const
+    __aicore__ inline uint32_t ScoreCopyCount(uint32_t kvCount) const
     {
-        return static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_FP32_BLOCK_ELEMS));
+        return AlignUpUint32(kvCount, static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS));
     }
 
-    __aicore__ inline void AccumulateVisibleScoreBlockDeferred(int64_t kvCount, uint32_t calcCount,
+    __aicore__ inline void AccumulateVisibleScoreBlockDeferred(uint32_t kvCount, uint32_t calcCount,
                                                                uint32_t scoreCopyCount, uint32_t rowInSubBlock,
                                                                float maxScore,
                                                                float &newMaxScore, float &scaleDelta,
@@ -658,16 +677,16 @@ private:
         blockSum = reduceLocal.GetValue(0);
     }
 
-    __aicore__ inline void ApplyDeferredAccScaleAndDenom(int64_t rowBegin, int64_t validRowEnd,
+    __aicore__ inline void ApplyDeferredAccScaleAndDenom(uint32_t rowBegin, uint32_t validRowEnd,
                                                          uint32_t alignedHeadDim,
                                                          LocalTensor<float> &denomLocal, uint32_t bufferIdx)
     {
         LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
         LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
         if (rowBegin < validRowEnd) {
-            const uint32_t rowCount = static_cast<uint32_t>(validRowEnd - rowBegin);
-            const int64_t stateBegin = GetRowStateOffset(rowBegin);
-            const uint32_t stateCount = rowCount * VECTOR_FP32_BLOCK_ELEMS;
+            const uint32_t rowCount = validRowEnd - rowBegin;
+            const uint32_t stateBegin = GetRowStateOffset(rowBegin);
+            const uint32_t stateCount = rowCount * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
             Exp(oldScaleLocal[stateBegin], oldScaleLocal[stateBegin], stateCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -684,7 +703,7 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessFirstVisibleKvBlock2D(int64_t rowBegin, int64_t validRowEnd, uint32_t bufferIdx,
+    __aicore__ inline void ProcessFirstVisibleKvBlock2D(uint32_t rowBegin, uint32_t validRowEnd, uint32_t bufferIdx,
                                                         LocalTensor<float> &maxLocal,
                                                         LocalTensor<float> &denomLocal)
     {
@@ -692,11 +711,12 @@ private:
         LocalTensor<float> reduceTile = reduceWorkBuf_.Get<float>();
         LocalTensor<float> rowReduceLocal = reduceFloatBuf_.Get<float>();
         const uint32_t columnCount = static_cast<uint32_t>(tiling_->maxKvBlock);
-        for (int64_t rowBase = rowBegin; rowBase < validRowEnd; rowBase += STA_SOFTMAX_ROW_CHUNK) {
+        for (uint32_t rowBase = rowBegin; rowBase < validRowEnd;
+             rowBase += static_cast<uint32_t>(STA_SOFTMAX_ROW_CHUNK)) {
             const uint32_t chunkRows =
-                static_cast<uint32_t>(MinInt64(STA_SOFTMAX_ROW_CHUNK, validRowEnd - rowBase));
+                MinUint32(static_cast<uint32_t>(STA_SOFTMAX_ROW_CHUNK), validRowEnd - rowBase);
             const uint32_t elemCount = chunkRows * columnCount;
-            const uint32_t rowInSubBlock = static_cast<uint32_t>(rowBase - rowBegin);
+            const uint32_t rowInSubBlock = rowBase - rowBegin;
 
             LocalTensor<float> scoreHandoff = GetScoreHandoffRow(rowInSubBlock, bufferIdx);
             DataCopy(scoreTile, scoreHandoff, elemCount);
@@ -730,12 +750,13 @@ private:
         }
     }
 
-    __aicore__ inline bool ProcessDeferredVisibleKvBlock2D(int64_t kvCount, int64_t rowBegin, int64_t validRowEnd,
+    __aicore__ inline bool ProcessDeferredVisibleKvBlock2D(uint32_t kvCount, uint32_t rowBegin, uint32_t validRowEnd,
                                                            uint32_t alignedHeadDim, uint32_t bufferIdx,
                                                            LocalTensor<float> &maxLocal,
                                                            LocalTensor<float> &denomLocal)
     {
-        if (kvCount != tiling_->maxKvBlock || kvCount != tiling_->tileTokenNum) {
+        if (kvCount != static_cast<uint32_t>(tiling_->maxKvBlock) ||
+            kvCount != static_cast<uint32_t>(tiling_->tileTokenNum)) {
             return false;
         }
 
@@ -746,13 +767,14 @@ private:
         LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
         const uint32_t columnCount = static_cast<uint32_t>(tiling_->maxKvBlock);
 
-        for (int64_t rowBase = rowBegin; rowBase < validRowEnd; rowBase += STA_SOFTMAX_ROW_CHUNK) {
+        for (uint32_t rowBase = rowBegin; rowBase < validRowEnd;
+             rowBase += static_cast<uint32_t>(STA_SOFTMAX_ROW_CHUNK)) {
             const uint32_t chunkRows =
-                static_cast<uint32_t>(MinInt64(STA_SOFTMAX_ROW_CHUNK, validRowEnd - rowBase));
+                MinUint32(static_cast<uint32_t>(STA_SOFTMAX_ROW_CHUNK), validRowEnd - rowBase);
             const uint32_t elemCount = chunkRows * columnCount;
-            const uint32_t rowInSubBlock = static_cast<uint32_t>(rowBase - rowBegin);
-            const int64_t stateBegin = GetRowStateOffset(rowBase);
-            const uint32_t stateCount = chunkRows * VECTOR_FP32_BLOCK_ELEMS;
+            const uint32_t rowInSubBlock = rowBase - rowBegin;
+            const uint32_t stateBegin = GetRowStateOffset(rowBase);
+            const uint32_t stateCount = chunkRows * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
 
             LocalTensor<float> scoreHandoff = GetScoreHandoffRow(rowInSubBlock, bufferIdx);
             DataCopy(scoreTile, scoreHandoff, elemCount);
@@ -791,19 +813,19 @@ private:
         return true;
     }
 
-    __aicore__ inline void ProcessVisibleKvBlock(int64_t kvCount, int64_t rowBegin, int64_t validRowEnd,
-                                                 int64_t subBlock, uint32_t alignedHeadDim, int64_t &tileLoop,
+    __aicore__ inline void ProcessVisibleKvBlock(uint32_t kvCount, uint32_t rowBegin, uint32_t validRowEnd,
+                                                 uint32_t subBlock, uint32_t alignedHeadDim, uint32_t &tileLoop,
                                                  LocalTensor<float> &maxLocal, LocalTensor<float> &denomLocal)
     {
-        const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+        const uint32_t bufferIdx = 0;
         const uint32_t calcCount = ScoreCalcCount(kvCount);
         const uint32_t scoreCopyCount = ScoreCopyCount(kvCount);
-        const bool hasKvTail = static_cast<uint32_t>(kvCount) < calcCount;
+        const bool hasKvTail = kvCount < calcCount;
         CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx, subBlock));
-        const int64_t validRowCount = validRowEnd - rowBegin;
+        const uint32_t validRowCount = validRowEnd - rowBegin;
         if (tileLoop == 0) {
-            if (IsFirstBlock2DSoftmaxEnabled(tiling_) && kvCount == tiling_->maxKvBlock &&
-                kvCount == tiling_->tileTokenNum) {
+            if (IsFirstBlock2DSoftmaxEnabled(tiling_) && kvCount == static_cast<uint32_t>(tiling_->maxKvBlock) &&
+                kvCount == static_cast<uint32_t>(tiling_->tileTokenNum)) {
                 ProcessFirstVisibleKvBlock2D(rowBegin, validRowEnd, bufferIdx, maxLocal, denomLocal);
             } else {
                 LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
@@ -811,12 +833,13 @@ private:
                 LocalTensor<float> reduceWorkLocal = GetKvBlockSlice<float>(reduceWorkBuf_, bufferIdx);
                 LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
                 const uint32_t reduceBlockCount =
-                    static_cast<uint32_t>(AlignUpInt64(calcCount, VECTOR_FP32_REPEAT_ELEMS) /
-                                          VECTOR_FP32_REPEAT_ELEMS);
-                const uint32_t reduceElementCount = reduceBlockCount * VECTOR_FP32_REPEAT_ELEMS;
-                const bool hasReduceTail = static_cast<uint32_t>(kvCount) < reduceElementCount;
-                for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                    const uint32_t rowInSubBlock = static_cast<uint32_t>(row - rowBegin);
+                    AlignUpUint32(calcCount, static_cast<uint32_t>(VECTOR_FP32_REPEAT_ELEMS)) /
+                    static_cast<uint32_t>(VECTOR_FP32_REPEAT_ELEMS);
+                const uint32_t reduceElementCount =
+                    reduceBlockCount * static_cast<uint32_t>(VECTOR_FP32_REPEAT_ELEMS);
+                const bool hasReduceTail = kvCount < reduceElementCount;
+                for (uint32_t row = rowBegin; row < validRowEnd; ++row) {
+                    const uint32_t rowInSubBlock = row - rowBegin;
                     CopyScoreHandoffRowToLocal(scoreLocal, rowInSubBlock, scoreCopyCount, bufferIdx);
                     Muls(scoreLocal, scoreLocal, scale_, scoreCopyCount);
                     PipeBarrier<PIPE_V>();
@@ -871,8 +894,8 @@ private:
             LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
             LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
             bool hasScaleDelta = false;
-            for (int64_t row = rowBegin; row < validRowEnd; ++row) {
-                const uint32_t rowInSubBlock = static_cast<uint32_t>(row - rowBegin);
+            for (uint32_t row = rowBegin; row < validRowEnd; ++row) {
+                const uint32_t rowInSubBlock = row - rowBegin;
                 float maxScore = maxLocal.GetValue(GetRowStateOffset(row));
                 float newMaxScore = maxScore;
                 float scaleDelta = 0.0F;
@@ -891,9 +914,9 @@ private:
             if (hasScaleDelta) {
                 ApplyDeferredAccScaleAndDenom(rowBegin, validRowEnd, alignedHeadDim, denomLocal, bufferIdx);
             } else {
-                const int64_t stateBegin = GetRowStateOffset(rowBegin);
+                const uint32_t stateBegin = GetRowStateOffset(rowBegin);
                 const uint32_t stateCount =
-                    static_cast<uint32_t>((validRowEnd - rowBegin) * VECTOR_FP32_BLOCK_ELEMS);
+                    (validRowEnd - rowBegin) * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
                 Add(denomLocal[stateBegin], denomLocal[stateBegin], blockSumLocal[stateBegin], stateCount);
                 PipeBarrier<PIPE_V>();
             }
@@ -915,8 +938,8 @@ private:
         ++tileLoop;
     }
 
-    __aicore__ inline void ProcessImageKvTiles(int64_t head, int64_t seq, int64_t rowBegin, int64_t validRowEnd,
-                                               int64_t subBlock, uint32_t alignedHeadDim, int64_t &tileLoop,
+    __aicore__ inline void ProcessImageKvTiles(int64_t head, int64_t seq, uint32_t rowBegin, uint32_t validRowEnd,
+                                               uint32_t subBlock, uint32_t alignedHeadDim, uint32_t &tileLoop,
                                                LocalTensor<float> &maxLocal,
                                                LocalTensor<float> &denomLocal)
     {
@@ -924,9 +947,11 @@ private:
             return;
         }
         if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
-            for (int64_t tile = 0; tile < tiling_->imageTileNum; ++tile) {
-                ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                      tileLoop, maxLocal, denomLocal);
+            const uint32_t imageTileNum = static_cast<uint32_t>(tiling_->imageTileNum);
+            const uint32_t tileTokenNum = static_cast<uint32_t>(tiling_->tileTokenNum);
+            for (uint32_t tile = 0; tile < imageTileNum; ++tile) {
+                ProcessVisibleKvBlock(tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop,
+                                      maxLocal, denomLocal);
             }
             return;
         }
@@ -941,10 +966,12 @@ private:
         int64_t wBegin = 0;
         int64_t wEnd = 0;
         GetImageWindowRange(head, seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
-        const int64_t visibleTileCount = (tEnd - tBegin) * (hEnd - hBegin) * (wEnd - wBegin);
-        for (int64_t tile = 0; tile < visibleTileCount; ++tile) {
-            ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                  tileLoop, maxLocal, denomLocal);
+        const uint32_t visibleTileCount =
+            static_cast<uint32_t>((tEnd - tBegin) * (hEnd - hBegin) * (wEnd - wBegin));
+        const uint32_t tileTokenNum = static_cast<uint32_t>(tiling_->tileTokenNum);
+        for (uint32_t tile = 0; tile < visibleTileCount; ++tile) {
+            ProcessVisibleKvBlock(tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop,
+                                  maxLocal, denomLocal);
         }
     }
 
@@ -954,58 +981,60 @@ private:
         int64_t head = 0;
         int64_t seq = 0;
         DecodeCubeTask(taskIdx, batch, head, seq);
-        const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
-        if (qCount <= 0 || tiling_->validSeqLen <= 0) {
+        const int64_t qCount64 = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
+        if (qCount64 <= 0 || tiling_->validSeqLen <= 0) {
             return;
         }
+        const uint32_t qCount = static_cast<uint32_t>(qCount64);
 
         LocalTensor<float> maxLocal = maxFloatBuf_.Get<float>();
         LocalTensor<float> denomLocal = denomFloatBuf_.Get<float>();
-        int64_t rowBegin = 0;
-        int64_t rowEnd = 0;
+        uint32_t rowBegin = 0;
+        uint32_t rowEnd = 0;
         GetSubBlockRowRange(qCount, rowBegin, rowEnd);
-        const int64_t subBlock = GetSubBlockIdxValue();
-        const int64_t validRowEnd = GetValidRowEnd(seq, rowBegin, rowEnd);
+        const uint32_t subBlock = static_cast<uint32_t>(GetSubBlockIdxValue());
+        const uint32_t validRowEnd = GetValidRowEnd(seq, rowBegin, rowEnd);
         const uint32_t alignedHeadDim = AlignedHeadDim();
-        const int64_t rowCount = rowEnd - rowBegin;
+        const uint32_t rowCount = rowEnd - rowBegin;
         if (rowCount > 0) {
             LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-            Duplicate(accTile[rowBegin * alignedHeadDim], 0.0F, static_cast<uint32_t>(rowCount * alignedHeadDim));
+            Duplicate(accTile[rowBegin * alignedHeadDim], 0.0F, rowCount * alignedHeadDim);
             PipeBarrier<PIPE_V>();
         }
         InitOnlineStateRows(rowBegin, rowEnd, maxLocal, denomLocal);
-        for (int64_t row = validRowEnd; row < rowEnd; ++row) {
+        for (uint32_t row = validRowEnd; row < rowEnd; ++row) {
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
-            StoreZeroRow(qBase, alignedHeadDim, static_cast<uint32_t>(row % BUFFER_NUM));
+            StoreZeroRow(qBase, alignedHeadDim, 0);
         }
 
         int64_t textBegin = 0;
         int64_t textEnd = 0;
         GetTextScanRange(textBegin, textEnd);
 
-        int64_t tileLoop = 0;
+        uint32_t tileLoop = 0;
         ProcessImageKvTiles(head, seq, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop, maxLocal,
                             denomLocal);
         if (seq < tiling_->validSeqLen) {
-            const int64_t kvRange = textEnd - textBegin;
-            const int64_t fullBlockNum = kvRange / tiling_->kvBlock;
-            const int64_t fullBlockEnd = textBegin + fullBlockNum * tiling_->kvBlock;
-            for (int64_t kvSeq = textBegin; kvSeq < fullBlockEnd; kvSeq += tiling_->kvBlock) {
-                ProcessVisibleKvBlock(tiling_->kvBlock, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop,
-                                      maxLocal, denomLocal);
+            const uint32_t kvRange = static_cast<uint32_t>(textEnd - textBegin);
+            const uint32_t kvBlock = static_cast<uint32_t>(tiling_->kvBlock);
+            const uint32_t fullBlockNum = kvRange / kvBlock;
+            for (uint32_t block = 0; block < fullBlockNum; ++block) {
+                ProcessVisibleKvBlock(kvBlock, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop, maxLocal,
+                                      denomLocal);
             }
-            if (fullBlockEnd < textEnd) {
-                ProcessVisibleKvBlock(textEnd - fullBlockEnd, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                      tileLoop, maxLocal, denomLocal);
+            const uint32_t tailCount = kvRange - fullBlockNum * kvBlock;
+            if (tailCount > 0) {
+                ProcessVisibleKvBlock(tailCount, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop,
+                                      maxLocal, denomLocal);
             }
         }
 
         if (rowBegin < validRowEnd) {
             LocalTensor<float> invDenomLocal = oldScaleFloatBuf_.Get<float>();
-            const uint32_t rowCount = static_cast<uint32_t>(validRowEnd - rowBegin);
-            const int64_t stateBegin = GetRowStateOffset(rowBegin);
-            const uint32_t stateCount = rowCount * VECTOR_FP32_BLOCK_ELEMS;
+            const uint32_t rowCount = validRowEnd - rowBegin;
+            const uint32_t stateBegin = GetRowStateOffset(rowBegin);
+            const uint32_t stateCount = rowCount * static_cast<uint32_t>(VECTOR_FP32_BLOCK_ELEMS);
             Duplicate(invDenomLocal[stateBegin], 1.0F, stateCount);
             PipeBarrier<PIPE_V>();
             Div(invDenomLocal[stateBegin], invDenomLocal[stateBegin], denomLocal[stateBegin], stateCount);
@@ -1016,9 +1045,9 @@ private:
             PipeBarrier<PIPE_V>();
         }
 
-        for (int64_t row = rowBegin; row < validRowEnd; row += STA_OUTPUT_ROW_CHUNK) {
+        for (uint32_t row = rowBegin; row < validRowEnd; row += static_cast<uint32_t>(STA_OUTPUT_ROW_CHUNK)) {
             const uint32_t rowCount =
-                static_cast<uint32_t>(MinInt64(STA_OUTPUT_ROW_CHUNK, validRowEnd - row));
+                MinUint32(static_cast<uint32_t>(STA_OUTPUT_ROW_CHUNK), validRowEnd - row);
             const int64_t querySeq = seq + row;
             const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
             LocalTensor<float> accRows = accTileFloatBuf_.Get<float>()[row * alignedHeadDim];
@@ -1110,10 +1139,9 @@ public:
             int64_t textBegin = 0;
             int64_t textEnd = 0;
             GetTextScanRange(textBegin, textEnd);
-            int64_t tileLoop = 0;
             bool didMatmul = false;
-            ProcessImageKvTiles(task, tileLoop, didMatmul);
-            ProcessCubeTextKvRange(task, textBegin, textEnd, tileLoop, didMatmul);
+            ProcessImageKvTiles(task, didMatmul);
+            ProcessCubeTextKvRange(task, textBegin, textEnd, didMatmul);
             if (didMatmul) {
                 qkMatmul_.End();
                 pvMatmul_.End();
@@ -1213,9 +1241,9 @@ private:
     }
 
     __aicore__ inline void ProcessCubeVisibleKvBlock(const CubeTaskContext &task, int64_t kvSeq, int64_t kvCount,
-                                                     int64_t &tileLoop, bool &didMatmul)
+                                                     bool &didMatmul)
     {
-        const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+        const uint32_t bufferIdx = 0;
         const int64_t kvBase = TensorOffset(task.batch, task.head, kvSeq, 0);
         for (int64_t subBlock = 0; subBlock < task.ratio; ++subBlock) {
             CubeSubBlockContext block = MakeCubeSubBlockContext(task, subBlock);
@@ -1227,45 +1255,44 @@ private:
             CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx, block.subBlock));
             didMatmul = didMatmul || scoreComputed || valueComputed;
         }
-        ++tileLoop;
     }
 
     __aicore__ inline void ProcessCubeVisibleKvRange(const CubeTaskContext &task, int64_t kvBegin, int64_t kvEnd,
-                                                     int64_t &tileLoop, bool &didMatmul)
+                                                     bool &didMatmul)
     {
         const int64_t kvRange = kvEnd - kvBegin;
         const int64_t fullBlockNum = kvRange / tiling_->kvBlock;
         const int64_t fullBlockEnd = kvBegin + fullBlockNum * tiling_->kvBlock;
         for (int64_t kvSeq = kvBegin; kvSeq < fullBlockEnd; kvSeq += tiling_->kvBlock) {
-            ProcessCubeVisibleKvBlock(task, kvSeq, tiling_->kvBlock, tileLoop, didMatmul);
+            ProcessCubeVisibleKvBlock(task, kvSeq, tiling_->kvBlock, didMatmul);
         }
         if (fullBlockEnd < kvEnd) {
-            ProcessCubeVisibleKvBlock(task, fullBlockEnd, kvEnd - fullBlockEnd, tileLoop, didMatmul);
+            ProcessCubeVisibleKvBlock(task, fullBlockEnd, kvEnd - fullBlockEnd, didMatmul);
         }
     }
 
     __aicore__ inline void ProcessCubeImageQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
-                                                          int64_t &tileLoop, bool &didMatmul)
+                                                          bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
+        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, didMatmul);
     }
 
     __aicore__ inline void ProcessCubeTextQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
-                                                         int64_t &tileLoop, bool &didMatmul)
+                                                         bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
+        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, didMatmul);
     }
 
     __aicore__ inline void ProcessCubeTextKvRange(const CubeTaskContext &task, int64_t kvBegin, int64_t kvEnd,
-                                                  int64_t &tileLoop, bool &didMatmul)
+                                                  bool &didMatmul)
     {
         if (task.seq >= tiling_->validSeqLen) {
             return;
         }
-        ProcessCubeVisibleKvRange(task, kvBegin, kvEnd, tileLoop, didMatmul);
+        ProcessCubeVisibleKvRange(task, kvBegin, kvEnd, didMatmul);
     }
 
-    __aicore__ inline void ProcessImageKvTiles(const CubeTaskContext &task, int64_t &tileLoop, bool &didMatmul)
+    __aicore__ inline void ProcessImageKvTiles(const CubeTaskContext &task, bool &didMatmul)
     {
         if (task.seq >= tiling_->validSeqLen) {
             return;
@@ -1273,7 +1300,7 @@ private:
         if ((tiling_->hasText != 0) && (task.seq >= tiling_->imageSeqLen)) {
             for (int64_t kvTileId = 0; kvTileId < tiling_->imageTileNum; ++kvTileId) {
                 const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                ProcessCubeTextQueryImageTile(task, kvBegin, tileLoop, didMatmul);
+                ProcessCubeTextQueryImageTile(task, kvBegin, didMatmul);
             }
             return;
         }
@@ -1293,7 +1320,7 @@ private:
                 for (int64_t tileW = wBegin; tileW < wEnd; ++tileW) {
                     const int64_t kvTileId = TileLinearId(tileT, tileH, tileW);
                     const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                    ProcessCubeImageQueryImageTile(task, kvBegin, tileLoop, didMatmul);
+                    ProcessCubeImageQueryImageTile(task, kvBegin, didMatmul);
                 }
             }
         }
