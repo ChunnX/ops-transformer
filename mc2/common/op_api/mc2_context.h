@@ -18,7 +18,7 @@
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
 #include <string>
@@ -38,7 +38,6 @@ public:
                                            aclTensor *&mc2Context);
 
 private:
-    static Mc2Context &GetInstance();
     explicit Mc2Context();
     ~Mc2Context();
 
@@ -56,17 +55,16 @@ private:
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
                                     Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag, const CommEngine &engine,
-                                const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
+                                const CommProtocol &protocol, Mc2MoeContext *mc2ContextStruct, void *&ctx,
+                                uint64_t &hcclBuffSize);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
     aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum);
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
-    aclnnStatus GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                      const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                      uint64_t &hcclBuffSize);
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
-
+    aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                  const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
