@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_MTE1_H_
-#define FIA_KERNEL_FULLQUANT_MX_MTE1_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_MMAD_H_
+#define FIA_KERNEL_FULLQUANT_MX_MMAD_H_
 
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
@@ -59,12 +59,14 @@ public:
     TBuf<TPosition::A1> L1_PScale;
     TBuf<TPosition::A2> L0_A;
     TBuf<TPosition::B2> L0_B;
+    TBuf<TPosition::CO1> L0_C;
     int ikv{-1};
     int iq{-1};
     int iquse = -1;
     int ipid{-1};
     int l0a_id{-1};
     int l0b_id{-1};
+    int l0c_id{-1};
     uint64_t inner_loop_limit;
     uint64_t outer_loop_limit;
     __aicore__ inline FlashAttentionFullQuantMxKernel(){};
@@ -87,6 +89,7 @@ public:
         tPipe.InitBuffer(L1_V, (mm2VSize + mm2VScaleSize) * 4);
         tPipe.InitBuffer(L0_A, 32 * 1024 * 2);
         tPipe.InitBuffer(L0_B, 32 * 1024 * 2);
+        tPipe.InitBuffer(L0_C, 128 * 256 * 4 * 2);
     }
 
     __aicore__ inline void InitConstInfo()
@@ -199,17 +202,27 @@ public:
     }
 
     __aicore__ inline void prefree_l0ab(){
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)0);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)1);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)2);
-        set_flag(PIPE_M, PIPE_MTE1, (event_t)3);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)4);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)5);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)6);
+        set_flag(PIPE_M, PIPE_MTE1, (event_t)7);
     }
 
     __aicore__ inline void postalloc_l0ab(){
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)0);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)1);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)2);
-        wait_flag(PIPE_M, PIPE_MTE1, (event_t)3);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)4);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)5);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)6);
+        wait_flag(PIPE_M, PIPE_MTE1, (event_t)7);
+    }
+
+    __aicore__ inline void prefree_l0c(){
+        set_flag(PIPE_FIX, PIPE_M, (event_t)0);
+        set_flag(PIPE_FIX, PIPE_M, (event_t)1);
+    }
+
+    __aicore__ inline void postalloc_l0c(){
+        wait_flag(PIPE_FIX, PIPE_M, (event_t)0);
+        wait_flag(PIPE_FIX, PIPE_M, (event_t)1);
     }
 
 
@@ -267,12 +280,16 @@ public:
 
         LocalTensor<float8_e8m0_t> qScaleL1Tensor =
             L1_Q.Get<float8_e8m0_t>((iquse % 2) * singleQBufferOffset + mm1QSize);
+        LocalTensor<bfloat16_t> qScaleL1TensorCast = qScaleL1Tensor.template ReinterpretCast<bfloat16_t>();
 
         uint32_t qScaleOffset = 32 * 128;
         uint64_t gmQScaleOffset = (bIdx * 4 + outer * 128 / 8) * 4 * 8 + n2Idx * 4 * 8 * (1 + 48) * 48 / 2 * 4;
 
         GlobalTensor<float8_e8m0_t> qScaleGmTensor;
         qScaleGmTensor.SetGlobalBuffer((__gm__ float8_e8m0_t *)(deScaleQGm + gmQScaleOffset));
+
+        GlobalTensor<bfloat16_t> qScaleGmTensorCast;
+        qScaleGmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(qScaleGmTensor.GetPhyAddr())));
 
         Dn2NzParams dn2nzParams;
         dn2nzParams.dnNum = 1;
@@ -284,7 +301,7 @@ public:
         dn2nzParams.dstNzNStride = 1;
         dn2nzParams.dstNzMatrixStride = 2;
 
-        DataCopy(qScaleL1Tensor, qScaleGmTensor, dn2nzParams);
+        DataCopy(qScaleL1TensorCast, qScaleGmTensorCast, dn2nzParams);
     }
 
 __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop, int ivkuse)
@@ -349,7 +366,7 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         constexpr uint32_t mm1QScaleSize = 128 * 128 / 32;
         constexpr uint32_t singleQBufferOffset = mm1QSize + mm1QScaleSize;
 
-        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>(l0a_iduse * 32 * 1024);
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>((l0a_iduse - 4) * 32 * 1024);
         LocalTensor<fp8_e4m3fn_t> aL1Tensor = L1_Q.Get<fp8_e4m3fn_t>((iquse % 2) * singleQBufferOffset);
         LocalTensor<float8_e8m0_t> aScaleL1Tensor = L1_Q.Get<float8_e8m0_t>((iquse % 2) * singleQBufferOffset + mm1QSize);
 
@@ -378,7 +395,7 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         constexpr uint32_t mm1KScaleSize = 128 * 256 / 32;
         constexpr uint32_t singleKBufferOffset = mm1KSize + mm1KScaleSize;
 
-        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>((l0b_iduse % 2) * 32 * 1024);
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>(((l0b_iduse - 4) % 2) * 32 * 1024);
         LocalTensor<float8_e4m3_t> bL1Tensor = L1_K.Get<float8_e4m3_t>(ivkuse * singleKBufferOffset);
         LocalTensor<float8_e8m0_t> bScaleL1Tensor = L1_K.Get<float8_e8m0_t>(ivkuse * singleKBufferOffset + mm1KSize);
 
@@ -400,6 +417,28 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         loadData2DMxParamsB.dstStride = 2;
 
         LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB, loadData2DMxParamsB);
+    }
+
+    __aicore__ inline void compute_mm1(int l0c_iduse, int l0a_iduse, int l0b_iduse)
+    {   
+        // printf("==============================\n");
+        // printf("l0c_iduse:%d \n",l0c_iduse);
+        // printf("l0a_iduse:%d \n",l0a_iduse - 4);
+        // printf("l0b_iduse:%d \n",((l0b_iduse - 4) % 2));
+        // printf("===========end=============\n");
+        LocalTensor<float> cL0Tensor = L0_C.Get<float>(l0c_iduse * 128 * 256);
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>((l0a_iduse - 4) * 32 * 1024);
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>(((l0b_iduse - 4) % 2) * 32 * 1024);
+
+        MmadParams mmadParams;
+        mmadParams.m = 32;
+        mmadParams.n = 256;
+        mmadParams.k = 128;
+        mmadParams.cmatrixInitVal = 1;
+        mmadParams.cmatrixSource = false;
+        mmadParams.unitFlag = 0;
+
+        Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
     }
 
     __aicore__ inline void mm1(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
@@ -425,29 +464,40 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         wait_flag(PIPE_MTE2, PIPE_MTE1, iquse);
         wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
         
+        //mmad start
+        l0c_id ++ ;
+        int l0c_iduse = l0c_id % 2;
+        wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+
         //mte1 start
         l0a_id ++ ;
-        int l0a_iduse = l0a_id % 2;
+        int l0a_iduse = l0a_id % 2 + 4;
         wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
         mm1_l1_l0a_no_trans(l0a_iduse);
         set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
 
         l0b_id ++;
-        int l0b_iduse = 2 + (l0b_id % 2);
+        int l0b_iduse = 2 + 4 + (l0b_id % 2);
         wait_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
         mm1_l1_l0b_no_trans(ivkuse, l0b_iduse);
         set_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
 
 
         wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
-        set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
         wait_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
+
+        compute_mm1(l0c_iduse, l0a_iduse, l0b_iduse);
+        set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
         set_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
 
         if (inner == 19 && (subLoop % 2 == 1)) {
             set_flag(PIPE_MTE1, PIPE_MTE2, iquse);
         }
         set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
+
+        set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
 
     }
 
@@ -502,7 +552,7 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         intriParams.blockCount = 8;
         intriParams.blockLen = 4;
         intriParams.dstStride = 0;
-        intriParams.srcStride = 0;
+        intriParams.srcStride = 4;
 
         DataCopy(vScaleL1Tensor, vScaleGmTensor, intriParams);
     }
@@ -510,10 +560,15 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
     __aicore__ inline void mm2_l1_l0a_no_trans(uint32_t k, int ipuse, int l0a_iduse)
     {
         constexpr uint32_t mm2LeftSize = 128 * 512;
-
-        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>(l0a_iduse * 32 * 1024);
+        printf("fzx ipuse: %d \n", ipuse);
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>((l0a_iduse - 4) * 32 * 1024);
         LocalTensor<fp8_e4m3fn_t> aL1Tensor = L1_P.Get<fp8_e4m3fn_t>(ipuse * mm2LeftSize + k * 256 * 128);
         LocalTensor<float8_e8m0_t> aScaleL1Tensor = L1_PScale.Get<float8_e8m0_t>(0);
+
+
+        // LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>((l0a_iduse - 4) * 32 * 1024);
+        // LocalTensor<fp8_e4m3fn_t> aL1Tensor = L1_P.Get<fp8_e4m3fn_t>(0);
+        // LocalTensor<float8_e8m0_t> aScaleL1Tensor = L1_PScale.Get<float8_e8m0_t>(0);
 
         LoadData2DParamsV2 loadData2DParamsA;
         loadData2DParamsA.mStartPosition = 0;
@@ -563,20 +618,48 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
 
         LoadData(bL0Tensor, bL1Tensor, bScaleL1Tensor, loadData2DParamsB, loadData2DMxParamsB);
     }
+
+    __aicore__ inline void compute_mm2(int l0c_iduse, int l0a_iduse, int l0b_iduse, uint32_t k)
+    {
+        LocalTensor<float> cL0Tensor = L0_C.Get<float>(l0c_iduse * 128 * 256);
+        LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>((l0a_iduse - 4) * 32 * 1024);
+        LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>(((l0b_iduse - 4) % 2) * 32 * 1024);
+
+        // LocalTensor<mx_fp8_e4m3_t> aL0Tensor = L0_A.Get<mx_fp8_e4m3_t>(0);
+        // LocalTensor<mx_fp8_e4m3_t> bL0Tensor = L0_B.Get<mx_fp8_e4m3_t>(0);
+        
+
+        MmadParams mmadParams;
+        mmadParams.m = 32;
+        mmadParams.n = 128;
+        mmadParams.k = 256;
+        mmadParams.cmatrixInitVal = (k == 0) ? 1 : 0;
+        mmadParams.cmatrixSource = false;
+        mmadParams.unitFlag = 0;
+
+        Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
+    }
+
     __aicore__ inline void mm2(uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
         ipid ++;
         int ipuse = ipid % 3;
-        int ipscaleuse = 6;
-        if (inner == 0) {
-            wait_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
-            LocalTensor<int16_t> pScaleL1Tensor = L1_PScale.Get<int16_t>(0);
-            InitConstValue(pScaleL1Tensor, {1, 128 * 512 / 32 * sizeof(float8_e8m0_t) / 32, 0, 0x7f7f});
-            set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
-        } else {
-            set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
-        }
-        wait_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // int ipscaleuse = 6;
+        // if (inner == 0) {
+        //     wait_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
+        //     LocalTensor<int16_t> pScaleL1Tensor = L1_PScale.Get<int16_t>(0);
+        //     InitConstValue(pScaleL1Tensor, {1, 128 * 512 / 32 * sizeof(float8_e8m0_t) / 32, 0, 0x7f7f});
+        //     set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // } else {
+        //     set_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
+        // }
+
+
+        l0c_id ++ ;
+        int l0c_iduse = l0c_id % 2;
+        wait_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+
+        // wait_flag(PIPE_MTE2, PIPE_MTE1, ipscaleuse);
         for (uint32_t k = 0; k < 2; k++) {
             ikv++;
             int ivkuse = ikv % 4;
@@ -588,29 +671,36 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
             wait_flag(PIPE_MTE2, PIPE_MTE1, ivkuse);
             //mte1 start
             l0a_id ++ ;
-            int l0a_iduse = l0a_id % 2;
+            int l0a_iduse = l0a_id % 2 + 4;
             wait_flag(PIPE_M, PIPE_MTE1, l0a_iduse);// mte1 alloc l0ab buffer
             mm2_l1_l0a_no_trans(k, ipuse, l0a_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
 
 
             l0b_id ++;
-            int l0b_iduse = 2 + (l0b_id % 2);
+            int l0b_iduse = 2 + 4 + (l0b_id % 2);
             wait_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
             mm2_l1_l0b_trans(ivkuse, l0b_iduse);
             set_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
             
 
             wait_flag(PIPE_MTE1, PIPE_M, l0a_iduse);
-            set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
             wait_flag(PIPE_MTE1, PIPE_M, l0b_iduse);
+
+            compute_mm2(l0c_iduse, l0a_iduse, l0b_iduse, k);
+
+            set_flag(PIPE_M, PIPE_MTE1, l0a_iduse);
             set_flag(PIPE_M, PIPE_MTE1, l0b_iduse);
 
             set_flag(PIPE_MTE1, PIPE_MTE2, ivkuse);
         }
-        if (inner == 19) {
-            set_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
-        }
+        // if (inner == 19) {
+        //     set_flag(PIPE_MTE1, PIPE_MTE2, ipscaleuse);
+        // }
+        set_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        wait_flag(PIPE_M, PIPE_FIX, l0c_iduse);
+        set_flag(PIPE_FIX, PIPE_M, l0c_iduse);
+
     }
 
     __aicore__ inline void Process()
@@ -618,6 +708,7 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
         if ASCEND_IS_AIC {
             prefree_kv_l1();  // 4buffer
             prefree_l0ab();
+            prefree_l0c();
             uint64_t id = 0;
             uint64_t outerp[4], innerp[4];
             uint64_t total = outer_loop_limit * inner_loop_limit;
@@ -659,6 +750,7 @@ __aicore__ inline void gm_l1_k(uint64_t inner, uint64_t bIdx, uint64_t n2Idx, ui
 
             postalloc_kv_l1();
             postalloc_l0ab();
+            postalloc_l0c();
         }
     }
 };  // FlashAttentionFullQuantMxKernel
