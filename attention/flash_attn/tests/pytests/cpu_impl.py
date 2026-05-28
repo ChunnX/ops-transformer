@@ -74,15 +74,21 @@ def get_cu_seqlens(seqlens_list):
 
 
 def broadcastKV(n1, n2, kv_tensor, dtype):
-    factor = n1 // n2
     kv_shape = kv_tensor.shape
     b = kv_shape[0]
     s = kv_shape[2]
     d = kv_shape[3]
     kv_res = torch.zeros(b, n1, s, d).to(dtype)
-    for i in range(n1):
-        j = i // factor
-        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    if n1 >= n2:
+        factor = n1 // n2
+        for i in range(n1):
+            j = i // factor
+            kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    else:
+        factor = n2 // n1
+        for i in range(n1):
+            j = i * factor
+            kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
     return kv_res
 
 
@@ -114,8 +120,7 @@ def tforward_tnd(q, k, v, **kwargs):
 
     layout_kv = kwargs.get("layout_kv", None)
     is_pa = layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ")
-    if not is_pa:
-        cu_kv = kwargs["cu_seqlens_kv"]
+    cu_kv = kwargs.get("cu_seqlens_kv", None)
 
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens  = kwargs.get("pre_tokens", 2147483647)
@@ -146,7 +151,7 @@ def tforward_tnd(q, k, v, **kwargs):
             continue
 
         q_start = cu_q[i]
-        kv_start = sum(seqused_kv[:i]) if is_pa else cu_kv[i]
+        kv_start = cu_kv[i] if cu_kv is not None else sum(seqused_kv[:i])
 
         qi = q[:, :, q_start:q_start + act_q_len]
         ki = k[:, :, kv_start:kv_start + act_kv_len]

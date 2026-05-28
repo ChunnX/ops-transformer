@@ -121,14 +121,13 @@ private:
     ge::graphStatus CheckKScaleShapeForPerTokenHeadPAMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
+    int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo);
 
 private:
     bool enablePerblockQuant_ = false;
     bool enablePertensorQuant_ = false;
     bool enableIFAMLAFullQuant_ = false;
     bool enableMxfp8FullQuant_ = false;
-    bool enableMxfp8FullQuantPrefill_ = false;
-    bool enableMxfp8FullQuantDecode_ = false;
 };
 
 } // namespace optiling

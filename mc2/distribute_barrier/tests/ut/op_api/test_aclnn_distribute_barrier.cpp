@@ -245,3 +245,151 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiTimeOutA
         aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
     }
 }
+
+// ========== 新增测试用例：直接调用第二段接口覆盖未覆盖代码 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiDirect)
+{
+    // 直接调用第二段接口，覆盖 aclnnDistributeBarrier 和 aclnnDistributeBarrierBase 函数体
+    aclnnStatus aclRet = aclnnDistributeBarrier(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApiDirect)
+{
+    // 直接调用第二段接口，覆盖 aclnnDistributeBarrierV2 和 aclnnDistributeBarrierBase 函数体
+    aclnnStatus aclRet = aclnnDistributeBarrierV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApiWithTimeOut)
+{
+    // 调用 V2 第一段接口带 timeOut 参数，然后直接调用第二段接口
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+    TensorDesc timeOutDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto timeOutPtr = timeOutDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(xRefPtr.get(), timeOutPtr.get(), nullptr,
+                                                                   "test_distribute_barrier", 16,
+                                                                   &workspaceSize, &executor);
+    // 第一段在 UT 环境中可能失败，直接调用第二段覆盖代码
+    aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApiWithElasticInfo)
+{
+    // 调用 V2 第一段接口带 elasticInfo 参数，然后直接调用第二段接口
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+    TensorDesc elasticInfoDesc = TensorDesc({36}, ACL_INT32, ACL_FORMAT_ND);
+    auto elasticInfoPtr = elasticInfoDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(xRefPtr.get(), nullptr, elasticInfoPtr.get(),
+                                                                   "test_distribute_barrier", 16,
+                                                                   &workspaceSize, &executor);
+    // 直接调用第二段覆盖代码
+    aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApiWithTimeOutAndElasticInfo)
+{
+    // 调用 V2 第一段接口同时带 timeOut 和 elasticInfo 参数
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+    TensorDesc timeOutDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    auto timeOutPtr = timeOutDesc.ToAclType();
+    TensorDesc elasticInfoDesc = TensorDesc({36}, ACL_INT32, ACL_FORMAT_ND);
+    auto elasticInfoPtr = elasticInfoDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(xRefPtr.get(), timeOutPtr.get(), elasticInfoPtr.get(),
+                                                                   "test_distribute_barrier", 16,
+                                                                   &workspaceSize, &executor);
+    // 直接调用第二段覆盖代码
+    aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+// ========== 参数校验测试用例 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierNullptrXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(nullptr, "test_group", 16,
+                                                                 &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2NullptrXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(nullptr, nullptr, nullptr, "test_group", 16,
+                                                                   &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierGroupNameTooLong)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+    // HCCL_GROUP_NAME_MAX is 128, so 128 char group name should fail
+    std::string longGroup(128, 'a');
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), longGroup.c_str(), 16,
+                                                                 &workspaceSize, &executor);
+    // group name too long should return error
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+}
+
+// ========== dtype 测试用例 ==========
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeFloat32)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16,
+                                                                 &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeBfloat16)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_BF16, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16,
+                                                                 &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierDtypeInt32)
+{
+    TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_INT32, ACL_FORMAT_ND);
+    auto xRefPtr = xRefDesc.ToAclType();
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSize(xRefPtr.get(), "test_distribute_barrier", 16,
+                                                                 &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}

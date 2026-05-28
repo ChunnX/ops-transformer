@@ -27,7 +27,8 @@ constexpr int64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cache line size is 12
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 class BlockSchedulerGmmAswtWithTailSplit {
 public:
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;              // m, n, k
+    using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;     // m, n, mOffset, nOffset
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     using ProblemShape = ProblemShape_;
 
@@ -211,7 +212,7 @@ public:
         return true;
     }
 
-    __aicore__ inline TupleShape GetBlockShape(const BlockCoord &blockCoord)
+    __aicore__ inline BlockShape GetBlockShape(const BlockCoord &blockCoord)
     {
         int64_t singleCoreM = Get<MNK_M>(blockCoord) != (mCnt_ - 1) ? baseM_ : mBaseTail_;
         int64_t singleCoreN = Get<MNK_N>(blockCoord) != (nCnt_ - 1) ? baseN_ : nBaseTail_;

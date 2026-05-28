@@ -91,7 +91,7 @@ public:
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord =
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
-    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t>;
 
 public:
     __aicore__ inline void Init(const Params &params);

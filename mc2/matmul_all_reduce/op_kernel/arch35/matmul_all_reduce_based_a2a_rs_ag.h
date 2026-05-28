@@ -107,7 +107,9 @@ public:
         tileAddrAlign_ = tileAlign_ * sizeof(YType);
         tailAddrAlign_ = tailAlign_ * sizeof(YType);
         aivNum_ = GetBlockNum() * GetTaskRation();
-        PrePareHCCL();
+        if (notifyFlag_) {
+            PrePareHCCL();
+        }
     }
 
     __aicore__ inline void PrePareHCCL()

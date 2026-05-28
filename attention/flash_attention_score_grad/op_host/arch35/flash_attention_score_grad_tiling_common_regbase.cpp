@@ -320,6 +320,8 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const F
     auto deqScaleKInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_K));
     auto deqScaleVInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_V));
     auto deqScaleDyInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DY));
+    auto deqScaleDsInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DS_IDX));
+    auto deqScalePInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_P_IDX));
     if (yInput != nullptr) {
         auto yInputDtype = yInput->GetDataType();
         bool isYInputNotValid = (fBaseParams.queryType == ge::DT_HIFLOAT8 && yInputDtype != ge::DT_BF16);
@@ -330,18 +332,26 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const F
             return ge::GRAPH_FAILED);
     }
     if (deqScaleQInput != nullptr && deqScaleKInput != nullptr
-        && deqScaleVInput != nullptr && deqScaleDyInput != nullptr) {
+        && deqScaleVInput != nullptr && deqScaleDyInput != nullptr &&
+        deqScaleDsInput != nullptr && deqScalePInput != nullptr) {
         auto deqScaleQDtype = deqScaleQInput->GetDataType();
         auto deqScaleKDtype = deqScaleKInput->GetDataType();
         auto deqScaleVDtype = deqScaleVInput->GetDataType();
         auto deqScaleDyDtype = deqScaleDyInput->GetDataType();
+        auto deqScaleDsDtype = deqScaleDsInput->GetDataType();
+        auto deqScalePDtype = deqScalePInput->GetDataType();
         OP_CHECK_IF(deqScaleQDtype != ge::DT_FLOAT || deqScaleKDtype != ge::DT_FLOAT ||
-            deqScaleVDtype != ge::DT_FLOAT || deqScaleDyDtype != ge::DT_FLOAT,
-            OP_LOGE(context_, 
-                "Invalid deqScaleDType [deqScaleQDtype:%s, deqScaleKDtype:%s, deqScaleVDtype:%s, deqScaleDyDtype:%s], only support FLOAT32.", 
-                ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype).c_str(),
+            deqScaleVDtype != ge::DT_FLOAT || deqScaleDyDtype != ge::DT_FLOAT ||
+            deqScaleDsDtype != ge::DT_FLOAT || deqScalePDtype != ge::DT_FLOAT,
+            OP_LOGE(context_,
+                "Invalid deqScaleDType [deqScaleQDtype:%s, deqScaleKDtype:%s, deqScaleVDtype:%s,"
+                "deqScaleDyDtype:%s, deqScaleDsDtype:%s, deqScalePDtype:%s], only support FLOAT32.",
+                ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(deqScaleVDtype).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype).c_str()),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleDsDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScalePDtype).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -153,6 +153,56 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 | `--visualize` | flag | 关闭 | 生成精度热力图 PNG |
 | `--viz_dir` | str | `./viz_output` | 热力图保存目录 |
 | `--meta_only` | flag | 关闭 | 只调用 metadata 算子 |
+| `--fail_analysis` | flag | 关闭 | 精度失败时分析各 batch/head/seq 的误差分布 |
+
+### 失败分布分析 (`--fail_analysis`)
+
+当精度对比 FAIL 时，自动输出失败元素在各维度的分布统计，帮助定位精度问题集中在哪个 batch 或 head。
+
+**使用方式：**
+
+```bash
+python test_flash_attn.py --case_id case69 --fail_analysis --dump_tensors
+```
+
+**输出内容：**
+
+1. **按 Batch 统计** — 每个 batch 的失败元素数、失败率、最大/平均绝对误差
+2. **按 Head 统计** — Top-10 失败率最高的 head
+3. **按 Seq 位置统计** — Top-10 失败率最高的 query 位置
+4. **Batch vs seqused_kv 关联** — 将每个 batch 的失败率与其实际 KV 序列长度对照，标注超 3% 阈值的 batch
+5. **错误位置连续性分析** — 选取失败率最高的 3 个 batch，展开 D 维度检测错误是随机分散还是连续集中
+
+**报告文件：** 自动保存到 `<dump_dir>/<case_name>/fail_analysis.txt`
+
+**示例输出：**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  失败元素分布分析: test_case_fia_STC/case69
+  Shape: (16, 180, 253, 128)  FailElems: 6358919/93265920 (6.8181%)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [按 Batch 维度统计] (共 16 个 batch)
+   Batch     FailCnt       Total   FailRatio    MaxAbsErr   MeanAbsErr
+       0      543210     5806080     9.3561%    0.03125000  0.00156250
+       2        1024     5806080     0.0176%    0.00390625  0.00097656
+  ...
+
+  [Batch vs seqused_kv 关联分析]
+   Batch   seqused_kv   FailRatio                  说明
+       0         1357     9.3561%            ⚠ 超3%阈值
+       2           35     0.0176%
+
+  [错误位置连续性分析] (选取失败率最高的 3 个 batch，分析 D 维度连段)
+
+  ── Batch 0 (FailRatio=9.3561%) ──
+    最密集位置: head=23, seq=112, 失败D元素=47/128
+    连续段数: 38  最长段: 3  平均段长: 1.2
+    模式判定: 随机分散（典型精度累积误差）
+    前8段: [2:3](2), [7:7](1), [15:15](1), [21:22](2), ...
+    seq分段失败率(每15位置): [8.2%, 7.9%, 9.1%, ...]
+```
 
 ---
 

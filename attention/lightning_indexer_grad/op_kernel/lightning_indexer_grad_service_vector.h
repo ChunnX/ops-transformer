@@ -568,7 +568,11 @@ __aicore__ inline void LIGVector<LIGT>::ReluGrad(GlobalTensor<float> reluInGmTen
         dweightOffset = (runInfo.prefixSumS1 + runInfo.s1Idx) * constInfo.headNumQ + runInfo.n2Idx *
             constInfo.groupNum + blockGroupBegin;
     }
-    DataCopy(dweightsGmTensor[dweightOffset], reduceTensor, blockGroupNum);
+    AscendC::DataCopyExtParams dWeightsCopyOutParams{
+        static_cast<uint16_t>(1),
+        static_cast<uint32_t>(blockGroupNum * sizeof(dataType)),
+        0, 0, 0};
+    AscendC::DataCopyPad(dweightsGmTensor[dweightOffset], reduceTensor, dWeightsCopyOutParams);
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMte2);
 }
