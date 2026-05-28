@@ -99,6 +99,7 @@ inline void* GetOpApiFuncAddrInLib(void* handler, const char* libName, const cha
 }
 
 inline void* GetOpApiLibHandler(const char* libName) {
+  OP_LOGI("aclnnfallback", "dlopen %s ing.", libName);
   auto handler = dlopen(libName, RTLD_LAZY);
   if (handler == nullptr) {
     OP_LOGW("aclnnfallback", "dlopen %s failed, error:%s.", libName, dlerror());
@@ -108,7 +109,7 @@ inline void* GetOpApiLibHandler(const char* libName) {
 
 inline void* GetAclnnArrdByApiName(const char *apiName) {
     vector<std:: string> libs = {"libaclnn_ops_infer.so", "libaclnn_ops_train.so", "libaclnn_math.so",
-                                 "libaclnn_rand.so", "libaclnn_sparse.so", "libaclnn_fft.so"};
+                                 "libaclnn_rand.so", "libaclnn_sparse.so", "libaclnn_fft.so", "libopapi_transformer.so"};
     for (const auto &libName : libs) {
         static auto libHandler = GetOpApiLibHandler(libName.c_str());
         if (libHandler != nullptr) {
