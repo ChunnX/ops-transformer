@@ -113,6 +113,18 @@ def run_precision_test():
         print("精度对比结果")
         print("=" * 70)
         
+        # 对比单个位置的值
+        print("\n[对比单个位置值 (b=0, s=0)]")
+        print(f"  d_weights_tl[0,0,0]: {d_weights_tl[0,0,0].item():.2f}")
+        print(f"  d_weights_off[0,0,0]: {d_weights_off[0,0,0].item():.2f}")
+        print(f"  差值: {abs(d_weights_tl[0,0,0].item() - d_weights_off[0,0,0].item()):.2f}")
+        
+        print(f"\n  d_query_tl[0,0,0,0:5]: {d_query_tl[0,0,0,0:5].float().tolist()}")
+        print(f"  d_query_off[0,0,0,0:5]: {d_query_off[0,0,0,0:5].float().tolist()}")
+        
+        print(f"\n  d_key_tl[0,0,0,0:5]: {d_key_tl[0,0,0,0:5].float().tolist()}")
+        print(f"  d_key_off[0,0,0,0:5]: {d_key_off[0,0,0,0:5].float().tolist()}")
+        
         # dQuery 对比
         d_query_diff = torch.abs(d_query_tl.float() - d_query_off.float())
         print(f"\n[1] dQuery:")
