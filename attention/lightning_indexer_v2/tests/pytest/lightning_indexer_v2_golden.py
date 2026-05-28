@@ -540,6 +540,7 @@ def liv2_output_single(params):
     seqused_q = torch.tensor(seqused_q).to(torch.int32).npu()
     seqused_k = torch.tensor(seqused_k).to(torch.int32).npu()
     cmp_residual_k = torch.tensor(cmp_residual_k).to(torch.int32).npu()
+
     if layout_query == "BSND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(torch.float32).npu()
@@ -590,7 +591,7 @@ def liv2_output_single(params):
         # [batch_size, s2, k_head_num, head_dim] expand to [batch_size, k_max_block_num_per_batch * block_size, k_head_num, head_dim]
         key_expand = torch.zeros((batch_size, k_head_num, k_max_block_num_per_batch * block_size, head_dim), dtype = qk_dtype)
         key_expand[:,:,:k_max_s2,:] = key_bnsd
-        key = torch.zeros((block_num, block_size, k_head_num, head_dim), dtype = qk_dtype) # hifp8时qk_dtype为uint8
+        key = torch.zeros((block_num, block_size, k_head_num, head_dim), dtype = qk_dtype)
         for i_batch in range(batch_size):
             for  i_block, cur_block_id in enumerate(block_table[i_batch]):
                 block_start_pos = i_block * block_size
