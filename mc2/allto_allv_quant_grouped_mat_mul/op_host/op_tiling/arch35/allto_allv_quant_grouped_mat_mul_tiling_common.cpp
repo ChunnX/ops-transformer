@@ -156,7 +156,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    uint32_t expertNum = 2;
+    uint32_t expertNum = 1;
     tilingData->taskTilingInfo.expertNum = expertNum;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
     tilingData->taskTilingInfo.tailLoopExpertNum =

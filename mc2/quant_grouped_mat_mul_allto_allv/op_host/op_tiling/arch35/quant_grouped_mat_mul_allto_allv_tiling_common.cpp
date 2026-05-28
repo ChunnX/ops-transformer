@@ -735,7 +735,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
 
-    uint32_t expertNum = static_cast<uint32_t>(2);
+    uint32_t expertNum = static_cast<uint32_t>(1);
     gmmQTilingCommonInfoPtr->expertNum = expertNum;
     gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum;
     gmmQTilingCommonInfoPtr->tailLoopExpertNum =
