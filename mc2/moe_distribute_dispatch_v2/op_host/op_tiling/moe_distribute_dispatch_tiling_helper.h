@@ -26,6 +26,7 @@
 #include "../../common/op_host/op_tiling/moe_dispatch/defs.h"
 
 namespace optiling {
+using QuantModeA5 = moe_dispatch_defs::QuantMode;
 constexpr uint32_t X_INDEX = 0U;
 constexpr uint32_t EXPERT_IDS_INDEX = 1U;
 constexpr uint32_t SCALES_INDEX = 2U;

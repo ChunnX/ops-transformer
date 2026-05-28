@@ -505,50 +505,149 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTili
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context)
 {
-    return MoeDistributeDispatchTilingFuncImpl(context);
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    NpuArch npuArch = mc2tiling::GetNpuArch(context);
+    ge::graphStatus ret;
+    if (socVersion == "Ascend910B") {
+        ret = MoeDistributeDispatchTilingFuncImpl(context);
+    } else {
+        DispatchV2Config config;
+        config.xIndex = 0U; // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+        config.expertIdsIndex = 1U; // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
+        config.scalesIndex = 2U; // 2: 根据dispatchV2算子原型标志位初始化scales索引
+        config.xActiveMaskIndex = 3U; // 3: 根据dispatchV2算子原型标志位初始化xActiveMask索引
+        config.expertScalesIndex = 4U; // 4: 根据dispatchV2算子原型标志位初始化expertScales索引
+        config.elasticInfoIndex = 5U; // 5: 根据dispatchV2算子原型标志位初始化elasticInfo索引
+        config.performanceInfoIndex = 6U; // 6: 根据dispatchV2算子原型标志位初始化performanceInfo索引
+        config.attrGroupEpIndex = 0; // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
+        config.attrEpWorldSizeIndex = 1; // 1: 根据dispatchV2算子原型标志位初始化epWorldSize索引
+        config.attrEpRankIdIndex = 2; // 2: 根据dispatchV2算子原型标志位初始化epRankId索引
+        config.attrMoeExpertNumIndex = 3;  // 3: 根据dispatchV2算子原型标志位初始化moeExpertNum索引
+        config.attrGroupTpIndex = 4; // 4: 根据dispatchV2算子原型标志位初始化groupTp索引
+        config.attrTpWorldSizeIndex = 5; // 5: 根据dispatchV2算子原型标志位初始化tpWorldSize索引
+        config.attrTpRankIdIndex = 6; // 6: 根据dispatchV2算子原型标志位初始化tpRankId索引
+        config.attrExpertSharedTypeIndex = 7; // 7: 根据dispatchV2算子原型标志位初始化expertSharedType索引
+        config.attrSharedExpertNumIndex = 8; // 8: 根据dispatchV2算子原型标志位初始化sharedExpertNum索引
+        config.attrSharedExpertRankNumIndex = 9; // 9: 根据dispatchV2算子原型标志位初始化sharedExpertRankNum索引
+        config.attrQuantModeIndex = 10; // 10: 根据dispatchV2算子原型标志位初始化quantMode索引
+        config.attrGlobalBsIndex = 11; // 11: 根据dispatchV2算子原型标志位初始化globalBs索引
+        config.attrExpertTokenNumsTypeIndex = 12; // 12: 根据dispatchV2算子原型标志位初始化expertTokenNumType索引
+        config.attrCommAlgIndex = 13; // 13: 根据dispatchV2算子原型标志位初始化commAlg索引
+        config.attrZeroExpertNumIndex = 14; // 14: 根据dispatchV2算子原型标志位初始化zeroExpertNumIndex索引
+        config.attrCopyExpertNumIndex = 15; // 15: 根据dispatchV2算子原型标志位初始化copyExpertNumIndex索引
+        config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
+        config.isMc2Context = false;
+        config.maxQuantMode = static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT);
+        config.tilingKeyArch = TILINGKEY_TPL_A3;
+        ret = MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
+    }
+    return ret;
 }
 
-uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const DispatchV2TilingCtx &tc)
+uint64_t MoeDistributeDispatchV2TilingFuncA2A3::CalTilingKey(const bool isScales, const uint32_t quantMode,
+    const uint32_t tpWorldSize, const bool isSetFullMeshV2, bool isLayered)
 {
-    (void)tc;
-    return 0;
+    uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
+    bool tp = false;
+    uint32_t tilingKeyQuantMode = quantMode;
+    bool scaleMode = false;
+    uint64_t tilingKey;
+    uint32_t commMode = TILINGKEY_TPL_MTE;
+    if (isScales) {
+        scaleMode = true;
+    }
+    if (isSetFullMeshV2) {
+        templateDispatch = TILINGKEY_ENABLE_FULLMESH;
+    }
+    if (isLayered) {
+        templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
+    }
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tp = true;
+    }
+    tilingKey = GET_TPL_TILING_KEY(tp, tilingKeyQuantMode, scaleMode,
+        templateDispatch, commMode, TILINGKEY_TPL_A3);
+    return tilingKey;
 }
 
 bool MoeDistributeDispatchV2TilingFuncA2A3::CheckTensorDataType(
     const gert::TilingContext *context, const char *nodeName,
-    DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
+    const bool isPerformance, DispatchV2Config &config)
 {
-    (void)context;
-    (void)nodeName;
-    (void)tc;
-    (void)config;
-    return false;
+    auto xDesc = context->GetInputDesc(config.xIndex);
+    OP_TILING_CHECK((xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
+        OP_LOGE(nodeName, "x dataType is invalid, dataType should be bf16 or float16, but is %s.",
+        Ops::Base::ToString(xDesc->GetDataType()).c_str()), return false);
+
+    if (quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
+        auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
+        OP_TILING_CHECK(dynamicScalesDesc == nullptr, OP_LOGE(nodeName, "dynamicScalesDesc is null."),
+            return false);
+        OP_TILING_CHECK(dynamicScalesDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE(nodeName, "dynamicScales dataType is invalid, dataType should be float, but is %s.",
+            Ops::Base::ToString(dynamicScalesDesc->GetDataType()).c_str()), return false);
+    }
+    if (isScales) {
+        auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+        OP_TILING_CHECK(scalesDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE(nodeName, "scales dataType is invalid, dataType should be float, but is %s.",
+            Ops::Base::ToString(scalesDesc->GetDataType()).c_str()), return false);
+    }
+    auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
+    if (quantMode != static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
+        OP_TILING_CHECK(expandXDesc->GetDataType() != ge::DT_INT8,
+            OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be int8, but is %s.",
+            Ops::Base::ToString(expandXDesc->GetDataType()).c_str()), return false);
+    } else {
+        OP_TILING_CHECK(expandXDesc->GetDataType() != xDesc->GetDataType(),
+            OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be equal to x dataType %s, but is %s.",
+            Ops::Base::ToString(xDesc->GetDataType()).c_str(), Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
+            return false);
+    }
+
+    OP_TILING_CHECK(!CheckCommomOtherInputTensorDataType(context, nodeName, isActiveMask,
+        hasElasticInfo, isPerformance, config),
+        OP_LOGE(nodeName, "CheckCommomOtherInputTensorDataType failed."), return false);
+    OP_TILING_CHECK(!CheckCommomOutputTensorDataType(context, nodeName),
+        OP_LOGE(nodeName, "CheckCommomOutputTensorDataType failed."), return false);
+
+    return true;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales(
-    gert::TilingContext *context, const char *nodeName,
-    DispatchV2TilingCtx &tc, DispatchV2Config &config)
+    gert::TilingContext *context, const char *nodeName, bool isScales,
+    uint32_t quantMode, DispatchV2Config &config)
 {
-    (void)context;
-    (void)nodeName;
-    (void)tc;
-    (void)config;
-    return ge::GRAPH_FAILED;
+    OP_TILING_CHECK(quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT),
+        OP_LOGE(nodeName, "cannot support static quant now."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))) ||
+        ((!isScales) && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))),
+        OP_LOGE(nodeName, "quant mode and scales not match, isScales is %d, quantMode is %u.",
+        static_cast<int32_t>(isScales), quantMode), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName)
 {
-    (void)commAlgPtr;
-    (void)nodeName;
-    return ge::GRAPH_FAILED;
+    OP_TILING_CHECK(((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
+        (strcmp(commAlgPtr, "fullmesh_v2")  != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)),
+        OP_LOGE(nodeName,
+            "Attr commAlg is invalid, current only support hierarchy, "
+            "fullmesh_v1 and fullmesh_v2, but got commAlg = %s.",
+            commAlgPtr), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModePtr(const int64_t* quantModePtr,
     const char *nodeName)
 {
-    (void)quantModePtr;
-    (void)nodeName;
-    return ge::GRAPH_FAILED;
+    OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
+    (*quantModePtr > static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
+    OP_LOGE(nodeName, "quantMode is invalid, only support [0, %ld], but got quantMode=%ld.",
+    static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 struct MoeDistributeDispatchCompileInfo {};
