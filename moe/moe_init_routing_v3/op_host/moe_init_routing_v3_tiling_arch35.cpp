@@ -507,8 +507,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
         workspaceSize_ += expertIdxValueWorkspaceSize;
 
-        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, srcToDstWorkspace=%ld",
-                 expertIdxValueWorkspaceSize, srcToDstWorkspaceSize);
+        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld",
+                 expertIdxValueWorkspaceSize);
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
@@ -670,7 +670,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(expertCapacity_ <= EXPERT_CAPACITY_MIN_VALUE,
                     OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertCapacity_",
-                                              expertCapacity_, " greater than " + EXPERT_CAPACITY_MIN_VALUE),
+                                              std::to_string(expertCapacity_), 
+                                              " greater than " + std::to_string(EXPERT_CAPACITY_MIN_VALUE)),
                     return ge::GRAPH_FAILED);
     }
     tilingDataPtr_->expertCapacity = expertCapacity_;
