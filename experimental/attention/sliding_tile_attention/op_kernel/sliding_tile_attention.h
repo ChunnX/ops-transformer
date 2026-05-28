@@ -931,7 +931,7 @@ private:
             return;
         }
         if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
-            for (int64_t kvTileId = 0; kvTileId < tiling_->imageTileNum; ++kvTileId) {
+            for (int64_t tile = 0; tile < tiling_->imageTileNum; ++tile) {
                 ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
                                       tileLoop, maxLocal, denomLocal);
             }
@@ -948,13 +948,10 @@ private:
         int64_t wBegin = 0;
         int64_t wEnd = 0;
         GetImageWindowRange(head, seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
-        for (int64_t tileT = tBegin; tileT < tEnd; ++tileT) {
-            for (int64_t tileH = hBegin; tileH < hEnd; ++tileH) {
-                for (int64_t tileW = wBegin; tileW < wEnd; ++tileW) {
-                    ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                          tileLoop, maxLocal, denomLocal);
-                }
-            }
+        const int64_t visibleTileCount = (tEnd - tBegin) * (hEnd - hBegin) * (wEnd - wBegin);
+        for (int64_t tile = 0; tile < visibleTileCount; ++tile) {
+            ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
+                                  tileLoop, maxLocal, denomLocal);
         }
     }
 
