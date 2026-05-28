@@ -408,7 +408,7 @@ private:
             PipeBarrier<PIPE_V>();
 
             uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
-            DataCopyPad(dst_gm[out_gm_offset], dy_out_tensor, process_size * 8);
+            DataCopy(dst_gm[out_gm_offset], dy_out_tensor, process_size * 8);
             SET_FLAG(MTE3, MTE2, EVENT_ID0);
             WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
         }
