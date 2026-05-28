@@ -73,7 +73,7 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
-                OP_LOGE(opName_, "When qLayout is BNSD, cmpSparseIndices's S should be eaque to s1Size:%u, but got %ld",
+                OP_LOGE(opName_, "When qLayout is BNSD, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
                     s1Size_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1));
                 return ge::GRAPH_FAILED;
             }
@@ -85,7 +85,7 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0) != qTSize_) {
-                OP_LOGE(opName_, "When qLayout is TND, cmpSparseIndices's T should be eaque to qTSize:%u, but got %ld",
+                OP_LOGE(opName_, "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:%u, but got %ld",
                     qTSize_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(0));
                 return ge::GRAPH_FAILED;
             }
