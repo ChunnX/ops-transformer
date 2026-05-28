@@ -105,12 +105,11 @@ static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool 
 {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
-        CommType type = CommType::AIV;
+        CommType *typePtr = new CommType(CommType::AIV);
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
-            type = CommType::CCU;
+            *typePtr = CommType::CCU;
         }
-        void *args = reinterpret_cast<void *>(static_cast<uint64_t>(type));
-        NnopbaseSetUserHandle(executor, args);
+        NnopbaseSetUserHandle(executor, static_cast<void *>(typePtr));
     }
 #endif
 
@@ -147,11 +146,23 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (groupEp != nullptr) {
+        (void)strncpy(groupEpBuf, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
     const char *groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
+    }
+    if (groupTpCombineV2Temp != nullptr) {
+        (void)strncpy(groupTpBuf, groupTpCombineV2Temp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (commAlg != nullptr) {
+        (void)strncpy(commAlgBuf, commAlg, HCCL_GROUP_NAME_MAX - 1);
     }
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
@@ -160,9 +171,9 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
-            const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char *>(groupTpCombineV2Temp),
+            groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf,
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+            commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -176,7 +187,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-            globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum,
+            globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum,
             constExpertNum, xOut, workspaceSize, executor);
 #endif
     }
@@ -191,12 +202,14 @@ aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSiz
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
-        void *arg = NnopbaseGetUserHandle(executor);
-        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-        CommType commType = static_cast<CommType>(handleVal);
-        if (commType == CommType::AIV) {
+        CommType *typePtr = static_cast<CommType *>(NnopbaseGetUserHandle(executor));
+        if (typePtr != nullptr && *typePtr == CommType::AIV) {
             OP_LOGD("aclnn_combine inner v3 start");
+            delete typePtr;
             return aclnnInnerMoeDistributeCombineV3(workspace, workspaceSize, executor, stream);
+        }
+        if (typePtr != nullptr) {
+            delete typePtr;
         }
     }
 #endif
