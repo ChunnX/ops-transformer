@@ -259,12 +259,12 @@ ge::graphStatus AlltoAllvGmmTiling::GetShapeAndFormat(const gert::TilingContext*
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x/gmm_weight"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr,
-        OP_LOGE(A_INNER_DEBUG, "GetOutputShape gmmY returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_y"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        context->GetInputDesc(GMM_X_INDEX) == nullptr, OP_LOGE(A_INNER_DEBUG, "GetInputDesc gmmX returned null."),
+        context->GetInputDesc(GMM_X_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x"),
         return ge::GRAPH_FAILED);
 
     tilingData->commonTilingInfo.BSK = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(0);
@@ -390,7 +390,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x/gmm_weight"), return ge::GRAPH_FAILED);
 
     uint64_t BSK = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(0);
     if (BSK <= NUM_ZERO || BSK >= MAX_BSK) {
@@ -542,7 +542,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) || (context->GetInputShape(GMM_X_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x/gmm_weight"), return ge::GRAPH_FAILED);
 
     uint64_t gmmWeightH1 = tilingData->commonTilingInfo.isGmmWeightTrans ?
                                context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(NUM_TWO) :
@@ -571,7 +571,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     if (tilingData->commonTilingInfo.isPermuteOut) {
         OP_TILING_CHECK((context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr) ||
                         (context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) == nullptr),
-                        OP_LOGE(A_INNER_DEBUG, "GetPermuteOutputShape GmmY or permuteOut returned null."),
+                        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_y/permute_out"),
                         return ge::GRAPH_FAILED);
         uint64_t gmmYA = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(0);
         uint64_t permuteA = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(0);
@@ -634,10 +634,10 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x/gmm_weight"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetOutputShape gmmY returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_y"), return ge::GRAPH_FAILED);
 
     if (context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDimNum() != NUM_TWO) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "gmmX",
@@ -660,7 +660,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     }
     if (tilingData->commonTilingInfo.isNeedMM) {
         OP_TILING_CHECK(context->GetOptionalInputShape(MM_WEIGHT_INDEX) == nullptr,
-            OP_LOGE(A_INNER_DEBUG, "GetOptionalInputShape of mm_weight is null."),
+            OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "mm_weight"),
             return ge::GRAPH_FAILED);
     }
 
@@ -744,9 +744,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
 {
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX) == nullptr) || (context->GetInputDesc(GMM_WEIGHT_INDEX) == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "GetInputDesc gmmX or gmmWeight returned null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_x/gmm_weight"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        context->GetOutputDesc(OUTPUT_Y_INDEX) == nullptr, OP_LOGE(A_INNER_DEBUG, "GetOutputDesc y returned null."),
+        context->GetOutputDesc(OUTPUT_Y_INDEX) == nullptr, OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmm_y"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
                         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_BF16),
