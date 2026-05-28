@@ -46,7 +46,7 @@ constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t NUM_THREE = 3;
 constexpr uint32_t NUM_EIGHT = 8;
 constexpr uint32_t NUM_SIXTEEN = 16;
-constexpr uint32_t E_MAX_VALUE = 48;
+constexpr uint32_t E_MAX_VALUE = 64;
 constexpr uint32_t NUM_SIXTYFOUR = 64;
 constexpr uint32_t MAX_EXPERT_NUM = 384;
 constexpr uint32_t MAX_BSK = 52428800;
@@ -896,7 +896,18 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
                               0 :
                               (tilingData->commonTilingInfo.A * tilingData->commonTilingInfo.H1 * mmDataTypeSize);
     tilingData->commonTilingInfo.commOut = commOut;
-    workspaces[0] = libApiWorkSpaceSize_ + commOut + permuteOut;
+    constexpr uint64_t MAX_A2AV_COMM_CALL_COUNT = 63U;
+    uint64_t epE = tilingData->commonTilingInfo.E_ep;
+    if (epE <= MAX_A2AV_COMM_CALL_COUNT) {
+        tilingData->commonTilingInfo.expertMergeNum = 1U;
+        tilingData->commonTilingInfo.commRoundCount = epE;
+        tilingData->commonTilingInfo.rearrangeSize = 0U;
+    } else {
+        tilingData->commonTilingInfo.expertMergeNum = epE / MAX_A2AV_COMM_CALL_COUNT;
+        tilingData->commonTilingInfo.commRoundCount = MAX_A2AV_COMM_CALL_COUNT;
+        tilingData->commonTilingInfo.rearrangeSize = commOut;
+    }
+    workspaces[0] = libApiWorkSpaceSize_ + commOut + permuteOut + tilingData->commonTilingInfo.rearrangeSize;
     uint64_t tilingKey = GetTilingKey(context);
     context->SetTilingKey(tilingKey);
 
