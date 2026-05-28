@@ -221,6 +221,7 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             // 获取卡数
             uint32_t rankSize = 0;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+            OP_LOGI("[tzydebug]into define.");//TODO
             auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
             CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
