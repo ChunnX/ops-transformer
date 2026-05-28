@@ -131,17 +131,17 @@ inline void* GetOpApiFuncAddr(const char* apiName) {
     }
   }
 
-  static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
-  if (transformerOpApiHandler != nullptr) {
-      auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+  static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
+  if (opApiHandler != nullptr) {
+      auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
       if (funcAddr != nullptr) {
           return funcAddr;
       }
   }
 
-  static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
-  if (opApiHandler != nullptr) {
-      auto funcAddr = GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
+  static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+  if (transformerOpApiHandler != nullptr) {
+      auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
       if (funcAddr != nullptr) {
           return funcAddr;
       }
