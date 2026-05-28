@@ -11,7 +11,7 @@
 
 import torch
 import math
-from test_utils import *
+from utils import *
 
 
 def tsoftmax(x):
@@ -35,7 +35,7 @@ def _fix_invalid_rows(softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def _attend(q, k, v, drop_mask, atten_mask, scale, keep_prob, need_fix_invalid):
+def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
     q = q.float()
     k = k.float()
     v = v.float()
@@ -57,8 +57,8 @@ def _attend(q, k, v, drop_mask, atten_mask, scale, keep_prob, need_fix_invalid):
     if need_fix_invalid:
         softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
-    if drop_mask is not None and keep_prob > 0:
-        softmax_res = softmax_res * drop_mask * (1.0 / keep_prob)
+    if need_fix_invalid:
+        softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
     out = torch.matmul(softmax_res, v)
     x_max = x_max
@@ -92,17 +92,13 @@ def broadcastKV(n1, n2, kv_tensor, dtype):
     return kv_res
 
 
-def _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, act_kv_len, prefix):
-    if sparse_mode is None:
+def _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_len, prefix):
+    if mask_mode is None or mask_mode == 0:
         return False
-    if sparse_mode == 0:
-        return next_tokens < 0 or pre_tokens + act_kv_len < act_q_len
-    if sparse_mode == 3:
+    if mask_mode == 3:
         return act_q_len > act_kv_len
-    if sparse_mode == 4:
-        return pre_tokens < 0 or next_tokens + act_kv_len < act_q_len
-    if sparse_mode in (5, 6):
-        return 0 in prefix
+    if mask_mode == 4:
+        return win_left < 0 or win_right + act_kv_len < act_q_len
     return False
 
 
@@ -122,24 +118,17 @@ def tforward_tnd(q, k, v, **kwargs):
     is_pa = layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ")
     cu_kv = kwargs.get("cu_seqlens_kv", None)
 
-    sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens  = kwargs.get("pre_tokens", 2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
+    mask_mode = kwargs.get("mask_mode", None)
+    win_left  = kwargs.get("win_left", 2147483647)
+    win_right = kwargs.get("win_right", 2147483647)
     prefix = kwargs.get("prefix", [])
-    seed = kwargs.get("seed", 0)
-    offset = kwargs.get("offset", 0)
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
-    keep_prob = kwargs.get("keep_prob", 1)
 
     band_index = 0
 
     qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
     qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
-    if abs(1 - keep_prob) < 2e-14:
-        drop_mask = None
-    else:
-        drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
     out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
     x_max = torch.zeros([n1, s1_total], dtype=torch.float32)
@@ -161,20 +150,14 @@ def tforward_tnd(q, k, v, **kwargs):
             ki = broadcastKV(n1, n2, ki, ki.dtype)
             vi = broadcastKV(n1, n2, vi, vi.dtype)
 
-        if drop_mask is None:
-            drop_maski = None
-        else:
-            drop_maski = drop_mask[(qk_pointer[i] * n1):(qk_pointer[i + 1] * n1)].reshape(
-                n1, act_q_len, math.ceil(act_kv_len / 16) * 16)[:, :, :act_kv_len]
-
-        if sparse_mode is None:
+        if mask_mode is None:
             atten_maski = None
         else:
-            atten_maski = generate_cpu_mask(1, act_q_len, act_kv_len, sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
+            atten_maski = generate_cpu_mask(1, act_q_len, act_kv_len, mask_mode, win_left, win_right, prefix, i, band_index)
 
-        need_fix = _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, act_kv_len, prefix)
+        need_fix = _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_len, prefix)
 
-        outi, x_maxi, x_sumi = _attend(qi, ki, vi, drop_maski, atten_maski, scale, keep_prob, need_fix)
+        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix)
         out_golden[:, :, q_start:q_start + act_q_len] = outi
         x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
         x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)
