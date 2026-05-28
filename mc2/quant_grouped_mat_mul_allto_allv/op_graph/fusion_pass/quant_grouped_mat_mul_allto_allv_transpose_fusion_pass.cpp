@@ -189,8 +189,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
     
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     
-    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensor,
-          recvCountsTensor, mmX, mmWeight, mmXScale, mmWeightScale, commQuantScale] = graphBuilder.CreateInputs<11>();
+    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmX, mmWeight, mmXScale, mmWeightScale, commQuantScale] = graphBuilder.CreateInputs<9>();
     
     std::string group = "";
     int64_t epWorldSize = 0;
@@ -236,7 +235,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeOutput : gmmWeight,
         gmmXScale,
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeOutput : gmmWeightScale,
-        sendCountsTensor, recvCountsTensor,
+        nullptr, nullptr,
         mmX,
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? transposeOutput : mmWeight,
         mmXScale,
@@ -265,8 +264,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     
-    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensor,
-          recvCountsTensor, mmX, mmWeight, mmXScale, mmWeightScale, commQuantScale] = graphBuilder.CreateInputs<11>();
+    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmX, mmWeight, mmXScale, mmWeightScale, commQuantScale] = graphBuilder.CreateInputs<9>();
     
     std::string group = "";
     int64_t epWorldSize = 0;
@@ -282,45 +280,40 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     int64_t mmDtype = static_cast<int64_t>(ge::DT_UNDEFINED);
     int64_t commQuantDtype = 0;
     
-    ge::es::EsTensorHolder transposeOutput;  // 存储 TransposeD 的输出
-    ge::es::EsTensorHolder mc2Input;         // 实际传给 MC2 的输入
+    ge::es::EsTensorHolder transposeOutput;
     bool transGmmWeight = false;
     bool transMmWeight = false;
     
     if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
         auto transposeD = ge::es::TransposeD(gmmWeight, std::vector<int64_t>{0, 2, 1});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
         transGmmWeight = true;
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight, perm=[0,2,1]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
         auto transposeD = ge::es::TransposeD(mmWeight, std::vector<int64_t>{1, 0});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
         transMmWeight = true;
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight, perm=[1,0]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
         auto transposeD = ge::es::TransposeD(gmmWeightScale, std::vector<int64_t>{0, 2, 1, 3});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight_scale, perm=[0,2,1,3]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
         auto transposeD = ge::es::TransposeD(mmWeightScale, std::vector<int64_t>{1, 0, 2});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight_scale, perm=[1,0,2]");
     }
     
     auto mc2 = ge::es::QuantGroupedMatMulAlltoAllv(
         gmmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? mc2Input : gmmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeOutput : gmmWeight,
         gmmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? mc2Input : gmmWeightScale,
-        sendCountsTensor, recvCountsTensor,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeOutput : gmmWeightScale,
+        nullptr, nullptr,
         mmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? mc2Input : mmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? transposeOutput : mmWeight,
         mmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? mc2Input : mmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? transposeOutput : mmWeightScale,
         commQuantScale,
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight,

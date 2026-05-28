@@ -188,8 +188,10 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
     
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     
-    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensor,
-          recvCountsTensor, mmX, mmWeight, mmXScale, mmWeightScale] = graphBuilder.CreateInputs<10>();
+    // 参考 MatmulAlltoAll：只创建必选输入 + 有值可选输入的 CreateInputs
+    // 原图中 sendCountsTensor/recvCountsTensor 为 nullptr，mm 系列可能为 nullptr 或有值
+    // 这里先只创建 gmm 相关的4个必选输入
+    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmX, mmWeight, mmXScale, mmWeightScale] = graphBuilder.CreateInputs<8>();
     
     std::string group = "";
     int64_t epWorldSize = 0;
@@ -211,18 +213,10 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
         permValue = {0, 2, 1};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on gmm_weight, perm=[0,2,1]");
         transposeOutput = TransposeDL(gmmWeight, ge::es::EsTensorLike(permValue));
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
-        permValue = {1, 0};
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on mm_weight, perm=[1,0]");
-        transposeOutput = TransposeDL(mmWeight, ge::es::EsTensorLike(permValue));
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
         permValue = {0, 2, 1, 3};
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on gmm_weight_scale, perm=[0,2,1,3]");
         transposeOutput = TransposeDL(gmmWeightScale, ge::es::EsTensorLike(permValue));
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
-        permValue = {1, 0, 2};
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: Transpose on mm_weight_scale, perm=[1,0,2]");
-        transposeOutput = TransposeDL(mmWeightScale, ge::es::EsTensorLike(permValue));
     }
     
     auto mc2 = ge::es::AlltoAllvQuantGroupedMatMul(
@@ -230,11 +224,8 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeOutput : gmmWeight,
         gmmXScale,
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeOutput : gmmWeightScale,
-        sendCountsTensor, recvCountsTensor,
-        mmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? transposeOutput : mmWeight,
-        mmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? transposeOutput : mmWeightScale,
+        nullptr, nullptr,
+        mmX, mmWeight, mmXScale, mmWeightScale,
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode, false, false, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
@@ -257,8 +248,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     
-    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensor,
-          recvCountsTensor, mmX, mmWeight, mmXScale, mmWeightScale] = graphBuilder.CreateInputs<10>();
+    auto [gmmX, gmmWeight, gmmXScale, gmmWeightScale, mmX, mmWeight, mmXScale, mmWeightScale] = graphBuilder.CreateInputs<8>();
     
     std::string group = "";
     int64_t epWorldSize = 0;
@@ -273,41 +263,25 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     int64_t mmDtype = 28;
     bool permuteOutFlag = false;
     
-    ge::es::EsTensorHolder transposeOutput;  // 存储 TransposeD 的输出
-    ge::es::EsTensorHolder mc2Input;         // 实际传给 MC2 的输入
+    ge::es::EsTensorHolder transposeOutput;
     
     if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
         auto transposeD = ge::es::TransposeD(gmmWeight, std::vector<int64_t>{0, 2, 1});
-        transposeOutput = transposeD;  // TransposeD 的输出
-        mc2Input = transposeD;         // 传给 MC2
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight, perm=[0,2,1]");
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
-        auto transposeD = ge::es::TransposeD(mmWeight, std::vector<int64_t>{1, 0});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight, perm=[1,0]");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight, perm=[0,2,1]");
     } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
         auto transposeD = ge::es::TransposeD(gmmWeightScale, std::vector<int64_t>{0, 2, 1, 3});
         transposeOutput = transposeD;
-        mc2Input = transposeD;
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on gmm_weight_scale, perm=[0,2,1,3]");
-    } else if (inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
-        auto transposeD = ge::es::TransposeD(mmWeightScale, std::vector<int64_t>{1, 0, 2});
-        transposeOutput = transposeD;
-        mc2Input = transposeD;
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Pattern: TransposeD on mm_weight_scale, perm=[1,0,2]");
     }
     
     auto mc2 = ge::es::AlltoAllvQuantGroupedMatMul(
         gmmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? mc2Input : gmmWeight,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeOutput : gmmWeight,
         gmmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? mc2Input : gmmWeightScale,
-        sendCountsTensor, recvCountsTensor,
-        mmX,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ? mc2Input : mmWeight,
-        mmXScale,
-        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) ? mc2Input : mmWeightScale,
+        inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeOutput : gmmWeightScale,
+        nullptr, nullptr,
+        mmX, mmWeight, mmXScale, mmWeightScale,
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode, false, false, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
@@ -315,10 +289,12 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     
-    // 关键：需要捕获两个 tensor - MC2 输出和 TransposeD 输出
-    // idx 0: MC2 输出
-    // idx 1: TransposeD 输出（用于 MeetRequirements 检查 perm）
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0});
+    pattern->CaptureTensor({*transposeOutput.GetProducer(), 0});
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Pattern created, captured 2 tensors ===");
+    return pattern;
+}
     pattern->CaptureTensor({*transposeOutput.GetProducer(), 0});  // 添加捕获 TransposeD
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Pattern created, captured 2 tensors ===");
@@ -328,100 +304,24 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
 std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusionPass::Patterns()
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Enter Patterns for AlltoAllvQuantGroupedMatMulTransposeFusionPass ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== This fusion pass will try to match: Transpose/TransposeD → AlltoAllvQuantGroupedMatMul ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Expected graph structure: ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "===   [Some input] → Transpose/TransposeD(perm) → MC2(input_idx) ===");
     
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     
-    // 添加 Transpose 类型的 patterns（参考 matmul_allto_all）
+    // 添加 Transpose 类型的 patterns（最多3维：gmm_weight 3维 perm=[0,2,1]，gmm_weight_scale 4维 perm=[0,2,1,3]）
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating Transpose patterns ===");
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating Transpose pattern for GMM_WEIGHT (idx=1)");
     patternGraphs.emplace_back(MakePatternForTranspose(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT), "_Transpose_GmmWeight"));
     
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating Transpose pattern for MM_WEIGHT (idx=7)");
-    patternGraphs.emplace_back(MakePatternForTranspose(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT), "_Transpose_MmWeight"));
-    
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating Transpose pattern for GMM_WEIGHT_SCALE (idx=3)");
     patternGraphs.emplace_back(MakePatternForTranspose(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE), "_Transpose_GmmWeightScale"));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating Transpose pattern for MM_WEIGHT_SCALE (idx=9)");
-    patternGraphs.emplace_back(MakePatternForTranspose(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE), "_Transpose_MmWeightScale"));
     
     // 添加 TransposeD 类型的 patterns
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating TransposeD patterns ===");
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD pattern for GMM_WEIGHT (idx=1)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT), "_TransposeD_GmmWeight"));
     
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD pattern for MM_WEIGHT (idx=7)");
-    patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT), "_TransposeD_MmWeight"));
-    
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD pattern for GMM_WEIGHT_SCALE (idx=3)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE), "_TransposeD_GmmWeightScale"));
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD pattern for MM_WEIGHT_SCALE (idx=9)");
-    patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE), "_TransposeD_MmWeightScale"));
-    
-    // === DEBUG: 添加最简单的 Pattern，只匹配 MC2 算子本身 ===
-    // 参考 MatmulAlltoAll：可选输入传 nullptr
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 only (no Transpose, optional inputs as nullptr) ===");
-    {
-        auto debugBuilder = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_ONLY").c_str());
-        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale] = debugBuilder.CreateInputs<4>();
-        std::string dGroup = "";
-        int64_t dEpWorldSize = 0;
-        std::vector<int64_t> dSendCountsVec = {};
-        std::vector<int64_t> dRecvCountsVec = {};
-        int64_t dGmmXQuantMode = 0;
-        int64_t dGmmWeightQuantMode = 0;
-        int64_t dGroupSize = 0;
-        int64_t dYDtype = 28;
-        int64_t dMmDtype = 28;
-        bool dPermuteOutFlag = false;
-        auto debugMc2 = ge::es::AlltoAllvQuantGroupedMatMul(
-            dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale,
-            nullptr, nullptr,
-            nullptr, nullptr, nullptr, nullptr,
-            dGroup.c_str(), dEpWorldSize, dSendCountsVec, dRecvCountsVec,
-            dGmmXQuantMode, dGmmWeightQuantMode, false, false, dPermuteOutFlag,
-            0, 0, dGroupSize, dYDtype, dMmDtype);
-        auto debugGraph = debugBuilder.BuildAndReset({debugMc2.gmm_y});
-        auto debugPattern = std::make_unique<ge::fusion::Pattern>(std::move(*debugGraph));
-        debugPattern->CaptureTensor({*debugMc2.gmm_y.GetProducer(), 0});
-        patternGraphs.emplace_back(std::move(debugPattern));
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added (4 required inputs, 6 nullptr optional) ===");
-    }
-    
-    // DEBUG: Pattern with mm inputs
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 with mm inputs (no Transpose) ===");
-    {
-        auto debugBuilder2 = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_WITH_MM").c_str());
-        auto [d2GmmX, d2GmmWeight, d2GmmXScale, d2GmmWeightScale, d2MmX, d2MmWeight, d2MmXScale, d2MmWeightScale] = debugBuilder2.CreateInputs<8>();
-        std::string d2Group = "";
-        int64_t d2EpWorldSize = 0;
-        std::vector<int64_t> d2SendCountsVec = {};
-        std::vector<int64_t> d2RecvCountsVec = {};
-        int64_t d2GmmXQuantMode = 0;
-        int64_t d2GmmWeightQuantMode = 0;
-        int64_t d2MmXQuantMode = 0;
-        int64_t d2MmWeightQuantMode = 0;
-        int64_t d2GroupSize = 0;
-        int64_t d2YDtype = 28;
-        int64_t d2MmDtype = 28;
-        bool d2PermuteOutFlag = false;
-        auto debugMc22 = ge::es::AlltoAllvQuantGroupedMatMul(
-            d2GmmX, d2GmmWeight, d2GmmXScale, d2GmmWeightScale,
-            nullptr, nullptr,
-            d2MmX, d2MmWeight, d2MmXScale, d2MmWeightScale,
-            d2Group.c_str(), d2EpWorldSize, d2SendCountsVec, d2RecvCountsVec,
-            d2GmmXQuantMode, d2GmmWeightQuantMode, false, false, d2PermuteOutFlag,
-            d2MmXQuantMode, d2MmWeightQuantMode, d2GroupSize, d2YDtype, d2MmDtype);
-        auto debugGraph2 = debugBuilder2.BuildAndReset({debugMc22.gmm_y});
-        auto debugPattern2 = std::make_unique<ge::fusion::Pattern>(std::move(*debugGraph2));
-        debugPattern2->CaptureTensor({*debugMc22.gmm_y.GetProducer(), 0});
-        patternGraphs.emplace_back(std::move(debugPattern2));
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added (8 inputs, 2 nullptr optional) ===");
-    }
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Patterns DONE, total %zu patterns ===", patternGraphs.size());
     return patternGraphs;
@@ -454,7 +354,7 @@ bool AlltoAllvQuantGroupedMatMulTransposeFusionPass::MeetRequirements(
     // 3. 获取 TransposeD 节点 (idx=1)
     ge::fusion::NodeIo transposeNodeIo;
     if (matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get TransposeD node failed");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get Transpose/TransposeD node failed");
         return false;
     }
     ge::GNode transposeNode = transposeNodeIo.node;
