@@ -467,7 +467,20 @@ attention:
       ut: True
     options:
       - recurrent_gated_delta_rule
-
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
