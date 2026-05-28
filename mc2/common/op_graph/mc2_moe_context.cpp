@@ -18,6 +18,9 @@
 
 #include <cstdlib>
 #include <dlfcn.h>
+#include <atomic>
+#include <thread>
+#include "graph/operator_factory.h"
 #include "mc2_common_log.h"
 
 namespace {
@@ -39,6 +42,25 @@ MoeContextManager::~MoeContextManager()
         dlclose(hcclLibHandle_);
         hcclLibHandle_ = nullptr;
     }
+    ResetAllFunctionPointers();
+}
+
+void MoeContextManager::ResetAllFunctionPointers()
+{
+    HcomGetCommHandleByGroup = nullptr;
+    HcclRankGraphGetLinks = nullptr;
+    HcclRankGraphGetLayers = nullptr;
+    HcclRankGraphGetRankSizeByLayer = nullptr;
+    HcclChannelAcquire = nullptr;
+    HcclGetHcclBuffer = nullptr;
+    HcclChannelGetHcclBuffer = nullptr;
+    HcclEngineCtxCreate = nullptr;
+    HcclEngineCtxGet = nullptr;
+    HcclEngineCtxCopy = nullptr;
+    HcclEngineCtxDestroy = nullptr;
+    HcclGetRankId = nullptr;
+    HcclGetRankSize = nullptr;
+    HcclRankGraphGetRanksByLayer = nullptr;
 }
 
 MoeContextManager &MoeContextManager::GetInstance()
@@ -82,6 +104,7 @@ ge::graphStatus MoeContextManager::LoadSymbol(void **ptr, const char *name)
         OPS_LOG_E(LOG_TAG, "Failed to load %s symbol", name);
         dlclose(hcclLibHandle_);
         hcclLibHandle_ = nullptr;
+        ResetAllFunctionPointers();
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -123,6 +146,7 @@ ge::graphStatus MoeContextManager::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclEngineCtxCreate), "HcclEngineCtxCreate"},
         {reinterpret_cast<void **>(&HcclEngineCtxGet), "HcclEngineCtxGet"},
         {reinterpret_cast<void **>(&HcclEngineCtxCopy), "HcclEngineCtxCopy"},
+        {reinterpret_cast<void **>(&HcclEngineCtxDestroy), "HcclEngineCtxDestroy"},
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
@@ -162,8 +186,8 @@ ge::graphStatus MoeContextManager::GetHcclCommLink(const HcclComm &hcclHandle, c
         OPS_LOG_E(LOG_TAG, "Get HCCL Communication link failed");
         return ge::GRAPH_FAILED;
     }
-    if (netLinkNum == 0) {
-        OPS_LOG_E(LOG_TAG, "The Net Link Is nullptr.");
+    if (netLinkNum == 0 || linksList == nullptr) {
+        OPS_LOG_E(LOG_TAG, "The Net Link Is nullptr or count is 0, netLinkNum=%u", netLinkNum);
         return ge::GRAPH_FAILED;
     }
 
@@ -241,7 +265,7 @@ ge::graphStatus MoeContextManager::InitHcclChannel(const HcclComm &hcclHandle, c
     OPS_LOG_D(LOG_TAG, "HCCL channel init success");
 
     hcclRet = HcclRankGraphGetLayers(hcclHandle, &netLayerList, &netLayerNum);
-    if (hcclRet != HCCL_SUCCESS || netLayerNum == 0) {
+    if (hcclRet != HCCL_SUCCESS || netLayerNum == 0 || netLayerList == nullptr) {
         OPS_LOG_E(LOG_TAG, "Get HCCL GetNetLayers failed");
         return ge::GRAPH_FAILED;
     }
@@ -266,6 +290,10 @@ ge::graphStatus MoeContextManager::GetHcclCommChannel(const HcclComm &hcclHandle
                                                        std::vector<ChannelHandle> &channels)
 {
     OPS_LOG_D(LOG_TAG, "Start to get HCCL communication channel");
+    if (params.rankDim == 0 || params.rankDim >= MAX_EP_RANK_SIZE) {
+        OPS_LOG_E(LOG_TAG, "Invalid rankDim: %u", params.rankDim);
+        return ge::GRAPH_FAILED;
+    }
     uint32_t channelNum = params.rankDim - 1;
     std::vector<HcclChannelDesc> channelDesc(channelNum);
     channels.resize(channelNum);
@@ -301,7 +329,7 @@ ge::graphStatus MoeContextManager::FillContextBuffer(const HcclComm &hcclHandle,
             hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
         }
 
-        if (hcclRet != HCCL_SUCCESS) {
+        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
             OPS_LOG_E(LOG_TAG, "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
             return ge::GRAPH_FAILED;
         }
@@ -326,7 +354,7 @@ ge::graphStatus MoeContextManager::GetHcclCommResource(const HcclComm &hcclHandl
     }
 
     context->rankSizePerServer = rankSizePerServer_;
-    OPS_LOG_D(LOG_TAG, "Get HCCL communication channel success, channel num is: %u", channels.size());
+    OPS_LOG_D(LOG_TAG, "Get HCCL communication channel success, channel num is: %zu", channels.size());
 
     status = FillContextBuffer(hcclHandle, engine, context, rankId, channels);
     if (status != ge::GRAPH_SUCCESS) {
@@ -350,8 +378,17 @@ ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &pa
     }
     OPS_LOG_D(LOG_TAG, "Create HCCL context success, ctx: %p", ctx);
 
+    // RAII-style cleanup: release ctx on any error path after successful CtxCreate
+    auto cleanup = [&]() {
+        if (ctx != nullptr) {
+            HcclEngineCtxDestroy(params.hcclHandle, params.mc2ContextTag.c_str(), params.engine);
+            OPS_LOG_D(LOG_TAG, "HcclEngineCtxDestroy called on error path");
+        }
+    };
+
     hcclRet = HcclGetRankId(params.hcclHandle, &context->epRankId);
     if (hcclRet != HCCL_SUCCESS || context->epRankId >= MAX_EP_RANK_SIZE) {
+        cleanup();
         OPS_LOG_E(LOG_TAG, "Get rank ID failed or rank ID is invalid, rankId is: %u", context->epRankId);
         return ge::GRAPH_FAILED;
     }
@@ -359,6 +396,7 @@ ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &pa
 
     hcclRet = HcclGetRankSize(params.hcclHandle, &epRankSize_);
     if (hcclRet != HCCL_SUCCESS || epRankSize_ == 0 || epRankSize_ >= MAX_EP_RANK_SIZE) {
+        cleanup();
         OPS_LOG_E(LOG_TAG, "Get rank size failed or rank size is invalid, rankSize is: %u", epRankSize_);
         return ge::GRAPH_FAILED;
     }
@@ -366,6 +404,7 @@ ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &pa
 
     auto status = GetHcclCommResource(params.hcclHandle, params.engine, params.protocol, context);
     if (status != ge::GRAPH_SUCCESS) {
+        cleanup();
         OPS_LOG_E(LOG_TAG, "Get HCCL communication resource failed");
         return status;
     }
@@ -373,15 +412,22 @@ ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &pa
     hcclRet = HcclEngineCtxCopy(params.hcclHandle, params.engine, params.mc2ContextTag.c_str(), context, ctxSize,
                                 CTX_COPY_DEFAULT_OFFSET);
     if (hcclRet != HCCL_SUCCESS) {
+        cleanup();
         OPS_LOG_E(LOG_TAG, "Copy context from host to device failed");
         return ge::GRAPH_FAILED;
     }
     OPS_LOG_D(LOG_TAG, "Copy context from host to device success");
+    // CtxCopy transfers ownership to device; HcclEngineCtxDestroy is called
+    // by HCCL runtime when the comm is destroyed, not here.
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeContextManager::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
 {
+    if (linksList == nullptr) {
+        OPS_LOG_E(LOG_TAG, "linksList is nullptr");
+        return ge::GRAPH_FAILED;
+    }
     for (uint32_t j = 0; j < netLinkNum; ++j) {
         if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
             return ge::GRAPH_SUCCESS;
@@ -405,11 +451,11 @@ ge::graphStatus MoeContextManager::CheckProtocolSupport(const HcclComm &hcclHand
         return ge::GRAPH_FAILED;
     }
 
-    OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+    OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+        OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Check layer %u", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
-        if (hcclRet != HCCL_SUCCESS) {
+        if (hcclRet != HCCL_SUCCESS || rankNumInLayer == 0 || rankIdLists == nullptr) {
             OPS_LOG_E(LOG_TAG, "Get rank IDs by layer failed");
             return ge::GRAPH_FAILED;
         }
@@ -423,13 +469,13 @@ ge::graphStatus MoeContextManager::CheckProtocolSupport(const HcclComm &hcclHand
                 OPS_LOG_E(LOG_TAG, "Get HCCL links failed");
                 return ge::GRAPH_FAILED;
             }
-            if (netLinkNum == 0) {
-                OPS_LOG_E(LOG_TAG, "No available HCCL links found, srcRankID %d, dstRankID %d layer is %d", srcRankId,
+            if (netLinkNum == 0 || linksList == nullptr) {
+                OPS_LOG_E(LOG_TAG, "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u", srcRankId,
                           rankIdLists[rankId], layerList[layerIndex]);
                 return ge::GRAPH_FAILED;
             }
             if (CheckLinks(netLinkNum, linksList) != ge::GRAPH_SUCCESS) {
-                OPS_LOG_E(LOG_TAG, "No HCCL links support UB_MEM srcRankID %d, dstRankID %d layer is %d", srcRankId,
+                OPS_LOG_E(LOG_TAG, "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u", srcRankId,
                           rankIdLists[rankId], layerList[layerIndex]);
                 return ge::GRAPH_FAILED;
             }
@@ -457,7 +503,7 @@ ge::graphStatus MoeContextManager::GetCommProtocol(const HcclComm &hcclHandle, C
         return ge::GRAPH_SUCCESS;
     }
 
-    OPS_LOG_D(LOG_TAG, "start CheckProtocolSupport, layerNum is %d", layerNum);
+    OPS_LOG_D(LOG_TAG, "start CheckProtocolSupport, layerNum is %u", layerNum);
     auto status = CheckProtocolSupport(hcclHandle, layerList, layerNum);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "CheckProtocolSupport failed");
@@ -472,7 +518,7 @@ ge::graphStatus MoeContextManager::GetCommProtocol(const HcclComm &hcclHandle, C
 ge::graphStatus MoeContextManager::ValidateContextTag(const std::string &mc2ContextTag)
 {
     if (mc2ContextTag.size() > MAX_CONTEXT_TAG_SIZE) {
-        OPS_LOG_E(LOG_TAG, "Mc2ContextTag is too long, max size is %d, but current size is %d", MAX_CONTEXT_TAG_SIZE,
+        OPS_LOG_E(LOG_TAG, "Mc2ContextTag is too long, max size is %llu, but current size is %zu", MAX_CONTEXT_TAG_SIZE,
                   mc2ContextTag.size());
         return ge::GRAPH_FAILED;
     }
@@ -500,23 +546,25 @@ ge::graphStatus MoeContextManager::GetHcclContext(const std::string &contextTag,
     auto status = LoadHcclSymbols();
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "LoadHcclSymbols failed");
-        return ge::GRAPH_SUCCESS;  // not fail the whole pass
+        return ge::GRAPH_FAILED;
     }
 
     CommProtocol protocol;
-    std::string mc2ContextTag = contextTag + "_" + groupEp;
+    static std::atomic<uint64_t> s_ctxVersion{0};
+    std::string mc2ContextTag = contextTag + "_" + groupEp + "_" +
+                                std::to_string(s_ctxVersion.fetch_add(1, std::memory_order_relaxed));
 
     status = ValidateContextTag(mc2ContextTag);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "ValidateContextTag failed");
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_FAILED;
     }
 
     HcclComm hcclHandle;
     status = GetCommHandle(groupEp.c_str(), hcclHandle);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "GetCommHandle failed");
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_FAILED;
     }
 
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
@@ -524,7 +572,7 @@ ge::graphStatus MoeContextManager::GetHcclContext(const std::string &contextTag,
     status = GetCommProtocol(hcclHandle, protocol);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "GetCommProtocol failed");
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_FAILED;
     }
     OPS_LOG_I(LOG_TAG, "GetCommProtocol done, protocol=%d", protocol);
 
@@ -533,33 +581,57 @@ ge::graphStatus MoeContextManager::GetHcclContext(const std::string &contextTag,
     status = GetMc2Context(params, context, hcclBuffSize);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "GetMc2Context failed");
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_FAILED;
     }
-    OPS_LOG_I(LOG_TAG, "GetHcclContext done, hcclBuffSize=%ld", hcclBuffSize);
+    OPS_LOG_I(LOG_TAG, "GetHcclContext done, hcclBuffSize=%lld", hcclBuffSize);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::CheckCache(const std::string &uniqueKey, Mc2MoeContext &context,
-                                                int64_t &hcclBuffSize)
+ge::graphStatus MoeContextManager::CreateContextNode(ge::Graph& graph, const Mc2MoeContext& context,
+                                                      ge::GNode& constNode)
 {
-    auto it = contextCache_.find(uniqueKey);
-    if (it != contextCache_.end()) {
-        context = it->second.first;
-        hcclBuffSize = it->second.second;
-        return ge::GRAPH_SUCCESS;
+    static const std::string kContextConstName = "mc2_moe_context";
+    static const uint32_t IDX_0 = 0;
+
+    ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
+    ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
+    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t*>(&context), sizeof(Mc2MoeContext));
+
+    auto constOp = ge::OperatorFactory::CreateOperator(kContextConstName, "Const");
+    if (constOp.IsEmpty()) {
+        OPS_LOG_E(LOG_TAG, "Const op not found in factory");
+        return ge::GRAPH_FAILED;
     }
-    return ge::GRAPH_FAILED;
+    constOp.UpdateOutputDesc(IDX_0, tensorDesc);
+    constOp.SetAttr("value", tensorValue);
+
+    constNode = graph.AddNodeByOp(constOp);
+    ge::AscendString ctxNodeName;
+    constNode.GetName(ctxNodeName);
+    OPS_LOG_I(LOG_TAG, "Context Const node added as %s", ctxNodeName.GetString());
+
+    return ge::GRAPH_SUCCESS;
 }
 
-void MoeContextManager::UpdateCache(const std::string &uniqueKey, const Mc2MoeContext &context, int64_t hcclBuffSize)
+bool MoeContextManager::TryGetBufferSizeCache(const std::string& key, int64_t& hcclBuffSize)
 {
-    contextCache_[uniqueKey] = {context, hcclBuffSize};
+    auto it = hcclBuffSizeCacheA5_.find(key);
+    if (it != hcclBuffSizeCacheA5_.end()) {
+        hcclBuffSize = it->second;
+        return true;
+    }
+    return false;
 }
 
-ge::graphStatus MoeContextManager::GetMc2ContextA5(const std::string &contextTag, const std::string &epName,
-                                                    const ge::GNode &originalNode, Mc2MoeContext &context,
-                                                    int64_t &hcclBuffSize)
+void MoeContextManager::UpdateBufferSizeCache(const std::string& key, int64_t hcclBuffSize)
+{
+    hcclBuffSizeCacheA5_[key] = hcclBuffSize;
+}
+
+ge::graphStatus MoeContextManager::GetMc2ContextA5(
+    ge::Graph& graph, const std::string& contextTag, const std::string& epName,
+    const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize)
 {
     if (contextTag.empty() || epName.empty()) {
         OPS_LOG_E(LOG_TAG, "Context tag or ep name is empty");
@@ -574,28 +646,53 @@ ge::graphStatus MoeContextManager::GetMc2ContextA5(const std::string &contextTag
     }
     std::string groupEp(groupEpStr.GetString());
 
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 entry, tag=%s, groupEp=%s", contextTag.c_str(), groupEp.c_str());
-
-    MoeContextManager &manager = GetInstance();
-
+    MoeContextManager& manager = GetInstance();
     std::string uniqueKey = contextTag + "_" + groupEp;
-    auto status = manager.CheckCache(uniqueKey, context, hcclBuffSize);
-    if (status == ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(LOG_TAG, "Cache HIT for key=%s, reuse context", uniqueKey.c_str());
-        return ge::GRAPH_SUCCESS;
+
+    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph entry, key=%s", uniqueKey.c_str());
+
+    // 1. 从内存缓存查找已有的 Const 节点（避免 FindNodeByName 触发 GE_ASSERT）
+    auto nodeIt = manager.contextNodeMapA5_.find(uniqueKey);
+    if (nodeIt != manager.contextNodeMapA5_.end()) {
+        ge::AscendString cachedName;
+        if (nodeIt->second.GetName(cachedName) == ge::GRAPH_SUCCESS) {
+            constNode = nodeIt->second;
+            if (manager.TryGetBufferSizeCache(uniqueKey, hcclBuffSize)) {
+                OPS_LOG_I(LOG_TAG, "Reusing cached Const + buffer size cache HIT (%lld), skip HCCL", hcclBuffSize);
+                return ge::GRAPH_SUCCESS;
+            }
+            OPS_LOG_I(LOG_TAG, "Reusing cached Const, buffer size cache MISS");
+            Mc2MoeContext context{0};
+            auto status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
+            if (status != ge::GRAPH_SUCCESS) {
+                OPS_LOG_E(LOG_TAG, "Get HCCL context failed for reuse");
+                return status;
+            }
+            manager.UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
+            return ge::GRAPH_SUCCESS;
+        }
+        // 缓存条目指向的节点已销毁（旧图），淘汰
+        OPS_LOG_I(LOG_TAG, "Cached Const invalid (old graph), removing from cache");
+        manager.contextNodeMapA5_.erase(nodeIt);
     }
 
-    OPS_LOG_I(LOG_TAG, "Cache MISS for key=%s, creating new context...", uniqueKey.c_str());
-
-    status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
+    // 2. 计算 Mc2MoeContext + 创建 Const 节点
+    Mc2MoeContext context{0};
+    auto status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "Get HCCL context failed");
         return status;
     }
+    manager.UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
 
-    manager.UpdateCache(uniqueKey, context, hcclBuffSize);
+    status = manager.CreateContextNode(graph, context, constNode);
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(LOG_TAG, "Create context node failed");
+        return status;
+    }
 
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 done, hcclBuffSize=%ld", hcclBuffSize);
+    manager.contextNodeMapA5_[uniqueKey] = constNode;
+    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph done, hcclBuffSize=%lld", hcclBuffSize);
     return ge::GRAPH_SUCCESS;
 }
 
