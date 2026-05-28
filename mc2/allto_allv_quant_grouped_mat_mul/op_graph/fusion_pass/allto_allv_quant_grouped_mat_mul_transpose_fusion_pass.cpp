@@ -295,11 +295,6 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Pattern created, captured 2 tensors ===");
     return pattern;
 }
-    pattern->CaptureTensor({*transposeOutput.GetProducer(), 0});  // 添加捕获 TransposeD
-    
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Pattern created, captured 2 tensors ===");
-    return pattern;
-}
 
 std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusionPass::Patterns()
 {
@@ -362,23 +357,19 @@ bool AlltoAllvQuantGroupedMatMulTransposeFusionPass::MeetRequirements(
     ge::AscendString transposeNodeType;
     transposeNode.GetName(transposeNodeName);
     transposeNode.GetType(transposeNodeType);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got TransposeD node, name=%s, type=%s",
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got Transpose node, name=%s, type=%s",
               transposeNodeName.GetString(), transposeNodeType.GetString());
 
-    // 4. 检查 TransposeD 的 perm 属性
-    std::vector<int64_t> permValue;
-    if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get perm attr failed");
+    // 4. 获取 Transpose 的 parentIdx（Transpose 连接到 MC2 的哪个输入）
+    uint32_t parentIdx = transposeNodeIo.index;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Transpose parentIdx=%u", parentIdx);
+
+    // 5. 验证 perm 值（兼容 Transpose 和 TransposeD）
+    if (!IsTransposePermValid(transposeNode, parentIdx)) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: IsTransposePermValid check failed");
         return false;
     }
-    
-    std::string permStr = "[";
-    for (size_t i = 0; i < permValue.size(); ++i) {
-        permStr += std::to_string(permValue[i]);
-        if (i < permValue.size() - 1) permStr += ", ";
-    }
-    permStr += "]";
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: TransposeD perm=%s", permStr.c_str());
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: IsTransposePermValid check passed");
 
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== MeetRequirements SUCCESS ===");
     return true;
@@ -477,6 +468,12 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
                FUSION_PASS_NAME.c_str(), "Capture AlltoAllvQuantGroupedMatMul node failed.");
     ge::GNode mc2Node = mc2NodeIo.node;
     
+    ge::fusion::NodeIo transposeNodeIo;
+    OP_LOGE_IF(matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Capture Transpose node failed.");
+    uint32_t transposeParentIdx = transposeNodeIo.index;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Transpose parentIdx=%u", transposeParentIdx);
+    
     ge::AscendString mc2NodeName;
     mc2Node.GetName(mc2NodeName);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: Got MC2 node, name=%s", mc2NodeName.GetString());
@@ -508,15 +505,24 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
     bool transGmmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_gmm_weight", transGmmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_gmm_weight failed.");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight before flip = %d", transGmmWeight);
-    transGmmWeight = !transGmmWeight;  // 关键：翻转属性
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight after flip = %d (SHOULD BE TRUE)", transGmmWeight);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_gmm_weight before = %d", transGmmWeight);
 
     bool transMmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_mm_weight", transMmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_mm_weight failed.");
-    transMmWeight = !transMmWeight;  // 关键：翻转属性
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_mm_weight after flip = %d", transMmWeight);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: trans_mm_weight before = %d", transMmWeight);
+
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ||
+        transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+        transGmmWeight = !transGmmWeight;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: flipped trans_gmm_weight to %d (Transpose on idx=%u)",
+                  transGmmWeight, transposeParentIdx);
+    } else if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ||
+               transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+        transMmWeight = !transMmWeight;
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: flipped trans_mm_weight to %d (Transpose on idx=%u)",
+                  transMmWeight, transposeParentIdx);
+    }
 
     bool permuteOutFlag = false;
     OP_LOGE_IF(mc2Node.GetAttr("permute_out_flag", permuteOutFlag) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),

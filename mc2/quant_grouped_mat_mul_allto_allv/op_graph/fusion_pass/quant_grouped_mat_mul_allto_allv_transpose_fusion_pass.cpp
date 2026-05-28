@@ -404,23 +404,19 @@ bool QuantGroupedMatMulAlltoAllvTransposeFusionPass::MeetRequirements(
     ge::AscendString transposeNodeType;
     transposeNode.GetName(transposeNodeName);
     transposeNode.GetType(transposeNodeType);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got TransposeD node, name=%s, type=%s",
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Got Transpose node, name=%s, type=%s",
               transposeNodeName.GetString(), transposeNodeType.GetString());
 
-    // 4. 检查 TransposeD 的 perm 属性
-    std::vector<int64_t> permValue;
-    if (transposeNode.GetAttr("perm", permValue) != ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: Get perm attr failed");
+    // 4. 获取 Transpose 的 parentIdx
+    uint32_t parentIdx = transposeNodeIo.index;
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: Transpose parentIdx=%u", parentIdx);
+
+    // 5. 验证 perm 值
+    if (!IsTransposePermValid(transposeNode, parentIdx)) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements FAILED: IsTransposePermValid check failed");
         return false;
     }
-    
-    std::string permStr = "[";
-    for (size_t i = 0; i < permValue.size(); ++i) {
-        permStr += std::to_string(permValue[i]);
-        if (i < permValue.size() - 1) permStr += ", ";
-    }
-    permStr += "]";
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: TransposeD perm=%s", permStr.c_str());
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "MeetRequirements: IsTransposePermValid check passed");
 
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== MeetRequirements SUCCESS ===");
     return true;
@@ -509,6 +505,11 @@ ge::fusion::GraphUniqPtr QuantGroupedMatMulAlltoAllvTransposeFusionPass::Replace
                FUSION_PASS_NAME.c_str(), "Capture QuantGroupedMatMulAlltoAllv node failed.");
     ge::GNode mc2Node = mc2NodeIo.node;
 
+    ge::fusion::NodeIo transposeNodeIo;
+    OP_LOGE_IF(matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Capture Transpose node failed.");
+    uint32_t transposeParentIdx = transposeNodeIo.index;
+
     ge::AscendString group = "";
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group failed.");
@@ -536,12 +537,18 @@ ge::fusion::GraphUniqPtr QuantGroupedMatMulAlltoAllvTransposeFusionPass::Replace
     bool transGmmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_gmm_weight", transGmmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_gmm_weight failed.");
-    transGmmWeight = true;
 
     bool transMmWeight = false;
     OP_LOGE_IF(mc2Node.GetAttr("trans_mm_weight", transMmWeight) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr trans_mm_weight failed.");
-    transMmWeight = true;
+
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ||
+        transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+        transGmmWeight = !transGmmWeight;
+    } else if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ||
+               transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+        transMmWeight = !transMmWeight;
+    }
 
     int64_t mmXQuantMode = 0;
     OP_LOGE_IF(mc2Node.GetAttr("mm_x_quant_mode", mmXQuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
