@@ -246,10 +246,7 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::SetHcclTiling()
     OP_TILING_CHECK(group == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_GROUP_INDEX failed"),
                     return ge::GRAPH_FAILED);
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
-    OP_TILING_CHECK(commMode == nullptr,
-                    OP_LOGE(context_->GetNodeName(), "GetAttrPointer for ATTR_COMM_MODE_INDEX failed"),
-                    return ge::GRAPH_FAILED);
-    if (strnlen(commMode, 1UL) > 0) { // 不为空字符串
+    if (commMode != nullptr && strnlen(commMode, 1UL) > 0) { // 不为空字符串
         OP_LOGI(context_->GetNodeName(), "The current soc only support default communication engine.");
     }
     uint32_t optype = HcclCMDType::HCCL_CMD_ALLTOALL;
