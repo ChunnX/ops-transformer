@@ -92,11 +92,11 @@ public:
 private:
     __aicore__ inline void ReorderTokens();
     __aicore__ inline void SendDataToServer(uint32_t dstServerId);
-    __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx);
+    __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx, GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId = 0);
     __aicore__ inline void CreateOuterReduceInfo();
-    __aicore__ inline void Win2Ipc();
+    __aicore__ inline void Win2Ipc(GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId = 0);
     __aicore__ inline void Ipc2Out();
-    __aicore__ inline void WaitIpcFlag();
+    __aicore__ inline void WaitIpcFlag(GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId = 0);
     __aicore__ inline void SetIpcFlag();
     __aicore__ inline void CleanUp();
 
@@ -461,7 +461,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::WaitIpcFlag()
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::WaitIpcFlag(GlobalTensor<uint32_t> selfDataStatusGMTensor,
+    GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId)
 {
     if (aivId_ >= SERVER_RANK_SIZE) {
         return;
@@ -472,6 +473,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     GlobalTensor<uint64_t> flagIpcGt;
     flagIpcGt.SetGlobalBuffer((__gm__ uint64_t*)(shareIPCAddrsGM_[localRankId] + IPC_FLAG_OFFSET) +
         destRankIdx * B64_PER_BLOCK);
+    PipeBarrier<PIPE_ALL>();
+    constexpr int64_t WAIT_IPC_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (true) {
         DataCopy(localWait, flagIpcGt, B64_PER_BLOCK);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -479,6 +483,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         uint64_t tempVal = localWait.GetValue(0);
         if (tempVal >= magicVal_) {
             break;
+        }
+        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_IPC_TIMEOUT_CYCLES) && dumpId == 0) {
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 1, tempVal);
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 3, magicVal_);
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            dumpId += 1;
+            // assert(false, "Dispatch DFX: WaitIpcFlag timeout!");
         }
     }
 }
@@ -699,10 +711,11 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyExtParams innerCntWriteCountsParams{1, static_cast<uint32_t>(copyTokenNum * sizeof(int16_t)), 0, 0, 0};
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyPad(combineInnerCntGMTensor, zeroTemp, innerCntWriteCountsParams);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateInnerReduceInfo(uint32_t serverIdx)
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::CreateInnerReduceInfo(uint32_t serverIdx, GlobalTensor<uint32_t> selfDataStatusGMTensor, GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId)
 {
     // 最后serverNum个Core加入本函数
     uint32_t curServerId = serverIdx;
@@ -713,6 +726,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     LocalTensor<int32_t> tokenTopKInfoI32Lt = tokenTopKInfoU8Lt.template ReinterpretCast<int32_t>();
 
     uint32_t tokenIdx = 0;
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (serverId_ == serverIdx) {
             tokenStatus = GetSelfServerTokenInfo(selfTokenIdx, true, tokenTopKInfoU8Lt[tokenIdx * expLenInStruct_]);
@@ -721,10 +736,19 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         } else {
             tokenStatus = GetArrivedTokenInfo(curServerId, tokenIdx, true, tokenTopKInfoU8Lt[tokenIdx * expLenInStruct_]);
         }
+        PipeBarrier<PIPE_ALL>();
         if (tokenStatus != ARRIVAL_STATUS) {
             continue;
         }
         tokenIdx += 1;
+        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 9, tokenStatus);
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 12, FINISH_STATUS);
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            dumpId += 1;
+            // assert(false, "Dispatch DFX: CreateInnerReduceInfo timeout!");
+        }
     }
 
     uint32_t realBS = tokenIdx;
@@ -837,12 +861,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyExtParams innerCntWriteCountsParams{1, static_cast<uint16_t>(copyTokenNum * sizeof(int16_t)), 0, 0, 0};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(combineInnerCntGMTensor, innerCntLt_, innerCntWriteCountsParams);
+    PipeBarrier<PIPE_ALL>();
 
     GlobalTensor<int32_t> combineInnerOffsetGMTensor;
     combineInnerOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(epRecvCountsOutGM_ + combineInnerCntIndexOffset_ +
         globalBs_* axisK_ * curServerId * sizeof(int32_t)));
     DataCopyExtParams innerOffsetWriteCountsParams{1, static_cast<uint32_t>(realBS * axisK_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPad(combineInnerOffsetGMTensor, innerOffsetLt_, innerOffsetWriteCountsParams);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -853,11 +879,13 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyExtParams outerCntWriteCountsParams{1, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0, 0, 0};
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopyPad(combineOuterCntGMTensor, outerCntLt_, outerCntWriteCountsParams);
+    PipeBarrier<PIPE_ALL>();
 
     GlobalTensor<int32_t> combineOuterOffsetGMTensor;
     combineOuterOffsetGMTensor.SetGlobalBuffer((__gm__ int32_t*)(epRecvCountsOutGM_ + combineOuterCntIndexOffset_));
     DataCopyExtParams outerOffsetWriteCountsParams{1, static_cast<uint32_t>(axisBS_ * axisK_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPad(combineOuterOffsetGMTensor, outerOffsetLt_, outerOffsetWriteCountsParams);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1058,6 +1086,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         if constexpr (DynamicQuant) {
             DataCopy(tokenTensorU8, xGMTensorU8[startTokenId * axisH_ * sizeof(XType)],
                 currentTokenNum * axisH_ * sizeof(XType));
+            PipeBarrier<PIPE_ALL>();
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             QuantProcess(currentTokenNum, tokenLt, tokenCastLt);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -1069,6 +1098,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             DataCopyPad(tokenTensorU8[tokenOffsetInStruct_], xGMTensorU8[startTokenId * tokenLenInStruct_],
                 tokenCopyParams, tokenPadParams);
         }
+        PipeBarrier<PIPE_ALL>();
         // 向tokenStruct添加exp和weight信息
         CopyExpertAndWeight(currentTokenNum, startTokenId, tokenTensorU8, expertIdsGMTensorU8, weightGMTensor);
         // 计算发送服务器掩码表
@@ -1092,12 +1122,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCopyPadExtParams<uint8_t> expPadParams;
     DataCopyPad(tokenTensorU8[expOffsetInStruct_],
                 expertIdsGMTensorU8[startTokenId * realLenInStruct_], expCopyParams, expPadParams);
+    PipeBarrier<PIPE_ALL>();
     // Weights进行拷贝
     DataCopyExtParams weightCopyParams{static_cast<uint16_t>(currentTokenNum),
         static_cast<uint32_t>(realLenInStruct_), 0, static_cast<uint32_t>(infoGapInStruct_), 0};
     DataCopyPadExtParams<uint8_t> weightPadParams;
     DataCopyPad(tokenTensorU8[weightOffsetInStruct_],
                 weightGMTensor[startTokenId * realLenInStruct_], weightCopyParams, weightPadParams);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 }
 
@@ -1117,11 +1149,13 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             uint32_t dstServerId = expertId / moeExpertNumInServer_;
             sendServerInfo |= (1UL << dstServerId);
         }
+        PipeBarrier<PIPE_ALL>();
         GlobalTensor<uint64_t> sendServerInfoTemp =
             tokenDstServerMaskWorkspaceGMTensor_[(FLAG_SIZE * tokenId) / sizeof(uint64_t)];
         sendServerInfoTemp.SetValue(0, sendServerInfo);
         DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                 AscendC::DcciDst::CACHELINE_OUT>(sendServerInfoTemp);
+        PipeBarrier<PIPE_ALL>();
     } 
 }
 
@@ -1131,12 +1165,16 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
 {
     const half deqScale = static_cast<half>(1.000000e+00f);
     float dynamicScale = 0.0;
+    PipeBarrier<PIPE_ALL>();
     LocalTensor<float> workLtMax = tBuf_.GetWithOffset<float>(MAX_ARR_UB_OFFSET / sizeof(float), 0);
     LocalTensor<float> workLtMin = tBuf_.GetWithOffset<float>(MAX_ARR_UB_OFFSET / sizeof(float), MAX_ARR_UB_OFFSET);
     LocalTensor<float> maxLt = tBuf_.GetWithOffset<float>(MAX_ARR_LEN, MAX_ARR_UB_OFFSET + MAX_ARR_UB_OFFSET);
     Cast(tokenCastLt, xTokenLt, RoundMode::CAST_NONE, sendTokenNum * axisH_);
     for (int32_t i = 0; i < sendTokenNum; ++i) {
+        PipeBarrier<PIPE_V>();
         ReduceMax(maxLt[MAX_VAL_OFFSET], tokenCastLt[i * axisH_], workLtMax, axisH_, false);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        PipeBarrier<PIPE_V>();
         ReduceMin(maxLt[MIN_VAL_OFFSET], tokenCastLt[i * axisH_], workLtMin, axisH_, false);
         PipeBarrier<PIPE_V>();
         Abs(maxLt, maxLt, MAX_ARR_LEN - 1);
@@ -1153,6 +1191,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         LocalTensor<half> halfLocalTemp = tokenCastLt[i * axisH_].template ReinterpretCast<half>();
         LocalTensor<int32_t> int32LocalTemp = tokenCastLt[i * axisH_].template ReinterpretCast<int32_t>();
         Cast(int32LocalTemp, tokenCastLt[i * axisH_], RoundMode::CAST_RINT, axisH_);
+        PipeBarrier<PIPE_V>();
         SetDeqScale(deqScale);
         PipeBarrier<PIPE_V>();
         Cast(halfLocalTemp, int32LocalTemp, RoundMode::CAST_ROUND, axisH_);
@@ -1182,6 +1221,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint64_t srcRdmaAddrBase = (uint64_t)(GetWindowOutAddrByRankId(rankId_) + (halfWinSize_ * bufferId_ * 1UL));
     LocalTensor<uint64_t> sendTokenInfoLocalTensor = tBuf_.GetWithOffset<uint64_t>((activeMaskBsCnt_ * FLAG_SIZE)/sizeof(uint64_t), 0);
     DataCopy(sendTokenInfoLocalTensor, tokenDstServerMaskWorkspaceGMTensor_, (activeMaskBsCnt_ * FLAG_SIZE)/sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     for (uint32_t tokenIdx = 0; tokenIdx < activeMaskBsCnt_; ++tokenIdx) {
@@ -1190,6 +1230,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
             uint64_t srcRdmaAddr = (uint64_t)(srcRdmaAddrBase + (tokenStructLen_ * tokenIdx * 1UL));
             AIVRDMAPostSend((GM_ADDR)srcRdmaAddr, (GM_ADDR)dstRdmaAddr, dstRankId, tokenStructLen_, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_);
             dstRdmaAddr += tokenStructLen_;
+            PipeBarrier<PIPE_ALL>();
         }
     }
 
@@ -1197,6 +1238,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint64_t dstFlagRdmaAddr = (uint64_t)(GetWindowInAddrByRankId(dstRankId) + halfWinSize_ * bufferId_ +
         dataSpaceSize_ + serverId_ * STATE_OFFSET);
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1214,6 +1256,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     uint32_t nextTokenOffset = serverIdx * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
     DataCopy(statusTensor, TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t nextTokenFlagValue = statusTensor.GetValue(0);
 
@@ -1224,20 +1267,24 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         } else {
             DataCopy(receiveTokenStructU8Lt, TokensGtU8[TokenOffset], tokenStructLen_);
         }
+        PipeBarrier<PIPE_ALL>();
         return ARRIVAL_STATUS;
     }
 
     DataCopy(statusTensor, readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0); 
 
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
         // 等待 token 或者 endOfWrite
+        PipeBarrier<PIPE_ALL>();
         return WAIT_STATUS;
     } else { // 得到上个token->可以处理 读到结束符 先搬运当前最后一个token，再走进来，越界读，读到不存在的token，返回finish
         DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
             FLAG_SIZE / sizeof(uint64_t));
+        PipeBarrier<PIPE_ALL>();
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         uint64_t tokenFlagValue = statusTensor.GetValue(0);
         if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE) {
@@ -1246,8 +1293,10 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
             } else {
                 DataCopy(receiveTokenStructU8Lt, TokensGtU8[TokenOffset], tokenStructLen_);
             }
+            PipeBarrier<PIPE_ALL>();
             return ARRIVAL_STATUS;
         } else {
+            PipeBarrier<PIPE_ALL>();
             return FINISH_STATUS;
         }
     }
@@ -1264,6 +1313,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     LocalTensor<uint64_t> sendTokenInfoLocalTensor = statusBuf_.Get<uint64_t>();
     DataCopy(sendTokenInfoLocalTensor, tokenDstServerMaskWorkspaceGMTensor_[tokenIdx * FLAG_SIZE/sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     uint64_t sendFlag = sendTokenInfoLocalTensor(0);
@@ -1278,12 +1328,14 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         } else {
             DataCopy(receiveTokenStructU8Lt, TokensGtU8[tokenIdx * tokenStructLen_], tokenStructLen_);
         }
+        PipeBarrier<PIPE_ALL>();
         return ARRIVAL_STATUS;
     }
 }
 
 template <TemplateMC2TypeV2LayeredClass>
-__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::Win2Ipc()
+__aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::Win2Ipc(GlobalTensor<uint32_t> selfDataStatusGMTensor,
+    GlobalTensor<uint32_t> selfDataStatusGMAiv, uint32_t dumpId)
 {
     uint32_t coresPerServer = (aivNum_ - serverNum_ - 1) / serverNum_;
     uint32_t logicAivId = aivId_ - serverNum_ - 1;
@@ -1310,7 +1362,10 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
 
     Duplicate<int32_t>(tokenNumPerExp_, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
+    PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::V_S>();
+    constexpr int64_t WAIT_TOKEN_TIMEOUT_CYCLES = 500000000;  // 10秒, 50 cycles ≈ 1μs
+    int64_t startCycle = AscendC::GetSystemCycle();
     while (tokenStatus != FINISH_STATUS) {
         if (formServerId == serverId_) {
             tokenStatus = GetSelfServerTokenInfo(selfTokenIdx, justExpInfo, tokenStructU8Lt);
@@ -1330,6 +1385,14 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); //等待tokenStructU8Lt搬出，才能复用tokenStructU8Lt
         tokenIdx += 1;
         justExpInfo = (tokenIdx % coresPerServer != logicAivId % coresPerServer);
+        if ((AscendC::GetSystemCycle() - startCycle >= WAIT_TOKEN_TIMEOUT_CYCLES) && dumpId == 0) {
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 11, tokenStatus);
+            selfDataStatusGMTensor.SetValue(aivId_ * 16 + 14, FINISH_STATUS);
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+            dumpId += 1;
+            // assert(false, "Dispatch DFX: Win2Ipc timeout!");
+        }
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>(); // tokenNumPerExpTensor的scalar值写完，才能搬出
     //数据发送结束，填写tokenNum到对端Ipc，每轮填写coresPerServer个，总共要填写 SERVER_RANK_SIZE * localMoeExpertNum_个
@@ -1393,6 +1456,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         targetTokenIpcGt.SetGlobalBuffer((__gm__ uint8_t*)(shareIPCAddrsGM_[targetRankId % SERVER_RANK_SIZE] +
             IPC_DATA_OFFSET + targetOffset));
         DataCopy(targetTokenIpcGt, tokenStructU8Lt, tokenStructLen_);
+        PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -1400,31 +1464,91 @@ template <TemplateMC2TypeV2LayeredClass>
 __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        GM_ADDR statusDataSpaceGm;
+        statusDataSpaceGm = (GM_ADDR)(winContext_->localWindowsExp);
+        GlobalTensor<uint32_t> selfDataStatusGMTensor;
+        GlobalTensor<uint32_t> selfDataStatusGMAiv;
+        selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm));
+        selfDataStatusGMAiv.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + aivId_ * 64));
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMTensor.SetValue(48, worldSize_); // 初始化为0，表示数据未准备好
+        // selfDataStatusGMTensor.SetValue(98, rankId_); // 初始化为0，表示数据未准备好winContext->rankSize
+        // selfDataStatusGMTensor.SetValue(99, winContext_->localUsrRankId); // 初始化为0，表示数据未准备好
+        selfDataStatusGMTensor.SetValue(49, aivNum_);
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+        
+        
         ReorderTokens();
         SyncAll<true>();
+        PipeBarrier<PIPE_ALL>();
+
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 1); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
         if (aivId_ < serverNum_) {
             if (aivId_ != serverId_) {
                 SendDataToServer(aivId_);
+                PipeBarrier<PIPE_ALL>();
+                selfDataStatusGMTensor.SetValue(aivId_ * 16, 2); // 初始化为0，表示数据未准备好
+                DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
             }
-            CreateInnerReduceInfo(aivId_);
+            CreateInnerReduceInfo(aivId_, selfDataStatusGMTensor, selfDataStatusGMAiv);
+            PipeBarrier<PIPE_ALL>();
+            selfDataStatusGMTensor.SetValue(aivId_ * 16, 3); // 初始化为0，表示数据未准备好
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
         } else if (aivId_ == serverNum_) {
             CreateOuterReduceInfo();
+            PipeBarrier<PIPE_ALL>();
+            selfDataStatusGMTensor.SetValue(aivId_ * 16, 4); // 初始化为0，表示数据未准备好
+            DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
         } else {
-            Win2Ipc();
+            Win2Ipc(selfDataStatusGMTensor, selfDataStatusGMAiv);
         }
+        PipeBarrier<PIPE_ALL>();
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 5); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
         SyncAll<true>();
         SetIpcFlag();
-        WaitIpcFlag();
         PipeBarrier<PIPE_ALL>();
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 6); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
+        WaitIpcFlag(selfDataStatusGMTensor, selfDataStatusGMAiv);
+        PipeBarrier<PIPE_ALL>();
+
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 7); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
         SyncAll<true>();
         Ipc2Out();
+
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 8); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
         if (aivId_ < serverNum_) {
             PipeBarrier<PIPE_ALL>();
             CleanUp();
         }
 
         PipeBarrier<PIPE_ALL>();
+
+        selfDataStatusGMTensor.SetValue(aivId_ * 16, 9); // 初始化为0，表示数据未准备好
+        DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
+
+
         SyncAll<true>();
+
     }
 }
 } // MoeDistributeDispatchV2Impl
