@@ -66,10 +66,6 @@ uint32_t EP_WORLD_SIZE = 2;
 uint32_t TP_WORLD_SIZE = 1;
 uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
-const uint32_t EP_WORLD_SIZE = 2;
-const uint32_t TP_WORLD_SIZE = 1;
-const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
-
 const bool IS_TEST_A2 = false;
 const bool IS_TEST_A3A5 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
