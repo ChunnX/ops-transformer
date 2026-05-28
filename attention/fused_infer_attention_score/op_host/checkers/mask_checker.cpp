@@ -151,10 +151,18 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     if (!enableMXFP8) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
-                ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
+    constexpr size_t MXFP8_DECODE_QSCALE_DIM = 5;
+    bool isPrefillQScale = fiaInfo.opParamInfo.dequantScaleQuery.tensor != nullptr &&
+                           fiaInfo.opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() !=
+                               MXFP8_DECODE_QSCALE_DIM;
+    bool isSparse0NoMask = (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag);
+    bool isSparse3WithMask = (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && fiaInfo.attenMaskFlag;
+    bool isSparse4PrefillWithMask = (fiaInfo.sparseMode == SPARSE_MODE_BAND) && fiaInfo.attenMaskFlag &&
+                                    isPrefillQScale;
+    OP_CHECK_IF(!(isSparse0NoMask || isSparse3WithMask || isSparse4PrefillWithMask),
                     OP_LOGE(fiaInfo.opName,
-                            "Only support sparse 0 without mask or sparse 3 with mask in MXFP8 fullquant scenario, " 
+                            "Only support sparse 0 without mask, sparse 3 with mask, or prefill sparse 4 with mask "
+                            "in MXFP8 fullquant scenario, "
                             "now input sparse mode is %d and there has%smask",
                             fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                     return ge::GRAPH_FAILED);
