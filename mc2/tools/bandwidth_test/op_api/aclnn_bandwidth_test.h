@@ -39,7 +39,7 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* dstRankId,
     const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    const char *commAlg, int64_t aivNum,aclTensor* y, aclTensor* receiveCnt,
+    const char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
