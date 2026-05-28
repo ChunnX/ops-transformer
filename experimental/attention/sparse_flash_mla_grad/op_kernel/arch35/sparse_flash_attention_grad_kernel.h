@@ -378,7 +378,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
             } else {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId);
+                this->template SetDeterRunInfo<true>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1);
                 this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
                                 this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
             }
@@ -394,7 +394,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                 CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
             } else {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId);
+                this->template SetDeterRunInfo<false>(deterRunInfos[(deterTaskId + 1) & 1], sTaskId, deterTaskId + 1);
                 this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dOriKVWorkSpaceGm, 
                                 this->dCmpKVWorkSpaceGm, this->constInfo, deterRunInfos[(deterTaskId + 1) & 1]);
             }
