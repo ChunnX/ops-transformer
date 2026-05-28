@@ -178,93 +178,83 @@ class LightningIndexerGrad:
         indices_cpu = indices.cpu().numpy()
         key_cpu = key.cpu().numpy()
         
-        # 遍历每个Query头
+        # 正确的循环结构: batch -> head_num_k -> seqlen_q
         for b in range(batch):
-            for n1 in range(self.head_num_q):  # 遍历所有Query头
-                # 确定对应的Key头索引
-                n2_idx = n1 // self.group_num
+            for n2_idx in range(self.head_num_k):  # Key 头循环 (只有 1 个)
+                # 确定对应的 Query 头范围
+                start_n1 = n2_idx * self.group_num
+                end_n1 = (n2_idx + 1) * self.group_num  # = 64
                 
-                # ========== 步骤1: GatherTopk (CPU辅助) ==========
-                key_gather = gather_topk_python(
-                    key_cpu[b:b+1],
-                    indices_cpu[b:b+1],
-                    n2_idx,
-                    self.head_dim
-                )
-                key_gather_npu = torch.from_numpy(key_gather.squeeze(0)).npu()
-                
-                query_b = query[b, :, n1, :]  # (S1, D)
-                
-                # ========== 步骤2: Cube1 - Query @ KeyGather^T ==========
-                # 每行s有不同的KeyGather，使用einsum
-                relu_in = torch.einsum('sd,skd->sk', query_b.float(), key_gather_npu.float()).to(dtype)
-                
-                # 调试: 检查 relu_in (只打印第一个头)
-                if n1 == 0 and b == 0:
-                    print(f"[调试] relu_in max: {relu_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_in).any().item()}")
-                
-                # ========== 步骤3: Cube2 - Weights @ Dy ==========
-                # 每个Query头有独立的权重
-                weights_b = weights[b, :, n1]  # (S1,)
-                dy_b = dy[b]  # (S1, topk)
-                relu_grad_in = weights_b.unsqueeze(-1) * dy_b  # 广播乘法
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] relu_grad_in max: {relu_grad_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_in).any().item()}")
-                
-                # ========== 步骤4: Vec2 - ReLU反向 + ReduceSum ==========
-                # ReLU反向: relu_grad_out = relu_grad_in * (relu_in > 0)
-                mask = (relu_in > 0).to(dtype)
-                relu_grad_out = relu_grad_in * mask
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] relu_grad_out max: {relu_grad_out.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out).any().item()}")
-                
-                # ReduceSum计算dWeights - 使用FP32累加避免精度损失
-                relu_in_dy = relu_in.float() * dy_b.float()  # FP32乘法
-                d_weights_b = relu_in_dy.sum(dim=-1).to(dtype)  # FP32累加后转FP16
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] d_weights_b max: {d_weights_b.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b).any().item()}")
-                
-                d_weights[b, :, n1] = d_weights_b
-                
-                # ========== 步骤5: Cube3 - dQuery ==========
-                d_query_b = torch.einsum('sk,skd->sd', relu_grad_out.float(), key_gather_npu.float()).to(dtype)
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] d_query_b max: {d_query_b.abs().max().item():.2f}, has_nan={torch.isnan(d_query_b).any().item()}")
-                
-                d_query[b, :, n1, :] = d_query_b
-                
-                # ========== 步骤6: Cube4 - ReluGrad外积Query ==========
-                # 每个位置s需要独立的(topk, D)值
-                scatter_add = torch.einsum('sk,sd->skd', relu_grad_out.float(), query_b.float()).to(dtype)
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] scatter_add max: {scatter_add.abs().max().item():.2f}, has_nan={torch.isnan(scatter_add).any().item()}")
-                    print(f"[调试] scatter_add shape: {scatter_add.shape}")
-                
-                # ========== 步骤7: Vec3 - ScatterAdd (CPU辅助) ==========
-                scatter_add_cpu = scatter_add.cpu().numpy()
-                d_key_cpu = d_key[b].cpu().numpy()
-                
-                # 调试: 检查 indices 范围
-                if n1 == 0 and b == 0:
-                    indices_b = indices_cpu[b]
-                    print(f"[调试] indices range: min={indices_b.min()}, max={indices_b.max()}, seqlen_k={self.seqlen_k}")
-                
-                d_key_cpu = scatter_add_python(
-                    d_key_cpu[np.newaxis, ...],
-                    scatter_add_cpu[np.newaxis, ...],
-                    indices_cpu[b:b+1],
-                    n2_idx,
-                    self.head_dim
-                )
-                d_key[b] = torch.from_numpy(d_key_cpu.squeeze(0)).to(device)
-                
-                if n1 == 0 and b == 0:
-                    print(f"[调试] d_key max: {d_key[b].abs().max().item():.2f}, has_nan={torch.isnan(d_key[b]).any().item()}")
+                for s1 in range(self.seqlen_q):  # 序列位置循环
+                    # ========== 步骤1: GatherTopk (CPU辅助) ==========
+                    # 基于 indices[s1] 收集 Key 数据
+                    indices_s1 = indices_cpu[b, s1]  # (topk)
+                    key_gather = key_cpu[b, indices_s1, n2_idx, :]  # (topk, D)
+                    key_gather_npu = torch.from_numpy(key_gather).npu().float()  # (topk, D)
+                    
+                    # ========== 加载 Query 组和 weights 组 ==========
+                    # Query 组: (g, D) = (64, 128)
+                    query_group = query[b, s1, start_n1:end_n1, :].float()  # (g, D)
+                    # weights 组: (g,) = (64,)
+                    weights_group = weights[b, s1, start_n1:end_n1].float()  # (g,)
+                    # dy: (topk,) - 每个位置共享
+                    dy_s1 = dy[b, s1].float()  # (topk,)
+                    
+                    # ========== 步骤2: Cube1 - reluIn = Q_group @ K_gather^T ==========
+                    # reluIn 形状: (g, topk) = (64, 2048)
+                    relu_in = torch.matmul(query_group, key_gather_npu.T)  # (g, D) @ (D, topk) -> (g, topk)
+                    
+                    # 调试
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] relu_in shape: {relu_in.shape}, max: {relu_in.abs().max().item():.2f}")
+                    
+                    # ========== 步骤3: Cube2 - reluGradIn = weights @ dy (广播) ==========
+                    # reluGradIn 形状: (g, topk)
+                    relu_grad_in = weights_group.unsqueeze(-1) * dy_s1.unsqueeze(0)  # (g, 1) * (1, topk) -> (g, topk)
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] relu_grad_in shape: {relu_grad_in.shape}, max: {relu_grad_in.abs().max().item():.2f}")
+                    
+                    # ========== 步骤4: Vec2 - ReLU反向 + ReduceSum ==========
+                    # ReLU反向: relu_grad_out = relu_grad_in * mask
+                    mask = (relu_in > 0).float()  # (g, topk)
+                    relu_grad_out = relu_grad_in * mask  # (g, topk)
+                    
+                    # ReduceSum: dWeights = sum(reluIn * dy) per group
+                    # dWeights 形状: (g,)
+                    relu_in_dy = relu_in * dy_s1.unsqueeze(0)  # (g, topk)
+                    d_weights_group = relu_in_dy.sum(dim=-1)  # (g,)
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] d_weights_group shape: {d_weights_group.shape}, [0]: {d_weights_group[0].item():.2f}")
+                    
+                    # 存储到输出
+                    d_weights[b, s1, start_n1:end_n1] = d_weights_group.to(dtype)
+                    
+                    # ========== 步骤5: Cube3 - dQuery = reluGrad_out @ K_gather ==========
+                    # dQuery 形状: (g, D)
+                    d_query_group = torch.matmul(relu_grad_out, key_gather_npu)  # (g, topk) @ (topk, D) -> (g, D)
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] d_query_group shape: {d_query_group.shape}, [0,0:5]: {d_query_group[0, 0:5].tolist()}")
+                    
+                    d_query[b, s1, start_n1:end_n1, :] = d_query_group.to(dtype)
+                    
+                    # ========== 步骤6+7: Cube4 + Vec3 - scatter_add ==========
+                    # 每个位置 s1, 每个 k, 对应一个 dKey 位置
+                    # scatter_add[k] = relu_grad_out[:, k] @ query_group (跨 g 求和)
+                    # 或: scatter_add[g, k] = relu_grad_out[g, k] * query_group[g, :]
+                    
+                    # 简化: 每个 k, scatter_add[k] 添加到 dKey[indices[k]]
+                    for k in range(self.topk):
+                        idx = indices_s1[k]
+                        # 对每个组计算 scatter 值
+                        scatter_val = relu_grad_out[:, k] * query_group  # (g, D)
+                        scatter_sum = scatter_val.sum(dim=0)  # (D,) - 跨组求和
+                        d_key[b, idx, n2_idx, :] += scatter_sum.to(dtype)
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] scatter 完成, d_key[0,0,0,0:5]: {d_key[b, 0, 0, 0:5].float().tolist()}")
         
         torch.npu.synchronize()
         
