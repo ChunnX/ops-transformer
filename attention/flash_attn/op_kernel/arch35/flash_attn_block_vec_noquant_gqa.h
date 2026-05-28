@@ -535,6 +535,10 @@ public:
         float deSCaleKValue = 1.0;
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        uint32_t array[] = {static_cast<uint32_t>(8), static_cast<uint32_t>(s2BaseSize)};
+        AscendC::ShapeInfo shapeInfo(2, array);
+        AscendC::DumpTensor(mmRes, 111, 8 * s2BaseSize, shapeInfo);
+        
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
