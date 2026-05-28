@@ -325,7 +325,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS>=8K
         scenarioInfo_.splitMFlag_ = 1U;
     }
     return ge::GRAPH_SUCCESS;
@@ -693,8 +693,8 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
         std::bind(&MlaPrologTiling::SetShapeInfo, this),
         std::bind(&MlaPrologTiling::SetScenarioInfo, this),
         std::bind(&MlaPrologTilingCheck::CheckScenarParam, &tilingCheck_),
-        std::bind(&MlaPrologTilingCheck::CheckDims, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckQuantMode, &tilingCheck_),
+        std::bind(&MlaPrologTilingCheck::CheckDims, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckSpecialScenarioParamShape, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckParamByScenario, &tilingCheck_),
         std::bind(&MlaPrologTiling::SetAttrInfo, this),

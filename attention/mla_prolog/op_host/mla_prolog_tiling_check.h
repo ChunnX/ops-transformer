@@ -130,8 +130,8 @@ public:
         : context_(context), baseShapeInfo_(baseShapeInfo), scenarioInfo_(scenarioInfo) {}
     ge::graphStatus CheckSingleRequiredParam() const;
     ge::graphStatus CheckCacheMode() const;
-    ge::graphStatus CheckDims() const;
     ge::graphStatus CheckQuantMode() const;
+    ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
     ge::graphStatus CheckSpecialScenarioParamShape();
     ge::graphStatus CheckCkvkrRepoMode();
