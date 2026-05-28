@@ -427,7 +427,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitTilingAtt
     epWorldSizeOriginal_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     // epRankId_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epRankId_ = aclshmem_my_pe();
-    curRankShmemAddr = tilingData->moeDistributeDispatchV2Info.shmemBuffer;
+    curRankShmemAddr = tilingData->moeDistributeCombineV2Info.shmemBuffer;
     epRankIdOriginal_ = tilingData->moeDistributeCombineV2Info.epRankId;
     epWorldSize_ = tilingData->moeDistributeCombineV2Info.epWorldSize;
     moeExpertPerRankNum_ = tilingData->moeDistributeCombineV2Info.moeExpertPerRankNum;
