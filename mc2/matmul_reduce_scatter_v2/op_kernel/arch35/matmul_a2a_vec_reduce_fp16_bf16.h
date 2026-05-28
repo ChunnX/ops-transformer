@@ -257,7 +257,6 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
         GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
-        SyncAll<true>();
         tPipe_->Reset();
         reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
         reduceSum_.ExecuteReduceSum();
@@ -282,7 +281,6 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
     GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
-    SyncAll<true>();
     tPipe_->Reset();
     reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
     reduceSum_.ExecuteReduceSum();
@@ -311,6 +309,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::MatMulV
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CubeNotifyVector()
 {
+    pipe_barrier(PIPE_ALL);
     // 先全 AIC 同步一次
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_AIC_ONLY_ALL_DET_FLAG);
     CrossCoreWaitFlag(SYNC_AIC_ONLY_ALL_DET_FLAG);
