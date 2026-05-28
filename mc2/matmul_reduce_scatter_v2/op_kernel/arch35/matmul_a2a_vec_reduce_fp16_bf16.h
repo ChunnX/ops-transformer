@@ -257,6 +257,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
         GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
+        SyncAll<true>();
         tPipe_->Reset();
         reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
         reduceSum_.ExecuteReduceSum();
