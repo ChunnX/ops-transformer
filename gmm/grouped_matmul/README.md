@@ -101,91 +101,44 @@ GroupedMatmul 根据计算过程中对数据精度的处理方式，分为三大
 
 #### 4.2.1 <abbr title="x 和 weight 均以浮点类型直接参与计算，不涉及任何缩放/偏移">非量化</abbr>场景
 
-$$
-y_i = x_i \times weight_i + bias_i
-$$
+| x dtype | weight dtype | bias | 计算公式 | 说明 |
+|:---:|:---:|:---:|:---|------|
+| FP16, BF16, FLOAT32 | FP16, BF16, FLOAT32 | 可选 | $y_i = x_i \times weight_i + bias_i$ | 常规矩阵乘，不涉及任何缩放/偏移 |
 
 #### 4.2.2 <abbr title="weight 以低精度整数存储，计算时通过 antiquantScale/Offset 反量化为浮点">伪量化</abbr>场景
 
 > weight 以低精度存储，计算时反量化为浮点。
 
-- **x 为 FLOAT16/BFLOAT16，weight 为 INT4/INT8**（仅支持 x、weight、y 均为单 Tensor）：
-
-$$
-y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i
-$$
-
-- **x 为 INT8，weight 为 INT4**（仅支持 x、weight、y 均为单 Tensor）：
-
-  其中 $bias$ 为必选参数，是离线计算的辅助结果，$bias_i = 8 \times weight_i \times scale_i$，并沿 K 轴规约。
-
-$$
-y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i
-$$
-
-- **x 为 FLOAT16/BFLOAT16，weight 为 FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8**（仅支持 A5 设备）：
-
-$$
-y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i
-$$
+| 子场景 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|--------|:---:|:---:|:---:|:---|------|
+| A16W4/A16W8 | FP16, BF16 | INT4, INT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 x、weight、y 均为单 Tensor |
+| A8W4 (S8S4) | INT8 | INT4 | **必选** (FLOAT32) | $y_i = ((x_i - 8) \times weight_i \times scale_i + bias_i) \times per\\_token\\_scale_i$ | 仅支持单 Tensor；$bias_i = 8 \times weight_i \times scale_i$ 沿 K 轴规约 |
+| A16F8 | FP16, BF16 | FLOAT8_E5M2, FLOAT8_E4M3FN, HIFLOAT8 | 可选 | $y_i = x_i \times (weight_i + antiquant\\_offset_i) \times antiquant\\_scale_i + bias_i$ | 仅支持 Ascend 950PR/950DT |
 
 #### 4.2.3 <abbr title="x 和 weight 均以低精度参与计算，结果通过 scale/offset/perTokenScale 还原">全量化</abbr>场景
 
-##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化（<abbr title="pertensor-perchannel：x 侧全体共享一套量化参数，weight 侧每列一套">T-C</abbr> / <abbr title="pertensor-pertensor：x 侧和 weight 侧均为全体共享一套量化参数">T-T</abbr>，无 perTokenScaleOptional）
+##### <abbr title="量化参数离线预计算，推理时不变">静态</abbr>量化
 
-$$
-y_i = (x_i \times weight_i) \times scale_i + offset_i
-$$
+| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|----------|:---:|:---:|:---:|:---|------|
+| **T-C / T-T** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i + offset_i$ | 基础公式，无 perTokenScaleOptional |
+| **T-C / T-T** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i + offset_i$ | bias 在 scale 之前累加 |
+| **T-C / T-T** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i + bias_i$ | 无 offset 时适用 |
 
-- x 为 INT8，bias 为 INT32 时：
+##### <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化
 
-$$
-y_i = (x_i \times weight_i + bias_i) \times scale_i + offset_i
-$$
+| 量化模式 | x dtype | weight dtype | bias | 计算公式 | 说明 |
+|----------|:---:|:---:|:---:|:---|------|
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | 无 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i$ | 基础公式 |
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | INT32 | $y_i = (x_i \times weight_i + bias_i) \times scale_i \times per\\_token\\_scale_i$ | bias 在 scale 之前累加 |
+| **T-T / T-C / K-T / K-C** | INT8 | INT8 | FP16, BF16, FP32 | $y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i$ | bias 在 perTokenScale 之后累加 |
 
-- x 为 INT8，bias 为 FLOAT16/BFLOAT16/FLOAT32，无 offset 时：
+##### 特殊 pergroup 量化
 
-$$
-y_i = (x_i \times weight_i) \times scale_i + bias_i
-$$
-
-##### <abbr title="量化参数在线计算，依赖实际输入数据">动态</abbr>量化（<abbr title="pertensor-pertensor：x 侧和 weight 侧均为全体共享一套量化参数">T-T</abbr> / <abbr title="pertensor-perchannel：x 侧全体共享一套量化参数，weight 侧每列一套">T-C</abbr> / <abbr title="pertoken-pertensor：x 侧每行一套量化参数，weight 侧全体共享一套">K-T</abbr> / <abbr title="pertoken-perchannel：x 侧每行一套量化参数，weight 侧每列一套">K-C</abbr>）
-
-$$
-y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i
-$$
-
-- x 为 INT8，bias 为 INT32 时：
-
-$$
-y_i = (x_i \times weight_i + bias_i) \times scale_i \times per\\_token\\_scale_i
-$$
-
-- x 为 INT8，bias 为 FLOAT16/BFLOAT16/FLOAT32 时：
-
-$$
-y_i = (x_i \times weight_i) \times scale_i \times per\\_token\\_scale_i + bias_i
-$$
-
-##### <abbr title="特殊 pergroup 量化，block 粒度 M=1,N=1,K=32">MX</abbr> 量化
-
-<a id="mx量化"></a>
-
-MX 量化是特殊的 pergroup 量化，block size 固定为 gsM=1, gsN=1, gsK=32：
-
-$$
-y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]
-$$
-
-<a id="gb量化"></a>
-
-##### <abbr title="pergroup-perblock：输入侧按 K 分组缩放，权重侧按 N×K 分块缩放">G-B</abbr> 量化
-
-G-B 是 pergroup-perblock 量化，block size 固定为 gsM=1, gsN=gsK=128：
-
-$$
-y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]
-$$
+| 量化模式 | block size | 计算公式 | 说明 |
+|----------|:---:|:---|------|
+| **<a id="mx量化"></a>MX** | gsM=1, gsN=1, gsK=32 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | 特殊的 pergroup 量化 |
+| **<a id="gb量化"></a>G-B** | gsM=1, gsN=gsK=128 | $y_i[m,n] = \sum_{j=0}^{kLoops-1} \bigg( \Big( \sum_{k=0}^{gsK-1} xSlice_i \times weightSlice_i \Big) \times \big( per\\_token\\_scale_i[m/gsM, j] \times scale_i[j, n/gsN] \big) \bigg) + bias_i[n]$ | pergroup-perblock 量化 |
 
 > 其中 $xSlice_i$ 为 $x_i$ 第 $m$ 行长度为 gsK 的向量，$weightSlice_i$ 为 $weight_i$ 第 $n$ 列长度为 gsK 的向量，$kLoops = \lceil K_i / gsK \rceil$，支持末尾切片长度不足 gsK。
 
