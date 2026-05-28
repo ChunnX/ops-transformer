@@ -107,12 +107,12 @@ private:
         }                                                                                                \
     } while (0)
 
-#define CHECK_FAIL(context, cond, ...)                      \
-    do {                                                    \
-        if (cond) {                                         \
-            OP_LOGE(context->GetNodeName(), ##__VA_ARGS__); \
-            return ge::GRAPH_FAILED;                        \
-        }                                                   \
+#define CHECK_FAIL(context, cond, log_func) \
+    do {                                    \
+        if (cond) {                         \
+            log_func;                       \
+            return ge::GRAPH_FAILED;        \
+        }                                   \
     } while (0)
 
 inline static int64_t GetPerOrLastValue(int64_t x, int64_t y)
@@ -146,21 +146,30 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckOutShape()
         auto dynamicQuantScaleDesc = context_->GetOutputDesc(OUTOUT_DYNAMIC_QUANT_SCALE);
         CHECK_NULL(context_, dynamicQuantScaleDesc, "DynamicQuantScale");
         auto dt = dynamicQuantScaleDesc->GetDataType();
-        CHECK_FAIL(context_, dt != ge::DT_FLOAT, "The data type of dynamicQuantScale should be FLOAT.");
+        CHECK_FAIL(context_, dt != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dynamicQuantScale",
+                Ops::Base::ToString(dt).c_str(), "FLOAT"));
 
         const gert::Shape dynamicQuantScaleShape = dynamicShapePtr->GetStorageShape();
         size_t dynamicQuantScaleDimNum = dynamicQuantScaleShape.GetDimNum();
-        CHECK_FAIL(context_, dynamicQuantScaleDimNum != 1U, "The dim number of dynamicQuantScale should be 1.");
+        std::string dynamicQuantScaleDimStr = std::to_string(dynamicQuantScaleDimNum) + "D";
+        CHECK_FAIL(context_, dynamicQuantScaleDimNum != 1U,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dynamicQuantScale",
+                dynamicQuantScaleDimStr.c_str(), "1D"));
         if (dropPadMode == 0) {
             int64_t firstDim = moeInitRoutingTilingData.get_n() * moeInitRoutingTilingData.get_k();
             firstDim = activateNum == 0 ? firstDim : std::min(firstDim, activateNum);
             CHECK_FAIL(
                 context_, dynamicQuantScaleShape.GetDim(0) != firstDim,
-                "The first dim of dynamicQuantScale should be %ld.", firstDim);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dynamicQuantScale",
+                    Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
+                    "The first dim of dynamicQuantScale should be n * k or activeNum"));
         } else {
             CHECK_FAIL(
                 context_, dynamicQuantScaleShape.GetDim(0) != expertNum * expertCapacity,
-                "The first dim of dynamicQuantScale should be %ld.", expertNum * expertCapacity);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dynamicQuantScale",
+                    Ops::Base::ToString(dynamicQuantScaleShape).c_str(),
+                    "The first dim of dynamicQuantScale should be expertNum * expertCapacity"));
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -175,19 +184,29 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::CheckInt4Info()
     if (isInt4) {
         int64_t cols = InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.get_cols();
         CHECK_FAIL(context_, cols % NUM_TWO != 0,
-                   "The secnod dim of x should be a multiple of 2 when expendedx is int4, but got [%ld]", cols);
-        CHECK_FAIL(context_, quantMode != 1, "Attr quant_mode should be 1 when expendedx is int4.");
-        CHECK_FAIL(context_, dropPadMode != 0, "Attr drop_pad_mode should be 0 when expendedx is int4.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x",
+                std::to_string(cols).c_str(),
+                "The second dim of x should be a multiple of 2 when expandedX is int4"));
+        CHECK_FAIL(context_, quantMode != 1,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quantMode", std::to_string(quantMode).c_str(),
+                "1 when expandedX is int4"));
+        CHECK_FAIL(context_, dropPadMode != 0,
+            OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode", std::to_string(dropPadMode).c_str(),
+                "0 when expandedX is int4"));
         auto scaleShapePtr = context_->GetOptionalInputShape(INDEX_SCALE);
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
             CHECK_NULL(context_, scaleDesc, "scale");
             auto smoothShape = scaleShapePtr->GetStorageShape();
             size_t smoothDimNum = smoothShape.GetDimNum();
-            CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO), "The dim number of scale should be 2.");
+            std::string smoothDimStr = std::to_string(smoothDimNum) + "D";
+            CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
             CHECK_FAIL(
                 context_, smoothShape.GetDim(0) != 1,
-                "The first dim of scale should be 1 when expendedx is int4, but got [%ld].", smoothShape.GetDim(0));
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
+                    Ops::Base::ToString(smoothShape).c_str(),
+                    "The first dim of scale should be 1 when expandedX is int4"));
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -198,7 +217,8 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
     auto attrs = context_->GetAttrs();
     const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE);
     if (quantModePtr != nullptr) {quantMode = *quantModePtr;}
-    CHECK_FAIL(context_, quantMode < 0 || quantMode > 1, "The quantMode should be 0 or 1.");
+    CHECK_FAIL(context_, quantMode < 0 || quantMode > 1,
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quantMode", std::to_string(quantMode).c_str(), "0 or 1"));
     if (InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo() == ge::GRAPH_FAILED || CheckInt4Info() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
@@ -208,36 +228,55 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
         auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
         CHECK_NULL(context_, scaleDesc, "scale");
         auto dt_scale = scaleDesc->GetDataType();
-        CHECK_FAIL(context_, dt_scale != ge::DT_FLOAT, "The data type of scale should be float.");
+        CHECK_FAIL(context_, dt_scale != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
+            Ops::Base::ToString(dt_scale).c_str(), "FLOAT"));
 
         auto offsetShapePtr = context_->GetOptionalInputShape(INDEX_OFFSET);
         CHECK_NULL(context_, offsetShapePtr, "offset");
         auto offsetDesc = context_->GetOptionalInputDesc(INDEX_OFFSET);
         CHECK_NULL(context_, offsetDesc, "offset");
         auto dt_offset = offsetDesc->GetDataType();
-        CHECK_FAIL(context_, dt_offset != ge::DT_FLOAT, "The data type of offset should be float.");
+        CHECK_FAIL(context_, dt_offset != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "offset",
+                Ops::Base::ToString(dt_offset).c_str(), "FLOAT"));
 
         auto scaleShape = scaleShapePtr->GetStorageShape();
-        CHECK_FAIL(context_, scaleShape.GetDimNum() != 1, "The dim number of scale should be 1.");
-        CHECK_FAIL(context_, scaleShape.GetDim(0) != 1, "The first dim of scale should be 1.");
+        std::string scaleDimStr = std::to_string(scaleShape.GetDimNum()) + "D";
+        CHECK_FAIL(context_, scaleShape.GetDimNum() != 1,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", scaleDimStr.c_str(), "1D"));
+        CHECK_FAIL(context_, scaleShape.GetDim(0) != 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
+                Ops::Base::ToString(scaleShape).c_str(), "The first dim of scale should be 1"));
         auto offsetShape = offsetShapePtr->GetStorageShape();
-        CHECK_FAIL(context_, offsetShape.GetDimNum() != 1, "The dim number of offset should be 1.");
-        CHECK_FAIL(context_, offsetShape.GetDim(0) != 1, "The first dim of offset should be 1.");
+        std::string offsetDimStr = std::to_string(offsetShape.GetDimNum()) + "D";
+        CHECK_FAIL(context_, offsetShape.GetDimNum() != 1,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "offset", offsetDimStr.c_str(), "1D"));
+        CHECK_FAIL(context_, offsetShape.GetDim(0) != 1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "offset",
+                Ops::Base::ToString(offsetShape).c_str(), "The first dim of offset should be 1"));
     } else {
         if (scaleShapePtr != nullptr) {
             auto scaleDesc = context_->GetOptionalInputDesc(INDEX_SCALE);
             CHECK_NULL(context_, scaleDesc, "scale");
             auto dt = scaleDesc->GetDataType();
-            CHECK_FAIL(context_, dt != ge::DT_FLOAT, "The data type of scale should be float.");
+            CHECK_FAIL(context_, dt != ge::DT_FLOAT,
+                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", Ops::Base::ToString(dt).c_str(), "FLOAT"));
 
             int64_t cols = InnerMoeInitRoutingV2TilingBase::moeInitRoutingTilingData.get_cols();
             auto smoothShape = scaleShapePtr->GetStorageShape();
             size_t smoothDimNum = smoothShape.GetDimNum();
-            CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO), "The dim number of scale should be 2.");
+            std::string smoothDimStr = std::to_string(smoothDimNum) + "D";
+            CHECK_FAIL(context_, smoothDimNum != static_cast<size_t>(NUM_TWO),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scale", smoothDimStr.c_str(), "2D"));
             CHECK_FAIL(
                 context_, smoothShape.GetDim(0) != 1 && smoothShape.GetDim(0) != expertNum,
-                "The first dim of scale should be 1 or expert_num.");
-            CHECK_FAIL(context_, smoothShape.GetDim(1) != cols, "The second dim of scale should be %ld.", cols);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "scale",
+                    Ops::Base::ToString(smoothShape).c_str(), "The first dim of scale should be 1 or expertNum"));
+            CHECK_FAIL(context_, smoothShape.GetDim(1) != cols,
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "scale and x",
+                    (std::to_string(smoothShape.GetDim(1)) + " and " + std::to_string(cols)).c_str(),
+                    "The second dim of scale and x should be equal"));
             quantTilingData.set_smoothType((smoothShape.GetDim(0) == 1) ? SMOOTH_1H : SMOOTH_EH);
         } else {
             quantTilingData.set_smoothType(SMOOTH_NONE);
