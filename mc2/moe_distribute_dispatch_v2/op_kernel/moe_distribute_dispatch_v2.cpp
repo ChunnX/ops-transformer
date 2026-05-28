@@ -20,11 +20,18 @@
 #include "moe_distribute_dispatch_v2.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_full_mesh.h"
+#include "moe_distribute_dispatch_v2_full_mesh_oxc.h"
 #include "moe_distribute_dispatch_v2_layered.h"
 #include "moe_distribute_dispatch_v2_tiling_key.h"
+#if __has_include("../common/op_kernel/moe_distribute_comm_ctx.h")
+#include "../common/op_kernel/moe_distribute_comm_ctx.h"
+#else
+#include "../../common/op_kernel/moe_distribute_comm_ctx.h"
+#endif
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_dispatch_arch35.h"
+#include "arch35/moe_distribute_dispatch_arch35_oxc.h"
 #else
 #include "moe_distribute_dispatch_a2.h"
 #include "moe_distribute_dispatch_a2_layered.h"
@@ -63,16 +70,34 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, 
-                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
-        } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
-            if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
-                op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
+            GM_ADDR contextGM0 = GetHcclContext<0>();
+            bool isCrossOXC = IsCrossOXC(contextGM0);
+            if (isCrossOXC) {
+                MoeDistributeDispatchA5Oxc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
                         expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
                 op.Process();
+            } else {
+                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                        expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            }
+        } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
+            if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
+                GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+                bool isCrossOXC = IsCrossOXC(contextGM0);
+                if (isCrossOXC) {
+                    MoeDistributeDispatchV2FullMeshOxc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                } else {
+                    MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                }
             } else {
                 MoeDistributeDispatchV2<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, false, false> op;
                 op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
@@ -89,11 +114,21 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, \
-                                                MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
-                op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
-                        expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
-                op.Process();
+                GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+                bool isCrossOXC = IsCrossOXC(contextGM0);
+                if (isCrossOXC) {
+                    MoeDistributeDispatchV2FullMeshOxc<DTYPE_X, DTYPE_EXPAND_X, \
+                                                    MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                } else {
+                    MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, \
+                                                    MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                }
             } else {
                 MoeDistributeDispatchV2<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::UNQUANT, true, false> op;
                 op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
@@ -108,16 +143,34 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (QuantMode != TILINGKEY_NO_QUANT) {
             if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
-                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, 
-                        expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
-                op.Process();
-            } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
-                if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                    MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
-                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
+                GM_ADDR contextGM0 = GetHcclContext<0>();
+                bool isCrossOXC = IsCrossOXC(contextGM0);
+                if (isCrossOXC) {
+                    MoeDistributeDispatchA5Oxc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                    op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
                             expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
                     op.Process();
+                } else {
+                    MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                    op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                }
+            } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
+                if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
+                    GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+                    bool isCrossOXC = IsCrossOXC(contextGM0);
+                    if (isCrossOXC) {
+                        MoeDistributeDispatchV2FullMeshOxc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                        op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        op.Process();
+                    } else {
+                        MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                        op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                        op.Process();
+                    }
                 } else {
                     MoeDistributeDispatchV2<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
                     op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
@@ -131,16 +184,34 @@ REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
     ((ORIG_DTYPE_X == DT_FLOAT16) && (ORIG_DTYPE_EXPAND_X == DT_HIFLOAT8))
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         if constexpr (CommMode == TILINGKEY_TPL_CCU) {
-            MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::STATIC_QUANT, true, false> op;
-            op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut, 
-                    expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
-            op.Process();
+            GM_ADDR contextGM0 = GetHcclContext<0>();
+            bool isCrossOXC = IsCrossOXC(contextGM0);
+            if (isCrossOXC) {
+                MoeDistributeDispatchA5Oxc<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::STATIC_QUANT, true, false> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                        expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            } else {
+                MoeDistributeDispatchA5<DTYPE_X, DTYPE_EXPAND_X, MoeDistributeDispatchV2Impl::STATIC_QUANT, true, false> op;
+                op.Init(x, expertIds, scales, xActiveMask, expandXOut, dynamicScalesOut, assistInfoOut,
+                        expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                op.Process();
+            }
         } else if constexpr (CommMode == TILINGKEY_TPL_MTE) {
             if constexpr (FullMesh == TILINGKEY_ENABLE_FULLMESH) {
-                MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
-                op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 
-                            expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
-                op.Process();
+                GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+                bool isCrossOXC = IsCrossOXC(contextGM0);
+                if (isCrossOXC) {
+                    MoeDistributeDispatchV2FullMeshOxc<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                } else {
+                    MoeDistributeDispatchV2FullMesh<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
+                    op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                                expertTokenNumsOut, epSendCountsOut, tpSendCountsOut, workspaceGM, &pipe, &tilingData);
+                    op.Process();
+                }
             } else {
                 MoeDistributeDispatchV2<DTYPE_X, DTYPE_EXPAND_X, QuantMode, ScaleMode, false> op;
                 op.Init(nullptr, x, expertIds, scales, xActiveMask, elasticInfo, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, 

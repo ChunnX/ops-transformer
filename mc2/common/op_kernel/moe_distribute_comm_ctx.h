@@ -34,7 +34,13 @@ struct HcclCombinOpParam {
     uint64_t ckeAddr; // CKE寄存器起始地址
     uint64_t msAddr; // MS地址，预留
     uint64_t msSize; // 可写的MS个数，预留
+    uint8_t isCrossOXC;
 };
+
+__aicore__ inline bool IsCrossOXC(GM_ADDR contextGM) {
+    __gm__ HcclCombinOpParam *param = (__gm__ HcclCombinOpParam *)contextGM;
+    return param->isCrossOXC != 0;
+}
 
 struct CommContextForDump {
     uint64_t epRankid = 0;

@@ -29,6 +29,11 @@
 #else
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#if __has_include("../../common/op_kernel/moe_distribute_comm_ctx.h")
+#include "../../common/op_kernel/moe_distribute_comm_ctx.h"
+#else
+#include "../../../common/op_kernel/moe_distribute_comm_ctx.h"
+#endif
 
 
 namespace MoeDistributeCombineA5Impl {
@@ -160,6 +165,8 @@ private:
     TBuf<> xActMaskTBuf_;
     TBuf<> xActMaskCastTBuf_;
     TBuf<> xActMaskSumTBuf_;
+
+    bool isCrossOXC_ = false;
 };
 
 template <TemplateMoeDistributeCombineA5TypeClass>
@@ -187,7 +194,7 @@ __aicore__ inline void MoeDistributeCombineA5<TemplateMoeDistributeCombineA5Type
 {
     GlobalTensor<int32_t> statusGT;
     __gm__ HcclCombineOpParam *context = (__gm__ HcclCombineOpParam *)(GetHcclContext<0>());
-    // 结构体切换后，V1版本初始化方法不可用（已废弃），改用V2版本
+    isCrossOXC_ = IsCrossOXC((GM_ADDR)context);
     hccl_.InitV2((GM_ADDR)context, tilingData);
     hccl_.SetCcTilingV2(offsetof(MoeDistributeCombineV2TilingData, mc2CcTiling1));
     GM_ADDR cclBuf = (GM_ADDR)context->windowsOut[0];

@@ -19,9 +19,15 @@
 #endif
 #include "lib/matmul_intf.h"
 #include "moe_distribute_combine_v2_tiling_key.h"
+#if __has_include("../common/op_kernel/moe_distribute_comm_ctx.h")
+#include "../common/op_kernel/moe_distribute_comm_ctx.h"
+#else
+#include "../../common/op_kernel/moe_distribute_comm_ctx.h"
+#endif
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/moe_distribute_combine_arch35.h"
+#include "arch35/moe_distribute_combine_arch35_oxc.h"
 #else
 #include "moe_distribute_combine_a2.h"
 #include "moe_distribute_combine_a2_layered.h"
@@ -80,10 +86,19 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-        MoeDistributeCombineA5Impl::MoeDistributeCombineA5<DTYPE_EXPAND_X, int32_t> op;
-        op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, xActiveMask,
-                scales, sharedExpertX, XOut, workspaceGM, &pipe, &tilingData);
-        op.Process();
+        GM_ADDR contextGM0 = GetHcclContext<0>();
+        bool isCrossOXC = IsCrossOXC(contextGM0);
+        if (isCrossOXC) {
+            MoeDistributeCombineA5Impl::MoeDistributeCombineA5Oxc<DTYPE_EXPAND_X, int32_t> op;
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, xActiveMask,
+                    scales, sharedExpertX, XOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+        } else {
+            MoeDistributeCombineA5Impl::MoeDistributeCombineA5<DTYPE_EXPAND_X, int32_t> op;
+            op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, xActiveMask,
+                    scales, sharedExpertX, XOut, workspaceGM, &pipe, &tilingData);
+            op.Process();
+        }
     }
 #else
     if constexpr ((ArchTag == TILINGKEY_TPL_A2) && 
