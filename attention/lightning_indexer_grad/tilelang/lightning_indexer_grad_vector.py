@@ -27,20 +27,16 @@ pass_configs = {
 def relu_grad_kernel(
     M: int, K: int,
     block_m: int, block_k: int,
-    dtype: str = 'float16'
+    dtype: str = 'float16',
+    accum_dtype: str = 'float32'
 ):
     """
     ReluGrad 内核: 应用 ReLU 反向掩码
     relu_grad_out = relu_grad_in * (relu_in > 0)
     
-    输入: FP16
-    输出: FP16
-    
-    内部处理:
-    - relu_in Cast 到 FP32 进行比较 (>0 判断需要 FP32)
-    - relu_grad_out 输出为 FP16
-    
-    使用 Developer 模式 alloc_shared。
+    Expert 模式内存分配:
+        - Vector 操作使用 alloc_ub
+        - Ascend Vector 单元不支持 FP16 比较，需要 Cast 到 FP32
     """
     
     m_num = M // block_m
@@ -56,17 +52,16 @@ def relu_grad_kernel(
             m_idx = cid // k_num
             k_idx = cid % k_num
             
-            # Vector 操作使用 alloc_shared (自动分配 UB)
-            grad_UB = T.alloc_shared((block_m, block_k), dtype)
-            in_UB = T.alloc_shared((block_m, block_k), dtype)
-            in_fp32_UB = T.alloc_shared((block_m, block_k), 'float32')
-            out_UB = T.alloc_shared((block_m, block_k), dtype)
+            grad_UB = T.alloc_ub((block_m, block_k), dtype)
+            in_UB = T.alloc_ub((block_m, block_k), dtype)
+            in_fp32_UB = T.alloc_ub((block_m, block_k), accum_dtype)
+            out_UB = T.alloc_ub((block_m, block_k), dtype)
             
             T.copy(relu_grad_in[m_idx * block_m, k_idx * block_k], grad_UB)
             T.copy(relu_in[m_idx * block_m, k_idx * block_k], in_UB)
             
             for i, j in T.Parallel(block_m, block_k):
-                in_fp32_UB[i, j] = T.cast(in_UB[i, j], 'float32')
+                in_fp32_UB[i, j] = T.cast(in_UB[i, j], accum_dtype)
             
             for i, j in T.Parallel(block_m, block_k):
                 if in_fp32_UB[i, j] > T.float32(0):

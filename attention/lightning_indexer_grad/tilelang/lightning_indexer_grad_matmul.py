@@ -42,12 +42,14 @@ def matmul_kernel(
     B: (N, K) - KeyGather (将被转置) (FP16)
     输出: (M, N) - FP16
     
-    Ascend 数据搬运支持:
-        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    Expert 模式内存分配:
+        - gemm_v0 输入必须是 L1 (shared)
+        - gemm_v0 输出必须是 L0C (fragment)
+        - 编译器自动处理 L1→L0A/L0B 搬运
     
-    Ascend L0B 容量限制:
-        - L0B 最大 16KB (FP16)
-        - block_n * block_k <= 8192 元素
+    内存对齐要求:
+        - Ascend 要求内存地址对齐
+        - block 大小建议为 16 或 32 的倍数
     """
     
     m_num = M // block_m
@@ -64,23 +66,18 @@ def matmul_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
             
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_n, block_k), dtype)
-            A_L0A = T.alloc_fragment((block_m, block_k), dtype)
-            B_L0B = T.alloc_fragment((block_n, block_k), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            # Expert 模式: 使用 alloc_L1 和 alloc_L0C
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_n, block_k), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
             
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
             for k_idx in T.Pipelined(k_num, num_stages=2):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
-                T.copy(A_L1, A_L0A)
-                
                 T.copy(B[n_idx * block_n, k_idx * block_k], B_L1)
-                T.copy(B_L1, B_L0B)
-                
-                T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
+                T.gemm_v0(A_L1, B_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
             
             T.copy(C_L0C, C[m_idx * block_m, n_idx * block_n])
     
@@ -101,12 +98,9 @@ def matmul_relu_kernel(
     B: (N, K) - KeyGather (将被转置) (FP16)
     输出: (M, N) 并应用 ReLU (FP16)
     
-    Ascend 数据搬运支持:
-        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
-    
-    Ascend L0B 容量限制:
-        - L0B 最大 16KB (FP16)
-        - block_n * block_k <= 8192 元素
+    Expert 模式内存分配:
+        - gemm_v0 输入必须是 L1 (shared)
+        - gemm_v0 输出必须是 L0C (fragment)
     """
     
     m_num = M // block_m
@@ -123,23 +117,17 @@ def matmul_relu_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
             
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_n, block_k), dtype)
-            A_L0A = T.alloc_fragment((block_m, block_k), dtype)
-            B_L0B = T.alloc_fragment((block_n, block_k), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_n, block_k), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
             
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
             for k_idx in T.Pipelined(k_num, num_stages=2):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
-                T.copy(A_L1, A_L0A)
-                
                 T.copy(B[n_idx * block_n, k_idx * block_k], B_L1)
-                T.copy(B_L1, B_L0B)
-                
-                T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
+                T.gemm_v0(A_L1, B_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
             
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.max(C_L0C[i, j], T.cast(0, accum_dtype))
@@ -166,10 +154,9 @@ def matmul_broadcast_kernel(
     输出:
         C: (M, N) - 外积结果
     
-    Ascend 数据搬运支持:
-        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
-    
-    使用 Cube 单元 (gemm_v0)，比 Vector 外积更高效。
+    Expert 模式内存分配:
+        - gemm_v0 输入必须是 L1 (shared)
+        - gemm_v0 输出必须是 L0C (fragment)
     """
     
     m_num = M // block_m
@@ -185,20 +172,13 @@ def matmul_broadcast_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
             
-            A_L1 = T.alloc_shared((block_m, 1), dtype)
-            B_L1 = T.alloc_shared((1, block_n), dtype)
-            A_L0A = T.alloc_fragment((block_m, 1), dtype)
-            B_L0B = T.alloc_fragment((1, block_n), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, 1), dtype)
+            B_L1 = T.alloc_L1((1, block_n), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
             
             T.copy(A[m_idx * block_m, 0], A_L1)
-            T.copy(A_L1, A_L0A)
-            
             T.copy(B[0, n_idx * block_n], B_L1)
-            T.copy(B_L1, B_L0B)
-            
-            T.gemm_v0(A_L0A, B_L0B, C_L0C, init=True)
-            
+            T.gemm_v0(A_L1, B_L1, C_L0C, init=True)
             T.copy(C_L0C, C[m_idx * block_m, n_idx * block_n])
     
     return main
@@ -219,11 +199,9 @@ def matmul_dq_kernel(
     B: (K, D) - KeyGather (FP16)
     输出: (M, D) - dQuery (FP16)
     
-    Ascend 数据搬运支持:
-        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
-    
-    Ascend L0B 容量限制:
-        - block_k * block_d <= 8192 元素 (16KB FP16)
+    Expert 模式内存分配:
+        - gemm_v0 输入必须是 L1 (shared)
+        - gemm_v0 输出必须是 L0C (fragment)
     """
     
     m_num = M // block_m
@@ -240,23 +218,17 @@ def matmul_dq_kernel(
             m_idx = cid // d_num
             d_idx = cid % d_num
             
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_k, block_d), dtype)
-            A_L0A = T.alloc_fragment((block_m, block_k), dtype)
-            B_L0B = T.alloc_fragment((block_k, block_d), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_d), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_k, block_d), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_d), accum_dtype)
             
             for i, j in T.Parallel(block_m, block_d):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
             for k_idx in T.Pipelined(k_num, num_stages=2):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
-                T.copy(A_L1, A_L0A)
-                
                 T.copy(B[k_idx * block_k, d_idx * block_d], B_L1)
-                T.copy(B_L1, B_L0B)
-                
-                T.gemm_v0(A_L0A, B_L0B, C_L0C, init=(k_idx == 0))
+                T.gemm_v0(A_L1, B_L1, C_L0C, init=(k_idx == 0))
             
             T.copy(C_L0C, C[m_idx * block_m, d_idx * block_d])
     
@@ -278,11 +250,9 @@ def matmul_scatter_kernel(
     B: (M, D) - Query (FP16)
     输出: (K, D) - scatterAdd (FP16)
     
-    Ascend 数据搬运支持:
-        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
-    
-    Ascend L0B 容量限制:
-        - block_m * block_d <= 8192 元素 (16KB FP16)
+    Expert 模式内存分配:
+        - gemm_v0 输入必须是 L1 (shared)
+        - gemm_v0 输出必须是 L0C (fragment)
     """
     
     k_num = K // block_k
@@ -299,23 +269,17 @@ def matmul_scatter_kernel(
             k_idx = cid // d_num
             d_idx = cid % d_num
             
-            A_L1 = T.alloc_shared((block_k, block_m), dtype)
-            B_L1 = T.alloc_shared((block_m, block_d), dtype)
-            A_L0A = T.alloc_fragment((block_k, block_m), dtype)
-            B_L0B = T.alloc_fragment((block_m, block_d), dtype)
-            C_L0C = T.alloc_fragment((block_k, block_d), accum_dtype)
+            A_L1 = T.alloc_L1((block_k, block_m), dtype)
+            B_L1 = T.alloc_L1((block_m, block_d), dtype)
+            C_L0C = T.alloc_L0C((block_k, block_d), accum_dtype)
             
             for i, j in T.Parallel(block_k, block_d):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
             for m_idx in T.Pipelined(m_num, num_stages=2):
                 T.copy(A[k_idx * block_k, m_idx * block_m], A_L1)
-                T.copy(A_L1, A_L0A)
-                
                 T.copy(B[m_idx * block_m, d_idx * block_d], B_L1)
-                T.copy(B_L1, B_L0B)
-                
-                T.gemm_v0(A_L0A, B_L0B, C_L0C, init=(m_idx == 0))
+                T.gemm_v0(A_L1, B_L1, C_L0C, init=(m_idx == 0))
             
             T.copy(C_L0C, C[k_idx * block_k, d_idx * block_d])
     
@@ -333,14 +297,9 @@ def reduce_sum_kernel(
     ReduceSum 内核，用于计算 dWeights
     沿 K 维度归约 (M, K) -> (M,)
     
-    输入: FP16
-    输出: FP16
-    
-    内部处理:
-    - Cast 输入到 FP32 进行 ReduceSum
-    - 输出 Cast 回 FP16
-    
-    使用 Developer 模式 alloc_shared。
+    Expert 模式内存分配:
+        - Vector 操作使用 alloc_ub
+        - Ascend Vector Reduce 需要 FP32 精度
     """
     
     m_num = M // block_m
@@ -354,20 +313,19 @@ def reduce_sum_kernel(
         with T.Kernel(m_num, threads=VEC_NUM, is_npu=True) as (cid):
             m_idx = cid
             
-            # Vector 操作使用 alloc_shared (自动分配 UB)
-            A_UB = T.alloc_shared((block_m, block_k), dtype)
-            A_fp32_UB = T.alloc_shared((block_m, block_k), 'float32')
-            C_fp32_UB = T.alloc_shared((block_m,), 'float32')
-            C_UB = T.alloc_shared((block_m,), dtype)
+            A_UB = T.alloc_ub((block_m, block_k), dtype)
+            A_fp32_UB = T.alloc_ub((block_m, block_k), accum_dtype)
+            C_fp32_UB = T.alloc_ub((block_m,), accum_dtype)
+            C_UB = T.alloc_ub((block_m,), dtype)
             
             for i in T.Parallel(block_m):
-                C_fp32_UB[i] = T.float32(0)
+                C_fp32_UB[i] = T.cast(0, accum_dtype)
             
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_UB)
                 
                 for i, j in T.Parallel(block_m, block_k):
-                    A_fp32_UB[i, j] = T.cast(A_UB[i, j], 'float32')
+                    A_fp32_UB[i, j] = T.cast(A_UB[i, j], accum_dtype)
                 
                 T.reduce_sum(A_fp32_UB, C_fp32_UB, dim=-1, clear=False)
             
