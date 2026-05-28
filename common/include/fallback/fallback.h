@@ -82,6 +82,10 @@ inline const char* GetOpApiLibName(void) {
   return "libopapi.so";
 }
 
+inline const char* GetTransformerOpApiLibName(void) {
+  return "libopapi_transformer.so";
+}
+
 inline const char* GetCustOpApiLibName(void) {
   return "libcust_opapi.so";
 }
@@ -105,7 +109,7 @@ inline void* GetOpApiLibHandler(const char* libName) {
 
 inline void* GetAclnnArrdByApiName(const char *apiName) {
     vector<std:: string> libs = {"libaclnn_ops_infer.so", "libaclnn_ops_train.so", "libaclnn_math.so",
-                                 "libaclnn_rand.so", "libaclnn_sparse.so", "libaclnn_fft.so", "libopapi_transformer.so"};
+                                 "libaclnn_rand.so", "libaclnn_sparse.so", "libaclnn_fft.so"};
     for (const auto &libName : libs) {
         static auto libHandler = GetOpApiLibHandler(libName.c_str());
         if (libHandler != nullptr) {
@@ -126,6 +130,14 @@ inline void* GetOpApiFuncAddr(const char* apiName) {
     if (funcAddr != nullptr) {
       return funcAddr;
     }
+  }
+
+  static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+  if (transformerOpApiHandler != nullptr) {
+      auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+      if (funcAddr != nullptr) {
+          return funcAddr;
+      }
   }
 
   static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
