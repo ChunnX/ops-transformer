@@ -1,0 +1,68 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+ops_base:
+  commiter:
+    "zhou-qilong"
+  team: "ops_base" ##组件名称
+  src:
+    release:
+      - src
+      - include
+      - pkg_inc
+    unrelease:
+      - src/op_common/log/log.cpp
+      - src/op_common/op_host/infershape_broadcast_util.cpp
+      - src/op_common/op_host/infershape_reduce_util.cpp
+      - src/op_common/op_host/util/shape_util.cpp
+      - src/op_common/atvoss/reduce/reduce_tiling.cpp
+      - src/op_common/atvoss/elewise/
+      - src/op_common/atvoss/broadcast/
+      - src/op_common/atvoss/reduce/
+      - src/nnopbase/aicpu/task_handler/
+      - include/nnopbase/opdev/aicpu/
+  llt:
+    ut_check: true
+    st_check: false
+
+HPTG2@ops-base:
+  src:
+    release:
+      style:
+        - ops-base/include/nnopbase/
+        - ops-base/pkg_inc/op_common/log/
+        - ops-base/pkg_inc/op_common/op_host/
+        - ops-base/scripts/package/opbase/scripts/
+        - ops-base/src/nnopbase/common/api/
+        - ops-base/src/nnopbase/common/inc/
+        - ops-base/src/nnopbase/common/utils/
+        - ops-base/src/nnopbase/composite_op/
+        - ops-base/src/nnopbase/tls_guardian/
+        - ops-base/src/op_common/log/
+        - ops-base/src/op_common/op_host/
+      opensource_style: null
+      kernel_style: null
+    unrelease:
+      test_code: null
+      non_delivery: null
+      open_source: null
+
+VC2@ops-base:
+  src:
+    release:
+      style:
+        - ops-base/pkg_inc/op_common/atvoss/
+        - ops-base/pkg_inc/op_common/op_kernel/
+        - ops-base/src/op_common/atvoss/
+      opensource_style: null
+      kernel_style: null
+    unrelease:
+      test_code: null
+      non_delivery: null
+      open_source: null

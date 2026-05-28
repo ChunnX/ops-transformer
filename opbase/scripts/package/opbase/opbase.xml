@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config name="opbase" copy_type="delivery" src_path="" dst_path="" install_type="all" install_mod="550" install_own="$username:$usergroup">
+    <package_info>
+        <product_name>cann</product_name>
+        <func_name>opbase</func_name>
+        <share_info_name>opbase</share_info_name>
+        <suffix>run</suffix>
+        <install_script>share/info/opbase/script/install.sh</install_script>
+        <help>share/info/opbase/script/help.info</help>
+        <cleanup>share/info/opbase/script/cleanup.sh</cleanup>
+        <parallel>true</parallel>
+        <copy_all>true</copy_all>
+    </package_info>
+    <generate_info value="opbase_version.h" dst_path="$(TARGET_ENV)/include/version" install_path="$(TARGET_ENV)/include/version" install_mod="440" install_type="devel" generator="version_header">
+        <OPBASE_VERSION>$(ASCEND_VER)</OPBASE_VERSION>
+        <OPBASE_TIMESTAMP>$(TIMESTAMP_NO)</OPBASE_TIMESTAMP>
+    </generate_info>
+    <generate_info value="scene.info" dst_path="share/info/opbase" install_path="share/info/opbase" install_mod="440">
+        <os>$(OS_NAME)</os>
+        <os_version>$(OS_VER)</os_version>
+        <arch>$(ARCH)</arch>
+    </generate_info>
+    <file_info value="ops_base_script" copy_type="source" src_path="" dst_path="share/info/opbase" install_path="share/info/opbase">
+        <file value="script" entity="true"/>
+        <file value="version.info" dst_path="share/info/opbase"/>
+    </file_info>
+    <file_info value="ops_base_script" copy_type="source" src_path="" dst_path="opp" install_path="opp">
+        <file value="version.info" dst_path="opp"/>
+    </file_info>
+    <generate_info value="scene.info" dst_path="opp" install_path="opp" install_mod="440">
+        <os>$(OS_NAME)</os>
+        <os_version>$(OS_VER)</os_version>
+        <arch>$(ARCH)</arch>
+    </generate_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/pkg_inc" install_path="$(TARGET_ENV)/pkg_inc" install_type="all"> 
+        <file value="aicpu_common" install_mod="550" entity="true"/> 
+        <file value="op_common" install_mod="550" entity="true"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/conf" install_path="$(TARGET_ENV)/conf" install_type="all">
+        <file value="dump_tool_config.ini" install_mod="550" entity="true"/>
+    </file_info>
+    <file_info value="ops_base_lib" copy_type="delivery" src_path="" dst_path="$(TARGET_ENV)/lib64" install_path="$(TARGET_ENV)/lib64" install_mod="440">
+        <file value="libops_base.so" file_type="shared"/>
+    </file_info>
+    <file_info value="ops_base_lib_aicpu" copy_type="delivery" src_path="" dst_path="$(TARGET_ENV)/lib64" install_path="$(TARGET_ENV)/lib64" install_mod="440">
+        <file value="libaicpu_context.a" file_type="shared"/>
+        <file value="libaicpu_nodedef.a" file_type="shared"/>
+        <file value="libbase_ascend_protobuf.a" file_type="shared"/>
+        <file value="libaicpu_context_host.a" file_type="shared"/>
+        <file value="libaicpu_nodedef_host.a" file_type="shared"/>
+        <file value="libhost_ascend_protobuf.a" file_type="shared"/>
+    </file_info>
+    <file_info value="ops_base_lib_aicpu_cust" copy_type="delivery" src_path="" dst_path="$(TARGET_ENV)/lib64/device/lib64" install_path="$(TARGET_ENV)/lib64/device/lib64" install_mod="440">
+        <file value="libaicpu_cust_log.a" file_type="shared"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aclnn" install_path="$(TARGET_ENV)/include/aclnn" install_type="all">
+        <file value="acl_meta.h" install_mod="550" install_softlink="runtime/include/aclnn/acl_meta.h"/>
+        <file value="aclnn_base.h" install_mod="550" install_softlink="runtime/include/aclnn/aclnn_base.h"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aclnn/opdev" install_path="$(TARGET_ENV)/include/aclnn/opdev" install_type="all">
+        <file value="bfloat16.h" install_mod="550"/>
+        <file value="common_types.h" install_mod="550"/>
+        <file value="data_type_utils.h" install_mod="550"/>
+        <file value="fast_vector.h" install_mod="550"/>
+        <file value="float4_e1m2.h" install_mod="550"/>
+        <file value="float4_e2m1.h" install_mod="550"/>
+        <file value="float6_e2m3.h" install_mod="550"/>
+        <file value="float6_e3m2.h" install_mod="550"/>
+        <file value="float8_e4m3fn.h" install_mod="550"/>
+        <file value="float8_e5m2.h" install_mod="550"/>
+        <file value="float8_e8m0.h" install_mod="550"/>
+        <file value="format_utils.h" install_mod="550"/>
+        <file value="fp16_t.h" install_mod="550"/>
+        <file value="framework_op.h" install_mod="550"/>
+        <file value="hifloat4.h" install_mod="550"/>
+        <file value="hifloat8.h" install_mod="550"/>
+        <file value="make_op_executor.h" install_mod="550"/>
+        <file value="object.h" install_mod="550"/>
+        <file value="op_arg_def.h" install_mod="550"/>
+        <file value="op_cache_container.h" install_mod="550"/>
+        <file value="op_cache.h" install_mod="550"/>
+        <file value="op_config.h" install_mod="550"/>
+        <file value="op_def.h" install_mod="550"/>
+        <file value="op_dfx.h" install_mod="550"/>
+        <file value="op_errno.h" install_mod="550"/>
+        <file value="op_executor.h" install_mod="550"/>
+        <file value="op_log.h" install_mod="550"/>
+        <file value="platform.h" install_mod="550"/>
+        <file value="pool_allocator.h" install_mod="550"/>
+        <file value="shape_utils.h" install_mod="550"/>
+        <file value="small_vector.h" install_mod="550"/>
+        <file value="tensor_view_utils.h" install_mod="550"/>
+    </file_info>
+        <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aclnn/opdev/op_common" install_path="$(TARGET_ENV)/include/aclnn/opdev/op_common" install_type="all">
+        <file value="data_type_utils.h" install_mod="550"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aclnn/opdev/aicpu" install_path="$(TARGET_ENV)/include/aclnn/opdev/aicpu" install_type="all">
+        <file value="aicpu_any_value.h" install_mod="550"/>
+        <file value="aicpu_args_handler.h" install_mod="550"/>
+        <file value="aicpu_ext_info_handle.h" install_mod="550"/>
+        <file value="aicpu_kernel_launcher.h" install_mod="550"/>
+        <file value="aicpu_task.h" install_mod="550"/>
+        <file value="aicpu_utils.h" install_mod="550"/>
+    </file_info>
+    <file_info value="ops_base_lib" copy_type="delivery" src_path="" dst_path="$(TARGET_ENV)/lib64" install_path="$(TARGET_ENV)/lib64" install_mod="440">
+        <file value="libnnopbase.so" file_type="shared"/>
+        <file value="libdummy_tls.so" file_type="shared"/>
+    </file_info>
+    <file_info value="stub_x86_64" copy_type="delivery" dst_path="$(TARGET_ENV)/devlib/linux/x86_64" install_path="$(TARGET_ENV)/devlib/linux/x86_64" install_mod="440" optional="true">
+        <file value="libnnopbase.so" file_type="shared"/>
+    </file_info>
+    <file_info value="stub_aarch64" copy_type="delivery" dst_path="$(TARGET_ENV)/devlib/linux/aarch64" install_path="$(TARGET_ENV)/devlib/linux/aarch64" install_mod="440" optional="true">
+        <file value="libnnopbase.so" file_type="shared"/>
+    </file_info>
+
+    <file_info value="aclnnop_dir" copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include" install_path="$(TARGET_ENV)/include" install_type="all">
+      <file value="aclnnop" install_mod="550"/>
+    </file_info>
+
+    <block_info dependtree="false" dst_path="" block_conf_path="ascend">
+        <block name="EngineeringCommon"/>
+        <block name="AicpuCommonInc"/>
+        <block name="EngineeringFiles"/>
+        <block name="DevlibCommon"/>
+    </block_info>
+    <dir_info value="opbase" install_path="opbase" install_mod="550" install_type="all">
+        <path value="share" install_mod="750"/>
+        <path value="share/info" install_mod="750"/>
+        <path value="share/info/opbase" install_mod="750"/>
+        <path value="share/info/opbase/script" install_mod="550"/>
+        <path value="$(TARGET_ENV)/lib64/device" install_mod="550"/>
+        <path value="$(TARGET_ENV)/lib64/device/lib64" install_mod="550"/>
+    </dir_info>
+    <dir_info value="opbase" install_path="" install_mod="550" install_type="all">
+        <path value="opp" install_mod="750"/>
+        <path value="opp/vendors" install_mod="750"/>
+        <path value="runtime" install_mod="750"/>
+        <path value="runtime/include" install_mod="550"/>
+        <path value="runtime/include/aclnn" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aicpu_common" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aicpu" install_mod="550"/>
+        <path value="$(TARGET_ENV)/pkg_inc/op_common" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aclnn" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aclnn/opdev" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aclnn/opdev/op_common" install_mod="550"/>
+        <path value="$(TARGET_ENV)/include/aclnn/opdev/aicpu" install_mod="550"/>
+    </dir_info>
+</config>
