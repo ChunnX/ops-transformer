@@ -30,3 +30,7 @@ from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_n
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
+from .buffer import Buffer
+from .dispatch_layout import npu_dispatch_layout
+from .moe_dispatch_prefill import npu_moe_dispatch_prefill
+from .moe_combine_prefill import npu_moe_combine_prefill
