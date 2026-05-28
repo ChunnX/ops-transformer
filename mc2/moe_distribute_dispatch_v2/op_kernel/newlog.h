@@ -39,27 +39,27 @@ public:
     __aicore__ inline uint32_t GetElementWidth(T val);
 
     template<typename T, size_t N>
-    __aicore__  inline void PrintLevel(const LocalTensor<T>& tensor, size_t actual_size,
+    __aicore__  inline void PrintLevel(const AscendC::LocalTensor<T>& tensor, size_t actual_size,
                        const uint32_t (&shape)[N], const int (&strides)[N],
                        uint32_t max_element_width);
 
     template<typename T, size_t N>
-    __aicore__ inline  void PrintValue(const LocalTensor<T>& tensor, const uint32_t (&shape)[N]);
+    __aicore__ inline  void PrintValue(const AscendC::LocalTensor<T>& tensor, const uint32_t (&shape)[N]);
 
     template<typename T, size_t N>
-    __aicore__  inline void PrintLevel(const GlobalTensor<T>& tensor, size_t actual_size,
+    __aicore__  inline void PrintLevel(const AscendC::GlobalTensor<T>& tensor, size_t actual_size,
                         const uint32_t (&shape)[N], const int (&strides)[N],
                         uint32_t max_element_width);
     
 
     template<typename T, size_t N>
-    __aicore__ inline void PrintValue(const GlobalTensor<T>& tensor, const uint32_t (&shape)[N]);
+    __aicore__ inline void PrintValue(const AscendC::GlobalTensor<T>& tensor, const uint32_t (&shape)[N]);
     
     template <typename T,size_t N>
-    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, LocalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
+    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, AscendC::LocalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
 
     template <typename T,size_t N>
-    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, GlobalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
+    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, AscendC::GlobalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
 
 private:
     int32_t rankId_ = -1;
@@ -133,7 +133,7 @@ __aicore__ inline uint32_t Log::GetElementWidth(T val) {
 }
 
 template<typename T, size_t N>
-__aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t actual_size,
+__aicore__  inline void Log::PrintLevel(const AscendC::LocalTensor<T>& tensor, size_t actual_size,
                        const uint32_t (&shape)[N], const int (&strides)[N],
                        uint32_t max_element_width) {
     struct State {
@@ -218,7 +218,7 @@ __aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t act
 
 
 template<typename T, size_t N>
-__aicore__ inline void Log::PrintValue(const LocalTensor<T>& tensor, const uint32_t (&shape)[N]) {
+__aicore__ inline void Log::PrintValue(const AscendC::LocalTensor<T>& tensor, const uint32_t (&shape)[N]) {
     PipeBarrier<PIPE_ALL>();
     size_t actual_size = tensor.GetSize();
 
@@ -241,7 +241,7 @@ __aicore__ inline void Log::PrintValue(const LocalTensor<T>& tensor, const uint3
 
 
 template <typename T,size_t N>
-__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, LocalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, AscendC::LocalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
     cce::print("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
     cce::print("%s\n", msg);
     if(tensor.GetSize() == 0){
@@ -257,7 +257,7 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 }
 
 template<typename T, size_t N>
-__aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t actual_size,
+__aicore__  inline void Log::PrintLevel(const AscendC::GlobalTensor<T>& tensor, size_t actual_size,
                        const uint32_t (&shape)[N], const int (&strides)[N],
                        uint32_t max_element_width) {
     struct State {
@@ -341,7 +341,7 @@ __aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t ac
 }
 
 template<typename T, size_t N>
-__aicore__  inline void Log::PrintValue(const GlobalTensor<T>& tensor, const uint32_t (&shape)[N]) {
+__aicore__  inline void Log::PrintValue(const AscendC::GlobalTensor<T>& tensor, const uint32_t (&shape)[N]) {
     PipeBarrier<PIPE_ALL>();
     size_t actual_size = tensor.GetSize();
 
@@ -364,7 +364,7 @@ __aicore__  inline void Log::PrintValue(const GlobalTensor<T>& tensor, const uin
 }
 
 template <typename T,size_t N>
-__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, GlobalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, AscendC::GlobalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
     cce::print("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
     cce::print("%s\n", msg);
     bool cast = !is_decimal_integer_v<T> && !is_unsigned_integer_v<T> && !is_fp_point_v<T>;
@@ -380,7 +380,7 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
         cce::print("tensor is empty\n");
         return;
     }
-    GlobalTensor<T> tempTensor;
+    AscendC::GlobalTensor<T> tempTensor;
     tempTensor.SetGlobalBuffer(const_cast<__gm__ T*>(tensor.GetPhyAddr()),elemNum);
     PrintValue(tempTensor, shape);
 }
@@ -426,21 +426,21 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 //     tpipe_->InitBuffer(sharedTmpBuf, 128 * activeBsCnt); // TODO:: 这理需要从tiling获取
 
 
-//     LocalTensor<uint8_t> gatherMaskTensorInt8 = gatherMaskTBuf_.Get<uint8_t>();
-//     LocalTensor<int32_t> expertsIndexTensor = subExpBuf_.Get<int32_t>();
-//     LocalTensor<int32_t> validExpertIndexTensor = tempBuf.Get<int32_t>(); // 这里有效的index一定小于等于activeMaskBsCnt_;
+//     AscendC::LocalTensor<uint8_t> gatherMaskTensorInt8 = gatherMaskTBuf_.Get<uint8_t>();
+//     AscendC::LocalTensor<int32_t> expertsIndexTensor = subExpBuf_.Get<int32_t>();
+//     AscendC::LocalTensor<int32_t> validExpertIndexTensor = tempBuf.Get<int32_t>(); // 这里有效的index一定小于等于activeMaskBsCnt_;
 
-//     LocalTensor<float32_t> dstExpIdTensorFP32 = dstExpBuf_.Get<float32_t>();
-//     LocalTensor<float32_t> tempTensorFp32 = subExpBuf_.Get<float32_t>();
-//     LocalTensor<float32_t> sharedTensorFp32 = sharedTmpBuf.Get<float32_t>();
-//     LocalTensor<int32_t> tempTensorInt32 = subExpBuf_.Get<int32_t>();
-//     LocalTensor<int32_t> dstExpIdTensorInt32 = dstExpBuf_.Get<int32_t>();
-//     LocalTensor<uint32_t> dstOffset = subExpBuf_.Get<uint32_t>();
-//     LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
-//     LocalTensor<int16_t> tempTensorInt16 = subExpBuf_.Get<int16_t>();
-//     LocalTensor<int16_t> compareInt16 = tempBuf.Get<int16_t>();
-//     LocalTensor<half> compareFp16 = tempBuf.Get<half>();
-//     LocalTensor<uint8_t> sharedTensorInt8 = sharedTmpBuf.Get<uint8_t>();
+//     AscendC::LocalTensor<float32_t> dstExpIdTensorFP32 = dstExpBuf_.Get<float32_t>();
+//     AscendC::LocalTensor<float32_t> tempTensorFp32 = subExpBuf_.Get<float32_t>();
+//     AscendC::LocalTensor<float32_t> sharedTensorFp32 = sharedTmpBuf.Get<float32_t>();
+//     AscendC::LocalTensor<int32_t> tempTensorInt32 = subExpBuf_.Get<int32_t>();
+//     AscendC::LocalTensor<int32_t> dstExpIdTensorInt32 = dstExpBuf_.Get<int32_t>();
+//     AscendC::LocalTensor<uint32_t> dstOffset = subExpBuf_.Get<uint32_t>();
+//     AscendC::LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
+//     AscendC::LocalTensor<int16_t> tempTensorInt16 = subExpBuf_.Get<int16_t>();
+//     AscendC::LocalTensor<int16_t> compareInt16 = tempBuf.Get<int16_t>();
+//     AscendC::LocalTensor<half> compareFp16 = tempBuf.Get<half>();
+//     AscendC::LocalTensor<uint8_t> sharedTensorInt8 = sharedTmpBuf.Get<uint8_t>();
 //     Duplicate<int32_t>(expertOffsetCntTensor_, 0, expertIdsCnt_); //TOken * moeId
 
 
@@ -460,7 +460,7 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 //         Xor(compareInt16, dstExpIdTensorInt16, tempTensorInt16, sharedTensorInt8, calCnt);
 //         PipeBarrier<PIPE_V>();
 //         if(isExpertMaskFlag_) {
-//             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
+//             AscendC::LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
 //             Cast(tempTensorInt16, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
 //             Mul(compareInt16, compareInt16, tempTensorInt16, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
 //             PipeBarrier<PIPE_V>(); 
@@ -497,7 +497,7 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 //         PipeBarrier<PIPE_V>();
 //         Muls(validExpertIndexTensor, validExpertIndexTensor, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendNumperExpert));
 //         PipeBarrier<PIPE_V>();
-//         LocalTensor<uint32_t> dstoffset = validExpertIndexTensor.ReinterpretCast<uint32_t>();
+//         AscendC::LocalTensor<uint32_t> dstoffset = validExpertIndexTensor.ReinterpretCast<uint32_t>();
 //         Scatter(expertOffsetCntTensor_, dstExpIdTensorInt32, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
 //         PipeBarrier<PIPE_V>();
 //     }
