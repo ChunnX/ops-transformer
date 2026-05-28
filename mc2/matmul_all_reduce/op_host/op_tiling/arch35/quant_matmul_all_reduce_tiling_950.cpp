@@ -1017,10 +1017,8 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    bool isAicpu = (commMode == Mc2Comm::COMM_MODE_AICPU);
     auto &&param = MutableRCSTilingData();
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !isAicpu) {
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
