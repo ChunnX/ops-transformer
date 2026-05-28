@@ -85,14 +85,12 @@ __aicore__ constexpr GmmsqUbBufferInfo GetGMMSQMxA8W4BufferInfo()
     };
 }
 
-#define GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM                                                        \
-    template <typename xType, typename wType, typename biasType, typename yType,                   \
-              typename yScaleType, bool hasBias, const WqmmConfig &wqmmConfig,                     \
-              const VecAntiQuantConfig &vecConfig>
+#define GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM                                                                            \
+    template <typename xType, typename wType, typename biasType, typename yType, typename yScaleType, bool hasBias,    \
+              const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
-#define GMMSQ_WQ_VEC_COMPUTE_CLASS                                                                  \
-    GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType,                          \
-                               hasBias, wqmmConfig, vecConfig>
+#define GMMSQ_WQ_VEC_COMPUTE_CLASS                                                                                     \
+    GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType, hasBias, wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 class GMMSQWeightQuantVecCompute {
@@ -157,7 +155,7 @@ private:
     constexpr static uint32_t C0_SIZE = C0_SIZE_B8;
     constexpr static uint64_t VEC_REG_ELEM = VECTOR_REG_WIDTH;
     constexpr static uint64_t UB_AVAILABLE_SIZE = 248 * GetKBUnit<int8_t>();
-    constexpr static uint64_t DIVISOR_FACTOR_TWO= 2;
+    constexpr static uint64_t DIVISOR_FACTOR_TWO = 2;
 };
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -231,9 +229,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SetVToMTE2()
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSize, uint64_t kGmOffset,
-                                                               uint64_t kL1Offset, uint64_t biasGmOffset,
-                                                               uint64_t biasRealSize,
-                                                               const BasicBlockOffsetParam &offsetParam)
+                                                              uint64_t kL1Offset, uint64_t biasGmOffset,
+                                                              uint64_t biasRealSize,
+                                                              const BasicBlockOffsetParam &offsetParam)
 {
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
@@ -257,30 +255,28 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize]
             .template ReinterpretCast<wType>(),
-        wGlobal_[kOffset + swishNOffset],
-        CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        wGlobal_[kOffset + swishNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
         CeilAlign(offsetParam.nL1Size / 2, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
-        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
-        offsetParam.nAlign * C0_SIZE);
+        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, offsetParam.nAlign * C0_SIZE);
 
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) * UB_BUFFER_INFO.weightLowBitSingleBufferSize +
                       (offsetParam.nL1Size / DIVISOR_FACTOR_TWO * C0_SIZE / 2)]
             .template ReinterpretCast<wType>(),
-        wGlobal_[kOffset + gateNOffset],
-        CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        wGlobal_[kOffset + gateNOffset], CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
         CeilAlign(offsetParam.nL1Size / 2, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
-        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
-        offsetParam.nAlign * C0_SIZE);
+        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE, offsetParam.nAlign * C0_SIZE);
 
     SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(
-    uint64_t kRealSize, uint64_t biasRealSize, uint64_t kGmOffset, const LocalTensor<xType> &weightHighBitL1,
-    const LocalTensor<biasType> &biasL1, const BasicBlockOffsetParam &offsetParam)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(uint64_t kRealSize, uint64_t biasRealSize,
+                                                                              uint64_t kGmOffset,
+                                                                              const LocalTensor<xType> &weightHighBitL1,
+                                                                              const LocalTensor<biasType> &biasL1,
+                                                                              const BasicBlockOffsetParam &offsetParam)
 {
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V + (ubComputeLoopIdx_ & (UB_BUFFER_INFO.weightHighBitBufferNum - 1)));
 
@@ -306,8 +302,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(
-    uint64_t biasRealSize, uint64_t ubMte2KSize, uint64_t kGmOffset, const BasicBlockOffsetParam &offsetParam)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(uint64_t biasRealSize, uint64_t ubMte2KSize,
+                                                                            uint64_t kGmOffset,
+                                                                            const BasicBlockOffsetParam &offsetParam)
 {
     MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams;
     uint64_t ubMte2BufferIdx = weightMte2LoopIdx_ & (vecConfig.ubMte2BufferNum - 1);
@@ -343,8 +340,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyWeightHighBitForAligned(
-    uint64_t antiQuantRealN, uint64_t antiQuantRealK, const LocalTensor<xType> &weightHighBitL1)
+__aicore__ inline void
+GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyWeightHighBitForAligned(uint64_t antiQuantRealN, uint64_t antiQuantRealK,
+                                                        const LocalTensor<xType> &weightHighBitL1)
 {
     DataCopyParams params;
     params.blockCount = CeilAlign(antiQuantRealK, static_cast<uint64_t>(C0_SIZE)) *
@@ -359,10 +357,11 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyWeightHighBitForAligned(
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<float> &yF32,
-                                                           const BasicBlockOffsetParam &param)
+                                                          const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
@@ -376,17 +375,17 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SwiGLU(const LocalTensor<floa
     constexpr uint16_t sizePerRepeat = AscendC::VECTOR_REG_WIDTH / sizeof(float);
     uint16_t oneRowRepeatTimes = CeilDivide(static_cast<uint64_t>(nHalfSize), static_cast<uint64_t>(sizePerRepeat));
 
-    GmmSwigluVf<float>(yAddr, gateAddr, gluResAddr,
-                       static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(nHalfSize),
+    GmmSwigluVf<float>(yAddr, gateAddr, gluResAddr, static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(nHalfSize),
                        nSrcUbAligned, nDstUbAligned, oneRowRepeatTimes, sizePerRepeat);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeMaxExp(const LocalTensor<float> &yF32,
-                                                                  const BasicBlockOffsetParam &param)
+                                                                 const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     uint64_t nHalfSize = param.nL1Size / 2;
@@ -395,21 +394,20 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeMaxExp(const LocalTens
     uint32_t totalDataInUb = static_cast<uint32_t>(mRealSize * nDstUbAligned);
     uint32_t vlForHalfNumber = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
     uint16_t elementAfterReduce = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(32);
-    uint16_t loopDataNum = CeilDivide(static_cast<uint64_t>(totalDataInUb),
-                                   static_cast<uint64_t>(vlForHalfNumber) * 2);
+    uint16_t loopDataNum = CeilDivide(static_cast<uint64_t>(totalDataInUb), static_cast<uint64_t>(vlForHalfNumber) * 2);
 
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)maxB16Buffer_.GetPhyAddr();
 
-    ComputeMaxExpVf(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum,
-                    vlForHalfNumber, elementAfterReduce);
+    ComputeMaxExpVf(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum, vlForHalfNumber, elementAfterReduce);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size ,DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
@@ -431,16 +429,17 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlock
         fpEmax = static_cast<uint16_t>(0x0780);
     }
 
-    ComputeScaleVf(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr,
-                   totalScaleInUb, loopScaleNum, vlForHalfNumber, fpEmax);
+    ComputeScaleVf(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, totalScaleInUb, loopScaleNum, vlForHalfNumber,
+                   fpEmax);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(const LocalTensor<float> &yF32,
-                                                                                 const BasicBlockOffsetParam &param)
+                                                                                const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
@@ -449,50 +448,57 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(
     uint32_t totalDataInUb = static_cast<uint32_t>(mRealSize * nDstUbAligned);
     uint32_t vlForHalfNumber = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
     uint16_t elementAfterReduce = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(32);
-    uint16_t loopDataNum = CeilDivide(static_cast<uint64_t>(totalDataInUb),
-                                   static_cast<uint64_t>(vlForHalfNumber) * 2);
+    uint16_t loopDataNum = CeilDivide(static_cast<uint64_t>(totalDataInUb), static_cast<uint64_t>(vlForHalfNumber) * 2);
 
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
     __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)yFp8Buffer_.GetPhyAddr();
 
     if constexpr (IsSameType<yType, fp8_e4m3fn_t>::value || IsSameType<yType, fp8_e5m2_t>::value) {
-        ComputeDataForQuantTargetFp8Vf<yType>(gluResAddr, halfScaleLocalAddr, outLocalAddr,
-                                              totalDataInUb, loopDataNum,
+        ComputeDataForQuantTargetFp8Vf<yType>(gluResAddr, halfScaleLocalAddr, outLocalAddr, totalDataInUb, loopDataNum,
                                               vlForHalfNumber, elementAfterReduce);
     }
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yType *yFp32Addr)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyOutputFromUb2Gm(const BasicBlockOffsetParam &param,
+                                                                       __gm__ yType *yFp32Addr)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     yFp32Global_.SetGlobalBuffer(yFp32Addr);
     uint64_t nHalfSize = param.nL1Size / DIVISOR_FACTOR_TWO;
 
-    uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) * CeilDivide(param.nSize , DIVISOR_FACTOR_TWO) + param.nOffset;
+    uint64_t yGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) *
+                             CeilDivide(param.nSize, DIVISOR_FACTOR_TWO) +
+                         param.nOffset;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
 
-    DataCopyPad2D(yFp32Global_[yGmOffset], yFp8Buffer_, mRealSize, nHalfSize, nHalfSize, param.nSize / DIVISOR_FACTOR_TWO);
+    DataCopyPad2D(yFp32Global_[yGmOffset], yFp8Buffer_, mRealSize, nHalfSize, nHalfSize,
+                  param.nSize / DIVISOR_FACTOR_TWO);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param, __gm__ yScaleType *yScaleAddr)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const BasicBlockOffsetParam &param,
+                                                                      __gm__ yScaleType *yScaleAddr)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     yScaleGlobal_.SetGlobalBuffer(yScaleAddr);
     uint64_t nGroupCount = CeilDivide(param.nL1Size / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
     uint64_t nTotalGroupCount = CeilDivide(param.nSize / DIVISOR_FACTOR_TWO, static_cast<uint64_t>(MX_GROUPSIZE));
 
-    uint64_t scaleGmOffset = (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) * nTotalGroupCount + param.nOffset / MX_GROUPSIZE;
+    uint64_t scaleGmOffset =
+        (param.mOffset + AscendC::GetSubBlockIdx() * CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) * nTotalGroupCount +
+        param.nOffset / MX_GROUPSIZE;
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -507,8 +513,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyScaleFromUb2Gm(const Basi
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::TransMxScaleLayout(const BasicBlockOffsetParam &param)
 {
-    uint64_t mRealSize = AscendC::GetSubBlockIdx()? (param.mL1Size - CeilDivide(param.mL1Size , DIVISOR_FACTOR_TWO)) : CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
-    if(mRealSize == 0 || param.mL1Size == 0){
+    uint64_t mRealSize = AscendC::GetSubBlockIdx() ? (param.mL1Size - CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO)) :
+                                                     CeilDivide(param.mL1Size, DIVISOR_FACTOR_TWO);
+    if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
     uint64_t nHalfSize = param.nL1Size / 2;
@@ -517,8 +524,8 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::TransMxScaleLayout(const Basi
     __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr();
     __ubuf__ int8_t *quantScaleBlockOutputInUbAddr = (__ubuf__ int8_t *)scaleE8M0Buffer_.GetPhyAddr();
 
-    TransMxScaleLayoutVf(quantScaleOutputInUbAddr, quantScaleBlockOutputInUbAddr,
-                         static_cast<uint16_t>(mRealSize), static_cast<uint16_t>(scaleBlockN));
+    TransMxScaleLayoutVf(quantScaleOutputInUbAddr, quantScaleBlockOutputInUbAddr, static_cast<uint16_t>(mRealSize),
+                         static_cast<uint16_t>(scaleBlockN));
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
@@ -533,6 +540,6 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::End()
     }
 }
 
-}
+} // namespace GMMSQWeightQuant
 
 #endif

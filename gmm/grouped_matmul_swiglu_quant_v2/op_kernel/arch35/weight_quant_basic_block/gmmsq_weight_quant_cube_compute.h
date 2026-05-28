@@ -38,8 +38,8 @@ using AscendC::WaitFlag;
 namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM                                                                           \
-    template <typename xType, typename biasType, typename weightScaleType, typename xScaleType,              \
-              typename yType, bool hasBias, const WqmmConfig &wqmmConfig>
+    template <typename xType, typename biasType, typename weightScaleType, typename xScaleType, typename yType,        \
+              bool hasBias, const WqmmConfig &wqmmConfig>
 
 #define GMMSQ_WQ_CUBE_COMPUTE_CLASS                                                                                    \
     GMMSQWeightQuantCubeCompute<xType, biasType, weightScaleType, xScaleType, yType, hasBias, wqmmConfig>
@@ -49,12 +49,12 @@ class GMMSQWeightQuantCubeCompute {
 public:
     __aicore__ inline GMMSQWeightQuantCubeCompute(){};
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias,
-                                            __gm__ weightScaleType *weightScale,
-                                            __gm__ xScaleType *xScale);
+                                            __gm__ weightScaleType *weightScale, __gm__ xScaleType *xScale);
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                       const LocalTensor<biasType> &biasL1);
-    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
-                                        uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
+    __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
+                                        uint64_t kMutilLoadL1Size, uint64_t cvLoopIdx,
+                                        const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
@@ -71,8 +71,8 @@ public:
 
 private:
     __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
-    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize,
-                                                  uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
+    __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1RealSize,
+                                                  Dn2NzParams &dn2NzParams);
     using L0DataType = typename AscendC::GetL0DataType<xType, true>::Type;
 
     static constexpr uint64_t L0_BUF_NUM = 2;
@@ -126,8 +126,8 @@ private:
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
-                                                                uint64_t mxBiasL1DbOffset,
-                                                                const LocalTensor<biasType> &biasL1)
+                                                               uint64_t mxBiasL1DbOffset,
+                                                               const LocalTensor<biasType> &biasL1)
 {
     biasL1_ = biasL1;
     biasL1DbOffset_ = mxBiasL1DbOffset;
@@ -156,9 +156,10 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1Remain
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
-    __gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias, __gm__ weightScaleType *weightScale,
-    __gm__ xScaleType *xScale)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y,
+                                                                     __gm__ biasType *bias,
+                                                                     __gm__ weightScaleType *weightScale,
+                                                                     __gm__ xScaleType *xScale)
 {
     xGlobal_.SetGlobalBuffer(x);
     yGlobal_.SetGlobalBuffer(y);
@@ -180,7 +181,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::WaitScaleMTE1ToMTE2(uint64_t
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(uint64_t kbGmOffset,
-                                                                        const BasicBlockOffsetParam &offsetParam)
+                                                                       const BasicBlockOffsetParam &offsetParam)
 {
     if ((kbGmOffset + offsetParam.kbL1Size) % MX_SCALE_K_L1_SIZE == 0 ||
         kbGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
@@ -191,7 +192,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(uint64_t 
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(uint64_t kaGmOffset,
-                                                                    const BasicBlockOffsetParam &offsetParam)
+                                                                   const BasicBlockOffsetParam &offsetParam)
 {
     if (aL1DbNum_ > SINGLE_BUFFER_NUM && kaGmOffset % offsetParam.kaL1Size == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
@@ -200,7 +201,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(uint64_t kaGm
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uint64_t kaGmOffset,
-                                                                    const BasicBlockOffsetParam &offsetParam)
+                                                                  const BasicBlockOffsetParam &offsetParam)
 {
     if ((kaGmOffset + offsetParam.kbL1Size) % offsetParam.kaL1Size == 0 ||
         kaGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
@@ -211,7 +212,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uint64_t kaGmO
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBlockOffsetParam &param,
-                                                                       uint64_t kbL1Offset)
+                                                                      uint64_t kbL1Offset)
 {
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
@@ -243,28 +244,27 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     GlobalTensor<half> f16ScaleBSwishGlobal;
     f16ScaleBSwishGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetSwish].GetPhyAddr(),
                                          ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
-    auto f16ScaleBSwishLocal = weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_]
-                                   .template ReinterpretCast<half>();
+    auto f16ScaleBSwishLocal =
+        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_].template ReinterpretCast<half>();
     DataCopy(f16ScaleBSwishLocal, f16ScaleBSwishGlobal, scaleBdn2NzParamsSwish);
 
     // Copy weightScale part2
     Dn2NzParams scaleBdn2NzParamsGate;
-    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize,
-                           scaleBdn2NzParamsGate);
+    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsGate);
     int64_t scaleBGmOffsetGate = gateNOffset + kScaleOffset;
     GlobalTensor<half> f16ScaleBGateGlobal;
     f16ScaleBGateGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetGate].GetPhyAddr(),
                                         ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
-    auto f16ScaleBGateLocal = weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ +
-                                              ((param.nL1Size / 2) * scaleKL1RealSize)]
-                                  .template ReinterpretCast<half>();
+    auto f16ScaleBGateLocal =
+        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + ((param.nL1Size / 2) * scaleKL1RealSize)]
+            .template ReinterpretCast<half>();
 
     DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param,
-                                                                        int64_t kaGmOffset, uint64_t cvLoopIdx)
+                                                                       int64_t kaGmOffset, uint64_t cvLoopIdx)
 {
     if (kaGmOffset % param.kaL1Size != 0) {
         return;
@@ -288,10 +288,9 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const Bas
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1,
-                                                                  int64_t kbOffset, uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
-                                                                  uint64_t cvLoopIdx,
-                                                                  const BasicBlockOffsetParam &param)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset,
+                                                                 uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
+                                                                 uint64_t cvLoopIdx, const BasicBlockOffsetParam &param)
 {
     SetFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
     WaitFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
@@ -328,7 +327,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
         LoadAAndScaleL1ToL0(l0a_[loopId * L0_BUF_OFFSET_B8],
                             aL1_[aL1Offset + mL1AlignSize * ((l1KOffset + kbOffset) % param.kaL1Size)],
                             xScaleAL1_[(scaleBufIdx_ & 1) * xScaleAL1DbOffset_ +
-                                        BLOCK_CUBE * ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE / MX_GROUPSIZE)],
+                                       BLOCK_CUBE * ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE / MX_GROUPSIZE)],
                             l0CopyAndCalcParams);
         LoadBAndScaleL1ToL0(l0b_[loopId * L0_BUF_OFFSET_B8], weightL1[nL1AlignSize * l1KOffset],
                             weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ +
@@ -341,7 +340,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
-                                                                   const L0CopyAndCalcParams &l0CopyAndCalcParams)
+                                                                  const L0CopyAndCalcParams &l0CopyAndCalcParams)
 {
     if constexpr (hasBias) {
         if (l0CopyAndCalcParams.isFirstKLoop) {
@@ -368,17 +367,15 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopI
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t rowNum,
-                                                                            uint64_t scaleKGmSize,
-                                                                            uint64_t scaleKL1RealSize,
-                                                                            Dn2NzParams &dn2NzParams)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize,
+                                                                           uint64_t scaleKL1RealSize,
+                                                                           Dn2NzParams &dn2NzParams)
 {
     dn2NzParams.dnNum = 1;
     // 矩阵行数，即要搬运数据M/N轴大小
     dn2NzParams.dValue = rowNum;
     // 矩阵列数，K轴大小，B8按B16搬运，大小除以2
-    dn2NzParams.nValue =
-        CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);
+    dn2NzParams.nValue = CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);
     dn2NzParams.srcDnMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
     // 原始scale一行大小
     dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE);
@@ -400,9 +397,8 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::EndSync()
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::PadL1IfNotAlign(const LocalTensor<xType> &l1Buf,
-                                                                     uint64_t dbOffset, uint64_t dbIdx,
-                                                                     uint64_t realSize, uint64_t dimSize)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::PadL1IfNotAlign(const LocalTensor<xType> &l1Buf, uint64_t dbOffset,
+                                                                    uint64_t dbIdx, uint64_t realSize, uint64_t dimSize)
 {
     if (realSize % K_ALIGNMENT64 != 0) {
         uint64_t alignDimSize = CeilAlign(dimSize, static_cast<uint64_t>(BLOCK_CUBE));
@@ -414,7 +410,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::PadL1IfNotAlign(const LocalT
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::FillL1WithZero(const LocalTensor<uint32_t> &l1Buf,
-                                                                     uint64_t blockCount)
+                                                                   uint64_t blockCount)
 {
     AscendC::InitConstValueParams<uint32_t> initParams;
     initParams.repeatTimes = 1;
@@ -426,7 +422,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::FillL1WithZero(const LocalTe
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::GetTensorC(LocalTensor<yType> &yUb,
-                                                                const BasicBlockOffsetParam &param)
+                                                               const BasicBlockOffsetParam &param)
 {
     FixL0CToDstParams fixL0CToDstParams;
     fixL0CToDstParams.mL0Size = param.mL1Size;

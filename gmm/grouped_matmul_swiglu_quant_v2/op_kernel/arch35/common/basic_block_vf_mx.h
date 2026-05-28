@@ -46,5 +46,5 @@ static constexpr uint32_t E2M1_SHIFT_RIGHT_SIZE = 0x2;
 static constexpr uint32_t SHIFT_LEFT_SIZE = 0x4;
 static constexpr uint32_t E2M1_AND_MASK = 0x9C;
 
-} // namespace GMMSQWeightQuantWeightQuant
+} // namespace GMMSQWeightQuant
 #endif // GMMSQ_BASIC_BLOCK_VF_MX_H
