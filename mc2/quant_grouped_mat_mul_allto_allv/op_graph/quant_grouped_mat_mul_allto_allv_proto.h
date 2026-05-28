@@ -106,6 +106,7 @@ REG_OP(QuantGroupedMatMulAlltoAllv)
       .ATTR(comm_mode, String, "")
       .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
 
+
 }  // namespace ge
 
 

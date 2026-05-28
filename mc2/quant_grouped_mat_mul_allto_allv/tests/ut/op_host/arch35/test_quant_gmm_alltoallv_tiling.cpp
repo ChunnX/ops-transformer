@@ -168,7 +168,6 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
         },
         {
             {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epWorldSize)},
             {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.sendCounts)},
             {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.recvCounts)},
@@ -180,6 +179,7 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mmWeightQuantMode)},
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.commMode)},
             {"gmm_y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"mm_y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
