@@ -10,7 +10,7 @@
 
 ## 功能说明
 
-- 接口功能：实现MOE（Mixture of Experts）场景下的AlltoAll Dispatch通信带宽测试。该算子用于测试NPU设备间的通信带宽性能，每个rank根据`dst_rank_id`将token发送到对应的目标rank，实现数据的分布式分发。
+- 接口功能：实现MOE（Mixture of Experts）场景下的`AlltoAll Dispatch`通信带宽测试。该算子用于测试NPU设备间的通信带宽性能，每个rank根据`dst_rank_id`将token发送到对应的目标rank，实现数据的分布式分发。
 
     执行流程（mode=0 完整流程）：
     1. SendToMoeExpert：根据`dst_rank_id`将token写入目标rank的通信窗口

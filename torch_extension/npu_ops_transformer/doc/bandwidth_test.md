@@ -10,7 +10,7 @@
 
 -   API功能：
 
-    该算子实现MOE（Mixture of Experts）场景下的AlltoAll Dispatch通信带宽测试，用于测试NPU设备间的通信带宽性能。每个rank根据`dstrank_id`将token发送到对应的目标rank，实现数据的分布式分发。
+    该算子实现MOE（Mixture of Experts）场景下的`AlltoAll Dispatch`通信带宽测试，用于测试NPU设备间的通信带宽性能。每个rank根据`dstrank_id`将token发送到对应的目标rank，实现数据的分布式分发。
 
     执行流程（mode=0 完整流程）：
     1. SendToMoeExpert：根据`dstrank_id`将token写入目标rank的通信窗口
@@ -42,10 +42,10 @@ npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg='', 
 ## 参数说明
 
 -   **x** (`Tensor`)：必选参数，表示本卡发送的token数据。要求为2维张量，shape为(BS, H)，其中BS表示batch size（token数量），H表示hidden size（特征维度）。数据类型支持`float16`、`bfloat16`、`float32`，数据格式为ND，支持非连续的Tensor。
--   **dstrank\_id** (`Tensor`)：必选参数，表示每个token的目标rank索引。要求为1维张量，shape为(BS,)，每个元素表示对应token要发送到哪个rank，取值范围为[0, world_size)。数据类型支持`int32`，数据格式为ND，支持非连续的Tensor。
+-   **dst\_rank\_id** (`Tensor`)：必选参数，表示每个token的目标rank索引。要求为1维张量，shape为(BS,)，每个元素表示对应token要发送到哪个rank，取值范围为[0, world_size)。数据类型支持`int32`，数据格式为ND，支持非连续的Tensor。
 -   **group** (`String`)：必选参数，表示通信域名称（EP通信域）。字符串长度范围为[1, 128)。
 -   **world\_size** (`int`)：必选参数，表示通信域大小（rank总数）。取值范围为[2, 768]。
--   **max\_bs** (`int`)：必选参数，表示最大batch size大小。取值范围为(0, 512]。
+-   **max\_bs** (`int`)：必选参数，表示最大batch size大小。
 -   **mode** (`int`)：必选参数，表示执行模式。取值范围：
     - 0：精度模式（完整流程：发送+同步+接收）
     - 1：纯发模式（仅发送，用于单向带宽测试）
@@ -69,7 +69,7 @@ npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg='', 
 
 - **参数约束**：
     - world\_size 范围 [2, 768]。
-    - dstrank\_id 中每个元素的取值范围必须为 [0, world\_size)。
+    - dst\_rank\_id 中每个元素的取值范围必须为 [0, world\_size)。
     - mode 取值必须为 0 或 1。
     - group 字符串长度必须小于128。
 
