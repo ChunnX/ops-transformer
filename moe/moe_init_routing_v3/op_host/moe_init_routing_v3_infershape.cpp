@@ -788,16 +788,11 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
                                       "DT_FLOAT16 or DT_BF16");
             return ge::GRAPH_FAILED;
         }
-    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
+    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode || QuantMode::FP8_PERBLOCK_E5M2 == quantMode ||
+               QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
             OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
                                       "DT_FLOAT16 or DT_BF16");
-            return ge::GRAPH_FAILED;
-        }
-    } else if (QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
-        if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(context, "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16."
-                    "Current got unexpected dtype id of %d.", quantMode, xDtype);
             return ge::GRAPH_FAILED;
         }
     }
