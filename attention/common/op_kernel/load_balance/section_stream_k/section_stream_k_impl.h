@@ -484,7 +484,7 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IB
     s2Start = static_cast<uint32_t>(s2FirstToken) / m_param.s2BaseSize;
     s2End = ToOpenInterval(static_cast<uint32_t>(s2LastToken) / m_param.s2BaseSize); // end of block index
 
-    // Mask line passed through the right down point of the last block, the last block is actually all masked
+    // Mask line passed through the left down point of the last block, the last block is actually all masked
     if (s2LastToken % m_param.s2BaseSize == 0) {
         s2End--;
     }
