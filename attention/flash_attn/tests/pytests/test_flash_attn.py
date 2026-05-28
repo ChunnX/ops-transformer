@@ -476,7 +476,6 @@ if __name__ == "__main__":
         _int_cnt += 1
         if NPU_AVAILABLE:
             torch.npu.synchronize()
-            torch.npu.empty_cache()
 
         config = all_cases[name]
         try:
