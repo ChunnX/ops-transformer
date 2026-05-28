@@ -304,7 +304,7 @@ protected:
         }
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
-        tilingData_.set_sftgWorkspaceOffset(sftg_size);
+        tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += sftg_size * sizeof(float);
         tilingData_.set_dqWorkspaceOffset(usr_workspace_offset);
         usr_workspace_offset += dq_size * sizeof(float);
