@@ -84,8 +84,12 @@ class KernelGmmFinalizeRoutingPertokenDequantDeter<
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler> ||
                               AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitProScheduler>>> {
 public:
-    __aicore__ inline KernelGmmFinalizeRoutingPertokenDequantDeter() {}
-    __aicore__ inline ~KernelGmmFinalizeRoutingPertokenDequantDeter() {}
+    __aicore__ inline KernelGmmFinalizeRoutingPertokenDequantDeter()
+    {
+    }
+    __aicore__ inline ~KernelGmmFinalizeRoutingPertokenDequantDeter()
+    {
+    }
 
     using BlockPrologue = BlockPrologue_;
     using BlockEpilogueDequant = BlockEpilogueDequantFinalizeRoutingDeter_;
@@ -144,11 +148,15 @@ public:
         uint32_t deterWorkspaceSize;
         uint32_t coreNum;
         const TCubeTiling *__restrict matmulTiling;
-        __aicore__ GMMTiling() {}
+        __aicore__ GMMTiling()
+        {
+        }
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
                              uint8_t hasBias_, uint32_t deterWsSize_, uint32_t coreNum_)
             : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
-              hasBias(hasBias_), deterWorkspaceSize(deterWsSize_), coreNum(coreNum_) {}
+              hasBias(hasBias_), deterWorkspaceSize(deterWsSize_), coreNum(coreNum_)
+        {
+        }
     };
 
     struct Arguments {
@@ -239,11 +247,15 @@ public:
         Get<DETER_IDX_A_OFFSETS>(baseOffset_) = Get<DETER_IDX_A_OFFSETS>(baseOffset_) + m * k;
         if constexpr (formatB == CubeFormat::NZ) {
             if (transB) {
-                Get<DETER_IDX_B_OFFSETS>(baseOffset_) = Get<DETER_IDX_B_OFFSETS>(baseOffset_) +
-                    CeilDiv(k, DETER_WEIGHT_TILE_K_LARGE) * CeilDiv(n, DETER_WEIGHT_TILE_N_SMALL) * DETER_WEIGHT_TILE_CAPACITY;
+                Get<DETER_IDX_B_OFFSETS>(baseOffset_) =
+                    Get<DETER_IDX_B_OFFSETS>(baseOffset_) + CeilDiv(k, DETER_WEIGHT_TILE_K_LARGE) *
+                                                                CeilDiv(n, DETER_WEIGHT_TILE_N_SMALL) *
+                                                                DETER_WEIGHT_TILE_CAPACITY;
             } else {
-                Get<DETER_IDX_B_OFFSETS>(baseOffset_) = Get<DETER_IDX_B_OFFSETS>(baseOffset_) +
-                    CeilDiv(n, DETER_WEIGHT_TILE_N_LARGE) * CeilDiv(k, DETER_WEIGHT_TILE_K_SMALL) * DETER_WEIGHT_TILE_CAPACITY;
+                Get<DETER_IDX_B_OFFSETS>(baseOffset_) =
+                    Get<DETER_IDX_B_OFFSETS>(baseOffset_) + CeilDiv(n, DETER_WEIGHT_TILE_N_LARGE) *
+                                                                CeilDiv(k, DETER_WEIGHT_TILE_K_SMALL) *
+                                                                DETER_WEIGHT_TILE_CAPACITY;
             }
         } else {
             Get<DETER_IDX_B_OFFSETS>(baseOffset_) = Get<DETER_IDX_B_OFFSETS>(baseOffset_) + n * k;
@@ -287,8 +299,7 @@ public:
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             blockOffset_ = coord.template GetQuantOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
                 Get<DETER_IDX_M_TILEIDXS>(tileIdx), Get<DETER_IDX_N_TILEIDXS>(tileIdx),
-                Get<DETER_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
-                Get<DETER_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
+                Get<DETER_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape), Get<DETER_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
             int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
             if ASCEND_IS_AIC {
@@ -297,8 +308,8 @@ public:
                 }
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<MNK_M>(singleShape),
                                                                              Get<MNK_N>(singleShape), k};
-                mmadOp_(aGlobal_[Get<DETER_IDX_A_OFFSETS>(blockOffset_)], bGlobal_[Get<DETER_IDX_B_OFFSETS>(blockOffset_)],
-                        l0cOutUb_, mmSingleShape, transA, transB);
+                mmadOp_(aGlobal_[Get<DETER_IDX_A_OFFSETS>(blockOffset_)],
+                        bGlobal_[Get<DETER_IDX_B_OFFSETS>(blockOffset_)], l0cOutUb_, mmSingleShape, transA, transB);
                 NotifyVector();
             }
             isVecSetSyncCom_ = true;
@@ -306,8 +317,7 @@ public:
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
                                                                                       Get<MNK_N>(singleShape), 0, 0};
                 int64_t nOffset = y - tileMOffset * n;
-                epilogueDequantOp_.SetWorkspaceGroupOffset(
-                    cumulativeGroupM_ - deterSync_.windowStartM);
+                epilogueDequantOp_.SetWorkspaceGroupOffset(cumulativeGroupM_ - deterSync_.windowStartM);
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     nOffset,
                     Get<DETER_IDX_BIAS_OFFSETS>(blockOffset_),
@@ -332,7 +342,8 @@ public:
         uint64_t n = params.gmmParams.matmulTiling->N;
         for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
             auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
-            if (outRow % coreNumVec != GetBlockIdx()) continue;
+            if (outRow % coreNumVec != GetBlockIdx())
+                continue;
             epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
         }
     }
@@ -350,8 +361,8 @@ public:
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
 
-        deterSync_.windowSize = params.gmmParams.deterWorkspaceSize /
-            (params.gmmParams.matmulTiling->N * sizeof(CType));
+        deterSync_.windowSize =
+            params.gmmParams.deterWorkspaceSize / (params.gmmParams.matmulTiling->N * sizeof(CType));
         deterSync_.lowBoundM = deterSync_.windowSize;
 
         SyncAll<false>();
@@ -373,7 +384,9 @@ public:
             if ((cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                if ASCEND_IS_AIV { FRDeterministic(params); }
+                if ASCEND_IS_AIV {
+                    FRDeterministic(params);
+                }
                 deterSync_.windowStartM = deterSync_.curGroupM;
                 deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
@@ -384,7 +397,9 @@ public:
         }
 
         SyncAll<false>();
-        if ASCEND_IS_AIV { FRDeterministic(params); }
+        if ASCEND_IS_AIV {
+            FRDeterministic(params);
+        }
         SyncAll<false>();
 
         End();

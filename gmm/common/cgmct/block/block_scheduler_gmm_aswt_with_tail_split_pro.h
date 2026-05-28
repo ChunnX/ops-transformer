@@ -257,7 +257,8 @@ public:
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_,
                               Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler, TransA_, TransB_> {
-    using SchedulerOp = BlockSchedulerGmmAswtWithTailSplitPro<ProblemShape_, L1TileShape_, L0TileShape_, TransA_, TransB_>;
+    using SchedulerOp =
+        BlockSchedulerGmmAswtWithTailSplitPro<ProblemShape_, L1TileShape_, L0TileShape_, TransA_, TransB_>;
 };
 } // namespace Block
 } // namespace Gemm

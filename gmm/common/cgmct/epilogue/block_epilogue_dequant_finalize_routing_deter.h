@@ -59,10 +59,10 @@ static constexpr AscendC::MicroAPI::CastTrait ctHalf2Fp32OneESD = {
 
 using namespace AscendC;
 
-#define GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS                                                 \
+#define GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS                                           \
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,       \
               typename DataTypeBias_, typename DataTypeRowIndex_>
-#define GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS                                                  \
+#define GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS                                            \
     DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, DataTypeBias_, DataTypeRowIndex_
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
@@ -92,8 +92,7 @@ public:
     using BiasDtype = DataTypeBias_;
     using DataTypeRowIndex = DataTypeRowIndex_;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
-    using BlockCoord =
-        AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
     using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
 public:
@@ -167,8 +166,8 @@ private:
 };
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::BlockEpilogueDequantFinalizeRoutingDeter()
+__aicore__ inline BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::BlockEpilogueDequantFinalizeRoutingDeter()
 {
     if ASCEND_IS_AIV {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
@@ -177,8 +176,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::~BlockEpilogueDequantFinalizeRoutingDeter()
+__aicore__ inline BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::~BlockEpilogueDequantFinalizeRoutingDeter()
 {
     if ASCEND_IS_AIV {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
@@ -220,31 +219,28 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 
     pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
     uint32_t wsElemCount = params_->deterWorkspaceSize / sizeof(DataTypeOut);
-    mmQuantOutGm_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM), wsElemCount);
-    rowIndexGlobal_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
+    mmQuantOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM), wsElemCount);
+    rowIndexGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline auto
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::GetL0c2UbTensor()
+__aicore__ inline auto BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::GetL0c2UbTensor()
 {
     return l0cOutUb_;
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::UpdateNextProblem(
-    const ProblemShape &problemShape)
+BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::
+    UpdateNextProblem(const ProblemShape &problemShape)
 {
     n_ = Get<MNK_N>(problemShape);
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(
-    const BlockCoord &baseOffset)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::UpdateGlobalAddr(const BlockCoord &baseOffset)
 {
     if ASCEND_IS_AIV {
         logitGlobal_.SetGlobalBuffer((__gm__ float *)params_->logitGmAddr + Get<LOGIT_IDXSD>(baseOffset));
@@ -261,9 +257,10 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::CopyInLogit(
-    uint32_t curBaseM, uint64_t offsetM, LocalTensor<float> &logitUb)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::CopyInLogit(uint32_t curBaseM,
+                                                                                      uint64_t offsetM,
+                                                                                      LocalTensor<float> &logitUb)
 {
     DataCopyExtParams perTokenScaleParams{1, static_cast<uint32_t>(curBaseM * sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams;
@@ -272,9 +269,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 __aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::LinearWriteToWorkspace(
-    uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset,
-    LocalTensor<DataTypeOut> &yLocal)
+BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::
+    LinearWriteToWorkspace(uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset,
+                           LocalTensor<DataTypeOut> &yLocal)
 {
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
@@ -285,10 +282,13 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::VFDoLogitMuls(
-    uint32_t offsetRe, uint32_t offsetLogit, uint16_t repeatTimesLogit, uint16_t repeatTimesRe,
-    __ubuf__ DataTypeOut *outUbAddr, LocalTensor<float> &logitUb)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::VFDoLogitMuls(uint32_t offsetRe,
+                                                                                        uint32_t offsetLogit,
+                                                                                        uint16_t repeatTimesLogit,
+                                                                                        uint16_t repeatTimesRe,
+                                                                                        __ubuf__ DataTypeOut *outUbAddr,
+                                                                                        LocalTensor<float> &logitUb)
 {
     __ubuf__ float *l0cOutUbAddr = (__ubuf__ float *)l0cOutUbFloat_.GetPhyAddr();
     __ubuf__ DataTypeOut *logitUbAddr = (__ubuf__ DataTypeOut *)logitUb.GetPhyAddr();
@@ -343,9 +343,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 template <bool isBiasEpilogue>
 __aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::VFDoDequantOnlyX2(
-    __ubuf__ float *dst, __ubuf__ DataTypeIn *l0cOut, __ubuf__ DataTypeX2Scale *x2Scale, __ubuf__ BiasDtype *bias,
-    uint16_t mSize, uint16_t nSize)
+BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::
+    VFDoDequantOnlyX2(__ubuf__ float *dst, __ubuf__ DataTypeIn *l0cOut, __ubuf__ DataTypeX2Scale *x2Scale,
+                      __ubuf__ BiasDtype *bias, uint16_t mSize, uint16_t nSize)
 {
     uint32_t eleNumPerVf = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
     uint32_t nSrcUbAligned = Align(nSize, static_cast<uint16_t>(UB_ALIGN_SIZE / sizeof(DataTypeIn)));
@@ -375,7 +375,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                 if constexpr (IsSameType<DataTypeX2Scale, bfloat16_t>::value) {
                     AscendC::MicroAPI::Cast<float, DataTypeX2Scale, ctHalf2Fp32ZeroESD>(castScaleReg, scaleReg, maskN);
                     AscendC::MicroAPI::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg,
-                                                                                      maskN4B16);
+                                                                                       maskN4B16);
                     AscendC::MicroAPI::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                 } else if constexpr (IsSameType<DataTypeX2Scale, float>::value) {
                     castScaleReg = scaleReg;
@@ -385,7 +385,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                     AscendC::MicroAPI::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     if constexpr (IsSameType<BiasDtype, bfloat16_t>::value) {
                         AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32ZeroESD>(castBiasReg, biasReg, maskN);
-                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg, maskN4B16);
+                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg,
+                                                                                     maskN4B16);
                         AscendC::MicroAPI::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else {
                         castBiasReg = biasReg;
@@ -404,10 +405,13 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
 template <bool isBiasEpilogue>
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::VFDoDequant(
-    __ubuf__ float *dst, __ubuf__ DataTypeIn *l0cOut, __ubuf__ DataTypeX2Scale *x2Scale,
-    __ubuf__ DataTypeX1Scale *x1Scale, __ubuf__ BiasDtype *bias, uint16_t mSize, uint16_t nSize)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::VFDoDequant(__ubuf__ float *dst,
+                                                                                      __ubuf__ DataTypeIn *l0cOut,
+                                                                                      __ubuf__ DataTypeX2Scale *x2Scale,
+                                                                                      __ubuf__ DataTypeX1Scale *x1Scale,
+                                                                                      __ubuf__ BiasDtype *bias,
+                                                                                      uint16_t mSize, uint16_t nSize)
 {
     uint32_t eleNumPerVf = AscendC::VECTOR_REG_WIDTH / sizeof(DataTypeIn);
     uint32_t nSrcUbAligned = Align(nSize, static_cast<uint16_t>(UB_ALIGN_SIZE / sizeof(DataTypeIn)));
@@ -438,7 +442,7 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                 if constexpr (IsSameType<DataTypeX2Scale, bfloat16_t>::value) {
                     AscendC::MicroAPI::Cast<float, DataTypeX2Scale, ctHalf2Fp32ZeroESD>(castScaleReg, scaleReg, maskN);
                     AscendC::MicroAPI::Cast<float, DataTypeX2Scale, ctHalf2Fp32OneESD>(castScaleOneReg, scaleReg,
-                                                                                      maskN4B16);
+                                                                                       maskN4B16);
                     AscendC::MicroAPI::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
                 } else if constexpr (IsSameType<DataTypeX2Scale, float>::value) {
                     castScaleReg = scaleReg;
@@ -451,7 +455,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                     AscendC::MicroAPI::DataCopy(biasReg, bias + vfBlockIdx * eleNumPerVf);
                     if constexpr (IsSameType<BiasDtype, bfloat16_t>::value) {
                         AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32ZeroESD>(castBiasReg, biasReg, maskN);
-                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg, maskN4B16);
+                        AscendC::MicroAPI::Cast<float, BiasDtype, ctHalf2Fp32OneESD>(castBiasOneReg, biasReg,
+                                                                                     maskN4B16);
                         AscendC::MicroAPI::Interleave(castBiasReg, castBiasOneReg, castBiasReg, castBiasOneReg);
                     } else {
                         castBiasReg = biasReg;
@@ -491,9 +496,8 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::CopyBiasFromGm2Ub(
-    LocalTensor<BiasDtype> &dst)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::CopyBiasFromGm2Ub(LocalTensor<BiasDtype> &dst)
 {
     DataCopyParams bias2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -502,25 +506,24 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline uint64_t
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::GetRowIndex(
-    uint64_t globalOffset)
+__aicore__ inline uint64_t BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::GetRowIndex(uint64_t globalOffset)
 {
     return static_cast<uint64_t>(rowIndexGlobal_.GetValue(globalOffset));
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::SetWorkspaceGroupOffset(
-    uint64_t groupAccumM)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::SetWorkspaceGroupOffset(uint64_t groupAccumM)
 {
     groupAccumM_ = groupAccumM;
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(
-    uint64_t mOffset, uint64_t outRow, uint64_t nSize)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::DeterministicFlushRow(uint64_t mOffset,
+                                                                                                uint64_t outRow,
+                                                                                                uint64_t nSize)
 {
     constexpr uint64_t baseN = DETER_UB_SIZED / sizeof(DataTypeOut);
     for (uint64_t nOff = 0; nOff < nSize; nOff += baseN) {
@@ -538,9 +541,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::operator()(
-    const BlockShape &blockShape, const BlockCoord &blockCoord)
+__aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
+    GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::operator()(const BlockShape &blockShape,
+                                                                                     const BlockCoord &blockCoord)
 {
     singleM_ = Get<MNK_M>(blockShape);
     singleN_ = Get<MNK_N>(blockShape);
@@ -579,9 +582,9 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : MAX_OUTPUT_M_UBSD;
         __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
-                                                               (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
-        VFDoLogitMuls(i * MAX_OUTPUT_M_UBSD * alignN_, i * MAX_OUTPUT_M_UBSD, repeatTimesLine_, repeatTimesRe, outUbAddr,
-                      logitUb);
+                                                              (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
+        VFDoLogitMuls(i * MAX_OUTPUT_M_UBSD * alignN_, i * MAX_OUTPUT_M_UBSD, repeatTimesLine_, repeatTimesRe,
+                      outUbAddr, logitUb);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
