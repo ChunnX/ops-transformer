@@ -13,7 +13,7 @@
  */
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "sparse_flash_mla_grad_common_header.h"
 
 using namespace AscendC;
 
@@ -96,7 +96,7 @@ __aicore__ inline void FreeEventID()
 
 template <typename T>
 __aicore__ inline void CopyGmToL1(const LocalTensor<T> &l1Tensor, const GlobalTensor<T> &gmTensor, uint32_t srcN,
-                                                                uint32_t srcD, uint32_t srcDstride)
+                                  uint32_t srcD, uint32_t srcDstride)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -180,7 +180,7 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
     uint32_t l0a_event = L0A_EVENTS[l0aPingPongFlag & 1];
     uint32_t l0b_event = L0B_EVENTS[l0bPingPongFlag & 1];
     uint32_t l0c_event = L0C_EVENTS[l0cPingPongFlag & 1];
-    
+
     SetFlag<HardEvent::MTE2_MTE1>(l0b_event);
     WaitFlag<HardEvent::MTE2_MTE1>(l0b_event);
 
@@ -207,7 +207,7 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
 
     SetFlag<HardEvent::M_MTE1>(l0a_event);
     SetFlag<HardEvent::M_MTE1>(l0b_event);
-    
+
     if (mmParam.isFixOut) {
         SetFlag<HardEvent::M_FIX>(l0c_event);
         WaitFlag<HardEvent::M_FIX>(l0c_event);
@@ -232,7 +232,7 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
     if constexpr(!isScatterFixOut) {
         SetFlag<HardEvent::FIX_M>(l0c_event);
     }
-    
+
     l0aPingPongFlag = 1 - l0aPingPongFlag;
     l0bPingPongFlag = 1 - l0bPingPongFlag;
 }
