@@ -108,7 +108,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     OP_LOGD("==========enter define============");
     aclTensor *mc2Context = nullptr;
     uint64_t hcclBuffSize = 0;
