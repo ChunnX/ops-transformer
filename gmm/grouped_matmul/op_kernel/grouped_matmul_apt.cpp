@@ -214,6 +214,17 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                                              &gmmQuantParams_, &mmTilingData_, &tPipe);                                \
     } while (0)
 
+#if defined(V310_MXFP8_LOW_API)
+#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)         \
+    do {                                                                                                               \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
+        GMM_MX_ROUTE_PRINT("basic_api");                                                                               \
+        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,  \
+                         cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,   \
+                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                    \
+    } while (0)
+#else
 #define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)         \
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
@@ -223,6 +234,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
     } while (0)
+#endif
 
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
