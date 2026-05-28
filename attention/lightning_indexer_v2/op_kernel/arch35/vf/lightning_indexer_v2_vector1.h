@@ -327,8 +327,6 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
         AscendC::MicroAPI::RegTensor<float> regQScale;
         AscendC::MicroAPI::RegTensor<float> regKScale[2];
         AscendC::MicroAPI::RegTensor<float> regSum[2];
-        AscendC::MicroAPI::RegTensor<W_T> regWWT;
-
 
         AscendC::MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<float,
                                                                            AscendC::MicroAPI::MaskPattern::ALL>();
@@ -338,12 +336,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
         FloatSortConstCtx<float> fp32Ctx;
         InitFloatSortConstCtx(fp32Ctx, maskAll);
 
-        constexpr static MicroAPI::CastTrait castTraitWTToFP32 = {MicroAPI::RegLayout::ZERO,
-                                                                  MicroAPI::SatMode::UNKNOWN,
-                                                                  MicroAPI::MaskMergeMode::ZEROING,
-                                                                  RoundMode::UNKNOWN};
-        AscendC::MicroAPI::LoadAlign<W_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regWWT, weight_);
-        AscendC::MicroAPI::Cast<float, W_T, castTraitWTToFP32>(regW, regWWT, maskAll16);
+        AscendC::MicroAPI::LoadAlign<W_T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regW, weight_);
 
         AscendC::MicroAPI::Duplicate(regSum[0], 0.0f, maskAll);
         AscendC::MicroAPI::Duplicate(regSum[1], 0.0f, maskAll);

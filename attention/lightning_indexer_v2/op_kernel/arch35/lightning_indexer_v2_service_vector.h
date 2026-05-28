@@ -29,15 +29,6 @@ using namespace LIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
 constexpr uint32_t TRUNK_LEN_8K = 8192;
 
-template<typename Q_T, typename W_T = void>
-struct LightningIndexerV2TypeTraits {
-    using weightsType = Q_T;   // 默认：weightsType绑定Q_T
-};
-
-template<typename Q_T>
-struct LightningIndexerV2TypeTraits<Q_T, float> {
-    using weightsType = float;  // W_T=float时，强制weightsType为float
-};
 template <typename LIT>
 class LightningIndexerV2ServiceVector {
 public:
@@ -45,13 +36,12 @@ public:
     static constexpr LI_V2_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_V2_LAYOUT K_LAYOUT_T = LIT::keyLayout;
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
-    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
+    static constexpr bool DT_W_FLAG = true;
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using QK_T = typename LIT::queryKeyType;
     using SCORE_T = typename LIT::scoreType;
-    using W_T = typename LightningIndexerV2TypeTraits<Q_T,
-                typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_T = float;
 
     __aicore__ inline LightningIndexerV2ServiceVector(){};
     __aicore__ inline void ProcessVec1(const LIV2Common::RunInfo &info);
@@ -100,9 +90,6 @@ private:
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<W_T> weightUB_;
-    // tmp buff for weight cast float
-    TBuf<TPosition::VECCALC> weightFloatBuf_;
-    LocalTensor<float> weightFloatUB_;
 
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
@@ -159,8 +146,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     resMm1UB_ = resMm1Buf_.Get<float>();
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>();
-    pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightFloatUB_ = weightFloatBuf_.Get<float>();
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
     // out
@@ -308,7 +293,6 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const LIV2Common::RunInfo &info)
 {
     // CV同步
-    // TODO uint32 bank冲突
     CrossCoreWaitFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
         LIV2Common::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   // V核等C核计算完mm1，mm1Res已搬运到UB
     
