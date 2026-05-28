@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
 # ======================================================================================================================
 """
-将 flash_attn 红线用例 xlsx 表格转换为 test_case.py 格式的 Python 文件。
+将 flash_attn 红线用例 xlsx 表格转换为 test_cases 格式的 Python 文件。
 
 用法:
     python xlsx_to_testcase.py --input <xlsx文件> [--output <py文件>] [--sheet <sheet名>]
@@ -13,7 +13,7 @@
 
 示例:
     python xlsx_to_testcase.py -i flash_attn_redline.xlsx
-    python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o test_case_redline.py
+    python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o redline.py
     python xlsx_to_testcase.py -i flash_attn_redline.xlsx -s Sheet2
 
 依赖:
@@ -32,7 +32,7 @@ except ImportError:
     sys.exit(1)
 
 
-# ======================== xlsx 列名 → test_case.py key 映射 ========================
+# ======================== xlsx 列名 → test_cases 模块 key 映射 ========================
 # None = 跳过该列；以 '_' 开头的内部标记不直接写入输出
 COLUMN_MAP = {
     # ---- 格式1: 红线用例表 ----
@@ -92,12 +92,11 @@ COLUMN_MAP = {
     'seqlens_list_kv':     '_seqlens_list_kv_',  # 非前缀和，需转换
     'dtype':               'Dtype',
     'sparse_mode':         'mask_mode',
-    'pre_tokens':          'pre_tokens',
-    'next_tokens':         'next_tokens',
+    'pre_tokens':          'win_left',
+    'next_tokens':         'win_right',
     'input_layout':        '_input_layout_',      # 同时设置 layout_q/kv/out
     'atten_mask_dtype':    'atten_mask_dtype',
     'atten_mask_layout':   'atten_mask_layout',
-    'keep_prob':           'keep_prob',
 }
 
 DTYPE_MAP = {
@@ -107,16 +106,15 @@ DTYPE_MAP = {
     'float16': 'fp16', 'bfloat16': 'bf16',
 }
 
-# 输出时 key 的排列顺序（与 test_case.py 风格一致）
+# 输出时 key 的排列顺序（与 test_cases 模块风格一致）
 KEY_ORDER = [
     'B', 'N1', 'N2', 'S1', 'S2', 'D',
     'layout_q', 'layout_kv', 'layout_out',
     'Dtype',
     'q_range', 'k_range', 'v_range',
     'scale',
-    'mask_mode', 'pre_tokens', 'next_tokens',
+    'mask_mode', 'win_left', 'win_right',
     'winLeft', 'winRight',
-    'keep_prob',
     'seqused_q', 'seqused_kv',
     'cu_seqlens_q', 'cu_seqlens_kv',
     'block_table', 'block_size',
@@ -268,7 +266,7 @@ def convert_row(headers, row_values):
 
         # ---- 整数标量 ----
         if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size',
-                   'pre_tokens', 'next_tokens'):
+                   'win_left', 'win_right'):
             case_dict[key] = [int(float(val))]
 
         # ---- 字符串标量 (layout) ----
@@ -285,11 +283,11 @@ def convert_row(headers, row_values):
             if r is not None:
                 case_dict[key] = [r]
 
-        # ---- 浮点标量 (softmax_scale, keep_prob) ----
-        elif key in ('scale', 'keep_prob'):
+        # ---- 浮点标量 (softmax_scale) ----
+        elif key in ('scale',):
             case_dict[key] = [float(val)]
 
-        # ---- winLeft / winRight (保持字符串，与 test_case.py 一致) ----
+        # ---- winLeft / winRight (保持字符串，与 test_cases 模块一致) ----
         elif key in ('winLeft', 'winRight'):
             case_dict[key] = [val_str]
 
@@ -439,17 +437,17 @@ def xlsx_to_testcase(input_xlsx, output_py, sheet_name=None):
 
 def main():
     p = argparse.ArgumentParser(
-        description='将 flash_attn 红线用例 xlsx 表格转换为 test_case.py 格式',
+        description='将 flash_attn 红线用例 xlsx 表格转换为 test_cases 格式',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python xlsx_to_testcase.py -i flash_attn_redline.xlsx
-  python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o test_case_redline.py
+  python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o redline.py
   python xlsx_to_testcase.py -i flash_attn_redline.xlsx -s Sheet2
 """)
     p.add_argument('--input',  '-i', required=True,  help='输入 xlsx 文件路径')
     p.add_argument('--output', '-o', default=None,
-                   help='输出 py 文件路径 (默认: 同目录 test_case_<xlsx名>.py)')
+                   help='输出 py 文件路径 (默认: 同目录 <xlsx名>.py)')
     p.add_argument('--sheet',  '-s', default=None,
                    help='xlsx sheet 名称 (默认: 活动 sheet)')
     args = p.parse_args()
@@ -463,7 +461,7 @@ def main():
         base = os.path.splitext(os.path.basename(args.input))[0]
         safe_base = re.sub(r'[^\w]', '_', base)
         output = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              f"test_case_{safe_base}.py")
+                              f"{safe_base}.py")
 
     xlsx_to_testcase(args.input, output, args.sheet)
 

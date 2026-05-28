@@ -18,7 +18,7 @@ from einops import rearrange
 import npu_ops_transformer
 from npu_ops_transformer.ops import npu_flash_attn
 from npu_ops_transformer.ops import npu_flash_attn_metadata
-from test_utils import trans_bnsd_to_layout
+from utils import trans_bnsd_to_layout
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
@@ -138,12 +138,12 @@ def flash_attn_metadata_only(**kwargs):
     d           = kwargs.get("D")
     sq          = kwargs.get("S1", None)
     skv         = kwargs.get("S2", sq)
-    sparse_mode = kwargs.get("sparse_mode", 0)
-    pre_tokens  = kwargs.get("pre_tokens",  2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
-    if sparse_mode in (0, 3):
-        pre_tokens = -1
-        next_tokens = -1
+    mask_mode = kwargs.get("mask_mode", 0)
+    win_left  = kwargs.get("win_left",  2147483647)
+    win_right = kwargs.get("win_right", 2147483647)
+    if mask_mode in (0, 3):
+        win_left = -1
+        win_right = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     cu_q       = kwargs.get("cu_seqlens_q", None)
@@ -181,9 +181,9 @@ def flash_attn_metadata_only(**kwargs):
         "batch_size": batch_size,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
-        "mask_mode": sparse_mode,
-        "win_left": pre_tokens,
-        "win_right": next_tokens,
+        "mask_mode": mask_mode,
+        "win_left": win_left,
+        "win_right": win_right,
         "layout_q": layout_q,
         "layout_kv": layout_kv,
         "layout_out": layout_out,
@@ -200,9 +200,9 @@ def flash_attn_metadata_only(**kwargs):
         batch_size    = batch_size,
         max_seqlen_q  = max_seqlen_q,
         max_seqlen_kv = max_seqlen_kv,
-        mask_mode     = sparse_mode,
-        win_left      = pre_tokens,
-        win_right     = next_tokens,
+        mask_mode     = mask_mode,
+        win_left      = win_left,
+        win_right     = win_right,
         layout_q      = layout_q,
         layout_kv     = layout_kv,
         layout_out    = layout_out,
@@ -211,7 +211,7 @@ def flash_attn_metadata_only(**kwargs):
     return metadata
 
 
-def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
+def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
     input_layout        = kwargs.get("input_layout", "BNSD")
     layout_q            = kwargs.get("layout_q",   input_layout)
     layout_kv           = kwargs.get("layout_kv",  input_layout)
@@ -223,12 +223,12 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     sq                  = kwargs.get("S1", None)
     skv                 = kwargs.get("S2", sq)
     d_rope              = kwargs.get("DRope", 0)
-    sparse_mode         = kwargs.get("sparse_mode", 0)
-    pre_tokens          = kwargs.get("pre_tokens", 2147483647)
-    next_tokens         = kwargs.get("next_tokens", 2147483647)
-    if sparse_mode in (0, 3):
-        pre_tokens = -1
-        next_tokens = -1
+    mask_mode         = kwargs.get("mask_mode", 0)
+    win_left          = kwargs.get("win_left", 2147483647)
+    win_right         = kwargs.get("win_right", 2147483647)
+    if mask_mode in (0, 3):
+        win_left = -1
+        win_right = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     cu_q       = kwargs.get("cu_seqlens_q", None)
@@ -236,7 +236,6 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     seqused_q  = kwargs.get("seqused_q", actual_seq_qlen)
     seqused_kv = kwargs.get("seqused_kv", actual_seq_kvlen)
     scale = kwargs.get("scale", 1 / (d ** 0.5))
-    keep_prob = kwargs.get("keep_prob", 1)
     seed = kwargs.get("seed", 0)
     lse_flag = kwargs.get("return_softmax_lse", 0)
 
@@ -249,7 +248,6 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     # _seqused_q          = kwargs.get("_npu_seqused_q",  None)
     # _seqused_kv         = kwargs.get("_npu_seqused_kv", None)
     # scale               = kwargs.get("scale", 1 / (d ** 0.5))
-    # keep_prob           = kwargs.get("keep_prob", 1)
     # seed                = kwargs.get("seed", 0)
     # lse_flag            = kwargs.get("return_softmax_lse", 0)
     block_table         = kwargs.get("block_table")
@@ -264,7 +262,6 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     else:
         query_rope = None
         key_rope   = None
-    pse1        = pse.to(device)        if pse        is not None else None
     atten_mask1 = atten_mask.to(device) if atten_mask is not None else None
 
     torch.npu.manual_seed(seed)
@@ -339,9 +336,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "batch_size": batch_size,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
-        "mask_mode": sparse_mode,
-        "win_left": pre_tokens,
-        "win_right": next_tokens,
+        "mask_mode": mask_mode,
+        "win_left": win_left,
+        "win_right": win_right,
         "layout_q": layout_q,
         "layout_kv": layout_kv,
         "layout_out": layout_out,
@@ -358,9 +355,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         batch_size    = batch_size,
         max_seqlen_q  = max_seqlen_q,
         max_seqlen_kv = max_seqlen_kv,
-        mask_mode     = sparse_mode,
-        win_left      = pre_tokens,
-        win_right     = next_tokens,
+        mask_mode     = mask_mode,
+        win_left      = win_left,
+        win_right     = win_right,
         layout_q      = layout_q,
         layout_kv     = layout_kv,
         layout_out    = layout_out,
@@ -369,8 +366,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
 
     max_seqlen_q  = -1
     max_seqlen_kv = -1
-    atten_mask1 = atten_mask1 if sparse_mode != 0 else None
-    if atten_mask1 is not None and sparse_mode in (3, 4):
+    atten_mask1 = atten_mask1 if mask_mode != 0 else None
+    if atten_mask1 is not None and mask_mode in (3, 4):
         atten_mask1 = atten_mask1.to(dtype=torch.int8)
 
     _print_args("Call npu_flash_attn", {
@@ -385,9 +382,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "seqused_q": seqused_q_meta,
         "seqused_kv": seqused_kv_meta,
         "softmax_scale": scale,
-        "mask_mode": sparse_mode,
-        "win_left": pre_tokens,
-        "win_right": next_tokens,
+        "mask_mode": mask_mode,
+        "win_left": win_left,
+        "win_right": win_right,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
         "layout_q": layout_q,
@@ -406,9 +403,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         seqused_q     = seqused_q_meta,
         seqused_kv    = seqused_kv_meta,
         softmax_scale = scale,
-        mask_mode     = sparse_mode,
-        win_left      = pre_tokens,
-        win_right     = next_tokens,
+        mask_mode     = mask_mode,
+        win_left      = win_left,
+        win_right     = win_right,
         max_seqlen_q  = max_seqlen_q,
         max_seqlen_kv = max_seqlen_kv,
         layout_q      = layout_q,
@@ -454,7 +451,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
         return out, lse_out
 
 
-def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
+def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
     input_layout        = kwargs.get("input_layout", "BNSD")
     layout_q            = kwargs.get("layout_q",   input_layout)
     layout_kv           = kwargs.get("layout_kv",  input_layout)
@@ -466,12 +463,12 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     sq                  = kwargs.get("S1", None)
     skv                 = kwargs.get("S2", sq)
     d_rope              = kwargs.get("DRope", 0)
-    sparse_mode         = kwargs.get("sparse_mode", 0)
-    pre_tokens          = kwargs.get("pre_tokens", 2147483647)
-    next_tokens         = kwargs.get("next_tokens", 2147483647)
-    if sparse_mode in (0, 3):
-        pre_tokens = -1
-        next_tokens = -1
+    mask_mode         = kwargs.get("mask_mode", 0)
+    win_left          = kwargs.get("win_left", 2147483647)
+    win_right         = kwargs.get("win_right", 2147483647)
+    if mask_mode in (0, 3):
+        win_left = -1
+        win_right = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     cu_q       = kwargs.get("cu_seqlens_q", None)
@@ -479,7 +476,6 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     seqused_q  = kwargs.get("seqused_q", actual_seq_qlen)
     seqused_kv = kwargs.get("seqused_kv", actual_seq_kvlen)
     scale = kwargs.get("scale", 1 / (d ** 0.5))
-    keep_prob = kwargs.get("keep_prob", 1)
     seed = kwargs.get("seed", 0)
     lse_flag = kwargs.get("return_softmax_lse", 0)
     block_table         = kwargs.get("block_table")
@@ -494,7 +490,6 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     else:
         query_rope = None
         key_rope   = None
-    pse1        = pse.to(device)        if pse        is not None else None
     atten_mask1 = atten_mask.to(device) if atten_mask is not None else None
 
     torch.npu.manual_seed(seed)
@@ -563,9 +558,9 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "batch_size": batch_size,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
-        "mask_mode": sparse_mode,
-        "win_left": pre_tokens,
-        "win_right": next_tokens,
+        "mask_mode": mask_mode,
+        "win_left": win_left,
+        "win_right": win_right,
         "layout_q": layout_q,
         "layout_kv": layout_kv,
         "layout_out": layout_out,
@@ -582,9 +577,9 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         batch_size    = batch_size,
         max_seqlen_q  = max_seqlen_q,
         max_seqlen_kv = max_seqlen_kv,
-        mask_mode     = sparse_mode,
-        win_left      = pre_tokens,
-        win_right     = next_tokens,
+        mask_mode     = mask_mode,
+        win_left      = win_left,
+        win_right     = win_right,
         layout_q      = layout_q,
         layout_kv     = layout_kv,
         layout_out    = layout_out,
@@ -593,8 +588,8 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
 
     max_seqlen_q  = -1
     max_seqlen_kv = -1
-    atten_mask1 = atten_mask1 if sparse_mode != 0 else None
-    if atten_mask1 is not None and sparse_mode in (3, 4):
+    atten_mask1 = atten_mask1 if mask_mode != 0 else None
+    if atten_mask1 is not None and mask_mode in (3, 4):
         atten_mask1 = atten_mask1.to(dtype=torch.int8)
 
     _print_args("Call npu_flash_attn (graph mode)", {
@@ -609,9 +604,9 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "seqused_q": seqused_q_meta,
         "seqused_kv": seqused_kv_meta,
         "softmax_scale": scale,
-        "mask_mode": sparse_mode,
-        "win_left": pre_tokens,
-        "win_right": next_tokens,
+        "mask_mode": mask_mode,
+        "win_left": win_left,
+        "win_right": win_right,
         "max_seqlen_q": max_seqlen_q,
         "max_seqlen_kv": max_seqlen_kv,
         "layout_q": layout_q,
@@ -641,9 +636,9 @@ def flash_attn_npu_graph(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         seqused_q_meta,
         seqused_kv_meta,
         scale,
-        sparse_mode,
-        pre_tokens,
-        next_tokens,
+        mask_mode,
+        win_left,
+        win_right,
         max_seqlen_q,
         max_seqlen_kv,
         layout_q,

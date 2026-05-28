@@ -447,8 +447,8 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IB
 
     // 1. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
     int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(m_param.mBaseSize);
-    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(m_param.mBaseSize),
-        NumToIndex(static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.GetGroupSize())));
+    int64_t s1GLastToken = NumToIndex(std::min(s1GFirstToken + static_cast<int64_t>(m_param.mBaseSize),
+        static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(baseInfo.GetGroupSize())));
 
     int64_t s1FirstToken;
     int64_t s1LastToken;
@@ -483,11 +483,6 @@ inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IB
     s2LastToken = Clip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(NumToIndex(batchCache.s2Size)));
     s2Start = static_cast<uint32_t>(s2FirstToken) / m_param.s2BaseSize;
     s2End = ToOpenInterval(static_cast<uint32_t>(s2LastToken) / m_param.s2BaseSize); // end of block index
-
-    // Mask line passed through the left down point of the last block, the last block is actually all masked
-    if (s2LastToken % m_param.s2BaseSize == 0) {
-        s2End--;
-    }
 
     return std::make_pair(s2Start, s2End);
 }
