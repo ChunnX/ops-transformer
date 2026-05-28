@@ -497,7 +497,8 @@ void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
     permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
 }
 
-ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB, uint32_t expertNum)
+ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K,
+    bool transB, uint32_t expertNum)
 {
     OP_LOGD(context_->GetNodeName(), "start SetInputParams.");
     GetPlatformInfo();

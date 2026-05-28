@@ -126,7 +126,8 @@ __aicore__ inline void PermuteImpl(
                 dstOffset += sumCntDst[dstPos - 1U] * axis;
             }
 
-            uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) * axis * sizeof(ElemType);
+            uint64_t totalCnt = static_cast<uint64_t>(offsetCounts[rankIndex * e + expertIdx]) *
+                axis * sizeof(ElemType);
 
             TileDataCopyLoop<ElemType>(
                 ubTensor, srcBuffer, dstBuffer,

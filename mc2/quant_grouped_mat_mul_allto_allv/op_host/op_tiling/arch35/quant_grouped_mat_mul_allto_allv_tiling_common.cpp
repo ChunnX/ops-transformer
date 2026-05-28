@@ -760,7 +760,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize = mc2tiling::AlignUp(gmmComputeWsSize, alignAddrLen);
     uint64_t sharedTtScaleRepeatSize = sizeof(float) * localParams_.ep * 2;
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
-    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize = mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
+    localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
+        mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
 
     // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
     // expertNum=1时无需Permute, GMM输出直接作为sendBuffer
@@ -790,7 +791,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize, static_cast<uint32_t>(localParams_.ep)));
+    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
+        static_cast<uint32_t>(localParams_.ep)));
     GE_ASSERT_GRAPH_SUCCESS(gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 

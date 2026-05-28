@@ -65,7 +65,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint32_t expertNum) const
+void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint32_t expertNum) const
 {
     gmmQuantTilingData.gmmQuantParams.groupNum = expertNum;
     gmmQuantTilingData.gmmQuantParams.activeType = GMM_ACT_TYPE_NONE;
@@ -80,7 +81,9 @@ void AlltoAllvTTQuantGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GM
     gmmQuantTilingData.gmmQuantParams.reserved = 0;
 }
 
-void AlltoAllvTTQuantGmmTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, uint32_t expertNum) const
+void AlltoAllvTTQuantGmmTiling::SetTilingArray(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
+    uint64_t K, uint32_t expertNum) const
 {
     for (uint32_t i = 0; i < expertNum; i++) {
         gmmQuantTilingData.gmmArray.mList[i] = static_cast<int32_t>(M);
@@ -89,7 +92,9 @@ void AlltoAllvTTQuantGmmTiling::SetTilingArray(Mc2GroupedMatmulTilingData::GMMQu
     gmmQuantTilingData.gmmArray.nList[0] = static_cast<int32_t>(N);
 }
 
-void AlltoAllvTTQuantGmmTiling::SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const
+void AlltoAllvTTQuantGmmTiling::SetTilingParams(
+    Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
+    uint64_t K, bool transB) const
 {
     auto &mm = gmmQuantTilingData.mmTilingData;
 

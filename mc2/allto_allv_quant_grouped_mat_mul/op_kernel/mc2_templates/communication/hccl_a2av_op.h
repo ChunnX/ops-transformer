@@ -56,8 +56,9 @@ public:
     using CommBufType = typename CommBufferType<hcclDataType>::type;
 
     __aicore__ inline HcclA2avOp() {}
-    __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
-                                GM_ADDR sendBuffer, GM_ADDR recvBuffer, GM_ADDR permuteBuffer);
+    __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
+                                const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
+                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
@@ -170,8 +171,10 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     CalcA2avCommBeforeParams(scaleCommParams_, sendCnt, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
                        axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt, scaleCommParams_.sendOffset, HCCL_DATA_TYPE_FP8E8M0,
-        (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.recvCnt, scaleCommParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt,
+            scaleCommParams_.sendOffset, HCCL_DATA_TYPE_FP8E8M0,
+        (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.recvCnt,
+            scaleCommParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -189,8 +192,10 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
                         N1_, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     }
     alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), dataCommParams_.sendCnt, dataCommParams_.sendOffset, hcclDataType_,
-        (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt, dataCommParams_.recvOffset, hcclDataType_);
+        (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), dataCommParams_.sendCnt,
+            dataCommParams_.sendOffset, hcclDataType_,
+        (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt,
+            dataCommParams_.recvOffset, hcclDataType_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -243,7 +248,8 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(uint32_t allNum, uint32_t step)
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(
+    uint32_t allNum, uint32_t step)
 {
     A2AV_AIV_ONLY();
     for (uint32_t i = 0U; i < allNum; i += step) {

@@ -70,8 +70,9 @@ template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpTy
 __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType, TilingDataType,
     GmmTilingDataType, GmmArrayAddrType>::Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM,
     GM_ADDR mmweightOptionalGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR mmxScaleGM,
-    GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM,
-    GM_ADDR tilingGM, GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
+    GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM,
+    GM_ADDR workspaceGM, GM_ADDR tilingGM, GmmArrayAddrType *gmmArrayAddrIn,
+    GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
 {
     GET_TILING_DATA(tilingData, tilingGM);
     tilingData_ = &tilingData;
