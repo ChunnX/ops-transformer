@@ -331,6 +331,7 @@ private:
     ge::graphStatus SetShapeInfo();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();
+    ge::graphStatus FillTilingCoreParams();
     ge::graphStatus FillMatmul1Tiling();
     ge::graphStatus FillMatmul2Tiling();
     ge::graphStatus FillMatmul3Tiling();
