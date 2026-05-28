@@ -56,6 +56,8 @@ constexpr int64_t ALIGN_256 = 256LL;
 constexpr int64_t ALIGN_512 = 512LL;
 constexpr int32_t INT_CACHELINE = 16;
 constexpr int32_t MAX_AICORE_NUM = 36;
+// wave-grain dispatch flag: must match MegaMoeImpl::L1_TILE_M
+constexpr int64_t DISPATCH_WAVE_TILE_M = 128LL;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
@@ -72,7 +74,7 @@ constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t E5M2_QUANT = 3U;
-constexpr int64_t E4M3_QUANT = 3U;
+constexpr int64_t E4M3_QUANT = 4U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t FP4_NUM = 2U;
 constexpr int64_t HALF_TO_FP32 = 2U;
@@ -166,7 +168,13 @@ struct WorkspaceInfoWave {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
 
         flagDispatchToGmm1Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
+        // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
+        int64_t maxWavesPerExpert = Ops::Base::CeilDiv(
+            static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t dispatchFlagSlotsPerExpert = Ops::Base::CeilAlign(maxWavesPerExpert,
+            static_cast<int64_t>(INT_CACHELINE));
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
     }
 };
