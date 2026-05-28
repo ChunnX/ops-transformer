@@ -128,6 +128,7 @@ TILING_DATA_FIELD_DEF(int64_t, dvWorkspaceLen);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockCount);
 TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(bool, deterministic);
+TILING_DATA_FIELD_DEF(bool, enableOptimizedScatter);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionGradBaseBasicParamsOp, SparseFlashAttentionGradBaseBasicParams)
 

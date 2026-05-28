@@ -98,6 +98,7 @@ private:
     int64_t totalS1{0};
     // attr
     uint32_t selectedBlockCount;
+    bool enableOptimizedScatter{false};
     // gmoffset
     uint64_t queryGmOffset;
     uint64_t queryRopeGmOffset;
@@ -183,6 +184,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Init(const TILING_CLAS
     dimDv = tilingData->opInfo.D2;
     dimRope = tilingData->opInfo.ropeD;
     selectedBlockCount = tilingData->opInfo.selectedBlockCount;
+    enableOptimizedScatter = tilingData->opInfo.enableOptimizedScatter;
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen / 2 / sizeof(float);
     mm345WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen / 2 / sizeof(T1);
     totalS1 = dimS1;
@@ -258,18 +260,28 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
                     actual_seq_qlen, actual_seq_kvlen, query_rope, key_rope, dq, dk, dv, workspace, tilingData, &pipeCube);
         AllocEventID();
         int64_t task = 0;
+        bool changeS1 = false;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
+            bool t1HasTask = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
+                t1HasTask = t1HasTask || actualSelectedBlockCount != 0;
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task, true);
                     CubeCompute(cubeOp);
+                    if (!enableOptimizedScatter && changeS1) {
+                        CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                        changeS1 = false;
+                    }
                     task++;
                 }
+            }
+            if (!enableOptimizedScatter && t1HasTask) {
+                changeS1 = true;
             }
         }
 
@@ -318,17 +330,25 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
+            bool t1HasTask = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
+                t1HasTask = t1HasTask || actualSelectedBlockCount != 0;
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task, true);
                     VecCompute(vecOp, actual_seq_qlen, actual_seq_kvlen);
-                    tmpScatterRunInfo[scatterPingPongIdx] = runInfo[1 - mmPingPongIdx];
-                    tmpScatterRunInfo[scatterPingPongIdx].changeS1 = true;
-                    scatterPingPongIdx = 1 - scatterPingPongIdx;
+                    if (enableOptimizedScatter) {
+                        tmpScatterRunInfo[scatterPingPongIdx] = runInfo[1 - mmPingPongIdx];
+                        tmpScatterRunInfo[scatterPingPongIdx].changeS1 = true;
+                        scatterPingPongIdx = 1 - scatterPingPongIdx;
+                    }
                     task++;
                 }
+            }
+            if (!enableOptimizedScatter && t1HasTask) {
+                tmpScatterRunInfo[0] = runInfo[1 - mmPingPongIdx];
+                tmpScatterRunInfo[0].changeS1 = true;
             }
         }
         if (cubeBlockIdx < usedCoreNum && task > 0) {
@@ -343,15 +363,21 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
             vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
-            if (task > 1) {
+            if (enableOptimizedScatter) {
+                if (task > 1) {
+                    CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    scatterRunInfo = tmpScatterRunInfo[scatterPingPongIdx];
+                    ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
+                }
+
                 CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                scatterRunInfo = tmpScatterRunInfo[scatterPingPongIdx];
+                scatterRunInfo = runInfo[1 - mmPingPongIdx];
+                ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
+            } else {
+                CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                scatterRunInfo = runInfo[1 - mmPingPongIdx];
                 ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
             }
-
-            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            scatterRunInfo = runInfo[1 - mmPingPongIdx];
-            ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
         }
 
         WAIT_FLAG(MTE3, MTE2, gatherMte2WaitMte3);
@@ -597,7 +623,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::CubeCompute(CubeOp<SFA
         CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
         if constexpr (!IS_DETERMINISTIC) {
-            CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+            if (enableOptimizedScatter) {
+                CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+            }
         }
         runInfo[1 - mmPingPongIdx].valid = false;
     }
@@ -649,6 +677,33 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ScatterAddByS1(VecOp<S
         event_t savedScatterTmpVMte2WaitVPong = scatterRunInfo.scatterTmpVMte2WaitVPong;
 
         GetTndSeqLenScatter(actual_seq_qlen, actual_seq_kvlen, t1ScatterIndex, bIndexScatterIndex);
+        if (!enableOptimizedScatter) {
+            for (n2IndexScatter = 0; n2IndexScatter < dimN2; n2IndexScatter++) {
+                isLastBlockSelectedScatter = false;
+                GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
+                for (int32_t scatterBlkCntOffset = 0; scatterBlkCntOffset < actualSelectedBlockCountScatter;
+                    scatterBlkCntOffset += selectedCountOffset) {
+                    blkCntOffset = scatterBlkCntOffset;
+                    UpdateScatterInfo(t1ScatterIndex);
+                    scatterRunInfo.isLastBasicBlock =
+                        (scatterBlkCntOffset + selectedCountOffset >= actualSelectedBlockCountScatter);
+                    scatterRunInfo.scatterTaskId = savedScatterTaskId;
+                    scatterRunInfo.scatterVWaitMte3 = savedScatterVWaitMte3;
+                    scatterRunInfo.scatterVWaitMte3Pong = savedScatterVWaitMte3Pong;
+                    scatterRunInfo.scatterTmpKMte2WaitV = savedScatterTmpKMte2WaitV;
+                    scatterRunInfo.scatterTmpVMte2WaitV = savedScatterTmpVMte2WaitV;
+                    scatterRunInfo.scatterTmpKMte2WaitVPong = savedScatterTmpKMte2WaitVPong;
+                    scatterRunInfo.scatterTmpVMte2WaitVPong = savedScatterTmpVMte2WaitVPong;
+                    vecOp.ScatterAddUnDeter(scatterRunInfo);
+                }
+            }
+            blkCntOffset = savedCurBlkCntOffset;
+            n2IndexScatter = savedN2IndexScatter;
+            actualSelectedBlockCountScatter = savedActualSelectedBlockCountScatter;
+            isLastBlockSelectedScatter = savedIsLastBlockSelectedScatter;
+            scatterRunInfo.blkCntOffset = savedBlkCntOffset;
+            return;
+        }
         n2IndexScatter = (scatterRunInfo.indicesGmOffset / selectedBlockCount) % dimN2;
         isLastBlockSelectedScatter = false;
         GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
@@ -711,13 +766,19 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::VecCompute(VecOp<SFAGT
                 CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
             }
 
+            if (!enableOptimizedScatter && tmpScatterRunInfo[0].changeS1) {
+                scatterRunInfo = tmpScatterRunInfo[0];
+                tmpScatterRunInfo[0].changeS1 = false;
+            }
+
             if (scatterRunInfo.changeS1) {
                 CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                 ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
                 scatterRunInfo.changeS1 = false;
             }
 
-            if (runInfo[mmPingPongIdx].task > 1 && tmpScatterRunInfo[scatterPingPongIdx].changeS1) {
+            if (enableOptimizedScatter && runInfo[mmPingPongIdx].task > 1 &&
+                tmpScatterRunInfo[scatterPingPongIdx].changeS1) {
                 scatterRunInfo = tmpScatterRunInfo[scatterPingPongIdx];
                 tmpScatterRunInfo[scatterPingPongIdx].changeS1 = false;
             }
