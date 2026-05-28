@@ -232,9 +232,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // GroupMatmulSwigluQuantA8W4 - AntiQuantWeight + GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
-    BlockEpilogueSwigluMxQuant<ElementA, float, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom, uint32_t expert_id)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3> || std::is_same_v<ElementA, __fp8e5m2>, "Activation must be __fp8e4m3 or __fp8e5m2");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -307,6 +307,11 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+    bool hasAssignedTiles = startLoopIdx < tileNum;
+    if (!hasAssignedTiles) {
+        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        return;
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
@@ -590,7 +595,7 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2A8W4(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId, int32_t expert_id)
+    uint16_t& pingpongIdx, int32_t rankId)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3> || std::is_same_v<ElementA, __fp8e5m2>, "Activation must be fp8");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -608,9 +613,6 @@ __aicore__ inline void GroupMatmul2A8W4(
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-    // constexpr bool transA = false;
-    // constexpr bool transB = true; // 后续要改为从模板参数获取转置属性
 
     constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
     constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
@@ -660,6 +662,11 @@ __aicore__ inline void GroupMatmul2A8W4(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
+    bool hasAssignedTiles = startLoopIdx < tileNum;
+    if (!hasAssignedTiles) {
+        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        return;
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
