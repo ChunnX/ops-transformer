@@ -42,7 +42,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         message(STATUS "We now in branch ascend950")
         add_definitions(-DMC2_EXCEPTION_HANDLER)
         add_ops_compile_options(
-            OP_NAME MoeDistributeDispatchV2
+            OP_NAME MoeDistributeCombineV2
             OPTIONS 
                 -I${SHMEM_HOME}/include/
                 -I${SHMEM_HOME}/src/device/
