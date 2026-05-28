@@ -40,7 +40,6 @@ constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;
 constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4;
 constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;
 constexpr int32_t ATTR_CONV_MODE_INDEX = 6;
-constexpr int32_t ATTR_INPLACE_INDEX = 7;
 
 constexpr uint64_t OUTPUT_CONV_STATES_INDEX = 0;
 constexpr uint64_t OUTPUT_Y_INDEX = 1;
@@ -402,10 +401,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
         if ((p = attrs->GetAttrPointer<int64_t>(ATTR_CONV_MODE_INDEX)) != nullptr) {
             convMode_ = static_cast<uint64_t>(*p);
         }
-        const bool *pBool = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
-        if (pBool != nullptr) {
-            inplace_ = (*pBool) ? 1UL : 0UL;
-        }
+        // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
+        inplace_ = isInplace_ ? 1UL : 0UL;
         if ((p = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX)) != nullptr) {
             maxQueryLen_ = *p;
         }

@@ -239,11 +239,8 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
         convMode_ = *convModePtr;
     }
 
-    // 原地更新开关：属性值 1 → inplace_=1（原地），0 → inplace_=0（非原地）
-    const bool *inplacePtr = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
-    if (inplacePtr != nullptr) {
-        inplace_ = (*inplacePtr) ? 1 : 0;
-    }
+    // 原地更新开关：由构造时传入的 isInplace_ 决定（拆分后不再从 attr 读取）
+    inplace_ = isInplace_ ? 1 : 0;
 
     // APC 开启时 blockSize 必须有效
     if (apcEnable_ && blockSize_ == 0) {

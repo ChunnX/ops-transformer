@@ -30,23 +30,19 @@ bool FusedCausalConv1d(const aclTensor *x, const aclTensor *weight, aclTensor *c
                        const aclTensor *blockIdxFirstScheduledToken, const aclTensor *blockIdxLastScheduledToken,
                        const aclTensor *initialStateIdx, int64_t activationMode, int64_t padSlotId, int64_t runMode,
                        int64_t maxQueryLen, int64_t residualConnection, int64_t blockSize, int64_t convMode,
-                       bool inplace, aclTensor *y, aclOpExecutor *executor)
+                       aclTensor *y, aclOpExecutor *executor)
 {
     L0_DFX(FusedCausalConv1d, x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias,
            numAcceptedTokens, numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
            initialStateIdx, activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode,
-           inplace, y);
-
-    // When inplace=true, the result is written back to x; y may be nullptr from legacy
-    // callers. Use x as the effective output tensor to keep OP_OUTPUT registration valid.
-    aclTensor *outY = inplace ? const_cast<aclTensor *>(x) : y;
+           y);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         FusedCausalConv1d,
         OP_INPUT(x, weight, convStates, queryStartLoc, cacheIndices, initialStateMode, bias, numAcceptedTokens,
                  numComputedTokens, blockIdxFirstScheduledToken, blockIdxLastScheduledToken, initialStateIdx),
-        OP_OUTPUT(convStates, outY),
-        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode, inplace));
+        OP_OUTPUT(convStates, y),
+        OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen, residualConnection, blockSize, convMode));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "FusedCausalConv1d ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return false;
