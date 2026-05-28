@@ -1995,7 +1995,6 @@ else
     if [ "${BUILD}" == "host" ];then
         cmake_config -DENABLE_OPS_KERNEL=OFF -DENABLE_OPS_HOST=ON
         build_host
-        # TO DO
         rm -rf ${CURRENT_DIR}/output
         mkdir -p ${CURRENT_DIR}/output
         cp ${BUILD_DIR}/*.run ${CURRENT_DIR}/output
