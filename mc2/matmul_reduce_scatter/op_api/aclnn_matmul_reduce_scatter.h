@@ -44,7 +44,7 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor* x1, const aclTensor* x2,
                                                                const aclTensor* bias, const char* group,
                                                                const char* reduceOp, int64_t commTurn,
-                                                               int64_t streamMode, const aclTensor* output,
+                                                               int64_t streamMode, aclTensor* output,
                                                                uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**

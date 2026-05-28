@@ -465,7 +465,6 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     bool transposeX1, bool transposeX2, const aclTensor* output, const aclTensor* all2AllOutOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // Inner接口部分入参类型和aclnn接口不一致，需要重新包装，同时Inner接口额外需要部分参数，按算子原型模板和实际业务逻辑生成
-    char* str_group = const_cast<char*>(group);
     int64_t worldSize = -1; // worldSize的默认值，实际值在建立通信域时获取
     int64_t yDtype = output->GetDataType();  // yDtype根据实际output的类型赋值，图模式需要该参数
     bool all2AllOutFlag = IsAll2AllOut(all2AllOutOptional);
@@ -474,6 +473,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
         commQuantDtype = op::DataType::DT_UNDEFINED;
     }
+    char* str_group = const_cast<char*>(group);
     aclnnStatus ret = aclnnInnerAlltoAllMatmulGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
