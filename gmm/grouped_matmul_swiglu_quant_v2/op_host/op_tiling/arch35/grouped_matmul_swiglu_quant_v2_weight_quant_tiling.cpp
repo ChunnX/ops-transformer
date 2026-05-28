@@ -14,7 +14,7 @@
  */
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
-#include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #include "op_host/tiling_templates_registry.h"
 #include "common/include/err/ops_err.h"
 using namespace Ops::Transformer::OpTiling;
