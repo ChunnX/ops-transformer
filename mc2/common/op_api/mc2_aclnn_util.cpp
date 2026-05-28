@@ -50,9 +50,11 @@ bool IsTensorContiguous(const aclTensor *tensor)
     auto shape = tensor->GetViewShape();
     int64_t expectedStride = 1;
     for (int i = dimNum - 1; i >= 0; i--) {
-        int currentStride = strides[i];
-        if (currentStride != expectedStride) {
-            return false;
+        if (shape.GetDim(i) != 1) {
+            int currentStride = strides[i];
+            if (currentStride != expectedStride) {
+                return false;
+            }
         }
         expectedStride *= shape.GetDim(i);
     }
