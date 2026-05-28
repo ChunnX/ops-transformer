@@ -12,7 +12,6 @@
  * \file all_gather_formulaic_tiling.cc
  * \brief
  */
-#include <iostream>
 #include "mc2_log.h"
 #include "all_gather_formulaic_tiling.h"
 
