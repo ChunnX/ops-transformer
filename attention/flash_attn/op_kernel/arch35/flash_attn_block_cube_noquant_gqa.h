@@ -316,6 +316,8 @@ public:
 
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ Q_T* queryGmAddr;
+    __gm__ KV_T* keyGmAddr;
 
     const ConstInfoX &constInfo;
 
@@ -377,6 +379,9 @@ public:
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable)
     {
+        queryGmAddr = reinterpret_cast<__gm__ Q_T*>(query);
+        keyGmAddr = reinterpret_cast<__gm__ KV_T*>(key);
+
         if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
@@ -586,60 +591,122 @@ public:
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        Buffer<BufferType::L1> mm1A;
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            mm1A = l1QBuffers.Get();
-            mm1A.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
-            CopyQueryTile(mm1ATensor, runInfo);
-            mm1A.Set<HardEvent::MTE2_MTE1>();
-        } else {
-            mm1A = l1QBuffers.GetPre();
-            mm1A.Set<HardEvent::MTE2_MTE1>();
-        }
+        uint32_t s1_size = (uint32_t)runInfo.actMSize;
+        uint32_t d_size = (uint32_t)constInfo.dSize;
+        uint32_t s2_size = (uint32_t)runInfo.actSingleLoopS2Size;
+        AscendC::printf("--- s1_size = [%ld] --- d_size = [%ld] --- s2_size = [%ld] ---\n", s1_size, d_size, s2_size);
 
-        Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
-        mm1B.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
-        CopyKeyTile(mm1BTensor, runInfo);
-        mm1B.Set<HardEvent::MTE2_MTE1>();
-        mm1A.Wait<HardEvent::MTE2_MTE1>();
-        mm1B.Wait<HardEvent::MTE2_MTE1>();
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+        auto layoutQGm = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(s1_size, d_size);
+        auto layoutKGm = AscendC::Te::MakeFrameLayout<AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(d_size, s2_size);
+        auto gmQ = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(queryGmAddr), layoutQGm);
+        auto gmK = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(keyGmAddr), layoutKGm);
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-        mm1ResL0C.Wait<HardEvent::FIX_M>();
+        // GM-->L1
+        auto layoutQL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(s1_size, d_size);
+        uint64_t offsetQL1 = 0;
+        auto tensorQL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, Q_T>(offsetQL1), layoutQL1);
+        auto gmTileQ = gmQ.Slice(AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(s1_size, d_size));
+        auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
+        AscendC::Te::Copy(copyGm2L1, tensorQL1, gmTileQ);
+        asc_dump_gm(gmTileQ.Data().Get(), 1, s1_size * d_size);
+
+        auto layoutKL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(d_size, s2_size);
+        uint64_t offsetKL1 = (s1_size + 15) / 16 * d_size * AscendC::Te::C0_SIZE<Q_T>;
+        AscendC::printf("--- offsetKL1 = [%ld] ---\n", offsetKL1);
+        auto tensorKL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, KV_T>(offsetKL1), layoutKL1);
+        auto gmTileK = gmK.Slice(AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(d_size, s2_size));
+        AscendC::Te::Copy(copyGm2L1, tensorKL1, gmTileK);
+        asc_dump_gm(gmTileK.Data().Get(), 1, d_size * s2_size);
+        
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
+
+        auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(s1_size, s2_size);
+        auto tensorMM1ResL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(0), layoutMM1ResL0C);
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
-                                    (uint32_t)(constInfo.dSize), false, true);
-        if constexpr (dBaseSize <= 128) {
-            MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                mm1ResL0C.GetTensor<T>(), param);
-        } else {
-            if constexpr (s2BaseSize == 256) {
-                MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                    mm1ResL0C.GetTensor<T>(), param);
-            } else {
-                MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
-                    mm1ResL0C.GetTensor<T>(), param);
-            }
-        }
+                                    (uint32_t)constInfo.dSize, false, true);
+        MatMulKTensorAPI<Q_T, KV_T, T>(tensorQL1, tensorKL1, tensorMM1ResL0C, param);
 
-        if (unlikely(runInfo.isLastS2Loop)) {
-            mm1A.Set<HardEvent::MTE1_MTE2>();
-        }
-        mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
-        mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
-        mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(2);
+        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(2);
 
         outputBuf.WaitCrossCore();
-        FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        asc_dump_cbuf(tensorMM1ResL0C.Data().Get(), 1, 512);
 
-        mm1ResL0C.Set<HardEvent::FIX_M>();
+        auto layoutUB = AscendC::Te::MakeFrameLayout<AscendC::Te::NDLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(((s1_size + 1) >> 1 << 1), s2BaseSize);
+        LocalTensor<T> mmRes = outputBuf.template GetTensor<T>();
+        uint64_t outputUBPtr = mmRes.GetPhyAddr();
+        auto tensorUB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(outputUBPtr), layoutUB);
+        auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
+        AscendC::Te::Copy(CopyL0C2UB, tensorUB, tensorMM1ResL0C);
+
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(2);
         outputBuf.SetCrossCore();
     }
+
+    // /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
+    // __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
+    // {
+    //     Buffer<BufferType::L1> mm1A;
+    //     if (unlikely(runInfo.isFirstS2Loop)) {
+    //         mm1A = l1QBuffers.Get();
+    //         mm1A.Wait<HardEvent::MTE1_MTE2>();
+    //         LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
+    //         CopyQueryTile(mm1ATensor, runInfo);
+    //         mm1A.Set<HardEvent::MTE2_MTE1>();
+    //     } else {
+    //         mm1A = l1QBuffers.GetPre();
+    //         mm1A.Set<HardEvent::MTE2_MTE1>();
+    //     }
+
+    //     Buffer<BufferType::L1> mm1B = l1KBuffers.Get();
+    //     mm1B.Wait<HardEvent::MTE1_MTE2>();
+    //     LocalTensor<KV_T> mm1BTensor = mm1B.GetTensor<KV_T>();
+    //     CopyKeyTile(mm1BTensor, runInfo);
+    //     mm1B.Set<HardEvent::MTE2_MTE1>();
+    //     mm1A.Wait<HardEvent::MTE2_MTE1>();
+    //     mm1B.Wait<HardEvent::MTE2_MTE1>();
+
+    //     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
+    //     mm1ResL0C.Wait<HardEvent::FIX_M>();
+
+    //     MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+    //                                 (uint32_t)(constInfo.dSize), false, true);
+    //     if constexpr (dBaseSize > 128) {
+    //         if constexpr (s2BaseSize == 256) {
+    //             MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
+    //                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+    //                 param);
+    //         } else {
+    //             MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+    //                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+    //                 param);
+    //         }
+    //     } else {
+    //         MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+    //             mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+    //             param);
+    //     }
+
+    //     if (unlikely(runInfo.isLastS2Loop)) {
+    //         mm1A.Set<HardEvent::MTE1_MTE2>();
+    //     }
+    //     mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
+    //     mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
+    //     mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+
+    //     outputBuf.WaitCrossCore();
+
+    //     FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+
+    //     mm1ResL0C.Set<HardEvent::FIX_M>();
+    //     outputBuf.SetCrossCore();
+    // }
 
     /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
     __aicore__ inline void IterateBmm1NdL1SplitK(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
