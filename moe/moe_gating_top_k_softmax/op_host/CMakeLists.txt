@@ -13,21 +13,10 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
         moe_gating_top_k_softmax_def.cpp
     )
-    if(CONDITION_UNIT STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME MoeGatingTopKSoftmax
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-        )
-    else()
-        add_ops_compile_options(
-            OP_NAME MoeGatingTopKSoftmax
-            OPTIONS --cce-auto-sync=on
-                    -Wno-deprecated-declarations
-                    -Werror
-        )
-    endif()
+    add_ops_compile_options(
+                OP_NAME MoeFinalizeRoutingV2
+                OPTIONS --cce-auto-sync=off
+            )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)

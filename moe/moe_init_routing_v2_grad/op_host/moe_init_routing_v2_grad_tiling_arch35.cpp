@@ -46,7 +46,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+        return false;
     }
 
     // 3、计算数据切分TilingData
