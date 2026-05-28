@@ -148,7 +148,8 @@ def matmul_relu_kernel(
 def outer_product_kernel(
     M: int, N: int,
     block_m: int, block_n: int,
-    dtype: str = 'float16'
+    dtype: str = 'float16',
+    accum_dtype: str = 'float32'
 ):
     """
     外积内核: A ⊗ B
@@ -156,6 +157,10 @@ def outer_product_kernel(
     输出: C(M, N) = A[i] * B[j]
     
     用于 Cube2: Weights @ Dy 外积
+    
+    Ascend AI Core Vector 单元不支持 FP16 向量运算，
+    必须先 Cast 到 FP32 进行计算，再 Cast 回 FP16。
+    
     使用 Developer 模式 alloc_shared。
     """
     
@@ -172,18 +177,27 @@ def outer_product_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
             
-            # Vector 操作使用 alloc_shared (自动分配 UB)
             A_UB = T.alloc_shared((block_m,), dtype)
             B_UB = T.alloc_shared((block_n,), dtype)
+            A_fp32_UB = T.alloc_shared((block_m,), accum_dtype)
+            B_fp32_UB = T.alloc_shared((block_n,), accum_dtype)
+            C_fp32_UB = T.alloc_shared((block_m, block_n), accum_dtype)
             C_UB = T.alloc_shared((block_m, block_n), dtype)
             
-            # 加载一维向量分块
             T.copy(A[m_idx * block_m], A_UB)
             T.copy(B[n_idx * block_n], B_UB)
             
-            # 计算外积
+            for i in T.Parallel(block_m):
+                A_fp32_UB[i] = T.cast(A_UB[i], accum_dtype)
+            
+            for j in T.Parallel(block_n):
+                B_fp32_UB[j] = T.cast(B_UB[j], accum_dtype)
+            
             for i, j in T.Parallel(block_m, block_n):
-                C_UB[i, j] = A_UB[i] * B_UB[j]
+                C_fp32_UB[i, j] = A_fp32_UB[i] * B_fp32_UB[j]
+            
+            for i, j in T.Parallel(block_m, block_n):
+                C_UB[i, j] = T.cast(C_fp32_UB[i, j], dtype)
             
             T.copy(C_UB, C[m_idx * block_m, n_idx * block_n])
     
