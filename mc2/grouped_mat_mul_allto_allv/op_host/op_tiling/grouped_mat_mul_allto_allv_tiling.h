@@ -37,6 +37,7 @@ protected:
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
     ge::graphStatus GetPlatformInfo() override;
     uint64_t GetTilingKey() const override;
+    ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
 
     static constexpr uint32_t GMM_X_INDEX = 0;
     static constexpr uint32_t GMM_WEIGHT_INDEX = 1;
@@ -52,6 +53,7 @@ protected:
     static constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
     static constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
     static constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
+    static constexpr int64_t RANK_DIM_BOUNDARY = 8;
 
     static const std::vector<uint32_t> GMM_X_DTYPE_LIST;
     static const std::vector<uint32_t> GMM_WEIGHT_DTYPE_LIST;
