@@ -30,3 +30,7 @@ from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_n
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
+from .dispatch_layout import npu_dispatch_layout
+from .notify_dispatch import npu_notify_dispatch
+from .graph_convert.graph_convert_dispatch_layout import convert_npu_dispatch_layout
+from .graph_convert.graph_convert_notify_dispatch import convert_npu_notify_dispatch
