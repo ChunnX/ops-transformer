@@ -33,6 +33,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         return ge::GRAPH_FAILED;
     }
 
+    constexpr int64_t MAX_CCU_RANKSIZE = 8;
     if (commModeStr == ge::AscendString("ccu")) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (commModeStr == ge::AscendString("ai_cpu")) {
@@ -43,7 +44,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
             OPS_LOG_E(context->GetNodeName(), "Failed to get valid world_size for default comm_mode.");
             return ge::GRAPH_FAILED;
         }
-        commMode = (worldSize <= 8) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        commMode = (worldSize <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", commModeStr.GetString());
         return ge::GRAPH_FAILED;

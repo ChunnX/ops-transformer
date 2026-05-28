@@ -28,6 +28,7 @@ constexpr size_t TWO_DIMS = 2U;
 constexpr size_t MAX_GROUP_LEN = 128U;
 constexpr int64_t KVALUE_MIN = 1;
 constexpr int64_t KVALUE_MAX = 65535;
+constexpr uint32_t MAX_CCU_RANKSIZE = 8;
 constexpr char KC_SCENE[] = "KC quantization(x1QuantMode=3, x2QuantMode=2)";
 constexpr char KCDYN_SCENE[] = "KCDYN quantization(x1QuantMode=7, x2QuantMode=2)";
 constexpr char MX_SCENE[] = "MX quantization(x1QuantMode=6, x2QuantMode=6)";
