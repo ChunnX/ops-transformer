@@ -88,8 +88,8 @@ struct ContextAcquireParams {
 class MoeContextManager {
 public:
     static ge::graphStatus GetMc2ContextA5(
-        const std::string& contextTag, const std::string& epName,
-        const ge::GNode& originalNode, Mc2MoeContext& context, int64_t& hcclBuffSize);
+        ge::Graph& graph, const std::string& contextTag, const std::string& epName,
+        const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize);
 
 private:
     MoeContextManager() = default;
@@ -129,6 +129,7 @@ private:
 
     ge::graphStatus CheckCache(const std::string& uniqueKey, Mc2MoeContext& context, int64_t& hcclBuffSize);
     void UpdateCache(const std::string& uniqueKey, const Mc2MoeContext& context, int64_t hcclBuffSize);
+    ge::graphStatus CreateContextNode(ge::Graph& graph, const Mc2MoeContext& context, ge::GNode& constNode);
 
     void* hcclLibHandle_{nullptr};
     uint64_t hcclBuffSize_{0};
