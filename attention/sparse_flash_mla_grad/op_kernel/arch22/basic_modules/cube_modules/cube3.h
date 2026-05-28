@@ -62,6 +62,8 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
                 current_l1_ds_tensor = l1_ds_tensor[l1Offset];
             } else {
                 if (l1Offset >= dsL1CachedSize) {
+                    SetFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
+                    WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
                     CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[runInfo.mm345GmOffset + (nIdx - blkCntOffset)], mmParam.singleM, 512, singleN);
                     dsL1CachedSize += 512 * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
                     dsL1Offset = l1Offset;
