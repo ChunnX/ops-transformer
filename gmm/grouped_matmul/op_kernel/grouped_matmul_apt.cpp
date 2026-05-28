@@ -13,6 +13,12 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#define IS_BLAZE true
+#else
+#define IS_BLAZE false
+#endif
+
 #include <stdio.h>
 
 #include "grouped_matmul_utils.h"
@@ -26,9 +32,10 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cube_on_the_fly.h"
 #endif
-#if defined(V310_GMM_QUANT_MX)
-#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
+#if defined(V310_GMM_QUANT_MX) && IS_BLAZE
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
+#elif defined(V310_GMM_QUANT_MX)
+#include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_init_output.h"
@@ -214,6 +221,17 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                                                         &gmmQuantParams_, &mmTilingData_, &tPipe);                     \
     } while (0)
 
+#if !IS_BLAZE
+#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)         \
+    do {                                                                                                               \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
+        GMM_MX_ROUTE_PRINT("basic_api");                                                                               \
+        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, cgmctXLayout, cgmctWLayout,  \
+                         cgmctYLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,   \
+                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                    \
+    } while (0)
+#else
 #define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)         \
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
@@ -223,6 +241,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
     } while (0)
+#endif
 
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
