@@ -98,19 +98,6 @@ public:
     CATLASS_DEVICE
     void Finalize()
     {
-        if constexpr (std::is_same_v<ElementD, int8_t>) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID2);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID3);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-        } else {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
-        }
     }
 
     CATLASS_DEVICE

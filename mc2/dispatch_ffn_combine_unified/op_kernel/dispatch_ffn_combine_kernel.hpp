@@ -298,6 +298,7 @@ public:
     template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
+    
 #ifdef SYNC_MODE
         AscendC::SyncAll<false>();
 #endif
@@ -1126,6 +1127,24 @@ private:
     }
 
     CATLASS_DEVICE
+    void CombineWaitFlag()
+    {
+        if constexpr (std::is_same_v<ElementB, int8_t>) {
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID2);
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(EVENT_ID3);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+        } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
+    }
+
+    CATLASS_DEVICE
     void ApplyXActiveMask(Params const &params) {
         if (params.ptrXActiveMask == nullptr) {
             return;
@@ -1438,6 +1457,7 @@ private:
         }
 
         CombineV2(params, blockEpilogue2);
+
         AscendC::SyncAll<true>();
         ResetTokenPerExpert(params.EP * AlignUp(params.EP * params.expertPerRank, 128));
         shmem.InitStatusTargetSum();
@@ -1511,6 +1531,7 @@ private:
             GemmCoord inGroupProblemShape{currentExpertM, n2, k2};  // M N K
             blockScheduler.Update(inGroupProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
             uint32_t coreLoops = blockScheduler.GetCoreLoops();
+
             uint32_t startLoopIdx =
                 ((aicCoreIdx < startCoreIdx) ? (aicCoreIdx + aicCoreNum) : aicCoreIdx) - startCoreIdx;
 
@@ -1567,6 +1588,7 @@ private:
             }
         }
         blockEpilogue.Finalize();
+        CombineWaitFlag();
     }
 
 private:
