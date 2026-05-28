@@ -207,13 +207,13 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     // 构造host侧变量
     std::vector<op::fp16_t> xHostData(xShapeSize, 1);
-    std::vector<int32_t> expertIdsHostData;
-    for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
-        // 每个token发给moe专家{0, 1, ... k - 1}
-        for (int32_t k_id = 0; k_id < expertIdsShape[1]; k_id++) {
-            expertIdsHostData.push_back(k_id);
-        }
-    }
+    // std::vector<int32_t> expertIdsHostData;
+    // for (int32_t token_id = 0; token_id < expertIdsShape[0]; token_id++) {
+    //     // 每个token发给moe专家{0, 1, ... k - 1}
+    //     for (int32_t k_id = 0; k_id < expertIdsShape[1]; k_id++) {
+    //         expertIdsHostData.push_back(k_id);
+    //     }
+    // }
     std::vector<float> scalesHostData(scalesShapeSize, 0);
     std::vector<float> expertScalesHostData(expertScalesShapeSize, 0);
     std::vector<op::fp16_t> expandXHostData(expandXShapeSize, 0);
@@ -245,7 +245,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
 
     // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
         if (expandXHostData.size() >= 4) {
-            std::memcpy(expandXHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+            std::memcpy(expandXHostData.data(), &custom_ptr, sizeof(uint64_t));
         }
         int processNumPerExpert = globalBS / epRecvCountsShapeSize;
         int remainNum = globalBS % epRecvCountsShapeSize;
