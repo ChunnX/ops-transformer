@@ -48,7 +48,8 @@
 - `TBuf<>` → `LocalTensor<uint8_t>`（直接管理内存地址）
 - `TQue<>` → `LocalTensor<T>`（直接的数组式访问）
 - 动态事件 ID → 编译期 `static constexpr uint32_t` 常量
-- `tPipe->InitBuffer()` → `LocalMemAllocator::Alloc()`（编译期固定偏移）
+- `tPipe->InitBuffer()` → `LocalMemAllocator::Alloc()`（编译期固定偏移，中间态）
+- `LocalMemAllocator::Alloc()` → `LocalTensor<uint8_t>(pos, offset, size)`（直接构造，终极态）
 
 ---
 
@@ -107,22 +108,31 @@ struct LocalTensor {
 用 `LocalMemAllocator` 分配时，偏移量在**编译期**就确定（模板参数），运行时零开销：
 
 ```cpp
-// 新方式：LocalMemAllocator 编译期固定偏移
+// 中间方式：LocalMemAllocator 编译期固定偏移
 LocalMemAllocator<Hardware::UB> allocator;
-
-// Alloc<位置, 类型, 元素数>() ← 三个都是编译期常量
 LocalTensor<float> sumBuf0 = allocator.Alloc<TPosition::VECIN, float, 64>();
-//                           ^ 这行等价于: address = UB基址 + 固定偏移, size = 64*4 = 256字节
+// address = UB基址 + 固定偏移(编译期), size = 64*4 = 256字节
 ```
 
-**对比总结：**
+终极方式是直接用 `LocalTensor` 构造函数，彻底绕过分配器：
 
-| | TBuf（旧） | LocalTensor（新）|
-|--|--|--|
-| 内存地址确定时机 | 运行时（InitBuffer 调用时）| 编译期（Alloc 模板参数）|
-| 需要 TPipe | 是 | 否 |
-| 访问开销 | 有（Get<T>() 间接层）| 无（直接指针）|
-| 是否允许使用 | 已禁用 | 推荐 |
+```cpp
+// 终极方式：LocalTensor 构造函数直接指定绝对字节偏移
+constexpr uint32_t OFF = 49152U;  // 编译期常量
+LocalTensor<float> sumBuf0 = LocalTensor<uint8_t>(TPosition::VECIN, OFF, 256U)
+                                  .template ReinterpretCast<float>();
+// 无任何运行时状态，地址 = UB基址 + OFF（硬编码到指令流）
+```
+
+**三级方式对比：**
+
+| | TBuf（旧） | LocalMemAllocator（中间）| LocalTensor 直接构造（终极）|
+|--|--|--|--|
+| 内存地址确定时机 | 运行时（InitBuffer 调用）| 编译期（Alloc 模板参数）| 编译期（constexpr 偏移）|
+| 需要 TPipe | 是 | 否 | 否 |
+| 需要分配器状态 | 是 | 是（内部偏移指针）| 否 |
+| 访问开销 | 有（Get<T>() 间接层）| 无 | 无 |
+| 是否允许使用 | 已禁用 | 中间态，可接受 | 推荐（最终形态）|
 
 ---
 
@@ -343,72 +353,89 @@ __aicore__ inline void InitBuffers(TQue<QuePosition::VECOUT, 1> SharedBuffer1[],
 }
 ```
 
-#### 修改后
+#### 修改后（最终版：完全消除 LocalMemAllocator）
 
 ```cpp
-// 新版：LocalMemAllocator 编译期固定偏移，无需 TPipe
-__aicore__ inline void SoftmaxInitBuffer(LocalMemAllocator<Hardware::UB> &allocator)
+// 最终版：SoftmaxInitBuffer 接受基础偏移，所有 LocalTensor 直接构造
+__aicore__ inline void SoftmaxInitBuffer(uint32_t off_sm)
 {
-    // Alloc<位置, 类型, 元素数> ← 三个都是编译期常量，运行时零开销
-    softmaxSumBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxSumBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxSumBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxMaxBuf[0] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxMaxBuf[1] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxMaxBuf[2] = allocator.Alloc<TPosition::VECIN, float, 256 / sizeof(float)>();
-    softmaxExpBuf[0] = allocator.Alloc<TPosition::VECIN, T,     256 / sizeof(T)>();
-    softmaxExpBuf[1] = allocator.Alloc<TPosition::VECIN, T,     256 / sizeof(T)>();
-    softmaxExpBuf[2] = allocator.Alloc<TPosition::VECIN, T,     256 / sizeof(T)>();
-    maxBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
-    sumBrdcstBuf = allocator.Alloc<TPosition::VECIN, float, 2048 / sizeof(float)>();
+    // 11 个缓冲区紧密排列：Sum×3 + Max×3 + Exp×3（各 256 bytes）
+    //                      + maxBrdcst + sumBrdcst（各 2048 bytes）= 6400 bytes 总计
+    softmaxSumBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm,          256U).template ReinterpretCast<float>();
+    softmaxSumBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 256U,   256U).template ReinterpretCast<float>();
+    softmaxSumBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 512U,   256U).template ReinterpretCast<float>();
+    softmaxMaxBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 768U,   256U).template ReinterpretCast<float>();
+    softmaxMaxBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1024U,  256U).template ReinterpretCast<float>();
+    softmaxMaxBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1280U,  256U).template ReinterpretCast<float>();
+    softmaxExpBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1536U,  256U).template ReinterpretCast<T>();
+    softmaxExpBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 1792U,  256U).template ReinterpretCast<T>();
+    softmaxExpBuf[2] = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 2048U,  256U).template ReinterpretCast<T>();
+    maxBrdcstBuf     = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 2304U, 2048U).template ReinterpretCast<float>();
+    sumBrdcstBuf     = LocalTensor<uint8_t>(TPosition::VECIN, off_sm + 4352U, 2048U).template ReinterpretCast<float>();
 }
 
-// 不再需要外部传入共享缓冲区，全部自主管理
+// 最终版 InitBuffers：无任何 LocalMemAllocator，全部使用 LocalTensor 构造函数
 __aicore__ inline void InitBuffers()
 {
-    LocalMemAllocator<Hardware::UB> allocator;
-
-    // 第一步：跳过 ubBufferManager 已占用的 bmm1/bmm2 结果区域
-    // （ubBufferManager 从偏移 0 开始分配，这里用 dummy Alloc 推进偏移指针）
+    // 所有偏移为编译期 constexpr，运行时零开销
     constexpr uint32_t mm1Sz = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     constexpr uint32_t mm2Sz = bmm2Write2Ub ?
         (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
-    (void)allocator.Alloc<TPosition::VECIN, uint8_t, mm1Sz * 2U + mm2Sz * 2U>();
-    //   ↑ 这个 Alloc 结果被丢弃，仅用于推进内部偏移，确保后续分配不与 bmm1/2 结果区重叠
 
-    // 第二步：依次分配各个业务缓冲区
+    // mm2InBuf：仅在 !bmm2Write2Ub 时需要，紧跟 bmm1/bmm2 区末尾
     if constexpr (!bmm2Write2Ub) {
-        mm2InBuf = allocator.Alloc<TPosition::VECIN, T, 32768 / sizeof(T)>();
+        mm2InBuf = LocalTensor<uint8_t>(TPosition::VECIN,
+                       mm1Sz * 2U + mm2Sz * 2U, 32768U).template ReinterpretCast<T>();
     }
-    attenMaskBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();   // mask ping
-    attenMaskBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 8192>();   // mask pong
-    stage2OutBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 32768>()
-                             .template ReinterpretCast<T>();
-    stage1OutBuf[0] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>()
-                               .template ReinterpretCast<INPUT_T>();         // stage1 ping
-    stage1OutBuf[1] = allocator.Alloc<TPosition::VECIN, uint8_t, 33024>()
-                               .template ReinterpretCast<INPUT_T>();         // stage1 pong
 
-    SoftmaxInitBuffer(allocator);
+    // vec block 共享区基址 = bmm1区 + bmm2区 + mm2In区
+    constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
+    constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
+
+    // attenMask ping/pong（各 8192 bytes）
+    attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE,          8192U);
+    attenMaskBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 8192U,  8192U);
+    // stage2 输出（32768 bytes）
+    stage2OutBuf    = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 16384U, 32768U)
+                          .template ReinterpretCast<T>();
+    // stage1 输出 ping/pong（各 33024 bytes）← Vec1 写 / MTE3 读
+    stage1OutBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 49152U, 33024U)
+                          .template ReinterpretCast<INPUT_T>();
+    stage1OutBuf[1] = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 82176U, 33024U)
+                          .template ReinterpretCast<INPUT_T>();
+
+    // softmax 中间值（6400 bytes，3-slot 旋转）
+    SoftmaxInitBuffer(BASE + 115200U);
+
+    // commonBuf（512 bytes，编译期条件）
     if constexpr (!useDn) {
-        commonBuf = allocator.Alloc<TPosition::VECIN, uint8_t, 512>();
+        commonBuf = LocalTensor<uint8_t>(TPosition::VECIN, BASE + 121600U, 512U);
     }
+
+    // lseBuf / sinkBuf：地址编译期固定，是否初始化为运行时条件
+    constexpr uint32_t commonBufSz = useDn ? 0U : 512U;
+    constexpr uint32_t OFF_LSE = BASE + 121600U + commonBufSz;
+    constexpr uint32_t LSE_BUF_SZ = (mBaseSize >> 1U) * 8U * sizeof(float);
     if (constInfo.isSoftmaxLseEnable) {
-        lseBuf = allocator.Alloc<TPosition::VECIN, float, (mBaseSize >> 1U) * 8U>();
+        lseBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE,
+                     LSE_BUF_SZ).template ReinterpretCast<float>();
     }
     if (constInfo.learnableSinkFlag) {
-        sinkBuf = allocator.Alloc<TPosition::VECIN, INPUT_T, 256 / sizeof(INPUT_T)>();
+        sinkBuf = LocalTensor<uint8_t>(TPosition::VECIN, OFF_LSE + LSE_BUF_SZ,
+                      256U).template ReinterpretCast<INPUT_T>();
     }
 }
 ```
 
 **关键改变说明**：
 
-1. **不再接受外部共享缓冲区参数** — 旧版需要 kernel 层的 TPipe 分配好后传进来；新版自己通过 `LocalMemAllocator` 直接分配，自给自足。
+1. **彻底消除 LocalMemAllocator** — 旧版（中间态）使用 `(void)allocator.Alloc<...>()` 推进偏移指针；新版（终极态）直接用 `constexpr BASE` 计算所有偏移，无需任何分配器状态。
 
-2. **dummy Alloc 推进偏移** — `ubBufferManager`（管理 bmm1/bmm2 结果区）和本 `InitBuffers` 的 `LocalMemAllocator` 共用同一个 UB，它们约定 bmm1/bmm2 区在前，vec block 的缓冲区在后。`(void)allocator.Alloc<...>()` 就是在推进这个分界点。
+2. **SoftmaxInitBuffer 参数变化** — 从接受 `LocalMemAllocator &allocator` 改为接受 `uint32_t off_sm`（基础偏移），各缓冲区在此基础上叠加固定增量，完全无状态。
 
-3. **ReinterpretCast** — 先以 `uint8_t` 分配（保证 8K/32K 的整体字节大小），再强制转换成实际使用的类型，与旧版的 `TBuf<>.Get<T>()` 语义完全等价。
+3. **ReinterpretCast 用法不变** — 先以 `uint8_t` 描述字节大小，再强制转换成实际类型，语义与旧版完全等价。
+
+4. **UB 布局完全在编译期确定** — `BASE`、各偏移量均为 `constexpr`，编译器可将其内联为字面量，无运行时计算。
 
 ---
 
@@ -587,75 +614,180 @@ fa_static::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
 
 ## 6. Ping-Pong 实现细节
 
-### 6.1 stage1OutBuf 的 Ping-Pong
+### 6.1 UB 内存中的物理布局
 
-`stage1OutBuf[2]` 是 Vec1 的输出缓冲区，使用 `loop % DB`（DB=2）交替：
+所有缓冲区在 UB 中的位置完全由 `InitBuffers` 中的 `constexpr` 偏移决定（以 `mBaseSize=128, s2BaseSize=128, T=bfloat16` 为典型示例，其中 `BASE = mm1Sz*2 + mm2Sz*2`）：
 
 ```
-S2 循环迭代:  loop=0    loop=1    loop=2    loop=3
-使用槽位:     [0]       [1]       [0]       [1]
-             (Ping)    (Pong)    (Ping)    (Pong)
+UB 地址 (相对 BASE)
+┌─────────────────────────────────────┐  BASE + 0
+│  attenMaskBuf[0]    8192 bytes      │  ← Ping：奇数迭代用
+│  attenMaskBuf[1]    8192 bytes      │  ← Pong：偶数迭代用
+├─────────────────────────────────────┤  BASE + 16384
+│  stage2OutBuf      32768 bytes      │  ← Vec2 输出（每 S2 覆盖写）
+├─────────────────────────────────────┤  BASE + 49152
+│  stage1OutBuf[0]   33024 bytes      │  ← Ping：Vec1 写 / MTE3 读（偶数迭代）
+├─────────────────────────────────────┤  BASE + 82176
+│  stage1OutBuf[1]   33024 bytes      │  ← Pong：Vec1 写 / MTE3 读（奇数迭代）
+├─────────────────────────────────────┤  BASE + 115200
+│  softmaxSumBuf[3]   768 bytes       │  ← 3-slot 旋转（各 256 bytes）
+│  softmaxMaxBuf[3]   768 bytes       │  ← 3-slot 旋转
+│  softmaxExpBuf[3]   768 bytes       │  ← 3-slot 旋转
+│  maxBrdcstBuf      2048 bytes       │
+│  sumBrdcstBuf      2048 bytes       │
+├─────────────────────────────────────┤  BASE + 121600
+│  commonBuf          512 bytes       │  (条件编译，!useDn 时存在)
+│  lseBuf            (可选)           │  (运行时条件)
+│  sinkBuf           (可选)           │  (运行时条件)
+└─────────────────────────────────────┘
 ```
 
-**代码体现**：
+### 6.2 stage1OutBuf 2-slot Ping-Pong 完整流程
+
+#### 6.2.1 初始化：AllocEventID 的预热作用
 
 ```cpp
-// ProcessVec1Nd 中
-int64_t stage1Offset = runInfo.loop % DB;  // 0 或 1 交替
-
-LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf[stage1Offset];
-// Vec1 把 softmax 结果写入 stage1CastTensor（UB 中的 stage1OutBuf[0 or 1]）
-
-SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);   // 告诉 MTE3：VEC 写完了
-WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);  // 等 VEC 真的写完
-
-DataCopy(mm2AL1Tensor, stage1CastTensor, ...);          // MTE3 把数据搬到 L1
+__aicore__ inline void AllocEventID()
+{
+    mte3ToVId[0] = FA_MTE3_TO_V_0;  // = 0U（静态常量）
+    mte3ToVId[1] = FA_MTE3_TO_V_1;  // = 1U
+    vToMte3Id[0] = FA_V_TO_MTE3_0;  // = 0U
+    vToMte3Id[1] = FA_V_TO_MTE3_1;  // = 1U
+    // 关键：预置"MTE3 已消费完"标志，让第一次 Vec1 能立即写入
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);  // slot[0] 初始可写
+    SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);  // slot[1] 初始可写
+}
 ```
 
-当 loop=2 想复用 `stage1OutBuf[0]` 时，loop=0 对应的 DataCopy 早已完成（因为每次 `CreateTask` 是串行完成 Vec1 + DataCopy 后才进入下一次）。
+若不预置这两个标志，第一次 `WaitFlag<MTE3_V>(id=0)` 会永久阻塞——因为 MTE3 从未发出过"读完 slot[0]"的信号。预置等同于告诉硬件："流水线启动前，两个槽都是空的，VEC 随时可以写。"
 
-### 6.2 softmax 中间值的三缓冲 Ping-Pong
+#### 6.2.2 S2 主循环事件时序（PRELOAD_N=2）
 
-softmax 的 sum/max/exp 中间值需要在 Vec1（写）和 Vec2（读）之间传递：
+两条执行流并发推进：`CreateTask`（AIV 主流，执行 Vec1）和 `ExecuteTask`（AIV 执行流，执行 MTE3 DataCopy）。`ExecuteTask` 始终比 `CreateTask` 落后 `PRELOAD_N=2` 个任务。
 
 ```
-PRELOAD_N=2 时，在任意时刻最多有 3 个任务的中间值同时"活着"：
-- task(N)   正在被 Vec1 写入 → 使用槽 mloop % 3
-- task(N-1) 已被 Vec1 写完，等待 Vec2 读 → 使用槽 (mloop-1) % 3
-- task(N-2) 正被 Vec2 读取 → 使用槽 (mloop-2) % 3
+                CreateTask(mloop)                     ExecuteTask(loop = mloop - 2)
+                ─────────────────                     ─────────────────────────────
+mloop=0:
+  slot = 0 % 2 = 0
+  WaitFlag<MTE3_V>(id=0)   ← 初始已预置，立即通过
+  Vec1 → 写入 stage1OutBuf[0]
+  SetFlag<V_MTE3>(id=0)    → "slot[0] 数据已就绪"
+
+mloop=1:
+  slot = 1 % 2 = 1
+  WaitFlag<MTE3_V>(id=1)   ← 初始已预置，立即通过
+  Vec1 → 写入 stage1OutBuf[1]
+  SetFlag<V_MTE3>(id=1)    → "slot[1] 数据已就绪"
+
+mloop=2:                               loop=0, slot=0:
+  slot = 2 % 2 = 0                       WaitFlag<V_MTE3>(id=0)  ← 等 mloop=0 写完
+  WaitFlag<MTE3_V>(id=0) ←──────────     DataCopy(L1 ← stage1OutBuf[0])
+  （阻塞，直到 MTE3 搬完）               SetFlag<MTE3_V>(id=0)   → "slot[0] 已搬完，可复用"
+  Vec1 → 写入 stage1OutBuf[0]（复用）
+  SetFlag<V_MTE3>(id=0)
+
+mloop=3:                               loop=1, slot=1:
+  slot = 1                               WaitFlag<V_MTE3>(id=1)
+  WaitFlag<MTE3_V>(id=1) ←──────────     DataCopy(L1 ← stage1OutBuf[1])
+  Vec1 → 写入 stage1OutBuf[1]            SetFlag<MTE3_V>(id=1)
+  SetFlag<V_MTE3>(id=1)
+                                       loop=2, slot=0: ...（以此类推）
 ```
 
-三个槽的循环保证了互不覆盖：
+**槽位一致性保证**：`slot = mloop % 2 = loop % 2`，因为 `loop = mloop - 2`，而 `2 % 2 = 0`，所以两侧始终使用相同槽位，不存在错位。
+
+#### 6.2.3 收尾：FreeEventID 排干流水
 
 ```cpp
-// Vec1 写入时（ProcessVec1VfDn / ProcessVec1Vf）
-LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
-//                                                      ↑ 写入本 task 的槽位
-
-// Vec2 读取时（ProcessVec2OnUb）
-LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)];
-//                                          ↑ loop 是 ExecuteTask 的循环计数，
-//                                            对应的是 2 个任务前的 Vec1 写入槽位
+__aicore__ inline void FreeEventID()
+{
+    // S2 循环结束后，CreateTask 已完成，但最后 2 次 DataCopy 可能还在进行
+    // 必须等待两个槽都"被 MTE3 读完"，才能安全释放缓冲区
+    WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
+    WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+    // 静态事件 ID 无需 ReleaseEventID
+}
 ```
 
-**为什么是 3 个而不是 2 个？**
+### 6.3 softmax 中间值的 3-slot 旋转机制
 
-| 当前 CreateTask | CreateTask(N) 写槽 | ExecuteTask(N-2) 读槽 |
-|----------------|-------------------|-----------------------|
-| PRELOAD_N=1 时 | slot = N%2         | slot = (N-1)%2        |
-| PRELOAD_N=2 时 | slot = N%3         | slot = (N-2)%3        |
+#### 6.3.1 为什么 2 个槽不够
 
-`PRELOAD_N=2` 时需要至少 `PRELOAD_N+1=3` 个槽，否则 CreateTask(N) 写 slot 0，同时 ExecuteTask(N-2) 也可能读 slot 0（当 N%3 == (N-2)%3，即 2 整除 3，不成立，故 3 个槽足够）。
+`PRELOAD_N=2` 意味着任意时刻，最多有 3 个任务的 softmax 中间值（sum/max/exp）同时处于"活跃"状态：
 
-### 6.3 attenMaskBuf 的 Ping-Pong
+```
+时刻 T（mloop=N 的 Vec1 刚开始）：
+  CreateTask(N)   正在写入  softmaxSumBuf[N%3]     ← 槽 A 被 Vec1 占用（写）
+  CreateTask(N-1) 的结果留在 softmaxSumBuf[(N-1)%3] ← 槽 B 等待 Vec2 读
+  ExecuteTask(N-2) 正在读取 softmaxSumBuf[(N-2)%3]  ← 槽 C 被 Vec2 占用（读）
+```
+
+若只有 2 个槽：当 `N=2` 时，CreateTask 写 `slot 0`，ExecuteTask(0) 读 `slot 0`——**写读冲突**。3 个槽使得三者始终互不重叠（`N%3 != (N-1)%3 != (N-2)%3` 恒成立）。
+
+#### 6.3.2 代码对应关系
 
 ```cpp
-// ProcessVec1Nd 中
-LocalTensor<uint8_t> attenMaskUb = attenMaskBuf[runInfo.loop % DB];
+// CreateTask 中（Vec1 写入）
+uint32_t smSlot = runInfo.mloop % (PRELOAD_N + 1);  // mloop % 3
+LocalTensor<float> sumUb = this->softmaxSumBuf[smSlot];  // 写本 task 的槽
+LocalTensor<float> maxUb = this->softmaxMaxBuf[smSlot];
+LocalTensor<T>     expUb = this->softmaxExpBuf[smSlot];
+// Vec1 计算：bmm1结果 → softmax(sum,max,exp) → 写入 stage1OutBuf[mloop%2]
+
+// ExecuteTask 中（Vec2 读取，loop = mloop - PRELOAD_N）
+uint32_t smSlot2 = runInfo.loop % (PRELOAD_N + 1);   // loop % 3
+LocalTensor<T>     expUb2 = softmaxExpBuf[smSlot2];  // 读 2 个任务前 Vec1 的结果
+LocalTensor<float> sumUb2 = softmaxSumBuf[smSlot2];
+// Vec2 计算：softmax 累加 + flash attention 增量更新
+```
+
+#### 6.3.3 3-slot 在 UB 中的物理地址（以 BASE=0 简化）
+
+```
+softmaxSumBuf[0]:  BASE+115200        (256 bytes)  task 0,3,6... 使用
+softmaxSumBuf[1]:  BASE+115456        (256 bytes)  task 1,4,7... 使用
+softmaxSumBuf[2]:  BASE+115712        (256 bytes)  task 2,5,8... 使用
+softmaxMaxBuf[0]:  BASE+115968        (256 bytes)
+...
+softmaxExpBuf[2]:  BASE+117248        (256 bytes)
+maxBrdcstBuf:      BASE+117504        (2048 bytes)  Vec1 广播 max 值用
+sumBrdcstBuf:      BASE+119552        (2048 bytes)  Vec1 广播 sum 值用
+```
+
+### 6.4 attenMaskBuf 的 Ping-Pong
+
+`attenMaskBuf[2]` 由 MTE2 异步预取（DataCopy）填充，Vec1 同步读取：
+
+```cpp
+// CreateTask 中（Vec1 使用当前 mask）
+uint32_t maskSlot = runInfo.loop % DB;  // DB=2，当前迭代用的槽
+LocalTensor<uint8_t> attenMaskUb = attenMaskBuf[maskSlot];
 AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo);
-// ... Vec1 计算使用 attenMaskUb ...
-// 下一次循环用 attenMaskBuf[(loop+1) % 2]，不覆盖当前正在使用的
+
+// 当 Vec1 在使用 attenMaskBuf[0] 时，
+// 下一次迭代的 AttenMaskCopyIn 会预取到 attenMaskBuf[1]（或由外部逻辑提前预取）
+// 两个槽交替，读写互不干扰
 ```
+
+### 6.5 全流水线并发时序总图
+
+```
+时间轴  →
+──────────────────────────────────────────────────────────────────────────
+CUBE    │Mm1[0]│Mm1[1]│Mm1[2]│Mm1[3]│Mm2[0]│Mm2[1]│Mm2[2]│...
+VEC     │Vec1[0]│Vec1[1]│Vec1[2]│Vec1[3]│Vec2[0]│Vec2[1]│Vec2[2]│...
+MTE3    │       │ Copy[0]    │ Copy[1]    │ Copy[2]    │...
+MTE2    │AttenMask[1]│AttenMask[2]│AttenMask[3]│...
+──────────────────────────────────────────────────────────────────────────
+stage1 槽│  [0]  │  [1]  │  [0]  │  [1]  │读[0]  │读[1]  │读[0]  │
+softmax槽│sm[0]  │sm[1]  │sm[2]  │sm[0]  │读sm[0]│读sm[1]│读sm[2]│
+──────────────────────────────────────────────────────────────────────────
+```
+
+- **CUBE 和 VEC 真正并行**：CUBE 做 Mm1[N+2] 的矩阵乘时，VEC 同时做 Vec1[N] 的 softmax
+- **VEC 和 MTE3 真正并行**：VEC 写 stage1OutBuf[0] 时，MTE3 读 stage1OutBuf[1]（或反之）
+- **三单元均无空闲等待**：任何时刻都有工作在进行，流水满载
 
 ---
 
@@ -715,7 +847,8 @@ CUBE 矩阵计算（Mm1 + Mm2）占总时间 ~80%，这部分未被本次改动�
 
 | 文件 | 修改内容 |
 |------|---------|
-| `flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h` | 成员变量类型替换、`InitBuffers` 重写、`AllocEventID/FreeEventID` 静态化、Vec2 事件 ID 静态化、调用前缀改为 `fa_static::` |
+| `flash_attn/op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h` | 成员变量类型替换；`SoftmaxInitBuffer` 参数从 `LocalMemAllocator&` 改为 `uint32_t off_sm`；`InitBuffers` 完全重写为 `LocalTensor` 直接构造（消除 `LocalMemAllocator`）；`AllocEventID/FreeEventID` 静态化；Vec2 事件 ID 静态化；调用前缀改为 `fa_static::` |
+| `flash_attn/op_kernel/arch35/flash_attention_noquant_block_vec_flashdecode.h` | `InitBuffers` 完全重写：所有共享/专用缓冲区使用 `LocalTensor<uint8_t>(TPosition::VECIN, offset, size)` 直接构造，消除 `LocalMemAllocator`；所有偏移为 `constexpr` |
 | `flash_attn/op_kernel/arch35/fa_vec1_vf_static.h` | **新建**：`fa_static` 命名空间封装 `ProcessVec1Vf/VfDn/VfDnCausal`，`TBuf<>*` → `LocalTensor<uint8_t>*` |
 | `common/op_kernel/buffer.h` | `InitStaticDirect` 参数类型修正（`event_t` → `TEventID`），移除 `SetStaticEventIds`（无调用方）|
 | `common/op_kernel/buffers_policy.h` | 移除 `InitStatic/UninitStatic/AllocStaticAddr`（无调用方的死代码）|
