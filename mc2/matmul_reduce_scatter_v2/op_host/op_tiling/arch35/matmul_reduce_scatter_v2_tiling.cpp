@@ -31,7 +31,6 @@
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
-#include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
