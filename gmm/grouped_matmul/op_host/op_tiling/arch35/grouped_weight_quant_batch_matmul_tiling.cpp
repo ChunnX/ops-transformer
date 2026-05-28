@@ -141,7 +141,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDtype(const gert::TilingCon
     auto tmpDesc = context->GetDynamicInputDesc(attrIdx, idx);
     auto tmpDType = tmpDesc->GetDataType();
     OP_CHECK_IF(tmpDType != tensorDtype,
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     OP_NAME, tensorType, ge::TypeUtils::DataTypeToSerialString(tmpDType),
                     std::string("The dtype of each tensor in ") + tensorType + " tensor list must be consistent. " +
                         tensorType + "[" + std::to_string(idx) +
