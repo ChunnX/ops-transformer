@@ -102,7 +102,6 @@ public:
     uint32_t accGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
-    uint32_t executedTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
 
@@ -392,7 +391,7 @@ public:
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
-        executedTaskCount = 0;
+        uint32_t executedTaskCount = 0;
         mloop = 0;
         accGS1Loops = 0;
         headS2Split = false;
