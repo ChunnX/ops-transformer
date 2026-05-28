@@ -560,9 +560,9 @@ ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param,
     }
 
     if (shape.GetDimNum() != shapeExpected.GetDimNum()) {
-        OP_LOGE(opName_,
-            "%s dimension is %zu, expected dimension is %zu.",
-            name.c_str(), shape.GetDimNum(), shapeExpected.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name,
+                            std::to_string(shape.GetDimNum()),
+                            "The shape dim of " + name + " must be " + std::to_string(shapeExpected.GetDimNum()));
         return ge::GRAPH_FAILED;
     }
 
@@ -925,6 +925,9 @@ ge::graphStatus SFATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::
     if (shapeSize <= 0) {
         OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.",
             name.c_str(), shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name,
+            std::to_string(shapeSize),
+            "The shape size of " + name + " should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -958,8 +961,9 @@ ge::graphStatus SFATilingCheck::CheckBlockTable() const
     }
     uint32_t blockTableBatch = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(blockTableBatch != bSize_,
-        OP_LOGE(opName_, "%s's first dimension(%u) should be equal to batch size(%u)",
-            BLOCK_TABLE_NAME.c_str(), blockTableBatch, bSize_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, BLOCK_TABLE_NAME,
+            std::to_string(blockTableBatch),
+            "The first dim of " + BLOCK_TABLE_NAME + " should be equal to batch size " + std::to_string(bSize_).c_str() + "."),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
@@ -1159,7 +1163,8 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForPageAttention()
 {
     int64_t blockNum = keyShapeCmp_.GetDim(0);
     OP_CHECK_IF(blockNum <= 0,
-        OP_LOGE(opName_, "The first dim(%ld) of key should be greater than 0", blockNum),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            std::to_string(blockNum).c_str(), "The first dim of key should be greater than 0"),
         return ge::GRAPH_FAILED);
     SFATilingShapeCompareParam shapeParams;
     shapeParams.Bn = blockNum;
@@ -1241,8 +1246,9 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQShape()
         return ge::GRAPH_FAILED;
     }
     if (shapeSize != bSize_) {
-        OP_LOGE(opName_, "actualSeqLengthsQ shape size is %u, it should be equal to batch size[%u]",
-            shapeSize, bSize_);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengthsQ",
+            std::to_string(shapeSize).c_str(),
+            "The shape size of actualSeqLengthsQ should be equal to batch size " + std::to_string(bSize_).c_str() + ".");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1291,8 +1297,9 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensShape()
         return ge::GRAPH_FAILED;
     }
     if (shapeSize != bSize_) {
-        OP_LOGE(opName_, "actualSeqLengths shape size is %u, it should be equal to batch size[%u].",
-            shapeSize, bSize_);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, "actualSeqLengths",
+            std::to_string(shapeSize).c_str(),
+            "The shape size of actualSeqLengths should be equal to batch size " + std::to_string(bSize_).c_str() + ".");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1343,15 +1350,18 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != 512,
-        OP_LOGE(opName_, "qk_head_dim only support 512, but got %u", qkHeadDim_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            std::to_string(qkHeadDim_).c_str(), "qk_head_dim only support 512"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != vHeadDim_,
-        OP_LOGE(opName_, "qk_head_dim[%u] should be equal to v_head_dim[%u]", qkHeadDim_, vHeadDim_),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "qk, v",
+            (std::to_string(qkHeadDim_) + " , " + std::to_string(vHeadDim_)).c_str(), "qk_head_dim and v_head_dim must be same"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64,
-        OP_LOGE(opName_, "rope_head_dim should be 64, but got %u", ropeHeadDim_),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "rope",
+            std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1578,8 +1588,9 @@ ge::graphStatus SFAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::T
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name,
+            std::to_string(shapeSize),
+            "The shape size of " + name + " should be greater than 0.");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -1817,12 +1828,15 @@ ge::graphStatus SFAInfoParser::GetMaxBlockNumPerBatch()
     }
     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
     if (dimNum != DIM_NUM_TWO) {
-        OP_LOGE(opName_, "the dim num of block_table is %u, it should be %u.", dimNum, DIM_NUM_TWO);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "block_table",
+            std::to_string(dimNum),
+            "The shape dim of block_table must be " + std::to_string(DIM_NUM_TWO)),
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1) <= 0) {
-        OP_LOGE(opName_, "%s's second dimension(%ld) should be greater than 0",
-            BLOCK_TABLE_NAME.c_str(), opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1));
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "block_table",
+            std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1)),
+            "block_table's second dim should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -1875,6 +1889,11 @@ ge::graphStatus SFAInfoParser::GetRopeHeadDim()
     if (queryShape_.GetDimNum() != queryRopeShape_.GetDimNum()) {
         OP_LOGE(opName_, "The dimensions of query and query_rope should be equal, but query has dimension %zu while query_rope has dimension %zu.",
                 queryShape_.GetDimNum(), queryRopeShape_.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context->GetNodeName(), "query and query_rope",
+            std::to_string(queryShape_->GetDimNum()) + " , " +
+            std::to_string(queryRopeShape_->GetDimNum()),
+            "The dimensions of query and query_rope should be equal");
         return ge::GRAPH_PARAM_INVALID;
     }
     ropeHeadDim_ = GetAxisNum(queryRopeShape_, SFAAxis::D, qLayout_);
