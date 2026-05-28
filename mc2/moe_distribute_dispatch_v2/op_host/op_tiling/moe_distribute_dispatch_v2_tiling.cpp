@@ -1671,14 +1671,96 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
 {
     return ::optiling::MoeDistributeDispatchA3TilingFuncImplPublic(context, config,
         [this](gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
-            return this->CheckQuantModeMatchScales(ctx, name, t, cfg);
+            return this->CheckQuantModeMatchScales(ctx, name, t.isScales, t.quantMode, cfg);
         },
-        [this](const DispatchV2TilingCtx &t) { return this->CalTilingKey(t); },
+        [this](const DispatchV2TilingCtx &t) {
+            return this->CalTilingKey(t.isScales, t.quantMode, t.tpWorldSize, t.isSetFullMeshV2, t.isLayered);
+        },
         [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
-            return this->CheckTensorDataType(ctx, name, t, cfg);
+            return this->CheckTensorDataType(ctx, name, t.isScales, t.quantMode, t.isActiveMask,
+                t.hasElasticInfo, t.isPerformance, cfg);
         },
         [this](const int64_t *ptr, const char *name) { return this->CheckQuantModePtr(ptr, name); },
         [this](const char *ptr, const char *name) { return this->CheckCommAlgPtr(ptr, name); });
+}
+
+bool MoeDistributeDispatchV2TilingFuncBase::CheckCommomOtherInputTensorDataType(
+    const gert::TilingContext *context, const char *nodeName,
+    const bool isActiveMask, const bool hasElasticInfo, const bool isPerformance, DispatchV2Config &config)
+{
+    DispatchV2TilingCtx tc;
+    tc.isActiveMask = isActiveMask;
+    tc.hasElasticInfo = hasElasticInfo;
+    tc.isPerformance = isPerformance;
+    return ::optiling::CheckCommomOtherInputTensorDataType(context, nodeName, tc, config);
+}
+
+bool MoeDistributeDispatchV2TilingFuncBase::CheckCommomOutputTensorDataType(
+    const gert::TilingContext *context, const char *nodeName)
+{
+    return ::optiling::CheckCommomOutputTensorDataType(context, nodeName);
+}
+
+ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::TilingCheckMoeDistributeDispatch(
+    gert::TilingContext *context, const char *nodeName,
+    const bool isActiveMask, const bool isScales, const bool hasElasticInfo,
+    const bool isPerformance, const uint32_t quantMode,
+    const bool isLayered, DispatchV2Config &config)
+{
+    DispatchV2TilingCtx tc;
+    tc.isActiveMask = isActiveMask;
+    tc.isScales = isScales;
+    tc.hasElasticInfo = hasElasticInfo;
+    tc.isPerformance = isPerformance;
+    tc.quantMode = quantMode;
+    tc.isLayered = isLayered;
+    return ::optiling::TilingCheckMoeDistributeDispatch(context, nodeName, tc, config,
+        [this](const gert::TilingContext *ctx, const char *name, DispatchV2TilingCtx &t, DispatchV2Config &cfg) {
+            return this->CheckTensorDataType(ctx, name, t.isScales, t.quantMode, t.isActiveMask,
+                t.hasElasticInfo, t.isPerformance, cfg);
+        });
+}
+
+ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckOtherAttrParams(
+    const gert::TilingContext *context, const char *nodeName,
+    bool &isSetFullMeshV2, DispatchV2Config &config)
+{
+    DispatchV2TilingCtx tc;
+    auto ret = ::optiling::CheckOtherAttrParams(context, nodeName, tc, config,
+        [this](const int64_t *ptr, const char *name) { return this->CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return this->CheckCommAlgPtr(ptr, name); });
+    isSetFullMeshV2 = tc.isSetFullMeshV2;
+    return ret;
+}
+
+ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::CheckCommAttrParams(
+    const gert::TilingContext *context, const char *nodeName,
+    std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config)
+{
+    DispatchV2TilingCtx tc;
+    auto ret = ::optiling::CheckCommAttrParams(context, nodeName, tc, config,
+        [this](const int64_t *ptr, const char *name) { return this->CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return this->CheckCommAlgPtr(ptr, name); });
+    groupTp = tc.groupTp;
+    isSetFullMeshV2 = tc.isSetFullMeshV2;
+    isLayered = tc.isLayered;
+    return ret;
+}
+
+ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::GetAttrAndSetTilingData(
+    const gert::TilingContext *context, const char *nodeName,
+    MoeDistributeDispatchV2TilingData &tilingData, std::string &groupEp, std::string &groupTp,
+    bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config)
+{
+    DispatchV2TilingCtx tc;
+    auto ret = ::optiling::GetAttrAndSetTilingData(context, nodeName, tilingData, tc, config,
+        [this](const int64_t *ptr, const char *name) { return this->CheckQuantModePtr(ptr, name); },
+        [this](const char *ptr, const char *name) { return this->CheckCommAlgPtr(ptr, name); });
+    groupEp = tc.groupEp;
+    groupTp = tc.groupTp;
+    isSetFullMeshV2 = tc.isSetFullMeshV2;
+    isLayered = tc.isLayered;
+    return ret;
 }
 
 // 公共 CalTilingKey：通过 config.tilingKeyArch 参数化架构差异
