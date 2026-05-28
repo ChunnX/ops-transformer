@@ -294,14 +294,14 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Fusion(
     ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
 
-    auto existingCtx = graph.FindNodeByName("mc2_moe_dispatch_ctx");
+    auto existingCtx = graph.FindNodeByName("mc2_moe_context");
     if (existingCtx != nullptr) {
         contextNode = *existingCtx;
-        OPS_LOG_I(PASS_NAME.c_str(), "Reusing existing mc2_moe_dispatch_ctx Const");
+        OPS_LOG_I(PASS_NAME.c_str(), "Reusing existing mc2_moe_context Const");
     } else {
         ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t *>(&mc2Ctx), sizeof(Mc2MoeContext));
 
-        auto constOp = ge::OperatorFactory::CreateOperator("mc2_moe_dispatch_ctx", "Const");
+        auto constOp = ge::OperatorFactory::CreateOperator("mc2_moe_context", "Const");
         if (constOp.IsEmpty()) {
             OPS_LOG_E(PASS_NAME.c_str(), "Const op not found in factory");
             return ge::GRAPH_SUCCESS;
