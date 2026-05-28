@@ -174,5 +174,5 @@ template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = f
 struct MatmulL1GmType : MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
     constexpr static TPosition srcPos = TPosition::GM;
 };
-} // namespace GMMSQWeightQuantWeightQuant
+} // namespace GMMSQWeightQuant
 #endif
