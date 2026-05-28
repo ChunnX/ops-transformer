@@ -40,10 +40,9 @@ def matmul_kernel(
     
     A: (M, K) - Query 分块 (FP16)
     B: (N, K) - KeyGather (将被转置) (FP16)
-    输出: (M, N) - FP32 (累加结果)
+    输出: (M, N) - FP16
     
-    官方代码 Cube1 输出为 float，保证精度。
-    注意: L0C(FP32) -> UB 需要使用 Fixpipe。
+    内部 L0C 使用 FP32 累加，输出时 Cast 为 FP16。
     """
     
     m_num = M // block_m
@@ -54,7 +53,7 @@ def matmul_kernel(
     def main(
         A: T.Tensor((M, K), dtype),
         B: T.Tensor((N, K), dtype),
-        C: T.Tensor((M, N), 'float32'),  # 输出 FP32
+        C: T.Tensor((M, N), dtype),  # 输出 FP16
     ):
         with T.Kernel(m_num * n_num, threads=VEC_NUM, is_npu=True) as (cid):
             m_idx = cid // n_num
@@ -78,8 +77,8 @@ def matmul_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
             
-            # L0C(FP32) -> GM 使用 Fixpipe
-            T.fixpipe(C_L0C, C[m_idx * block_m, n_idx * block_n])
+            # L0C FP32 → GM FP16，TileLang 会自动处理 Cast
+            T.copy(C_L0C, C[m_idx * block_m, n_idx * block_n])
     
     return main
 
@@ -304,15 +303,14 @@ def matmul_scatter_kernel(
     accum_dtype: str = 'float32'
 ):
     """
-    MatMul 内核，用于计算 scatterAdd (ScatterAdd 操作之前)
+    MatMul 内核，用于计算 scatterAdd
     用于 Cube4: ReluGrad^T @ Query
     
     A: (K, M) - ReluGrad 转置后的 (FP16)
     B: (M, D) - Query (FP16)
-    输出: (K, D) - scatterAdd (FP32)
+    输出: (K, D) - scatterAdd (FP16)
     
-    官方代码 Cube4 输出为 float，scatterAdd 也为 float。
-    注意: L0C(FP32) -> GM 需要使用 Fixpipe。
+    内部 L0C 使用 FP32 累加，输出时 Cast 为 FP16。
     """
     
     k_num = K // block_k
@@ -323,7 +321,7 @@ def matmul_scatter_kernel(
     def main(
         A: T.Tensor((K, M), dtype),
         B: T.Tensor((M, D), dtype),
-        C: T.Tensor((K, D), 'float32'),  # 输出 FP32
+        C: T.Tensor((K, D), dtype),  # 输出 FP16
     ):
         with T.Kernel(k_num * d_num, threads=VEC_NUM, is_npu=True) as (cid):
             k_idx = cid // d_num
@@ -347,8 +345,8 @@ def matmul_scatter_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, init=(m_idx == 0))
             
-            # L0C(FP32) -> GM 使用 Fixpipe
-            T.fixpipe(C_L0C, C[k_idx * block_k, d_idx * block_d])
+            # L0C FP32 → GM FP16，TileLang 会自动处理 Cast
+            T.copy(C_L0C, C[k_idx * block_k, d_idx * block_d])
     
     return main
 
@@ -364,13 +362,12 @@ def reduce_sum_kernel(
     ReduceSum 内核，用于计算 dWeights
     沿 K 维度归约 (M, K) -> (M,)
     
-    官方代码 Vec2:
-    - 输入: reluIn (FP32) * dy (Cast 为 FP32)
-    - ReduceSum 在 FP32 上计算
-    - 输出: Cast 为 dataType (FP16)
+    输入: FP16
+    输出: FP16
     
-    输入: (M, K) - reluIn * Dy (FP32)
-    输出: (M,) - dWeights (FP16)
+    内部处理:
+    - Cast 输入到 FP32 进行 ReduceSum
+    - 输出 Cast 回 FP16
     """
     
     m_num = M // block_m
@@ -378,28 +375,38 @@ def reduce_sum_kernel(
     
     @T.prim_func
     def main(
-        A: T.Tensor((M, K), 'float32'),  # 输入 FP32
-        C: T.Tensor((M,), dtype),        # 输出 FP16
+        A: T.Tensor((M, K), dtype),  # 输入 FP16
+        C: T.Tensor((M,), dtype),    # 输出 FP16
     ):
         with T.Kernel(m_num, threads=VEC_NUM, is_npu=True) as (cid):
             m_idx = cid
             
-            A_UB = T.alloc_ub((block_m, block_k), 'float32')
-            C_UB = T.alloc_ub((block_m,), 'float32')
+            A_UB = T.alloc_ub((block_m, block_k), dtype)         # FP16
+            A_fp32_UB = T.alloc_ub((block_m, block_k), 'float32') # FP32 用于累加
+            C_fp32_UB = T.alloc_ub((block_m,), 'float32')        # FP32 累加结果
+            C_UB = T.alloc_ub((block_m,), dtype)                 # FP16 输出
             
+            # 初始化累加器
             for i in T.Parallel(block_m):
-                C_UB[i] = T.float32(0)
+                C_fp32_UB[i] = T.float32(0)
             
+            # 沿 K 维度累加
             for k_idx in T.serial(k_num):
+                # 加载 FP16 输入
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_UB)
-                T.reduce_sum(A_UB, C_UB, dim=-1, clear=False)
+                
+                # Cast 到 FP32
+                for i, j in T.Parallel(block_m, block_k):
+                    A_fp32_UB[i, j] = T.cast(A_UB[i, j], 'float32')
+                
+                # ReduceSum (FP32)
+                T.reduce_sum(A_fp32_UB, C_fp32_UB, dim=-1, clear=False)
             
             # Cast 回 FP16
-            out_UB = T.alloc_ub((block_m,), dtype)
             for i in T.Parallel(block_m):
-                out_UB[i] = T.cast(C_UB[i], dtype)
+                C_UB[i] = T.cast(C_fp32_UB[i], dtype)
             
-            T.copy(out_UB, C[m_idx * block_m])
+            T.copy(C_UB, C[m_idx * block_m])
     
     return main
 
