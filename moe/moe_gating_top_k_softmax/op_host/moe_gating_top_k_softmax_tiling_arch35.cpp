@@ -79,10 +79,7 @@ private:
 
 bool MoeGatingTopKSoftmaxRegbaseTiling::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-    return true;
+    return false;
 }
 
 
