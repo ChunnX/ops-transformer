@@ -43,6 +43,7 @@ def matmul_kernel(
     输出: (M, N) - FP32 (累加结果)
     
     官方代码 Cube1 输出为 float，保证精度。
+    注意: L0C(FP32) -> UB 需要使用 Fixpipe。
     """
     
     m_num = M // block_m
@@ -64,7 +65,6 @@ def matmul_kernel(
             A_L0A = T.alloc_L0A((block_m, block_k), dtype)
             B_L0B = T.alloc_L0B((block_k, block_n), dtype)
             C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
-            C_UB = T.alloc_ub((block_m, block_n), 'float32')
             
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
@@ -78,8 +78,8 @@ def matmul_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
             
-            T.copy(C_L0C, C_UB)
-            T.copy(C_UB, C[m_idx * block_m, n_idx * block_n])
+            # L0C(FP32) -> GM 使用 Fixpipe
+            T.fixpipe(C_L0C, C[m_idx * block_m, n_idx * block_n])
     
     return main
 
@@ -312,6 +312,7 @@ def matmul_scatter_kernel(
     输出: (K, D) - scatterAdd (FP32)
     
     官方代码 Cube4 输出为 float，scatterAdd 也为 float。
+    注意: L0C(FP32) -> GM 需要使用 Fixpipe。
     """
     
     k_num = K // block_k
@@ -333,7 +334,6 @@ def matmul_scatter_kernel(
             A_L0A = T.alloc_L0A((block_k, block_m), dtype)
             B_L0B = T.alloc_L0B((block_m, block_d), dtype)
             C_L0C = T.alloc_L0C((block_k, block_d), accum_dtype)
-            C_UB = T.alloc_ub((block_k, block_d), 'float32')
             
             for i, j in T.Parallel(block_k, block_d):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
@@ -347,8 +347,8 @@ def matmul_scatter_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, init=(m_idx == 0))
             
-            T.copy(C_L0C, C_UB)
-            T.copy(C_UB, C[k_idx * block_k, d_idx * block_d])
+            # L0C(FP32) -> GM 使用 Fixpipe
+            T.fixpipe(C_L0C, C[k_idx * block_k, d_idx * block_d])
     
     return main
 
