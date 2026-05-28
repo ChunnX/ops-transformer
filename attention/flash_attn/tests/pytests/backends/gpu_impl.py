@@ -21,7 +21,7 @@ GPU 后端实现 (基于 flash-attn 库)
 
 import torch
 from typing import Optional, List
-from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
+from utils import (generate_qkv, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result, gen_block_table)
 
 try:
@@ -49,7 +49,6 @@ def flash_attn_gpu(
     q_rope: Optional[torch.Tensor] = None,
     k_rope: Optional[torch.Tensor] = None,
     atten_mask: Optional[torch.Tensor] = None,
-    pse: Optional[torch.Tensor] = None,
     **kwargs
 ) -> torch.Tensor:
     """
@@ -79,8 +78,8 @@ def flash_attn_gpu(
         softmax_scale = q.size(-1) ** (-0.5)
 
     # 3. 因果掩码
-    sparse_mode = kwargs.get('sparse_mode', 0)
-    causal = int(sparse_mode) in (2, 3) or kwargs.get('causal', False)
+    mask_mode = kwargs.get('mask_mode', 0)
+    causal = int(mask_mode) == 3 or kwargs.get('causal', False)
 
 # ================== Paged Attention 处理 ==================
     layout_kv = kwargs.get("layout_kv", input_layout)
