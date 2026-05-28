@@ -26,6 +26,11 @@
     valueCache:[num_blocks, num_head * v_head_size // last_dim_v, block_size, last_dim_v]/[num_blocks, num_head, v_head_size // last_dim_v, block_size, last_dim_v]
     slotMapping:[batch * seq_len]
     cacheMode:"PA_NZ"
+
+    last_dim_k = 32 / sizeof(dtypeKey)
+    last_dim_v = 32 / sizeof(dtypeValue)
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```  
     
   - 场景二：
@@ -110,6 +115,7 @@
     ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
+- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、四、五。
 
 ## 参数说明
 
