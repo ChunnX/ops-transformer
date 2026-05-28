@@ -144,8 +144,9 @@ public:
     __aicore__ inline void SendMatmulDk(const LocalTensor<INPUT_TYPE> &ds_l1_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
-        // ComputeMMDKV(ds_l1_tensor, queryGm[runTimeInfo.queryGmOffset], outGm[runTimeInfo.keyGmOffset], runTimeInfo);
-        // event_ping_pong_flag = 1 - event_ping_pong_flag;
+        LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
+        ComputeMMDKV(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
     __aicore__ inline void SendMatmulDv(const LocalTensor<INPUT_TYPE> &p_l1_tensor, const GlobalTensor<float> &outGm,

@@ -220,6 +220,7 @@ public:
                                        TBuf<TPosition::VECCALC> &ub_buffer)
     {
         uint64_t dq_size = tilingData->dqSize;
+        uint64_t dkv_size = tilingData->dkSize;
         uint32_t ub_offset = 0;
         vec_in_ping_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
@@ -233,6 +234,10 @@ public:
         EvenCoreInfo info;
         ComputeEvenCoreInfo(info, dq_size, POST_TILE_LEN);
         ComputeVecPost<false>(dv_out_gm, dv_workspace, info);
+        SET_FLAG(MTE3, MTE2, EVENT_ID0);
+        WAIT_FLAG(MTE3, MTE2, EVENT_ID0);
+        ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
+        ComputeVecPost<true>(dk_out_gm, dk_workspace, info);
     }
 
 private:
