@@ -1491,7 +1491,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr, softmaxMaxOut is invalid, "
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr, softmaxMaxOut is invalid, "
             "dtype[%s] should be %s, format[%s] should be %s, shape[%s] should be %s",
             op::ToString(softmaxMaxOut->GetDataType()).GetString(),
             op::ToString(l0SoftmaxMaxOut->GetDataType()).GetString(),
@@ -1502,7 +1502,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr, softmaxSumOut is invalid, "
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr, softmaxSumOut is invalid, "
             "dtype[%s] should be %s, format[%s] should be %s, shape[%s] should be %s",
             op::ToString(softmaxSumOut->GetDataType()).GetString(),
             op::ToString(l0SoftmaxSumOut->GetDataType()).GetString(),
@@ -1514,7 +1514,7 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr, attentionOutOut is invalid, "
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr, attentionOutOut is invalid, "
             "dtype[%s] should be %s, format[%s] should be %s, shape[%s] should be %s",
             op::ToString(attentionOutOut->GetDataType()).GetString(),
             op::ToString(l0AttentionOutOut->GetDataType()).GetString(),
@@ -1582,7 +1582,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        OP_LOGE("FlashAttentionScore", "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1592,16 +1592,16 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1689,7 +1689,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        OP_LOGE("FlashAttentionScore", "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1699,16 +1699,16 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1799,7 +1799,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        OP_LOGE("FlashAttentionScore", "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1809,16 +1809,16 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1903,7 +1903,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        OP_LOGE("FlashAttentionScore", "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1913,16 +1913,16 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -2015,7 +2015,7 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     // l0SoftmaxOutOut not used now
     auto l0AttentionOutOut = l0FlashAttentionScoreOuts[3];
     if (l0SoftmaxMaxOut == nullptr || l0SoftmaxSumOut == nullptr || l0AttentionOutOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
+        OP_LOGE("FlashAttentionScore", "l0SoftmaxMaxOut or l0SoftmaxSumOut or l0AttentionOutOut is null");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -2025,16 +2025,16 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
     OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult0 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
     OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult1 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
     OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
+        OP_LOGE("FlashAttentionScore", "the viewCopyResult3 cannot be nullptr"),
         return ACLNN_ERR_PARAM_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

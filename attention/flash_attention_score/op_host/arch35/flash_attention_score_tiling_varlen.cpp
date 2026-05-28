@@ -425,7 +425,7 @@ protected:
     {
         auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
         if (prefixN == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN is null pointer while sparse mode is prefix compress", templateName);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "prefixN");
             return false;
         }
 
@@ -446,7 +446,7 @@ protected:
         /* Get Data from tensor. */
         prefixNData = prefixN->GetData<int64_t>();
         if (prefixNData == nullptr) {
-            OP_LOGE(context_, "[%s] prefixN data is null pointer", templateName);
+            OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "prefixNData");
             return false;
         }
 
