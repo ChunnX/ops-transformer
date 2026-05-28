@@ -36,7 +36,7 @@ from typing import Optional, Tuple
 
 from lightning_indexer_grad_matmul import (
     matmul_kernel,
-    outer_product_kernel,
+    matmul_broadcast_kernel,
     matmul_dq_kernel,
     matmul_scatter_kernel,
     reduce_sum_kernel,
@@ -55,12 +55,12 @@ class LightningIndexerGrad:
     计算 Lightning Attention 稀疏索引操作的梯度。
     
     TileLang Kernel 使用情况:
-    - kernel_cube1: Cube1 MatMul (Query @ KeyGather^T) ✓ 下发NPU
-    - kernel_cube2: Cube2 外积 (Weights @ Dy) ✓ 下发NPU
-    - kernel_cube3: Cube3 MatMul (ReluGrad @ KeyGather) ✓ 下发NPU
-    - kernel_cube4: Cube4 MatMul (ReluGrad^T @ Query) ✓ 下发NPU
-    - kernel_relu_grad: Vec2 ReLU反向 ✓ 下发NPU
-    - kernel_reduce: Vec2 ReduceSum ✓ 下发NPU
+    - kernel_cube1: Cube1 MatMul (Query @ KeyGather^T) ✓ Cube单元
+    - kernel_cube2: Cube2 外积 (Weights ⊗ Dy) ✓ Cube单元 (matmul_broadcast)
+    - kernel_cube3: Cube3 MatMul (ReluGrad @ KeyGather) ✓ Cube单元
+    - kernel_cube4: Cube4 MatMul (ReluGrad^T @ Query) ✓ Cube单元
+    - kernel_relu_grad: Vec2 ReLU反向 ✓ Vector单元 (内部FP32)
+    - kernel_reduce: Vec2 ReduceSum ✓ Vector单元 (内部FP32)
     
     注意: GatherTopk 和 ScatterAdd 使用 CPU 辅助 (不规则内存访问)。
     """
@@ -114,9 +114,11 @@ class LightningIndexerGrad:
         )
         
         # Cube2: Weights(g,) ⊗ Dy(topk,) -> relu_grad_in (g, topk) FP16
-        self.kernel_cube2 = outer_product_kernel(
-            g, topk,
-            g, D,  # block_m=64, block_n=128
+        # 使用 matmul_broadcast_kernel (Cube单元) 而非 outer_product_kernel (Vector)
+        # 外积 = (M,1) @ (1,N) -> (M,N)，Cube 单元更高效
+        self.kernel_cube2 = matmul_broadcast_kernel(
+            g, topk, 1,
+            g, D, 1,  # block_m=64, block_n=128, block_k=1
             self.dtype
         )
         
@@ -152,12 +154,12 @@ class LightningIndexerGrad:
         
         torch.npu.synchronize()
         print("TileLang 内核编译成功!")
-        print("  - kernel_cube1: Cube1 Query @ KeyGather^T (输出 FP16)")
-        print("  - kernel_cube2: Cube2 Weights ⊗ Dy 外积 (输出 FP16)")
-        print("  - kernel_cube3: Cube3 ReluGrad @ KeyGather (输出 FP16)")
-        print("  - kernel_cube4: Cube4 ReluGrad^T @ Query (输出 FP16)")
-        print("  - kernel_relu_grad: Vec2 ReLU反向 (内部FP32比较)")
-        print("  - kernel_reduce: Vec2 ReduceSum (内部FP32累加)")
+        print("  - kernel_cube1: Cube1 Query @ KeyGather^T (Cube单元, FP16)")
+        print("  - kernel_cube2: Cube2 Weights ⊗ Dy (Cube单元, FP16)")
+        print("  - kernel_cube3: Cube3 ReluGrad @ KeyGather (Cube单元, FP16)")
+        print("  - kernel_cube4: Cube4 ReluGrad^T @ Query (Cube单元, FP16)")
+        print("  - kernel_relu_grad: Vec2 ReLU反向 (Vector, 内部FP32)")
+        print("  - kernel_reduce: Vec2 ReduceSum (Vector, 内部FP32)")
     
     def forward(
         self,
