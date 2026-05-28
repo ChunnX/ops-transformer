@@ -249,7 +249,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV;
     using TileCopyPV =
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
-                                          void, Gemm::Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
+                                          void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
                                           Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV,
                                                   ElementOTmp, void, TileCopyPV>;

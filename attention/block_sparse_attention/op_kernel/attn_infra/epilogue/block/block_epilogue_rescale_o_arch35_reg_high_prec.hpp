@@ -131,8 +131,8 @@ public:
         
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-        AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
-        AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
+        // AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
+        // AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -174,9 +174,9 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::printf("tkd isLastKvSTile\n");
-            AscendC::printf("tkd final goUbTensor32\n");
-            AscendC::DumpTensor(goUbTensor32, 2, 32);
+            // AscendC::printf("tkd isLastKvSTile\n");
+            // AscendC::printf("tkd final goUbTensor32\n");
+            // AscendC::DumpTensor(goUbTensor32, 2, 32);
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,
@@ -226,8 +226,8 @@ public:
         
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-        AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
-        AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
+        // AscendC::printf("tkd initial loUbTensor[ubOTmpBufId]\n");
+        // AscendC::DumpTensor(loUbTensor[ubOTmpBufId], 0, 32);
         if (isFirstKvSTile) {
             if (!isLastKvSTile) {
                 uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
@@ -263,25 +263,25 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::printf("tkd isLastKvSTile\n");
+            // AscendC::printf("tkd isLastKvSTile\n");
             if (dStages == 1) {
-                AscendC::printf("tkd O matrix before dequantScale ONE\n");
-                AscendC::DumpTensor(goUbTensor32, 0, 32);
+                // AscendC::printf("tkd O matrix before dequantScale ONE\n");
+                // AscendC::DumpTensor(goUbTensor32, 0, 32);
                 ScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
                                              deqScalar);
-                AscendC::printf("tkd O matrix after dequantScale ONE\n");
-                AscendC::DumpTensor(goUbTensor32, 1, 32);
+                // AscendC::printf("tkd O matrix after dequantScale ONE\n");
+                // AscendC::DumpTensor(goUbTensor32, 1, 32);
             } else if (dStages == 2) {
-                AscendC::printf("tkd O matrix before dequantScale TWO\n");
-                AscendC::DumpTensor(goUbTensor32, 2, 32);
+                // AscendC::printf("tkd O matrix before dequantScale TWO\n");
+                // AscendC::DumpTensor(goUbTensor32, 2, 32);
                 ScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
                                              deqScalar);
-                AscendC::printf("tkd O matrix after dequantScale TWO\n");
-                AscendC::DumpTensor(goUbTensor32, 2, 32);
+                // AscendC::printf("tkd O matrix after dequantScale TWO\n");
+                // AscendC::DumpTensor(goUbTensor32, 2, 32);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::printf("tkd final goUbTensor32\n");
-            AscendC::DumpTensor(goUbTensor32, 2, 32);
+            // AscendC::printf("tkd final goUbTensor32\n");
+            // AscendC::DumpTensor(goUbTensor32, 2, 32);
             if (std::is_same<ElementO, bfloat16_t>::value) {
                 AscendC::Cast(
                     goUbTensor16, goUbTensor32,

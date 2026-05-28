@@ -354,12 +354,12 @@ public:
                         l0TileNAct,
                         l0TileKAct,
                         initMmad);
-                        AscendC::printf("tkd print PV l0ATensor[l0ABufId]\n");
-                        AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
-                        AscendC::printf("tkd print PV l0BTensor[l0BBufId]\n");
-                        AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
-                        AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
-                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
+                        // AscendC::printf("tkd print PV l0ATensor[l0ABufId]\n");
+                        // AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
+                        // AscendC::printf("tkd print PV l0BTensor[l0BBufId]\n");
+                        // AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
+                        // AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
+                        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }

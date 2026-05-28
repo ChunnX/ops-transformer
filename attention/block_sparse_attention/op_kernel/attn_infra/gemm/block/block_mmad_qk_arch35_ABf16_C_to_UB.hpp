@@ -376,12 +376,12 @@ public:
                             l0TileNAct,
                             l0TileKAct,
                             initMmad);
-                        AscendC::printf("tkd print l0ATensor[l0ABufId]\n");
-                        AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
-                        AscendC::printf("tkd print l0BTensor[l0BBufId]\n");
-                        AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
-                        AscendC::printf("tkd print l0CTensor[l0CBufId]\n");
-                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
+                        // AscendC::printf("tkd print l0ATensor[l0ABufId]\n");
+                        // AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
+                        // AscendC::printf("tkd print l0BTensor[l0BBufId]\n");
+                        // AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
+                        // AscendC::printf("tkd print l0CTensor[l0CBufId]\n");
+                        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
                         if (l1ToL0ANoRepeatFlag && (nL1Itr == nL1LoopNum - 1) && (nL0Itr == nL0LoopNum - 1)) {
                             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                         }
@@ -535,8 +535,8 @@ public:
                         // AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
                         // AscendC::printf("tkd print QK l0BTensor[l0BBufId]\n");
                         // AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
-                        AscendC::printf("tkd print QK l0CTensor[l0CBufId]\n");
-                        AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 140);
+                        // AscendC::printf("tkd print QK l0CTensor[l0CBufId]\n");
+                        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 140);
                         if (l1ToL0ANoRepeatFlag && (nL1Itr == nL1LoopNum - 1) && (nL0Itr == nL0LoopNum - 1)) {
                             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                         }
@@ -563,9 +563,9 @@ public:
                         tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
                 auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
                         tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
-                AscendC::printf("tkd mmad_qk start copyL0CToDstSub0\n");
+                // AscendC::printf("tkd mmad_qk start copyL0CToDstSub0\n");
                 copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
-                AscendC::printf("tkd mmad_qk start copyL0CToDstSub1\n");
+                // AscendC::printf("tkd mmad_qk start copyL0CToDstSub1\n");
                 copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }

@@ -198,8 +198,8 @@ public:
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        AscendC::printf("tkd S matrix after dequantScale\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        // AscendC::printf("tkd S matrix after dequantScale\n");
+        // AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         if (isFirstKvSTile) {
             nowMaxFloatAddr = lastMaxAddr;
             nowSumAddr = lastSumAddr;
@@ -216,8 +216,8 @@ public:
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxFloatAddr, lastMaxAddr, mLoops, tailM);
         }
-        AscendC::printf("tkd S matrix after scaled\n");
-        AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
+        // AscendC::printf("tkd S matrix after scaled\n");
+        // AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         // AscendC::printf("tkd inital lpUbTensor\n");
         // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
         // AscendC::printf("tkd initial max\n");
@@ -231,21 +231,21 @@ public:
         if (kvBaseTileRegStages == 1) {
             ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::ONE>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN,
                                                                   blockStride, nRound, tailNOdd, tailNEven);
-            AscendC::printf("tkd after ONE lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
-            AscendC::printf("tkd after ONE max\n");
-            AscendC::DumpTensor(lmUbTensor, 1, 32);
-            AscendC::printf("tkd after ONE sum\n");
-            AscendC::DumpTensor(llUbTensor, 1, 32);
+            // AscendC::printf("tkd after ONE lpUbTensor\n");
+            // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
+            // AscendC::printf("tkd after ONE max\n");
+            // AscendC::DumpTensor(lmUbTensor, 1, 32);
+            // AscendC::printf("tkd after ONE sum\n");
+            // AscendC::DumpTensor(llUbTensor, 1, 32);
         } else if (kvBaseTileRegStages == 2) {
             ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN,
                                                                   blockStride, nRound, tailNOdd, tailNEven);
-            AscendC::printf("tkd after TWO lpUbTensor\n");
-            AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
-            AscendC::printf("tkd after TWO max\n");
-            AscendC::DumpTensor(lmUbTensor, 1, 32);
-            AscendC::printf("tkd after TWO sum\n");
-            AscendC::DumpTensor(llUbTensor, 1, 32);
+            // AscendC::printf("tkd after TWO lpUbTensor\n");
+            // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
+            // AscendC::printf("tkd after TWO max\n");
+            // AscendC::DumpTensor(lmUbTensor, 1, 32);
+            // AscendC::printf("tkd after TWO sum\n");
+            // AscendC::DumpTensor(llUbTensor, 1, 32);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -728,6 +728,7 @@ private:
         RegTensor<ElementOutput> pVreg7;
 
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
+        MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
         MaskReg pRegFp16All = CreateMask<ElementInput, MaskPattern::ALL>();
         MaskReg pRegFp32All = CreateMask<float, MaskPattern::ALL>();
 
@@ -783,7 +784,7 @@ private:
                 Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg7,
                    pRegUint8All);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
-                                                                         blockStride, pRegUint8All);
+                                                                         blockStride, pRegUint8VL128);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                     expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * HALF_VECTOR_SIZE, pVreg4,
                     blockStride, pRegUint8All);
