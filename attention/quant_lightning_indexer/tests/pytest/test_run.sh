@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -9,6 +8,8 @@ set -euo pipefail
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
+set -euo pipefail
 
 # ====================== 配置区======================
 # 需要读取的用例excel表格路径，如下：
@@ -97,5 +98,3 @@ case "$1" in
         exit 1
         ;;
 esac
-
-exit 0
