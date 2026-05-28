@@ -193,7 +193,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>numHeadsKv</td>
       <td>输入</td>
-      <td>表示Key的head个数。</td>
+      <td>Key和Value对应的多头数。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
