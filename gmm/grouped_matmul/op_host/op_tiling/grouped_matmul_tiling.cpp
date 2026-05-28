@@ -1229,18 +1229,9 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);  // check compileInfoPtr is not null
   if (groupListType_ == GROUP_LIST_SPARSE_M) {
     OP_CHECK_IF((!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
-                  compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)),
+                compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "This platform not support groupListType is 2"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!isA8W8_,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "Only both x and weight dtype are int8 support groupListType is 2"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(groupType_ != SPLIT_M,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "When groupListType is 2 only support groupType 0, but get groupType %ld",
-                                           groupType_),
-               return ge::GRAPH_FAILED);
   }
 
   auto perTokenScalePtr = context->GetOptionalInputTensor(PER_TOKEN_SCALE_INDEX);

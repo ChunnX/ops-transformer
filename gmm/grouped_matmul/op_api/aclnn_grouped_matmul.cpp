@@ -1120,12 +1120,18 @@ static aclnnStatus CheckA8W4SymmQuantParams(const gmm::GroupedMatmulParams &gmmP
 }
 
 static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParams) {
-  if (!isA8W8AsymmetricQuant(gmmParams)) {
-    CheckA8W4SymmQuantParams(gmmParams);
- 	  return ACLNN_SUCCESS;
-  }
-  CHECK_COND(CheckA8W4AsymQuantParams(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckA8W4AsymQuantParams failed.");
-  return ACLNN_SUCCESS;
+    if (gmmParams.groupListType != 1) {
+        OP_LOGW("GMM A8W4: groupListType only support 1(count), but now is %ld.",
+                gmmParams.groupListType);
+    }
+    if (!isA8W8AsymmetricQuant(gmmParams)) {
+        CheckA8W4SymmQuantParams(gmmParams);
+ 	      return ACLNN_SUCCESS;
+    }
+    CHECK_COND(CheckA8W4AsymQuantParams(gmmParams) == ACLNN_SUCCESS,
+               ACLNN_ERR_PARAM_INVALID,
+               "CheckA8W4AsymQuantParams failed.");
+    return ACLNN_SUCCESS;
 }
 
 static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParams) {
@@ -1154,41 +1160,44 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
 }
 
 static aclnnStatus CheckA4W4QuantParams(const gmm::GroupedMatmulParams &gmmParams) {
-  CHECK_COND(gmmParams.groupListType == 0 || gmmParams.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
-    "GMM A4W4: groupListType only support 0 or 1, but now is %ld.", gmmParams.groupListType);
-  DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-  CHECK_COND(yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: output y dtype should be float16 or bfloat16, current dtype is %s.",
-             gmm::dTypeToString(yDtype).c_str());
-  CHECK_COND(gmmParams.offsetOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: offset must be null.");
-  CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: bias must be null.");
+  // 0: cumsum, 1: count, 2: sparse.
+    CHECK_COND(gmmParams.groupListType == 0 || gmmParams.groupListType == 1 || gmmParams.groupListType == 2,
+               ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: groupListType only support 0(cumsum) or 1(count) or 2(sparsem), but now is %ld.",
+               gmmParams.groupListType);
+    DataType yDtype = (*gmmParams.y)[0]->GetDataType();
+    CHECK_COND(yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: output y dtype should be float16 or bfloat16, current dtype is %s.",
+               gmm::dTypeToString(yDtype).c_str());
+    CHECK_COND(gmmParams.offsetOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: offset must be null.");
+    CHECK_COND(gmmParams.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: bias must be null.");
+    CHECK_COND(gmmParams.scaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: scale must not be null.");
+    DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
+    CHECK_COND(scaleDtype == DataType::DT_UINT64, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: scale dtype does not match with required dtype uint64, current dtype is %s.",
+               gmm::dTypeToString(scaleDtype).c_str());
 
-  CHECK_COND(gmmParams.scaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: scale must not be null.");
-  DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
-  CHECK_COND(scaleDtype == DataType::DT_UINT64, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: scale dtype does not match with required dtype uint64, current dtype is %s.",
-             gmm::dTypeToString(scaleDtype).c_str());
-
-  bool isPerTokenQuant = gmmParams.perTokenScaleOptional != nullptr;
-  if (isPerTokenQuant) {
-    DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
-    CHECK_COND(perTokenScaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "GMM A4W4: perTokenScale dtype does not match with required dtype float32, current dtype is %s.",
-               gmm::dTypeToString(perTokenScaleDtype).c_str());
-
-    CHECK_COND(CheckPerTokenScale(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "GMM A4W4: Check perTokenScale failed!");
-  }
-  CHECK_COND(CheckA4W4ParamsShape(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckA4W4ParamsShape failed.");
-  CHECK_COND(IsGmmAntiQuantEmpty(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-             "GMM A4W4: Detected quant, but antiquant inputs are not empty!");
-  CHECK_COND(gmmParams.groupType == gmm::SPLIT_M && gmmParams.x->Size() == 1 && gmmParams.weight->Size() == 1
-             && gmmParams.y->Size() == 1, ACLNN_ERR_PARAM_INVALID,
-             "A4W4 only support split m, single x, single weight, single y.");
-  return ACLNN_SUCCESS;
+    bool isPerTokenQuant = gmmParams.perTokenScaleOptional != nullptr;
+    if (isPerTokenQuant) {
+        DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
+        CHECK_COND(perTokenScaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
+                   "GMM A4W4: perTokenScale dtype does not match with required dtype float32, current dtype is %s.",
+                   gmm::dTypeToString(perTokenScaleDtype).c_str());
+        CHECK_COND(CheckPerTokenScale(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "GMM A4W4: Check perTokenScale failed!");
+    }
+    CHECK_COND(CheckA4W4ParamsShape(gmmParams) == ACLNN_SUCCESS,
+               ACLNN_ERR_PARAM_INVALID,
+               "CheckA4W4ParamsShape failed.");
+    CHECK_COND(IsGmmAntiQuantEmpty(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "GMM A4W4: Detected quant, but antiquant inputs are not empty!");
+    CHECK_COND(gmmParams.groupType == gmm::SPLIT_M && gmmParams.x->Size() == 1 && gmmParams.weight->Size() == 1
+               && gmmParams.y->Size() == 1, ACLNN_ERR_PARAM_INVALID,
+               "A4W4 only support split m, single x, single weight, single y.");
+    return ACLNN_SUCCESS;
 }
 
 bool isActivationAllowed(int64_t act_type) {
@@ -2489,8 +2498,6 @@ aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weigh
   if (groupListType == gmm::GROUP_LIST_SPARSE_M) {
     CHECK_COND(npuArch == NpuArch::DAV_2201 || npuArch == NpuArch::DAV_3510, ACLNN_ERR_PARAM_INVALID,
       "This platform not support groupListType is 2.");
-    CHECK_COND(groupType == gmm::SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-      "When groupListType is 2 only support groupType 0, but get groupType %ld.", groupType);
   } else {
     CHECK_COND(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID, "groupListType shoule be 0 or 1.");
   }

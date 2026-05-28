@@ -53,7 +53,7 @@ class GMMQuantMixCoreCompute : public GMMCompute<mmType, sync> {
     __aicore__ inline void InitStaticTiling(const GMMBaseParams* __restrict gmmBaseParams, GM_ADDR workspace,
                                             int32_t baseM, int32_t baseN);
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig& mnConfig, uint32_t coreIdx);
+    __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig& mnConfig, uint32_t coreIdx, uint32_t listIndex = 0);
 
     __aicore__ inline void VectorCompute(MNConfig& mnConfig);
 
@@ -174,7 +174,7 @@ __aicore__ inline void GMMQuantMixCoreCompute<mmType, sync>::PostCompute() {
 
 template <typename mmType, bool sync>
 __aicore__ inline void GMMQuantMixCoreCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MNConfig& mnConfig,
-                                                                       uint32_t coreIdx) {
+                                                                       uint32_t coreIdx, uint32_t listIndex) {
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;
     uint32_t curSingleN = mnConfig.nIdx < mnConfig.blockDimN - 1 ? mnConfig.singleN : mnConfig.n - tailN;
     uint32_t curSingleM = mnConfig.mIdx < mnConfig.blockDimM - 1 ? mnConfig.singleM
