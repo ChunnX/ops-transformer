@@ -132,14 +132,14 @@ constexpr int64_t DIM_NUM_5 = 5;
 static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uint32_t avg_m, uint32_t maxN_, uint32_t groupNum_, const uint32_t& aicNum) {
   int32_t mDim = CeilDiv(avg_m, baseM_);
   int32_t nDim = CeilDiv(maxN_, baseN_);
-  int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-  int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
+  int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum_);
+  int64_t taskNumPerCore = CeilDiv(taskNum, static_cast<int64_t>(aicNum));
   //每个核只需要做1个基本块的时候，任务量太少，无需处理
   if(taskNumPerCore <= 1){
     return baseN_;
   }
   int32_t curNDim = 0;
-  int32_t curTaskNum = 0;
+  int64_t curTaskNum = 0;
   int32_t bestSingleN = baseN_;
   float ratio = 0;
   for (uint32_t i = 1; i <= aicNum; ++i){
@@ -148,8 +148,8 @@ static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uin
       continue;
     }
     curNDim = CeilDiv(maxN_, bestSingleN);
-    curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-    ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
+    curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
+    ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(aicNum)));
     if(ratio >= EFFECTIVE_TASK_RATIO) {
       return bestSingleN;
     }
@@ -611,14 +611,14 @@ int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
     }
     int32_t mDim = CeilDiv(tuningConfig_, baseM_);
     int32_t nDim = CeilDiv(maxN_, baseN_);
-    int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-    int32_t taskNumPerCore = CeilDiv(taskNum, usedCoreNum);
+    int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum_);
+    int64_t taskNumPerCore = CeilDiv(taskNum, static_cast<int64_t>(usedCoreNum));
     // 每个核只需要做1个基本块的时候，任务量太少，无需处理
     if (taskNumPerCore <= 1) {
         return baseN_;
     }
     int32_t curNDim = 0;
-    int32_t curTaskNum = 0;
+    int64_t curTaskNum = 0;
     int32_t bestSingleN = baseN_;
     float ratio = 0;
     for (uint32_t i = 1; i <= usedCoreNum; ++i) {
@@ -632,8 +632,8 @@ int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
             return baseN_;
         }
         curNDim = CeilDiv(maxN_, bestSingleN);
-        curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-        ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), usedCoreNum);
+        curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
+        ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(usedCoreNum)));
         if (ratio >= EFFECTIVE_TASK_RATIO) {
             return bestSingleN;
         }

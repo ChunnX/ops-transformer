@@ -138,14 +138,14 @@ __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::SetMNConfigs(
 template <typename ComputeType>
 __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset += static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
     } else {
-        mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+        mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }
     mnConfig.mAxisBaseOffset += mnConfig.m;
     mnConfig.nAxisBaseOffset += mnConfig.n;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>
@@ -1014,16 +1014,16 @@ __aicore__ inline void GMMA16W8MSDMSparseProcess<ComputeType>::UpdateMnConfigFor
 {
     if (groupIdx > 0) {
         mnConfig.mAxisBaseOffset += mnConfig.m;
-        mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-        mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+        mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+        mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
     }
 
-    mnConfig.nAxisBaseOffset = expertIdx * mnConfig.n;
+    mnConfig.nAxisBaseOffset = static_cast<uint64_t>(expertIdx) * mnConfig.n;
     if constexpr (GMMA16W8MSDProcess<ComputeType>::B::format == CubeFormat::NZ) {
         // 16: nz format last two dim size
-        mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
+        mnConfig.wBaseOffset = static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.nAxisBaseOffset);
     } else {
-        mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
+        mnConfig.wBaseOffset = static_cast<uint64_t>(mnConfig.k) * mnConfig.nAxisBaseOffset;
     }
     mnConfig.m = splitValue;
 }
