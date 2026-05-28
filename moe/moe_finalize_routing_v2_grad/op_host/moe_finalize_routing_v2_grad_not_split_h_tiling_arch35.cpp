@@ -38,15 +38,7 @@ protected:
     ge::graphStatus PostTiling() override;
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-            return false;
-        }
-        CalcHAlignAndBinaryAddParamInUb();
-        CalcMaxHiddenInUb();
-        if (hiddenPrePart_ <= 0 || hiddenPrePart_ < hAlign_) {
-            return false;
-        }
-        return true;
+        return false;
     }
     ge::graphStatus CheckOptionalInputDtype() override;
 
