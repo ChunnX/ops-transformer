@@ -547,6 +547,7 @@ ge::graphStatus MoeContextManager::CheckCache(const std::string &uniqueKey, Mc2M
     if (it != contextCache_.end()) {
         context = it->second.first;
         hcclBuffSize = it->second.second;
+        OPS_LOG_I(LOG_TAG, "Data cache HIT for key=%s", uniqueKey.c_str());
         return ge::GRAPH_SUCCESS;
     }
     return ge::GRAPH_FAILED;
@@ -555,11 +556,38 @@ ge::graphStatus MoeContextManager::CheckCache(const std::string &uniqueKey, Mc2M
 void MoeContextManager::UpdateCache(const std::string &uniqueKey, const Mc2MoeContext &context, int64_t hcclBuffSize)
 {
     contextCache_[uniqueKey] = {context, hcclBuffSize};
+    OPS_LOG_I(LOG_TAG, "Data cache updated for key=%s", uniqueKey.c_str());
 }
 
-ge::graphStatus MoeContextManager::GetMc2ContextA5(const std::string &contextTag, const std::string &epName,
-                                                    const ge::GNode &originalNode, Mc2MoeContext &context,
-                                                    int64_t &hcclBuffSize)
+ge::graphStatus MoeContextManager::CreateContextNode(ge::Graph& graph, const Mc2MoeContext& context,
+                                                      ge::GNode& constNode)
+{
+    static const std::string kContextConstName = "mc2_moe_context";
+    static const uint32_t IDX_0 = 0;
+
+    ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
+    ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
+    ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t*>(&context), sizeof(Mc2MoeContext));
+
+    auto constOp = ge::OperatorFactory::CreateOperator(kContextConstName, "Const");
+    if (constOp.IsEmpty()) {
+        OPS_LOG_E(LOG_TAG, "Const op not found in factory");
+        return ge::GRAPH_FAILED;
+    }
+    constOp.UpdateOutputDesc(IDX_0, tensorDesc);
+    constOp.SetAttr("value", tensorValue);
+
+    constNode = graph.AddNodeByOp(constOp);
+    ge::AscendString ctxNodeName;
+    constNode.GetName(ctxNodeName);
+    OPS_LOG_I(LOG_TAG, "Context Const node added as %s", ctxNodeName.GetString());
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeContextManager::GetMc2ContextA5(
+    ge::Graph& graph, const std::string& contextTag, const std::string& epName,
+    const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize)
 {
     if (contextTag.empty() || epName.empty()) {
         OPS_LOG_E(LOG_TAG, "Context tag or ep name is empty");
@@ -574,28 +602,40 @@ ge::graphStatus MoeContextManager::GetMc2ContextA5(const std::string &contextTag
     }
     std::string groupEp(groupEpStr.GetString());
 
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 entry, tag=%s, groupEp=%s", contextTag.c_str(), groupEp.c_str());
-
-    MoeContextManager &manager = GetInstance();
-
+    MoeContextManager& manager = GetInstance();
     std::string uniqueKey = contextTag + "_" + groupEp;
+
+    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph entry, key=%s", uniqueKey.c_str());
+
+    // 1. 尝试从数据缓存获取 Mc2MoeContext（节省 HCCL 库重复计算）
+    Mc2MoeContext context{0};
     auto status = manager.CheckCache(uniqueKey, context, hcclBuffSize);
-    if (status == ge::GRAPH_SUCCESS) {
-        OPS_LOG_I(LOG_TAG, "Cache HIT for key=%s, reuse context", uniqueKey.c_str());
+    if (status != ge::GRAPH_SUCCESS) {
+        OPS_LOG_I(LOG_TAG, "Data cache MISS for key=%s, computing new context...", uniqueKey.c_str());
+        status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
+        if (status != ge::GRAPH_SUCCESS) {
+            OPS_LOG_E(LOG_TAG, "Get HCCL context failed");
+            return status;
+        }
+        manager.UpdateCache(uniqueKey, context, hcclBuffSize);
+    }
+
+    // 2. 在图内查找已有的 Const 节点（图级隔离，无跨图风险）
+    auto existingCtx = graph.FindNodeByName("mc2_moe_context");
+    if (existingCtx != nullptr) {
+        constNode = *existingCtx;
+        OPS_LOG_I(LOG_TAG, "Reusing existing mc2_moe_context Const from graph, hcclBuffSize=%ld", hcclBuffSize);
         return ge::GRAPH_SUCCESS;
     }
 
-    OPS_LOG_I(LOG_TAG, "Cache MISS for key=%s, creating new context...", uniqueKey.c_str());
-
-    status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
+    // 3. 创建 Const 节点
+    status = manager.CreateContextNode(graph, context, constNode);
     if (status != ge::GRAPH_SUCCESS) {
-        OPS_LOG_E(LOG_TAG, "Get HCCL context failed");
+        OPS_LOG_E(LOG_TAG, "Create context node failed");
         return status;
     }
 
-    manager.UpdateCache(uniqueKey, context, hcclBuffSize);
-
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 done, hcclBuffSize=%ld", hcclBuffSize);
+    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph done, hcclBuffSize=%ld", hcclBuffSize);
     return ge::GRAPH_SUCCESS;
 }
 
