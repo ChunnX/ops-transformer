@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -295,7 +295,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
                                          this->expertNum_ * this->expertCapacity_);
     }
 
-expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+    expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
     expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +

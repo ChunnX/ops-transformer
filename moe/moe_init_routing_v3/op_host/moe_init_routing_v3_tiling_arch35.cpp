@@ -252,6 +252,7 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
+        // TODO 测试非全载场景用，全量测试后改回
         return false;
     }
 
@@ -506,11 +507,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
         workspaceSize_ += expertIdxValueWorkspaceSize;
 
-        // expandDstToSrcRowGm和expandedExpertIdxGm: 每个核需要perCoreRows个int32
-        // SrcToDst DropPad kernel使用
-        int64_t srcToDstWorkspaceSize = totalLength_ * sizeof(int32_t) * NUM_TWO; // expandDstToSrcRow + expandedExpertIdx
-        workspaceSize_ += srcToDstWorkspaceSize;
-
         OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, srcToDstWorkspace=%ld",
                  expertIdxValueWorkspaceSize, srcToDstWorkspaceSize);
     }
@@ -653,15 +649,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumType = expertTokensNumType_;
 
-    // DropPad模式下expert_tokens_num_type必须为COUNT
-    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD && expertTokensNumFlag_) {
-        OP_CHECK_IF(expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT,
-                    OP_LOGE(context_,
-                            "In DROP_PAD mode and expert_tokens_num_flag is true, expert_tokens_num_type only supports COUNT, but got %ld",
-                            expertTokensNumType_),
-                    return ge::GRAPH_FAILED);
-    }
-
     // expertNum
     int64_t maxExpertNum =
         (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ? KV_MODE_EXPERT_IDX_MAX : EXPERT_IDX_MAX;
@@ -682,8 +669,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     // 注意：此时n_还未获取，需要在CheckSetInputs中获取n_后再校验expertCapacity
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(expertCapacity_ <= EXPERT_CAPACITY_MIN_VALUE,
-                    OP_LOGE(context_, "Attr expert_capacity should be greater than %ld in DropPad mode, current is %ld.",
-                            EXPERT_CAPACITY_MIN_VALUE, expertCapacity_),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertCapacity_",
+                                              expertCapacity_, " greater than " + EXPERT_CAPACITY_MIN_VALUE),
                     return ge::GRAPH_FAILED);
     }
     tilingDataPtr_->expertCapacity = expertCapacity_;
@@ -715,8 +702,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     // rowIdxType校验：DropPad模式仅支持rowIdxType=0（gather索引）
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(rowIdxType_ != ROW_IDX_GATHER,
-                    OP_LOGE(context_, "Attr row_idx_type only supports %ld (gather) in DropPad mode, but got %ld.",
-                            ROW_IDX_GATHER, rowIdxType_),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "row_idx_type", std::to_string(rowIdxType_),
+                                              std::to_string(ROW_IDX_GATHER)),
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(rowIdxType_ != ROW_IDX_SCATTER && rowIdxType_ != ROW_IDX_GATHER,
@@ -753,8 +740,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetListAttrs()
     // DropPad模式下activeExpertRange必须为[0, expertNum]
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(expertStart_ != 0 || expertEnd_ != expertNum_,
-                    OP_LOGE(context_, "Attr active_expert_range must be [0, %ld] in DropPad mode, current is [%ld, %ld].",
-                            expertNum_, expertStart_, expertEnd_),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "[expert_start, expert_end]", 
+                        "[" + std::to_string(expertStart_) + ", " + std::to_string(expertEnd_) + "]",
+                        "[0, " + std::to_string(expertNum_) + "]"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -989,8 +977,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     // DropPad模式下expertCapacity必须满足 ≤ numRows
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         OP_CHECK_IF(expertCapacity_ > n_,
-                    OP_LOGE(context_, "Attr expert_capacity should be less than or equal to numRows(%ld) in DropPad mode, current is %ld.",
-                            n_, expertCapacity_),
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_capacity",
+                        std::to_string(expertCapacity_),
+                        "less than or equal to " + std::to_string(n_)),
                     return ge::GRAPH_FAILED);
     }
 
