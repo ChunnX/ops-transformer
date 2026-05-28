@@ -49,7 +49,9 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK((groupEpPtr == nullptr) || (epWorldSizePtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "Group or epWorldSize attr is null, expected non-null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*epWorldSizePtr == 0, OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size", std::to_string(*epWorldSizePtr).c_str(), "positive value"),
+    OP_TILING_CHECK(*epWorldSizePtr == 0,
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size",
+            std::to_string(*epWorldSizePtr).c_str(), "positive value"),
         return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
@@ -62,7 +64,8 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     }
     OP_TILING_CHECK(std::find(validEpWorldSizeValues.begin(), validEpWorldSizeValues.end(),
         *epWorldSizePtr) == validEpWorldSizeValues.end(),
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size", std::to_string(*epWorldSizePtr).c_str(), "valid set for this platform"),
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size",
+            std::to_string(*epWorldSizePtr).c_str(), "valid set for this platform"),
         return ge::GRAPH_FAILED);
 
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
@@ -150,10 +153,12 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
             sendSum = 0U;
             for (uint64_t j = (i - 1U) * eExpert; j <= i * eExpert - 1U; j++) {
                 OP_TILING_CHECK((sendCountsLocal[j] < NUM_ZERO) || (sendCountsLocal[j] > static_cast<int64_t>(bsk)),
-                    OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "send_counts", std::to_string(sendCountsLocal[j]).c_str(), "[0, BSK]"),
+                    OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "send_counts",
+                        std::to_string(sendCountsLocal[j]).c_str(), "[0, BSK]"),
                     return ge::GRAPH_FAILED);
                 OP_TILING_CHECK((recvCountsLocal[j] < NUM_ZERO) || (recvCountsLocal[j] > static_cast<int64_t>(a)),
-                    OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "recv_counts", std::to_string(recvCountsLocal[j]).c_str(), "[0, A]"),
+                    OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "recv_counts",
+                        std::to_string(recvCountsLocal[j]).c_str(), "[0, A]"),
                     return ge::GRAPH_FAILED);
                 recvSum += static_cast<uint64_t>(recvCountsLocal[j]) * H1 * 2U;
                 sendSum += static_cast<uint64_t>(sendCountsLocal[j]) * H1 * 2U;
@@ -163,11 +168,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
 
     uint64_t sendCountsSum = std::accumulate(sendCountsLocal, sendCountsLocal + sendCountsSize, 0ULL);
     OP_TILING_CHECK(sendCountsSum != bsk,
-        OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "send_counts", ("sum " + std::to_string(sendCountsSum) + " != " + std::to_string(bsk)).c_str(), "must equal BSK"),
+        OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "send_counts",
+            ("sum " + std::to_string(sendCountsSum) + " != " + std::to_string(bsk)).c_str(), "must equal BSK"),
         return ge::GRAPH_FAILED);
     uint64_t recvCountsSum = std::accumulate(recvCountsLocal, recvCountsLocal + recvCountsSize, 0ULL);
     OP_TILING_CHECK(recvCountsSum != a,
-        OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "recv_counts", ("sum " + std::to_string(recvCountsSum) + " != " + std::to_string(a)).c_str(), "must equal A"),
+        OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "recv_counts",
+            ("sum " + std::to_string(recvCountsSum) + " != " + std::to_string(a)).c_str(), "must equal A"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -236,12 +243,16 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
     uint64_t sendCountsSize = sendCountsPtr->GetSize();
     uint64_t recvCountsSize = recvCountsPtr->GetSize();
     if (sendCountsSize != recvCountsSize) {
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts/recv_counts", ("size " + std::to_string(sendCountsSize) + " vs " + std::to_string(recvCountsSize)).c_str(), "sizes must match");
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts/recv_counts",
+            ("size " + std::to_string(sendCountsSize) + " vs " + std::to_string(recvCountsSize)).c_str(),
+            "sizes must match");
         return ge::GRAPH_FAILED;
     }
 
     if (sendCountsSize >= MC2KernelTemplate::MAX_EXPERT_SIZE) {
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts", std::to_string(sendCountsSize).c_str(), ("less than " + std::to_string(MC2KernelTemplate::MAX_EXPERT_SIZE)).c_str());
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts",
+            std::to_string(sendCountsSize).c_str(),
+            ("less than " + std::to_string(MC2KernelTemplate::MAX_EXPERT_SIZE)).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -269,7 +280,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
     uint64_t eExpert = sendCountsSize / (*epWorldSizePtr);
 
     if (sendCountsSize != e_ * (*epWorldSizePtr)) {
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts", std::to_string(sendCountsSize).c_str(), "e * epWorldSize");
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "send_counts",
+            std::to_string(sendCountsSize).c_str(), "e * epWorldSize");
         return ge::GRAPH_FAILED;
     }
 
@@ -296,7 +308,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
     uint64_t H2 = gmmWeightShape.GetDim(h1DimIndex);
     if (H1 != H2) {
-        OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_x/gmm_weight H1", (std::to_string(H1)+" vs "+std::to_string(H2)).c_str(), "must be equal");
+        OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_x/gmm_weight H1",
+            (std::to_string(H1)+" vs "+std::to_string(H2)).c_str(), "must be equal");
         return ge::GRAPH_FAILED;
     }
 
@@ -309,7 +322,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     uint64_t N1 = gmmWeightShape.GetDim(n1DimIndex);
     uint64_t gmmYDim1 = gmmYShape.GetDim(DIM_ONE);
     if (gmmYDim1 != N1) {
-        OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_y/gmm_weight N1", (std::to_string(gmmYDim1)+" vs "+std::to_string(N1)).c_str(), "must be equal");
+        OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_y/gmm_weight N1",
+            (std::to_string(gmmYDim1)+" vs "+std::to_string(N1)).c_str(), "must be equal");
         return ge::GRAPH_FAILED;
     }
 
@@ -327,12 +341,14 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t permuteOutA = permuteOutShape.GetDim(DIM_ZERO);
         uint64_t gmmYA = gmmYShape.GetDim(DIM_ZERO);
         if (permuteOutA != gmmYA) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "permute_out/gmm_y A", (std::to_string(permuteOutA)+" vs "+std::to_string(gmmYA)).c_str(), "must be equal");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "permute_out/gmm_y A",
+                (std::to_string(permuteOutA)+" vs "+std::to_string(gmmYA)).c_str(), "must be equal");
             return ge::GRAPH_FAILED;
         }
         uint64_t permuteOutH1 = permuteOutShape.GetDim(DIM_ONE);
         if (permuteOutH1 != H1) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "permute_out/gmm_x H1", (std::to_string(permuteOutH1)+" vs "+std::to_string(H1)).c_str(), "must be equal");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "permute_out/gmm_x H1",
+                (std::to_string(permuteOutH1)+" vs "+std::to_string(H1)).c_str(), "must be equal");
             return ge::GRAPH_FAILED;
         }
     }
@@ -345,18 +361,21 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t h2DimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
         uint64_t H2MM = mmWeightShape.GetDim(h2DimIndex);
         if (H != H2MM) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_x/mm_weight H2", (std::to_string(H)+" vs "+std::to_string(H2MM)).c_str(), "must be equal");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_x/mm_weight H2",
+                (std::to_string(H)+" vs "+std::to_string(H2MM)).c_str(), "must be equal");
             return ge::GRAPH_FAILED;
         }
 
         uint64_t BSK = gmmXShape.GetDim(0);
         if (BSK % BS != 0) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_x/mm_x BSK/BS", (std::to_string(BSK)+" not divisible by "+std::to_string(BS)).c_str(), "BSK divisible by BS");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "gmm_x/mm_x BSK/BS",
+                (std::to_string(BSK)+" not divisible by "+std::to_string(BS)).c_str(), "BSK divisible by BS");
             return ge::GRAPH_FAILED;
         }
         uint64_t K = BSK / BS;
         if (K < K_MIN_VALUE || K > K_MAX_VALUE) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "BSK/BS K", std::to_string(K).c_str(), "[K_MIN_VALUE, K_MAX_VALUE]");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "BSK/BS K",
+                std::to_string(K).c_str(), "[K_MIN_VALUE, K_MAX_VALUE]");
             return ge::GRAPH_FAILED;
         }
 
@@ -367,14 +386,16 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         auto mmYShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape();
         uint64_t mmYBS = mmYShape.GetDim(DIM_ZERO);
         if (mmYBS != BS) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_y/mm_x BS", (std::to_string(mmYBS)+" vs "+std::to_string(BS)).c_str(), "must be equal");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_y/mm_x BS",
+                (std::to_string(mmYBS)+" vs "+std::to_string(BS)).c_str(), "must be equal");
             return ge::GRAPH_FAILED;
         }
         uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
         uint64_t N2 = mmWeightShape.GetDim(n2DimIndex);
         uint64_t mmYDim1 = mmYShape.GetDim(DIM_ONE);
         if (mmYDim1 != N2) {
-            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_y/mm_weight N2", (std::to_string(mmYDim1)+" vs "+std::to_string(N2)).c_str(), "must be equal");
+            OP_LOGE_FOR_INVALID_SHAPE(A_INNER_DEBUG, "mm_y/mm_weight N2",
+                (std::to_string(mmYDim1)+" vs "+std::to_string(N2)).c_str(), "must be equal");
             return ge::GRAPH_FAILED;
         }
     }
@@ -398,7 +419,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_THREE,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "gmm_weight", (std::to_string(gmmWeightShape.GetDimNum())+"D").c_str(), "3D"),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "gmm_weight",
+            (std::to_string(gmmWeightShape.GetDimNum())+"D").c_str(), "3D"),
         return ge::GRAPH_FAILED);
     e_ = gmmWeightShape.GetDim(0);
     uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
@@ -414,7 +436,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmXShape.GetDimNum() != DIM_TWO,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "mm_x", (std::to_string(mmXShape.GetDimNum())+"D").c_str(), "2D"),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "mm_x",
+                (std::to_string(mmXShape.GetDimNum())+"D").c_str(), "2D"),
             return ge::GRAPH_FAILED);
         uint64_t mmXDim0 = mmXShape.GetDim(0);
         uint64_t mmXDim1 = mmXShape.GetDim(1);
@@ -431,7 +454,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
 
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmWeightShape.GetDimNum() != DIM_TWO,
-            OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "mm_weight", (std::to_string(mmWeightShape.GetDimNum())+"D").c_str(), "2D"),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "mm_weight",
+                (std::to_string(mmWeightShape.GetDimNum())+"D").c_str(), "2D"),
             return ge::GRAPH_FAILED);
         uint64_t kDimIndex = transMmWeight_ ? DIM_ONE : DIM_ZERO;
         uint64_t nDimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
@@ -460,7 +484,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     }
 
     if (gmmXDtype != ge::DT_FLOAT16 && gmmXDtype != ge::DT_BF16) {
-        OP_LOGE_FOR_INVALID_DTYPE(A_INNER_DEBUG, "gmm_x", ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str(), "FLOAT16/BFLOAT16");
+        OP_LOGE_FOR_INVALID_DTYPE(A_INNER_DEBUG, "gmm_x",
+            ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str(), "FLOAT16/BFLOAT16");
         return ge::GRAPH_FAILED;
     }
 
@@ -473,7 +498,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         }
 
         if (mmXDtype != ge::DT_FLOAT16 && mmXDtype != ge::DT_BF16) {
-            OP_LOGE_FOR_INVALID_DTYPE(A_INNER_DEBUG, "mm_x", ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(), "FLOAT16/BFLOAT16");
+            OP_LOGE_FOR_INVALID_DTYPE(A_INNER_DEBUG, "mm_x",
+                ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(), "FLOAT16/BFLOAT16");
             return ge::GRAPH_FAILED;
         }
 
@@ -647,7 +673,8 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     OP_TILING_CHECK(epWorldSizePtr == nullptr,
         OP_LOGE(A_INNER_DEBUG, "EpWorldSize attr is null, expected non-null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*epWorldSizePtr == 0,
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size", std::to_string(*epWorldSizePtr).c_str(), "positive value"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size",
+            std::to_string(*epWorldSizePtr).c_str(), "positive value"), return ge::GRAPH_FAILED);
     epWorldSize_ = *epWorldSizePtr;
 
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
@@ -716,7 +743,10 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     uint64_t recvCountsSize = recvCountsPtr->GetSize();
     uint64_t maxMSize = 0;
     OP_TILING_CHECK(e_ * epWorldSize_ > recvCountsSize,
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "recv_counts", ("epWorldSize="+std::to_string(epWorldSize_)+" e="+std::to_string(e_)+" size="+std::to_string(recvCountsSize)).c_str(), "e*epWorldSize <= recvCountsSize"),
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "recv_counts",
+            ("epWorldSize=" + std::to_string(epWorldSize_) +
+                " e=" + std::to_string(e_) + " size=" + std::to_string(recvCountsSize)).c_str(),
+            "e*epWorldSize <= recvCountsSize"),
         return ge::GRAPH_FAILED);
     for (uint64_t expertIdx = 0; expertIdx < e_; expertIdx++) {
         uint64_t mSize = 0;
@@ -838,7 +868,8 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     OP_TILING_CHECK(epWorldSizePtr_ == nullptr,
         OP_LOGE(A_INNER_DEBUG, "EpWorldSize attr is null, expected non-null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*epWorldSizePtr_ == 0,
-        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size", std::to_string(*epWorldSizePtr_).c_str(), "positive value"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_ATTR(A_INNER_DEBUG, "ep_world_size",
+            std::to_string(*epWorldSizePtr_).c_str(), "positive value"), return ge::GRAPH_FAILED);
     epWorldSize_ = *epWorldSizePtr_;
     sendCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
     OP_TILING_CHECK(sendCountsPtr_ == nullptr,
