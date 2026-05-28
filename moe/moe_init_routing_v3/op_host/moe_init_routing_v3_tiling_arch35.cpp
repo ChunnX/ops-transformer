@@ -498,17 +498,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
 
     // DropPad模式需要额外的workspace空间
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
-        // expertIdxValueGm: 每个核需要存储2个int32 (lastExpertId和lastCoreExpertIdNum)
+        // expertIdxValueGm需要额外空间
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
         workspaceSize_ += expertIdxValueWorkspaceSize;
 
-        // expandDstToSrcRowGm和expandedExpertIdxGm: 每个核需要perCoreRows个int32
-        // SrcToDst DropPad kernel使用
-        int64_t srcToDstWorkspaceSize = totalLength_ * sizeof(int32_t) * NUM_TWO; // expandDstToSrcRow + expandedExpertIdx
-        workspaceSize_ += srcToDstWorkspaceSize;
-
-        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, srcToDstWorkspace=%ld",
-                 expertIdxValueWorkspaceSize, srcToDstWorkspaceSize);
+        OP_LOGD(context_, "DropPad extra workspace: expertIdxValue=%ld", expertIdxValueWorkspaceSize);
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&

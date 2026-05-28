@@ -83,6 +83,10 @@ private:
 template <typename T>
 __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
 {
+    // ========== DropPad填充初始化：创建零值tensor（关键步骤4）==========
+    // DropPad模式需要填充不足expertCapacity的专家位置为0
+    // 预先初始化一个perLoopCols大小的零值tensor用于后续填充
+    // ==============================================================
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         LocalTensor<uint8_t> outLocal = copyOutZeroQueue_.AllocTensor<uint8_t>();
         Duplicate<uint8_t>(outLocal, static_cast<uint8_t>(0), this->perLoopCols_);
@@ -99,12 +103,29 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
         scaleZeroOutQueue_.EnQue<float>(scaleLocal);
     }
 
+    // ========== DropPad跨核专家处理：读取前序核信息（关键步骤5）==========
+    // DropPad模式下，需要处理跨核专家的连续性问题：
+    // 问题：同一个专家的token可能分布在不同核上，需要确保写入位置连续
+    // 
+    // 处理步骤：
+    // 1. 读取上一个核的最后专家ID（lastCoreExpertId）和token数量（lastCoreExpertIdNum）
+    // 2. 向前遍历所有更早的核，累计处理同一个专家的token数量
+    //    - 如果上个核的最后专家ID等于当前核的首个专家ID，说明专家跨核
+    //    - 需要将所有前序核处理该专家的token数量累加到lastCoreExpertIdNum_
+    // 3. 当前核开始写入时，起始位置为：lastExpertId * expertCapacity + lastCoreExpertIdNum_
+    // 
+    // 示例：
+    // 核0: 处理专家5的10个token → 写入位置: 5*expertCapacity + 0-9
+    // 核1: 处理专家5的20个token → 需读取核0信息，写入位置: 5*expertCapacity + 10-29
+    // ==============================================================
     if (this->blockIdx_ != 0) {
         this->lastCoreExpertId_ = expertIdxValueGm_.GetValue((this->blockIdx_ - 1) * 2);
         this->lastCoreExpertIdNum_ = expertIdxValueGm_.GetValue((this->blockIdx_ - 1) * 2 + 1);
+        // 向前遍历所有处理同一专家的前序核
         for (int64_t i = this->blockIdx_ - 2; i >= 0; i--) {
             int32_t lastExpertIdx = expertIdxValueGm_.GetValue(i * 2);
             if (lastExpertIdx < this->lastCoreExpertId_) {
+                // 如果上个核的专家ID小于当前核的最后专家ID，说明不再连续，停止累加
                 break;
             }
             int32_t lastExpertNum = expertIdxValueGm_.GetValue(i * 2 + 1);
@@ -114,7 +135,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyScaleZeroOut(int64_t index)
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOutRemain()
 {
     if (this->isInputScale_ != 1) {
         return;
@@ -150,6 +171,19 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOut(int64_t progress)
     for (int64_t idx = 0; idx < currentLoopRows_; idx++) {
         int32_t expertIdx = inLocal[length].GetValue(idx);
         int32_t index = 0;
+        // ========== DropPad填充处理：补齐剩余专家容量（关键步骤6）==========
+        // DropPad模式下，最后一个核需要补齐所有专家的剩余容量
+        // 确保每个专家都达到expertCapacity，不足部分填充为0
+        // 
+        // 处理逻辑：
+        // 1. 从lastExpertId开始（当前核处理的最后专家）
+        // 2. 遍历到expertNum-1的所有专家
+        // 3. 对每个专家，从tokenCount开始填充到expertCapacity
+        // 4. 填充内容为预先初始化的零值tensor
+        // 
+        // 示例（假设expertCapacity=128，专家5只处理了100个token）：
+        // - 专家5写入位置：5*128 + 0-99（实际token）
+        // - 需要填充：5*128 + 100-127（填充0）
         while (this->lastExpertId_ < expertIdx) {
             while (this->tokenCount_ < this->expertCapacity_) {
                 index = this->lastExpertId_ * this->expertCapacity_ + this->tokenCount_;
@@ -286,6 +320,11 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
         expandedXUint8Gm_.SetGlobalBuffer((__gm__ uint8_t *)expandedX,
                                           this->expertNum_ * this->expertCapacity_ * this->cols_);
     } else {
+        // ========== DropPad输出布局：expandedX为3D tensor（关键步骤1）==========
+        // DropPad模式输出为[expertNum, expertCapacity, cols]的三维tensor
+        // 每个专家最多处理expertCapacity个token，不足部分填充0
+        // 写入位置：expertIdx * expertCapacity + tokenIdx
+        // ==============================================================
         expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX,
                                      this->expertNum_ * this->expertCapacity_ * this->cols_);
     }
@@ -295,17 +334,31 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
                                          this->expertNum_ * this->expertCapacity_);
     }
 
-expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+    // ========== DropPad workspace复用策略（关键步骤2）==========
+    // workspace通过时序复用实现空间优化：
+    // 1. expandedExpertIdxGm：复用expertCountTempGm的位置（Sort阶段结束后释放）
+    //    位置Align(n*k)*2开始，每个核perCoreRows个int32
+    // 2. expandDstToSrcRowGm：复用workspaceGms[0]的位置（Sort阶段结束后释放）
+    //    位置Align(n*k)*2 + Align(actualExpertNum)开始，每个核perCoreRows个int32
+    // 3. expertIdxValueGm：读取expert_tokens_count输出的跨核专家信息
+    //    位置Align(n*k)*2 + Align(actualExpertNum)*2，大小coreNum*2个int32
+    // ==============================================================
+    expandedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
     expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + length +
                                              this->blockIdx_ * this->srcToDstTilingData_->perCoreRows,
                                          Align(this->coreRows_, sizeof(int32_t)));
-    // expertIdxValueGm偏移地址必须与expert_tokens_count.h保持一致
-    // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
-    int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
+    
+    // ========== DropPad关键数据读取：expertIdxValueGm（关键步骤3）==========
+    // expertIdxValueGm存储每个核的最后专家信息（由expert_tokens_count写入）
+    // 每个核2个int32：[finalExpertId, expertTokenValue]
+    // 用于处理跨核专家的连续性问题：
+    // - 当前核的首个专家可能与上个核的最后专家相同
+    // - 需要读取上个核的expertTokenValue来计算正确的起始位置
+    // ==============================================================
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset, 
+        (__gm__ int32_t *)workspace + length * 2 + Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2,
         this->coreNum_ * 2);
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);

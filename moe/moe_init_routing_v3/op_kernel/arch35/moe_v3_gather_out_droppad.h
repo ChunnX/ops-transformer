@@ -103,8 +103,18 @@ colsLoops_ = tilingData->gatherOutDropPadParamsOp.colsLoops;
     lastLoopCols_ = tilingData->gatherOutDropPadParamsOp.lastLoopCols;
 
     actualExpertNum_ = tilingData->actualExpertNum;
-    // expertTotalCountGm用于读取专家处理的token总数（动态值）
-    // 地址：workspace + Align(n*k)*2 + Align(actualExpertNum)
+    
+    // ========== DropPad关键数据读取：expertTotalCountGm（关键步骤1）==========
+    // expertTotalCountGm存储排序后的实际处理token总数（动态值）
+    // 由expert_tokens_count kernel写入，gather_out kernel读取
+    // 
+    // DropPad模式下，token总数 <= n*k（因为有drop操作）
+    // - 如果某个专家超过expertCapacity，多余的token会被drop
+    // - expertTotalCount记录实际保留的token数量
+    // - gather_out只处理expertTotalCount个有效token
+    // 
+    // workspace位置：复用workspaceGms[0]的位置（时序错开）
+    // ==============================================================
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
                                              Align(actualExpertNum_, sizeof(int32_t)),
                                          1);
@@ -251,7 +261,18 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Process()
             if (indicesLoop == indicesLoops_ - 1) {
                 curLoopElements = curCoreLastLoopIndicesElements_;
             }
-            int64_t curExpertLoopOffset = indicesLoop * curCorePerLoopIndicesElements_;
+            
+            // ========== DropPad关键处理：循环偏移步长（关键步骤2）==========
+            // 必须使用固定步长perCorePerLoopIndicesElements_计算偏移
+            // 原因：expandedRowIdx按固定的perCorePerLoopIndicesElements步长存储
+            // 错误使用curCorePerLoopIndicesElements_会导致最后一个核读取错误位置
+            // 
+            // 示例（假设n*k=100，需要2个核，每核50个元素）：
+            // - 核0：处理索引0-49，步长perCorePerLoopIndicesElements
+            // - 核1：处理索引50-99，步长仍然是perCorePerLoopIndicesElements（固定）
+            // 如果核1使用lastCorePerLoopIndicesElements，会读取错误位置
+            // ==============================================================
+            int64_t curExpertLoopOffset = indicesLoop * perCorePerLoopIndicesElements_;
             int64_t globalReadOffset = globalOffsetBase + curExpertLoopOffset;
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyExpertIn(globalReadOffset, curLoopElements);
@@ -260,9 +281,21 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Process()
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
                 int64_t outPosition = subRowIdxLocal.GetValue(indicesIndex);
+                
+                // ========== DropPad关键处理：drop标记处理（关键步骤3）==========
+                // DropPad模式下，expandedRowIdx=-1表示该token被drop
+                // - row_idx_gather kernel将超过expertCapacity的token标记为-1
+                // - gather_out kernel跳过这些标记，不进行实际gather
+                // 
+                // 示例（假设expertCapacity=100，专家1处理了150个token）：
+                // - 前100个token：expandedRowIdx = [1*100+0, 1*100+1, ..., 1*100+99]
+                // - 后50个token：expandedRowIdx = [-1, -1, ..., -1]（被drop）
+                // - gather_out只处理前100个token，跳过后50个
+                // ==============================================================
                 if (outPosition == -1) {
                     continue;
                 }
+                
                 int64_t globalSortIdx = globalReadOffset + indicesIndex;
                 int64_t xSrcOffset = globalSortIdx / k_ * cols_;
                 int64_t scaleSrcOffset = globalSortIdx / k_;

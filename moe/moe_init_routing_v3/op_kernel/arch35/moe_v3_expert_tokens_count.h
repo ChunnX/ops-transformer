@@ -152,12 +152,35 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
     expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
+    
+    // ========== DropPad workspace布局策略（关键步骤1）==========
+    // workspace通过时序复用实现空间优化：
+    // 1. Sort阶段：使用workspaceGms做归并排序临时空间
+    // 2. Expert_tokens_count阶段：expertTotalCountGm复用workspaceGms位置（时序错开）
+    // 3. Row_idx_gather阶段：expandedExpertIdxGm/expandDstToSrcRowGm复用expertCountTempGm/workspaceGms位置
+    // 
+    // 具体布局：
+    // 位置0 - Align(n*k): sortedexpertIdxGm（Sort输出，后续继续使用）
+    // 位置Align(n*k) - Align(n*k)*2: expandedRowIdxGm（Sort输出）
+    // 位置Align(n*k)*2 - Align(actualExpertNum): expertCountTempGm（Sort临时） → 后续被expandedExpertIdxGm复用
+    // 位置Align(n*k)*2 + Align(actualExpertNum): workspaceGms[0]（Sort临时） → 后续被expertTotalCountGm复用
+    // 位置Align(n*k)*2 + Align(actualExpertNum)*2: expertIdxValueGm（DropPad新增，所有阶段持续使用）
+    // ==============================================================
     expertCountTempGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
+    // expertTotalCountGm复用workspaceGms[0]的位置（两者使用时序错开）
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
+    
+    // ========== DropPad关键数据：expertIdxValueGm（关键步骤2）==========
+    // expertIdxValueGm用于存储每个核处理的最后专家信息（跨核信息传递）
+    // 每个核写入2个int32：[finalExpertId, expertTokenValue]
+    // - finalExpertId: 该核处理的最后一个专家ID
+    // - expertTokenValue: 该专家在该核中的token数量
+    // row_idx_gather_droppad kernel读取这些信息来处理跨核专家的连续性问题
+    // ==============================================================
     expertIdxValueGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
             Align(actualExpertNum_, sizeof(int32_t)) + Align(actualExpertNum_, sizeof(int32_t)),
@@ -194,6 +217,13 @@ __aicore__ inline void ExpertTokensCount::Process()
 
         expertCountOutToTempQueue_.EnQue<int32_t>(expertCountOutLocal);
 
+        // ========== DropPad关键处理：获取最后专家信息（关键步骤3）==========
+        // DropPad模式下，每个核需要记录其处理的最后一个专家的信息
+        // 用于row_idx_gather阶段处理跨核专家的连续性问题
+        // 1. finalExpertId_: 该核最后一个元素的专家ID（从排序后的数组末尾读取）
+        // 2. expertTokenValue_: 该专家在该核中累积的token数量
+        // 这些信息通过expertIdxValueGm传递给row_idx_gather_droppad kernel
+        // ==============================================================
         if (dropPadMode_ == DROP_PAD && curCoreElements_ > 0) {
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             finalExpertId_ = sortedExpertIdxGm_.GetValue(curCoreElements_ - 1);
