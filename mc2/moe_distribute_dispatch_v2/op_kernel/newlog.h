@@ -63,7 +63,7 @@ public:
 
 private:
     int32_t rankId_ = -1;
-    uint32_t aivId_ = GetBlockIdx();
+    uint32_t aivId_ = AscendC::GetBlockIdx();
 };
 
 template<typename T>
