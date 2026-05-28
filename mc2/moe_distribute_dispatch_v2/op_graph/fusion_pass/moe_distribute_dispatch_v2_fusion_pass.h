@@ -26,7 +26,7 @@ public:
     ge::graphStatus Run(ge::GraphPtr &graph, ge::CustomPassContext &pass_context) override;
 
 private:
-    ge::graphStatus Fusion(ge::Graph &graph, ge::GNode &moeDistributeDispatchNode);
+    ge::graphStatus Fusion(ge::Graph &graph, ge::GNode &moeDistributeDispatchNode, ge::GNode &sharedCtxNode);
     ge::graphStatus CreateFusionNode(ge::Graph &graph, ge::GNode &moeDistributeDispatchNode,
                                      int64_t &hccl_buff_size, const ge::TensorDesc &tensorDesc,
                                      ge::GNode &fusionNode);
