@@ -48,16 +48,16 @@ def run_precision_test():
     head_num_k = 1    # 必须 1
     group_num = 64    # 必须 64
     
-    # 分块大小
-    block_m = 64
-    block_k = 128
-    block_d = 128
+    # 分块大小 (先用较小值测试)
+    block_m = 32
+    block_n = 32
+    block_k_v = 32
     
     print(f"\n测试配置 (官方算子支持):")
     print(f"  batch={batch}, seqlen_q={seqlen_q}, seqlen_k={seqlen_k}")
     print(f"  head_dim={head_dim}, topk={topk}")
     print(f"  head_num_q={head_num_q}, head_num_k={head_num_k}, group_num={group_num}")
-    print(f"  block_m={block_m}, block_k={block_k}, block_d={block_d}")
+    print(f"  block_m={block_m}, block_n={block_n}, block_k_v={block_k_v}")
     
     # 创建 TileLang 算子
     op = LightningIndexerGrad(
@@ -69,8 +69,8 @@ def run_precision_test():
         head_num_k=head_num_k,
         group_num=group_num,
         block_m=block_m,
-        block_k=block_k,
-        block_d=block_d,
+        block_n=block_n,
+        block_k_v=block_k_v,
     )
     
     # 创建测试输入

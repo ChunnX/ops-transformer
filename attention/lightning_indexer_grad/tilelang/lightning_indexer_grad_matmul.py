@@ -42,8 +42,12 @@ def matmul_kernel(
     B: (N, K) - KeyGather (将被转置) (FP16)
     输出: (M, N) - FP16
     
-    使用 Developer 模式 alloc_fragment/alloc_shared。
-    L0C → GM 直接搬运，不走 UB。
+    Ascend 数据搬运支持:
+        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    
+    Ascend L0B 容量限制:
+        - L0B 最大 16KB (FP16)
+        - block_n * block_k <= 8192 元素
     """
     
     m_num = M // block_m
@@ -60,11 +64,10 @@ def matmul_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
             
-            # 使用 Developer 模式内存分配
             A_L1 = T.alloc_shared((block_m, block_k), dtype)
             B_L1 = T.alloc_shared((block_n, block_k), dtype)
             A_L0A = T.alloc_fragment((block_m, block_k), dtype)
-            B_L0B = T.alloc_fragment((block_k, block_n), dtype)
+            B_L0B = T.alloc_fragment((block_n, block_k), dtype)
             C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
             
             for i, j in T.Parallel(block_m, block_n):
@@ -79,7 +82,6 @@ def matmul_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
             
-            # L0C → GM 直接搬运
             T.copy(C_L0C, C[m_idx * block_m, n_idx * block_n])
     
     return main
@@ -99,8 +101,12 @@ def matmul_relu_kernel(
     B: (N, K) - KeyGather (将被转置) (FP16)
     输出: (M, N) 并应用 ReLU (FP16)
     
-    使用 Developer 模式 alloc_fragment/alloc_shared。
-    L0C → GM 直接搬运，不走 UB。
+    Ascend 数据搬运支持:
+        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    
+    Ascend L0B 容量限制:
+        - L0B 最大 16KB (FP16)
+        - block_n * block_k <= 8192 元素
     """
     
     m_num = M // block_m
@@ -120,7 +126,7 @@ def matmul_relu_kernel(
             A_L1 = T.alloc_shared((block_m, block_k), dtype)
             B_L1 = T.alloc_shared((block_n, block_k), dtype)
             A_L0A = T.alloc_fragment((block_m, block_k), dtype)
-            B_L0B = T.alloc_fragment((block_k, block_n), dtype)
+            B_L0B = T.alloc_fragment((block_n, block_k), dtype)
             C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
             
             for i, j in T.Parallel(block_m, block_n):
@@ -135,7 +141,6 @@ def matmul_relu_kernel(
                 
                 T.gemm_v0(A_L0A, B_L0B, C_L0C, transpose_B=True, init=(k_idx == 0))
             
-            # ReLU 在输出时应用，L0C → GM 直接搬运
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.max(C_L0C[i, j], T.cast(0, accum_dtype))
             
@@ -161,8 +166,10 @@ def matmul_broadcast_kernel(
     输出:
         C: (M, N) - 外积结果
     
+    Ascend 数据搬运支持:
+        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    
     使用 Cube 单元 (gemm_v0)，比 Vector 外积更高效。
-    L0C → GM 直接搬运，不走 UB。
     """
     
     m_num = M // block_m
@@ -212,8 +219,11 @@ def matmul_dq_kernel(
     B: (K, D) - KeyGather (FP16)
     输出: (M, D) - dQuery (FP16)
     
-    使用 Developer 模式 alloc_fragment/alloc_shared。
-    L0C → GM 直接搬运，不走 UB。
+    Ascend 数据搬运支持:
+        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    
+    Ascend L0B 容量限制:
+        - block_k * block_d <= 8192 元素 (16KB FP16)
     """
     
     m_num = M // block_m
@@ -268,8 +278,11 @@ def matmul_scatter_kernel(
     B: (M, D) - Query (FP16)
     输出: (K, D) - scatterAdd (FP16)
     
-    使用 Developer 模式 alloc_fragment/alloc_shared。
-    L0C → GM 直接搬运，不走 UB。
+    Ascend 数据搬运支持:
+        L0C → GM ✓ (直接支持，编译器自动处理 FP32→FP16)
+    
+    Ascend L0B 容量限制:
+        - block_m * block_d <= 8192 元素 (16KB FP16)
     """
     
     k_num = K // block_k

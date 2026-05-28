@@ -74,9 +74,9 @@ class LightningIndexerGrad:
         head_num_q: int,
         head_num_k: int,
         group_num: int,
-        block_m: int = 64,
-        block_k: int = 128,
-        block_d: int = 128,
+        block_m: int = 32,
+        block_n: int = 32,
+        block_k_v: int = 32,
         dtype: str = 'float16',
     ):
         self.seqlen_q = seqlen_q
@@ -86,11 +86,10 @@ class LightningIndexerGrad:
         self.head_num_q = head_num_q
         self.head_num_k = head_num_k
         self.group_num = group_num
-        self.head_num_per_group = head_num_q // group_num
         
         self.block_m = block_m
-        self.block_k = block_k
-        self.block_d = block_d
+        self.block_n = block_n
+        self.block_k_v = block_k_v  # vector k dimension for Cube3
         self.dtype = dtype
         
         self._compile_kernels()
@@ -99,6 +98,11 @@ class LightningIndexerGrad:
         """
         提前编译 TileLang 内核。
         
+        Ascend L0B 容量限制: 最大 16KB (FP16)
+            - L0B 元素数 <= 8192 (FP16)
+            - 对于 transpose_B 的 kernel: block_n * block_k <= 8192
+            - 对于普通 matmul: block_k * block_d <= 8192
+        
         所有 Cube kernel 输出 FP16。
         Vector kernel 内部使用 FP32 计算，输出 FP16。
         """
@@ -106,49 +110,53 @@ class LightningIndexerGrad:
         topk = self.topk    # 2048
         D = self.head_dim   # 128
         
+        block_m = self.block_m      # 64
+        block_n = self.block_n      # 64 (满足 L0B: 64*128=8192)
+        block_k_v = self.block_k_v  # 64 (满足 Cube3 L0B: 64*128=8192)
+        
         # Cube1: Query(g, D) @ KeyGather^T(topk, D) -> relu_in (g, topk) FP16
+        # B_L0B = (block_n, D) = (64, 128) = 8192 元素 = 16KB ✓
         self.kernel_cube1 = matmul_kernel(
             g, D, topk,
-            g, D, D,  # block_m=64, block_k=128, block_n=128
+            block_m, D, block_n,  # block_m=64, block_k=D=128, block_n=64
             self.dtype
         )
         
         # Cube2: Weights(g,1) @ Dy(1,topk) -> relu_grad_in (g, topk) FP16
-        # 使用 matmul_broadcast_kernel (Cube单元) 
-        # 输入需 reshape: weights(g,) -> (g,1), dy(topk,) -> (1,topk)
+        # B_L0B = (1, block_n) = (1, 64) 很小，无容量问题
         self.kernel_cube2 = matmul_broadcast_kernel(
             g, topk,
-            g, D,  # block_m=64, block_n=128
+            block_m, block_n,  # block_m=64, block_n=64
             self.dtype
         )
         
         # Cube3: ReluGrad(g, topk) @ KeyGather(topk, D) -> dQuery (g, D) FP16
+        # B_L0B = (block_k_v, D) = (64, 128) = 8192 元素 = 16KB ✓
         self.kernel_cube3 = matmul_dq_kernel(
             g, topk, D,
-            g, D, D,  # block_m=64, block_k=128, block_d=128
+            block_m, block_k_v, D,  # block_m=64, block_k=64, block_d=128
             self.dtype
         )
         
         # Cube4: ReluGrad^T(topk, g) @ Query(g, D) -> scatter_add (topk, D) FP16
+        # B_L0B = (block_m, D) = (64, 128) = 8192 元素 = 16KB ✓
         self.kernel_cube4 = matmul_scatter_kernel(
             topk, g, D,
-            D, g, D,  # block_k=128, block_m=64, block_d=128
+            D, block_m, D,  # block_k=128, block_m=64, block_d=128
             self.dtype
         )
         
         # Vec2 ReLU反向: relu_grad_in(FP16) + relu_in(FP16) -> relu_grad_out(FP16)
-        # 内部 Cast relu_in 到 FP32 比较
         self.kernel_relu_grad = relu_grad_kernel(
             g, topk,
-            g, D,  # block_m=64, block_k=128
+            block_m, block_n,  # block_m=64, block_k=64
             self.dtype
         )
         
         # Vec2 ReduceSum: (g, topk) FP16 -> d_weights (g,) FP16
-        # 内部 Cast 到 FP32 进行 ReduceSum
         self.kernel_reduce = reduce_sum_kernel(
             g, topk,
-            g, D,  # block_m=64, block_k=128
+            block_m, block_n,  # block_m=64, block_k=64
             self.dtype
         )
         
@@ -311,9 +319,9 @@ def test_lightning_indexer_grad():
         head_num_q=head_num_q,
         head_num_k=head_num_k,
         group_num=group_num,
-        block_m=64,
-        block_k=128,
-        block_d=128,
+        block_m=32,
+        block_n=32,
+        block_k_v=32,
     )
     
     query = torch.randn(batch, seqlen_q, head_num_q, head_dim, dtype=torch.float16).npu()
