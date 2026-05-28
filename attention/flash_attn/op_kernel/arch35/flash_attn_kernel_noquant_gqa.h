@@ -212,10 +212,10 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(&l1BufferManager, query, key, value, blockTable, qCuSeqLensParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qCuSeqLensParser,
                                         kvCuSeqLensParser);
             } else {
-                cubeBlock.InitCubeBlock(&l1BufferManager, query, key, value, blockTable, qSeqUsedParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qSeqUsedParser,
                                         kvSeqUsedParser);
             }
         }
