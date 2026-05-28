@@ -142,25 +142,24 @@ public:
     {
         EvenCoreInfo info;
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
-        uint32_t data_size = SFTG_TILE_LEN * head_dim_;
         uint32_t ub_offset = 0;
-        dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(INPUT_TYPE);
-        dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(INPUT_TYPE);
-        attention_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(INPUT_TYPE);
-        attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(INPUT_TYPE);
+        dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        attention_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
 
-        dy_out_ping_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(float);
-        dy_out_pong_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(float);
-        attention_out_ping_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(float);
-        attention_out_pong_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
-        ub_offset += data_size * sizeof(float);
+        dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        attention_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
+        ub_offset += SFTG_TILE_LEN * sizeof(float);
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
@@ -183,7 +182,7 @@ public:
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * q_seq_len_ * 8;
                 }
 
-                ComputeEvenCoreInfo(info, q_seq_len, SFTG_TILE_LEN);
+                ComputeEvenCoreInfo(info, q_seq_len, SFTG_TILE_LEN / head_dim_);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
                                         tilingData);
                 SET_FLAG(MTE3, MTE2, EVENT_ID0);
