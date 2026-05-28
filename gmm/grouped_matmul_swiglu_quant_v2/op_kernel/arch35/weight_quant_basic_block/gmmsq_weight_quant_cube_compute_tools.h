@@ -236,5 +236,5 @@ __aicore__ inline void LoadBiasToBt(const LocalTensor<DstType> &biasTable, const
                       {1, static_cast<uint16_t>(CeilDivide(l0CopyAndCalcParams.nL0Size * sizeof(float), 64UL)), 0, 0});
 }
 
-} // namespace GMMSQWeightQuantWeightQuant
+} // namespace GMMSQWeightQuant
 #endif

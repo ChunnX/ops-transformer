@@ -148,5 +148,5 @@ __aicore__ constexpr VfConfig GetVfConfig()
 {
     return {.vfNStandardLen = 256, .vfKStandardLen = 64};
 }
-} // namespace GMMSQWeightQuantWeightQuant
+} // namespace GMMSQWeightQuant
 #endif // GMMSQ_BASIC_BLOCK_CONFIG_H
