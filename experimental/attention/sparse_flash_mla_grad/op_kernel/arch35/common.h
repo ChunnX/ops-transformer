@@ -196,7 +196,9 @@ struct FagRunInfo {
     RunInfo<false> commonRunInfo{0};
 	QuantScaleInfo quantScaleInfo;
     int64_t sTaskId;
-    int64_t sTaskIdMod2;    
+    int64_t sTaskIdMod2;
+    int64_t deterTaskId;
+    int64_t deterTaskIdMod2;
     int64_t s2oIdx;
     int64_t s2CvBegin;
     int64_t s2CvEnd;

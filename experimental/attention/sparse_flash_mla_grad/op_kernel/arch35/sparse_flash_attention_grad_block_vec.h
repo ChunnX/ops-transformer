@@ -267,7 +267,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                                                                 const GlobalTensor<CALC_TYPE> &dCmpKWorkSpaceGm,
                                                                 FagConstInfo &constInfo, FagRunInfo &runInfo)
 {
-    printf("runInfo.isOriKV %d \n",runInfo.isOriKV);
     int64_t UB_ROW_SIZE = 8;
     int64_t usedCoreNum = tilingData->baseParams.usedCoreNum;
     int64_t coreNum = GetBlockNum();
@@ -289,7 +288,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     GlobalTensor<CALC_TYPE> dkWorkSpaceGm;
     GlobalTensor<int32_t> topkIndicesGm;
     int64_t currentSelectedBlockCount;
-
     if (runInfo.isOriKV) {
         dkWorkSpaceGm = dOriKWorkSpaceGm;
         topkIndicesGm = oritopkIndicesGm;
@@ -320,7 +318,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         int64_t avgSize = actualSelectedBlockCount / totalVec;
         // 前remainder 个块分配 avgSize + 1， 其余分配avgSize
         int64_t currentCoreKSize = avgSize + (this->vBlockIdx < remainder ? 1 : 0);
-        printf("this->vBlockIdx : %d actualSelectedBlockCount : %d currentCoreKSize : %d\n",this->vBlockIdx, actualSelectedBlockCount, currentCoreKSize);
+        // printf("this->vBlockIdx : %d actualSelectedBlockCount : %d currentCoreKSize : %d\n",this->vBlockIdx, actualSelectedBlockCount, currentCoreKSize);
         if (currentCoreKSize == 0) {
             // V核同步等待所有V核完成某一个C核上S2的计算
             CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
@@ -333,17 +331,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         SetAtomicAdd<CALC_TYPE>();
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
-        int64_t currentMm4SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * HEAD_DIM_ALIGN * coreNum +
-                                    idx * constInfo.selectedBlockCount * HEAD_DIM_ALIGN +
+        int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * 4096 * HEAD_DIM_ALIGN * coreNum +
+                                    idx * 4096 * HEAD_DIM_ALIGN +
                                     s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
-        int64_t currentMm5SrcOffset = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount *
-                                    constInfo.commonConstInfo.dSizeV * coreNum +
-                                    idx * constInfo.selectedBlockCount * constInfo.commonConstInfo.dSizeV +
+        int64_t currentMm5SrcOffset = runInfo.deterTaskIdMod2 * 4096 * constInfo.commonConstInfo.dSizeV * coreNum +
+                                    idx * 4096 * constInfo.commonConstInfo.dSizeV +
                                     s2SrcOffset * constInfo.selectedBlockSize * constInfo.commonConstInfo.dSizeV;
         runInfo.keyOffsetWithRope = accumS2Len * constInfo.n2Size * constInfo.dTotalSize;
         if (!runInfo.isOriKV) {
-            currentMm4SrcOffset = currentMm4SrcOffset + constInfo.oriSelectedBlockCount * HEAD_DIM_ALIGN;
-            currentMm5SrcOffset = currentMm5SrcOffset + constInfo.oriSelectedBlockCount * constInfo.commonConstInfo.dSizeV;
             runInfo.keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;
         }
         if (!runInfo.isSparse){
@@ -370,7 +365,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                 int s2Idx = 0;
                 if (!runInfo.isSparse) {
                     // todo 非sparse场景
-                    s2Idx = winStart + s2SrcOffset + loop * UB_ROW_SIZE + row;
+                    // s2Idx = winStart + s2SrcOffset + loop * UB_ROW_SIZE + row;
                 } else {
                     s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
                 }
@@ -528,14 +523,22 @@ __aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Ind
     if constexpr(HasUsedSeqCmpKV) {
         usedS3 = ((__gm__ int32_t *)usedCmpSeqKvlenAddr)[bIndex];
     } else {
-        if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio == 1) {
-            usedS3 = Max(curS3 - usedS1 + s1Index + 1, 0);
-        } else if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio != 1) {
-            int64_t oriUsedS3 = curS3 * constInfo.cmpRatio + cmpResidualKAddr[bIndex];
-            usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
-        } else {
-            usedS3 = curS3;
-        }
+        usedS3 = curS3;
+    }
+
+    if (tilingData->baseParams.oriSparseMode == 4) {
+        oriWinStart = Max(s1Index + usedS2 - usedS1 - tilingData->baseParams.oriWinLeft, 0);
+        oriWinEnd = Min(s1Index + usedS2 - usedS1 + tilingData->baseParams.oriWinRight + 1, usedS2);
+        usedS2 = Max(oriWinEnd - oriWinStart, 0);
+    } else if (tilingData->baseParams.oriSparseMode == 3) {
+        usedS2 = Max(usedS2 - usedS1 + s1Index + 1, 0);
+    }
+
+    if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio == 1) {
+        usedS3 = Max(usedS3 - usedS1 + s1Index + 1, 0);
+    } else if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio != 1) {
+        int64_t oriUsedS3 = usedS3 * constInfo.cmpRatio + cmpResidualKAddr[bIndex];
+        usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
     }
 
     if constexpr(HasOriTopK) {
@@ -554,14 +557,7 @@ __aicore__ inline bool FAGBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t usedT1Ind
         cmpTopkLength = curS3;
     }
 
-    if (tilingData->baseParams.oriSparseMode == 4) {
-        oriWinStart = Max(s1Index + usedS2 - usedS1 - tilingData->baseParams.oriWinLeft, 0);
-        oriWinEnd = Min(s1Index + usedS2 - usedS1 + tilingData->baseParams.oriWinRight + 1, usedS2);
-        actualOriSelectedBlockCount = Max(oriWinEnd - oriWinStart, 0);
-    } else {
-        actualOriSelectedBlockCount = Min(Min(oriTopkLength, curS2), usedS2);
-    }
-
+    actualOriSelectedBlockCount = Min(Min(oriTopkLength, curS2), usedS2);
     actualCmpSelectedBlockCount = Min(Min(cmpTopkLength, curS3), usedS3);
 
     bIdx = bIndex;

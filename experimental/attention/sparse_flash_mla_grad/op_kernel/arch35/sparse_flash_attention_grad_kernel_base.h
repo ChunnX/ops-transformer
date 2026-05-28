@@ -38,9 +38,9 @@ public:
     __aicore__ inline void SetConstInfo();
     __aicore__ inline void SetOptionalInfo();
     template <const bool IS_ORI_KV = true>
-    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId);
+    __aicore__ inline void SetRunInfo(FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId);
     template <const bool IS_ORI_KV = true>
-    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId);
+    __aicore__ inline void SetDeterRunInfo(FagRunInfo &runInfo, int64_t sTaskId, int64_t deterTaskId);
     __aicore__ inline void Process();
     template <bool IS_MM1_MM2 = true>
     __aicore__ inline int64_t GetQueryOffset(FagRunInfo &runInfo);
@@ -448,7 +448,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetS
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId)
+    FagRunInfo &runInfo, int64_t taskId, int64_t sTaskId, int64_t deterTaskId)
 {
     runInfo.t1Index = t1Index;
     runInfo.t2Index = t2Index;
@@ -469,6 +469,8 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     runInfo.actualSelCntOffset = runInfo.commonRunInfo.s2RealSize;
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod2 = sTaskId & 1;
+    runInfo.deterTaskId = deterTaskId;
+    runInfo.deterTaskIdMod2 = deterTaskId & 1;
     runInfo.commonRunInfo.taskId = taskId;
     runInfo.commonRunInfo.taskIdMod2 = taskId & 1;
     runInfo.halfGRealSize = (constInfo.commonConstInfo.gSize + 1) >> 1;
@@ -524,17 +526,12 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
             runInfo.kSelectedWsAddr = runInfo.commonRunInfo.keyOffset + runInfo.blkCntOffset * constInfo.dTotalSize;
         }
     }
-    runInfo.mm4ResWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
     if constexpr (IsDETER) {
-        if constexpr (IS_ORI_KV) {
-            runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount  * constInfo.dTotalSize * coreNum +
-                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize +
-                                runInfo.blkCntOffset * constInfo.dTotalSize;
-        } else {
-            runInfo.mm4ResWsAddr = runInfo.sTaskIdMod2 * constInfo.selectedBlockCount * constInfo.dTotalSize * coreNum +
-                                cBlockIdx * constInfo.selectedBlockCount * constInfo.dTotalSize + constInfo.oriSelectedBlockCount * constInfo.dTotalSize +
-                                runInfo.blkCntOffset * constInfo.dTotalSize;
-        }
+        runInfo.mm4ResWsAddr = runInfo.deterTaskIdMod2 * 4096  * constInfo.dTotalSize * coreNum +
+                            cBlockIdx * 4096 * constInfo.dTotalSize +
+                            runInfo.blkCntOffset * constInfo.dTotalSize;
+    } else {
+        runInfo.mm4ResWsAddr = (taskId % 2) * CUBE_BASEN * constInfo.dTotalSize;
     }
     runInfo.mm5ResWsAddr = runInfo.mm4ResWsAddr;
 }
@@ -543,10 +540,12 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 template <const bool IS_ORI_KV>
 __aicore__ inline void
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetDeterRunInfo(FagRunInfo &runInfo,
-                                                                                            int64_t sTaskId)
+                                                                                            int64_t sTaskId, int64_t deterTaskId)
 {
     runInfo.sTaskId = sTaskId;
     runInfo.sTaskIdMod2 = sTaskId & 1;
+    runInfo.deterTaskId = deterTaskId;
+    runInfo.deterTaskIdMod2 = deterTaskId & 1;
     runInfo.isOriKV = IS_ORI_KV;
     runInfo.isSparse = IS_ORI_KV ? IsOriKVSparse : IsCmpKVSparse;
 }
@@ -612,13 +611,6 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int64_t &actSelBlkCount)
 {
-    // int64_t maxS2Blk = Ceil<int64_t>(curS2, constInfo.selectedBlockSize);
-    // if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
-    //     int64_t newMaxS2 = Max(curS2 - curS1 + s1Index + 1, 0);
-    //     maxS2Blk = Ceil<int64_t>(newMaxS2, constInfo.selectedBlockSize);
-    // }
-    // actualSelectedBlockCount = Min(constInfo.selectedBlockCount, maxS2Blk);
-
     if constexpr(HasOriTopK) {
         oriTopkLength = ((__gm__ int32_t *)oriTopkLengthAddr)[t1Index];
     } else if (IsOriKVSparse) {
@@ -633,15 +625,7 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetA
     } else {
         cmpTopkLength = curS3;
     }
-
-    if (tilingData->baseParams.oriSparseMode == 4) {
-        oriWinStart = Max(s1Index + usedS2 - usedS1 - tilingData->baseParams.oriWinLeft, 0);
-        oriWinEnd = Min(s1Index + usedS2 - usedS1 + tilingData->baseParams.oriWinRight + 1, usedS2);
-        actualOriSelectedBlockCount = Max(oriWinEnd - oriWinStart, 0);
-    } else {
-        actualOriSelectedBlockCount = Min(Min(oriTopkLength, curS2), usedS2);
-    }
-
+    actualOriSelectedBlockCount = Min(Min(oriTopkLength, curS2), usedS2);
     actualCmpSelectedBlockCount = Min(Min(cmpTopkLength, curS3), usedS3);
     actualSelectedBlockCount = actualOriSelectedBlockCount + actualCmpSelectedBlockCount;
 }
@@ -724,15 +708,22 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetT
     if constexpr(HasUsedSeqCmpKV) {
         usedS3 = ((__gm__ int32_t *)usedSeqCmpKvlenAddr)[bIndex];
     } else {
-        if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio == 1) {
-            usedS3 = Max(curS3 - usedS1 + s1Index + 1, 0);
-        } else if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio != 1) {
-            int64_t oriUsedS3 = curS3 * constInfo.cmpRatio + cmpResidualKVAddr[bIndex];
-            usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
-        } else {
-            usedS3 = curS3;
-        }
-        
+        usedS3 = curS3;
+    }
+
+    if (tilingData->baseParams.oriSparseMode == 4) {
+        oriWinStart = Max(s1Index + usedS2 - usedS1 - tilingData->baseParams.oriWinLeft, 0);
+        oriWinEnd = Min(s1Index + usedS2 - usedS1 + tilingData->baseParams.oriWinRight + 1, usedS2);
+        usedS2 = Max(oriWinEnd - oriWinStart, 0);
+    } else if (tilingData->baseParams.oriSparseMode == 3) {
+        usedS2 = Max(usedS2 - usedS1 + s1Index + 1, 0);
+    }
+
+    if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio == 1) {
+        usedS3 = Max(usedS3 - usedS1 + s1Index + 1, 0);
+    } else if (tilingData->baseParams.cmpSparseMode == 3 && constInfo.cmpRatio != 1) {
+        int64_t oriUsedS3 = usedS3 * constInfo.cmpRatio + cmpResidualKVAddr[bIndex];
+        usedS3 = Max((oriUsedS3 - usedS1 + s1Index + 1) / constInfo.cmpRatio, 0);
     }
 
     t2Index = t2Offset;
