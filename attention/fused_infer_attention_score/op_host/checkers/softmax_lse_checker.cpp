@@ -71,16 +71,20 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
         if (fiaInfo.outLayout == FiaLayout::TND || fiaInfo.outLayout == FiaLayout::NTD) {
             if (lseShape->GetStorageShape().GetDimNum() != DIM_NUM_3) {
                 std::string dimStr = std::to_string(lseShape->GetStorageShape().GetDimNum()) + "D";
-                OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "softmax_lse", dimStr.c_str(), "3D");
+                // TODO: fix TND/NTD after translation is provided.
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                    fiaInfo.opName, "softmax_lse", dimStr.c_str(),
+                    "TND/NTD The shape of softmax_lse must be 3D!");
                 return ge::GRAPH_FAILED;
             }
             if (lseShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.qTSize ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.n1Size ||
                 lseShape->GetStorageShape().GetDim(DIM_NUM_2) != SHAPE_PARAMS_CONST) {
                 std::string shapeStr = ToString(lseShape->GetStorageShape());
+                // TODO: fix [T, N, 1] after translation is provided.
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
-                    "The shape of input softmax_lse should match [B, N, 1] for TND layout");
+                    "The shape of softmax_lse must be [T, N, 1].");
                 return ge::GRAPH_FAILED;
             }
         } else {
@@ -95,7 +99,7 @@ ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &
                 lseShape->GetStorageShape().GetDim(DIM_NUM_3) != SHAPE_PARAMS_CONST) {
                 std::string shapeStr = ToString(lseShape->GetStorageShape());
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "softmax_lse", shapeStr.c_str(),
-                                                      "The shape of input softmax_lse should match [B, N, Q_S, 1]");
+                                                      "The shape of softmax_lse must be [B, N, Q_S, 1]");
                 return ge::GRAPH_FAILED;
             }
         }

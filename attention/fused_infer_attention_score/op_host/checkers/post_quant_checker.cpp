@@ -60,8 +60,11 @@ ge::graphStatus PostQuantChecker::CheckExistenceQuantScale2(const FiaTilingInfo 
                     return ge::GRAPH_FAILED);
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
         if (quantScale2ShapeSize <= 0) {
-            OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "quant_scale2", std::to_string(quantScale2ShapeSize).c_str(),
-                                          "positive");
+            // TODO: fix after translation is provided.
+            std::string reasonMsg = "Shape size of quant_scale2 must be positive in post quant scenario!";
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
+                std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
+
             return ge::GRAPH_FAILED;
         }
     }
@@ -112,8 +115,10 @@ ge::graphStatus PostQuantChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInf
         if (quantScale2Dim == 1) {
             if (static_cast<uint64_t>(quantScale2ShapeSize) != quantScale2ShapeSizePerChannel || !isSupportedLayout) {
                 if ((static_cast<uint64_t>(quantScale2ShapeSize) != 1U)) {
-                    OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "quant_scale2",
-                                                  std::to_string(quantScale2ShapeSize).c_str(), "[1]");
+                    // TODO: fix after translation is provided.
+                    std::string reasonMsg = "For post quant per-tensor, the shape size of quant scale/offset should be equal to [1].";
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(fiaInfo.opName, "quant_scale2",
+                        std::to_string(quantScale2ShapeSize).c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
                 }
             }
@@ -296,7 +301,7 @@ ge::graphStatus PostQuantChecker::CheckMultiParaQuantOffset2(const FiaTilingInfo
             std::string shapeMsg = std::to_string(quantScale2ShapeSize) + ", " + std::to_string(quantOffset2ShapeSize);
             OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
                 fiaInfo.opName, "quant_scale2 and quant_offset2", shapeMsg.c_str(),
-                "The shape size of input quant_scale2 should be the same as input quant_offset2");
+                "The shape sizes of quant_scale2 and quant_offset2 must be the same.");
             return ge::GRAPH_FAILED;
         }
     }

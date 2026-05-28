@@ -310,7 +310,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
              maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
              maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize)) {
             std::string shapeStr = ToString(maskShape->GetStorageShape());
-            std::string reasonMsg = "The shape of input atten_mask should be [B or 1, >=Q_S, >=KV_S + systemPrefixLen]";
+            std::string reasonMsg = "The shape of atten_mask must be [B or 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -324,7 +324,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
              maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
             std::string shapeStr = ToString(maskShape->GetStorageShape());
             std::string reasonMsg =
-                "The shape of input atten_mask should be [B or 1, 1, >=Q_S, >=KV_S + systemPrefixLen]";
+                "The shape of atten_mask should be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -344,8 +344,7 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
         if (attenMaskDim != MASK_DIM_S && attenMaskDim != MASK_DIM_BSS) {
             std::string dimStr = std::to_string(attenMaskDim) + "D";
             std::string reasonMsg =
-                "The shape dims of input atten_mask only support 1D or 3D when the attr sparse_mode is " +
-                std::to_string(SPARSE_MODE_TREE);
+                "The shape dim of atten_mask must be 1D or 3D when sparse_mode is " + std::to_string(SPARSE_MODE_TREE);
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(fiaInfo.opName, "atten_mask", dimStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -480,10 +479,9 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         if (!checkMask) {
             const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
             std::string shapeStr = ToString(maskShape->GetStorageShape());
-            std::string reasonMsg =
-                "The shape of input atten_mask should satisfy: batch must be 1 or " + std::to_string(fiaInfo.bSize) +
-                ", Q_S must be >= " + std::to_string(fiaInfo.s1Size) + ", KV_S must be >= KV_S + systemPrefixLen(" +
-                std::to_string(fiaInfo.s2Size + fiaInfo.systemPrefixLen) + ")";
+            std::string reasonMsg = "The shape of atten_mask must be [B(" + std::to_string(fiaInfo.bSize) +
+                ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size)  +"), >=KV_S(" + std::to_string(fiaInfo.s2Size) +
+                ") + systemPrefixLen(" + std::to_string(fiaInfo.systemPrefixLen) + ")]"
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -493,9 +491,8 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         !checkMask) {
         const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
         std::string shapeStr = ToString(maskShape->GetStorageShape());
-        std::string reasonMsg = "The shape of input atten_mask should be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
-                                "2048] when the attr sparse_mode is " +
-                                std::to_string(fiaInfo.sparseMode);
+        std::string reasonMsg = "The shape of atten_mask must be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
+                                "2048] when the sparse_mode is " + std::to_string(fiaInfo.sparseMode);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -535,10 +532,6 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
             return ge::GRAPH_FAILED;
         }
         if (ge::GRAPH_SUCCESS != CheckMXFP8FullQuant(fiaInfo)) {
-            return ge::GRAPH_FAILED;
-        }
-    } else if (enableAntiQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckAntiquantSparseMode(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }

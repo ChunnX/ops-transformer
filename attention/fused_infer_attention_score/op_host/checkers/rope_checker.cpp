@@ -66,17 +66,17 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
     if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
-        OP_LOGE(fiaInfo.opName,
-            "In MXFP8 fullquant scenario, when rope exist, "
-            "the d size of query and key must be 64 or 128, but current is %u.",
-            fiaInfo.qkHeadDim),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName,
+                            "In MXFP8 fullquant scenario, when rope exist, "
+                            "the d size of query and key must be 64 or 128, but current is %u.",
+                            fiaInfo.qkHeadDim),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
-        OP_LOGE(fiaInfo.opName,
-            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.",
-            fiaInfo.qkHeadDim),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName,
+                            "When rope exist, the d size of query and key must be 128 or 512, but current is %u.",
+                            fiaInfo.qkHeadDim),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -138,7 +138,7 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
     if (dimNum != ropeDimNum) {
         std::string paramMsg = inputRopeName + " and " + inputName;
         std::string dimMsg = std::to_string(ropeDimNum) + " and " + std::to_string(dimNum);
-        std::string reasonMsg = "The shape dims of input " + inputRopeName + " should be equal to input " + inputName;
+        std::string reasonMsg = "The shape dims of input " + inputRopeName + " must be equal to that of input " + inputName;
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, paramMsg.c_str(), dimMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -147,8 +147,8 @@ ge::graphStatus RopeChecker::CheckQKAndQKRopeShapeConsistency(const FiaTilingInf
         if (shape.GetDim(i) != ropeShape.GetDim(i)) {
             std::string paramMsg = inputRopeName + " and " + inputName;
             std::string shapeMsg = ToString(ropeShape) + " and " + ToString(shape);
-            std::string reasonMsg = "The " + std::to_string(i) + "th dim of input " + inputRopeName +
-                                    " should be equal to the " + std::to_string(i) + "th dim of input " + inputName;
+            std::string reasonMsg = "The " + std::to_string(i) + "th axis of input " + inputRopeName +
+                                    " must be equal to the " + std::to_string(i) + "th axis of input " + inputName;
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, paramMsg.c_str(), shapeMsg.c_str(),
                                                    reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -180,7 +180,7 @@ ge::graphStatus RopeChecker::CheckPAKeyAndKeyRopeShapeConsistency(const FiaTilin
     if (keyDimNum != keyRopeDimNum) {
         std::string dimMsg = std::to_string(keyRopeDimNum) + " and " + std::to_string(keyDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(fiaInfo.opName, "keyRope and key", dimMsg.c_str(),
-                                                  "The shape dims of input keyRope should be equal to input key");
+                                                  "The shape dim of input keyRope must be equal to that of key");
         return ge::GRAPH_FAILED;
     }
 
@@ -250,7 +250,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
             std::to_string(keyRopeShape.GetDim(DIM_NUM_0)) + " and " + std::to_string(fiaInfo.kCache.size());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-            "The axis B of input keyRope should be equal to the tensor number of input key");
+            "The axis B of keyRope must be equal to the tensor number of key");
         return ge::GRAPH_FAILED;
     }
 
@@ -267,14 +267,14 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                 std::string shapeMsg = std::to_string(keyRopeS) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_2));
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis S of input keyRope should be equal to the axis S of input key");
+                    "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_1) != keyRopeN) {
                 std::string shapeMsg = std::to_string(keyRopeN) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_1));
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis N of input keyRope should be equal to the axis N of input key");
+                    "The axis N of keyRope must be equal to the axis N of key");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -287,7 +287,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                 std::string shapeMsg = std::to_string(keyRopeS) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_1));
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis S of input keyRope should be equal to the axis S of input key");
+                    "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN) {
@@ -295,7 +295,7 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                     std::to_string(keyRopeN) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim);
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis N of input keyRope should be equal to the axis N of input key");
+                    "The axis N of keyRope must be equal to the axis N of key");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -308,14 +308,14 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
                 std::string shapeMsg = std::to_string(keyRopeS) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_1));
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis S of input keyRope should be equal to the axis S of input key");
+                    "The axis S of keyRope must be equal to the axis S of key");
                 return ge::GRAPH_FAILED;
             }
             if (keyShape.GetDim(DIM_NUM_2) != keyRopeN) {
                 std::string shapeMsg = std::to_string(keyRopeN) + " and " + std::to_string(keyShape.GetDim(DIM_NUM_2));
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     fiaInfo.opName, "keyRope and key", shapeMsg.c_str(),
-                    "The axis N of input keyRope should be equal to the axis N of input key");
+                    "The axis N of keyRope must be equal to the axis N of key");
                 return ge::GRAPH_FAILED;
             }
         }
@@ -419,7 +419,8 @@ ge::graphStatus RopeChecker::CheckQSSize(const FiaTilingInfo &fiaInfo)
 
 
     if (fiaInfo.s1Size < NUM1) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "query", std::to_string(fiaInfo.s1Size).c_str(), "positive");
+        std::string sizeStr = std::to_string(fiaInfo.s1Size);
+        OP_LOGE_FOR_INVALID_SHAPESIZE(fiaInfo.opName, "query", sizeStr.c_str(), "positive");
         return ge::GRAPH_FAILED;
     }
 
