@@ -267,6 +267,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
         antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
         FaVectorApi::AntiqScalePerTokenGroupByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale, taskParam.copyTotalS, grpNum);
+        antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
     } else {
         if constexpr (enableKVPrefix) {
             if (taskParam.isPrefixLoop) {
@@ -298,6 +299,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
         antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
         FaVectorApi::AntiqScaleByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale, taskParam.copyTotalS, grpNum);
+        antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
     }
 }
 
