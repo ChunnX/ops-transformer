@@ -422,7 +422,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional, permuteOutOptional,
         workspaceSize, executor);
     if (*executor != nullptr) {
-        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_AICPU));
+        void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_CCU));
         NnopbaseSetUserHandle(*executor, args);
     }
     OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize ret %d.", ret);
@@ -527,7 +527,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("arch35, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 OP_LOGD("arch35, use CCU mode");
