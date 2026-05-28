@@ -473,9 +473,10 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值
         commQuantDtype = op::DataType::DT_UNDEFINED;
     }
+    char* str_group = const_cast<char*>(group);
     aclnnStatus ret = aclnnInnerAlltoAllMatmulGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-        group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
+        str_group, worldSize, alltoAllAxesOptional, yDtype, x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
         transposeX1, transposeX2, groupSize, all2AllOutFlag, output, all2AllOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllQuantMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;

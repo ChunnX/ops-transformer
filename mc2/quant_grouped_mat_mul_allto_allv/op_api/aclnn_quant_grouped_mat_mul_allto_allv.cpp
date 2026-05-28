@@ -456,7 +456,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
 gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, commQuantScaleOptional,
-        strGroup, epWorldSize, sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight,
+        group, epWorldSize, sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight,
         transMmWeight, mmXQuantMode, mmWeightQuantMode, commQuantMode, groupSize, yDtype, mmDtype,
         commQuantDtypeOptional, y, mmYOptional, workspaceSize, executor);
     return ret;

@@ -162,7 +162,7 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the value is invalid"), return ge::GRAPH_FAILED);
     
-    OP_TILING_CHECK(!CheckOutputParamDim0(context),
+    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
             "the output's dim0 is invalid"), return ge::GRAPH_FAILED);
 
