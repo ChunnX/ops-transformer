@@ -202,7 +202,7 @@ public:
                                               const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
         // 计算时softmaxGrad时softmax必然计算完
-        ComputeSoftmaxGrad(dst_l1_tensor, src_ub_tensor, runTimeInfo);
+        ComputeSoftmaxGrad(dst_l1_tensor, softmax_ub_tensor, src_ub_tensor, runTimeInfo);
     }
 
     __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
@@ -277,6 +277,7 @@ private:
     }
 
     __aicore__ inline void ComputeSoftmaxGrad(const LocalTensor<INPUT_TYPE> &dst_l1_tensor,
+                                              const LocalTensor<float> &softmax_ub_tensor,
                                               const LocalTensor<float> &src_ub_tensor, const RunTimeInfo &runTimeInfo)
     {
         /*
@@ -302,7 +303,7 @@ private:
         SubBrcb(src_ub_tensor, src_ub_tensor, lse_tensor_, sub_m_process, n_process_align);
         PipeBarrier<PIPE_V>();
 
-        Mul(src_ub_tensor, src_ub_tensor, sft_ub_tensor, sub_m_process * n_process_align);
+        Mul(src_ub_tensor, src_ub_tensor, softmax_ub_tensor, sub_m_process * n_process_align);
         PipeBarrier<PIPE_V>();
 
         Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
