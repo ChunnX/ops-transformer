@@ -362,11 +362,39 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Creating TransposeD pattern for MM_WEIGHT_SCALE (idx=9)");
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE), "_TransposeD_MmWeightScale"));
     
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Patterns DONE, total %zu patterns (4 Transpose + 4 TransposeD) ===", patternGraphs.size());
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== If still no MeetRequirements log appears, check: ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== 1. Does original graph have Transpose/TransposeD node? ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== 2. Which input of MC2 does it connect to? ===");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== 3. What is the perm value? ===");
+    // === DEBUG: 添加最简单的 Pattern，只匹配 MC2 算子本身 ===
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 only (no Transpose) ===");
+    {
+        auto debugBuilder = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_ONLY").c_str());
+        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale, dSendCounts,
+              dRecvCounts, dMmX, dMmWeight, dMmXScale, dMmWeightScale] = debugBuilder.CreateInputs<10>();
+        std::string dGroup = "";
+        int64_t dEpWorldSize = 0;
+        std::vector<int64_t> dSendCounts = {};
+        std::vector<int64_t> dRecvCounts = {};
+        int64_t dGmmXQuantMode = 0;
+        int64_t dGmmWeightQuantMode = 0;
+        int64_t dMmXQuantMode = 0;
+        int64_t dMmWeightQuantMode = 0;
+        int64_t dGroupSize = 0;
+        int64_t dYDtype = 28;
+        int64_t dMmDtype = 28;
+        bool dPermuteOutFlag = false;
+        auto debugMc2 = ge::es::AlltoAllvQuantGroupedMatMul(
+            dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale,
+            dSendCounts, dRecvCounts,
+            dMmX, dMmWeight, dMmXScale, dMmWeightScale,
+            dGroup.c_str(), dEpWorldSize, dSendCounts, dRecvCounts,
+            dGmmXQuantMode, dGmmWeightQuantMode, false, false, dPermuteOutFlag,
+            dMmXQuantMode, dMmWeightQuantMode, dGroupSize, dYDtype, dMmDtype);
+        auto debugGraph = debugBuilder.BuildAndReset({debugMc2.gmm_y});
+        auto debugPattern = std::make_unique<ge::fusion::Pattern>(std::move(*debugGraph));
+        debugPattern->CaptureTensor({*debugMc2.gmm_y.GetProducer(), 0});
+        patternGraphs.emplace_back(std::move(debugPattern));
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added ===");
+    }
+    
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Patterns DONE, total %zu patterns ===", patternGraphs.size());
     return patternGraphs;
 }
 
