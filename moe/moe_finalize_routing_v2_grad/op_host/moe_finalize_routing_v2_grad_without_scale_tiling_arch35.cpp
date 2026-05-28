@@ -37,10 +37,7 @@ protected:
 
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-            return false;
-        }
-        return !isScalesExist_;
+        return false;
     }
 
     ge::graphStatus CheckOptionalInputDtype() override;

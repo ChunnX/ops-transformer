@@ -40,9 +40,6 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-            return false;
-        }
         return true;
     }
 

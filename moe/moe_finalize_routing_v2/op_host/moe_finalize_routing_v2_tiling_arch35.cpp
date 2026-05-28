@@ -962,22 +962,7 @@ bool MoeFinalizeRoutingV2Regbase::IsHFullLoad()
 
 bool MoeFinalizeRoutingV2Regbase::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        return false;
-    }
-    // IsRowKHFullLoad（全维度）→ IsKHFullLoad（K-H 维度）→ IsHFullLoad（仅 H 维度），粒度由粗到细，适配不同 MoE 子任务；
-    rowKHFullLoad_ = IsRowKHFullLoad();
-    if (rowKHFullLoad_) {
-        return true;
-    }
-
-    kHFullLoad_ = IsKHFullLoad();
-    if (kHFullLoad_) {
-        return true;
-    }
-    hFullLoad_ = IsHFullLoad();
-
-    return true;
+    return false;
 }
 
 ge::graphStatus MoeFinalizeRoutingV2Regbase::CalcTilingKey()
