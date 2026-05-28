@@ -29,6 +29,7 @@ constexpr uint32_t MAX_EXP_FOR_FP8_IN_FP32 = 0x000000ff;
 constexpr uint16_t NAN_CUSTOMIZATION = 0x7f81;
 constexpr uint16_t SPECIAL_EXP_THRESHOLD = 0x0040;
 constexpr int16_t SHR_NUM_FOR_BF16 = 7;
+constexpr int16_t SHR_NUM_FOR_FP32 = 23;
 constexpr uint16_t FP8_E4M3_MAX_EXP = 0x0400; // elem_emax右移7位(BF16E8M7)
 constexpr uint16_t FP8_E5M2_MAX_EXP = 0x0780;
 constexpr uint16_t FP4_E2M1_BF16_MAX_EXP = 0x0100;
@@ -38,6 +39,11 @@ constexpr uint16_t SPECIAL_VALUE_E1M2 = 0x007f;
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
+constexpr uint32_t FP8_E5M2_MAX = 0x37924925; // 1/57344的float32表示 57334是E5M2所能表示的最大值
+constexpr uint32_t FP8_E4M3_MAX = 0x3b124925; // 1/448的float32表示 448是E4M3所能表示的最大值
+constexpr uint32_t NUMBER_ZERO = 0x00000000;
+constexpr uint32_t NUMBER_TWO_FIVE_FOUR = 0x000000fe;
+constexpr uint32_t NUMBER_HALF = 0x00400000;
 constexpr float HIFP8_MAX_VALUE = 32768.0f;
 constexpr float INT8_MAX_VALUE = 127.0f;
 constexpr uint16_t INVALID_FLOAT16 = 0x7c00;
@@ -255,6 +261,12 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint32_t);
     uint16_t loopNumScale = Ceil(totalScaleInUB, vlForHalfNumber);
+    uint16_t dtypeMax;
+    if constexpr (Std::IsSame<T, fp8_e4m3fn_t>::value) {
+        dtypeMax = FP8_E4M3_MAX;
+    } else if constexpr (Std::IsSame<T, fp8_e5m2_t>::value) {
+        dtypeMax = FP8_E5M2_MAX;
+    }
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<uint16_t> max16;
