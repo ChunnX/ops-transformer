@@ -197,84 +197,74 @@ class LightningIndexerGrad:
                 
                 # ========== 步骤2: Cube1 - Query @ KeyGather^T ==========
                 # 每行s有不同的KeyGather，使用einsum
-                # 重要: 用 FP32 计算避免累加精度损失
-                relu_in = torch.einsum('sd,skd->sk', query_b.float(), key_gather_npu.float())
-                relu_in_fp32 = relu_in  # 保持 FP32 用于后续计算
+                relu_in = torch.einsum('sd,skd->sk', query_b.float(), key_gather_npu.float()).to(dtype)
                 
-                # 调试: 检查 relu_in
-                if n1 == 0:  # 只打印第一个头，避免太多输出
-                    print(f"[调试] relu_in: max={relu_in.abs().max().item():.2f}, "
-                          f"min={relu_in.min().item():.2f}, has_nan={torch.isnan(relu_in).any().item()}")
+                # 调试: 检查 relu_in (只打印第一个头)
+                if n1 == 0 and b == 0:
+                    print(f"[调试] relu_in max: {relu_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_in).any().item()}")
                 
-# ========== 步骤3: Cube2 - Weights @ Dy ==========
+                # ========== 步骤3: Cube2 - Weights @ Dy ==========
                 # 每个Query头有独立的权重
-                weights_b = weights[b, :, n1].float()  # (S1,) 转为 FP32
-                dy_b = dy[b].float()  # (S1, topk) 转为 FP32
-                relu_grad_in = weights_b.unsqueeze(-1) * dy_b  # 广播乘法，保持 FP32
+                weights_b = weights[b, :, n1]  # (S1,)
+                dy_b = dy[b]  # (S1, topk)
+                relu_grad_in = weights_b.unsqueeze(-1) * dy_b  # 广播乘法
+                
+                if n1 == 0 and b == 0:
+                    print(f"[调试] relu_grad_in max: {relu_grad_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_in).any().item()}")
                 
                 # ========== 步骤4: Vec2 - ReLU反向 + ReduceSum ==========
                 # ReLU反向: relu_grad_out = relu_grad_in * (relu_in > 0)
-                # 使用 FP32 计算
-                mask = (relu_in_fp32 > 0).float()  # FP32 mask
-                relu_grad_out_fp32 = relu_grad_in * mask
+                mask = (relu_in > 0).to(dtype)
+                relu_grad_out = relu_grad_in * mask
                 
-                # 调试: 检查 relu_grad_out
-                if n1 == 0:
-                    print(f"[调试] relu_grad_in: max={relu_grad_in.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_in).any().item()}")
-                    print(f"[调试] relu_grad_out (FP32): max={relu_grad_out_fp32.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out_fp32).any().item()}")
+                if n1 == 0 and b == 0:
+                    print(f"[调试] relu_grad_out max: {relu_grad_out.abs().max().item():.2f}, has_nan={torch.isnan(relu_grad_out).any().item()}")
                 
-                # ReduceSum计算dWeights - 每个Query头的权重梯度
-                # 使用 FP32 累加
-                relu_in_dy_fp32 = relu_in_fp32 * dy_b
-                d_weights_b_fp32 = relu_in_dy_fp32.sum(dim=-1)  # PyTorch FP32 累加
+                # ReduceSum计算dWeights - 使用FP32累加避免精度损失
+                relu_in_dy = relu_in.float() * dy_b.float()  # FP32乘法
+                d_weights_b = relu_in_dy.sum(dim=-1).to(dtype)  # FP32累加后转FP16
                 
-                # 调试: 检查 d_weights
-                if n1 == 0:
-                    print(f"[调试] d_weights_b (FP32): max={d_weights_b_fp32.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b_fp32).any().item()}")
+                if n1 == 0 and b == 0:
+                    print(f"[调试] d_weights_b max: {d_weights_b.abs().max().item():.2f}, has_nan={torch.isnan(d_weights_b).any().item()}")
                 
-                # 转回 FP16 存储
-                d_weights[b, :, n1] = d_weights_b_fp32.to(dtype)
+                d_weights[b, :, n1] = d_weights_b
                 
                 # ========== 步骤5: Cube3 - dQuery ==========
-                # 使用 FP32 计算
-                d_query_b_fp32 = torch.einsum('sk,skd->sd', relu_grad_out_fp32, key_gather_npu.float())
-                d_query[b, :, n1, :] = d_query_b_fp32.to(dtype)
+                d_query_b = torch.einsum('sk,skd->sd', relu_grad_out.float(), key_gather_npu.float()).to(dtype)
+                
+                if n1 == 0 and b == 0:
+                    print(f"[调试] d_query_b max: {d_query_b.abs().max().item():.2f}, has_nan={torch.isnan(d_query_b).any().item()}")
+                
+                d_query[b, :, n1, :] = d_query_b
                 
                 # ========== 步骤6: Cube4 - ReluGrad外积Query ==========
-                # 每个位置s需要独立的(topk, D)值，因为scatter时indices不同，不能跨s求和
-                # relu_grad_out: (S1, topk), query_b: (S1, D) -> scatter_add: (S1, topk, D)
-                # 使用 FP32 计算
-                scatter_add_fp32 = torch.einsum('sk,sd->skd', relu_grad_out_fp32, query_b.float())
-                scatter_add = scatter_add_fp32.to(dtype)
+                # 每个位置s需要独立的(topk, D)值
+                scatter_add = torch.einsum('sk,sd->skd', relu_grad_out.float(), query_b.float()).to(dtype)
                 
-                # 调试: 检查 scatter_add
-                if n1 == 0:
-                    print(f"[调试] scatter_add: max={scatter_add_fp32.abs().max().item():.2f}, has_nan={torch.isnan(scatter_add_fp32).any().item()}")
+                if n1 == 0 and b == 0:
+                    print(f"[调试] scatter_add max: {scatter_add.abs().max().item():.2f}, has_nan={torch.isnan(scatter_add).any().item()}")
                     print(f"[调试] scatter_add shape: {scatter_add.shape}")
-
+                
                 # ========== 步骤7: Vec3 - ScatterAdd (CPU辅助) ==========
                 scatter_add_cpu = scatter_add.cpu().numpy()
                 d_key_cpu = d_key[b].cpu().numpy()
                 
                 # 调试: 检查 indices 范围
-                if n1 == 0:
+                if n1 == 0 and b == 0:
                     indices_b = indices_cpu[b]
-                    print(f"[调试] indices: min={indices_b.min()}, max={indices_b.max()}, seqlen_k={self.seqlen_k}")
-                    if indices_b.max() >= self.seqlen_k:
-                        print(f"[警告] indices 越界! max={indices_b.max()} >= seqlen_k={self.seqlen_k}")
+                    print(f"[调试] indices range: min={indices_b.min()}, max={indices_b.max()}, seqlen_k={self.seqlen_k}")
                 
                 d_key_cpu = scatter_add_python(
-                    d_key_cpu[np.newaxis, ...],       # (1, S2, head_num_k, D)
-                    scatter_add_cpu[np.newaxis, ...], # (1, S1, topk, D)
-                    indices_cpu[b:b+1],               # (1, S1, topk)
+                    d_key_cpu[np.newaxis, ...],
+                    scatter_add_cpu[np.newaxis, ...],
+                    indices_cpu[b:b+1],
                     n2_idx,
                     self.head_dim
                 )
                 d_key[b] = torch.from_numpy(d_key_cpu.squeeze(0)).to(device)
                 
-                # 调试: 检查最终 d_key
-                if n1 == 0:
-                    print(f"[调试] d_key (after scatter): max={d_key[b].abs().max().item():.2f}, has_nan={torch.isnan(d_key[b]).any().item()}")
+                if n1 == 0 and b == 0:
+                    print(f"[调试] d_key max: {d_key[b].abs().max().item():.2f}, has_nan={torch.isnan(d_key[b]).any().item()}")
         
         torch.npu.synchronize()
         
