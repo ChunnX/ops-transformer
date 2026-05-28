@@ -28,16 +28,17 @@
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
     #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
     #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
+    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #else
 // 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
     #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
-
-#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
