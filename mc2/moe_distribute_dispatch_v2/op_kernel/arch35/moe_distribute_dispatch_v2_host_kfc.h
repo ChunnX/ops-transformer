@@ -1044,7 +1044,7 @@ __aicore__ inline bool MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     do{
         count++;
         if(count > 1000000){
-            cce::print("error WaitFlag,error count\n");
+            cce::printf("error WaitFlag,error count\n");
             break;
         }
         DataCopyPad(flagInLTTensor, flagInGMTensor, flagCopyParams, flagPadParams);
@@ -1623,7 +1623,7 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitToken(uint32_t 
     while (true) {
         count++;
         if (count == 1000000) {
-            cce::print("[BATCHWRITE][WaitToken] error count.\n");
+            cce::printf("[BATCHWRITE][WaitToken] error count.\n");
             break;
         }
         if (tokenRcvStatus_(rcvStatusIndex) == 1) {
@@ -2021,7 +2021,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         // //LOG_INFO("sumOfFlag:", sumOfFlag);
         count ++;
         if(count == 10000000) {
-            cce::print("waitDispatch error count\n");
+            cce::printf("waitDispatch error count\n");
             break;
         }
     }
@@ -2225,7 +2225,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count++;
         if(count == 1000000) {
-            cce::print("WaitCumSumFlag error count \n");
+            cce::printf("WaitCumSumFlag error count \n");
             break;
         }
         DataCopy(statusFp32Tensor_, selfRankWinInGMTensor_[cumSumFlagOffset], aivUsedCumSum_ * UB_ALIGN_DATA_COUNT);
@@ -2328,7 +2328,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     while (true) {
         count ++;
         if(count > 1000000) {
-            cce::print("WaitAndFormatOutput error count\n");
+            cce::printf("WaitAndFormatOutput error count\n");
             // break;
         }
         if (expertLeftNumTensor_(index) == 0) { // 当前核负责的不需要收集

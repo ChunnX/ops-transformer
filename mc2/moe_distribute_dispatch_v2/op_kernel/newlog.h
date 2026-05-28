@@ -1,5 +1,5 @@
-namespace MoeDispatchLog_NEW {
 #include<ccelib/print/print.h>
+namespace MoeDispatchLog_NEW {
 
 template<typename T>
 constexpr bool is_decimal_integer_v =
@@ -220,7 +220,7 @@ __aicore__  inline void Log::PrintLevel(const AscendC::LocalTensor<T>& tensor, s
 
 template<typename T, size_t N>
 __aicore__ inline void Log::PrintValue(const AscendC::LocalTensor<T>& tensor, const uint32_t (&shape)[N]) {
-    PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_ALL>();
     size_t actual_size = tensor.GetSize();
 
     uint32_t max_w = 0;
@@ -343,7 +343,7 @@ __aicore__  inline void Log::PrintLevel(const AscendC::GlobalTensor<T>& tensor, 
 
 template<typename T, size_t N>
 __aicore__  inline void Log::PrintValue(const AscendC::GlobalTensor<T>& tensor, const uint32_t (&shape)[N]) {
-    PipeBarrier<PIPE_ALL>();
+    AscendC::PipeBarrier<PIPE_ALL>();
     size_t actual_size = tensor.GetSize();
 
     // 预扫描获取最大元素宽度
@@ -448,59 +448,59 @@ __aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,
 //     for(uint32_t Index = 0; Index < sendExpertNum; Index++) { //TODO:需要考虑二维mask影响
 //         uint32_t dstExpertId = startExpertId + Index;
 //         Duplicate<int32_t>(tempTensorInt32, dstExpertId, calCnt);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Sub(dstExpIdTensorInt32, expertIdsTensor_, tempTensorInt32, calCnt);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Abs(dstExpIdTensorFP32, dstExpIdTensorFP32, calCnt);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Mins(dstExpIdTensorInt32, dstExpIdTensorInt32, 1, calCnt);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Cast(dstExpIdTensorInt16, dstExpIdTensorInt32, RoundMode::CAST_NONE, calCnt);
 //         Duplicate<int16_t>(tempTensorInt16, 1, calCnt); 
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Xor(compareInt16, dstExpIdTensorInt16, tempTensorInt16, sharedTensorInt8, calCnt);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         if(isExpertMaskFlag_) {
 //             AscendC::LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
 //             Cast(tempTensorInt16, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
 //             Mul(compareInt16, compareInt16, tempTensorInt16, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
-//             PipeBarrier<PIPE_V>(); 
+//             AscendC::PipeBarrier<PIPE_V>(); 
 //         }
 //         Duplicate<uint32_t>(gatherMaskTensor_, 0,
 //                         Ceil(calCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint32_t)); // 获取索引需要放在这里，因为需要256对齐
 //         Cast(compareFp16, compareInt16, RoundMode::CAST_RINT, calCnt); // 得到对应的结果  TODO:这里需要确认全局变量gatherMaskTensor_
 //         CreateVecIndex(expertsIndexTensor, 0, calCnt);  // TODO：这个需要单独放
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         CompareScalar(gatherMaskTensorInt8, compareFp16, static_cast<half>(1), AscendC::CMPMODE::EQ, expertNumAlign256);
 //         Cast(dstExpIdTensorFP32, compareFp16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor_, true, calCnt, {1, 1, 0, 0},
 //                 sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         uint32_t srcShape[2] = {activeBsCnt, axisK_};
 //         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstExpIdTensorFP32, sharedTensorInt8, srcShape, false);
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         const AscendC::CumSumInfo CumSumInfo{1, inner};
 //         CumSum(dstExpIdTensorFP32, sharedTensorFp32, tempTensorFp32, sharedTensorInt8, CumSumInfo); //这里不输出最后一行，因此复用buf
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Adds(dstExpIdTensorFP32, dstExpIdTensorFP32, static_cast<float32_t>(-1.0), activeBsCnt); // 相对偏移量，最终结果
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Mul(dstExpIdTensorFP32, dstExpIdTensorFP32, tempTensorFp32, activeBsCnt);
 //         Duplicate<uint32_t>(gatherMaskTensor_, 0,
 //                         Ceil(activeBsCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint32_t)); // 获取索引需要放在这里，因为需要256对齐 TODO:这里注意gatherMaskTensor_，必须分配
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         CompareScalar(gatherMaskTensorInt8, tempTensorFp32, static_cast<float32_t>(1), AscendC::CMPMODE::EQ, tokenCntAlign256); //
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         GatherMask(dstExpIdTensorFP32, dstExpIdTensorFP32, gatherMaskTensor_, true, activeBsCnt, {1, 1, 0, 0},
 //                 sendNumperExpert); // 当前需要发送的专家的偏移量
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Cast(dstExpIdTensorInt32, dstExpIdTensorFP32, RoundMode::CAST_TRUNC, calCnt); // 这里是最终结果,累加和
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         Muls(validExpertIndexTensor, validExpertIndexTensor, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendNumperExpert));
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //         AscendC::LocalTensor<uint32_t> dstoffset = validExpertIndexTensor.ReinterpretCast<uint32_t>();
 //         Scatter(expertOffsetCntTensor_, dstExpIdTensorInt32, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
-//         PipeBarrier<PIPE_V>();
+//         AscendC::PipeBarrier<PIPE_V>();
 //     }
 //     uint64_t endtime = GetSystemCycle();
 //     uint64_t usetime = endtime -starttime;
