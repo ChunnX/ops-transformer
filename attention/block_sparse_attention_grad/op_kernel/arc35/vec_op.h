@@ -194,7 +194,7 @@ public:
                     out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
                 }
 
-                ComputeEvenCoreInfo(info, q_seq_len, process_s1_size);
+                ComputeEvenCoreInfo(info, current_q_seqlen, process_s1_size);
                 ComputeSoftmaxGradFront(sftg_workspace[out_gm_offset], dy_gm[in_gm_offset], out_gm[in_gm_offset], info,
                                         tilingData);
                 SET_FLAG(MTE3, MTE2, EVENT_ID0);
