@@ -58,6 +58,7 @@ private:
     bool IsA16W4() const;
     
     std::string GetDataFlowString() const;
+    const char* GetAclnnName() const;
 
 private:
     GroupedMatmulParams gmmParams_;
