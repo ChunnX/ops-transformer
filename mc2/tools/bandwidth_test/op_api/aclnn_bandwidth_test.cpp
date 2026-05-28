@@ -108,16 +108,19 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
-    #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-        aclTensor *mc2Context = nullptr;
-        uint64_t hcclBuffSize = 0;
-        const char *opName = "bandwidth_test";
-        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
-            mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
-            y, receiveCnt, workspaceSize, executor);
-    #endif
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    OP_LOGD("==========enter define============");
+    aclTensor *mc2Context = nullptr;
+    uint64_t hcclBuffSize = 0;
+    const char *opName = "bandwidth_test";
+    auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
+        mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
+        y, receiveCnt, workspaceSize, executor);
+#else
+    OP_LOGD("==========not enter define============");
+#endif
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
