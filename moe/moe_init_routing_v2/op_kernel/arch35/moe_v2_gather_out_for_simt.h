@@ -143,6 +143,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
         if (colsLoop == this->colLoops - 1) {
             colsTileLength = this->lastLoopCols;
         }
+        int64_t savedInitialRow = initialRow;
         int64_t currentLoopStartRow = initialRow / this->k;
         int64_t currentLoopLastRow = (initialRow + this->currentLoopRows - 1) / this->k;
         for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
@@ -155,10 +156,14 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
             inputActivationsCopyInQueue.EnQue<T>(inLocal);
             inLocal = inputActivationsCopyInQueue.DeQue<T>();
             DataCopyExtParams intriParams{1, static_cast<uint32_t>(this->colsTileLength * sizeof(T)), 0, 0, 0};
-            while (curLoopRow < this->currentLoopRows && initialRow / this->k == row) {
+
+            while (curLoopRow < this->currentLoopRows) {
+                int64_t currentPosition = savedInitialRow + curLoopRow;
+                if (currentPosition / this->k != row) {
+                    break;
+                }
                 int32_t outIndex = indicesLocal.GetValue(curLoopRow);
                 curLoopRow++;
-                initialRow++;
                 if (outIndex == -1 || (this->dropPadMode == DROPLESS_MODE && outIndex >= this->activateRows)) {
                     continue;
                 }
