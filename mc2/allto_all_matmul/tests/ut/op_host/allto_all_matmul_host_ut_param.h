@@ -75,12 +75,7 @@ struct AlltoAllMatmulTilingUtParam {
         this->alltoalloutFlag = StrToBoolIgnoreCase(ReadMap(csvMap, "alltoalloutFlag", "false"));
         this->soc = ReadMap(csvMap, "socVersion");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectStatus"));
-        std::string tilingKeyStr = ReadMap(csvMap, "expectTilingKey");
-        if (!tilingKeyStr.empty()) {
-            this->expectTilingKey = stoull(tilingKeyStr);
-        } else {
-            this->expectTilingKey = UINT64_MAX;  // Skip validation marker
-        }
+        this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey", "0"));
         this->expectTilingData = ReadMap(csvMap, "expectTilingData");
         std::string wsStr = ReadMap(csvMap, "expectWorkspaces");
         if (!wsStr.empty()) {
