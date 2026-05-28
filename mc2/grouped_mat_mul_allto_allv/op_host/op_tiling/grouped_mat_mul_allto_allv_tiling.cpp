@@ -726,8 +726,15 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    OP_LOGD(context->GetNodeName(), "GmmAlltoAllv tiling: commMode=%u", commMode);
+    // 根据架构判断通信方式，不再依赖环境变量
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认 AICPU (arch22)
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
+    }
+    OP_LOGD(context->GetNodeName(), "GmmAlltoAllv tiling: arch=%d, commMode=%u",
+            ascendcPlatform.GetCurNpuArch(), commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
@@ -909,7 +916,15 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     bool tilingkeyComputeMm = false;
     bool tilingkeyGmmTrans = false;
     bool tilingkeyMmTrans = false;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    
+    // 根据架构判断通信方式，不再依赖环境变量
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认 AICPU (arch22)
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
+    }
 
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         tilingkeyComputeMm = true;
@@ -926,12 +941,6 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     } else {
         tilingkeyMmTrans = false;
     }
-    
-    auto platformInfo = context->GetPlatformInfo();
-    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch != NpuArch::DAV_3510) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
 
     tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, tilingkeyGmmTrans, tilingkeyMmTrans, commMode);

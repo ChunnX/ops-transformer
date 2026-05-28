@@ -701,13 +701,14 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认 AICPU (arch22)
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
     }
-    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
+    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: arch=%d, commMode=%u",
+            ascendcPlatform.GetCurNpuArch(), commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
     }
@@ -827,15 +828,15 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
 {
     bool tilingekyGmmTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
     bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认 AICPU (arch22)
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
     }
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
-    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
-            tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
+    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: arch=%d, gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
+            ascendcPlatform.GetCurNpuArch(), tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
