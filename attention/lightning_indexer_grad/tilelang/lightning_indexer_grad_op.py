@@ -15,22 +15,20 @@ TileLang-Ascend Lightning Indexer Gradient 算子
     layout: 数据布局 (BSND 或 TND)
     sparse_mode: 稀疏模式
 
-流水线顺序:
+流水线顺序 (所有计算使用 TileLang Kernel):
     步骤1: GatherTopk - 基于索引收集 Key 数据 (CPU辅助)
-    步骤2: Cube1 - Query @ KeyGather^T -> relu_in (PyTorch einsum, 每行不同KeyGather)
-    步骤3: Cube2 - Weights @ Dy -> relu_grad_in (PyTorch 广播)
-    步骤4: Vec2 - ReLU反向 (TileLang kernel_relu_grad) + ReduceSum (TileLang kernel_reduce)
-    步骤5: Cube3 - ReluGrad @ KeyGather -> dQuery (PyTorch einsum, 每行不同KeyGather)
-    步骤6: Cube4 - ReluGrad^T @ Query -> scatter_add (TileLang kernel_cube4 ✓)
-    步骤7: Vec3 - ScatterAdd到 dKey (CPU辅助)
+    步骤2: Cube1 - Query @ KeyGather^T -> relu_in (FP32)
+    步骤3: Cube2 - Weights ⊗ Dy -> relu_grad_in (FP16)
+    步骤4: Vec2 - ReLU反向 + ReduceSum -> relu_grad_out (FP16), d_weights (FP16)
+    步骤5: Cube3 - ReluGrad @ KeyGather -> dQuery (FP16)
+    步骤6: Cube4 - ReluGrad^T @ Query -> scatter_add (FP32)
+    步骤7: Vec3 - ScatterAdd 到 dKey (CPU辅助)
 
-关键形状:
-    - Query: (S1, D)
-    - Key: (S2, D)
-    - KeyGather: (S1, topk, D) 每个位置s有不同的topk个Key
-    - relu_in: (S1, topk)
-    - relu_grad_out: (S1, topk)
-    - scatter_add: (topk, D)
+数据类型 (与官方代码一致):
+    - 输入: FP16 (query, key, weights, dy)
+    - relu_in: FP32 (Cube1 输出，需要精确比较)
+    - scatter_add: FP32 (Cube4 输出，累加精度)
+    - dKey 累加: FP32 → Cast 为 FP16
 """
 
 import torch
@@ -39,6 +37,9 @@ import numpy as np
 from typing import Optional, Tuple
 
 from lightning_indexer_grad_matmul import (
+    matmul_kernel,
+    outer_product_kernel,
+    matmul_dq_kernel,
     matmul_scatter_kernel,
     reduce_sum_kernel,
 )
@@ -56,11 +57,14 @@ class LightningIndexerGrad:
     计算 Lightning Attention 稀疏索引操作的梯度。
     
     TileLang Kernel 使用情况:
+    - kernel_cube1: Cube1 MatMul (Query @ KeyGather^T) ✓ 下发NPU
+    - kernel_cube2: Cube2 外积 (Weights @ Dy) ✓ 下发NPU
+    - kernel_cube3: Cube3 MatMul (ReluGrad @ KeyGather) ✓ 下发NPU
     - kernel_cube4: Cube4 MatMul (ReluGrad^T @ Query) ✓ 下发NPU
-    - kernel_reduce: Vec2 ReduceSum ✓ 下发NPU
     - kernel_relu_grad: Vec2 ReLU反向 ✓ 下发NPU
+    - kernel_reduce: Vec2 ReduceSum ✓ 下发NPU
     
-    注意: Cube1/Cube2/Cube3 因每行数据不同，使用 PyTorch einsum/广播。
+    注意: GatherTopk 和 ScatterAdd 使用 CPU 辅助 (不规则内存访问)。
     """
     
     def __init__(
@@ -97,41 +101,67 @@ class LightningIndexerGrad:
         """
         提前编译 TileLang 内核。
         
-        编译的内核:
-        - kernel_cube4: Cube4 (topk, S1) @ (S1, D) -> (topk, D)
-        - kernel_reduce: ReduceSum (S1, topk) -> (S1,)
-        - kernel_relu_grad: ReLU反向 (S1, topk) * mask -> (S1, topk)
+        所有内核都下发到 NPU 执行。
+        数据类型与官方代码保持一致:
+        - Cube1 输出 FP32 (需要精确比较)
+        - Cube2/3 输出 FP16
+        - Cube4 输出 FP32 (累加精度)
+        - ReduceSum 输入 FP32，输出 FP16
         """
-        M = self.seqlen_q  # S1
-        K = self.topk
-        D = self.head_dim
+        g = self.group_num  # 64
+        topk = self.topk    # 2048
+        D = self.head_dim   # 128
         
-        # Cube4: (topk, S1) @ (S1, D) -> (topk, D)
+        # Cube1: Query(g, D) @ KeyGather^T(topk, D) -> relu_in (g, topk) FP32
+        self.kernel_cube1 = matmul_kernel(
+            g, D, topk,
+            g, D, D,  # block_m=64, block_k=128, block_n=128 (n_num=16)
+            self.dtype
+        )
+        
+        # Cube2: Weights(g,) ⊗ Dy(topk,) -> relu_grad_in (g, topk) FP16
+        self.kernel_cube2 = outer_product_kernel(
+            g, topk,
+            g, D,  # block_m=64, block_n=128
+            self.dtype
+        )
+        
+        # Cube3: ReluGrad(g, topk) @ KeyGather(topk, D) -> dQuery (g, D) FP16
+        self.kernel_cube3 = matmul_dq_kernel(
+            g, topk, D,
+            g, D, D,  # block_m=64, block_k=128, block_d=128 (k_num=16)
+            self.dtype
+        )
+        
+        # Cube4: ReluGrad^T(topk, g) @ Query(g, D) -> scatter_add (topk, D) FP32
         self.kernel_cube4 = matmul_scatter_kernel(
-            K, M, D,
-            self.block_k, self.block_m, self.block_d,
+            topk, g, D,
+            D, g, D,  # block_k=128, block_m=64, block_d=128 (k_num=16)
             self.dtype
         )
         
-        # Vec2 ReduceSum: (S1, topk) -> (S1,)
-        self.kernel_reduce = reduce_sum_kernel(
-            M, K,
-            self.block_m, self.block_k,
-            self.dtype
-        )
-        
-        # Vec2 ReLU反向: (S1, topk) * mask -> (S1, topk)
+        # Vec2 ReLU反向: relu_grad_in(FP16) * mask(relu_in>0, FP32) -> relu_grad_out(FP16)
         self.kernel_relu_grad = relu_grad_kernel(
-            M, K,
-            self.block_m, self.block_k,
+            g, topk,
+            g, D,  # block_m=64, block_k=128 (k_num=16)
+            self.dtype
+        )
+        
+        # Vec2 ReduceSum: (g, topk) FP32 -> d_weights (g,) FP16
+        self.kernel_reduce = reduce_sum_kernel(
+            g, topk,
+            g, D,  # block_m=64, block_k=128 (k_num=16)
             self.dtype
         )
         
         torch.npu.synchronize()
         print("TileLang 内核编译成功!")
-        print("  - kernel_cube4: Cube4 MatMul (下发NPU)")
-        print("  - kernel_reduce: Vec2 ReduceSum (下发NPU)")
-        print("  - kernel_relu_grad: Vec2 ReLU反向 (下发NPU)")
+        print("  - kernel_cube1: Cube1 Query @ KeyGather^T (输出 FP32)")
+        print("  - kernel_cube2: Cube2 Weights ⊗ Dy 外积 (输出 FP16)")
+        print("  - kernel_cube3: Cube3 ReluGrad @ KeyGather (输出 FP16)")
+        print("  - kernel_cube4: Cube4 ReluGrad^T @ Query (输出 FP32)")
+        print("  - kernel_relu_grad: Vec2 ReLU反向 (输入 FP32+FP16)")
+        print("  - kernel_reduce: Vec2 ReduceSum (输入 FP32，输出 FP16)")
     
     def forward(
         self,
@@ -187,74 +217,76 @@ class LightningIndexerGrad:
                 
                 for s1 in range(self.seqlen_q):  # 序列位置循环
                     # ========== 步骤1: GatherTopk (CPU辅助) ==========
-                    # 基于 indices[s1] 收集 Key 数据
                     indices_s1 = indices_cpu[b, s1]  # (topk)
                     key_gather = key_cpu[b, indices_s1, n2_idx, :]  # (topk, D)
-                    key_gather_npu = torch.from_numpy(key_gather).npu().float()  # (topk, D)
+                    key_gather_npu = torch.from_numpy(key_gather).npu().to(query.dtype)  # (topk, D) FP16
                     
                     # ========== 加载 Query 组和 weights 组 ==========
-                    # Query 组: (g, D) = (64, 128)
-                    query_group = query[b, s1, start_n1:end_n1, :].float()  # (g, D)
-                    # weights 组: (g,) = (64,)
-                    weights_group = weights[b, s1, start_n1:end_n1].float()  # (g,)
-                    # dy: (topk,) - 每个位置共享
-                    dy_s1 = dy[b, s1].float()  # (topk,)
+                    query_group = query[b, s1, start_n1:end_n1, :]  # (g, D) FP16
+                    weights_group = weights[b, s1, start_n1:end_n1]  # (g,) FP16
+                    dy_s1 = dy[b, s1]  # (topk,) FP16
                     
-                    # ========== 步骤2: Cube1 - reluIn = Q_group @ K_gather^T ==========
-                    # reluIn 形状: (g, topk) = (64, 2048)
-                    relu_in = torch.matmul(query_group, key_gather_npu.T)  # (g, D) @ (D, topk) -> (g, topk)
-                    
-                    # 调试
-                    if b == 0 and n2_idx == 0 and s1 == 0:
-                        print(f"[调试] relu_in shape: {relu_in.shape}, max: {relu_in.abs().max().item():.2f}")
-                    
-                    # ========== 步骤3: Cube2 - reluGradIn = weights @ dy (广播) ==========
-                    # reluGradIn 形状: (g, topk)
-                    relu_grad_in = weights_group.unsqueeze(-1) * dy_s1.unsqueeze(0)  # (g, 1) * (1, topk) -> (g, topk)
+                    # ========== 步骤2: Cube1 - reluIn = Q @ K^T (TileLang) ==========
+                    # 输入: FP16, 输出: FP32 (官方代码 Cube1 输出 float)
+                    relu_in = self.kernel_cube1(query_group, key_gather_npu)  # (g, topk) FP32
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
-                        print(f"[调试] relu_grad_in shape: {relu_grad_in.shape}, max: {relu_grad_in.abs().max().item():.2f}")
+                        print(f"[调试] Cube1 relu_in shape: {relu_in.shape}, dtype: {relu_in.dtype}, max: {relu_in.abs().max().item():.2f}")
                     
-                    # ========== 步骤4: Vec2 - ReLU反向 + ReduceSum ==========
-                    # ReLU反向: relu_grad_out = relu_grad_in * mask
-                    mask = (relu_in > 0).float()  # (g, topk)
-                    relu_grad_out = relu_grad_in * mask  # (g, topk)
-                    
-                    # ReduceSum: dWeights = sum(reluIn * dy) per group
-                    # dWeights 形状: (g,)
-                    relu_in_dy = relu_in * dy_s1.unsqueeze(0)  # (g, topk)
-                    d_weights_group = relu_in_dy.sum(dim=-1)  # (g,)
+                    # ========== 步骤3: Cube2 - reluGradIn = weights ⊗ dy (TileLang 外积) ==========
+                    # 输入: FP16, 输出: FP16 (官方代码 Cube2 输出 dataType)
+                    relu_grad_in = self.kernel_cube2(weights_group, dy_s1)  # (g, topk) FP16
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
-                        print(f"[调试] d_weights_group shape: {d_weights_group.shape}, [0]: {d_weights_group[0].item():.2f}")
+                        print(f"[调试] Cube2 relu_grad_in shape: {relu_grad_in.shape}, dtype: {relu_grad_in.dtype}, max: {relu_grad_in.abs().max().item():.2f}")
                     
-                    # 存储到输出
-                    d_weights[b, s1, start_n1:end_n1] = d_weights_group.to(dtype)
-                    
-                    # ========== 步骤5: Cube3 - dQuery = reluGrad_out @ K_gather ==========
-                    # dQuery 形状: (g, D)
-                    d_query_group = torch.matmul(relu_grad_out, key_gather_npu)  # (g, topk) @ (topk, D) -> (g, D)
+                    # ========== 步骤4: Vec2 - ReLU反向 (TileLang) ==========
+                    # 输入: relu_grad_in FP16, relu_in FP32
+                    # 输出: relu_grad_out FP16
+                    relu_grad_out = self.kernel_relu_grad(relu_grad_in, relu_in)  # (g, topk) FP16
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
-                        print(f"[调试] d_query_group shape: {d_query_group.shape}, [0,0:5]: {d_query_group[0, 0:5].tolist()}")
+                        print(f"[调试] Vec2 relu_grad_out shape: {relu_grad_out.shape}, dtype: {relu_grad_out.dtype}, max: {relu_grad_out.abs().max().item():.2f}")
                     
-                    d_query[b, s1, start_n1:end_n1, :] = d_query_group.to(dtype)
+                    # ========== 步骤5: Vec2 - ReduceSum (TileLang) ==========
+                    # 计算 dWeights = sum(reluIn * dy, axis=topk)
+                    # reluIn 是 FP32，dy 需要转为 FP32
+                    dy_s1_fp32 = dy_s1.float()  # (topk,) FP32
+                    relu_in_dy = relu_in * dy_s1_fp32.unsqueeze(0)  # (g, topk) FP32
+                    d_weights_group = self.kernel_reduce(relu_in_dy)  # (g,) FP16
                     
-                    # ========== 步骤6+7: Cube4 + Vec3 - scatter_add ==========
-                    # 每个位置 s1, 每个 k, 对应一个 dKey 位置
-                    # scatter_add[k] = relu_grad_out[:, k] @ query_group (跨 g 求和)
-                    # 或: scatter_add[g, k] = relu_grad_out[g, k] * query_group[g, :]
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] ReduceSum d_weights_group shape: {d_weights_group.shape}, dtype: {d_weights_group.dtype}, [0]: {d_weights_group[0].item():.2f}")
                     
-                    # 简化: 每个 k, scatter_add[k] 添加到 dKey[indices[k]]
+                    d_weights[b, s1, start_n1:end_n1] = d_weights_group
+                    
+                    # ========== 步骤6: Cube3 - dQuery = reluGrad_out @ K_gather (TileLang) ==========
+                    # 输入: FP16, 输出: FP16 (官方代码 Cube3 输出 dataType)
+                    d_query_group = self.kernel_cube3(relu_grad_out, key_gather_npu)  # (g, D) FP16
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] Cube3 d_query_group shape: {d_query_group.shape}, dtype: {d_query_group.dtype}, [0,0:5]: {d_query_group[0, 0:5].tolist()}")
+                    
+                    d_query[b, s1, start_n1:end_n1, :] = d_query_group
+                    
+                    # ========== 步骤7: Cube4 - scatter_add = reluGrad_out^T @ Query (TileLang) ==========
+                    # 输入: relu_grad_out FP16, query_group FP16
+                    # 输出: scatter_add FP32 (官方代码 Cube4 输出 float)
+                    relu_grad_out_T = relu_grad_out.transpose(0, 1).contiguous()  # (topk, g) FP16
+                    scatter_add = self.kernel_cube4(relu_grad_out_T, query_group)  # (topk, D) FP32
+                    
+                    if b == 0 and n2_idx == 0 and s1 == 0:
+                        print(f"[调试] Cube4 scatter_add shape: {scatter_add.shape}, dtype: {scatter_add.dtype}, [0,0:5]: {scatter_add[0, 0:5].tolist()}")
+                    
+                    # ========== 步骤8: Vec3 - ScatterAdd (CPU辅助) ==========
+                    # scatter_add 是 FP32，累加到 d_key (FP16)
+                    # 官方代码 ScatterAdd 使用 FP32 累加，最后 Cast 为 dataType
                     for k in range(self.topk):
                         idx = indices_s1[k]
-                        # 对每个组计算 scatter 值
-                        scatter_val = relu_grad_out[:, k] * query_group  # (g, D)
-                        scatter_sum = scatter_val.sum(dim=0)  # (D,) - 跨组求和
-                        d_key[b, idx, n2_idx, :] += scatter_sum.to(dtype)
+                        d_key[b, idx, n2_idx, :] += scatter_add[k].to(dtype)
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
-                        print(f"[调试] scatter 完成, d_key[0,0,0,0:5]: {d_key[b, 0, 0, 0:5].float().tolist()}")
+                        print(f"[调试] Scatter 完成, d_key[0,0,0,0:5]: {d_key[b, 0, 0, 0:5].tolist()}")
         
         torch.npu.synchronize()
         

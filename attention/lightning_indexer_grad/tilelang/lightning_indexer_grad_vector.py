@@ -31,13 +31,16 @@ def relu_grad_kernel(
 ):
     """
     ReluGrad 内核: 应用 ReLU 反向掩码
-    output = input * (relu_in > 0)
+    relu_grad_out = relu_grad_in * (relu_in > 0)
     
-    用于 Vec2 步骤。
+    官方代码 Vec2 实现:
+    - reluIn: FP32 (来自 Cube1 输出)
+    - reluGradIn: dataType (FP16/BF16，来自 Cube2 输出)
+    - reluGradOut: dataType (FP16/BF16)
     
-    输入1: (M, K) - relu_grad_in (待应用的梯度)
-    输入2: (M, K) - relu_in (用于掩码生成的 ReLU 输入)
-    输出: (M, K) - relu_grad_out
+    输入1: (M, K) - relu_grad_in (FP16)
+    输入2: (M, K) - relu_in (FP32)
+    输出: (M, K) - relu_grad_out (FP16)
     """
     
     m_num = M // block_m
@@ -46,41 +49,33 @@ def relu_grad_kernel(
     @T.prim_func
     def main(
         relu_grad_in: T.Tensor((M, K), dtype),
-        relu_in: T.Tensor((M, K), dtype),
+        relu_in: T.Tensor((M, K), 'float32'),
         relu_grad_out: T.Tensor((M, K), dtype),
     ):
         with T.Kernel(m_num * k_num, threads=2, is_npu=True) as (cid):
             m_idx = cid // k_num
             k_idx = cid % k_num
             
-            # 分配 UB 缓冲区
             grad_ub = T.alloc_ub((block_m, block_k), dtype)
-            in_ub = T.alloc_ub((block_m, block_k), dtype)
+            in_ub = T.alloc_ub((block_m, block_k), 'float32')
             out_ub = T.alloc_ub((block_m, block_k), dtype)
-            # Ascend AI Core 不支持 half 精度比较运算，需要 float32 中间缓冲区
-            in_fp32_ub = T.alloc_ub((block_m, block_k), 'float32')
             out_fp32_ub = T.alloc_ub((block_m, block_k), 'float32')
-
-            # 加载输入分块
+            
             T.copy(relu_grad_in[m_idx * block_m, k_idx * block_k], grad_ub)
             T.copy(relu_in[m_idx * block_m, k_idx * block_k], in_ub)
-
-            # Cast to float32 for comparison
+            
+            # ReLU反向: output = input * (relu_in > 0)
+            # relu_in 是 FP32，可以直接比较
             for i, j in T.Parallel(block_m, block_k):
-                in_fp32_ub[i, j] = T.cast(in_ub[i, j], 'float32')
-
-            # 应用 ReLU 反向: output = input * (relu_in > 0)，在 float32 下比较
-            for i, j in T.Parallel(block_m, block_k):
-                if in_fp32_ub[i, j] > T.float32(0):
+                if in_ub[i, j] > T.float32(0):
                     out_fp32_ub[i, j] = T.cast(grad_ub[i, j], 'float32')
                 else:
                     out_fp32_ub[i, j] = T.float32(0)
-
-            # Cast back to original dtype
+            
+            # Cast 回 FP16
             for i, j in T.Parallel(block_m, block_k):
                 out_ub[i, j] = T.cast(out_fp32_ub[i, j], dtype)
-
-            # 写入输出
+            
             T.copy(out_ub, relu_grad_out[m_idx * block_m, k_idx * block_k])
     
     return main
