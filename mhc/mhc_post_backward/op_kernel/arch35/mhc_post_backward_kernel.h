@@ -478,6 +478,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor
         AscendC::MicroAPI::RegTensor<float> gradOutF32Reg;
         AscendC::MicroAPI::RegTensor<float> hPostLocalReg;
         AscendC::MicroAPI::RegTensor<float> gradHOutTileReg;
+        AscendC::MicroAPI::RegTensor<float> mulResReg;
         AscendC::MicroAPI::RegTensor<T> gradHOutTileB16Reg;
         AscendC::MicroAPI::MaskReg pMask;
         AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
@@ -489,7 +490,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor
                 AscendC::MicroAPI::LoadAlign(gradOutF32Reg, gradOutTileAddr + i * actualTileD + k * vfLen);
                 AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(hPostLocalReg,
                                                                                                 hPostLocalAddr + i);
-                AscendC::MicroAPI::MulAddDst(gradHOutTileReg, gradOutF32Reg, hPostLocalReg, pMask);
+                AscendC::MicroAPI::Mul(mulResReg, gradOutF32Reg, hPostLocalReg, pMask);
+                AscendC::MicroAPI::Add(gradHOutTileReg, mulResReg, gradHOutTileReg, pMask);
             }
             AscendC::MicroAPI::Cast<T, float, castB32ToB16>(gradHOutTileB16Reg, gradHOutTileReg, pMask);
             AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(gradHOutTileAddr + k * vfLen,
@@ -517,6 +519,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradXTile(LocalTensor<fl
         AscendC::MicroAPI::RegTensor<float> hResLocalReg;
         AscendC::MicroAPI::RegTensor<float> gradXTileReg;
         AscendC::MicroAPI::RegTensor<T> gradXTileB16Reg;
+        AscendC::MicroAPI::RegTensor<float> mulResReg;
         AscendC::MicroAPI::MaskReg pMask;
         AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
                                                 AscendC::MicroAPI::MaskPattern::ALL>();
@@ -529,7 +532,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradXTile(LocalTensor<fl
                     AscendC::MicroAPI::LoadAlign(gradOutF32Reg, gradOutTileAddr + j * actualTileD + k * vfLen);
                     AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(hResLocalReg,
                                                                                     hResLocalAddr + i * n_ + j);
-                    AscendC::MicroAPI::MulAddDst(gradXTileReg, gradOutF32Reg, hResLocalReg, pMask);
+                    AscendC::MicroAPI::Mul(mulResReg, gradOutF32Reg,  hResLocalReg, pMask);
+                    AscendC::MicroAPI::Add(gradXTileReg, mulResReg, gradXTileReg, pMask);
                 }
                 AscendC::MicroAPI::Cast<T, float, castB32ToB16>(gradXTileB16Reg, gradXTileReg, pMask);
                 AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
@@ -597,15 +601,10 @@ __aicore__ inline void MhcPostBackwardKernel<T>::SetMMParaAndCompute(
     uint32_t outputBase = globalItemIdx * n_ * n_;
     uint32_t curSingleCoreK = singleCoreK_;
 
-    for (uint32_t offsetK = 0; offsetK < D_; offsetK += singleCoreK_) {
-        if (offsetK + singleCoreK_ > D_) {
-            curSingleCoreK = D_ - offsetK;
-        }
-        mm.SetSingleShape(n_, n_, curSingleCoreK);
-        mm.SetTensorA(xGm_[inputBase + offsetK]);
-        mm.SetTensorB(gradOutputGm_[inputBase + offsetK], true);
-        mm.IterateAll(gradHResGm_[outputBase], offsetK == 0 ? 0 : 1);
-    }
+    mm.SetSingleShape(n_, n_, curSingleCoreK);
+    mm.SetTensorA(xGm_[inputBase]);
+    mm.SetTensorB(gradOutputGm_[inputBase], true);
+    mm.IterateAll(gradHResGm_[outputBase]);
     mm.End();
 }
 

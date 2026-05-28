@@ -142,10 +142,6 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
 ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         VECTOR_INNER_ERR_REPORT_TILING(
@@ -314,11 +310,8 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
     bool isA2ARSAG = (isUseA2APath && (commDtype == COMMDTPYE_DEFAULT));
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_QUANT_MM,                            \
         quantTPlparam_.transB,                      \
@@ -458,12 +451,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     uint64_t gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                         static_cast<uint64_t>(MutableRCSTilingData().rankN) *
                         static_cast<uint64_t>(args_.outputDtypeSize);
-    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        isUseA2APath = false;
-    }
-    if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
+    if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_) && !MutableRCSTilingData().isInputCommQuantScale) {
         OP_TILING_CHECK(
             GetWorkspaceSizeForA2ARSAG(gmcFloat) != ge::GRAPH_SUCCESS,
             OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
@@ -1029,14 +1017,12 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    bool isAicpu = (commMode == Mc2Comm::COMM_MODE_AICPU);
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !isAicpu) {
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
-    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_) && !isAicpu) {
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);

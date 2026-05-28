@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
-#ifndef OP_API_SRC_LEVEL2_MATMUL_UTIL_H_
-#define OP_API_SRC_LEVEL2_MATMUL_UTIL_H_
+  */
+#ifndef MC2_3RD_MATMUL_UTIL_H_
+#define MC2_3RD_MATMUL_UTIL_H_
 
 #include "aclnn/aclnn_base.h"
 #include "opdev/common_types.h"
@@ -26,12 +26,12 @@ const std::string SOC_B4 = "Ascend910B4";
 const std::string SOC_C4 = "Ascend910_9382";
 
 struct OpBaseInfo {
-  op::DataType self_dtype;
-  op::Format self_format;
-  op::DataType mat2_dtype;
-  op::Format mat2_format;
-  op::DataType output_dtype;
-  op::Format output_format;
+  op::DataType  self_dtype;
+  op::Format  self_format;
+  op::DataType  mat2_dtype;
+  op::Format  mat2_format;
+  op::DataType  output_dtype;
+  op::Format  output_format;
 };
 
 struct OpShapeInfo {
@@ -47,14 +47,14 @@ struct OpShapeInfo {
   bool transposeX2;
 
   int64_t dtypeASize = 2; // float16 dtype 2
-  int64_t dtypeBSize = 2; //float16 dtype 2
+  int64_t dtypeBSize = 2; // float16 dtype 2
 };
 
 struct MmOpInfo {
   // mm api input info
-  OpBaseInfo ori_info;
+  OpBaseInfo  ori_info;
   // npu mm kernel support info
-  OpBaseInfo support_info;
+  OpBaseInfo  support_info;
   // HF32 Flag
   int64_t opImplModeEnum = 0x1;
   bool enableHf32 = false;
@@ -65,9 +65,9 @@ struct MmOpInfo {
 };
 
 struct TensorInfo {
-  const aclTensor* tensor;
-  op::DataType dataType;
-  op::Format format;
+  const aclTensor*  tensor;
+  op::DataType  dataType;
+  op::Format  format;
 };
 
 op::Shape SwapLastTwoDimValue(const op::Shape tensorShape);
@@ -82,8 +82,7 @@ bool IsNdToNzOnTheFly(const aclTensor* self, const aclTensor* mat2);
 
 bool IsTransposeLastTwoDims(const aclTensor* tensor);
 
-bool CheckGemmV3Support(const aclTensor* mat1, const aclTensor* mat2, MmOpInfo& mmOpInfo,
-                                      int8_t cubeMathType);
+bool CheckGemmV3Support(const aclTensor* mat1, const aclTensor* mat2, MmOpInfo& mmOpInfo, int8_t cubeMathType);
 
 aclnnStatus SetMmSupportDType(MmOpInfo& mmOpInfo, int8_t cubeMathType);
 
@@ -92,9 +91,10 @@ aclnnStatus SetMmSupportFormat(const aclTensor* self, const aclTensor* mat2, MmO
 aclnnStatus GetMmInfo(MmOpInfo mmOpInfo);
 MmOpInfo GetMatmulOpInfo(const aclTensor *self, const aclTensor *mat2, int8_t cubeMathType);
 bool ContiguousAndCast(const aclTensor *&contiguousInput, const aclTensor *&castOut, bool &transposeFlag,
-                                     op::DataType dtype, aclOpExecutor *executor);
+                       op::DataType dtype, aclOpExecutor *executor);
 
-bool GetNzSplitKFlag(const aclTensor *self, const aclTensor *mat2, const op::Format selfSuppFormat, const op::Format outSuppFormat);
+bool GetNzSplitKFlag(const aclTensor *self, const aclTensor *mat2, const op::Format selfSuppFormat,
+                     const op::Format outSuppFormat);
 
 bool IsSupportNzNzNd(const aclTensor* self, const aclTensor* mat2);
 
@@ -115,13 +115,13 @@ bool checkBF16SizeValid(const aclTensor *&mat2, const bool &transX2Flag);
 bool IfKEqual1(const aclTensor *&selfInput, const MmOpInfo& mmOpInfo, const bool &transX1Flag, const aclTensor *&bias);
 
 aclnnStatus IfKEqual1SelfToMK(const aclTensor *&selfInput, const aclTensor *&selfReshapeOutput, bool &transX1Flag,
-                             aclOpExecutor *executor);
+                              aclOpExecutor *executor);
 
 aclnnStatus IfMEqual1SelfToMK(const aclTensor *&selfInput, const aclTensor *&selfReshapeOutput,
                               const op::Format selfInputFormat, bool &transX1Flag, aclOpExecutor *executor);
 
 aclnnStatus IfKEqual1Mat2ToKN(const aclTensor *&mat2Input, const aclTensor *&mat2ReshapeOutput, bool &transX2Flag,
-                             aclOpExecutor *executor);
+                              aclOpExecutor *executor);
 
 aclnnStatus IfNEqual1Mat2ToNK(const aclTensor *&mat2Input, const aclTensor *&mat2ReshapeOutput,
                               const op::Format mat2InputFormat, bool &transX2Flag, aclOpExecutor *executor);
@@ -135,4 +135,4 @@ op::FVector<int64_t> GetShape(const aclTensor *tensor);
 } // namespace Ops
 
 
-#endif  // OP_API_SRC_LEVEL2_MATMUL_UTIL_H_
+#endif  // MC2_3RD_MATMUL_UTIL_H_
