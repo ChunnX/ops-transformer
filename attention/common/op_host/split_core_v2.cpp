@@ -163,6 +163,11 @@ Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const Spl
     s2End = static_cast<uint32_t>(s2LastToken) / splitParam.s2BaseSize +
             1U; // end of block index, +1 for Right-open interval
 
+    // Mask line passed through the left down point of the last block, the last block is actually all masked
+    if (s2LastToken % m_param.s2BaseSize == 0) {
+        s2End--;
+    }
+
     return std::make_pair(s2Start, s2End);
 }
 
