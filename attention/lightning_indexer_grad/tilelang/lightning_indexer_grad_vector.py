@@ -39,6 +39,8 @@ def relu_grad_kernel(
     内部处理:
     - relu_in Cast 到 FP32 进行比较 (>0 判断需要 FP32)
     - relu_grad_out 输出为 FP16
+    
+    使用 Developer 模式 alloc_shared。
     """
     
     m_num = M // block_m
@@ -46,37 +48,33 @@ def relu_grad_kernel(
     
     @T.prim_func
     def main(
-        relu_grad_in: T.Tensor((M, K), dtype),      # FP16
-        relu_in: T.Tensor((M, K), dtype),           # FP16
-        relu_grad_out: T.Tensor((M, K), dtype),    # FP16
+        relu_grad_in: T.Tensor((M, K), dtype),
+        relu_in: T.Tensor((M, K), dtype),
+        relu_grad_out: T.Tensor((M, K), dtype),
     ):
         with T.Kernel(m_num * k_num, threads=2, is_npu=True) as (cid):
             m_idx = cid // k_num
             k_idx = cid % k_num
             
-            # UB 缓冲区
-            grad_ub = T.alloc_ub((block_m, block_k), dtype)       # FP16
-            in_ub = T.alloc_ub((block_m, block_k), dtype)        # FP16
-            in_fp32_ub = T.alloc_ub((block_m, block_k), 'float32')  # FP32 用于比较
-            out_ub = T.alloc_ub((block_m, block_k), dtype)       # FP16 输出
+            # Vector 操作使用 alloc_shared (自动分配 UB)
+            grad_UB = T.alloc_shared((block_m, block_k), dtype)
+            in_UB = T.alloc_shared((block_m, block_k), dtype)
+            in_fp32_UB = T.alloc_shared((block_m, block_k), 'float32')
+            out_UB = T.alloc_shared((block_m, block_k), dtype)
             
-            # 加载输入 (FP16)
-            T.copy(relu_grad_in[m_idx * block_m, k_idx * block_k], grad_ub)
-            T.copy(relu_in[m_idx * block_m, k_idx * block_k], in_ub)
+            T.copy(relu_grad_in[m_idx * block_m, k_idx * block_k], grad_UB)
+            T.copy(relu_in[m_idx * block_m, k_idx * block_k], in_UB)
             
-            # Cast relu_in 到 FP32 进行比较
             for i, j in T.Parallel(block_m, block_k):
-                in_fp32_ub[i, j] = T.cast(in_ub[i, j], 'float32')
+                in_fp32_UB[i, j] = T.cast(in_UB[i, j], 'float32')
             
-            # ReLU反向: output = input * (relu_in > 0)
             for i, j in T.Parallel(block_m, block_k):
-                if in_fp32_ub[i, j] > T.float32(0):
-                    out_ub[i, j] = grad_ub[i, j]
+                if in_fp32_UB[i, j] > T.float32(0):
+                    out_UB[i, j] = grad_UB[i, j]
                 else:
-                    out_ub[i, j] = T.cast(0, dtype)
+                    out_UB[i, j] = T.cast(0, dtype)
             
-            # 写入输出 (FP16)
-            T.copy(out_ub, relu_grad_out[m_idx * block_m, k_idx * block_k])
+            T.copy(out_UB, relu_grad_out[m_idx * block_m, k_idx * block_k])
     
     return main
 
