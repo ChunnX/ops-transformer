@@ -261,7 +261,7 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
 {
     uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint32_t);
     uint16_t loopNumScale = Ceil(totalScaleInUB, vlForHalfNumber);
-    uint16_t dtypeMax;
+    uint32_t dtypeMax;
     if constexpr (Std::IsSame<T, fp8_e4m3fn_t>::value) {
         dtypeMax = FP8_E4M3_MAX;
     } else if constexpr (Std::IsSame<T, fp8_e5m2_t>::value) {
