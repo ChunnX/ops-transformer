@@ -947,6 +947,14 @@ void Mc2GroupedQbmmTiling::CalBasicBlock()
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
         }
     }
+
+    if (basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C > aicoreParams_.l0cSize) {
+        uint64_t maxBaseN = aicoreParams_.l0cSize / (basicTiling_.baseM * DATA_SIZE_L0C);
+        basicTiling_.baseN = std::min(basicTiling_.baseN, maxBaseN);
+        basicTiling_.baseN = !inputParams_.transB ?
+            FloorAlign(basicTiling_.baseN, CUBE_BLOCK) :
+            FloorAlign(basicTiling_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
+    }
 }
 
 bool Mc2GroupedQbmmTiling::IsBiasInL1() const

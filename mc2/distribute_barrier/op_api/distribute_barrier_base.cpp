@@ -25,7 +25,7 @@
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
@@ -108,15 +108,14 @@ aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
-    if (is950) {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    if (is950) {
         OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
-#endif
-    } else {
-        return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
-                                           stream);
     }
+#endif
+    return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
+                                       stream);
 }
 #ifdef __cplusplus
 }

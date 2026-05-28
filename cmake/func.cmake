@@ -109,8 +109,6 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/framework/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/tools/**/framework/CMakeLists.txt"
                 )
                 List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
             endif()
@@ -408,12 +406,14 @@ function(add_ops_src_copy)
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
                 ${OPS_ADV_UTILS_KERNEL_INC}/* 
                 ${OPS_CGMCT}/*
+                ${OPS_GMM_COMMON_KERNEL_INC}/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
@@ -456,7 +456,6 @@ function(add_ops_src_copy)
         "matmul_allto_all;"
         "attention_to_ffn;"
         "ffn_to_attention;"
-        "bandwidth_test;"
     ) # mc2算子列表
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)

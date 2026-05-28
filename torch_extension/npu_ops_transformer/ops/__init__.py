@@ -17,7 +17,6 @@ from .mega_moe import (
     mega_moe,
     npu_get_mega_moe_ccl_buffer_size
 )
-from .bandwidth_test import npu_bandwidth_test
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
@@ -27,6 +26,7 @@ from .graph_convert.graph_convert_flash_attn import convert_npu_flash_attn
 from .flash_attn_metadata import npu_flash_attn_metadata
 from .lightning_indexer_v2_metadata import npu_lightning_indexer_v2_metadata
 from .quant_lightning_indexer_v2_metadata import npu_quant_lightning_indexer_v2_metadata
+from .mixed_quant_sparse_flash_mla import npu_mixed_quant_sparse_flash_mla
 from .graph_convert.graph_convert_lightning_indexer_v2_metadata import convert_npu_lightning_indexer_v2_metadata
 from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata

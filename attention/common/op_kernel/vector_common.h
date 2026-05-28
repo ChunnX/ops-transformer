@@ -862,14 +862,6 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
     return bOffset + s1Offset + s2Offset;
 }
 
-__aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
-{
-    uint64_t bOffset = info.attenMaskBatchStride;
-    uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
-    uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
-    return bOffset + s1Offset + s2Offset;
-}
-
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
@@ -918,9 +910,10 @@ __aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1Sta
             return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
         }
         if constexpr (ENABLE_TREE) {
-            if (info.sparseMode == TREE) {
-                return ComputeAttenMaskOffsetTree(info, s1StartIdx, treeMaskStart);
-            }
+            uint64_t bOffset = info.attenMaskBatchStride;
+            uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
+            uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
+            return bOffset + s1Offset + s2Offset;
         }
         return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
     }
@@ -1082,14 +1075,12 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 
     // 增加sparse = 9的处理
     if constexpr (ENABLE_TREE) {
-        if (info.sparseMode == TREE) {
-            // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
-            if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
-                static_cast<int64_t>(info.s2Size - info.s1Size)) {
-                return false;
-            } else {
-                return true;
-            }
+        // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
+        if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
+            static_cast<int64_t>(info.s2Size - info.s1Size)) {
+            return false;
+        } else {
+            return true;
         }
     }
 
