@@ -136,3 +136,59 @@ TEST_F(AttentionUpdateTilingTest, AscendCLargeTotalLength)
                                        {{12800000}, {12800000}});
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20001);
 }
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp16)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT, 0, 16, {{128}, {128}}, {{128, 128}, {128, 128}},
+                                       {{128, 128}, {128, 128}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10010);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp16)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT16, 1, 16, {{128}, {128}}, {{128, 128}, {128, 128}},
+                                       {{128, 128}, {128, 128}}, {{128}, {128}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType1Sp32)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT, 1, 32, {{64}, {64}}, {{64, 128}, {64, 128}},
+                                       {{64, 128}, {64, 128}}, {{64}, {64}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10010);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp64)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT16, 1, 64, {{64}, {64}}, {{64, 128}, {64, 128}},
+                                       {{64, 128}, {64, 128}}, {{64}, {64}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyBf16UpdateType1Sp64)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_BF16, 1, 64, {{64}, {64}}, {{64, 128}, {64, 128}},
+                                       {{64, 128}, {64, 128}}, {{64}, {64}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10030);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp128)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT16, 1, 128, {{64}, {64}}, {{64, 128}, {64, 128}},
+                                       {{64, 128}, {64, 128}}, {{64}, {64}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
+}
+
+TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp128LargeTotalLength)
+{
+    auto compileInfo = LegacyCompileInfo();
+    auto tilingContextPara = BuildCase(compileInfo, ge::DT_FLOAT, 0, 128, {{128000}, {128000}},
+                                       {{128000, 128}, {128000, 128}}, {{128000, 128}, {128000, 128}});
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10010);
+}
