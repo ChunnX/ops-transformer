@@ -1049,24 +1049,24 @@ int64_t FusedInferAttentionScoreTilingImpl::GetAntiQuantCalcBlockNumsOneHead(
         return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
     } else {
         int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactorSize_);
         int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
         // 必须满足pretoken + nexttoken > 0，否则会减出小于0的块数，这里需要去除prefix影响
         toCalcBlockNums -= 
-            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
+            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactorSize_),
                             static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp - fiaInfo.systemPrefixLen);
         toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSeqLengthKV - blockSeqLength + preTokensLeftUp + fiaInfo.systemPrefixLen);
         
         // prefix部分单独计算
-        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactorSize_);
         toCalcBlockNums += sInnerLoopTimesPrefix * outerBlockNums;
         toCalcBlockNums -=  GetCutBlockNums(blockSharedPrefix, blockSeqLength, 
-                                                     static_cast<int64_t>(sInnerFactor_),
+                                                     static_cast<int64_t>(sInnerFactorSize_),
                                                      static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
         toCalcBlockNums -= GetCutBlockNums(
-            blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+            blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSharedPrefix - blockSeqLength + preTokensLeftUp);
         return toCalcBlockNums;
     }
