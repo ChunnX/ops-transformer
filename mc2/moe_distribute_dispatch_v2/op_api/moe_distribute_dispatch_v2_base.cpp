@@ -160,9 +160,9 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
-            const_cast<char *>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
+            performanceInfoOptionalDispatchV2Temp, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+            const_cast<char*>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char*>(commAlg), zeroExpertNum,
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
@@ -175,7 +175,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
             tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
+            commAlg, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
             expandScalesOut, workspaceSize, executor);
 #endif

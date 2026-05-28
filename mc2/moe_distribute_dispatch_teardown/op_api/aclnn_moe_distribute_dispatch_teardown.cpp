@@ -95,9 +95,9 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
-        x, y, expertIds, commCmdInfo, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        x, y, expertIds, commCmdInfo, groupEp, epWorldSize, epRankId, moeExpertNum,
         expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-        commType, const_cast<char*>(commAlg), expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        commType, commAlg, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
         expertTokenNumsOut, workspaceSize, executor);
     return ret;
 }

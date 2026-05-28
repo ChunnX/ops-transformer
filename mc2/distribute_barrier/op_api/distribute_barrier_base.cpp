@@ -84,8 +84,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     aclnnStatus ret = ACLNN_ERR_INNER;
 
     if (!is950) {
-        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
-            timeOut, elasticInfo, const_cast<char*>(group), worldSize, workspaceSize, executor);
+        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(xRef,
+            timeOut, elasticInfo, group, worldSize, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
@@ -93,7 +93,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
         ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierExtendGetWorkspaceSize(mc2Context,
-            const_cast<aclTensor*>(xRef), timeOut, elasticInfo, const_cast<char*>(group),
+            xRef, timeOut, elasticInfo, group,
             worldSize, workspaceSize, executor);
 #endif
     }

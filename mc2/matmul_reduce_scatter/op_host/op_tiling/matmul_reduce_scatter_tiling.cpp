@@ -291,7 +291,7 @@ static ge::graphStatus SetCommAlg(MatmulReduceScatterTilingData &tilingData)
     return ge::GRAPH_SUCCESS;
 }
 
-bool MatmulReduceScatterTilingFuncBase::IsDeterministic()
+bool MatmulReduceScatterTilingFuncBase::IsDeterministic() const
 {
     if (getenv(mc2tiling::HCCL_DETERMINISTIC) == nullptr) {
         return false;

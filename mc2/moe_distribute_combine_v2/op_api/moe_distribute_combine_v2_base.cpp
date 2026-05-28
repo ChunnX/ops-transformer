@@ -160,9 +160,9 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
-            const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char *>(groupTpCombineV2Temp),
+            groupEp, epWorldSize, epRankId, moeExpertNum, groupTpCombineV2Temp,
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+            commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -176,7 +176,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-            globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum,
+            globalBs, outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum,
             constExpertNum, xOut, workspaceSize, executor);
 #endif
     }

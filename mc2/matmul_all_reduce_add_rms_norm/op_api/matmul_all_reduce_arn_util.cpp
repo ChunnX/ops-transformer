@@ -92,8 +92,8 @@ aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2);
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char*>(group),
-        const_cast<char*>(reduceOp), transposeX1,
+        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, group,
+        reduceOp, transposeX1,
         transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut, workspaceSize, executor);
     OP_LOGI(
         "Group %s, reduce op %s, trans flag %u %u, epsilon %lf, ret %d.", group, reduceOp, transposeX1, transposeX2,

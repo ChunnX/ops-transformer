@@ -107,9 +107,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(const aclTen
             tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional,
             groupListOptional, expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional,
             constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional,
-            const_cast<char*>(groupEp), epWorldSize,
-            epRankId, moeExpertNum, const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), normEps,
+            groupEp, epWorldSize,
+            epRankId, moeExpertNum, groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlg, normEps,
             zeroExpertNum, copyExpertNum, constExpertNum, yOut, rstdOut, xOut, workspaceSize, executor);
     }
     return ret;
