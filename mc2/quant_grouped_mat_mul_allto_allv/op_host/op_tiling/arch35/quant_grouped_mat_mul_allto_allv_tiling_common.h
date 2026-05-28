@@ -109,6 +109,7 @@ protected:
     virtual ge::graphStatus SetGmmA2avWorkspaceInfo();
     ge::graphStatus DoQuantGMMTiling(); // 按专家为粒度执行
     ge::graphStatus SetHcclTiling();
+    ge::graphStatus QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
     void PrintQuantGmmA2avTilingData(QuantGmmA2avTilingData &outTilingData);
     uint32_t libApiWorkSpaceSize_{0};
     uint32_t workSpaceSize_{0};

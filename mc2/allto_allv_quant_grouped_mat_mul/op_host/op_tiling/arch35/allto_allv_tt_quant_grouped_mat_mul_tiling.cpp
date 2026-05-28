@@ -37,7 +37,10 @@ bool AlltoAllvTTQuantGmmTiling::IsCapable()
 
 uint64_t AlltoAllvTTQuantGmmTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
     return tilingKey;
 }
