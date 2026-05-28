@@ -21,11 +21,11 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t VECTOR_FP32_REPEAT_ELEMS = 64;
-constexpr int64_t STA_SOFTMAX_ROW_CHUNK = 8;
+constexpr int64_t STA_SOFTMAX_ROW_CHUNK = 16;
 constexpr int64_t STA_OUTPUT_ROW_CHUNK = 8;
 constexpr int64_t BUFFER_NUM = 1;
 constexpr int64_t STA_2D_SOFTMAX_HEAD_DIM = 64;
-constexpr int64_t SCORE_HANDOFF_UB_OFFSET_2D_SOFTMAX = 96 * 1024;
+constexpr int64_t SCORE_HANDOFF_UB_OFFSET_2D_SOFTMAX = 104 * 1024;
 constexpr int64_t SUBBLOCK_SYNC_FLAG_OFFSET = 16;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
@@ -303,8 +303,7 @@ public:
                                                    sizeof(float));
             pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * STA_SOFTMAX_ROW_CHUNK * tiling_->maxKvBlock *
                                                 sizeof(float));
-            pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * STA_SOFTMAX_ROW_CHUNK * tiling_->maxKvBlock *
-                                                 sizeof(float));
+            pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
         } else {
             pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(DataType));
             pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
@@ -690,7 +689,6 @@ private:
                                                         LocalTensor<float> &denomLocal)
     {
         LocalTensor<float> scoreTile = scoreFloatBuf_.Get<float>();
-        LocalTensor<float> weightTile = weightFloatBuf_.Get<float>();
         LocalTensor<float> reduceTile = reduceWorkBuf_.Get<float>();
         LocalTensor<float> rowReduceLocal = reduceFloatBuf_.Get<float>();
         const uint32_t columnCount = static_cast<uint32_t>(tiling_->maxKvBlock);
@@ -717,14 +715,12 @@ private:
                  chunkRows * VECTOR_FP32_BLOCK_ELEMS);
             PipeBarrier<PIPE_V>();
 
-            fa_base_vector::RowSub(weightTile, scoreTile, rowReduceLocal, chunkRows, columnCount, columnCount);
+            fa_base_vector::RowSub(reduceTile, scoreTile, rowReduceLocal, chunkRows, columnCount, columnCount);
             PipeBarrier<PIPE_V>();
-            Exp(weightTile, weightTile, elemCount);
+            Exp(reduceTile, reduceTile, elemCount);
             PipeBarrier<PIPE_V>();
-            StoreProbBlock(weightTile, elemCount, rowInSubBlock, bufferIdx);
+            StoreProbBlock(reduceTile, elemCount, rowInSubBlock, bufferIdx);
 
-            Adds(reduceTile, weightTile, 0.0F, elemCount);
-            PipeBarrier<PIPE_V>();
             StaRowSum(rowReduceLocal, reduceTile, chunkRows, columnCount, columnCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -744,7 +740,6 @@ private:
         }
 
         LocalTensor<float> scoreTile = scoreFloatBuf_.Get<float>();
-        LocalTensor<float> weightTile = weightFloatBuf_.Get<float>();
         LocalTensor<float> reduceTile = reduceWorkBuf_.Get<float>();
         LocalTensor<float> rowReduceLocal = reduceFloatBuf_.Get<float>();
         LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
@@ -779,14 +774,12 @@ private:
             Adds(maxLocal[stateBegin], rowReduceLocal, 0.0F, stateCount);
             PipeBarrier<PIPE_V>();
 
-            fa_base_vector::RowSub(weightTile, scoreTile, rowReduceLocal, chunkRows, columnCount, columnCount);
+            fa_base_vector::RowSub(reduceTile, scoreTile, rowReduceLocal, chunkRows, columnCount, columnCount);
             PipeBarrier<PIPE_V>();
-            Exp(weightTile, weightTile, elemCount);
+            Exp(reduceTile, reduceTile, elemCount);
             PipeBarrier<PIPE_V>();
-            StoreProbBlock(weightTile, elemCount, rowInSubBlock, bufferIdx);
+            StoreProbBlock(reduceTile, elemCount, rowInSubBlock, bufferIdx);
 
-            Adds(reduceTile, weightTile, 0.0F, elemCount);
-            PipeBarrier<PIPE_V>();
             StaRowSum(rowReduceLocal, reduceTile, chunkRows, columnCount, columnCount);
             SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
             WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
