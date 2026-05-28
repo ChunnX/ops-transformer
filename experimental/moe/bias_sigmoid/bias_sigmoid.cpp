@@ -21,7 +21,6 @@ namespace BiasSigmoid {
 #include <iostream>
 #include <stdio.h>
 #include "kernel_operator.h"
-#include "moe_routing.h"
 #include "dtype_convert.h"
 using namespace AscendC;
 
@@ -245,7 +244,8 @@ void bias_sigmoid_launch(uint8_t *expertX, uint8_t *sigmoidOut, uint8_t *biasOut
                                                              real_blockDim, dtype);
 }
 
-void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &expertBias, torch::Tensor &sigmoidOut, torch::Tensor biasOut)
+void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &expertBias, torch::Tensor &sigmoidOut,
+                      torch::Tensor biasOut)
 {
     TORCH_CHECK(torch_npu::utils::is_npu(expertX), "expertX tensor must be on NPU device");
     TORCH_CHECK(torch_npu::utils::is_npu(expertBias), "expertBias tensor must be on NPU device");
@@ -253,11 +253,13 @@ void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &e
     TORCH_CHECK(torch_npu::utils::is_npu(biasOut), "biasOut tensor must be on NPU device");
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
-    auto acl_call = [=]() -> int
-    {
-        bias_sigmoid_launch((uint8_t *)expertX.data_ptr(), (uint8_t *)sigmoidOut.data_ptr(), (uint8_t *)biasOut.data_ptr(), expertX.size(0), expertX.size(1), blockDim, expertX.scalar_type() == at::kHalf ? 1 : 27);
+    auto acl_call = [=]() -> int {
+        bias_sigmoid_launch((uint8_t *)expertX.data_ptr(), (uint8_t *)sigmoidOut.data_ptr(),
+                            (uint8_t *)biasOut.data_ptr(), (uint8_t *)expertBias.data_ptr(), expertX.size(0), expertX.size(1), blockDim, stream,
+                            expertX.scalar_type() == at::kHalf ? 1 : 27);
         return 0;
     };
+    at_npu::native::OpCommand::RunOpApi("BiasSigmoid", acl_call);
 }
 
 TORCH_LIBRARY_IMPL(npu_ops_transformer_ext, PrivateUse1, m)
