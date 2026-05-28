@@ -500,8 +500,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9、11、12。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
-    - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
-    - dropPadMode仅支持取值为0。
+    - dropPadMode=0时，expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）；dropPadMode=1时，expertCapacity取值范围为(0, NUM_ROWS]。
+    - dropPadMode支持取值为0；在<term>Ascend 950PR/Ascend 950DT</term>非量化全载性能模板场景下支持取值为1，此时quantMode必须为-1，rowIdxType必须为0，activeExpertRange必须为[0, expertNum]。
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
     
@@ -573,7 +573,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       </tr>
       <tr>
         <td align="center"><br>全载性能模板</td>
-        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"><li>属性要求：dropPadMode=0</li></ul></td>
+        <td>在算子输入shape较小的场景，操作间的多核同步时间占比较高，成为性能瓶颈。因此，针对这种特化场景，添加性能模板。该模板中，搬入、排序、计算都在同一个kernel内完成。需要满足如下条件：<ul style="list-style-type: circle;"><li>属性要求：dropPadMode=0；Ascend 950PR/Ascend 950DT非量化场景支持dropPadMode=1，此时quantMode=-1、rowIdxType=0、activeExpertRange=[0, expertNum]</li></ul></td>
       </tr>
     </table>
 

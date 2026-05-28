@@ -105,6 +105,7 @@ const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
 const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
 const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
+const static int64_t DROP_PAD_MODE_DROPPAD = 1LL;
 
 const static int64_t TILINGKEY_BASE = 10000000LL;
 const static int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
@@ -633,11 +634,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                                   ("in range [1, " + std::to_string(maxExpertNum) + "]")),
         return ge::GRAPH_FAILED);
     tilingDataPtr_->expertNum = expertNum_;
-    // drop_pad_mode 暂不使用，只校验
-    OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS,
+    OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS && dropPadMode_ != DROP_PAD_MODE_DROPPAD,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", std::to_string(dropPadMode_),
-                                          std::to_string(DROP_PAD_MODE_DROPLESS)),
+                                          (std::to_string(DROP_PAD_MODE_DROPLESS) + " or " +
+                                           std::to_string(DROP_PAD_MODE_DROPPAD))),
                 return ge::GRAPH_FAILED);
+    tilingDataPtr_->dropPadMode = dropPadMode_;
 
     OP_CHECK_IF(expertTokensNumFlag_ != true,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_flag",
@@ -663,6 +665,34 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->rowIdxType = rowIdxType_;
 
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && quantMode_ != QUANT_MODE_UNQUANT,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "drop_pad_mode, quant_mode",
+                                                       (std::to_string(dropPadMode_) + ", " +
+                                                        std::to_string(quantMode_)),
+                                                       ("quant_mode should be " +
+                                                        std::to_string(QUANT_MODE_UNQUANT) +
+                                                        " when drop_pad_mode is " +
+                                                        std::to_string(DROP_PAD_MODE_DROPPAD))),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && rowIdxType_ != ROW_IDX_GATHER,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "drop_pad_mode, row_idx_type",
+                                                       (std::to_string(dropPadMode_) + ", " +
+                                                        std::to_string(rowIdxType_)),
+                                                       ("row_idx_type should be " +
+                                                        std::to_string(ROW_IDX_GATHER) +
+                                                        " when drop_pad_mode is " +
+                                                        std::to_string(DROP_PAD_MODE_DROPPAD))),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && expertTokensNumFlag_ &&
+                    expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context_->GetNodeName(), "drop_pad_mode, expert_tokens_num_flag, expert_tokens_num_type",
+                    (std::to_string(dropPadMode_) + ", True, " + std::to_string(expertTokensNumType_)),
+                    ("expert_tokens_num_type should be " + std::to_string(EXPERT_TOKENS_TYPE_COUNT) +
+                     " when drop_pad_mode is " + std::to_string(DROP_PAD_MODE_DROPPAD) +
+                     " and expert_tokens_num_flag is true")),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -682,9 +712,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetListAttrs()
                                                        "expert_start should be less than expert_end"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertEnd_ > expertNum_,
-                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_end", std::to_string(expertEnd_),
-                                          ("less than or equal to expert_num(" +
-                                           std::to_string(expertNum_) + ")")),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "expert_end, expert_num",
+                                                       (std::to_string(expertEnd_) + ", " +
+                                                        std::to_string(expertNum_)),
+                                                       "expert_end should be equal to or less than expert_num"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dropPadMode_ == DROP_PAD_MODE_DROPPAD && (expertStart_ != 0 || expertEnd_ != expertNum_),
+                OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "active_expert_range",
+                                          ("[" + std::to_string(expertStart_) + ", " +
+                                           std::to_string(expertEnd_) + "]"),
+                                          ("[0, " + std::to_string(expertNum_) + "]")),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertStart = expertStart_;
     tilingDataPtr_->expertEnd = expertEnd_;
@@ -913,7 +950,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
             return ge::GRAPH_FAILED);
     }
 
-    tilingDataPtr_->activeNum = totalLength_;
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(expertCapacity_ <= 0 || expertCapacity_ > n_,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_capacity",
+                                              std::to_string(expertCapacity_),
+                                              ("in range [1, " + std::to_string(n_) + "]")),
+                    return ge::GRAPH_FAILED);
+        tilingDataPtr_->activeNum = expertNum_ * expertCapacity_;
+    } else {
+        tilingDataPtr_->activeNum = totalLength_;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -923,19 +969,42 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()");
 
     auto rank = static_cast<int64_t>(expandedXShape_.GetDimNum());
-    OP_CHECK_IF(rank != RANK_TWO,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_x", std::to_string(rank), "2"),
-                return ge::GRAPH_FAILED);
-    int64_t dim0 = expandedXShape_.GetDim(0);
-    OP_CHECK_IF(dim0 != totalLength_,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[0]", std::to_string(dim0),
-                                          std::to_string(totalLength_)),
-                return ge::GRAPH_FAILED);
-    int64_t dim1 = expandedXShape_.GetDim(1);
-    OP_CHECK_IF(dim1 != cols_,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
-                                          std::to_string(cols_)),
-                return ge::GRAPH_FAILED);
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(rank != RANK_THREE,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_x", std::to_string(rank),
+                                                 std::to_string(RANK_THREE)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim0 = expandedXShape_.GetDim(0);
+        OP_CHECK_IF(dim0 != expertNum_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[0]", std::to_string(dim0),
+                                              std::to_string(expertNum_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim1 = expandedXShape_.GetDim(1);
+        OP_CHECK_IF(dim1 != expertCapacity_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
+                                              std::to_string(expertCapacity_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim2 = expandedXShape_.GetDim(2);
+        OP_CHECK_IF(dim2 != cols_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[2]", std::to_string(dim2),
+                                              std::to_string(cols_)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(rank != RANK_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_x", std::to_string(rank),
+                                                 std::to_string(RANK_TWO)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim0 = expandedXShape_.GetDim(0);
+        OP_CHECK_IF(dim0 != totalLength_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[0]", std::to_string(dim0),
+                                              std::to_string(totalLength_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim1 = expandedXShape_.GetDim(1);
+        OP_CHECK_IF(dim1 != cols_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
+                                              std::to_string(cols_)),
+                    return ge::GRAPH_FAILED);
+    }
 
     // 静态量化场景下，输出expandedX的dtype必须为INT8
     if (quantMode_ == QUANT_MODE_STATIC) {
@@ -1029,7 +1098,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
             expectedDim2 = NUM_TWO;
         } else {
             expectedRank = RANK_ONE;
-            expectedDim0 = totalLength_;
+            expectedDim0 = (dropPadMode_ == DROP_PAD_MODE_DROPPAD) ? expertNum_ * expertCapacity_ : totalLength_;
         }
     } else if ((quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN)) {
         expectedRank = RANK_TWO;
@@ -1641,7 +1710,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     }
     tilingDataPtr_->epFullload = ep_;
 
-    if (totalLength_ > sortLoopMaxElement_ || dropPadMode_ == 1) {
+    if (totalLength_ > sortLoopMaxElement_) {
         return false;
     }
 
