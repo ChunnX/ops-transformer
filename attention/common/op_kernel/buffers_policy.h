@@ -30,21 +30,20 @@ public:
         buffer_.Init();
     }
 
-    // 静态Tensor编程模式：使用预定义静态事件ID，p2cEventId/c2pEventId为基础ID
-    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                      uint32_t p2cEventId, uint32_t c2pEventId) {
-        buffer_ = bufferManager.template AllocBuffer<syncType>(size);
-        buffer_.InitStatic(p2cEventId, c2pEventId);
-    }
- 
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
         buffer_.UnInit();
         bufferManager.FreeBuffer(buffer_);
     }
 
-    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+    // 极致性能静态Tensor方式：LocalTensor(TPosition,addr,count)直接构造（无TBuf/BufferManager）
+    // SetFlag由调用方在InitBuffers()中显式执行
+    __aicore__ inline void InitStaticDirect(uint32_t offset, uint32_t size, TEventID p2cId, TEventID c2pId) {
+        buffer_.InitStaticDirect(offset, size, p2cId, c2pId);
+    }
+
+    // 排干流水（使用Buffer中存储的静态事件ID，无需BufferManager参数）
+    __aicore__ inline void UninitStaticDirect() {
         buffer_.UnInitStatic();
-        bufferManager.FreeBuffer(buffer_);
     }
  
     __aicore__ inline Buffer<bufferType, syncType> &Get(){
@@ -74,15 +73,6 @@ public:
         pong_.Init();
     }
 
-    // 静态Tensor编程模式：ping用p2cBase/c2pBase，pong用Base+1
-    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
-        ping_ = bufferManager.template AllocBuffer<syncType>(size);
-        pong_ = bufferManager.template AllocBuffer<syncType>(size);
-        ping_.InitStatic(p2cEventIdBase, c2pEventIdBase);
-        pong_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
-    }
-
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
         ping_.UnInit();
         pong_.UnInit();
@@ -91,11 +81,19 @@ public:
         bufferManager.FreeBuffer(pong_);
     }
 
-    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+    // 极致性能静态Tensor方式：LocalTensor(TPosition,addr,count)直接构造（无TBuf/BufferManager）
+    // pingOffset/pongOffset为硬件内存内的字节偏移；SetFlag由调用方在InitBuffers()中显式执行
+    __aicore__ inline void InitStaticDirect(uint32_t pingOffset, uint32_t pongOffset, uint32_t size,
+                                            TEventID pingP2cId, TEventID pingC2pId,
+                                            TEventID pongP2cId, TEventID pongC2pId) {
+        ping_.InitStaticDirect(pingOffset, size, pingP2cId, pingC2pId);
+        pong_.InitStaticDirect(pongOffset, size, pongP2cId, pongC2pId);
+    }
+
+    // 排干流水（使用Buffer中存储的静态事件ID，无需BufferManager参数）
+    __aicore__ inline void UninitStaticDirect() {
         ping_.UnInitStatic();
         pong_.UnInitStatic();
-        bufferManager.FreeBuffer(ping_);
-        bufferManager.FreeBuffer(pong_);
     }
 
     __aicore__ inline Buffer<bufferType, syncType> &Get() {
@@ -161,17 +159,6 @@ public:
         c_.Init();
     }
 
-    // 静态Tensor编程模式：a/b/c依次用Base, Base+1, Base+2
-    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
-        a_ = bufferManager.template AllocBuffer<syncType>(size);
-        b_ = bufferManager.template AllocBuffer<syncType>(size);
-        c_ = bufferManager.template AllocBuffer<syncType>(size);
-        a_.InitStatic(p2cEventIdBase, c2pEventIdBase);
-        b_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
-        c_.InitStatic(p2cEventIdBase + 2, c2pEventIdBase + 2);
-    }
-
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
@@ -182,13 +169,11 @@ public:
         bufferManager.FreeBuffer(c_);
     }
 
-    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+    // 排干流水（使用Buffer中存储的静态事件ID，无需BufferManager参数）
+    __aicore__ inline void UninitStaticDirect() {
         a_.UnInitStatic();
         b_.UnInitStatic();
         c_.UnInitStatic();
-        bufferManager.FreeBuffer(a_);
-        bufferManager.FreeBuffer(b_);
-        bufferManager.FreeBuffer(c_);
     }
 
     __aicore__ inline Buffer<bufferType, syncType> &Get() {
@@ -280,19 +265,6 @@ public:
         d_.Init();
     }
 
-    // 静态Tensor编程模式：a/b/c/d依次用Base, Base+1, Base+2, Base+3
-    __aicore__ inline void InitStatic(BufferManager<bufferType> &bufferManager, uint32_t size,
-                                      uint32_t p2cEventIdBase, uint32_t c2pEventIdBase) {
-        a_ = bufferManager.template AllocBuffer<syncType>(size);
-        b_ = bufferManager.template AllocBuffer<syncType>(size);
-        c_ = bufferManager.template AllocBuffer<syncType>(size);
-        d_ = bufferManager.template AllocBuffer<syncType>(size);
-        a_.InitStatic(p2cEventIdBase, c2pEventIdBase);
-        b_.InitStatic(p2cEventIdBase + 1, c2pEventIdBase + 1);
-        c_.InitStatic(p2cEventIdBase + 2, c2pEventIdBase + 2);
-        d_.InitStatic(p2cEventIdBase + 3, c2pEventIdBase + 3);
-    }
-
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
         a_.UnInit();
         b_.UnInit();
@@ -305,15 +277,25 @@ public:
         bufferManager.FreeBuffer(d_);
     }
 
-    __aicore__ inline void UninitStatic(BufferManager<bufferType> &bufferManager) {
+    // 极致性能静态Tensor方式：LocalTensor(TPosition,addr,count)直接构造（无TBuf/BufferManager）
+    // SetFlag由调用方在InitBuffers()中显式执行
+    __aicore__ inline void InitStaticDirect(uint32_t baseOffset, uint32_t size,
+                                            TEventID aP2c, TEventID aC2p,
+                                            TEventID bP2c, TEventID bC2p,
+                                            TEventID cP2c, TEventID cC2p,
+                                            TEventID dP2c, TEventID dC2p) {
+        a_.InitStaticDirect(baseOffset,              size, aP2c, aC2p);
+        b_.InitStaticDirect(baseOffset + size,       size, bP2c, bC2p);
+        c_.InitStaticDirect(baseOffset + 2U * size,  size, cP2c, cC2p);
+        d_.InitStaticDirect(baseOffset + 3U * size,  size, dP2c, dC2p);
+    }
+
+    // 排干流水（使用Buffer中存储的静态事件ID，无需BufferManager参数）
+    __aicore__ inline void UninitStaticDirect() {
         a_.UnInitStatic();
         b_.UnInitStatic();
         c_.UnInitStatic();
         d_.UnInitStatic();
-        bufferManager.FreeBuffer(a_);
-        bufferManager.FreeBuffer(b_);
-        bufferManager.FreeBuffer(c_);
-        bufferManager.FreeBuffer(d_);
     }
 
     __aicore__ inline Buffer<bufferType, syncType> &Get(uint32_t id) {
