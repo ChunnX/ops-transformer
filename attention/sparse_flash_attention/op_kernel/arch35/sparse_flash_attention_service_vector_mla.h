@@ -266,6 +266,7 @@ SFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_
 
     intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope *sizeof(KV_T);
     intriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B;  // 512: 模型特征维度(dSize)
+    // 576: 局部Buffer行跨度（Leading Dimension）; 512: Key特征维度（dSize）; 64 :  RoPE索引数据每Token/块的行跨度（Stride）
     DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams, padParams); // combineDimAlign
 }
 
@@ -750,8 +751,8 @@ void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &co
     tPipe->InitBuffer(lseBuf, 512); // lseBuf内存申请512B
     lseUb = this->lseBuf.template Get<float>();
 
-    tPipe->InitBuffer(stage0OutBuf[0], 576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize)
-    tPipe->InitBuffer(stage0OutBuf[1], 576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize)
+    tPipe->InitBuffer(stage0OutBuf[0], 576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize); 16 : 注意力头数 (num_heads)
+    tPipe->InitBuffer(stage0OutBuf[1], 576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize); 16 : 注意力头数 (num_heads)
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));

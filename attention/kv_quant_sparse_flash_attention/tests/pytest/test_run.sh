@@ -1,5 +1,4 @@
 #!/bin/bash
-set -euo pipefail
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -9,6 +8,8 @@ set -euo pipefail
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+
+set -euo pipefail
 
 # 脚本路径
 PT_SAVE_SCRIPT="./batch/test_kv_quant_sparse_flash_attention_pt_save.py"
@@ -213,5 +214,3 @@ case "$mode" in
         exit 1
         ;;
 esac
-
-exit 0
