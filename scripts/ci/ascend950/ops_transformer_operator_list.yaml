@@ -76,7 +76,9 @@ operator_group_9:
   - norm_rope_concat_grad
 operator_group_10:
   - allto_allv_grouped_mat_mul
+  - allto_allv_grouped_mat_mul_v2
   - grouped_mat_mul_allto_allv
+  - grouped_mat_mul_allto_allv_v2
   - all_gather_matmul_v2
   - all_gather_matmul
   - allto_all_matmul

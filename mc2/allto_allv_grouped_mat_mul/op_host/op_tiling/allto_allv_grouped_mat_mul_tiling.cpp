@@ -557,7 +557,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
     }
     OP_LOGD(context->GetNodeName(), "CommMode is %u.", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
@@ -653,7 +653,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        commMode = Mc2Comm::GetCommModeFromEnv();
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
