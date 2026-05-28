@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t SFMLA_META_SIZE = 1024;
-using SFMLA_METADATA_T = int32_t;
+constexpr uint32_t SMLA_METADATA_SIZE = 1024;
+using SMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
@@ -68,13 +68,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct SfmlaMetadata {
+    struct SmlaMetadata {
         uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
         uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
     };
 };
 
-static_assert(SFMLA_META_SIZE * sizeof(SFMLA_METADATA_T) >= sizeof(detail::SfmlaMetadata));
+static_assert(SMLA_METADATA_SIZE * sizeof(SMLA_METADATA_T) >= sizeof(detail::SmlaMetadata));
 };
 
 #endif // SPARSE_FLASH_MLA_METADATA_H

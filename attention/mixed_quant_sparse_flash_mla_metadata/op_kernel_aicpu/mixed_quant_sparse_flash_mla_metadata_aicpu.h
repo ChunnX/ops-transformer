@@ -169,7 +169,7 @@ struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
     uint32_t oriS2Size { 0U };
-    uint32_t cmpRevertS2Size { 0U };
+    uint64_t cmpRevertS2Size { 0U };
     int64_t oriPreTokenLeftUp { 0 };
     int64_t oriNextTokenLeftUp { 0 };
     int64_t cmpPreTokenLeftUp { 0 };
@@ -248,18 +248,18 @@ private:
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
     uint32_t GetCmpS2SeqSize(uint32_t bIdx);
-    uint32_t GetRevertS2Size(uint32_t bIdx);
+    uint64_t GetRevertS2Size(uint32_t bIdx);
     uint32_t GetOriTopkLength();
     uint32_t GetCmpTopkLength();
     int64_t CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
     int64_t CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    int64_t CalcCmpNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
+    int64_t CalcCmpPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
+    int64_t CalcCmpNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
     int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
     int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
-    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-    uint32_t oriS2TailSize, uint32_t cmpS2TailSize);
+    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t oriS2TailSize,
+        uint32_t cmpS2TailSize);
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
@@ -268,7 +268,8 @@ private:
     void CalcOriS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo);
     void GatherOriAndCmpCache(S1GCache &s1GCache);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
+        S1GCache &s1GCache);
 
     // preprocess
     void CalcSplitInfo(SplitContext &splitContext);
@@ -309,9 +310,10 @@ private:
 
     // attributes
     int32_t batchSize_ = 0;
-    int32_t querySeqSize_ = 0;
+    int32_t maxSeqlenQ_ = 0;
     int32_t queryHeadNum_ = 0;
-    int32_t kvSeqSize_ = 0;
+    int32_t maxSeqlenOriKv_ = 0;
+    int32_t maxSeqlenCmpKv_ = 0;
     int32_t kvHeadNum_ = 0;
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
@@ -329,7 +331,7 @@ private:
     uint32_t aivCoreNum_ = 48U;
 
     // attr
-    std::string socVersion_ = "ascend910B";
+    std::string socVersion_;
     int64_t oriPreToken_ = 0;
     int64_t oriNextToken_ = 0;
     int64_t cmpPreToken_ = 0;
@@ -338,15 +340,13 @@ private:
     uint32_t mBaseSize_ = 0;
     uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
-    bool isCFA = false;
-    bool isSCFA = false;
     bool supportFd = false;
     uint32_t oriAttentionMode_ = 1;
     uint32_t cmpAttentionMode_ = 1;
     BlockCost<int64_t> typeCost_ = {};
-    bool isN128 = false;
-    bool hasOriTopk = false;
-    bool hasCmpTopk = false;
+    bool isSplitG_ = false;
+    bool isSparseOriKv_ = false;
+    bool isSparseCmpKv_ = false;
     
 private:
     enum class ParamId : uint32_t {
