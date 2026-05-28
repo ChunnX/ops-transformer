@@ -83,9 +83,14 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     aclnnStatus ret = ACLNN_ERR_INNER;
 
+    char groupBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (group != nullptr) {
+        (void)strncpy(groupBuf, group, HCCL_GROUP_NAME_MAX - 1);
+    }
+    aclTensor *xRefBuf = const_cast<aclTensor*>(xRef);
     if (!is950) {
-        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
-            timeOut, elasticInfo, const_cast<char*>(group), worldSize, workspaceSize, executor);
+        getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(xRefBuf,
+            timeOut, elasticInfo, groupBuf, worldSize, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
@@ -93,7 +98,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
         ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierExtendGetWorkspaceSize(mc2Context,
-            const_cast<aclTensor*>(xRef), timeOut, elasticInfo, const_cast<char*>(group),
+            xRefBuf, timeOut, elasticInfo, groupBuf,
             worldSize, workspaceSize, executor);
 #endif
     }
