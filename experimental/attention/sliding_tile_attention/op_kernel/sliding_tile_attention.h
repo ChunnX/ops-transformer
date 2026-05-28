@@ -187,8 +187,8 @@ __aicore__ inline int64_t ClampStart(int64_t center, int64_t window, int64_t lim
 
 __aicore__ inline bool IsFirstBlock2DSoftmaxEnabled(const SlidingTileAttentionTilingData *tiling)
 {
-    return tiling->headDim == STA_2D_SOFTMAX_HEAD_DIM && tiling->qBlock == 64 &&
-           tiling->maxKvBlock == tiling->tileTokenNum;
+    return tiling->headDim == STA_2D_SOFTMAX_HEAD_DIM && tiling->qBlock == 128 &&
+           tiling->maxKvBlock == tiling->kvBlock;
 }
 
 __aicore__ inline float GetRowReduceValue(LocalTensor<float> &rowReduceLocal, uint32_t row)
@@ -735,7 +735,7 @@ private:
                                                            LocalTensor<float> &maxLocal,
                                                            LocalTensor<float> &denomLocal)
     {
-        if (kvCount != tiling_->maxKvBlock || kvCount != tiling_->tileTokenNum) {
+        if (kvCount != tiling_->maxKvBlock) {
             return false;
         }
 
@@ -802,8 +802,7 @@ private:
         CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx, subBlock));
         const int64_t validRowCount = validRowEnd - rowBegin;
         if (tileLoop == 0) {
-            if (IsFirstBlock2DSoftmaxEnabled(tiling_) && kvCount == tiling_->maxKvBlock &&
-                kvCount == tiling_->tileTokenNum) {
+            if (IsFirstBlock2DSoftmaxEnabled(tiling_) && kvCount == tiling_->maxKvBlock) {
                 ProcessFirstVisibleKvBlock2D(rowBegin, validRowEnd, bufferIdx, maxLocal, denomLocal);
             } else {
                 LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
@@ -925,8 +924,8 @@ private:
         }
         if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
             for (int64_t tile = 0; tile < tiling_->imageTileNum; ++tile) {
-                ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                      tileLoop, maxLocal, denomLocal);
+                ProcessVisibleImageTile(rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop, maxLocal,
+                                        denomLocal);
             }
             return;
         }
@@ -943,8 +942,20 @@ private:
         GetImageWindowRange(head, seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
         const int64_t visibleTileCount = (tEnd - tBegin) * (hEnd - hBegin) * (wEnd - wBegin);
         for (int64_t tile = 0; tile < visibleTileCount; ++tile) {
-            ProcessVisibleKvBlock(tiling_->tileTokenNum, rowBegin, validRowEnd, subBlock, alignedHeadDim,
-                                  tileLoop, maxLocal, denomLocal);
+            ProcessVisibleImageTile(rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop, maxLocal,
+                                    denomLocal);
+        }
+    }
+
+    __aicore__ inline void ProcessVisibleImageTile(int64_t rowBegin, int64_t validRowEnd, int64_t subBlock,
+                                                   uint32_t alignedHeadDim, int64_t &tileLoop,
+                                                   LocalTensor<float> &maxLocal,
+                                                   LocalTensor<float> &denomLocal)
+    {
+        for (int64_t offset = 0; offset < tiling_->tileTokenNum; offset += tiling_->maxKvBlock) {
+            const int64_t kvCount = MinInt64(tiling_->maxKvBlock, tiling_->tileTokenNum - offset);
+            ProcessVisibleKvBlock(kvCount, rowBegin, validRowEnd, subBlock, alignedHeadDim, tileLoop, maxLocal,
+                                  denomLocal);
         }
     }
 
@@ -1247,13 +1258,22 @@ private:
     __aicore__ inline void ProcessCubeImageQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
                                                           int64_t &tileLoop, bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
+        ProcessCubeImageTileChunks(task, kvBegin, tileLoop, didMatmul);
     }
 
     __aicore__ inline void ProcessCubeTextQueryImageTile(const CubeTaskContext &task, int64_t kvBegin,
                                                          int64_t &tileLoop, bool &didMatmul)
     {
-        ProcessCubeVisibleKvBlock(task, kvBegin, tiling_->tileTokenNum, tileLoop, didMatmul);
+        ProcessCubeImageTileChunks(task, kvBegin, tileLoop, didMatmul);
+    }
+
+    __aicore__ inline void ProcessCubeImageTileChunks(const CubeTaskContext &task, int64_t kvBegin,
+                                                      int64_t &tileLoop, bool &didMatmul)
+    {
+        for (int64_t offset = 0; offset < tiling_->tileTokenNum; offset += tiling_->maxKvBlock) {
+            const int64_t kvCount = MinInt64(tiling_->maxKvBlock, tiling_->tileTokenNum - offset);
+            ProcessCubeVisibleKvBlock(task, kvBegin + offset, kvCount, tileLoop, didMatmul);
+        }
     }
 
     __aicore__ inline void ProcessCubeTextKvRange(const CubeTaskContext &task, int64_t kvBegin, int64_t kvEnd,
