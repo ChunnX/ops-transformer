@@ -83,6 +83,7 @@ struct RunParamStr;
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t s1RealSizeAlign32;    /* dn场景使用 */ \
+    uint32_t s1RealSizeAlign64;    /* dn场景使用 */ \
     uint32_t halfS1RealSize; \
     uint32_t firstHalfS1RealSize; \
     int64_t tensorQOffset;         /* query的offset souter层确定 */ \
@@ -151,6 +152,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t goIdx = 0; /* g轴的index */ \
     int32_t s1RealSize; \
     int32_t s1RealSizeAlign32; \
+    int32_t s1RealSizeAlign64; \
     int32_t halfS1RealSize; /* vector侧实际的s1基本块大小，如果Cube基本块=128，那么halfS1RealSize=64 */ \
     int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 size */ \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
@@ -170,7 +172,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t attentionOutOffset; \
     uint64_t s1ScaleNumAcc; \
     uint64_t s2ScaleNumAcc; \
-    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
+    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s1之和（每个batch的s1不同） */ \
     int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \

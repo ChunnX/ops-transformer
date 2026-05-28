@@ -80,8 +80,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclTensor *mc2Context = nullptr;
-    aclnnStatus getWorkspaceSizesRes;
-    aclnnStatus ret;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
+    aclnnStatus ret = ACLNN_ERR_INNER;
 
     if (!is950) {
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
@@ -108,15 +108,14 @@ aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
-    if (is950) {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    if (is950) {
         OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
-#endif
-    } else {
-        return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
-                                           stream);
     }
+#endif
+    return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
+                                       stream);
 }
 #ifdef __cplusplus
 }

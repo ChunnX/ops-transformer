@@ -1189,6 +1189,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
                 SplitS2(fiaInfo);
             }
         }
+        if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK && fiaInfo.attenMaskFlag &&
+            (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag)) {
+            isRowInvalid_ = true;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1422,8 +1426,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GenTilingKey(gert::TilingCon
     OP_LOGI(fiaInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(fiaInfo.opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, KvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
-            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu",
+            "hasAttenMask: %u, hasRope: %u, KvLayoutType: %llu, isFd: %u, emptyTensor: %u, "
+            "enableKvPrefix: %u, enableS1OutSplit: %u, isReconstructTemp: %u",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,

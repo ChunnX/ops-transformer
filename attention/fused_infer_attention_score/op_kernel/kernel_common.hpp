@@ -16,18 +16,18 @@
 #ifndef KERNEL_COMMON
 #define KERNEL_COMMON
 
-#include "attn_infra/base_defs.hpp"
-#include "attn_infra/arch/arch.hpp"
-#include "attn_infra/layout/layout.hpp"
+#include "attn_infra/fused_base_defs.hpp"
+#include "attn_infra/arch/fused_arch.hpp"
+#include "attn_infra/layout/fused_layout.hpp"
 
-#include "attn_infra/gemm/block/block_mmad.hpp"
-#include "attn_infra/gemm/dispatch_policy.hpp"
-#include "attn_infra/gemm/gemm_type.hpp"
+#include "attn_infra/gemm/block/fused_block_mmad.hpp"
+#include "attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
+#include "attn_infra/gemm/fused_gemm_type.hpp"
 
-#include "attn_infra/arch/cross_core_sync.hpp"
-#include "attn_infra/arch/resource.hpp"
-#include "attn_infra/epilogue/block/block_epilogue.hpp"
-#include "attn_infra/epilogue/dispatch_policy.hpp"
+#include "attn_infra/arch/fused_cross_core_sync.hpp"
+#include "attn_infra/arch/fused_resource.hpp"
+#include "attn_infra/epilogue/block/fused_block_epilogue.hpp"
+#include "attn_infra/epilogue/fused_epilogue_dispatch_policy.hpp"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
