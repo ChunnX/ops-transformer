@@ -16,6 +16,7 @@
 #include "opdev/common_types.h"
 #include "aclnnInner_allto_allv_grouped_mat_mul.h"
 #include "mc2_comm_utils.h"
+#include "aclnn_allto_allv_grouped_mat_mul_v2.h"  // V2 aclnn 头文件
 
 using namespace op;
 
@@ -122,29 +123,33 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
 
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
-        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
-        executor);
+    // 根据架构判断通信方式
+    const char* commMode = "";
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        commMode = "ai_cpu";  // A3/arch22 使用 AICPU
+    }
+    // A5/arch35 使用默认 CCU，无需特殊处理
+
+    // 调用 V2 aclnn 接口
+    aclnnStatus ret = aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(
+        gmmX, gmmWeight,
+        sendCountsTensorOptional, recvCountsTensorOptional,
+        mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize,
+        sendCounts, recvCounts,
+        transGmmWeight, transMmWeight, permuteOutFlag,
+        commMode,  // 新增参数
+        gmmY, mmYOptional, permuteOutOptional,
+        workspaceSize, executor);
+
     return ret;
 }
 
 aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                         aclrtStream stream)
 {
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("arch35 with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            } else {
-                OP_LOGD("arch35, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            }
-        }
-    }
-    aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
+    // 直接调用 V2 Execute
+    aclnnStatus ret = aclnnAlltoAllvGroupedMatMulV2(workspace, workspaceSize, executor, stream);
     return ret;
 }
 

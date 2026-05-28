@@ -322,10 +322,15 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
 
 uint64_t GroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (npuArch_ != NpuArch::DAV_3510) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    // 根据架构判断通信方式
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认 AICPU (arch22)
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch == NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_CCU;  // arch35 使用 CCU
     }
+
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,

@@ -55,6 +55,7 @@ aclnn_all_gather_matmul_v2.h
 aclnn_all.h
 aclnn_all_to_all_all_gather_batch_matmul.h
 aclnn_allto_allv_grouped_mat_mul.h
+aclnn_allto_allv_grouped_mat_mul_v2.h
 aclnn_allto_allv_quant_grouped_mat_mul.h
 aclnn_amax.h
 aclnn_amin.h
@@ -349,6 +350,7 @@ aclnn_grouped_matmul_add.h
 aclnn_grouped_matmul_add_v2.h
 aclnn_grouped_mat_mul_all_reduce.h
 aclnn_grouped_mat_mul_allto_allv.h
+aclnn_grouped_mat_mul_allto_allv_v2.h
 aclnn_grouped_matmul_finalize_routing.h
 aclnn_grouped_matmul_finalize_routing_v2.h
 aclnn_grouped_matmul_finalize_routing_v3.h

@@ -100,6 +100,7 @@ operator_group_9:
 operator_group_10:
   - matmul_allto_all
   - allto_allv_grouped_mat_mul
+  - allto_allv_grouped_mat_mul_v2
   - allto_all_all_gather_batch_mat_mul
   - allto_all_matmul
   - all_gather_matmul
@@ -109,6 +110,7 @@ operator_group_10:
   - distribute_barrier
   - ffn_to_attention
   - grouped_mat_mul_allto_allv
+  - grouped_mat_mul_allto_allv_v2
   - grouped_mat_mul_all_reduce
   - matmul_reduce_scatter
   - matmul_reduce_scatter_v2

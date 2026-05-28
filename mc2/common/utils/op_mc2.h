@@ -239,6 +239,21 @@ enum class AlltoAllvGroupedMatMulAttrIdx : size_t {
     K_PERMUTE_OUT_FLAG
 };
 
+// V2 复用 V1 的 Input/Output，只新增 AttrIdx
+using AlltoAllvGroupedMatMulV2InputIdx = AlltoAllvGroupedMatMulInputIdx;
+using AlltoAllvGroupedMatMulV2OutputIdx = AlltoAllvGroupedMatMulOutputIdx;
+
+enum class AlltoAllvGroupedMatMulV2AttrIdx : size_t {
+    K_GROUP,
+    K_EP_WORLD_SIZE,
+    K_SEND_COUNTS,
+    K_RECV_COUNTS,
+    K_TRANS_GMM_WEIGHT,
+    K_TRANS_MM_WEIGHT,
+    K_PERMUTE_OUT_FLAG,
+    K_COMM_MODE  // V2 新增
+};
+
 enum class GroupedMatMulAlltoAllvInputIdx : size_t {
     K_GMM_X,
     K_GMM_WEIGHT,
@@ -260,6 +275,20 @@ enum class GroupedMatMulAlltoAllvAttrIdx : size_t {
     K_RECV_COUNTS,
     K_TRANS_GMM_WEIGHT,
     K_TRANS_MM_WEIGHT
+};
+
+// V2 复用 V1 的 Input/Output，只新增 AttrIdx
+using GroupedMatMulAlltoAllvV2InputIdx = GroupedMatMulAlltoAllvInputIdx;
+using GroupedMatMulAlltoAllvV2OutputIdx = GroupedMatMulAlltoAllvOutputIdx;
+
+enum class GroupedMatMulAlltoAllvV2AttrIdx : size_t {
+    K_GROUP,
+    K_EP_WORLD_SIZE,
+    K_SEND_COUNTS,
+    K_RECV_COUNTS,
+    K_TRANS_GMM_WEIGHT,
+    K_TRANS_MM_WEIGHT,
+    K_COMM_MODE  // V2 新增
 };
 }  // namespace ops
 
