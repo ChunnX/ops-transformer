@@ -303,6 +303,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
     event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
 
+    // printf("ScatterAddDeter>>>> coreid: %u\n", this->vBlockIdx);
+
     for (int64_t idx = 0; idx < usedCoreNum; idx++) {
         usedBS1Index = runInfo.sTaskId * usedCoreNum + idx;
         if (!GetBS1Index(usedBS1Index, bIdx, s1Idx, bS1Index, accumS1Len, accumS2Len, accumS3Len, actualSeqLensQ,
@@ -318,7 +320,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         int64_t avgSize = actualSelectedBlockCount / totalVec;
         // 前remainder 个块分配 avgSize + 1， 其余分配avgSize
         int64_t currentCoreKSize = avgSize + (this->vBlockIdx < remainder ? 1 : 0);
-        // printf("this->vBlockIdx : %d actualSelectedBlockCount : %d currentCoreKSize : %d\n",this->vBlockIdx, actualSelectedBlockCount, currentCoreKSize);
+        // printf("this->vBlockIdx : %u actualSelectedBlockCount : %d currentCoreKSize : %d, remainder: %d, avgSize: %d\n",this->vBlockIdx, actualSelectedBlockCount, currentCoreKSize, remainder, avgSize);
         if (currentCoreKSize == 0) {
             // V核同步等待所有V核完成某一个C核上S2的计算
             CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VEC_SYNC_FLAG);
@@ -331,6 +333,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         SetAtomicAdd<CALC_TYPE>();
         int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
         int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
+        // printf("runInfo.deterTaskIdMod2: %d, coreNum: %d, idx: %d\n", runInfo.deterTaskIdMod2, coreNum, idx);
         int64_t currentMm4SrcOffset = runInfo.deterTaskIdMod2 * 4096 * HEAD_DIM_ALIGN * coreNum +
                                     idx * 4096 * HEAD_DIM_ALIGN +
                                     s2SrcOffset * constInfo.selectedBlockSize * HEAD_DIM_ALIGN;
@@ -341,9 +344,13 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         if (!runInfo.isOriKV) {
             runInfo.keyOffsetWithRope = accumS3Len * constInfo.n2Size * constInfo.dTotalSize;
         }
-        if (!runInfo.isSparse){
+        // if (!runInfo.isSparse){
             // todo currentMm4SrcOffset currentMm5SrcOffset 待适配非sparse场景
-        }
+        // }
+
+        int64_t kvOffset = runInfo.isSparse ? runInfo.keyOffsetWithRope : runInfo.keyOffsetWithRope + s2SrcOffset * constInfo.dTotalSize;
+        GlobalTensor<float> dkOutGm = dkWorkSpaceGm[kvOffset];
+        // printf("this->vBlockIdx: %u, runInfo.isSparse: %d, kvOffset: %d, runInfo.keyOffsetWithRope: %d, s2SrcOffset: %d, currentMm4SrcOffset: %d, currentMm5SrcOffset: %d, maxLoops: %d\n", this->vBlockIdx, runInfo.isSparse, kvOffset, runInfo.keyOffsetWithRope, s2SrcOffset, currentMm4SrcOffset, currentMm5SrcOffset, maxLoops);
 
         // 1 - main loop
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
@@ -361,24 +368,26 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                     UB_ROW_SIZE * constInfo.commonConstInfo.dSizeV);
             SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
             WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
-            for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
-                int s2Idx = 0;
-                if (!runInfo.isSparse) {
-                    // todo 非sparse场景
-                    // s2Idx = winStart + s2SrcOffset + loop * UB_ROW_SIZE + row;
-                } else {
-                    s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+            if (runInfo.isSparse) {
+                for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
+                    int s2Idx = topkIndicesGm[gmOffset + loop * UB_ROW_SIZE].GetValue(row);
+                    if (s2Idx >= 0) {
+                        Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
+                            dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                            constInfo.commonConstInfo.dSizeV);
+                        SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                        WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                        DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN],
+                                dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+                    }
                 }
-                if (s2Idx >= 0) {
-                    Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
-                        dvInTensor[row * constInfo.commonConstInfo.dSizeV],
-                        constInfo.commonConstInfo.dSizeV);
-                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                    DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
-                            dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-                }
+            } else {
+                Add(dkInTensor, dkInTensor, dvInTensor, UB_ROW_SIZE * HEAD_DIM_ALIGN);
+                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                DataCopy(dkOutGm[loop * UB_ROW_SIZE * HEAD_DIM_ALIGN], dkInTensor, UB_ROW_SIZE * HEAD_DIM_ALIGN);
             }
+            
             SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         }
 
@@ -396,24 +405,26 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                 tailRows * constInfo.commonConstInfo.dSizeV);
         SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
         WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
-        for (int64_t row = 0; row < tailRows; row++) {
-            int32_t s2Idx = 0;
-            if (!runInfo.isSparse) {
-                // todo 非sparse场景
-                s2Idx = winStart + s2SrcOffset + row;
-            } else {
-                s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+        if (runInfo.isSparse) {
+            for (int64_t row = 0; row < tailRows; row++) {
+                int32_t s2Idx = topkIndicesGm[gmOffset + (maxLoops - 1) * UB_ROW_SIZE].GetValue(row);
+                if (s2Idx >= 0) {
+                    Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
+                        dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                        constInfo.commonConstInfo.dSizeV);
+                    SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+                    DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN],
+                            dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
+                }
             }
-            if (s2Idx >= 0) {
-                Add(dkInTensor[row * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN],
-                    dvInTensor[row * constInfo.commonConstInfo.dSizeV],
-                    constInfo.commonConstInfo.dSizeV);
-                SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
-                DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
-                        dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-            }
+        } else {
+            Add(dkInTensor, dkInTensor, dvInTensor, tailRows * HEAD_DIM_ALIGN);
+            SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
+            DataCopy(dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * HEAD_DIM_ALIGN], dkInTensor, tailRows * HEAD_DIM_ALIGN);
         }
+        
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         WaitFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
         // V核同步等待所有V核完成某一个C核上S2的计算

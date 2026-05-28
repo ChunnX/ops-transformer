@@ -368,6 +368,10 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         deterTaskId++;
     }
 
+    if (this->processBS1ByCore == 0) {
+        deterTaskId++;
+    }
+
     // 分核不均匀时部分核会少一个C核的全核同步
     if constexpr (IsOriKVExist) {
         if (this->processBS1ByCore < this->formerCoreProcessS1Num) {
