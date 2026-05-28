@@ -241,14 +241,10 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         }
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-        context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
-        Ops::Transformer::Gmm::FormatString("%d, %s, %s, %s", groupType_, isSingleWeight_ ? "TRUE" : "FALSE", isSingleX_ ? "TRUE" : "FALSE",
-                     isSingleY_ ? "TRUE" : "FALSE")
-            .c_str(),
-        Ops::Transformer::Gmm::FormatString("The values of %s cannot be %s", "group_type, isSingleWeight, isSingleX, isSingleY",
-                     "this combination")
-            .c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        context->GetNodeName(), "group_type",
+        Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
+        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %s", "group_type", "this value").c_str());
     return false;
 }
 
@@ -438,11 +434,19 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // split M, s-s-s
         return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
-    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-        context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
-        Ops::Transformer::Gmm::FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
-        Ops::Transformer::Gmm::FormatString("Under %s scene, the values of %s cannot be %s", "SPLIT_M",
-                     "group_type, isSingleWeight, isSingleX, isSingleY", "this combination")
+    OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+        context->GetNodeName(), "x, weight, y",
+        Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
+                     isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str(),
+        Ops::Transformer::Gmm::FormatString(
+            "Under SPLIT_M scene, x, weight, y only support 7 combinations: "
+            "multi-multi-multi, single-single-single, multi-multi-single, single-multi-multi, "
+            "single-multi-single, multi-single-multi, multi-single-single, "
+            "but current x is %s tensor, weight is %s tensor, y is %s tensor, "
+            "this combination is not supported",
+            isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi",
+            isSingleY_ ? "single" : "multi")
             .c_str());
     return false;
 }
@@ -459,11 +463,18 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
-    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-        context->GetNodeName(), "group_type, isSingleWeight, isSingleX, isSingleY",
-        Ops::Transformer::Gmm::FormatString("%d, %d, %d, %d", groupType_, isSingleWeight_, isSingleX_, isSingleY_).c_str(),
-        Ops::Transformer::Gmm::FormatString("Under %s scene, the values of %s cannot be %s", "SPLIT_K",
-                     "group_type, isSingleWeight, isSingleX, isSingleY", "this combination")
+    OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+        context->GetNodeName(), "x, weight, y",
+        Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
+                     isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str(),
+        Ops::Transformer::Gmm::FormatString(
+            "Under SPLIT_K scene, x, weight, y only support 4 combinations: "
+            "single-multi-multi, multi-single-multi, multi-single-single, single-single-single, "
+            "but current x is %s tensor, weight is %s tensor, y is %s tensor, "
+            "this combination is not supported",
+            isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi",
+            isSingleY_ ? "single" : "multi")
             .c_str());
     return false;
 }
