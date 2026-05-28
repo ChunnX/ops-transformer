@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<block name="AicpuCommonInc" install_own="$username:$usergroup" install_mod="440" install_type="all">
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aicpu" install_path="$(TARGET_ENV)/include/aicpu" install_type="all">
+        <file value="cust_cpu_utils.h" install_mod="550"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aicpu" install_path="$(TARGET_ENV)/include/aicpu" install_type="all">
+        <file value="cpu_attr_value.h" install_mod="550"/>
+        <file value="cpu_tensor.h" install_mod="550"/>
+        <file value="cpu_tensor_shape.h" install_mod="550"/>
+    </file_info>
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/aicpu" install_path="$(TARGET_ENV)/include/aicpu" install_type="all">
+        <file value="cpu_context.h" install_mod="550"/>
+        <file value="cpu_types.h" install_mod="550"/>
+    </file_info>
+</block>

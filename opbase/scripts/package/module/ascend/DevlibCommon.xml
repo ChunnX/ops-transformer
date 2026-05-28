@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<block name="DevlibCommon" install_own="$username:$usergroup" install_mod="440" install_type="all">
+    <dir_info value="common" install_mod="550">
+        <path value="$(TARGET_ENV)/devlib/linux"/>
+        <path value="$(TARGET_ENV)/devlib/linux/x86_64" install_softlink="$(TARGET_ENV)/devlib/x86_64"/>
+        <path value="$(TARGET_ENV)/devlib/linux/aarch64" install_softlink="$(TARGET_ENV)/devlib/aarch64"/>
+    </dir_info>
+</block>

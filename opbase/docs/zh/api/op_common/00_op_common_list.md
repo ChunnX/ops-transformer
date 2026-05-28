@@ -1,0 +1,32 @@
+# op_common API
+
+- [op\_common接口列表](op_common接口列表.md)
+- [log](log.md)
+  - [OP\_LOGE](OP_LOGE.md)
+  - [OP\_LOGD](OP_LOGD.md)
+  - [OP\_LOGI](OP_LOGI.md)
+  - [OP\_LOGW](OP_LOGW.md)
+  - [OP\_CHECK\_IF](OP_CHECK_IF.md)
+  - [OP\_CHECK\_NULL\_WITH\_CONTEXT](OP_CHECK_NULL_WITH_CONTEXT.md)
+
+- [math](math.md)
+  - [FloorDiv](FloorDiv.md)
+  - [FloorAlign](FloorAlign.md)
+  - [CeilDiv](CeilDiv.md)
+  - [CeilAlign](CeilAlign.md)
+  - [IsFloatEqual](IsFloatEqual.md)
+
+- [platform](platform.md)
+  - [GetAivCoreNum](GetAivCoreNum.md)
+  - [GetAicCoreNum](GetAicCoreNum.md)
+  - [GetUbSize](GetUbSize.md)
+  - [GetUbBlockSize](GetUbBlockSize.md)
+
+- [infershape](infershape.md)
+  - [SetUnknownRank](SetUnknownRank.md)
+  - [IsUnknownRank](IsUnknownRank.md)
+  - [SetUnknownShape](SetUnknownShape.md)
+  - [IsUnknownShape](IsUnknownShape.md)
+  - [InferShape4Broadcast](InferShape4Broadcast.md)
+  - [InferShape4Elewise](InferShape4Elewise.md)
+  - [InferShape4Reduce](InferShape4Reduce.md)
