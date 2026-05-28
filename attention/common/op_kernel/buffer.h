@@ -179,6 +179,20 @@ public:
         }
     }
 
+    // 极致性能静态Tensor方式：LocalTensor构造函数以固定offset创建tensor（完全抛弃TBuf/BufferManager）
+    // 等价于参考文档"方式2": LocalTensor<T>(TPosition, addr, count)
+    // 事件ID来自调用方编译期常量；SetFlag须由调用方在InitBuffers()中显式调用，此处不隐式执行
+    __aicore__ inline void InitStaticDirect(uint32_t offset, uint32_t size, TEventID p2cId, TEventID c2pId) {
+        tensor_ = LocalTensor<uint8_t>(BufferInfo<bufferType>::Position, offset, size);
+        size_ = size;
+        if ASCEND_IS_AIC {
+            if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
+                p2cEventId_ = p2cId;
+                c2pEventId_ = c2pId;
+            }
+        }
+    }
+
     template<HardEvent EventType>
     __aicore__ inline void Wait() {
         if ASCEND_IS_AIC {
