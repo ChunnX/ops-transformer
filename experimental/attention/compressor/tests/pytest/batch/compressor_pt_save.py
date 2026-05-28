@@ -339,9 +339,9 @@ def compressor_output_single(data_case):
     wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(data_type)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
+    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(torch.float32)
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32)
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()
