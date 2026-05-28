@@ -110,54 +110,54 @@ public:
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
         if (unlikely(!(xDimNumber == WQ_DIM_TWO))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "x",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "x",
                 std::to_string(xDimNumber), "The shape dim of x should be equal to 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wDimNumber == WQ_DIM_THREE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "weight",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "weight",
                 std::to_string(wDimNumber), "The shape dim of weight should be equal to 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wStorageDimNumber == WQ_DIM_FIVE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "weight(storage)",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "weight(storage)",
                 std::to_string(wStorageDimNumber), "The StorageShape dim of weight should be equal to 5");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(wScaleDimNumber == WQ_DIM_FOUR))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "scale",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "scale",
                 std::to_string(wScaleDimNumber), "The shape dim of scale should be equal to 4");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(xScaleDimNumber == WQ_DIM_THREE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "pertokenScale",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "pertokenScale",
                 std::to_string(xScaleDimNumber), "The shape dim of pertokenScale should be equal to 3");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(grouplistDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "groupList",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "groupList",
                 std::to_string(grouplistDimNumber), "The shape dim of groupList should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(logitDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "logit",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "logit",
                 std::to_string(logitDimNumber), "The shape dim of logit should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(rowindexDimNumber == WQ_DIM_ONE))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "rowIndex",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "rowIndex",
                 std::to_string(rowindexDimNumber), "The shape dim of rowIndex should be equal to 1");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (unlikely(!(outDimNumber == WQ_DIM_TWO))) {
-            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "out",
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "out",
                 std::to_string(outDimNumber), "The shape dim of out should be equal to 2");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (gmmParams_.bias != nullptr) {
             auto biasDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
             if (unlikely(!(biasDimNumber == WQ_DIM_TWO))) {
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "bias",
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "bias",
                     std::to_string(biasDimNumber), "The shape dim of bias should be equal to 2");
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -165,7 +165,7 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
             if (unlikely(!(shareInputDimNumber == WQ_DIM_TWO))) {
-                OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(ACLNN_NAME, "shareInput",
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(ACLNN_NAME, "shareInput",
                     std::to_string(shareInputDimNumber), "The shape dim of shareInput should be equal to 2");
                 return ACLNN_ERR_PARAM_INVALID;
             }
