@@ -93,7 +93,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - `max_recv_token_num`：每个Rank最大可接收Token数，默认值为0表示自动计算，数据数据类型支持`int64`。
     - `num_max_tokens_per_rank`：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小，数据数据类型支持`int64`。
     - `dispatch_quant_mode`：dispatch通信时量化模式，目前仅支持4（MX模式），数据数据类型支持`int64`。
-    - `dispatch_quant_out_type`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
+    - `dispatch_quant_out_dtype`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
     - `combine_quant_mode`：暂不支持该参数，使用默认值即可。
     - `comm_alg`：暂不支持该参数，使用默认值即可。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
@@ -116,7 +116,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 
 - **通信域使用约束**：
     - 仅支持 `EP`域，无 `TP` 域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
-    - 所有卡的 `moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_type`、`global_bs` 参数取值需保持一致。
+    - 所有卡的 `moe_expert_num`、`ep_world_size`、`ccl_buffer_size`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`global_bs` 参数取值需保持一致。
 
 - **参数约束**：
     - BS（x.dim0）范围 [1, 512]。
@@ -148,7 +148,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
+get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
 ```
 ## 参数说明
 
@@ -160,7 +160,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 - **intermediate_hidden**(`int`)：必选参数，表示中间层投影维度。预留参数，暂不支持。
 - **max_recv_token_num**(`int`)：可选参数，每个Rank最大可接收Token数，默认值为0表示自动计算。
 - **dispatch_quant_mode**(`int`)：可选参数，dispatch通信时量化模式，目前仅支持4（MX模式）。
-- **dispatch_quant_out_type**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
+- **dispatch_quant_out_dtype**(`int`)：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn）。
 - **combine_quant_mode**(`int`)：暂不支持该参数，使用默认值即可。
 - **comm_alg**(`String`)：暂不支持该参数，使用默认值即可。
 
@@ -230,7 +230,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
 
         def forward(self, x, topk_ids, topk_weights, weight1, weight_scales1, weight2,
                     weight_scales2, moe_expert_num, max_recv_token_num, comm_alg, dispatch_quant_mode,
-                    dispatch_quant_out_type):
+                    dispatch_quant_out_dtype):
             output_npu = self.distribute_buffer.npu_low_latency_mega_moe(
                 x=x,
                 topk_ids=topk_ids,
@@ -243,7 +243,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
                 max_recv_token_num=max_recv_token_num,
                 comm_alg=comm_alg,
                 dispatch_quant_mode=dispatch_quant_mode,
-                dispatch_quant_out_type=dispatch_quant_out_type
+                dispatch_quant_out_dtype=dispatch_quant_out_dtype
             )
             return output_npu
 
@@ -291,7 +291,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
             num_max_tokens_per_rank=0, num_topk=topK,
             hidden=H, intermediate_hidden=0,
             max_recv_token_num=max_recv_token_num,
-            dispatch_quant_mode=4, dispatch_quant_out_type=23
+            dispatch_quant_mode=4, dispatch_quant_out_dtype=23
         )
         # 运行mega_moe
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
