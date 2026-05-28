@@ -153,6 +153,16 @@ __aicore__ inline void MergeMask(LocalTensor<T> &maskNext, LocalTensor<T> &maskP
     MergeBand(maskNextUb, maskPreUb, loopCount);
 }
 
+template <typename T>
+__aicore__ inline void MergeMaskDn(LocalTensor<T> &maskNext, LocalTensor<T> &maskPre, uint32_t byteSize)
+{
+    uint64_t maskPreUb = maskPre.GetPhyAddr();
+    uint64_t maskNextUb = maskNext.GetPhyAddr();
+    uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
+
+    MergeBand(maskNextUb, maskPreUb, loopCount);
+}
+
 template <typename T, uint32_t s2BaseSize>
 __aicore__ inline void MaskUbCopyS1G(const LocalTensor<T>& maskTensor, int32_t headGSize, int32_t gSize,
     int32_t tailGSize, int32_t midS1Count)
@@ -431,6 +441,19 @@ __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTe
     }
 }
 
+__aicore__ inline uint64_t ComputeAttenMaskOffsetByDeltaDn(MaskInfo &info, int64_t delta)
+{
+    uint64_t offset = 0;
+    uint32_t attenMaskSizeAlign = info.gs1dealNum;
+    if (delta >= 0) {
+        offset = (delta < static_cast<int64_t>(info.nBaseSize)) ? delta : info.nBaseSize;
+    } else {
+        offset = (-delta < static_cast<int64_t>(attenMaskSizeAlign) ? -delta : attenMaskSizeAlign) *
+                 info.attenMaskS1Stride;
+    }
+    return offset + 1;
+}
+
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
@@ -452,10 +475,19 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info, uint
     return offset + 1;
 }
 
-template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
-__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info)
+__aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPreDn(MaskInfo &info, uint32_t s1StartIdx)
 {
-    uint64_t maskOffset = ComputeAttenMaskOffsetCompressDn(info, info.gs1StartIdx);
+    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size);
+    int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
+    return ComputeAttenMaskOffsetByDeltaDn(info, delta);
+}
+
+template <typename T, LAYOUT_Q layoutQ, bool isReconstructTemp, uint32_t s2BaseSize>
+__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             bool isPre = false)
+{
+    uint64_t maskOffset = isPre ? ComputeAttenMaskOffsetCompressPreDn(info, info.gs1StartIdx) :
+                                  ComputeAttenMaskOffsetCompressDn(info, info.gs1StartIdx);
     if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;

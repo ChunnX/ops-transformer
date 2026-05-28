@@ -115,6 +115,22 @@ CASES = [
         "p_scale": 1.0,
     },
     {
+        "name": "TND_S48_Q48_Nq8_Nkv1_D128_SPARSE4_AUTO_TND",
+        "B": 1,
+        "N_q": 8,
+        "N_kv": 1,
+        "D": 128,
+        "actual_seq_q": [48],
+        "actual_seq_kv": [64],
+        "enable_pa": False,
+        "kv_cache_layout": "BnNBsD",
+        "block_size": 512,
+        "sparse_mode": 4,
+        "pre_tokens": 32,
+        "next_tokens": 8,
+        "p_scale": 1.0,
+    },
+    {
         "name": "PA_NZ_S1023_Q1023_Nq80_Nkv8_D128_AUTO_TND",
         "B": 1,
         "N_q": 80,
@@ -141,18 +157,26 @@ def _set_case(module, case):
     module.ENABLE_PA = bool(case.get("enable_pa", module.ENABLE_PA))
     module.BLOCK_SIZE = int(case.get("block_size", module.BLOCK_SIZE))
     module.SPARSE_MODE = int(case.get("sparse_mode", module.SPARSE_MODE))
+    module.PRE_TOKENS = int(case.get("pre_tokens", 2147483647))
+    module.NEXT_TOKENS = int(case.get("next_tokens", 0))
     module.INPUT_LAYOUT = case.get("input_layout", "TND")
     module.Q_SCALE_LAYOUT = case.get("q_scale_layout", "AUTO")
     module.KV_CACHE_LAYOUT = case.get("kv_cache_layout", "PA_NZ")
     module.P_SCALE = float(case["p_scale"])
 
 
-def run_case(module, case):
+def _format_compare_error(compare_result):
+    if isinstance(compare_result, (list, tuple)):
+        return "compare_result=" + ", ".join(str(item) for item in compare_result)
+    return f"compare_result={compare_result}"
+
+
+def run_case(module, case, run_npu=False):
     _set_case(module, case)
     try:
         data = module.generate_data()
         q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = data
-        module.cpu_mxfp8_golden(
+        cpu_out = module.cpu_mxfp8_golden(
             q_fp8,
             k_fp8,
             v_fp8,
@@ -165,6 +189,30 @@ def run_case(module, case):
             qr_bf16,
             kr_bf16,
         )
+        if run_npu:
+            atten_out = module.npu_mxfp8_fa(
+                q_fp8,
+                k_fp8,
+                v_fp8,
+                deq_q,
+                deq_k,
+                deq_v,
+                p_scale,
+                module.ACTUAL_SEQ_Q,
+                module.ACTUAL_SEQ_KV,
+                block_table_torch,
+                qr_bf16,
+                kr_bf16,
+            )
+            cpu_tnd = module.convert_q_bnsd_to_layout(cpu_out, module.ACTUAL_SEQ_Q, "TND")
+            compare_result = module.result_compare_method.check_result(cpu_tnd, atten_out)
+            compare_status = compare_result[0] if isinstance(compare_result, (list, tuple)) else compare_result
+            if compare_status != "Pass":
+                return {
+                    "name": case["name"],
+                    "status": "FAILED",
+                    "error_message": _format_compare_error(compare_result),
+                }
         return {"name": case["name"], "status": "PASSED", "error_message": ""}
     except Exception as exc:
         return {"name": case["name"], "status": "FAILED", "error_message": f"{type(exc).__name__}: {exc}"}
@@ -173,9 +221,17 @@ def run_case(module, case):
 def main():
     parser = argparse.ArgumentParser(description="Run MXFP8 batch cases")
     parser.add_argument("--case", action="append", default=None, help="Run only matching case name substring")
+    parser.add_argument("--npu", "--with-npu", action="store_true", help="Run NPU path and compare with CPU golden")
+    parser.add_argument("--graph-path", type=int, default=None, choices=[0, 3, 5, 6, 7], help="Override GRAPH_PATH")
+    parser.add_argument("--device-id", type=int, default=None, help="Override DEVICE_ID for NPU execution")
     args = parser.parse_args()
 
     module = importlib.import_module("fia_fullquant_mxfp8_golden")
+    if args.graph_path is not None:
+        module.GRAPH_PATH = args.graph_path
+    if args.device_id is not None:
+        module.DEVICE_ID = args.device_id
+
     selected = CASES
     if args.case:
         selected = [case for case in CASES if any(item in case["name"] for item in args.case)]
@@ -184,8 +240,9 @@ def main():
 
     results = []
     for case in selected:
-        print(f"\n[CASE] {case['name']}")
-        results.append(run_case(module, case))
+        mode = "CPU+NPU" if args.npu else "CPU"
+        print(f"\n[CASE] {case['name']} [{mode}]")
+        results.append(run_case(module, case, run_npu=args.npu))
 
     passed = sum(item["status"] == "PASSED" for item in results)
     print("\n[SUMMARY]")

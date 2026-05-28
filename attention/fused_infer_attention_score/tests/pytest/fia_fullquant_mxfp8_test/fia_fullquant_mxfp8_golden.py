@@ -46,6 +46,8 @@ ENABLE_PA = True
 BLOCK_SIZE = 512
 
 SPARSE_MODE = 3
+PRE_TOKENS = 2147483647
+NEXT_TOKENS = 0
 FP8_DTYPE = torch.float8_e4m3fn
 QUANT_GROUP_SIZE = 32
 
@@ -702,6 +704,11 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
         delta = k_lens_acl - q_lens_acl
         causal_mask = k_range > (q_range + delta)
         mask_global = causal_mask | q_padding_mask | k_padding_mask
+    elif SPARSE_MODE == 4:
+        delta = k_lens_acl - q_lens_acl
+        next_mask = k_range > (q_range + delta + NEXT_TOKENS)
+        pre_mask = k_range < (q_range + delta - PRE_TOKENS)
+        mask_global = next_mask | pre_mask | q_padding_mask | k_padding_mask
     else:
         mask_global = q_padding_mask | k_padding_mask
 
@@ -971,6 +978,8 @@ class Network(nn.Module):
             num_key_value_heads=kv_n,
             softmax_scale=softmax_scale,
             input_layout=layout,
+            pre_tokens=PRE_TOKENS,
+            next_tokens=NEXT_TOKENS,
             sparse_mode=sparse_mode,
             query_quant_mode=6,
             key_quant_mode=6,
@@ -1012,6 +1021,8 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_k
             num_key_value_heads=kv_n,
             softmax_scale=softmax_scale,
             input_layout=layout,
+            pre_tokens=PRE_TOKENS,
+            next_tokens=NEXT_TOKENS,
             sparse_mode=sparse_mode,
             query_quant_mode=6,
             key_quant_mode=6,

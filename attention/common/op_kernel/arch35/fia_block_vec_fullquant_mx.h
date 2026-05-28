@@ -963,6 +963,7 @@ public:
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
+            tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // 256 * 64
         }
 
         if (constInfo.isSoftmaxLseEnable) {
@@ -1066,11 +1067,11 @@ public:
         }
 
         if (!IsSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1].template AllocTensor<uint8_t>();
             AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
                 maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
-            this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
+            this->attenMaskInQue[1].template FreeTensor(attenMaskUbPre);
         }
     }
 
@@ -1105,16 +1106,27 @@ public:
         maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
-        isSkipMask = IsSkipAttentionmask(maskInfo);
+        bool isSkipMaskForNext = IsSkipAttentionmask(maskInfo);
+        bool isSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
+        isSkipMask = isSkipMaskForNext && isSkipMaskForPre;
+        uint32_t maskSize = (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur;
         if (isSkipMask) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
             return;
         }
 
-        if (!isSkipMask) {
+        if (!isSkipMaskForNext) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskSize);
+        }
+
+        if (!isSkipMaskForPre) {
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1].template AllocTensor<uint8_t>();
+            AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
+                maskInfo, true);
+            MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
+            this->attenMaskInQue[1].template FreeTensor(attenMaskUbPre);
         }
     }
 

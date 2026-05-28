@@ -1580,7 +1580,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
     - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 不为 TND/TND_NTD 时，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵；Q_S 等于 1 时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
     - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
-    - MxFP8场景下，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
+    - MxFP8场景下，sparseMode 支持 0/3 模式；prefill 场景额外支持 4 模式。0 模式下不支持传入 attenMask 矩阵，3/4 模式需要传入 attenMask 矩阵
 
 #### ActualSeqLen参数组
 
