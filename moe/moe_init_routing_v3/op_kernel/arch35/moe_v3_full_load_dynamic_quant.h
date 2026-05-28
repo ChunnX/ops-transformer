@@ -227,7 +227,7 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
-    int64_t endRowIdx = startRowIdx + this->coreIndicesElements_;
+    int64_t endRowIdx = Min(startRowIdx + this->coreIndicesElements_, this->actualExpertIdxNum_);
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams smoothParams{1, static_cast<uint32_t>(this->cols_ * sizeof(float)), 0, 0, 0};
@@ -238,10 +238,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::ScatterOutXDynamicQ
 
     for (int64_t i = startRowIdx; i < endRowIdx && i < this->activeNum_; i++) {
         int32_t curExpertId = sortedExpertIdx.GetValue(i);
-        if (curExpertId < this->expertStart_ || curExpertId >= this->expertEnd_) {
-            break;
-        }
-
         int32_t srcIdx = sortedRowIdx.GetValue(i);
         int32_t expertIdx = curExpertId - this->expertStart_;
         LocalTensor<T> inLocal = inputXInQueue_.AllocTensor<T>();
