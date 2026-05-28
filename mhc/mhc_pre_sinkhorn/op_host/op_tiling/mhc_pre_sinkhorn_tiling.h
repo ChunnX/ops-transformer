@@ -59,6 +59,8 @@ TILING_DATA_FIELD_DEF(int64_t, tailDFactor);              // 尾次处理的d维
 TILING_DATA_FIELD_DEF(int64_t, iterTimes);                // Sinkhorn迭代轮数
 TILING_DATA_FIELD_DEF(float, hcEps);                      // Sinkhorn算法的epsilon参数
 TILING_DATA_FIELD_DEF(float, normEps);                    // 归一化的epsilon参数
+TILING_DATA_FIELD_DEF(float, min);                     // clamp最小值
+TILING_DATA_FIELD_DEF(float, max);                     // clamp最大值
 TILING_DATA_FIELD_DEF(int64_t, kBlockFactor);             // K维度块因子
 TILING_DATA_FIELD_DEF(int64_t, kFactor);                  // K维度每次处理大小
 TILING_DATA_FIELD_DEF(int64_t, tailKFactor);              // K维度尾次处理大小

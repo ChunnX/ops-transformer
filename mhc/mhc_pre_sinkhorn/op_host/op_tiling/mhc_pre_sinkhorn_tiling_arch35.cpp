@@ -92,6 +92,14 @@ ge::graphStatus MhcPreSinkhornTilingRegbase::GetAttr()
     auto needGradAttr = attrs->GetAttrPointer<bool>(4);
     needGrad_ = needGradAttr == nullptr ? false : *needGradAttr;
 
+    auto minValAttr = attrs->GetAttrPointer<float>(5);
+    float minVal = minValAttr == nullptr ? 0.0f : *minValAttr;
+
+    auto maxValAttr = attrs->GetAttrPointer<float>(6);
+    float maxVal = maxValAttr == nullptr ? 1.0f : *maxValAttr;
+
+    tilingData_.set_min(minVal);
+    tilingData_.set_max(maxVal);
     return ge::GRAPH_SUCCESS;
 }
 

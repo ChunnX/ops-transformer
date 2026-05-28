@@ -252,17 +252,17 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
 }
 
 aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, float min, float max,
     int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-    aclTensor *sumOut, aclTensor *normOut,
+    aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
     
 {
     L2_DFX_PHASE_1(aclnnMhcPreSinkhorn,
-                   DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward),
-                   DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut));
+                   DFX_IN(x, phi, alpha, bias, min, max, hcMult, numIters, hcEps, normEps, needBackward),
+                   DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut));
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
@@ -285,8 +285,8 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *kernelOut = l0op::MhcPreSinkhorn(
-        xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward,
-        hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, uniqueExecutor.get());
+        xContiguous, phiContiguous, alphaContiguous, biasContiguous, min, max, hcMult, numIters, hcEps, normEps, needBackward,
+        hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, uniqueExecutor.get());
     CHECK_RET(kernelOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

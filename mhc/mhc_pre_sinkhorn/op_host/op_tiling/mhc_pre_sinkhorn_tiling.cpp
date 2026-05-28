@@ -52,6 +52,8 @@ constexpr int64_t ITER_TIMES_ATTR_IDX = 1;
 constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t NORM_EPS_ATTR_IDX = 3;
 constexpr int64_t NEED_BACKWARD_ATTR_IDX = 4;
+constexpr int64_t MIN_VAL_ATTR_IDX = 5;
+constexpr int64_t MAX_VAL_ATTR_IDX = 6;
 constexpr int64_t DEFAULT_ITER_TIMES = 20;
 constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 constexpr int64_t MAX_BS_PER_LOOP = 32;
@@ -101,6 +103,15 @@ ge::graphStatus MhcPreSinkhornTiling::GetAttr()
 
     auto needBackwardAttr = attrs->GetAttrPointer<bool>(NEED_BACKWARD_ATTR_IDX);
     needGrad_ = needBackwardAttr == nullptr ? true : *needBackwardAttr;
+
+    auto minValAttr = attrs->GetAttrPointer<float>(MIN_VAL_ATTR_IDX);
+    float minVal = minValAttr == nullptr ? 0.0f : *minValAttr;
+
+    auto maxValAttr = attrs->GetAttrPointer<float>(MAX_VAL_ATTR_IDX);
+    float maxVal = maxValAttr == nullptr ? 1.0f : *maxValAttr;
+
+    tilingData_.set_min(minVal);
+    tilingData_.set_max(maxVal);
     return ge::GRAPH_SUCCESS;
 }
 

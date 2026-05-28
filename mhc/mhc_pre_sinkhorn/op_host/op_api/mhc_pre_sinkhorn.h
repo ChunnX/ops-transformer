@@ -29,6 +29,8 @@ namespace l0op {
  * @param [in] phi: Weight matrix, shape is [D, hcMix], dtype is FP32
  * @param [in] alpha: Scaling coefficients, shape is [hcMix], dtype is FP32
  * @param [in] bias: Bias vector, shape is [hcMix], dtype is FP32
+ * @param [in] min: clamp min value
+ * @param [in] max: clamp max value
  * @param [in] hcMult: Number of heads (n)
  * @param [in] numIters: Number of Sinkhorn iterations
  * @param [in] hcEps: Epsilon value for Sinkhorn iteration
@@ -42,15 +44,16 @@ namespace l0op {
  * @param [out] invRms: 1/r result of RmsNorm (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
  * @param [out] sumOut: Intermediate sum results from Sinkhorn (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
  * @param [out] normOut: Intermediate norm results from Sinkhorn (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
+ * @param [out] reduceOut: dtype is FP32
  * @param [in] executor: Op executor
  * @return aclTensor*: Output tensor hin
  */
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                const aclTensor *bias, float min, float max, int64_t hcMult, int64_t numIters, double hcEps,
                                 double normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                aclTensor *sumOut, aclTensor *normOut,
+                                aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
                                 aclOpExecutor *executor);
 
 }

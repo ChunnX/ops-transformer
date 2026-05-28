@@ -29,20 +29,20 @@ namespace l0op {
 OP_TYPE_REGISTER(MhcPreSinkhorn);
 
 static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                             const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                             const aclTensor *bias, float min, float max, int64_t hcMult, int64_t numIters, double hcEps,
                                              double normEps, bool needBackward,
                                              aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                              aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                             aclTensor *sumOut, aclTensor *normOut,
+                                             aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
                                              aclOpExecutor *executor)
 {
-    L0_DFX(MhcPreSinkhornAiCore, x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward,
-           hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
+    L0_DFX(MhcPreSinkhornAiCore, x, phi, alpha, bias, min, max, hcMult, numIters, hcEps, normEps, needBackward,
+           hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut);
     
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPreSinkhorn,
-        OP_INPUT(x, phi, alpha, bias),
-        OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut),
+        OP_INPUT(x, phi, alpha, bias, min, max),
+        OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut),
         OP_ATTR(hcMult, numIters,  static_cast<float>(hcEps),  static_cast<float>(normEps), needBackward));
     
     OP_CHECK(ret == ACLNN_SUCCESS,
@@ -52,15 +52,15 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
 }
 
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                const aclTensor *bias, float min, float max, int64_t hcMult, int64_t numIters, double hcEps,
                                 double normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                aclTensor *sumOut, aclTensor *normOut,
+                                aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
                                 aclOpExecutor *executor)
 {
-    return MhcPreSinkhornAiCore(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward,
-                                hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, executor);
+    return MhcPreSinkhornAiCore(x, phi, alpha, bias, min, max, hcMult, numIters, hcEps, normEps, needBackward,
+                                hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, executor);
 }
 
 } // namespace l0op
