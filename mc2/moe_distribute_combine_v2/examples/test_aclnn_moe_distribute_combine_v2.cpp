@@ -139,7 +139,7 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     int64_t globalBS = BS * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 0;
     int64_t outDtype = 0;
-    int64_t commQuantMode = 0;
+    int64_t commQuantMode = 4;
     int64_t groupListType = 0;
     int64_t localExpertNum;
     int64_t A;
@@ -242,6 +242,37 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclrtMemcpy(
         custom_ptr + aclshmem_my_pe() * trans_size * sizeof(int32_t), trans_size * sizeof(int32_t), input.data(),
         trans_size * sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE);
+
+    // 确保 vector 空间足够 (sizeof(uint64_t) / sizeof(op::fp16_t) = 4)
+        if (expandXHostData.size() >= 4) {
+            std::memcpy(expandXHostData.data(), &custom_ptr_addr, sizeof(uint64_t));
+        }
+        int processNumPerExpert = globalBS / epRecvCountsShapeSize;
+        int remainNum = globalBS % epRecvCountsShapeSize;
+        std::vector<int32_t> perTokenExpertVec(globalBS * K);
+        // TODO 这里不整除场景会有问题 这里可能写的有问题
+        std::vector<int32_t> expertIdsHostData(expertIdsShapeSize);
+        int index = 0;
+        for (int i = 0; i < (globalBS * K); i++) {
+            perTokenExpertVec[i] = i % moeExpertNum; // 先确定每个token发送给哪个专家 这个专家是全局的专家id
+            if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果这个token是发送给本卡的专家
+                epRecvCountsHostData[epRecvCountsShapeSize - 1]++; // 最后一个位置是要发送出去的所有token数目
+            }
+            int curRank = i / (BS * K);
+            if (curRank == pe_id) { // 如果是本卡的输入token
+                // 本卡所有的输入token对应的topk个专家列表，用于在localwindowcopy的时候确定是按照哪种专家进行计算
+                expertIdsHostData[i % (BS * K)] = perTokenExpertVec[i]; 
+            }
+            if ((perTokenExpertVec[i]) / localExpertNum == pe_id) { // 如果这个token是发送给本卡的专家
+                expandIdxHostData[index * 3] = i / (BS * K); // toRank
+                expandIdxHostData[index * 3 + 1] = i % (BS * K) / K; // tokenId
+                expandIdxHostData[index * 3 + 2] = i % (BS * K) % K; // topkId
+                index++;
+            }
+        }
+        for(int i = 0; i < index; i++) {
+        std::cout << expandIdxHostData[i * 3] << " " << expandIdxHostData[i * 3 + 1] << " " << expandIdxHostData[i * 3 + 2] << std::endl;
+        }
 
     // 构造device侧变量
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
