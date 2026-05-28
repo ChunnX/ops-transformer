@@ -16,7 +16,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
-        OPTYPE bandwidth_test bandwidth_test ACLNNTYPE aclnn aclnn_inner
+        OPTYPE bandwidth_test ACLNNTYPE aclnn aclnn_inner
     )
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
@@ -30,6 +30,6 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     endif()
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE bandwidth_test bandwidth_test ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(OPTYPE bandwidth_test ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
 endif()
