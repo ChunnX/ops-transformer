@@ -118,7 +118,7 @@ MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR exper
     pipe_->InitBuffer(bufk4RecipSumW_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufs_, AlignBytes(tilingData_->baseRows * 1, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufs_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
 }
 
 template <typename T>
