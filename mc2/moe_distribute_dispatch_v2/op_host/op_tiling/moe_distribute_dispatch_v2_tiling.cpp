@@ -361,7 +361,7 @@ static bool CheckTensorNzFormat(const gert::CompileTimeTensorDesc *desc, const c
         OPS_LOG_E(nodeName, "%s desc is null.", tensorName);
         return false;
     }
-    if (static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat())) != ge::FORMAT_FRACTAL_NZ) {
+    if (static_cast<ge::Format>(ge::GetPrimaryFormat(desc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ) {
         OPS_LOG_E(nodeName, "%s format is invalid.", tensorName);
         return false;
     }
