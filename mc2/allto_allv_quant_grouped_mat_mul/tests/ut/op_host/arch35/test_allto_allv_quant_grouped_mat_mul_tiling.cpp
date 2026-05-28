@@ -71,6 +71,7 @@ TEST_P(AlltoAllvQuantGroupedMatMulTilingTest, param)
             {"groupSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ccu")},
         },
         &compileInfo,
         "3510",
