@@ -193,6 +193,29 @@ def main() -> int:
         for f in filtered_files:
             logger.info(f"  剩余文件: {f}")
         
+        mc2_external_files = [f for f in filtered_files
+                              if not (normalize_path(f).startswith("mc2/")
+                                      or normalize_path(f).startswith(mc2_path + "/")
+                                      or normalize_path(f) == mc2_path)]
+        if mc2_external_files:
+            logger.info("=" * 60)
+            logger.info("检测到 mc2 外部文件变更（非 mc2/ 开头），触发全量测试")
+            logger.info(f"mc2 外部文件数量: {len(mc2_external_files)}")
+            for f in mc2_external_files:
+                logger.info(f"  mc2 外部文件: {f}")
+            all_ops = get_all_ops_with_products(dependency_data, logger)
+            all_ops = adjust_supported_products_by_arch(all_ops, {}, soc_types, logger)
+            all_ops = filter_ops_by_whitelist(all_ops, whitelist_ops, logger)
+            write_output_json(all_ops, args.output_json, logger)
+            if soc_types:
+                soc_name = sorted(soc_types)[0]
+                output_dir = str(Path(args.output_json).parent)
+                write_soc_json(all_ops, soc_name, output_dir, logger)
+            logger.info("=" * 60)
+            logger.info("处理完成（全量测试模式 - mc2 外部文件）")
+            logger.info("=" * 60)
+            return 0
+        
         if not filtered_files:
             logger.info("=" * 60)
             logger.info("白名单过滤后无剩余变更文件，无需执行任何测试")
