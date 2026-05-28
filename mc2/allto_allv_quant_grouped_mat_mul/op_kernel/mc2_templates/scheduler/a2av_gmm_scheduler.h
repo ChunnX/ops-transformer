@@ -129,7 +129,7 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     GmmTilingDataType, GmmArrayAddrType>::Process()
 {
     if (tilingData_->isNeedMM != 0) {
-        localComputeOp.Process(0, 0);
+        localComputeOp.Process(0, 1);
     }
     if constexpr (MX_QUANT_MODE) {
         if (isScaleBatchMode_) {
@@ -190,13 +190,11 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
         if constexpr (MX_QUANT_MODE) {
             commOp.WaitScale(startExpertIdx);
             if (isNeedPermute_) {
-                SyncAll<true>();
                 commOp.PermuteScale(startExpertIdx, actualExpertNum);
             }
         }
         commOp.Wait(startExpertIdx);
         if (isNeedPermute_) {
-            SyncAll<true>();
             commOp.PermuteData(startExpertIdx, actualExpertNum);
         }
         SyncAll<false>();

@@ -83,7 +83,11 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     constexpr bool IS_SHARED_EXPERT = true;
     constexpr bool IS_NOT_SHARED_EXPERT = false;
 
-    // workspace布局计算
+    // workspace布局 (后通信模式):
+    //   [0, wsGmmOutputSize)                 → 路由专家 GMM 输出 (每轮从偏移0开始写入)
+    //   [+, wsGmmComputeWorkspaceSize)       → GmmComputeOp 内部空间
+    //   [+, wsSharedGmmComputeWorkspaceSize) → SharedGmmComputeOp 内部空间
+    //   [+, wsPermuteOutSize)                → PermuteSend 重排空间 (expert优先→rank优先)
     uint64_t wsOffset = 0;
     GM_ADDR gmmOutputGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsGmmOutputSize;
@@ -91,8 +95,7 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
     wsOffset += tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
     GM_ADDR sharedGmmComputeWSGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsSharedGmmComputeWorkspaceSize;
-    GM_ADDR commRecvGM = userWorkspace + wsOffset;
-    wsOffset += tilingData_->workspaceInfo.wsCommRecvSize;
+    GM_ADDR permuteSendGM = userWorkspace + wsOffset;
     wsOffset += tilingData_->workspaceInfo.wsPermuteOutSize;
 
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
@@ -107,9 +110,10 @@ quant_grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gm
                                                      false, TILINGKEY_MATMUL_TRANS, true, false>;
     using GmmA2avSchedulerType =
         GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
-    // hccl: sendBuffer=GMM输出, recvBuffer=通信接收缓冲, permuteBuffer=最终输出y
+    // hccl: sendBuffer=重排后数据(permuteSendGM)或直接GMM输出(expertNum=1时无需重排)
+    GM_ADDR sendBufferAddr = (tilingData.taskTilingInfo.expertNum > 1) ? permuteSendGM : gmmOutputGM;
     HcclOpType hcclOp;
-    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, gmmOutputGM, commRecvGM, yGM);
+    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM, gmmOutputGM);
     // gmm: yGM=GMM输出缓冲(通信发送源), workspaceGM=groupList+ptrTable区域
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);

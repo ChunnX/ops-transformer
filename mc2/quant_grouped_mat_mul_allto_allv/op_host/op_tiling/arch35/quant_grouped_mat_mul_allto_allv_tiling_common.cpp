@@ -733,7 +733,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
 
-    uint32_t expertNum = static_cast<uint32_t>(localParams_.ep);
+    uint32_t expertNum = static_cast<uint32_t>(2);
     gmmQTilingCommonInfoPtr->expertNum = expertNum;
     gmmQTilingCommonInfoPtr->mainLoopExpertNum = expertNum;
     gmmQTilingCommonInfoPtr->tailLoopExpertNum =
@@ -760,20 +760,14 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize = mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
 
-    // AlltoAllv 通信接收缓冲：接收的数据按rank排列，需要临时空间再Permute到yGM
-    uint64_t commRecvSize = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
-    localTilingData_.workspaceInfo.wsCommRecvSize = commRecvSize;
-
-    // Permute 数据重排空间（expertNum>1时：commRecv → permuteOut → yGM）
-    // 当expertNum=1时不需要Permute，但分配空间以确保安全性
+    // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
+    // expertNum=1时无需Permute, GMM输出直接作为sendBuffer
     uint64_t permuteOutSize = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
-    permuteOutSize = permuteOutSize * 2;
     localTilingData_.workspaceInfo.wsPermuteOutSize = permuteOutSize;
 
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +
                      localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize +
-                     localTilingData_.workspaceInfo.wsCommRecvSize +
                      localTilingData_.workspaceInfo.wsPermuteOutSize;
 
     return ge::GRAPH_SUCCESS;

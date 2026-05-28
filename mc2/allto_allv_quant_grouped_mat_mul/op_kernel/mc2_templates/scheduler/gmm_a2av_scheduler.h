@@ -19,7 +19,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "basic_api/kernel_basic_intf.h"
-#include "a2av_gmm_utils.h"
+#include "../a2av_gmm_utils.h"
 
 using namespace AscendC;
 
@@ -42,19 +42,19 @@ public:
             uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
             computeOp_.Process(start, actualExpertNum);
             SyncAll<false>();
-            hcclOp_.Launch(start, actualExpertNum);
+            if (isNeedPermute) {
+                SyncAll<true>();
+                hcclOp_.PermuteSendAfterCompute(start, actualExpertNum);
+            }
+            hcclOp_.LaunchCommData(start, actualExpertNum);
         }
 
         if (IsNeedMM) {
-            shareComputeOp_.Process(0);
-            SyncAll<false>();
+            shareComputeOp_.Process(0, 1);
         }
 
-        hcclOp_.WaitAll(e);
-
-        if (isNeedPermute) {
-            SyncAll<false>();
-            hcclOp_.PermuteData(0, e);
+        for (uint32_t start = 0; start < e; start += expertNum) {
+            hcclOp_.Wait(start);
         }
 
         this->End();
