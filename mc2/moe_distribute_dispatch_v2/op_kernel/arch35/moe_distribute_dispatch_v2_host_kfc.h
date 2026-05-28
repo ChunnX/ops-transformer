@@ -520,7 +520,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         copyInAxisH_ = Ceil(axisH_, FP4_ELEMS_PER_BYTE);
     }
 
-    LOG_INIT(tpipe_,epRankId_);
+    LOG_INIT(epRankId_);
 }
 
 template <TemplateDispatchKFCTypeClass>

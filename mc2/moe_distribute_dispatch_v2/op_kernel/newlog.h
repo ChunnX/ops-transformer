@@ -26,7 +26,7 @@ constexpr bool is_fp_point_v =
 class Log {
 public:
 
-    __aicore__ inline void Init(TPipe * tpipe_,int32_t rankId);
+    __aicore__ inline void Init(int32_t rankId);
 
     template<typename T>
     __aicore__ inline void print_value(const T& val);
@@ -64,7 +64,6 @@ public:
 private:
     int32_t rankId_ = -1;
     uint32_t aivId_ = GetBlockIdx();
-    TPipe * tpipe_ = nullptr;
 };
 
 template<typename T>
@@ -80,8 +79,7 @@ __aicore__ inline void Log::print_value(const T& val) {
     }
 }
 
-__aicore__ inline void Log::Init(TPipe * tpipe,int32_t rankId) {
-    tpipe_ = tpipe;
+__aicore__ inline void Log::Init(int32_t rankId) {
     rankId_ =rankId;
 }
 
