@@ -147,11 +147,23 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (groupEp != nullptr) {
+        (void)strncpy(groupEpBuf, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
     const char *groupTpCombineV2Temp = groupTp;
     if (is910B) {
         groupTpCombineV2Temp = "";
     } else if (is950) {
         performanceInfoOptionalCombineV2Temp = nullptr;
+    }
+    if (groupTpCombineV2Temp != nullptr) {
+        (void)strncpy(groupTpBuf, groupTpCombineV2Temp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (commAlg != nullptr) {
+        (void)strncpy(commAlgBuf, commAlg, HCCL_GROUP_NAME_MAX - 1);
     }
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
@@ -160,9 +172,9 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             xActiveMaskOptional, activationScaleOptional, weightScaleOptional, groupListOptional, expandScalesOptional,
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptionalCombineV2Temp,
-            const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, const_cast<char *>(groupTpCombineV2Temp),
+            groupEpBuf, epWorldSize, epRankId, moeExpertNum, groupTpBuf,
             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
+            commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -176,7 +188,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             sharedExpertXOptional, elasticInfoOptional, oriXOptional, constExpertAlpha1Optional,
             constExpertAlpha2Optional, constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId,
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-            globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum,
+            globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, zeroExpertNum, copyExpertNum,
             constExpertNum, xOut, workspaceSize, executor);
 #endif
     }

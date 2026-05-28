@@ -156,13 +156,26 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         performanceInfoOptionalDispatchV2Temp = nullptr;
     }
 
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (groupEp != nullptr) {
+        (void)strncpy(groupEpBuf, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (groupTpDispatchV2Temp != nullptr) {
+        (void)strncpy(groupTpBuf, groupTpDispatchV2Temp, HCCL_GROUP_NAME_MAX - 1);
+    }
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    if (commAlg != nullptr) {
+        (void)strncpy(commAlgBuf, commAlg, HCCL_GROUP_NAME_MAX - 1);
+    }
+
     int64_t ydtype = expandXOut->GetDataType();
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
-            const_cast<char *>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
+            performanceInfoOptionalDispatchV2Temp, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
+            groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf, zeroExpertNum,
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
@@ -175,7 +188,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
             tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
+            commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
             expandScalesOut, workspaceSize, executor);
 #endif
