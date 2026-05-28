@@ -204,7 +204,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
                                 GM_ADDR post, GM_ADDR combFrag,
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                GM_ADDR sumOut, GM_ADDR normOut,
+                                GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR reduceOut,
                                 GM_ADDR workspace,
                                 const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr, int64_t bsOffset, bool isTailBsLoop = false)
     {
@@ -227,6 +227,7 @@ public:
             invRmsGm.SetGlobalBuffer((__gm__ float *)invRms + bsOffset);
             sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
             normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
+            reduceOutGm.SetGlobalBuffer((__gm__ float *)reduceOut);
         }
 
         // InQue
@@ -594,6 +595,7 @@ private:
     GlobalTensor<float> invRmsGm;
     GlobalTensor<float> sumOutGm;
     GlobalTensor<float> normOutGm;
+    GlobalTensor<float> reduceOutGm;
 
     bool needGrad_ = false;
     bool isTailBsLoop_ = false;
