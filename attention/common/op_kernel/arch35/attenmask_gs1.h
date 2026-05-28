@@ -84,36 +84,6 @@ __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t mask
     }
 }
 
-__simd_vf__ inline void InvertMaskDnVF(const uint64_t maskUb, const uint16_t loopCount)
-{
-    RegTensor<uint32_t> vreg_mask;
-    RegTensor<uint32_t> vreg_xor;
-    RegTensor<uint32_t> vreg_not;
-    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
-    Duplicate(vreg_xor, 0x1010101);
-
-    for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_mask, (__ubuf__ uint32_t *&)maskUb + i * 64);
-        Xor(vreg_not, vreg_mask, vreg_xor, preg_all);
-        StoreAlign((__ubuf__ uint32_t *&)maskUb + i * 64, vreg_not, preg_all);
-    }
-}
-
-__simd_vf__ inline void OrMaskDnVF(const uint64_t maskDstUb, const uint64_t maskSrcUb, const uint16_t loopCount)
-{
-    RegTensor<uint32_t> vreg_src;
-    RegTensor<uint32_t> vreg_dst;
-    RegTensor<uint32_t> vreg_or;
-    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
-
-    for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_src, (__ubuf__ uint32_t *&)maskSrcUb + i * 64);
-        LoadAlign(vreg_dst, (__ubuf__ uint32_t *&)maskDstUb + i * 64);
-        Or(vreg_or, vreg_src, vreg_dst, preg_all);
-        StoreAlign((__ubuf__ uint32_t *&)maskDstUb + i * 64, vreg_or, preg_all);
-    }
-}
-
 template <typename T, uint32_t s2BaseSize>
 __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
     uint16_t tailGLoop, uint16_t midS1Count)
@@ -191,25 +161,6 @@ __aicore__ inline void MergeMaskDn(LocalTensor<T> &maskNext, LocalTensor<T> &mas
     uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
 
     MergeBand(maskNextUb, maskPreUb, loopCount);
-}
-
-template <typename T>
-__aicore__ inline void InvertMaskDn(LocalTensor<T> &mask, uint32_t byteSize)
-{
-    uint64_t maskUb = mask.GetPhyAddr();
-    uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
-
-    InvertMaskDnVF(maskUb, loopCount);
-}
-
-template <typename T>
-__aicore__ inline void OrMaskDn(LocalTensor<T> &maskDst, LocalTensor<T> &maskSrc, uint32_t byteSize)
-{
-    uint64_t maskDstUb = maskDst.GetPhyAddr();
-    uint64_t maskSrcUb = maskSrc.GetPhyAddr();
-    uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
-
-    OrMaskDnVF(maskDstUb, maskSrcUb, loopCount);
 }
 
 template <typename T, uint32_t s2BaseSize>
