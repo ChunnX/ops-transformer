@@ -32,6 +32,13 @@ extern "C" {
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
+static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, size_t maxCopyLen)
+{
+    if (src != nullptr) {
+        (void)strncpy_s(dst, dstSize, src, maxCopyLen);
+    }
+}
+
 // check nullptr
 bool CombineArnCheckNotNull(const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
     const aclTensor* epSendCounts, [[maybe_unused]] const aclTensor* tpSendCounts, const aclTensor* expertScales,
@@ -98,6 +105,12 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(const aclTen
         expertScales, groupEp, groupTp, xOut, is910B);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret;
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupEpBuf, HCCL_GROUP_NAME_MAX, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupTpBuf, HCCL_GROUP_NAME_MAX, groupTp, HCCL_GROUP_NAME_MAX - 1);
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
     if (is910B) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Not support 910B platform.");
         return ACLNN_ERR_PARAM_INVALID;
@@ -107,9 +120,9 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSizeBase(const aclTen
             tpSendCountsOptional, xActiveMaskOptional, activationScaleOptional, weightScaleOptional,
             groupListOptional, expandScalesOptional, sharedExpertXOptional, elasticInfoOptional, oriXOptional,
             constExpertAlpha1Optional, constExpertAlpha2Optional, constExpertVOptional,
-            const_cast<char*>(groupEp), epWorldSize,
-            epRankId, moeExpertNum, const_cast<char*>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), normEps,
+            groupEpBuf, epWorldSize,
+            epRankId, moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, commAlgBuf, normEps,
             zeroExpertNum, copyExpertNum, constExpertNum, yOut, rstdOut, xOut, workspaceSize, executor);
     }
     return ret;
