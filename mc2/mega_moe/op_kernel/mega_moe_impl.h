@@ -232,7 +232,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // GroupMatmulSwigluQuantA8W4 - AntiQuantWeight + GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
-    BlockEpilogueSwigluMxQuant<ElementA, float, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom, uint32_t expert_id)
 {
@@ -307,6 +307,11 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+    bool hasAssignedTiles = startLoopIdx < tileNum;
+    if (!hasAssignedTiles) {
+        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        return;
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
@@ -609,9 +614,6 @@ __aicore__ inline void GroupMatmul2A8W4(
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
-    // constexpr bool transA = false;
-    // constexpr bool transB = true; // 后续要改为从模板参数获取转置属性
-
     constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
     constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
     constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
@@ -660,6 +662,11 @@ __aicore__ inline void GroupMatmul2A8W4(
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
+    bool hasAssignedTiles = startLoopIdx < tileNum;
+    if (!hasAssignedTiles) {
+        startBlockIdx = (startBlockIdx + tileNum) % blockNum;
+        return;
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
