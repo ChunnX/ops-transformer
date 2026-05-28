@@ -142,24 +142,25 @@ public:
     {
         EvenCoreInfo info;
         constexpr static uint32_t SFTG_TILE_LEN = 8 * 1024; // POST一次处理元素的个数
+        uint32_t data_size = SFTG_TILE_LEN * head_dim_;
         uint32_t ub_offset = 0;
-        dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-        dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-        attention_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
-        attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(INPUT_TYPE);
+        dy_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(INPUT_TYPE);
+        dy_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(INPUT_TYPE);
+        attention_in_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(INPUT_TYPE);
+        attention_in_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(INPUT_TYPE);
 
-        dy_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(float);
-        dy_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(float);
-        attention_out_ping_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(float);
-        attention_out_pong_ = ub_buffer.GetWithOffset<float>(SFTG_TILE_LEN, ub_offset);
-        ub_offset += SFTG_TILE_LEN * sizeof(float);
+        dy_out_ping_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(float);
+        dy_out_pong_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(float);
+        attention_out_ping_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(float);
+        attention_out_pong_ = ub_buffer.GetWithOffset<float>(data_size, ub_offset);
+        ub_offset += data_size * sizeof(float);
         sftg_tmp_tensor = ub_buffer.GetWithOffset<uint8_t>(tilingData->sftgTmpSpaceSize, ub_offset);
         ub_offset += tilingData->sftgTmpSpaceSize;
 
@@ -296,14 +297,14 @@ private:
         uint64_t sftgGmOffset = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * sub_m_process * 8;
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
 
-        DataCopy(lse_tensor_, sftg_workspace_[sftgGmOffset], m_process_align * 8);
+        DataCopy(lse_tensor_, sftg_workspace_[sftgGmOffset], sub_real_m_process * 8);
         SET_FLAG(MTE2, V, EVENT_ID0);
         WAIT_FLAG(MTE2, V, EVENT_ID0);
 
         SubBrcb(src_ub_tensor, src_ub_tensor, lse_tensor_, sub_m_process, n_process_align);
         PipeBarrier<PIPE_V>();
 
-        Mul(src_ub_tensor, src_ub_tensor, softmax_ub_tensor, sub_m_process * n_process_align);
+        Mul(src_ub_tensor, src_ub_tensor, softmax_ub_tensor, data_size);
         PipeBarrier<PIPE_V>();
 
         Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
@@ -314,12 +315,13 @@ private:
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
 
-        DataCopyParams dataCopyParams;
-        dataCopyParams.blockCount = n_process_align / C0_SIZE;
-        dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
+        // DataCopyParams dataCopyParams;
+        // dataCopyParams.blockCount = n_process_align / C0_SIZE;
+        // dataCopyParams.blockLen = sub_m_process * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        // dataCopyParams.srcStride = 0;
+        // dataCopyParams.dstStride = (m_process_align - sub_m_process) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
+        // DataCopy(dst_l1_tensor[l1_offset], softmax_res_nz_tensor_, dataCopyParams);
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void ComputeVecPre(const GlobalTensor<float> &dst_tensor, const LocalTensor<float> &src_tensor,
