@@ -156,10 +156,9 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
 
-    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",	 
-            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,	 
+    OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
+            baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,
             baseParams_->stateCacheStrideDim0);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -794,13 +793,13 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                 OP_LOGE(context_->opName, "blockSize should not be less than 1, but got %u",
                         pageAttentionParams_->blockSize),
                 return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)) { 
-        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize, 
-                    OP_LOGE(context_->opName, 
-                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u", 
-                            static_cast<uint8_t>(CACHE_MODE::CYCLE), baseParams_->batchSize, 
-                            pageAttentionParams_->blockSize), 
-                    return ge::GRAPH_FAILED); 
+    if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)) {
+        OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
+                            static_cast<uint8_t>(CACHE_MODE::CYCLE), baseParams_->batchSize,
+                            pageAttentionParams_->blockSize),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
