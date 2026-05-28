@@ -246,13 +246,6 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
         }
         SyncAll<true>();
 
-        // === 验证 tag 残留 ===
-        if (GetBlockIdx() == 0) {
-            hccl_.BarrierAll();  // 强制同步所有 rank，重置 flag 状态
-        }
-        SyncAll<true>();
-        // === 验证结束 ===
-
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
         handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
@@ -288,6 +281,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
     GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
 
+    SyncAll<true>();
     tPipe_->Reset();
     reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
     reduceSum_.ExecuteReduceSum();
