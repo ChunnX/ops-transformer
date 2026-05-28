@@ -17,6 +17,12 @@
 #define FIA_TILING_INFO_H
 
 #include <vector>
+// Brings in the full NpuArch enum definition (DAV_2201 etc.) — fia_tiling_base.h
+// only pulls in the forward declaration via <tiling/platform/platform_ascendc.h>
+// on cann-8.5.0-beta.1, so member references like `NpuArch::DAV_2201` below need
+// the definition reachable directly. (Unrelated to blitz_sparse_attention; this
+// file is part of attention/common.)
+#include "platform/soc_spec.h"
 #include "fia_tiling_base.h"
 
 namespace optiling {
