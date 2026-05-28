@@ -118,8 +118,8 @@ constexpr uint32_t CVDIFF_SMALL_QS_THRESHOLDS = 16;
 constexpr uint32_t CVDIFF_MM1RES_UB_SIZE = 16384; // 128 * 128
 constexpr uint32_t CVDIFF_SOUTER_FACTOR_DEFAULT = 128;
 constexpr uint32_t CVDIFF_SMALL_KV_THRESHOLDS = 1024;
-constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_KVS = 512;   // kv_s <= 512 scene sinner slice size
-constexpr uint32_t CVDIFF_SINNER_FACTOR_DEFAULT = 1024;    // CV diff general scene sinner slice size
+constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_KVS = 128;   // kv_s <= 512 scene sinner slice size
+constexpr uint32_t CVDIFF_SINNER_FACTOR_DEFAULT = 128;    // CV diff general scene sinner slice size
 constexpr uint32_t CVDIFF_SINNER_FACTOR_SMALL_QS = 2048;   // q_s <= 16 scene sinner slice size
 constexpr uint32_t CVDIFF_MSD_BUFFER_SIZE_512B = 512; // 0.5k
 constexpr uint32_t CVDIFF_MSD_BUFFER_SIZE_1024B = 1024; // 0.5k
@@ -167,6 +167,7 @@ constexpr int64_t AIV_AIC_NUM_RATIO = 2L;
 constexpr int64_t S1_VEC2_BASE_SIZE_MAX = 512L;
 constexpr int64_t BMM_BASICBLOCK_M_128 = 128L;
 constexpr int64_t BMM_BASICBLOCK_N_128 = 128L;
+constexpr int64_t BMM_BASICBLOCK_N_512 = 512L;
 constexpr int64_t BMM1_DEPTH_A1_2 = 2L;
 constexpr int64_t BMM1_DEPTH_A1_3 = 3L;
 constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
@@ -425,6 +426,7 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.antiquantScaleShape = context->GetOptionalInputShape(ANTIQUANT_SCALE_INDEX);
     contextKeyParams.antiquantOffsetShape = context->GetOptionalInputShape(ANTIQUANT_OFFSET_INDEX);
     contextKeyParams.outputShape = context->GetOutputShape(0);
+    contextKeyParams.lseoutputShape = context->GetOutputShape(1);  // softmax_lse
     auto attrs = context->GetAttrs();
     contextKeyParams.innerPrecisePtr = attrs->GetAttrPointer<int64_t>(ATTR_INNER_PRECISE);
     contextKeyParams.headsNumber = attrs->GetAttrPointer<int32_t>(ATTR_N_INDEX);
@@ -438,6 +440,31 @@ static ge::graphStatus ConvertContextToPFAParams(gert::TilingContext* context, C
     contextKeyParams.compileInfoPtr = reinterpret_cast<const BlitzSparseAttentionCompileInfo *>(context->GetCompileInfo());
     contextKeyParams.isBSNDOut = (string(contextKeyParams.layout) == "BNSD_BSND") ? 1U : 0U;
     contextKeyParams.fromFused = NUM_0;
+    constexpr uint32_t ATTR_SOFTMAX_LSE_FLAG_INDEX = 8;
+    contextKeyParams.softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    contextKeyParams.isSoftMaxLseEnable =
+        (contextKeyParams.softmaxLseFlag != nullptr) && (*contextKeyParams.softmaxLseFlag);
+
+    // block_shape attr (index 9): [BLOCK_SIZE_Q, BLOCK_SIZE_KV]. Both dimensions
+    // accept {128, 256, 512, 1024}; all 16 combinations are supported. Defaults
+    // are set in ContextParamsForPFATiling (128/128). Validation is duplicated
+    // here so the kernel never sees an unvalidated value (mirrors infershape).
+    constexpr uint32_t ATTR_BLOCK_SHAPE_INDEX = 9;
+    auto blockShapeList = attrs->GetListInt(ATTR_BLOCK_SHAPE_INDEX);
+    if (blockShapeList != nullptr && blockShapeList->GetSize() >= 2) {
+        contextKeyParams.qBlockSize = static_cast<int32_t>(blockShapeList->GetData()[0]);
+        contextKeyParams.kvBlockSize = static_cast<int32_t>(blockShapeList->GetData()[1]);
+    }
+    OP_CHECK_IF(contextKeyParams.qBlockSize != 128 && contextKeyParams.qBlockSize != 256 &&
+                contextKeyParams.qBlockSize != 512 && contextKeyParams.qBlockSize != 1024,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(contextKeyParams.kvBlockSize != 128 && contextKeyParams.kvBlockSize != 256 &&
+                contextKeyParams.kvBlockSize != 512 && contextKeyParams.kvBlockSize != 1024,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024."),
+        return ge::GRAPH_FAILED);
 
     contextKeyParams.deqScaleType = (context->GetOptionalInputDesc(DEQ_SCALE1_INDEX) != nullptr) ?
     context->GetOptionalInputDesc(DEQ_SCALE1_INDEX)->GetDataType() : contextKeyParams.inputDataType;
@@ -3491,7 +3518,7 @@ bool BlitzSparseAttentionTiling::SetBmm1TilingInput(int64_t tmpS1BasicBlock, int
         }
 
         int64_t baseM = std::min(BMM_BASICBLOCK_M_128, AlignUp(s1Size, FRACTAL_NUM));
-        int64_t baseN = std::min(BMM_BASICBLOCK_N_128, AlignUp(s2Size, FRACTAL_NUM));
+        int64_t baseN = std::min(BMM_BASICBLOCK_N_512, AlignUp(s2Size, FRACTAL_NUM));
         bmm1.SetFixSplit(baseM, baseN, alignedD);
 
         return true;
@@ -3644,7 +3671,7 @@ void BlitzSparseAttentionTiling::MatchTemplate(uint32_t valueD)
     s2BasicBlock = std::numeric_limits<int64_t>::max();
     s1BasicBlockBest = (InputLayoutIsTNDLike() && (valueD <= D_SIZE_128)) ? 512L : 256L; // TND基本块设为(512, 512)
     s1BasicBlock = std::min(s1BasicBlockBest, alignedS1);
-    s2BasicBlock = std::min(128L, alignedS2);
+    s2BasicBlock = std::min(512L, alignedS2);
     s1VecBasicBlock = s1BasicBlock / AIV_AIC_NUM_RATIO;
     nRatio = (InputLayoutIsTNDLike() && (valueD <= D_SIZE_128)) ? 4L : 8L; // TND基本块设为(512, 128*4)
     dBasicBlock = std::min(128L, alignedD);
@@ -5204,6 +5231,8 @@ ge::graphStatus BlitzSparseAttentionTiling::RunBigKernelTilingWithParams(Context
     tilingData->promptAttentionBaseParams.set_fromFused((fromFused == FROM_FUSED_FLAG) ? 1 : 0);
     tilingData->promptAttentionBaseParams.set_isBSNDOut(contextKeyParams.isBSNDOut);
     tilingData->promptAttentionBaseParams.set_isSoftMaxLseEnable(contextKeyParams.isSoftMaxLseEnable);
+    tilingData->promptAttentionBaseParams.set_qBlockSize(static_cast<uint32_t>(contextKeyParams.qBlockSize));
+    tilingData->promptAttentionBaseParams.set_kvBlockSize(static_cast<uint32_t>(contextKeyParams.kvBlockSize));
 
     // Compute tiling data.
     if (splitCoreMode == SplitCoreMode::SPLIT_ONEN_CUBE) {  // Enable N split kernel mode from the perspective of cube in long sequence scenes.
@@ -6697,19 +6726,19 @@ ge::graphStatus BlitzSparseAttentionTiling::AdjustCVTilingCVDiff(int64_t ubSize,
         (inputType == ge::DT_BF16)) {  // When high-precision mode or BF16 takes effect, adjust the starting tiling block.
         if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 200) {           // D: [200, ...)
             minFactor = 64U;            // 64:  Adjust the size of the basic block Souter to 64.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
+            rectangleFactor = 128U;     // 512: Adjust the size of the basic block Sinner to 512.
             softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8.
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 128) {    // D: [128, 200)
-            minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
-            softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8
+            minFactor = 128U;           // 128: Keep M=128 (hardware natural tile width).
+            rectangleFactor = 512U;     // 512: 512-wide inner KV tile (4 sabi sub-blocks per cube call).
+            softmaxSOuterFactor = 8U;   // 8:   softmax UB chunk (8×512=4096 floats ≈ 16KB).
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 32) {     // D: [32, 128)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512.
+            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128.
             softmaxSOuterFactor = 16U;  // 16:  Adjust softmaxSOuter to 16.
         } else {                                                                           // D: (0, 32)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128
-            rectangleFactor = 512U;     // 512: Adjust the size of the basic block Sinner to 512
+            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128
             softmaxSOuterFactor = 32U;  // 32:  Adjust softmaxSOuter to 32
         }
     }
