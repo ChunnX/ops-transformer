@@ -51,7 +51,6 @@ public:
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
 
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
-    static constexpr bool ENABLE_TREE = FIAT::enableTree;
     using UPDATE_T = T;
     using TMP_T = T;
     using COMPUTE_T = T;
@@ -461,7 +460,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         // TND场景下mask传入∑s1²，其余场景传入[B,S1,S1]
         LocalTensor<bool> maskUb = inputBuff2.Get<bool>();
         maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-        if constexpr (ENABLE_TREE) {
+        if (maskInfo.sparseMode == fa_base_vector::TREE) {
             LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
             AscendC::Duplicate(mask16, static_cast<int16_t>(0), INPUT2_BUFFER_OFFSET / sizeof(int16_t));
             maskUb = mask16.template ReinterpretCast<bool>();
@@ -481,8 +480,11 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
         if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-            fa_base_vector::AttentionmaskCopyIn<bool, bool, ENABLE_TREE>(maskUb, attenMaskBoolGm, attenMaskTmpUb,
-                maskInfo);
+            if (maskInfo.sparseMode == fa_base_vector::TREE) {
+                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+            } else {
+                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+            }
             AscendC::PipeBarrier<PIPE_V>();
             fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
