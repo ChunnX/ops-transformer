@@ -43,8 +43,8 @@ public:
             computeOp_.Process(start, actualExpertNum);
             SyncAll<false>();
             if (isNeedPermute) {
-                SyncAll<true>();
                 hcclOp_.PermuteSendAfterCompute(start, actualExpertNum);
+                SyncAll<true>();
             }
             hcclOp_.LaunchCommData(start, actualExpertNum);
         }
