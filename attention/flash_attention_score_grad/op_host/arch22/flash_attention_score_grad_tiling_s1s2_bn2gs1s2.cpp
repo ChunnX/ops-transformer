@@ -1483,7 +1483,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::GetWorkspaceSize()
             AlignUp(fBaseParams.pseAlibiBaseS2 * fBaseParams.pseAlibiBaseS1 * 2, GM_ALIGN) * fBaseParams.coreNum;
         workspaces[0] += pseAlibiBytes;
     }
-    return ge::GRAPH_SUCCESS;
+    return CheckFagWorkspaceSize(context_, static_cast<uint64_t>(workspaces[0]));
 }
 
 ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::PostTiling()
