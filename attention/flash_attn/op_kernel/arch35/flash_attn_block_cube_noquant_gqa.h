@@ -358,9 +358,8 @@ public:
     __aicore__ inline void InitBuffers()
     {
         // ─────────────────────────────────────────────────────────────────────────
-        // L1 缓冲区：LocalTensor(TPosition::A1, offset, size) 直接构造（完全静态）
-        // 全部偏移量来自 static constexpr 常量，零动态分配，无 TBuf / BufferManager
-        // SetFlag 在此处显式可见，与静态Tensor编程规范完全一致
+        // 与 VEC 侧保持一致：InitBuffers 仅负责缓冲区地址初始化，不插入任何同步原语。
+        // 流水预置 SetFlag 统一由 AllocEventID() 完成。
         //
         // L1 内存布局（从 offset=0 起）:
         //   [0 .. 3*mBaseSize*s2BaseSize*sizeof(Q_T)) : l1PBuffers (3buff, InitMMResBuf 分配)
@@ -379,26 +378,18 @@ public:
                 // Single + Single + Single
                 constexpr uint32_t l1VOff = l1KOff + mm1RightSize;
                 l1QBuffers.InitStaticDirect(l1QOff, mm1LeftSize, FA_L1_Q_C2P_0, FA_L1_Q_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
                 l1KBuffers.InitStaticDirect(l1KOff, mm1RightSize, FA_L1_K_C2P_0, FA_L1_K_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
                 l1VBuffers.InitStaticDirect(l1VOff, mm2RightSize, FA_L1_V_C2P_0, FA_L1_V_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
             } else {
                 // Single + DB + DB
                 constexpr uint32_t l1VOff = l1KOff + 2U * mm1RightSize;
                 l1QBuffers.InitStaticDirect(l1QOff, mm1LeftSize, FA_L1_Q_C2P_0, FA_L1_Q_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
                 l1KBuffers.InitStaticDirect(l1KOff, l1KOff + mm1RightSize, mm1RightSize,
                                             FA_L1_K_C2P_0, FA_L1_K_C2P_0,
                                             FA_L1_K_C2P_1, FA_L1_K_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
                 l1VBuffers.InitStaticDirect(l1VOff, l1VOff + mm2RightSize, mm2RightSize,
                                             FA_L1_V_C2P_0, FA_L1_V_C2P_0,
                                             FA_L1_V_C2P_1, FA_L1_V_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
             }
         } else {
             // L1QType = BuffersPolicyDB (dBaseSize<=256)
@@ -415,63 +406,39 @@ public:
                 l1QBuffers.InitStaticDirect(l1QOff, l1QOff + mm1LeftSize, mm1LeftSize,
                                             FA_L1_Q_C2P_0, FA_L1_Q_C2P_0,
                                             FA_L1_Q_C2P_1, FA_L1_Q_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
                 l1KBuffers.InitStaticDirect(l1KOff, mm1RightSize, FA_L1_K_C2P_0, FA_L1_K_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
                 l1VBuffers.InitStaticDirect(l1VOff, mm2RightSize, FA_L1_V_C2P_0, FA_L1_V_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
             } else {
                 // DB + DB + DB
                 constexpr uint32_t l1VOff = l1KOff + 2U * mm1RightSize;
                 l1QBuffers.InitStaticDirect(l1QOff, l1QOff + mm1LeftSize, mm1LeftSize,
                                             FA_L1_Q_C2P_0, FA_L1_Q_C2P_0,
                                             FA_L1_Q_C2P_1, FA_L1_Q_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);
                 l1KBuffers.InitStaticDirect(l1KOff, l1KOff + mm1RightSize, mm1RightSize,
                                             FA_L1_K_C2P_0, FA_L1_K_C2P_0,
                                             FA_L1_K_C2P_1, FA_L1_K_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
                 l1VBuffers.InitStaticDirect(l1VOff, l1VOff + mm2RightSize, mm2RightSize,
                                             FA_L1_V_C2P_0, FA_L1_V_C2P_0,
                                             FA_L1_V_C2P_1, FA_L1_V_C2P_1);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
-                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
             }
         }
 
-        // ─────────────────────────────────────────────────────────────
-        // L0A 缓冲区：LocalTensor构造函数直接指定地址（完全抛弃BufferManager）
-        // L0AType 始终为 BuffersPolicyDB<L0A>；ping=offset 0，pong=offset 32KB
-        // ─────────────────────────────────────────────────────────────
+        // L0A：始终为 DB，ping=offset 0，pong=offset 32KB
         constexpr uint32_t FA_L0_BUF_SIZE = 32U * 1024U;
         mmL0ABuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
                                       FA_L0A_C2P_0, FA_L0A_C2P_0,
                                       FA_L0A_C2P_1, FA_L0A_C2P_1);
-        SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_0);
-        SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_1);
 
-        // ─────────────────────────────────────────────────────────────
-        // L0B 缓冲区：同L0A，独立硬件内存，从offset=0起
-        // L0BType: Single if s2==256&&d>128, else DB
-        // ─────────────────────────────────────────────────────────────
+        // L0B：Single if s2==256&&d>128, else DB
         if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
             mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0B_C2P_0, FA_L0B_C2P_0);
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
         } else {
             mmL0BBuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
                                           FA_L0B_C2P_0, FA_L0B_C2P_0,
                                           FA_L0B_C2P_1, FA_L0B_C2P_1);
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
-            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_1);
         }
 
-        // ─────────────────────────────────────────────────────────────
-        // L0C 缓冲区：同L0A，独立硬件内存，从offset=0起
-        // L0CType: 4buff (各64KB) 或 DB (各128KB)
-        // ─────────────────────────────────────────────────────────────
+        // L0C：4buff (各64KB) 或 DB (各128KB)
         if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
                       mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
             constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_4) * (uint32_t)KB_TO_BYTES;
@@ -480,17 +447,11 @@ public:
                                           FA_L0C_C2P_1, FA_L0C_C2P_1,
                                           FA_L0C_C2P_2, FA_L0C_C2P_2,
                                           FA_L0C_C2P_3, FA_L0C_C2P_3);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
         } else {
             constexpr uint32_t l0cSlotSize = (uint32_t)(L0C_SIZE / NUM_2) * (uint32_t)KB_TO_BYTES;
             mmL0CBuffers.InitStaticDirect(0U, l0cSlotSize, l0cSlotSize,
                                           FA_L0C_C2P_0, FA_L0C_C2P_0,
                                           FA_L0C_C2P_1, FA_L0C_C2P_1);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
-            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
         }
     }
 
@@ -549,7 +510,57 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
-        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+        // 与 VEC 侧完全对称：AllocEventID 统一完成所有流水预置 SetFlag（无动态 AllocEventID 调用）
+        // L1 c2p 预置：MTE1 告知 MTE2 当前 slot 空闲可以覆写
+        if constexpr (dBaseSize > 256) {
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);  // L1Q: Single
+            if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+                // Single + Single + Single
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+            } else {
+                // Single + DB + DB
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
+            }
+        } else {
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);  // L1Q DB: ping
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);  // L1Q DB: pong
+            if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+                // DB + Single + Single
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+            } else {
+                // DB + DB + DB
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+                SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
+            }
+        }
+        // L0A c2p 预置：CUBE 告知 MTE1 当前 slot 空闲可重新加载（L0A 始终为 DB）
+        SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_0);
+        SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_1);
+        // L0B c2p 预置：Single if s2==256&&d>128, else DB
+        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
+        } else {
+            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
+            SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_1);
+        }
+        // L0C c2p 预置：FixPipe 告知 CUBE 当前 slot 空闲可写入（4buff 或 DB）
+        if constexpr (mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                      mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
+        } else {
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+            SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+        }
     }
 
     __aicore__ inline void FreeEventID()
