@@ -62,7 +62,6 @@ private:
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
     uint32_t expertNum_ = 1;
-    bool isScaleBatchMode_ = false;
     bool isNeedPermute_ = false;
 };
 
@@ -79,7 +78,9 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     e_ = tilingData_->taskTilingInfo.e;
     expertNum_ = tilingData_->taskTilingInfo.expertNum;
     gmmxScaleGm_ = gmmxScaleGM;
-    isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
+    uint64_t a2avLaunchNum = CeilDiv(e_, expertNum_);
+    constexpr uint64_t a2avLimit = MX_QUANT_MODE ? CeilDiv(MAX_HCCL_PREPARE_NUM, 2) : MAX_HCCL_PREPARE_NUM;
+    expertNum_ = a2avLaunchNum > a2avLimit ? CeilDiv(e_, a2avLimit) : expertNum_;
     isNeedPermute_ = expertNum_ > 1;
     uint64_t workspaceOffset = 0;
     uint64_t gmmxSize = Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
@@ -131,15 +132,7 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     if (tilingData_->isNeedMM != 0) {
         localComputeOp.Process(0, 1);
     }
-    if constexpr (MX_QUANT_MODE) {
-        if (isScaleBatchMode_) {
-            ProcessScaleCommBatchMode();
-        } else {
-            ProcessCommRoundMode();
-        }
-    } else {
-        ProcessCommRoundMode();
-    }
+    ProcessCommRoundMode();
     this->End();
 }
 
@@ -151,26 +144,6 @@ __aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeO
     commOp.End();
     computeOp.End();
     localComputeOp.End();
-}
-
-template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
-          typename GmmTilingDataType, typename GmmArrayAddrType>
-__aicore__ inline void A2avGmmScheduler<CommOpType, ComputeOpType, LocalComputeOpType, TilingDataType,
-    GmmTilingDataType, GmmArrayAddrType>::ProcessScaleCommBatchMode()
-{
-    commOp.LaunchCommScale(0, e_);
-    for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-        commOp.LaunchCommData(expertIdx, 1);
-    }
-    commOp.WaitScale(0);
-    SyncAll<false>();
-    commOp.PermuteScale(0, e_);
-    SyncAll<false>();
-    for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-        commOp.Wait(expertIdx);
-        SyncAll<false>();
-        computeOp.Process(expertIdx, 1);
-    }
 }
 
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
