@@ -29,9 +29,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持`default`、`aicpu`和`ccu`。指定`default`时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AICPU引擎。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持`default`，调用`aclnnMatmulAlltoAll`接口。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持`default`，调用`aclnnMatmulAlltoAll`接口。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AICPU引擎。
 
 ## 函数原型
 
@@ -140,7 +138,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>commMode</td>
     <td>输入</td>
     <td>指定当前通信类型。</td>
-    <td>支持输入"default"、"aicpu"或"ccu"。</td>
+    <td>支持输入空字符串""、"ai_cpu"或"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>

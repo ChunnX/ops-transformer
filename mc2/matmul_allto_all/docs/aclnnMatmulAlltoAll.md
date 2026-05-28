@@ -297,7 +297,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。由于CCU通信域存在限制，可能出现HCCL集合通信库自动降级使用AICPU通信引擎从而导致报错的场景，如出现此种报错请使用aclnnMatmulAlltoAllV2接口，并指定comm_mode参数为ai_cpu。
 
 ## 调用示例
 
