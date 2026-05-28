@@ -36,7 +36,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     elseif("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME MoeDistributeDispatchV2
-            OPTIONS --cce --enable-print
+            OPTIONS --cce-enable-print
         )
     endif()
 else() # 回黄host
