@@ -1735,12 +1735,12 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
                       MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
     uint32_t axisH = tilingData->moeDistributeCombineV2Info.h, axisBS = tilingData->moeDistributeCombineV2Info.bs;
-    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k,
-             zeroExpertNum = tilingData->moeDistributeCombineV2Info.zeroExpertNum;
-    uint32_t copyExpertNum = tilingData->moeDistributeCombineV2Info.copyExpertNum,
-             constExpertNum = tilingData->moeDistributeCombineV2Info.constExpertNum;
-    bool isInputExpertMaskFlag = tilingData->moeDistributeCombineV2Info.isExpertMask,
-         isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
+    uint32_t axisK = tilingData->moeDistributeCombineV2Info.k;
+    uint32_t zeroExpertNum = tilingData->moeDistributeCombineV2Info.zeroExpertNum;
+    uint32_t copyExpertNum = tilingData->moeDistributeCombineV2Info.copyExpertNum;
+    uint32_t constExpertNum = tilingData->moeDistributeCombineV2Info.constExpertNum;
+    bool isInputExpertMaskFlag = tilingData->moeDistributeCombineV2Info.isExpertMask;
+    bool isInputTokenMaskFlag = tilingData->moeDistributeCombineV2Info.isTokenMask;
     bool enableSpecialExpert = (constExpertNum + zeroExpertNum + copyExpertNum > 0U);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     auto attrs = context->GetAttrs();
@@ -1768,8 +1768,8 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     }
     uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
-    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum,
-             maxSizeRowTmpFloatBuf = hFloatAlign32Size, totalBufferSize = 0;
+    uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
+    uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size, totalBufferSize = 0;
 
     if (isInputExpertMaskFlag || enableSpecialExpert) {
         uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * sizeof(DTYPE_SIZE_HALF);

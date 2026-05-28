@@ -559,9 +559,10 @@ ge::graphStatus FFNToAttentionTilingFunc(gert::TilingContext* context)
 }
 
 struct FFNToAttentionCompileInfo {};
-ge::graphStatus TilingParseForFFNToAttention(gert::TilingParseContext *context) {
+ge::graphStatus TilingParseForFFNToAttention(gert::TilingParseContext *context)
+{
     (void)context;
-	return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(FFNToAttention)

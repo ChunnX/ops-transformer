@@ -307,7 +307,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetDynamicQuantTempBuffSize()
 uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
 {
     uint8_t commDtype = COMMDTPYE_DEFAULT;
-    if (isCommInt8Enable_ == true) {	
+    if (isCommInt8Enable_ == true) {
         commDtype = COMMDTPYE_INT8; // 适配int8 通信;
     } else if (isCommFp8Enable_ == true) {
         commDtype = COMMDTPYE_FP8; // 适配fp8 通信;
