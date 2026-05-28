@@ -409,9 +409,9 @@ private:
             uint32_t intput_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(head_dim_)};
             uint32_t out_shape_arry[2] = {static_cast<uint32_t>(process_size), static_cast<uint32_t>(8)};
 
-            dy_out_tensor.SetShape(2, intput_shape_arry, AscendC::DataFormat::ND);
-            attention_out_tensor.SetShape(2, out_shape_arry, AscendC::DataFormat::ND);
-
+            dy_out_tensor.SetShapeInfo(ShapeInfo(2, intput_shape_arry, AscendC::DataFormat::ND));
+            attention_out_tensor.SetShapeInfo(ShapeInfo(2, intput_shape_arry, AscendC::DataFormat::ND));
+            sftg_front_tensor.SetShapeInfo(ShapeInfo(2, out_shape_arry, AscendC::DataFormat::ND));
             bool isBasicBlock = process_size % 8 == 0;
             if (likely(isBasicBlock)) {
                 SoftmaxGradFront<float, true>(sftg_front_tensor, dy_out_tensor, attention_out_tensor, sftg_tmp_tensor,
@@ -421,6 +421,7 @@ private:
                                                tilingData->softmaxGradFrontTilingData);
             }
             PipeBarrier<PIPE_V>();
+
 
             uint64_t out_gm_offset = (info.start_idx + i * info.max_process_size) * 8;
             DataCopy(dst_gm[out_gm_offset], sftg_front_tensor, process_size * 8);
