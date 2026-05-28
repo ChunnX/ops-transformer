@@ -115,7 +115,7 @@
       <tr>
         <td>offsetOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的偏移值。在非量化场景下和动态quant场景下不输入，对应公式中offsetOptional。INT4动态量化场景下不输入。</td>
+        <td>表示用于计算quant结果的偏移值。在非量化场景下和动态quant场景下不输入，对应公式中offsetOptional。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>

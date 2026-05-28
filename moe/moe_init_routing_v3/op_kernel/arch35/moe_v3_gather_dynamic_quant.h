@@ -630,11 +630,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
     pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
                       AlignBytes(perLoopCols_, sizeof(float)));
     pipe_->InitBuffer(calcQueue_, 1, AlignBytes(perLoopCols_, sizeof(float)));
-    if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
-    } else {
-        pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopCols_, sizeof(int8_t)));
-    }
+    pipe_->InitBuffer(inputXOutQueue_, 1, AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
     pipe_->InitBuffer(scaleOutQueue_, 1, BLOCK_BYTES + BLOCK_BYTES);
 }
 

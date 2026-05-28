@@ -76,9 +76,9 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
 
     colsAlign_ = Align(this->cols_, sizeof(T));
     if constexpr (IsSameType<QuantT, int4b_t>::value) {
-        colsAsInt8_ = this->cols_ / 2;
+        colsAsInt8_ = this->cols_ / 2 * sizeof(int8_t);
     } else {
-        colsAsInt8_ = this->cols_;
+        colsAsInt8_ = this->cols_ * sizeof(int8_t);
     }
 
     xGm_.SetGlobalBuffer((__gm__ T *)x);
