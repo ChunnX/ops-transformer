@@ -35,5 +35,5 @@ struct GMMSQWeightQuantTilingData {
     uint64_t nSize = 0;
 };
 #pragma pack(pop)
-} // namespace GMMSQWeightQuantArch35Tiling
+} // namespace GMMSQArch35Tiling
 #endif // GROUPED_MATMUL_SWIGLU_QUANT_V2_WEIGHT_QUANT_TILING_DATA_H
