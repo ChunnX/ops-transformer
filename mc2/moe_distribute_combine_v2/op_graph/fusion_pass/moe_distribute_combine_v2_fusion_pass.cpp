@@ -275,57 +275,23 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::FusionNode(
 }
 
 ge::graphStatus MoeDistributeCombineV2FusionPass::Fusion(
-    ge::Graph &graph, ge::GNode &moeDistributeCombineNode)
+    ge::Graph &graph, ge::GNode &moeDistributeCombineNode, ge::GNode &sharedCtxNode)
 {
     OPS_LOG_I(PASS_NAME.c_str(), "MoeDistributeCombineV2FusionPass fun start !");
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    ge::GNode contextNode;
     int64_t hccl_buff_size = 0;
 
-    Mc2MoeContext mc2Ctx;
-    if (MoeContextManager::GetMc2ContextA5(MOE_CONTEXT_TAG, MOE_EP_NAME, moeDistributeCombineNode,
-                                           mc2Ctx, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+    if (MoeContextManager::GetMc2ContextA5(graph, MOE_CONTEXT_TAG, MOE_EP_NAME,
+                                            moeDistributeCombineNode,
+                                            sharedCtxNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
         OPS_LOG_I(PASS_NAME.c_str(), "GetMc2ContextA5 doesn't support current case, combine Failed");
-        return ge::GRAPH_SUCCESS;  // 回退（无变化）
+        return ge::GRAPH_SUCCESS;
     }
-    OPS_LOG_I(PASS_NAME.c_str(), "GetMc2ContextA5 OK, cclBufferSize=%ld", hccl_buff_size);
 
     ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
     ge::TensorDesc tensorDesc(shape, ge::FORMAT_ND, ge::DT_INT32);
 
-    auto existingCtx = graph.FindNodeByName("mc2_moe_context");
-    if (existingCtx != nullptr) {
-        contextNode = *existingCtx;
-        OPS_LOG_I(PASS_NAME.c_str(), "Reusing existing mc2_moe_context Const");
-    } else {
-        ge::Tensor tensorValue(tensorDesc, reinterpret_cast<const uint8_t *>(&mc2Ctx), sizeof(Mc2MoeContext));
-
-        auto constOp = ge::OperatorFactory::CreateOperator("mc2_moe_context", "Const");
-        if (constOp.IsEmpty()) {
-            OPS_LOG_E(PASS_NAME.c_str(), "Const op not found in factory");
-            return ge::GRAPH_SUCCESS;
-        }
-        constOp.UpdateOutputDesc(static_cast<uint32_t>(IDX_0), tensorDesc);
-        constOp.SetAttr("value", tensorValue);
-        OPS_LOG_I(PASS_NAME.c_str(), "Const op: UpdateOutputDesc(idx=0, DT_INT32) + SetAttr(value) done");
-        contextNode = graph.AddNodeByOp(constOp);
-        ge::AscendString ctxNodeName;
-        contextNode.GetName(ctxNodeName);
-        OPS_LOG_I(PASS_NAME.c_str(), "Context Const node added as %s", ctxNodeName.GetString());
-    }
-
-    {
-        ge::TensorDesc outDesc;
-        if (contextNode.GetOutputDesc(static_cast<int32_t>(IDX_0), outDesc) == ge::GRAPH_SUCCESS) {
-            OPS_LOG_I(PASS_NAME.c_str(), "Context Const output dtype=%d fmt=%d shape=%zu",
-                      static_cast<int>(outDesc.GetDataType()), static_cast<int>(outDesc.GetFormat()),
-                      outDesc.GetShape().GetDimNum());
-        } else {
-            OPS_LOG_E(PASS_NAME.c_str(), "Context Const output desc INVALID!");
-        }
-    }
-
-    if (FusionNode(graph, moeDistributeCombineNode, contextNode, hccl_buff_size, tensorDesc) != ge::GRAPH_SUCCESS) {
+    if (FusionNode(graph, moeDistributeCombineNode, sharedCtxNode, hccl_buff_size, tensorDesc) != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(PASS_NAME.c_str(), "Combine FusionNode failed");
         return ge::GRAPH_FAILED;
     }
@@ -349,6 +315,7 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
         return ge::GRAPH_SUCCESS;
     }
 
+    ge::GNode sharedCtxNode;
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
         if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != FUSED_OP_TYPE2.c_str()) {
@@ -366,7 +333,7 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Run(ge::GraphPtr &graph, ge::C
             continue;
         }
 
-        auto ret = Fusion(*graph, gNode);
+        auto ret = Fusion(*graph, gNode, sharedCtxNode);
         if (ret == ge::GRAPH_SUCCESS) {
             OPS_LOG_I(PASS_NAME.c_str(), "node %s: V2->V3 fusion SUCCESS", nameStr.GetString());
         } else {
