@@ -99,7 +99,6 @@ inline void* GetOpApiFuncAddrInLib(void* handler, const char* libName, const cha
 }
 
 inline void* GetOpApiLibHandler(const char* libName) {
-  OP_LOGI("aclnnfallback", "dlopen %s ing.", libName);
   auto handler = dlopen(libName, RTLD_LAZY);
   if (handler == nullptr) {
     OP_LOGW("aclnnfallback", "dlopen %s failed, error:%s.", libName, dlerror());
