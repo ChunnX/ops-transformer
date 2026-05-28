@@ -9,13 +9,12 @@
 # -----------------------------------------------------------------------------------------------------------
 #### CPACK to package run #####
 
-# download makeself package
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
-
 # mc2_matmul KB install
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
 
 function(pack_custom)
+  # download makeself package 
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
       message(STATUS "Detected architecture: x86_64")
@@ -82,38 +81,38 @@ function(pack_built_in)
   )
 
   set(SCRIPTS_FILES
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/check_version_required.awk
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_func.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_interface.sh
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_interface.csh
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_interface.fish
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/version_compatiable.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/py/merge_binary_info_config.py
+      ${CANN_CMAKE_DIR}/scripts/install/check_version_required.awk
+      ${CANN_CMAKE_DIR}/scripts/install/common_func.inc
+      ${CANN_CMAKE_DIR}/scripts/install/common_interface.sh
+      ${CANN_CMAKE_DIR}/scripts/install/common_interface.csh
+      ${CANN_CMAKE_DIR}/scripts/install/common_interface.fish
+      ${CANN_CMAKE_DIR}/scripts/install/version_compatiable.inc
+      ${CANN_CMAKE_DIR}/scripts/package/merge_binary_info_config.py
   )
 
   install(FILES ${SCRIPTS_FILES}
       DESTINATION share/info/ops_transformer/script
   )
   set(COMMON_FILES
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/install_common_parser.sh
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_func_v2.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_installer.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/script_operator.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/version_cfg.inc
+      ${CANN_CMAKE_DIR}/scripts/install/install_common_parser.sh
+      ${CANN_CMAKE_DIR}/scripts/install/common_func_v2.inc
+      ${CANN_CMAKE_DIR}/scripts/install/common_installer.inc
+      ${CANN_CMAKE_DIR}/scripts/install/script_operator.inc
+      ${CANN_CMAKE_DIR}/scripts/install/version_cfg.inc
   )
 
   set(PACKAGE_FILES
       ${COMMON_FILES}
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/multi_version.inc
+      ${CANN_CMAKE_DIR}/scripts/install/multi_version.inc
   )
   set(LATEST_MANGER_FILES
       ${COMMON_FILES}
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/common_func.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/version_compatiable.inc
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/sh/check_version_required.awk
+      ${CANN_CMAKE_DIR}/scripts/install/common_func.inc
+      ${CANN_CMAKE_DIR}/scripts/install/version_compatiable.inc
+      ${CANN_CMAKE_DIR}/scripts/install/check_version_required.awk
   )
   set(CONF_FILES
-      ${CMAKE_SOURCE_DIR}/scripts/package/common/cfg/path.cfg
+      ${CANN_CMAKE_DIR}/scripts/package/cfg/path.cfg
   )
   foreach(components ${CANN_VERSION_PACKAGES})
       install(FILES ${CMAKE_BINARY_DIR}/version.${components}.info
@@ -153,54 +152,5 @@ function(pack_built_in)
   message(STATUS "current compute_unit is: ${compute_unit}")
 
   # ============= CPack =============
-  set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
-  set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-  string(REGEX REPLACE "^.*[Aa]scend" "" soc_version_temp "${ASCEND_COMPUTE_UNIT}")
-  # 检查是否成功提取
-  if("${soc_version_temp}" STREQUAL "${ASCEND_COMPUTE_UNIT}")
-    set(soc_version "unknown")
-  else()
-    set(soc_version "${soc_version_temp}")
-  endif()
-  
-  if(NOT ENABLE_OPS_KERNEL)
-    set(CPACK_PACKAGE_FILE_NAME "CANN--${CPACK_PACKAGE_NAME}.run")
-  else()
-    if("${VERSION}" STREQUAL "")
-      if("${soc_version}" STREQUAL "910_93")
-        set(CPACK_PACKAGE_FILE_NAME "cann-A3-ops-transformer_linux-${ARCH}.run")
-      else()
-        set(CPACK_PACKAGE_FILE_NAME "cann-${soc_version}-ops-transformer_linux-${ARCH}.run")
-      endif()
-    else()
-      if("${soc_version}" STREQUAL "910_93")
-        set(CPACK_PACKAGE_FILE_NAME "cann-A3-ops-transformer_${VERSION}_linux-${ARCH}.run")
-      else()
-        set(CPACK_PACKAGE_FILE_NAME "cann-${soc_version}-ops-transformer_${VERSION}_linux-${ARCH}.run")
-      endif()
-    endif()
-    
-  endif()
-
-  set(CPACK_INSTALL_PREFIX "/")
-
-  set(CPACK_CMAKE_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
-  set(CPACK_CMAKE_BINARY_DIR "${CMAKE_BINARY_DIR}")
-  set(CPACK_CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
-  set(CPACK_CMAKE_CURRENT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-  set(CPACK_MAKESELF_PATH "${MAKESELF_PATH}")
-  set(CPACK_SOC "${compute_unit}")
-  set(CPACK_ARCH "${ARCH}")
-  set(CPACK_SET_DESTDIR ON)
-  set(CPACK_VERSION "${VERSION}")
-  set(CPACK_GENERATOR External)
-  if (ENABLE_BUILT_IN)
-    set(CPACK_EXTERNAL_PACKAGE_SCRIPT "${CMAKE_SOURCE_DIR}/cmake/makeself_built_in.cmake")
-  endif()
-  set(CPACK_EXTERNAL_ENABLE_STAGING true)
-  set(CPACK_PACKAGE_DIRECTORY "${CMAKE_INSTALL_PREFIX}")
-  set(CPACK_PACKAGE_PARAM_NAME "ops_transformer")
-
-  message(STATUS "CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}")
-  include(CPack)
+  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer NO_COMPONENT_INSTALL OUTPUT ${CMAKE_INSTALL_PREFIX})
 endfunction()

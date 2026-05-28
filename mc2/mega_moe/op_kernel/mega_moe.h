@@ -37,12 +37,29 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
 
+template<int32_t QuantMode>
+struct QuantTraits {
+    using OutType = fp8_e4m3fn_t;  // 默认
+};
+template<>
+struct QuantTraits<E5M2_QUANT> {
+    using OutType = fp8_e5m2_t;
+};
+template<>
+struct QuantTraits<E2M1_QUANT> {
+    using OutType = fp4x2_e2m1_t;
+};
+
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
-    using QuantOutType = typename std::conditional<((QuantMode >= 3) && (QuantMode != 4)),
-        fp8_e5m2_t, fp8_e4m3fn_t>::type;
-    using QuantScaleOutType = typename std::conditional<(QuantMode >= 3), fp8_e8m0_t, float>::type;
+    using QuantOutType = typename QuantTraits<QuantMode>::OutType;
+    using ActivationType = typename std::conditional<
+        Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value,
+        uint8_t,
+        QuantOutType
+    >::type;
+    using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -66,8 +83,8 @@ private:
     __aicore__ inline void EndSync();
     __aicore__ inline void EndGMM2Sync();
     __aicore__ inline void CrossRankSyncInWorldSize();
-    __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst,
-                GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
+    __aicore__ inline void CopyGMToGMPerToken(GlobalTensor<ActivationType> dst,
+                GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<ActivationType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
 
     __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
@@ -119,6 +136,7 @@ private:
     TBuf<> DataResFp32Buf_;
     TBuf<> ResetTokenBuf_;
     TBuf<> topKWeightsBuf_;
+    TBuf<> tempBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -160,7 +178,8 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, bfloat16_t,
+        QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -206,7 +225,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
-        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.ptrTokenPerExpert +
@@ -226,10 +245,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     tPipe->InitBuffer(PrevSumBuf_, prevSumBufAlign);
     uint32_t getCumsumBufAlign = (AlignUp(worldSize_ * expertPerRank_, ALIGN_128)) * worldSize_ * sizeof(int32_t);
     tPipe->InitBuffer(CumsumBuf_, getCumsumBufAlign);
-    tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(QuantOutType));
+    tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(ActivationType));
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
+    tPipe->InitBuffer(tempBuf_, ALIGN_32);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -288,9 +308,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
 {
-    int32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
-    LocalTensor<int32_t> tmpBuffer1 = CumsumBuf_.Get<int32_t>();
-    DataCopyPad(tmpBuffer1, tokenPerExpertWin_[rankId_ * expertPerRank_],
+    uint32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
+    LocalTensor<int32_t> tmpTensor = CumsumBuf_.Get<int32_t>();
+    DataCopyPad(tmpTensor, tokenPerExpertWin_[rankId_ * expertPerRank_],
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)),
          static_cast<uint16_t>((AlignUp(worldSize_ * expertPerRank_, ALIGN_128)
              - expertPerRank_) * sizeof(int32_t)), 0},
@@ -298,13 +318,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     for (uint32_t i = 1; i < worldSize_; ++i) {
-        Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-            tmpBuffer1[(i - 1) * expertPerRankAligned], expertPerRank_);
+        Add(tmpTensor[i * expertPerRankAligned], tmpTensor[i * expertPerRankAligned],
+            tmpTensor[(i - 1) * expertPerRankAligned], expertPerRank_);
         PipeBarrier<PIPE_V>();
     }
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(cumsumInWorkSpace_, tmpBuffer1,
+    DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
+
+    LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
+    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
+    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
+    Sum(sumOutTensor, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
+
+    SyncFunc<AscendC::HardEvent::V_S>();
+
+    LocalTensor<int64_t> resTensor = sumOutTensor.template ReinterpretCast<int64_t>();
+    int64_t totalCnt = resTensor.GetValue(0);
+
+    SyncFunc<AscendC::HardEvent::S_V>();
+    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -416,21 +449,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
-    GlobalTensor<QuantOutType> dst, GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
+    GlobalTensor<ActivationType> dst, GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<ActivationType> src,
     int32_t rows, int32_t hiddenSize, int32_t& pingpongId)
 {
     constexpr int32_t BufferNum = 2;
-    LocalTensor<QuantOutType> tmpBuffer1 = CopyTempBuf_.Get<QuantOutType>();
-    LocalTensor<QuantOutType> tmpBuffer2 = tmpBuffer1[96 * 1024];
-    uint32_t scaleLen = Ops::Base::CeilDiv(static_cast<int32_t>(hiddenSize),
+    LocalTensor<ActivationType> tmpTensor1 = CopyTempBuf_.Get<ActivationType>();
+    LocalTensor<ActivationType> tmpTensor2 = tmpTensor1[96 * 1024];
+    uint32_t scaleLen = Ops::Base::CeilDiv(static_cast<int32_t>(k_),
         static_cast<int32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     uint32_t copyInNum = hiddenSize + scaleLen;
     auto processCount = Ops::Base::CeilDiv(rows, dispatchRows_);
     for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
         pingpongId = (pingpongId + 1) % BufferNum;
         TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<QuantOutType> buf = pingpongId == 0 ? tmpBuffer1 : tmpBuffer2;
+        LocalTensor<ActivationType> buf = pingpongId == 0 ? tmpTensor1 : tmpTensor2;
         LocalTensor<QuantScaleOutType> bufScale = buf[hiddenSize].template ReinterpretCast<QuantScaleOutType>();
 
         auto inputOffset = processIndex * dispatchRows_ * copyInNum;
@@ -458,8 +491,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
 {
-    int64_t widthA = Get<K_VALUE>(problemShape_); // H 长度
-    int64_t widthAScale = Ops::Base::CeilDiv(widthA, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    int64_t widthA; // H 长度
+    if constexpr(QuantMode == E2M1_QUANT) {
+        widthA = Get<K_VALUE>(problemShape_) / FP4_NUM;
+    } else {
+        widthA = Get<K_VALUE>(problemShape_);
+    }
+    int64_t widthAScale = Ops::Base::CeilDiv(Get<K_VALUE>(problemShape_),
+                            static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     int32_t pingpongId = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -482,17 +521,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                 rowsPerCore = rowStartInDst + rowsCopyCnt - rowDstOffsetPerCore;
             }
             if (rowsPerCore > 0) {
-                GlobalTensor <QuantOutType> gmRemoteA, aGlobalTensor;
+                GlobalTensor <ActivationType> gmRemoteA, aGlobalTensor;
                 GlobalTensor <QuantScaleOutType> aScaleGlobalTensor;
                 int64_t gmOffsetA = rowDstOffsetPerCore * widthA;
                 int64_t gmOffsetAScale = rowDstOffsetPerCore * widthAScale;
                 int64_t gmOffsetPeer = rowSrcOffsetPerCore * (widthA + widthAScale);
-                gmRemoteA.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(GetRankWinAddrWithOffset(dstRankIdx,
+                gmRemoteA.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(GetRankWinAddrWithOffset(dstRankIdx,
                     PEERMEM_DATA_OFFSET + perRankStridesInTokenPerExpert_ * worldSize_ * sizeof(uint32_t))));
-                aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(gmmAddrInfo.aGlobal));
+                aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(gmmAddrInfo.aGlobal));
                 aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
                     gmmAddrInfo.aScaleGlobal));
-                CopyGMToGMPerTokenV2(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
+                CopyGMToGMPerToken(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
             }
         }
@@ -511,8 +550,13 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         uint64_t m = Get<M_VALUE>(problemShape_);
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
-        Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-        Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+        if constexpr (QuantMode == E2M1_QUANT) {
+            Get<IDX_A_OFFSET>(baseOffset_) += (m * k) / FP4_NUM;
+            Get<IDX_B_OFFSET>(baseOffset_) += (n * k) / FP4_NUM;
+        } else {
+            Get<IDX_A_OFFSET>(baseOffset_) += (m * k);
+            Get<IDX_B_OFFSET>(baseOffset_) += (n * k);
+        }
         // only splitM
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(baseOffset_) += m * scaleK;
@@ -521,7 +565,11 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
             m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_FLAG_OFFSET>(baseOffset_) += 1;
-        Get<IDX_B2_OFFSET>(baseOffset_) += k * n / SWIGLU_N_HALF;
+        if constexpr (QuantMode == E2M1_QUANT) {
+            Get<IDX_B2_OFFSET>(baseOffset_) += (k * n / SWIGLU_N_HALF) / FP4_NUM;
+        } else {
+            Get<IDX_B2_OFFSET>(baseOffset_) += (k * n / SWIGLU_N_HALF);
+        }
         Get<IDX_B2_SCALE_OFFSET>(baseOffset_) +=
             k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_Y2_OFFSET>(baseOffset_) += m * k;
@@ -548,11 +596,11 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex)
 {
     if (gmmIndex == 0) {
-        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
         Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
         if constexpr(g_coreType == AIC) {
-            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(ActivationType);
             gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) *
                                         sizeof(QuantScaleOutType);
         } else {
@@ -562,10 +610,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     } else if constexpr(g_coreType == AIC) {
-        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(baseOffset_) *
                                     sizeof(QuantScaleOutType);
-        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(QuantOutType);
+        gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
                                     sizeof(QuantScaleOutType);
     }
@@ -603,7 +651,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     LocalTensor<int32_t> tmp = ResetTokenBuf_.Get<int32_t>();
     Duplicate(tmp, 0, num);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    PipeBarrier<PIPE_ALL>(); // 保证前侧combine做完了再清理
     DataCopy(tokenPerExpertWin_, tmp, num);
 }
 
@@ -719,7 +767,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
     }
@@ -750,8 +798,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndGMM2Sync();
-    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();

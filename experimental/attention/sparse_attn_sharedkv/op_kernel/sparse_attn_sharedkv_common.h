@@ -197,7 +197,10 @@ struct RunInfo {
     uint64_t topKBaseOffset = 0;
     uint32_t actualSingleProcessSInnerSize = 0;
     uint32_t actualSingleProcessSInnerSizeAlign = 0;
-    bool isFirstSInnerLoop = false;
+    uint32_t actualSingleProcessSInnerOriSize = 0;
+    uint32_t actualSingleProcessSInnerOriAlignSize = 0;
+    uint32_t actualSingleProcessSInnerCmpSize = 0;
+    uint32_t actualSingleProcessSInnerCmpAlignSize = 0;
     uint32_t s2BatchOffset = 0;
     uint32_t gSize = 0;
     uint32_t s1Size = 0;
@@ -207,26 +210,33 @@ struct RunInfo {
     uint32_t mSizeVStart = 0;
     uint32_t tndIsS2SplitCore = 0;
     uint32_t tndCoreStartKVSplitPos = 0;
+    bool isFirstSInnerLoop = false;
     bool isBmm2Output = false;
     bool isValid = false;
+    bool isLastS2Loop = 0;
+    int64_t inValidRowCount = 0;
 
-    static constexpr uint32_t n2Idx = 0;
     uint64_t actS1Size = 1;
     uint64_t actS2SizeOri = 0ULL;
+    static constexpr uint32_t n2Idx = 0;
     uint32_t gS1Idx = 0;
     uint64_t actS2Size = 1;
     uint64_t actOriS2Size = 1;
     uint32_t actMBaseSize = 0;
-    bool isLastS2Loop = 0;
     int32_t nextTokensPerBatch = 0;
     int64_t threshold = 0;
-    uint32_t curTopKIdx = 0;
     uint64_t curOffsetInSparseBlock = 0;
-    bool isOri = true; // 判断当前块是在Ori部分还是Cmp部分
+    uint32_t curTopKIdx = 0;
+    bool isOriOnly = true; // 判断当前块是在Ori部分还是Cmp部分
+    bool isOriCmpMix = false;
+    uint8_t resv[2];
     uint64_t s2StartPoint = 0;
+    int64_t cmpS2IdStart = 0;
     int64_t cmpS2IdLimit = 0;
     int32_t v0S2DealSize = 0;
     int32_t v0S2Start = 0;
+    uint32_t oriDealSize = 0;
+    int32_t cmpMaskRight = 0;
 };
 
 struct ConstInfo {

@@ -107,13 +107,7 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     n1_ = tilingData_->taskTilingInfo.N1;
     bs_ = tilingData_->taskTilingInfo.BS;
     a_ = tilingData_->taskTilingInfo.A;
-
-    uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * CeilDiv(h1_, PACK_FACTOR));
-    permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
-    uint64_t permuteXScaleSize =
-        a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-        Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
-    permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
+    
     uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_;
     groupListGm_ = workspaceGM_;
 
@@ -122,8 +116,12 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
     yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)this->yGM_);
     groupListGlobalBuffer_.SetGlobalBuffer((__gm__ int64_t *)groupListGm_);
-    xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
-    wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+    if (xScaleGM != nullptr) {
+        xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
+    }
+    if (weightScaleGM != nullptr) {
+        wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+    }
 
     if constexpr (!MX_QUANT_MODE) {
         uint32_t expertNumMax = tilingData_->taskTilingInfo.expertNum;
@@ -164,25 +162,30 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
     GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
     GM_ADDR scaleBPtr;
     GM_ADDR xScalePtr;
-    if constexpr (!MX_QUANT_MODE) {
-        float xScaleValue = *((__gm__ float *)xScaleGM_);
-        float wScaleValue = *((__gm__ float *)weightScaleGM_);
-        for (uint32_t i = 0; i < expertNum; i++) {
-            ttXScaleRepeatGlobalBuffer_.SetValue(i, xScaleValue);
-            ttWeightScaleRepeatGlobalBuffer_.SetValue(i, wScaleValue);
+    if (xScaleGM_ != nullptr && weightScaleGM_ != nullptr) {
+        if constexpr (!MX_QUANT_MODE) {
+            float xScaleValue = *((__gm__ float *)xScaleGM_);
+            float wScaleValue = *((__gm__ float *)weightScaleGM_);
+            for (uint32_t i = 0; i < expertNum; i++) {
+                ttXScaleRepeatGlobalBuffer_.SetValue(i, xScaleValue);
+                ttWeightScaleRepeatGlobalBuffer_.SetValue(i, wScaleValue);
+            }
+            uint32_t ttScaleCacheLineNum = CeilDiv(sizeof(float) * expertNum, 64U);
+            for (uint32_t cacheLineIdx = 0; cacheLineIdx < ttScaleCacheLineNum; cacheLineIdx++) {
+                AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                    AscendC::DcciDst::CACHELINE_OUT>(ttWeightScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
+                AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                    AscendC::DcciDst::CACHELINE_OUT>(ttXScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
+            }
+            scaleBPtr = BuildPtrTable(ttWeightScaleRepeatGm_, 2);
+            xScalePtr = ttXScaleRepeatGm_;
+        } else {
+            scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+            xScalePtr = xScaleGM_;
         }
-        uint32_t ttScaleCacheLineNum = CeilDiv(sizeof(float) * expertNum, 64U);
-        for (uint32_t cacheLineIdx = 0; cacheLineIdx < ttScaleCacheLineNum; cacheLineIdx++) {
-            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(ttWeightScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
-            AscendC::DataCacheCleanAndInvalid<float, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(ttXScaleRepeatGlobalBuffer_[cacheLineIdx * 16]);
-        }
-        scaleBPtr = BuildPtrTable(ttWeightScaleRepeatGm_, 2);
-        xScalePtr = ttXScaleRepeatGm_;
     } else {
-        scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
-        xScalePtr = xScaleGM_;
+        scaleBPtr = nullptr;
+        xScalePtr = nullptr;
     }
     GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 

@@ -70,6 +70,7 @@ if (ENABLE_BUILT_IN)
   set(WHL_INSTALL_DIR                 ops_transformer)
   set(IMPL_INSTALL_DIR                opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
   set(AICPU_HOST_KERNEL_IMPL          ops_transformer/built-in/op_impl/host_cpu)
+  set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME ops-transformer)
 else()
  	# custom pkg
  	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
@@ -143,9 +144,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/runtime/include/external
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include
@@ -161,6 +163,7 @@ set(OP_TILING_INCLUDE
   ${METADEF_INCLUDE_DIRS}
   ${TILINGAPI_INC_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
+  ${OPBASE_SOURCE_PATH}/include/op_common
   ${OPBASE_INC_DIRS}
   ${NNOPBASE_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
@@ -205,9 +208,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in
 
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
 
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_proto/runtime
@@ -256,9 +260,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
+    ${TOP_DIR}/ops-base/include/op_common/op_host
+    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
-    ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include

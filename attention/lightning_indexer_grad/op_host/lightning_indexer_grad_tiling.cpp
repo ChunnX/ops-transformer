@@ -93,6 +93,10 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
         opParamInfo.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
         opParamInfo.actualSeqLengthsK.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_K_INDEX);
         opParamInfo.actualSeqLengthsK.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
+        OP_CHECK_IF(opParamInfo.actualSeqLengthsQ.tensor == nullptr || opParamInfo.actualSeqLengthsK.tensor == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                "TND layout requires actual_seq_lengths_query and actual_seq_lengths_key to be provided, but got null."),
+            return ge::GRAPH_FAILED);
 
         batch = static_cast<uint32_t>(opParamInfo.actualSeqLengthsQ.tensor->GetShapeSize());
         seqlenQ = static_cast<uint32_t>(opParamInfo.query.shape->GetStorageShape().GetDim(DIM_IDX_ONE));
@@ -111,7 +115,7 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
 
     uint32_t dkCoreSize = seqlenK * headDim;
     // check headDim, groupNum, headNumK
-    OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum != MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
+    OP_CHECK_IF((headDim != MAX_HEADIM) || (groupNum > MAX_GROUPNUM) || (headNumK != LIMIT_HEADNUMK),
             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), 
             "only support headDim is %lu, groupNum is %lu, headNumK is %lu, but current headDim is %lu, groupNum is %lu, headNumK is %lu",
                 MAX_HEADIM, MAX_GROUPNUM, LIMIT_HEADNUMK, headDim, groupNum, headNumK),

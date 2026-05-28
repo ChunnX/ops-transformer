@@ -159,15 +159,11 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
             Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel,
                                                               preg_src_n);
-            // TODO: pScale,preg均需要关注
-            Sub(vreg_sel, vreg_sel, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_sel,
                                                                                               preg_ori_src_n);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x,
                                                               preg_src_n);
-            // TODO: pScale,preg均需要关注
-            Sub(vreg_input_x, vreg_input_x, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_input_x, preg_ori_src_n);
         }
@@ -179,14 +175,13 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
-    // todo subLoop == 0) {
     LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    LoadAlign(vreg_input_max, tmpMaxUb2); // tmp是当前的行最大值
+    LoadAlign(vreg_input_max, tmpMaxUb2);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)preLoopMaxUb, vreg_in_max,
-                                                      preg_all); // loop 0的时候，把之前的全局最大值写入ub
+                                                      preg_all);
     Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
-    ExpSub(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all); // loop 0计算出的update_mul会在尾块不足256的时候用上
+    ExpSub(vreg_exp_max, vreg_in_max, vreg_max_new, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_max_new, preg_all);
 
@@ -198,6 +193,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUbStart + i);
+        Sub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all);
         LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         ExpSub(vreg_exp, vreg_input_x, vreg_max, preg_ori_src_n);
 
@@ -289,19 +285,15 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
 
-    // todo subLoop == 0) {
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    LoadAlign(vreg_in_exp_sum, inExpSumUb); // 之前的sum值
+    LoadAlign(vreg_in_exp_sum, inExpSumUb);
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb2);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)preLoopSumUb, vreg_in_exp_sum,
-                                                      preg_all); // 之前的sum值写到上一轮loop中
-    Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all); // 用之前的（全局最大值-本轮max）*之前的sum
-    // 用之前的全局最大值*之前的sum +本轮sum
+                                                      preg_all);
+    Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all);
     Add(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc,
-        preg_all); // loop 0更新后的sum值，暂时用不到，需要的是loop 0自己的sum值
-    // 存subloop=0的sum
+        preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_max, preg_all);
-    // subloop=0的纯sum值
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb, vreg_exp_sum_brc,
                                                       preg_all); // 传给loop 1用于更新rowSum
 }
@@ -444,15 +436,11 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
             Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel,
                                                               preg_src_n);
-            // TODO: pScale,preg均需要关注
-            Sub(vreg_sel, vreg_sel, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_sel,
                                                                                               preg_ori_src_n);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x,
                                                               preg_src_n);
-            // TODO: pScale,preg均需要关注
-            Sub(vreg_input_x, vreg_input_x, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_input_x, preg_ori_src_n);
         }
@@ -464,14 +452,12 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
-    // todosubLoop == 1) {
     LoadAlign(vreg_in_max, inMaxUb);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    LoadAlign(vreg_input_max, tmpMaxUb2); // tmp是当前的行最大值
+    LoadAlign(vreg_input_max, tmpMaxUb2);
     Max(vreg_max_new, vreg_in_max, vreg_input_max, preg_all);
     ExpSub(vreg_subloop_update, vreg_in_max, vreg_max_new, preg_all);
-    LoadAlign(vreg_pre_loop_max, preLoopMaxUb); // 应该是 [4100d376]	Address 00000004 = [415071a3]其实Address
-                                                // 00000000 = [0000d376]	Address 00000004 = [000071a3]
+    LoadAlign(vreg_pre_loop_max, preLoopMaxUb);
     ExpSub(vreg_exp_max, vreg_pre_loop_max, vreg_max_new, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_max_new, preg_all);
@@ -484,6 +470,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUbStart + i);
+        Sub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all);
         LoadAlign(vreg_input_x, srcUb + i * s2BaseSize);
         ExpSub(vreg_exp, vreg_input_x, vreg_max, preg_ori_src_n);
 
@@ -575,16 +562,13 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop1(
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
 
-    // todosubLoop == 1) {
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb2);
     RegTensor<float> vreg_first_sum;
-    // subloop=0的sum值仅只有update&sub=0的时候的值
-    LoadAlign(vreg_first_sum, firstLoopSumUb); // 对的
-    // subloop=0前的sum值(两轮循环前的sum值）
-    LoadAlign(vreg_pre_sum, preLoopSumUb);                              // 无
-    Mul(vreg_first_sum, vreg_subloop_update, vreg_first_sum, preg_all); // 对的
-    Add(vreg_first_sum, vreg_first_sum, vreg_exp_sum_brc, preg_all);    // 对的
+    LoadAlign(vreg_first_sum, firstLoopSumUb);
+    LoadAlign(vreg_pre_sum, preLoopSumUb);
+    Mul(vreg_first_sum, vreg_subloop_update, vreg_first_sum, preg_all);
+    Add(vreg_first_sum, vreg_first_sum, vreg_exp_sum_brc, preg_all);
     Mul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all);
     Add(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_pre_sum, preg_all);

@@ -11,7 +11,7 @@
 /*!
  * \file aclnn_flash_attn.h
  * \brief
-*/
+ */
 
 #ifndef OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
 #define OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
@@ -64,7 +64,6 @@ extern "C" {
  * @param layoutOut           [IN]  ATTR可选。输出的数据布局，支持"BSND"/"BNSD"/"TND"（大小写不敏感）。
  * @param returnSoftmaxLse    [IN]  ATTR可选。是否输出softmax_lse。INT类型，1表示输出，0表示不输出。
  *                                  训练正向传播时置1，推理时置0。
- * @param deterministic       [IN]  ATTR可选。是否使用确定性计算（影响性能）。INT类型。
  * @param attnOut        [OUT] 必选输出。attention计算结果，数据类型与q一致，layout由layoutOut决定。
  * @param softmaxLseOptional  [OUT] 可选输出。softmax的log-sum-exp值，FLOAT32类型。
  *                                  returnSoftmaxLse=1时有效，shape取决于layout和序列长度：
@@ -74,32 +73,13 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutOut,
-    int32_t returnSoftmaxLse,
-    int32_t deterministic,
-    const aclTensor *attnOut,
-    const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *blockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnFlashAttn的第二段接口，用于执行计算。
@@ -109,14 +89,10 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnFlashAttn(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    const aclrtStream stream);
+aclnnStatus aclnnFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_

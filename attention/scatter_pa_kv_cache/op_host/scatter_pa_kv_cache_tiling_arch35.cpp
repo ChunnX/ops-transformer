@@ -707,6 +707,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     auto cacheMode = attrs->GetStr(INPUT_CACHE_MODE_INDEX);
     auto scatterMode = attrs->GetStr(INPUT_SCATTER_MODE_INDEX);
+    scatterMode = (scatterMode == nullptr) ? "" : scatterMode;
     if (strcmp(cacheMode, "PA_NZ") == 0) {
         // entering template nz
         templateType_ = TEMPLATE_NZ;
@@ -773,10 +774,10 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, slotMapping);
     slotMappingShape_ = slotMapping->GetStorageShape();
 
-    auto inputValue = context_->GetRequiredInputTensor(inputValue_);
-    auto inputValueCacheIn = context_->GetRequiredInputTensor(inputValueCacheIn_);
     if (inOutMode_ == DUAL_IN_OUT) {
+        auto inputValue = context_->GetRequiredInputTensor(inputValue_);
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputValue);
+        auto inputValueCacheIn = context_->GetRequiredInputTensor(inputValueCacheIn_);
         OP_CHECK_NULL_WITH_CONTEXT(context_, inputValueCacheIn);
         inputValueShape_ = inputValue->GetStorageShape();
         inputValueCacheInShape_ = inputValueCacheIn->GetStorageShape();

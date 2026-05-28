@@ -267,13 +267,16 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     // 分核优化，对于超出l2 cache的case优先多个核处理BN下的S1S2
     bool isExceedL2Cache = CheckExceedL2Cache();
     bool isLargeInvalidBlk = CheckIsLargeInvalidBlk(fBaseParams);
-    fBaseParams.enableSwizzle = (isExceedL2Cache || isLargeInvalidBlk) && !fBaseParams.isDeterministic &&
-                                fBaseParams.blockOuter == fBaseParams.aicNum &&
-                                (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED));
+    fBaseParams.enableSwizzle = (isExceedL2Cache || isLargeInvalidBlk) && fBaseParams.blockOuter == fBaseParams.aicNum;
+    // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
+    bool templateSupportCond =
+        (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
+         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+        (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
+         (fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED)));
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
-                               fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
-                               fBaseParams.b < TND_SWIZZLE_PREFIX_NUM && !tndBaseInfo.isSeqExistZero &&
-                               fBaseParams.tailZeroCount == 0;
+                               templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
+                               !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
     OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
             static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle);
@@ -698,6 +701,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_OLD)) {
         return;
     }
+    // EOD场景确定性计算需要使用真实的b
+    int64_t oriBsize = fBaseParams.b;
+    fBaseParams.b -= fBaseParams.tailZeroCount;
+
     int64_t cubebaseM = fBaseParams.s1Inner * fBaseParams.s1CvRatio;
     int64_t cubebaseN = fBaseParams.s2Inner * fBaseParams.s2CvRatio;
     uint8_t deterTilingSplitMode = (cubebaseM == cubebaseN ? 0 : (cubebaseM > cubebaseN ? 2 : 1));
@@ -721,6 +728,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s1Outer = CeilDivideBy(s1Outer, static_cast<int64_t>(NUM_TWO));
     }
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
+        CalcTNDSwizzleParam();
         CalcleTNDDeterParam();
     }
     if (fBaseParams.layoutType != INPUT_FORMAT_TND &&
@@ -737,6 +745,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s2Inner = s2Inner;
         fBaseParams.deterMaxRound *= NUM_TWO;
     }
+    // 还原eod
+    fBaseParams.b = oriBsize;
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::GetIsDeterArr()
@@ -938,8 +948,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t maskUsedCoreNum = 0;
     fBaseParams.enablePreSfmg =
         (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
-        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && fBaseParams.d >= 192 &&
-         fBaseParams.d <= 768 && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 && !fBaseParams.isDeterministic &&
+        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&
+         fBaseParams.d >= static_cast<uint32_t>(ConstAxisTemplateNum::NUM192) &&
+         fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM768) &&
+         fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 && !fBaseParams.isDeterministic &&
          fBaseParams.sinkOptional != NORMAL_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
          fBaseParams.dropoutIsDivisibleBy8 && !fBaseParams.sValueZeroUnderTND);
     if (fBaseParams.enablePreSfmg) {
@@ -989,7 +1001,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
         fBaseParams.s1SinkOuter = fBaseParams.s1Outer * AICV_RATIO_DEFAULT;
         fBaseParams.s2SinkOuter = fBaseParams.s2Outer;
         fBaseParams.sinkSize =
-            fBaseParams.b * fBaseParams.n2 * fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2 *
+            fBaseParams.g * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkWorkSpaceSize = (fBaseParams.sinkSize + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
         uint64_t sinkPreBlockFactor = (sinkWorkSpaceSize + maskUsedCoreNum - 1) / maskUsedCoreNum;
         uint64_t sinkPreBlockTotal = (sinkWorkSpaceSize + sinkPreBlockFactor - 1) / sinkPreBlockFactor;
@@ -1020,6 +1033,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
     preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
+    preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
@@ -1050,7 +1064,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
                                 (fBaseParams.blockOuter * AICV_RATIO_DEFAULT);
     if (fBaseParams.sinkOptional == NORMAL_TENSOR) {
         uint64_t sinkPostBaseNum = postUbBaseSize / FP16_BYTES;
-        uint64_t sinkReduceAxis = fBaseParams.b * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
+        uint64_t sinkReduceAxis =
+            (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.s1SinkOuter * fBaseParams.s2SinkOuter;
         uint64_t sinkPostTailNumTmp = sinkReduceAxis % sinkPostBaseNum;
         uint64_t sinkPostTailNum =
             sinkPostTailNumTmp == static_cast<uint64_t>(0) ? sinkPostBaseNum : sinkPostTailNumTmp;
@@ -1502,6 +1517,9 @@ void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
                     leftIntersectionPoint > int64_t(actualS1Len) ? actualS1Len : leftIntersectionPoint);
                 float acturalS1End = static_cast<float>(std::min(
                     int64_t(actualS1Len), std::max(fBaseParams.cvS2Inner * j + cvBlockTail + actualCalcS1Token, 0L)));
+                if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && (acturalS1Begin >= acturalS1End)) {
+                    fBaseParams.isInvalidCol = true;
+                }
                 float acturalS1Num = acturalS1Begin > acturalS1End ? 0 : acturalS1End - acturalS1Begin;
                 float acturalS2Num = static_cast<float>(cvBlockTail);
                 acturalBlockInfo[i][j] = acturalS1Num / static_cast<float>(fBaseParams.s1CvInner) +
@@ -1526,7 +1544,20 @@ void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
 ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::InitTilingData()
 {
     bool isTnd = (fBaseParams.layoutType == INPUT_FORMAT_TND);
-    if (IsNewDeter(fBaseParams)) {
+    if (IsNewDeter(fBaseParams) && tndBaseInfo.isTndSwizzle) {
+        FagTilingWithTemplateTTT *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTT>();
+        if (tilingData == nullptr) {
+            OP_LOGE("InitTilingData", "InitTilingData failed.");
+            return ge::GRAPH_FAILED;
+        }
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;
+        preTilingData_ = &tilingData->preTilingData;
+        postTilingData_ = &tilingData->postTilingData;
+        deterParam = &tilingData->deterParam;
+        tndSwizzleParam_ = &tilingData->tndSwizzleParam;
+    } else if (IsNewDeter(fBaseParams)) {
         FagTilingWithTemplateTTF *tilingData = this->context_->GetTilingData<FagTilingWithTemplateTTF>();
         if (tilingData == nullptr) {
             OP_LOGE("InitTilingData", "InitTilingData failed.");
@@ -1627,9 +1658,21 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     bool isSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
         fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-        (fBaseParams.s1Inner * fBaseParams.s1CvRatio == fBaseParams.s2Inner * fBaseParams.s2CvRatio);
-    OP_LOGI(context_, "Determine whether to swizzle (not tnd), get isSplitByBlockIdx=[%d]",
-            static_cast<int>(isSplitByBlockIdx));
+        (fBaseParams.s1Inner * fBaseParams.s1CvRatio == fBaseParams.s2Inner * fBaseParams.s2CvRatio &&
+         fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED));
+    // 确定性计算支持swizzle的一些条件
+    if (fBaseParams.isDeterministic) {
+        bool casualCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
+                           fBaseParams.isS1S2Same);
+        bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+                         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
+        isSplitByBlockIdx =
+            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) &&
+             fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
+            (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
+             bandCond);
+    }
+    OP_LOGI(context_, "Determine whether to swizzle, get isSplitByBlockIdx=[%d]", static_cast<int>(isSplitByBlockIdx));
     s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(isSplitByBlockIdx);
     if (isSplitByBlockIdx) {
         s1s2BNGS1S2BaseParams_->set_totalPerBatchNum(GetTotalPerBatchNum(fBaseParams, fBaseParams.sparseType));
@@ -1669,11 +1712,12 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         deterParam->set_deterPrefix0(fBaseParams.deterPrefix0);
         deterParam->set_deterPrefix1(fBaseParams.deterPrefix1);
         deterParam->set_deterPrefix2(fBaseParams.deterPrefix2);
-    } else if (tndBaseInfo.isTndSwizzle && tndSwizzleParam_ != nullptr) {
+    }
+    if (tndBaseInfo.isTndSwizzle && tndSwizzleParam_ != nullptr) {
         tndSwizzleParam_->set_tndS2BlockPrefixSum(tndBaseInfo.tndS2BlockPrefixSum);
         tndSwizzleParam_->set_tndSwizzleS1S2PrefixSum(tndBaseInfo.tndSwizzleS1S2PrefixSum);
         tndSwizzleParam_->set_tndSwizzleS1S2AlignPrefixSum(tndBaseInfo.tndSwizzleS1S2AlignPrefixSum);
-    } else if (fBaseParams.layoutType == INPUT_FORMAT_TND && tndParam_ != nullptr) {
+    } else if (!IsNewDeter(fBaseParams) && fBaseParams.layoutType == INPUT_FORMAT_TND && tndParam_ != nullptr) {
         tndParam_->set_tndStartBIdx(tndBaseInfo.tndStartBIdx);
         tndParam_->set_tndS1S2PrefixSum(tndBaseInfo.tndS1S2PrefixSum);
         tndParam_->set_tndS1S2AlignPrefixSum(tndBaseInfo.tndS1S2AlignPrefixSum);

@@ -19,6 +19,7 @@
 #include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
+namespace flash_attn {
 //参考训练算子公共info
 struct FlashAttnCompileInfo {
     uint32_t aivNum;
@@ -30,5 +31,5 @@ struct FlashAttnCompileInfo {
     platform_ascendc::SocVersion socVersion;
     NpuArch npuArch;
 };
-
+} // namespace flash_attn
 } // namespace optiling

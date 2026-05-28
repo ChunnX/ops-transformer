@@ -72,12 +72,12 @@ public:
     GlobalTensor<INPUT_T> keyIndexGm;
     GlobalTensor<INPUT_T> keyRopeGm;
     GlobalTensor<int32_t> sparseIndicesGm;
-    GlobalTensor<INPUT_T> weightGm;
+    GlobalTensor<WEIGHT_T> weightGm;
     GlobalTensor<int32_t> topKGm;
     GlobalTensor<T> softmaxMaxGm; 
     GlobalTensor<T> softmaxSumGm;
     GlobalTensor<T> lossGm;
-    GlobalTensor<OUT_T> dWeightGm;
+    GlobalTensor<WEIGHT_T> dWeightGm;
     GlobalTensor<OUT_T> dKeyIndexGm;
 
     // workspace
@@ -165,7 +165,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
 {
     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)keyIndex);
-    weightGm.SetGlobalBuffer((__gm__ INPUT_T *)weight);
+    weightGm.SetGlobalBuffer((__gm__ WEIGHT_T *)weight);
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
     softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
@@ -174,7 +174,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     }
 
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
-    dWeightGm.SetGlobalBuffer((__gm__ OUT_T *)dWeight);
+    dWeightGm.SetGlobalBuffer((__gm__ WEIGHT_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     if (constInfo.aivIdx == 0) {
         lossGm.SetValue(0, 0.0F);
@@ -200,7 +200,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     pipe->InitBuffer(this->gatherTbuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->gatherOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_9K * 2);
     pipe->InitBuffer(this->reduceSumOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->weightInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_64);
+    pipe->InitBuffer(this->weightInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->maxInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->sumInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->mulsResQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
@@ -208,7 +208,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     pipe->InitBuffer(this->reluQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
     pipe->InitBuffer(this->reluGradQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K);
     pipe->InitBuffer(this->dwQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
-    pipe->InitBuffer(this->dwOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_64);
+    pipe->InitBuffer(this->dwOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->lossSumQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->zeroRowQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K);
     gatherKeyUb = gatherTbuf.Get<INPUT_T>();
@@ -470,16 +470,16 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::MergeKv(Buffer<BufferT
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::CopyInWeight(SLIGradKLLossRunInfo &runInfo)
 {
-    LocalTensor<INPUT_T> weightInUb = weightInQue.template AllocTensor<INPUT_T>();
+    LocalTensor<WEIGHT_T> weightInUb = weightInQue.template AllocTensor<WEIGHT_T>();
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1;
-    dataCopyParams.blockLen = runInfo.nIndexSize * sizeof(INPUT_T);
+    dataCopyParams.blockLen = runInfo.nIndexSize * sizeof(WEIGHT_T);
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
-    DataCopyPadExtParams<INPUT_T> padParams;
+    DataCopyPadExtParams<WEIGHT_T> padParams;
     DataCopyPad(weightInUb, weightGm[runInfo.weightOffset], dataCopyParams, padParams);
     this->weightInQue.template EnQue(weightInUb);
-    this->weightInQue.template DeQue<INPUT_T>();
+    this->weightInQue.template DeQue<WEIGHT_T>();
     this->weightInQue.template FreeTensor(weightInUb);
 }
 
@@ -489,11 +489,12 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector1(Buffer<
     if (kRunInfo.s2SingleIdx == 0) {
         CrossCoreWaitFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[kRunInfo.kTaskIdMod2]);
     }
-    LocalTensor<INPUT_T> weightInUb = weightInQue.template AllocTensor<INPUT_T>();
+    LocalTensor<WEIGHT_T> weightInUb = weightInQue.template AllocTensor<WEIGHT_T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
-    ProcessVec1Vf<T, INPUT_T>(reduceSumTensor[runInfo.s2CurSize], mmRes[kRunInfo.s2SingleCurSize], weightInUb, runInfo.nIndexSize, constInfo.syKBaseSize);
+    ProcessVec1Vf<T, WEIGHT_T>(reduceSumTensor[runInfo.s2CurSize], mmRes[kRunInfo.s2SingleCurSize], weightInUb,
+                               runInfo.nIndexSize, constInfo.syKBaseSize);
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[kRunInfo.kTaskIdMod2]);
     }
@@ -662,7 +663,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
     auto mulsResUb = this->mulsResQue.template AllocTensor<T>();
     auto reluUb = this->reluQue.template AllocTensor<T>();
     auto reluGradUb = this->reluGradQue.template AllocTensor<INPUT_T>();
-    LocalTensor<INPUT_T> weightInUb = weightInQue.template AllocTensor<INPUT_T>();
+    LocalTensor<WEIGHT_T> weightInUb = weightInQue.template AllocTensor<WEIGHT_T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     auto dwTensor = this->dwQue.template AllocTensor<T>();
     auto zeroRowTensor = this->zeroRowQue.template AllocTensor<INPUT_T>();
@@ -676,19 +677,22 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
     this->reluQue.template EnQue(reluUb);
     this->reluQue.template DeQue<T>();
     if (kRunInfo.isAlign64) {
-        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, mulsResUb,
-            weightInUb, reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+        ProcessVec6Vf<T, INPUT_T, WEIGHT_T, true>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor,
+            mulsResUb, weightInUb, reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize,
+            runInfo.nIndexSize, VEC_P_BASESIZE);
     } else {
-        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor, mulsResUb, weightInUb,
-            reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize, runInfo.nIndexSize, VEC_P_BASESIZE);
+        ProcessVec6Vf<T, INPUT_T, WEIGHT_T, false>(reluGradUb[kRunInfo.s2SingleCurSize * runInfo.nIndexSize], dwTensor,
+            mulsResUb, weightInUb, reduceSumTensor[runInfo.s2CurSize], reluUb, kRunInfo.s2RealBaseSize,
+            runInfo.nIndexSize, VEC_P_BASESIZE);
     }
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        uint32_t gRealSizeAlignTo16 = (constInfo.gSizeQueryIndex + 15) / 16 * 16;
         uint16_t dstGap = constInfo.gSizeQueryIndex == G_SIZE_QUERY_INDEX_24 ?
                             (static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - runInfo.nIndexSize)) :
-                            (static_cast<uint16_t>(runInfo.nIndexSize));
+                            (static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize));
         DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.nIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
             {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),
              static_cast<uint16_t>(runInfo.nIndexSize),
@@ -703,14 +707,12 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
     if (kRunInfo.isS2end) {
-        this->dwQue.template EnQue(dwTensor);
-        this->dwQue.template DeQue<T>();
-        LocalTensor<OUT_T> dwOutTensor = dwOutQue.template AllocTensor<OUT_T>();
-        CastDupVf<T, OUT_T>(dwOutTensor, dwTensor, runInfo.nIndexSize);
+        LocalTensor<WEIGHT_T> dwOutTensor = dwOutQue.template AllocTensor<WEIGHT_T>();
+        CastDupVf<T, WEIGHT_T>(dwOutTensor, dwTensor, runInfo.nIndexSize);
         this->dwOutQue.template EnQue(dwOutTensor);
-        this->dwOutQue.template DeQue<T>();
+        this->dwOutQue.template DeQue<WEIGHT_T>();
         DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockLen = runInfo.nIndexSize * sizeof(OUT_T);
+        dataCopyParams.blockLen = runInfo.nIndexSize * sizeof(WEIGHT_T);
         dataCopyParams.srcStride = 1;
         dataCopyParams.blockCount = 1;
         dataCopyParams.dstStride = 0;

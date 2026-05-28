@@ -161,6 +161,7 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
             copyParams.blockLen = (uint32_t)this->numExpert;
             DataCopyPad(tmpBufferRoutingMap, this->routingMapGm[routingMapOffset], copyParams, routingMapPadParams);
             MTE3ToSSync();
+            int64_t entriesForToken = 0;
             for (int64_t expertIndex = 0; expertIndex < this->numExpert; expertIndex++) {
                 int8_t isChoose = tmpBufferRoutingMap.GetValue(expertIndex);
                 int64_t probOffset = routingMapOffset + expertIndex;
@@ -177,7 +178,13 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
                     probsArray[probIndex] = prob;
                     probsAddrArray[probIndex] = probOffset;
                     probIndex++;
+                    entriesForToken++;
                 }
+            }
+            for (int64_t pad = entriesForToken; pad < this->topK; pad++) {
+                probsArray[probIndex] = 0.0f;
+                probsAddrArray[probIndex] = -1;
+                probIndex++;
             }
         }
         Duplicate(
@@ -188,6 +195,7 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
             int64_t hiddensizeLoopNum =
                 hiddensizeLoop == this->hiddenSizeLoopTimes - 1 ? this->hiddenSizeTail : this->hiddenSizeAlign;
             int64_t hiddensizeLoopOffset = hiddensizeLoop * this->hiddenSizeAlign;
+            Duplicate(tmpBufferProbGradFp32, float(0), this->indicesReserveNumAlign);
             for (int64_t topKInIndicesLoop = 0; topKInIndicesLoop < topKInIndicesLoopTimes;
                  topKInIndicesLoop++) { // indicesNumPerLoop / topK 循环
                 // copy in unpermutedOutputD, (1, hiddenSize)
@@ -223,6 +231,9 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
                 for (int64_t permuteInTopKLoop = 0; permuteInTopKLoop < this->topK; permuteInTopKLoop++) {
                     int64_t indicesOffset = topKInIndicesLoop * this->topK + permuteInTopKLoop;
                     int64_t permutedTokenOffset = indicesArray[indicesOffset];
+                    if (permutedTokenOffset < 0) {
+                        continue;
+                    }
                     Muls(
                         tmpBufferPermutedTokensGradFp32, tmpBufferUnpermutedFp32, probsArray[indicesOffset],
                         hiddensizeLoopNum);
@@ -315,6 +326,9 @@ MoeTokenUnpermuteWithRoutingMapGradProbNotNoneDropPadFalse<PermutedTokenT, IdxT,
             int64_t probGradBaseOffset = topKInIndicesLoop * this->topK;
             for (int64_t probGradIndex = 0; probGradIndex < this->topK; probGradIndex++) {
                 int64_t probGradOffset = probGradBaseOffset + probGradIndex;
+                if (probsAddrArray[probGradOffset] < 0) {
+                    continue;
+                }
                 ProbsT probGrad = probGradLocal.GetValue(probGradOffset);
                 int64_t addr = probsAddrArray[probGradOffset] % this->numExpert;
                 probGradLineLocal.SetValue(addr, probGrad);

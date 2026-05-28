@@ -171,7 +171,7 @@ int main() {
     ret = aclrtMemcpy(out1Data.data(), out1Data.size() * sizeof(out1Data[0]), outputDeviceAddr,
                         size * sizeof(out1Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < 10; j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, out1Data[j]);
     }
     size = GetShapeSize(outputScaleShape);
@@ -179,7 +179,7 @@ int main() {
     ret = aclrtMemcpy(out2Data.data(), out2Data.size() * sizeof(out2Data[0]), outputScaleDeviceAddr,
                         size * sizeof(out2Data[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < 10; j++) {
         LOG_PRINT("result[%ld] is: %f\n", j, out2Data[j]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改

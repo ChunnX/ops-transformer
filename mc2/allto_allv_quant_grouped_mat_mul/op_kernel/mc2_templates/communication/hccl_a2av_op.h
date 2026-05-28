@@ -66,7 +66,7 @@ public:
     __aicore__ inline void PermuteSendAfterCompute(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void WaitScale(uint32_t startExpertIdx);
     __aicore__ inline void Wait(uint32_t startExpertIdx);
-__aicore__ inline void WaitAll(uint32_t allNum, uint32_t step = 1U);
+    __aicore__ inline void WaitAll(uint32_t allNum, uint32_t step = 1U);
 
 private:
     typename HcclTypeSelector<commMode>::type hccl_;
@@ -135,14 +135,16 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     }
     if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_BFP16;
-    } else if constexpr (AscendC::IsSameType<hcclDataType, float16_t>::value) {
+    } else if constexpr (AscendC::IsSameType<hcclDataType, half>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP16;
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
     } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_HIF8;
     } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e5m2_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP8E5M2;
     } else if constexpr (AscendC::IsSameType<hcclDataType, fp8_e4m3fn_t>::value) {
         hcclDataType_ = HCCL_DATA_TYPE_FP8E4M3;
+#endif
     } else {
         hcclDataType_ = HCCL_DATA_TYPE_INT8;
     }
@@ -251,6 +253,7 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::End()
 {
+    SyncAll<false>();
     if ASCEND_IS_AIC { return; }
     hccl_.Finalize();
 }
