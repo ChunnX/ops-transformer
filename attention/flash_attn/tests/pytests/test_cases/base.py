@@ -30,11 +30,7 @@ import torch
 # seqused_q:可选; TND下必选;query实际的序列长度
 # seqused_kv:可选; TND下必选;key&value实际的序列长度
 
-# keep_prob:可选; dropout的保留概率：keep_prob = 1 - dropout_p
-# seed:可选; 随机种子，用于随机数生成
-# offset:可选; 随机数偏移
-
-# mask_mode:可选; sparse模式, [0, 1, 2, 3, 4, 5, 6, 7, 8]
+# mask_mode:可选; sparse模式, [0, 3, 4]
 # win_left:可选; 配合mask_mode使用
 # win_right:可选; 配合mask_mode使用
 
