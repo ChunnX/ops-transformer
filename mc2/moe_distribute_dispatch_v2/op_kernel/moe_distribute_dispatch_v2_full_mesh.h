@@ -993,8 +993,16 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         SendToSharedExpert(inQueue, outBuf);
     } else {
         uint32_t activeBS = static_cast<uint32_t>(activeMaskBsCnt_);
+        // scalesCount_ > axisH_ 表示每个 expert 有独立 scales，量化结果因 expert 不同而异，
+        // 无法使用"仅量化一次"的 BS 分核优化，需走 SendToMoeExpert 逐 expert 量化
+        // sendTokenBufNum_ 为 outTensor_ 的 slot 数，需 >= 每个 token 的 expert 数
+        uint32_t maxExpPerCore = (activeBS < moeUsedAivNum_) ?
+            Ceil(axisK_, moeUsedAivNum_ / activeBS) : axisK_;
         bool canUseBSMode = (activeBS > 0) && (moeUsedAivNum_ > 0) &&
-            (activeBS % moeUsedAivNum_ == 0 || moeUsedAivNum_ % activeBS == 0);
+            (activeBS % moeUsedAivNum_ == 0 || moeUsedAivNum_ % activeBS == 0) &&
+            (scalesCount_ <= axisH_) &&
+            (sendTokenBufNum_ >= maxExpPerCore) &&
+            (!isExpertMaskFlag_);
         if (canUseBSMode) {
             SendToMoeExpertByBS(inQueue, outBuf);
         } else {
