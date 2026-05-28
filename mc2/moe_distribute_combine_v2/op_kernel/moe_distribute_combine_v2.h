@@ -961,11 +961,15 @@ template <CombineMC2TypeClass>
 __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::ShouldSendToRankInRound(
     int32_t logicalRankId, uint32_t roundId) const
 {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if (epWorldSize_ <= 40)
         return true; 
     bool inLocalGroup = (logicalRankId >= localSendGroupStart_) &&
                         (logicalRankId < localSendGroupStart_ + localSendGroupNum_);
     return (roundId == 0U) ? inLocalGroup : (!inLocalGroup);
+#else
+    return true; 
+#endif
 }
 
 template <CombineMC2TypeClass>
@@ -981,7 +985,13 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     } else {
         localSendGroupStart_ = epWorldSize_ / 2;
     }
-    uint32_t roundNum = server_num > 5 ? 2U: 1U;
+    uint32_t roundNum;
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    roundNum = server_num > 5 ? 2U: 1U;
+#else
+    roundNum = 1;
+#endif
 
     if (sendCntNum_ != 0U) {
         LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
