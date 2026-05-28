@@ -171,22 +171,27 @@ public:
         ub_offset += tilingData->sftgTmpSpaceSize;
 
         for (uint32_t b_idx = 0; b_idx < batch_num_; b_idx++) {
+            int64_t current_q_seqlen, last_seq_total_len;
+            if constexpr (INPUT_LAYOUT == TND) {
+                current_q_seqlen = GetSeqLen(b_idx, act_seq_q_len);
+                last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx - 1, act_seq_q_len);
+            } else {
+                current_q_seqlen = q_seq_len_;
+                last_seq_total_len = 0;
+            }
             for (uint32_t n1_idx = 0; n1_idx < q_head_num_; n1_idx++) {
                 uint64_t in_gm_offset, out_gm_offset;
-                uint32_t q_seq_len;
+
                 if constexpr (INPUT_LAYOUT == BSND) {
-                    q_seq_len = q_seq_len_;
-                    in_gm_offset = b_idx * q_seq_len_ * q_head_num_ * head_dim_ + n1_idx * head_dim_;
-                    out_gm_offset = b_idx * q_head_num_ * q_seq_len_ * 8 + n1_idx * q_seq_len_ * 8;
+                    in_gm_offset = b_idx * current_q_seqlen * q_head_num_ * head_dim_ + n1_idx * head_dim_;
+                    out_gm_offset = b_idx * q_head_num_ * current_q_seqlen * 8 + n1_idx * current_q_seqlen * 8;
                 } else if constexpr (INPUT_LAYOUT == BNSD) {
-                    q_seq_len = q_seq_len_;
-                    in_gm_offset = b_idx * q_head_num_ * q_seq_len_ * head_dim_ + n1_idx * q_seq_len_ * head_dim_;
-                    out_gm_offset = b_idx * q_head_num_ * q_seq_len_ * 8 + n1_idx * q_seq_len_ * 8;
+                    in_gm_offset =
+                        b_idx * q_head_num_ * current_q_seqlen * head_dim_ + n1_idx * current_q_seqlen * head_dim_;
+                    out_gm_offset = b_idx * q_head_num_ * current_q_seqlen * 8 + n1_idx * current_q_seqlen * 8;
                 } else if constexpr (INPUT_LAYOUT == TND) {
-                    q_seq_len = GetSeqLen(b_idx, act_seq_q_len);
-                    uint64_t last_seq_total_len = b_idx == 0 ? 0 : GetSeqTotalLen(b_idx - 1, act_seq_q_len);
                     in_gm_offset = last_seq_total_len * q_head_num_ * head_dim_ + n1_idx * head_dim_;
-                    out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * q_seq_len_ * 8;
+                    out_gm_offset = last_seq_total_len * q_head_num_ * 8 + n1_idx * current_q_seqlen * 8;
                 }
 
                 ComputeEvenCoreInfo(info, q_seq_len, process_s1_size);
@@ -403,8 +408,8 @@ private:
             DataCopyParams copyParam;
             copyParam.blockCount = process_size;
             copyParam.blockLen = head_dim_ * sizeof(INPUT_TYPE);
-            copyParam.srcStride = 0;
-            copyParam.dstStride = (src_stride - head_dim_) * sizeof(INPUT_TYPE);
+            copyParam.srcStride = (src_stride - head_dim_) * sizeof(INPUT_TYPE);
+            copyParam.dstStride = 0;
             DataCopyPad(dy_tensor, dy_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
             DataCopyPad(attention_tensor, out_gm[in_gm_offset], copyParam, {false, 0, 0, 0});
             SET_FLAG(MTE2, V, EVENT_ID0);
