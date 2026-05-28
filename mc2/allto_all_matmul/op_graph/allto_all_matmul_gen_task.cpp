@@ -35,7 +35,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
     
         if (commModeStr == ge::AscendString("ccu")) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (commModeStr == ge::AscendString("aicpu")) {
+        } else if (commModeStr == ge::AscendString("ai_cpu")) {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else if (commModeStr == ge::AscendString("")) {
             int64_t worldSize = 0;

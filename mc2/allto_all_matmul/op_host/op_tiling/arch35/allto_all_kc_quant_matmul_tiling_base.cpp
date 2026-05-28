@@ -232,7 +232,8 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
 
     // 获取commMode
     uint8_t commMode = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, commMode) !=
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) !=
         ge::GRAPH_SUCCESS) {
         OP_LOGE(opName_, "SetHcclTiling failed");
         return ge::GRAPH_FAILED;
@@ -559,7 +560,8 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
     // 35代表float8_e5m2,36代表float8e4m3
     uint32_t quantMode = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
     uint8_t hcclServerType = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, hcclServerType) !=
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        hcclServerType) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

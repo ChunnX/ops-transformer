@@ -490,7 +490,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
 
     // 获取commMode
     uint8_t commMode = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, commMode) != ge::GRAPH_SUCCESS) {
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     uint8_t hcclServerEngine = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
@@ -801,7 +802,8 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
     uint8_t biasDType = DTYPE_BIAS_FP32;
     // 获取commMode
     uint8_t hcclServerType = 0;
-    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, hcclServerType) != ge::GRAPH_SUCCESS) {
+    if (MatmulAlltoAllTilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA,
+                                                        hcclServerType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
