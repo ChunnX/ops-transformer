@@ -7,11 +7,8 @@
 
 using namespace AscendC;
 
-constexpr uint8_t SYNC_POOL_TO_MATMUL_FLAG = 0;
+constexpr uint8_t SYNC_V1_TO_C1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_C1_TO_V1_FLAG[2] = {2, 3};
-constexpr uint8_t SYNC_V1_TO_C2_FLAG[2] = {4, 5};
-constexpr uint8_t SYNC_MATMUL_TO_SOFTMAX_FLAG = 6;
-constexpr uint8_t SYNC_SOFTMAX_TO_TOPK_FLAG = 7;
 constexpr uint8_t SYNC_MODE = 2;
 
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024;
@@ -34,6 +31,7 @@ static constexpr uint32_t HALF_SAFE_MAX = 2048;
 static constexpr uint32_t RADIX_BITS_PER_ROUND = 2;
 static constexpr uint32_t RADIX_NUM_BINS = 4;
 static constexpr uint32_t RADIX_ROUNDS_FP16 = 8;
+static constexpr float SOFTMAX_NEG_INF = -1e38f;
 
 enum class BSALayout {
     TND = 0,
