@@ -59,7 +59,6 @@ public:
         this->Attr("expert_tokens_before_capacity_flag").AttrType(OPTIONAL).Bool(false);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
-        this->AICore().AddConfig("ascend950");
         OpAICoreConfig config310P;
 
         config310P.Input("x")
@@ -144,7 +143,7 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "moe_init_routing_v2");
-        // this->AICore().AddConfig("ascend950", regbaseConfig);
+        this->AICore().AddConfig("ascend950", regbaseConfig);
     }
 };
 
