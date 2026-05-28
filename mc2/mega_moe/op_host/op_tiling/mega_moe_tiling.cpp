@@ -328,9 +328,9 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return 2LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return 3LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return 9LL;
         default: return -1LL;
     }
     return -1LL;
@@ -340,9 +340,9 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return ge::DT_FLOAT8_E5M2;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return ge::DT_FLOAT4_E2M1;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return ge::DT_FLOAT8_E5M2;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return ge::DT_FLOAT4_E2M1;
         default: return ge::DT_UNDEFINED;
     }
     return ge::DT_UNDEFINED;
@@ -356,11 +356,11 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
 
     int64_t opQuantMode;
     if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E5M2;
     } else if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E4M3FN;
     } else {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E2M1;
     }
 
     return opQuantMode;
@@ -409,12 +409,12 @@ static ge::graphStatus CheckInitTilingData(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN &&
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E2M1,
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E2M1,
         OP_LOGE(nodeName,
-            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), "
-            "DISPATCH_QUANT_OUT_TYPE_E2M1(%d), but now is %ld.",
-            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, DISPATCH_QUANT_OUT_TYPE_E2M1, quantMode),
+            "only support DISPATCH_QUANT_OUT_DTYPE_E5M2(%d), DISPATCH_QUANT_OUT_DTYPE_E4M3FN(%d), "
+            "DISPATCH_QUANT_OUT_DTYPE_E2M1(%d), but now is %ld.",
+            DISPATCH_QUANT_OUT_DTYPE_E5M2, DISPATCH_QUANT_OUT_DTYPE_E4M3FN, DISPATCH_QUANT_OUT_DTYPE_E2M1, quantMode),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
