@@ -1,0 +1,81 @@
+#include "register/op_def_registry.h"
+
+namespace ops {
+
+static const std::vector<ge::DataType> qkDtype = {
+    ge::DT_FLOAT16, ge::DT_BF16
+};
+
+class BSASelectBlockMask : public OpDef {
+public:
+    explicit BSASelectBlockMask(const char* name) : OpDef(name)
+    {
+        this->Input("query")
+            .ParamType(REQUIRED)
+            .DataType(qkDtype)
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("key")
+            .ParamType(REQUIRED)
+            .DataType(qkDtype)
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("block_shape_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Input("post_block_shape_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Input("actual_seq_lengths_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Input("actual_seq_lengths_kv_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Input("actual_block_len_query_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Input("actual_block_len_key_optional")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
+            .AutoContiguous();
+        this->Output("block_sparse_mask_out")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT8})
+            .FormatList({ge::FORMAT_ND});
+        this->Attr("q_input_layout").AttrType(OPTIONAL).String("BNSD");
+        this->Attr("kv_input_layout").AttrType(OPTIONAL).String("BNSD");
+        this->Attr("num_key_value_heads").AttrType(OPTIONAL).Int(1);
+        this->Attr("scale_value").AttrType(OPTIONAL).Float(0.08838834764831845);
+        this->Attr("sparsity").AttrType(REQUIRED).Float(0.5);
+        OpAICoreConfig aicore_config;
+        aicore_config.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+        this->AICore().AddConfig("ascend910b", aicore_config);
+        this->AICore().AddConfig("ascend910_93", aicore_config);
+    }
+};
+OP_ADD(BSASelectBlockMask);
+} // namespace ops
