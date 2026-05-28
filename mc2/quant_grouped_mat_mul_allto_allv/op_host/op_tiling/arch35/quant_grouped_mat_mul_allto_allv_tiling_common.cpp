@@ -811,9 +811,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommM
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+        OP_LOGI(context->GetNodeName(), "commMode is '', and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -989,7 +989,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
     uint8_t commMode = 0;
-    if (QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,

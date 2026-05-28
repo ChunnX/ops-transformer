@@ -73,7 +73,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode0_with_sca
                         0, 0, 0, 0, 0,           // gmmXQM=0, 其余=0
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -112,7 +111,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmX_quantmode1_without_
                         1, 0, 0, 0, 0,           // gmmXQM=1, 其余=0
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -152,7 +150,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode0_wit
                         0, 0, 0, 0, 0,            // gmmWQM=0
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -191,7 +188,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmWeight_quantmode1_wit
                         0, 1, 0, 0, 0,           // gmmWQM=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -231,7 +227,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode0_with_scal
                         0, 0, 0, 0, 0,           // mmXQM=0
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -270,7 +265,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmX_quantmode1_without_s
                         0, 0, 1, 0, 0,           // mmXQM=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -310,7 +304,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode0_with
                         0, 0, 0, 0, 0,           // mmWQM=0
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -349,7 +342,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mmWeight_quantmode1_with
                         0, 0, 0, 1, 0,           // mmWQM=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -393,7 +385,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCountsTensor_not_nul
                         0, 0, 0, 0, 0,
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -433,7 +424,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCountsTensor_not_nul
                         0, 0, 0, 0, 0,
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -475,7 +465,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_empty_array)
                         0, 0, 0, 0, 0,
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -513,7 +502,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_empty_array)
                         0, 0, 0, 0, 0,
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -555,7 +543,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_group_nullptr)
                         0, 0, 0, 0, 0,
                         -1, 0,
                         (const char*)nullptr,    // group=nullptr
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -598,7 +585,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_nonzero)
                         0, 0, 0, 0, 1,           // commQuantMode=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -639,7 +625,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_quant_normal)
                         1, 1, 0, 0, 0,               // gmmXQM=1, gmmWQM=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -678,7 +663,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_commQuantMode_reject)
                         0, 0, 0, 0, 1,           // commQuantMode=1
                         -1, 0,
                         "test_grouped_mat_mul_allto_allv_ep_group",
-                        "ccu",
                         epWorldSize, sendCounts,
                         recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -725,7 +709,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_gmmx_dtype_invalid)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, true, true),
                         OUTPUT(y_, mmY_));
@@ -771,7 +754,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmmX_nullptr)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -816,7 +798,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmmWeight_nullptr)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -861,7 +842,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_y_nullptr)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(nullptr, mmY_));
@@ -906,7 +886,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmmXScale_null)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -951,7 +930,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmmWeightScale_null)
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, true, false),
                         OUTPUT(y_, mmY_));
@@ -998,7 +976,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mm_mode_noquant_inval
                               6, 6, 0, 0, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -1045,7 +1022,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mm_mode_mismatch_inva
                               6, 6, 1, 1, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, true, true),
                         OUTPUT(y_, mmY_));
@@ -1091,7 +1067,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mmXScale_null)
                               6, 6, 6, 6, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, true, true),
                         OUTPUT(y_, mmY_));
@@ -1137,7 +1112,6 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mmWeightScale_null)
                               6, 6, 6, 6, 0,
                               -1, groupSize,
                               "test_grouped_mat_mul_allto_allv_ep_group",
-                              "ccu",
                               epWorldSize, sendCounts,
                               recvCounts, false, false),
                         OUTPUT(y_, mmY_));
@@ -1174,7 +1148,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_nullptr_valid
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1203,7 +1177,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_nullptr_valid
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1238,7 +1212,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mm_optional_partial_mmY_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 6, 6, 6, 6, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1267,7 +1241,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_quant_mode_perchannel_un
 
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, nullptr, nullptr, nullptr, nullptr, mmX_, mmWeight_, nullptr, nullptr,
-                              nullptr, 2, 2, 0, 0, 0, -1, 0, "test_grouped_mat_mul_allto_allv_ep_group", "ccu",
+                              nullptr, 2, 2, 0, 0, 0, -1, 0, "test_grouped_mat_mul_allto_allv_ep_group",
                               epWorldSize, sendCounts, recvCounts, false, false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1298,7 +1272,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_quant_mode_unknown_enum)
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, nullptr, nullptr, nullptr, nullptr, mmX_, mmWeight_, nullptr, nullptr,
                               nullptr, kBadQuantMode, kBadQuantMode, 0, 0, 0, -1, 0,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1327,7 +1301,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_group_empty_string)
 
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, nullptr, nullptr, nullptr, nullptr, mmX_, mmWeight_, nullptr, nullptr,
-                              nullptr, 0, 0, 0, 0, 0, -1, 0, "", "ccu", epWorldSize, sendCounts, recvCounts, false, false),
+                              nullptr, 0, 0, 0, 0, 0, -1, 0, "", epWorldSize, sendCounts, recvCounts, false, false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
@@ -1357,7 +1331,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_group_name_length_ge_max
 
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize, longGroup.c_str(), "ccu",
+                              nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize, longGroup.c_str(),
                               epWorldSize, sendCounts, recvCounts, false, false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1387,7 +1361,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_scale_rank
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1418,7 +1392,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_scale_last
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1453,7 +1427,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mm_weight_scale_last_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 6, 6, 6, 6, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1482,7 +1456,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_sendCounts_empty_array_a
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1511,7 +1485,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_recvCounts_empty_array_a
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts, false,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts, false,
                               false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1542,7 +1516,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_transpose_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               true, false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1573,7 +1547,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_gmm_weight_transpose_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 6, 6, 0, 0, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1611,7 +1585,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mm_weight_transpose_c
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 6, 6, 6, 6, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, true),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1649,7 +1623,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_mx_mm_weight_transpose_a
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 6, 6, 6, 6, 0, -1, groupSize,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1679,7 +1653,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_gmm_weight_transpose_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 1, 1, 0, 0, 0, -1, 0,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               true, false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1709,7 +1683,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_gmm_weight_transpose_
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, 1, 1, 0, 0, 0, -1, 0,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, false),
                         OUTPUT(y_, nullptr));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1745,7 +1719,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_mm_weight_transpose_c
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 1, 1, 1, 1, 0, -1, 0,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, true),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
@@ -1781,7 +1755,7 @@ TEST_F(test_aclnn_quant_grouped_mat_mul_allto_all, test_tt_mm_weight_transpose_a
     auto ut = OP_API_UT(aclnnQuantGroupedMatMulAlltoAllv,
                         INPUT(gmmX_, gmmWeight_, gmmXScale_, gmmWeightScale_, nullptr, nullptr, mmX_, mmWeight_,
                               mmXScale_, mmWeightScale_, nullptr, 1, 1, 1, 1, 0, -1, 0,
-                              "test_grouped_mat_mul_allto_allv_ep_group", "ccu", epWorldSize, sendCounts, recvCounts,
+                              "test_grouped_mat_mul_allto_allv_ep_group", epWorldSize, sendCounts, recvCounts,
                               false, false),
                         OUTPUT(y_, mmY_));
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
