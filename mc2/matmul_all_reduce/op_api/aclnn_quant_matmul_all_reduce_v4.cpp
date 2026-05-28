@@ -237,7 +237,7 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
 }
 
 static aclnnStatus PrepareTransposedX2(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2,
-                                        aclTensor*& transX2, aclTensor*& transX2Scale)
+                                        const aclTensor*& transX2, const aclTensor*& transX2Scale)
 {
     auto tempX2 = x2;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
@@ -290,8 +290,8 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     aclTensor* scale = nullptr;
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
-    aclTensor* transX2 = nullptr;
-    aclTensor* transX2Scale = nullptr;
+    const aclTensor* transX2 = nullptr;
+    const aclTensor* transX2Scale = nullptr;
     auto transRet = PrepareTransposedX2(x2, x2Scale, transposeX2, transX2, transX2Scale);
     CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
 
