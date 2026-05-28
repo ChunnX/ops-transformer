@@ -231,7 +231,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
                 ProcessPoolingQ(batchIdx, headIdx, qChunkStart, qChunkEnd);
 
-                CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
+                if ASCEND_IS_AIV {
+                    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
+                }
                 if ASCEND_IS_AIC {
                     CrossCoreWaitFlag(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
                 }
@@ -247,12 +249,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
             if ASCEND_IS_AIV {
                 radixTopKService.ProcessRadixTopK(batchIdx, headIdx);
             }
-            SyncAll<false>();
+            SyncAll();
 
             if ASCEND_IS_AIV {
                 vectorService.ProcessMaskGen(batchIdx, headIdx);
             }
-            SyncAll<false>();
+            SyncAll();
         }
     }
 
