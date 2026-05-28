@@ -64,6 +64,7 @@ constexpr uint8_t EP_WORLD_SIZE_IDX = 1U;
 constexpr uint8_t SHARE_RANK_NUM_IDX = 2U;
 constexpr uint8_t MOE_NUM_IDX = 3U;
 constexpr int32_t BITS_PER_BYTE = 8;
+constexpr uint32_t STATUS_BLOCK_COUNT_FIELD_MASK = 2U;
 constexpr uint32_t MAX_UB_SIZE = 170U * 1024U;
 constexpr float FP8_E5M2_MAX_VALUE = 57344.0f;
 constexpr float FP8_E4M3_MAX_VALUE = 448.0f;
