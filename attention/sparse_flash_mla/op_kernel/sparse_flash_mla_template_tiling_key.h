@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef SPARSE_ATTN_SHARED_TEMPLATE_TILING_KEY_H
-#define SPARSE_ATTN_SHARED_TEMPLATE_TILING_KEY_H
+#ifndef SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
+#define SPARSE_FLASH_MLA_TEMPLATE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
