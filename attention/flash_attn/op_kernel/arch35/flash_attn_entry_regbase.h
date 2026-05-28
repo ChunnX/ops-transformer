@@ -53,12 +53,7 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
-    constexpr bool hasRopeConst = false;
-    constexpr bool emptyTensorConst = false;
-    constexpr uint8_t pFAMaskConst = 0;
-    constexpr uint8_t pFAMatMulTypeConst = 0;
-    constexpr bool enableKVPrefixConst = false;
-    constexpr bool enableS1OutSplitConst = false;
+    // 删除未使用的const变量，直接在需要的地方使用false/0
 
     constexpr TPosition bmm2OutPos =
         BaseApi::GetC2Position(dVTemplateType,
@@ -67,20 +62,9 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
                                ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     constexpr bool useDn =
         BaseApi::IsDn(false, false, PseTypeEnum::PSE_NONE_TYPE, hasAttenMask, false, (uint32_t)s1TemplateType == 64,
-                      dTemplateType, hasRopeConst, enableKVPrefixConst, true, IsSameType<INPUT_T, hifloat8_t>::value);
+                      dTemplateType, false, false, true, IsSameType<INPUT_T, hifloat8_t>::value);
     constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
     constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
-
-    using CubeBlock =
-        BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
-                                       dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
-    using VecFaBlock =
-        BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                      s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, false, KvLayoutType,
-                                      useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
 
     size_t offset = (size_t)(&((FlashAttnTilingData *)0)->baseTiling);
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData =
@@ -89,14 +73,25 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
     TPipe tPipe;
 
 #ifdef __DAV_C310_CUBE__
+    using CubeBlock =
+        BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                       dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
     BaseApi::FlashAttentionCubeProcessor<CubeBlock> op;
-    op.Init(query, key, value, blocktable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv,
-            workspace, runtimeMetaData, tilingData, &tPipe);
+    op.Init(query, key, value, blocktable, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, workspace, runtimeMetaData,
+            tilingData, &tPipe);
 #else
-    BaseApi::FlashAttentionVectorProcessor<VecFaBlock, VecFdBlock, INPUT_T,
-                                            CubeBlock::LAYOUT, CubeBlock::PAGE_ATTENTION> op;
-    op.Init(key, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
+    // Vector不再依赖CubeBlock，直接使用编译时常量
+    constexpr LayOutTypeEnum vectorLayout = inputLayoutType;
+    constexpr bool vectorPageAttention = (KvLayoutType > 0);
+    using VecFaBlock = BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                     s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                     hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                       hasAttenMask, false, KvLayoutType, useDn, bmm2Write2Ub, splitD>;
+    BaseApi::FlashAttentionVectorProcessor<VecFaBlock, VecFdBlock, INPUT_T, vectorLayout, vectorPageAttention> op;
+    op.Init(key, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse, attentionOut, workspace,
+            runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
 #endif
 
     op.Process();
