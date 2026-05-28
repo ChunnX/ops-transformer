@@ -28,6 +28,7 @@ constexpr size_t TWO_DIMS = 2U;
 constexpr size_t MAX_GROUP_LEN = 128U;
 constexpr int64_t KVALUE_MIN = 1;
 constexpr int64_t KVALUE_MAX = 65535;
+constexpr uint32_t MAX_CCU_RANKSIZE = 8;
 constexpr char KC_SCENE[] = "KC quantization(x1QuantMode=3, x2QuantMode=2)";
 constexpr char KCDYN_SCENE[] = "KCDYN quantization(x1QuantMode=7, x2QuantMode=2)";
 constexpr char MX_SCENE[] = "MX quantization(x1QuantMode=6, x2QuantMode=6)";
@@ -93,6 +94,9 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor);
 
 // 检查x2是否合法，空指针、空tensor和维度
 aclnnStatus CheckX2Valid(const aclTensor* x2);
+
+// 检查commMode参数是否合法，并获取commMode对应枚举值
+aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum);
 
 // 检查是否有alltoallout输出
 bool IsAll2AllOut(const aclTensor *alltoAllOut);
