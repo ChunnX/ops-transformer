@@ -60,6 +60,7 @@ enum class NnopbaseHcclServerType : uint32_t { // HCCL Server
 
 static constexpr int64_t DIM_TWO = 2;
 static constexpr int64_t DIM_THREE = 3;
+static constexpr uint32_t RANK_DIM_BOUNDARY = 8;
 
 extern "C" aclnnStatus aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
@@ -429,7 +430,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else if (std::strcmp(commModeStr, "") == 0) {
-            if (rankSize <= 8) {
+            if (rankSize <= RANK_DIM_BOUNDARY) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
                 commModeEnum = Mc2Comm::COMM_MODE_AICPU;
@@ -492,7 +493,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     }
     if (commMode == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
-        return false;
+        return ACLNN_ERR_PARAM_INVALID;
     }
     char *str_commMode = const_cast<char *>(commMode);
     uint8_t commModeEnum = 0;
