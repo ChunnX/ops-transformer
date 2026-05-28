@@ -131,20 +131,6 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::PostPro
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Process()
 {
-    // === 验证补丁：清零 workspace ===
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() == 0) {
-            uint64_t totalWorkspaceBytes = fullMN_ * sizeof(C_DTYPE) * 2; // sendBuf + recvBuf
-            // 对 workspace 逐段清零 (用 DataCopy 或 memset 语义)
-            __gm__ uint8_t* wsPtr = (__gm__ uint8_t*)sendBuf_;
-            for (uint64_t i = 0; i < totalWorkspaceBytes; i += sizeof(C_DTYPE)) {
-                *((__gm__ C_DTYPE*)(wsPtr + i)) = static_cast<C_DTYPE>(0);
-            }
-        }
-        SyncAll<true>();
-    }
-    // === 验证补丁结束 ===
-
     InnerProcess(); // 核心计算+通信
     PostProcess(); // 等待计算与通信完成, 终止hcclserver
 }
@@ -230,7 +216,9 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     uint64_t rankSliceBytes = rankSliceElems * sizeof(C_DTYPE);
 
     // All2All 的 stride（单位：元素数），即每张卡数据在全局中的间隔
-    uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
+    // uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
+    // 验证修改：stride 与 rankSliceElems 保持一致
+    uint64_t stride = rankSliceElems;
     // 通信重复次数, 1次
     uint8_t repeat = 1;
     // 若是尾块，通信 handleId 存放的起始偏移为 tileCnt

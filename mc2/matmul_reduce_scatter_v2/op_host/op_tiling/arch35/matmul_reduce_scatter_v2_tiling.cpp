@@ -179,6 +179,14 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
         OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(matmulReduceScatterV2TilingData_->param);
     DoSplitMTiling(matmulReduceScatterV2TilingData_->param);
+    auto& param = matmulReduceScatterV2TilingData_->param;
+    auto& tileTiling = matmulReduceScatterV2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
+    uint64_t stride = static_cast<uint64_t>(param.rankM / param.rankDim) * static_cast<uint64_t>(param.rankN);
+    uint64_t rankSliceElems = static_cast<uint64_t>(tileTiling.M / param.rankDim) * static_cast<uint64_t>(tileTiling.N);
+    OP_LOGE(opName_, "=== DEBUG: stride=%lu, rankSliceElems=%lu, tileCnt=%u, tailCnt=%u, "
+        "tileM=%u, rankM=%u, rankN=%u, rankDim=%u ===",
+        stride, rankSliceElems, param.tileCnt, param.tailCnt,
+        tileTiling.M, param.rankM, param.rankN, param.rankDim);
     GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
     GE_ASSERT_GRAPH_SUCCESS(DoAllMatmulTiling());
     SetTilingResult(matmulReduceScatterV2TilingData_->param, MutableMC2MmV3TileTilingData().tCubeTiling,
