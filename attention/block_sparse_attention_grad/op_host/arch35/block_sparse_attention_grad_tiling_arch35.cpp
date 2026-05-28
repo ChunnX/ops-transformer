@@ -89,7 +89,11 @@ protected:
             return false;
         }
 
-        std::cout << "arc 35 is capable" << std::endl;
+        if (head_dim_ != 128) {
+            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support head_dim 128.");
+            return false;
+        }
+
         return true;
     }
 
@@ -258,7 +262,6 @@ protected:
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
-        cubeCoreNum = 4;
         tilingData_.set_cubeCoreNum(cubeCoreNum);
         tilingData_.set_baseM(128);
         tilingData_.set_baseN(128);
