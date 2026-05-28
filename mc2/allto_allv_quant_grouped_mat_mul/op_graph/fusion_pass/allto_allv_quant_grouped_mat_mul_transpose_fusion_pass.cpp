@@ -366,12 +366,12 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 only (no Transpose) ===");
     {
         auto debugBuilder = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_ONLY").c_str());
-        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale, dSendCounts,
-              dRecvCounts, dMmX, dMmWeight, dMmXScale, dMmWeightScale] = debugBuilder.CreateInputs<10>();
+        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale, dSendCountsTensor,
+              dRecvCountsTensor, dMmX, dMmWeight, dMmXScale, dMmWeightScale] = debugBuilder.CreateInputs<10>();
         std::string dGroup = "";
         int64_t dEpWorldSize = 0;
-        std::vector<int64_t> dSendCounts = {};
-        std::vector<int64_t> dRecvCounts = {};
+        std::vector<int64_t> dSendCountsVec = {};
+        std::vector<int64_t> dRecvCountsVec = {};
         int64_t dGmmXQuantMode = 0;
         int64_t dGmmWeightQuantMode = 0;
         int64_t dMmXQuantMode = 0;
@@ -382,9 +382,9 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
         bool dPermuteOutFlag = false;
         auto debugMc2 = ge::es::AlltoAllvQuantGroupedMatMul(
             dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale,
-            dSendCounts, dRecvCounts,
+            dSendCountsTensor, dRecvCountsTensor,
             dMmX, dMmWeight, dMmXScale, dMmWeightScale,
-            dGroup.c_str(), dEpWorldSize, dSendCounts, dRecvCounts,
+            dGroup.c_str(), dEpWorldSize, dSendCountsVec, dRecvCountsVec,
             dGmmXQuantMode, dGmmWeightQuantMode, false, false, dPermuteOutFlag,
             dMmXQuantMode, dMmWeightQuantMode, dGroupSize, dYDtype, dMmDtype);
         auto debugGraph = debugBuilder.BuildAndReset({debugMc2.gmm_y});
