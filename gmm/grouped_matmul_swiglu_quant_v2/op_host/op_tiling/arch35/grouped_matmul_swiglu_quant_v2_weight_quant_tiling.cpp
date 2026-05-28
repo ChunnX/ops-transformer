@@ -152,16 +152,16 @@ bool GetAttrs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& co
     params.wTrans = GetOrDefault(attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT), true);
     params.groupListType = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE), 0L);
     params.dequantMode = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_MODE), MX_QUANT_MODE);
-    params.dequantDtype = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE), 
+    params.dequantDtype = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DEQUANT_DTYPE),
         static_cast<int64_t>(ge::DataType::DT_FLOAT));
     params.quantMode = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE), MX_QUANT_MODE);
-    params.quantDtype = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE), 
+    params.quantDtype = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE),
         static_cast<int64_t>(ge::DataType::DT_FLOAT8_E4M3FN));
 
-    printf("dt_float=%ld, float8_e4m3=%ld | %ld %ld %ld %ld %ld %ld\n", 
-            static_cast<int64_t>(ge::DataType::DT_FLOAT), static_cast<int64_t>(ge::DataType::DT_FLOAT8_E4M3FN),
-            params.wTrans, params.groupListType, params.dequantMode, params.dequantDtype,
-            params.quantMode, params.quantDtype);
+    printf("dt_float=%ld, float8_e4m3=%ld | %ld %ld %ld %ld %ld %ld\n",
+        static_cast<int64_t>(ge::DataType::DT_FLOAT), static_cast<int64_t>(ge::DataType::DT_FLOAT8_E4M3FN),
+        params.wTrans, params.groupListType, params.dequantMode, params.dequantDtype,
+        params.quantMode, params.quantDtype);
     return true;
 }
 
@@ -172,7 +172,8 @@ bool CheckAttrs([[maybe_unused]] const gert::TilingContext& context, const GMMSQ
         return false);
 
     OP_CHECK_IF(params.dequantDtype != ge::DataType::DT_FLOAT,
-        OP_LOGE(params.opName, "dequantDtype must be %ld (DT_FLOAT), got %ld.", ge::DataType::DT_FLOAT, params.dequantDtype),
+        OP_LOGE(params.opName, "dequantDtype must be %ld (DT_FLOAT), got %ld.",
+            ge::DataType::DT_FLOAT, params.dequantDtype),
         return false);
 
     OP_CHECK_IF(params.quantMode != MX_QUANT_MODE,
@@ -306,7 +307,7 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
     return true;
 }
 
-std::string ToShapeString(std::initializer_list<uint64_t> shape)
+std::string ToShapeString(const std::vector<uint64_t>& shape)
 {
     std::string shapeStr("[");
     const char* sep = "";
@@ -321,7 +322,7 @@ std::string ToShapeString(std::initializer_list<uint64_t> shape)
 
 bool CheckInputShape(
     gert::TilingContext* context, const char* variableName, const gert::Shape& shape,
-    std::initializer_list<uint64_t> expectedShape)
+    const std::vector<uint64_t>& expectedShape)
 {
     auto shapeLen = shape.GetDimNum();
     OP_CHECK_IF(
@@ -396,22 +397,37 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
             OP_LOGE(&context, "input dimension of storage shape for weight should be %zu, but got %zu",
                 DIM_NUM_WEIGHT_NZ, wStorageShape.GetDimNum()),
             return false);
-        if (!CheckInputShape(&context, "weight", wStorageShape,
-                    {static_cast<uint64_t>(params.groupNum), CeilDiv<int64_t>(params.kSize, C0_SIZE),
-                    CeilDiv<int64_t>(params.nSize, CUBE_BLOCK), CUBE_BLOCK, C0_SIZE})) {
+        const std::vector<uint64_t> expectedWeightShape = {
+            static_cast<uint64_t>(params.groupNum),
+            CeilDiv<int64_t>(params.kSize, C0_SIZE),
+            CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
+            CUBE_BLOCK,
+            C0_SIZE
+        };
+        if (!CheckInputShape(&context, "weight", wStorageShape, expectedWeightShape)) {
             return false;
         }
     }
 
     uint64_t scaleKSize = CeilDiv<uint64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
-    if (!CheckInputShape(&context, "xScale", xScaleShape, {static_cast<uint64_t>(params.mSize), scaleKSize, MX_INNER_DIM})) {
+    const std::vector<uint64_t> expectedXScaleShape = {
+        static_cast<uint64_t>(params.mSize),
+        scaleKSize,
+        MX_INNER_DIM
+    };
+    if (!CheckInputShape(&context, "xScale", xScaleShape, expectedXScaleShape)) {
         return false;
     }
     if (!CheckInputShape(&context, "groupList", groupListShape, {static_cast<uint64_t>(params.groupNum)})) {
         return false;
     }
-    if (!CheckInputShape(&context, "weightScale", weightScaleShape,
-                          {static_cast<uint64_t>(params.groupNum), params.nSize, scaleKSize, MX_INNER_DIM})) {
+    const std::vector<uint64_t> expectedWeightScaleShape = {
+        static_cast<uint64_t>(params.groupNum),
+        params.nSize,
+        scaleKSize,
+        MX_INNER_DIM
+    };
+    if (!CheckInputShape(&context, "weightScale", weightScaleShape, expectedWeightScaleShape)) {
         return false;
     }
     return true;
