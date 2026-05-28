@@ -39,7 +39,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 "int ori_win_left=-1, int ori_win_right=-1, "                        \
                                 "str layout_q=\"BSND\", str layout_kv=\"BSND\", "                    \
                                 "int topk_value_mode=1, bool return_softmax_lse=False, "             \
-                                "int batch_invariant=0, "                                            \
                                 "int? key_dtype=None, int? value_dtype=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -64,7 +63,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                                 ori_win_left=-1, ori_win_right=-1,
                                 layout_q='BSND', layout_kv='BSND',
                                 topk_value_mode=1, return_softmax_lse=False,
-                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
             if layout_q == "BSND":
                 ## 添加softmax_lse
@@ -107,7 +105,6 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_win_left=-1, ori_win_right=-1,
                                 layout_q='BSND', layout_kv='BSND',
                                 topk_value_mode=1, return_softmax_lse=False,
-                                batch_invariant=0,
                                 key_dtype=None, value_dtype=None):
     """
     dispatcher implementation for NPU
@@ -129,5 +126,4 @@ def npu_mixed_quant_sparse_flash_mla(q,
                                 ori_win_left, ori_win_right,
                                 layout_q, layout_kv,
                                 topk_value_mode, return_softmax_lse,
-                                batch_invariant,
                                 key_dtype, value_dtype)

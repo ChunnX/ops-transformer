@@ -62,7 +62,6 @@ class Network(torch.nn.Module):
                                 layout_kv=layout_kv,
                                 topk_value_mode=topk_value_mode,
                                 return_softmax_lse=return_softmax_lse,
-                                batch_invariant=0,
                                 key_dtype=None,
                                 value_dtype=None)
         return npu_result
@@ -237,7 +236,6 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 layout_kv=op_input['layout_kv'],
                                 topk_value_mode=op_input.get('topk_value_mode', 1),
                                 return_softmax_lse=op_input.get('return_softmax_lse', False),
-                                batch_invariant=0,
                                 key_dtype=None,
                                 value_dtype=None)
 

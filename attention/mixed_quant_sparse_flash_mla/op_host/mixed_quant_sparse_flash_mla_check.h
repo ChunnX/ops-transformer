@@ -135,7 +135,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
-constexpr uint32_t ATTR_BATCH_INVARIANT_INDEX = 12;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
