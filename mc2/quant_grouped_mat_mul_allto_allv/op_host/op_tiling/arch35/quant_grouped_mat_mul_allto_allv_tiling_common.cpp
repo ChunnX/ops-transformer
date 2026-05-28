@@ -790,7 +790,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus QuantGetAndConvertCommMode(const gert::TilingContext *context, uint8_t &commMode)
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
@@ -988,7 +988,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = 0;
+    if (QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,

@@ -250,7 +250,7 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }
 
-static ge::graphStatus QuantGetAndConvertCommMode(const gert::TilingContext *context, uint8_t &commMode)
+ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
