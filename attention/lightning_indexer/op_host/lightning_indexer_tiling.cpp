@@ -319,7 +319,8 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
 {
     OP_CHECK_IF((opParamInfo_.blockTable.tensor != nullptr) &&
                    (opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum() != DIM_NUM_TWO),
-               OP_LOGE(opName_, "the dim num of block_table's shape should be 2"), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "block_table",
+                    opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum(), "The shape dim of block_table must be 2"), return ge::GRAPH_FAILED);
 
     uint32_t kShapeDim = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
     uint32_t qShapeDim = opParamInfo_.query.shape->GetStorageShape().GetDimNum();
@@ -336,22 +337,32 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
     }
     OP_CHECK_IF(kShapeDim != kExpectShapeDim,
                OP_LOGE(opName_, "the dim num of key's shape should be %u, but now is %u", kExpectShapeDim, kShapeDim),
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key",
+                    std::to_string(kShapeDim).c_str(), FormatString("The shape dim of key must be %u", kExpectShapeDim)),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(qShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of query's shape should be %u, but now is %u",
                 qExpectShapeDim, qShapeDim),
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key",
+                    std::to_string(qShapeDim).c_str(), FormatString("The shape dim of query must be %u", qExpectShapeDim)),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(outShapeDim != qExpectShapeDim,
                OP_LOGE(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
                 qExpectShapeDim, outShapeDim),
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key",
+                    std::to_string(outShapeDim).c_str(), FormatString("The shape dim of sparse_indices must be %u", qExpectShapeDim)),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(valuesOutShapeDim != qExpectShapeDim && (*opParamInfo_.returnValue),
                OP_LOGE(opName_, "the dim num of sparse_values's shape should be %u, but now is %u",
                 qExpectShapeDim, valuesOutShapeDim),
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key",
+                    std::to_string(valuesOutShapeDim).c_str(), FormatString("The shape dim of sparse_values must be %u", qExpectShapeDim)),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!(weightsShapeDim == qExpectShapeDim - 1),
                OP_LOGE(opName_, "the dim num of weights's shape should be %u, but now is %u", qExpectShapeDim - 1,
                 weightsShapeDim),
+               OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "key",
+                    std::to_string(weightsShapeDim).c_str(), FormatString("The shape dim of weights must be %u", qExpectShapeDim - 1)),
                return ge::GRAPH_FAILED);
     if (opParamInfo_.valuesOut.shape->GetStorageShape().GetShapeSize() != 0 && !(*opParamInfo_.returnValue)) {
         OP_LOGW(opName_, "when returnValue is false, valuesOut must be null.");
