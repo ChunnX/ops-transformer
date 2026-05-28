@@ -34,19 +34,22 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool transposeMatch = (tilingProcesser_.args_.isATrans == 0 && tilingProcesser_.args_.isBTrans == 1);
             OP_TILING_CHECK(
                 !transposeMatch,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid", "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid",
+                                          "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !kAligned,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid", "310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is %d"),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid",
+                                          "310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is %d"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
             bool nAligned = (tilingProcesser_.args_.nValue % N_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !nAligned,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid", "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %d"),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid",
+                                          "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %d"),
                 return ge::GRAPH_FAILED);
             auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
             OP_TILING_CHECK(
@@ -57,7 +60,9 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(
                 !isWeightNZ,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid", "310P QuantMatmulAllReduce weight format should be FRACTAL_NZ, code:%d, but input format is %d"),
+                OP_LOGE_FOR_INVALID_VALUE(
+                    tilingProcesser_.opName_, "param", "invalid",
+                    "310P QuantMatmulAllReduce weight format should be FRACTAL_NZ, code:%d, but input format is %d"),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }

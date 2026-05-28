@@ -31,7 +31,9 @@ ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
     auto attrs = context->GetAttrs();
     auto commModePtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_COMMMODE));
     OP_TILING_CHECK((commModePtr == nullptr || !(std::strcmp(commModePtr, "aiv") == 0)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "commMode", "invalid", "AivModeTiling commMode is invalid. commMode is %s"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "commMode", "invalid",
+                                                          "AivModeTiling commMode is invalid. commMode is %s"),
+                    return ge::GRAPH_FAILED);
     return AllGatherMatmulTilingAIVModeFunc(context);
 }
 }  // namespace optiling

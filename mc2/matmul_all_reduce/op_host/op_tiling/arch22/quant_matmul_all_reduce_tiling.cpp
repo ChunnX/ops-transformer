@@ -163,9 +163,10 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
     uint64_t x2FirstDim = args_.isBTrans ? n : k;
     uint64_t x2LastDim = args_.isBTrans ? k : n;
     OP_TILING_CHECK(
-        x2FirstDim > static_cast<uint64_t>(INT32_MAX)  || (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "The size of x2 first-axis=%lu exceeds the upper limit=%d or last-axis=%lu"
-                                       " exceeds the upper limit=%d."),
+        x2FirstDim > static_cast<uint64_t>(INT32_MAX) || (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                  "The size of x2 first-axis=%lu exceeds the upper limit=%d or last-axis=%lu"
+                                  " exceeds the upper limit=%d."),
         return ge::GRAPH_FAILED);
 
     return CheckQuantEmptyTensor();
@@ -182,19 +183,21 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckDequantScaleType()
     // 3. y = fp16 且 protoken 存在时，dequantScale = fp32
     if (yType == ge::DT_BF16) {
         OP_TILING_CHECK(dequantScaleType != ge::DT_BF16,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, when output type is bf16,"
-                                                       " type of dequantScale should be bf16"),
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                                  "In the dequant scenario, when output type is bf16,"
+                                                  " type of dequantScale should be bf16"),
                         return ge::GRAPH_FAILED);
     } else if (pertokenScaleShape == nullptr) {
-        OP_TILING_CHECK(
-            !(dequantScaleType == ge::DT_UINT64 || dequantScaleType == ge::DT_INT64),
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, when output type is fp16,"
-                                           " type of dequantScale should be uint64 or int64 without pertoken."),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!(dequantScaleType == ge::DT_UINT64 || dequantScaleType == ge::DT_INT64),
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                                  "In the dequant scenario, when output type is fp16,"
+                                                  " type of dequantScale should be uint64 or int64 without pertoken."),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(dequantScaleType != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, when output type is fp16,"
-                                                       " type of dequantScale should be bf16 with pertoken."),
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                                  "In the dequant scenario, when output type is fp16,"
+                                                  " type of dequantScale should be bf16 with pertoken."),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -206,20 +209,23 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO && x2DimNum != DIM_NUM_FOUR,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, Expect x2 dim to be 2 or 4,"
-                                                   " but got x2 dim:[%lu]."),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                              "In the dequant scenario, Expect x2 dim to be 2 or 4,"
+                                              " but got x2 dim:[%lu]."),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(x1Type != x2Type,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, type of x1 and x2 should be same"),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                              "In the dequant scenario, type of x1 and x2 should be same"),
                     return ge::GRAPH_FAILED);
     // bias数据类型为int32
     if (mmrCtxInfo_.bias_shape != nullptr) {
         auto biasType = mmrCtxInfo_.bias->GetDataType();
         OP_TILING_CHECK(biasType != ge::DT_INT32,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "In the dequant scenario, type of bias should be int32"),
+                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                                  "In the dequant scenario, type of bias should be int32"),
                         return ge::GRAPH_FAILED);
     }
     // dequantScale数据类型范围
@@ -229,10 +235,12 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
         auto commQuantScaleType1 = mmrCtxInfo_.comm_quant_scale_1->GetDataType();
         auto commQuantScaleType2 = mmrCtxInfo_.comm_quant_scale_2->GetDataType();
         auto cType = mmrCtxInfo_.y->GetDataType();
-        OP_TILING_CHECK((commQuantScaleType1 != cType || commQuantScaleType2 != cType),
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "The type of comm_quant_scale_1 Type(%d) or comm_quant_scale_2 Type(%d) should be"
-                            "same to cType(%d)"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (commQuantScaleType1 != cType || commQuantScaleType2 != cType),
+            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
+                                      "The type of comm_quant_scale_1 Type(%d) or comm_quant_scale_2 Type(%d) should be"
+                                      "same to cType(%d)"),
+            return ge::GRAPH_FAILED);
     }
 
     return CheckAxisSize();

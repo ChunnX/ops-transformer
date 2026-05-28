@@ -143,8 +143,9 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
     uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
 
     OP_TILING_CHECK(outputDim0 != mValue,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "m-axis should be %lu, but output's m-axis is %lu"),
-        return false);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "m-axis should be %lu, but output's m-axis is %lu"),
+                    return false);
 
     return true;
 }
@@ -152,33 +153,44 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
 static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "common check failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "common check failed"),
+                    return ge::GRAPH_FAILED);
 
     const gert::StorageShape* aShape = context->GetInputShape(INPUT_X1_IDX);
     uint64_t valueOne = aShape->GetStorageShape().GetDim(DIM0_IDX);
     uint64_t valueTwo = aShape->GetStorageShape().GetDim(DIM1_IDX);
 
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the value is invalid"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the value is invalid"),
+                    return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the output's dim0 is invalid"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckOutputParamDim0(const_cast<gert::TilingContext *>(context)),
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the output's dim0 is invalid"),
+        return ge::GRAPH_FAILED);
 
     if (context->GetAttrs() == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "get attrs failed");
     } else {
         auto gatherIndex = context->GetAttrs()->GetAttrPointer<int64_t>(GATHER_IDX);
         OP_TILING_CHECK(*gatherIndex != 0,
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the gatherIndex should be 0, but real value is %d"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                                  "the gatherIndex should be 0, but real value is %d"),
+                        return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A_IDX);
         OP_TILING_CHECK(*isTransA != false,
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "the isTransA should be false, but real value is 1"), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                                  "the isTransA should be false, but real value is 1"),
+                        return ge::GRAPH_FAILED);
         OP_TILING_CHECK((valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
-            OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "The k-axis should be in range[256, 65535), but it is: %lu."), return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                                  "The k-axis should be in range[256, 65535), but it is: %lu."),
+                        return ge::GRAPH_FAILED);
     }
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(GROUP_IDX));
-    OP_TILING_CHECK(group == nullptr, OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "group is nullptr. "),
+    OP_TILING_CHECK(group == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "group is nullptr. "),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -557,7 +569,8 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
     OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "param is invalid"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "param is invalid"),
+                    return ge::GRAPH_FAILED);
 
     auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
@@ -566,8 +579,9 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
 
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(commTurn != 0,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "commTurn should be 0, but the actual value is %d."),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "commTurn should be 0, but the actual value is %d."),
+                    return ge::GRAPH_FAILED);
 
     OP_LOGD("AllGatherMatmul", " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"
             "commTurn is %d.", group, rankSize, *isTransA, *isTransB, *gatherIndex, commTurn);

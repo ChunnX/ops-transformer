@@ -23,9 +23,9 @@ namespace optiling {
 bool UnQuantMatmulAllReduceTiling310::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-    OP_TILING_CHECK(
-        weightTensor == nullptr, OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
-        return false);
+    OP_TILING_CHECK(weightTensor == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
+                    return false);
     auto format = weightTensor->GetStorageFormat();
     if ((npuArch_ != NpuArch::DAV_2002) || (format == ge::Format::FORMAT_ND)) {
         OP_LOGI(opName_, "skip normalized unquant tiling when is not 310p or not weight nz[%d].", format);
@@ -94,7 +94,8 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
         static_cast<uint64_t>(SET_NOT_USE_PARAM),
         static_cast<uint64_t>(FORMAT_B_NZ));
 
-    OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. disableMixNd2nz %lu", tilingKey, matmulTPLParam_.disableMixNd2nz);
+    OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. disableMixNd2nz %lu", tilingKey,
+            matmulTPLParam_.disableMixNd2nz);
     return tilingKey;
 }
 

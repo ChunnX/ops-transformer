@@ -55,7 +55,8 @@ bool AllGatherMatmulTilingV2::IsCapable()
 ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 {
     auto rawTilingData = context_->GetRawTilingData();
-    OP_TILING_CHECK((rawTilingData == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Fail to get rawTilingData."),
+    OP_TILING_CHECK((rawTilingData == nullptr),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Fail to get rawTilingData."),
                     return ge::GRAPH_FAILED);
     allGatherMatmulTilingDataV2_ = context_->GetTilingData<AllGatherMatmulTilingDataV2>();
     return ge::GRAPH_SUCCESS;
@@ -152,7 +153,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 {
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Fail to get platformInfo."),
+    OP_TILING_CHECK(platformInfo == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Fail to get platformInfo."),
                     return ge::GRAPH_FAILED);
 
     // 获取 compileInfo
@@ -228,10 +230,14 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
-    OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid", "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x1ScaleShape != nullptr,
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid",
+                                              "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
-    OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid", "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x2ScaleShape != nullptr,
+                    OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid",
+                                              "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

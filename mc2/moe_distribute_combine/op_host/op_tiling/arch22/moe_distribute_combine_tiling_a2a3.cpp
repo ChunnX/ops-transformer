@@ -126,17 +126,25 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(gert::Tiling
                     return GRAPH_FAILED);
 
     OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "expandX", "invalid", "The shape of parameter expandX is invalid"), return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "expandX", "invalid",
+                                                          "The shape of parameter expandX is invalid"),
+                    return GRAPH_FAILED);
     uint32_t h = expandXStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(h == 0 || h > MAX_HIDDEN_SIZE_A2 || h % BLOCK_SIZE_A2 != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "hiddensize is invalid."), return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "hiddensize is invalid."),
+                    return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "expertId", "invalid", "The shape of parameter expertId is invalid"), return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "expertId", "invalid",
+                                                          "The shape of parameter expertId is invalid"),
+                    return GRAPH_FAILED);
     uint32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(bs == 0 || bs > MAX_BATCH_SIZE_A2, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "batchsize is invalid."),
+    OP_TILING_CHECK(bs == 0 || bs > MAX_BATCH_SIZE_A2,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "batchsize is invalid."),
                     return GRAPH_FAILED);
     uint32_t k = expertIdStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(k == 0 || k > MAX_K_VALUE_A2, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "K", "invalid", "k is invalid."), return GRAPH_FAILED);
+    OP_TILING_CHECK(k == 0 || k > MAX_K_VALUE_A2,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "K", "invalid", "k is invalid."),
+                    return GRAPH_FAILED);
 
     info.bs = bs;
     info.k = k;
@@ -163,14 +171,19 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 ||
-        *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 || *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epWorldSize", "invalid", "epWorldSize is invalid."), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > MAX_EP_WORLD_SIZE_A2 ||
+            *epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epWorldSize", "invalid", "epWorldSize is invalid."),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epRankId", "invalid", "epRankId is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 ||
-        *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 || *moeExpertNumPtr % *epWorldSizePtr != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "moeExpertNum", "invalid", "moeExpertNum is invalid."), return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epRankId", "invalid", "epRankId is invalid."),
+                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
+            *moeExpertNumPtr % *epWorldSizePtr != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "moeExpertNum", "invalid", "moeExpertNum is invalid."),
+        return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"), return GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr,
@@ -183,13 +196,18 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(gert::TilingC
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "globalBs"), return GRAPH_FAILED);
     OP_TILING_CHECK(commQuantModePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "commQuantMode"), return GRAPH_FAILED);
-    OP_TILING_CHECK(!isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "commQuantMode", "invalid", "commQuantMode is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT) &&
-        *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "commQuantMode", "invalid", "commQuantMode is invalid."), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "commQuantMode", "invalid", "commQuantMode is invalid."),
+        return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        isLayered && *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::NON_QUANT) &&
+            *commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "commQuantMode", "invalid", "commQuantMode is invalid."),
+        return GRAPH_FAILED);
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "xShape"), return GRAPH_FAILED);
+    OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "xShape"),
+                    return GRAPH_FAILED);
     int32_t globalBs = *epWorldSizePtr * expertIdStorageShape->GetStorageShape().GetDim(0);
     info.epWorldSize = *epWorldSizePtr;
     info.tpWorldSize = static_cast<uint32_t>(0);
@@ -285,27 +303,30 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     auto ret = context->SetScheduleMode(batch_mode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
     MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "tilingData is nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "tilingData is nullptr."),
+                    return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "MoeDistributeCombineA2 get tilingData.");
     MoeDistributeCombineA2Info &info = tilingData->moeDistributeCombineInfo;
     bool isLayered = MoeDistributeCombineA2IsLayered();
     int32_t commQuantMode = 0;
     OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) !=
-        ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "MoeDistributeCombineA2 CheckWinSize Failed"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
+                                              "MoeDistributeCombineA2 CheckWinSize Failed"),
+                    return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
@@ -314,8 +335,9 @@ static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext 
     uint64_t tilingKey = MoeDistributeCombineA2CalcTilingKey(context, isLayered, commQuantMode);
     context->SetTilingKey(tilingKey);
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "workSpaces is nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "workSpaces is nullptr."),
+                    return ge::GRAPH_FAILED);
     uint32_t userWorkspaceSize = static_cast<uint32_t>(info.moeExpertNum) * sizeof(uint32_t) * 2;
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkspaceSize;
     auto attrs = context->GetAttrs();
@@ -431,9 +453,18 @@ ge::graphStatus MoeDistributeCombineTilingA2A3::MoeDistributeCombineA3TilingFunc
 bool MoeDistributeCombineTilingA2A3::CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize)
 {
     // 检验epWorldSize是否是8的倍数
-    OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize", "invalid", "epWorldSize should be divisible by 8, but got epWorldSize = %u."), return false);
+    OP_TILING_CHECK(
+        epWorldSize % 8 != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize", "invalid",
+                                              "epWorldSize should be divisible by 8, but got epWorldSize = %u."),
+        return false);
 
-    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize", "invalid", "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u."), return false);
+    OP_TILING_CHECK(
+        (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "epWorldSize", "invalid",
+            "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u."),
+        return false);
 
     return true;
 }

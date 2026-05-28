@@ -105,8 +105,10 @@ ge::graphStatus MoeUpdateExpertTiling::CheckAttrs(const gert::TilingContext* con
     if (balanceModePtr == nullptr) {
         tilingData->balanceMode = 0;
     } else {
-        OP_TILING_CHECK(((*balanceModePtr < 0) || (*balanceModePtr > 1)),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanceMode", "invalid", "balanceMode is invalid, which should be in [0, 1] but got %ld."),
+        OP_TILING_CHECK(
+            ((*balanceModePtr < 0) || (*balanceModePtr > 1)),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "balanceMode", "invalid",
+                                                  "balanceMode is invalid, which should be in [0, 1] but got %ld."),
             return ge::GRAPH_FAILED);
         tilingData->balanceMode = *balanceModePtr;
     }
@@ -115,16 +117,20 @@ ge::graphStatus MoeUpdateExpertTiling::CheckAttrs(const gert::TilingContext* con
         auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
         OP_TILING_CHECK(worldSizePtr == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "worldSizePtr"), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid", "worldSize is invalid, only support [%ld, %ld], but got %ld."),
+        OP_TILING_CHECK(
+            (*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid",
+                                                  "worldSize is invalid, only support [%ld, %ld], but got %ld."),
             return ge::GRAPH_FAILED);
         worldSize = *worldSizePtr;
 
         auto localRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_LOCAL_RANK_ID_INDEX);
         OP_TILING_CHECK(localRankIdPtr == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "localRankIdPtr"), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((*localRankIdPtr < 0) || (*localRankIdPtr >= worldSize),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "localRankId", "invalid", "localRankId is invalid, should in [0, %ld), but got %ld."),
+        OP_TILING_CHECK(
+            (*localRankIdPtr < 0) || (*localRankIdPtr >= worldSize),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "localRankId", "invalid",
+                                                  "localRankId is invalid, should in [0, %ld), but got %ld."),
             return ge::GRAPH_FAILED);
         localRankId = *localRankIdPtr;
     }
@@ -140,17 +146,19 @@ ge::graphStatus MoeUpdateExpertTiling::CheckInputDataType(const gert::TilingCont
     auto expertIdsDesc = context->GetInputDesc(EXPERT_IDS_INDEX);
     OP_TILING_CHECK(expertIdsDesc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "expertIdsDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((expertIdsDesc->GetDataType() != ge::DT_INT32) &&
-        (expertIdsDesc->GetDataType() != ge::DT_INT64)),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expertIds datatype is invalid, which should be int32 or int64 but is %s."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(((expertIdsDesc->GetDataType() != ge::DT_INT32) && (expertIdsDesc->GetDataType() != ge::DT_INT64)),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                        "expertIds datatype is invalid, which should be int32 or int64 but is %s."),
+                    return ge::GRAPH_FAILED);
 
     auto eplbTableDesc = context->GetInputDesc(EPLB_TABLE_INDEX);
     OP_TILING_CHECK(eplbTableDesc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "eplbTableDesc"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(eplbTableDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE(MOE_UPDATE_EXPERT_DEBUG, "eplbTable", Ops::Base::ToString(eplbTableDesc->GetDataType()).c_str(), "int32"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(MOE_UPDATE_EXPERT_DEBUG, "eplbTable",
+                                              Ops::Base::ToString(eplbTableDesc->GetDataType()).c_str(), "int32"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -167,7 +175,9 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOptionalInputDataType(const gert::Ti
         } else if (dtScales == ge::DT_BF16) {
             keyScales_ = KEY_SCALES_BF16;
         } else {
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expertScales datatype is invalid, which should be fp16/bf16/float but is %s.");
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                "expertScales datatype is invalid, which should be fp16/bf16/float but is %s.");
             return ge::GRAPH_FAILED;
         }
     }
@@ -175,14 +185,18 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOptionalInputDataType(const gert::Ti
     auto pruningThresholdDesc = context->GetOptionalInputDesc(PRUNING_THRESHOLD_INDEX);
     if(pruningThresholdDesc != nullptr) {
         OP_TILING_CHECK((pruningThresholdDesc->GetDataType() != ge::DT_FLOAT),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid", "pruningThreshold datatype is invalid, which should be float but is %s."),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            MOE_UPDATE_EXPERT_DEBUG, "y", "invalid",
+                            "pruningThreshold datatype is invalid, which should be float but is %s."),
+                        return ge::GRAPH_FAILED);
     }
 
     auto activeMaskDesc = context->GetOptionalInputDesc(ACTIVE_MASK_INDEX);
     if(activeMaskDesc != nullptr) {
-        OP_TILING_CHECK((activeMaskDesc->GetDataType() != ge::DT_BOOL),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid", "activeMask datatype is invalid, which should be bool but is %s."),
+        OP_TILING_CHECK(
+            (activeMaskDesc->GetDataType() != ge::DT_BOOL),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid",
+                                                  "activeMask datatype is invalid, which should be bool but is %s."),
             return ge::GRAPH_FAILED);
     }
 
@@ -199,15 +213,18 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOutputDataType(const gert::TilingCon
     OP_TILING_CHECK(balancedExpertIdsDesc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "balancedExpertIdsDesc"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(balancedExpertIdsDesc->GetDataType() != expertIdsDesc->GetDataType(),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "datatype of balancedExpertIds[%s] should be the same with datatype of expertIds[%s]!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                        "datatype of balancedExpertIds[%s] should be the same with datatype of expertIds[%s]!"),
+                    return ge::GRAPH_FAILED);
 
     auto balancedActiveMaskDesc = context->GetOutputDesc(OUTPUT_ACTIVE_MASK_IDS);
     OP_TILING_CHECK(balancedActiveMaskDesc == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "balancedActiveMaskDesc"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(balancedActiveMaskDesc->GetDataType() != ge::DT_BOOL,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid", "datatype of balancedActiveMask[%s] should be bool!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "y", "invalid",
+                                                          "datatype of balancedActiveMask[%s] should be bool!"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -235,32 +252,40 @@ ge::graphStatus MoeUpdateExpertTiling::CheckInputShape(const gert::TilingContext
     OP_TILING_CHECK(expertIdsStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "expert_ids shape"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((expertIdsStorageShape->GetStorageShape().GetDimNum() != NUM_TWO),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "The dim of expert_ids(BS, K) should be 2, but got %lu!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "The dim of expert_ids(BS, K) should be 2, but got %lu!"),
+                    return ge::GRAPH_FAILED);
     tilingData->bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(((tilingData->bs <= 0) || (tilingData->bs > BS_MAX)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expert_ids's dim0(bs) should be in (0, %d], but got %d!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "expert_ids's dim0(bs) should be in (0, %d], but got %d!"),
+                    return ge::GRAPH_FAILED);
     tilingData->k = expertIdsStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(((tilingData->k <= 0) || (tilingData->k > K_MAX)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expert_ids's dim1(k) should be in (0, %d], but got %d!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "expert_ids's dim1(k) should be in (0, %d], but got %d!"),
+                    return ge::GRAPH_FAILED);
 
     const gert::StorageShape* eplbTableStorageShape = context->GetInputShape(EPLB_TABLE_INDEX);
     OP_TILING_CHECK(eplbTableStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "eplb_table shape"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((eplbTableStorageShape->GetStorageShape().GetDimNum() != NUM_TWO),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "moeExpertNum", "invalid", "The dim of eplb_table(moeExpertNum, F) should be 2, but got %lu!"),
+    OP_TILING_CHECK(
+        (eplbTableStorageShape->GetStorageShape().GetDimNum() != NUM_TWO),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "moeExpertNum", "invalid",
+                                              "The dim of eplb_table(moeExpertNum, F) should be 2, but got %lu!"),
         return ge::GRAPH_FAILED);
     tilingData->moeExpertNum = eplbTableStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(((tilingData->moeExpertNum <= 0) || (tilingData->moeExpertNum > MAX_MOE_EXPERT_NUM) ||
-        (tilingData->moeExpertNum < tilingData->k)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "moeExpertNum", "invalid", "eplb_table's dim0(moeExpertNum) should be in (0, %d], and not less than K[%d], but got %d!"),
-        return ge::GRAPH_FAILED);
+                     (tilingData->moeExpertNum < tilingData->k)),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "moeExpertNum", "invalid",
+                        "eplb_table's dim0(moeExpertNum) should be in (0, %d], and not less than K[%d], but got %d!"),
+                    return ge::GRAPH_FAILED);
     tilingData->f = eplbTableStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(((tilingData->f <= 1) || (static_cast<int64_t>(tilingData->f) > worldSize + 1)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "H", "invalid", "eplb_table's dim1(f) should be in (1, %ld], but got %d!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "H", "invalid",
+                                                          "eplb_table's dim1(f) should be in (1, %ld], but got %d!"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -270,13 +295,17 @@ ge::graphStatus MoeUpdateExpertTiling::CheckExpertScalesShape(const gert::Tiling
     const gert::StorageShape* expertScalesShape = context->GetOptionalInputShape(EXPERT_SCALES_INDEX);
 
     if (expertScalesShape != nullptr) {
-        OP_TILING_CHECK((expertScalesShape->GetStorageShape().GetDimNum() != NUM_TWO),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "The dim of expert_scales(BS, K) should be 2, but got %lu!"),
+        OP_TILING_CHECK(
+            (expertScalesShape->GetStorageShape().GetDimNum() != NUM_TWO),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                  "The dim of expert_scales(BS, K) should be 2, but got %lu!"),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(((expertScalesShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
-            (expertScalesShape->GetStorageShape().GetDim(1) != tilingData->k)),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expert_scales dim(bs, k) should be equals to dim[%d, %d], but got [%ld, %ld]!"),
-            return ge::GRAPH_FAILED);
+                         (expertScalesShape->GetStorageShape().GetDim(1) != tilingData->k)),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                            "expert_scales dim(bs, k) should be equals to dim[%d, %d], but got [%ld, %ld]!"),
+                        return ge::GRAPH_FAILED);
         tailorCfg_ += (1U << EXPERT_SCALES_INDEX);
     }
 
@@ -290,15 +319,21 @@ ge::graphStatus MoeUpdateExpertTiling::CheckPruningThresholdShape(const gert::Ti
     if (pruningThresholdShape != nullptr) {
         if (pruningThresholdShape->GetStorageShape().GetDimNum() == NUM_ONE) {
             OP_TILING_CHECK((pruningThresholdShape->GetStorageShape().GetDim(0) != tilingData->k),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "H", "invalid", "pruning_threshold dim(k,) should be equals to dim[%d,], but got [%ld,]!"),
-                return ge::GRAPH_FAILED);
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                MOE_UPDATE_EXPERT_DEBUG, "H", "invalid",
+                                "pruning_threshold dim(k,) should be equals to dim[%d,], but got [%ld,]!"),
+                            return ge::GRAPH_FAILED);
         } else if (pruningThresholdShape->GetStorageShape().GetDimNum() == NUM_TWO) {
             OP_TILING_CHECK(((pruningThresholdShape->GetStorageShape().GetDim(0) != 1) ||
-                (pruningThresholdShape->GetStorageShape().GetDim(1) != tilingData->k)),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "H", "invalid", "pruning_threshold dim(1, k) should be equals to dim[1, %d], but got [%ld, %ld]!"),
-                return ge::GRAPH_FAILED);
+                             (pruningThresholdShape->GetStorageShape().GetDim(1) != tilingData->k)),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                MOE_UPDATE_EXPERT_DEBUG, "H", "invalid",
+                                "pruning_threshold dim(1, k) should be equals to dim[1, %d], but got [%ld, %ld]!"),
+                            return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "H", "invalid", "The dim of pruning_threshold[(k,) or (1, K)] should be 1 or 2, but got %lu!");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                MOE_UPDATE_EXPERT_DEBUG, "H", "invalid",
+                "The dim of pruning_threshold[(k,) or (1, K)] should be 1 or 2, but got %lu!");
             return ge::GRAPH_FAILED;
         }
 
@@ -313,11 +348,14 @@ ge::graphStatus MoeUpdateExpertTiling::CheckActiveMaskShape(const gert::TilingCo
     const gert::StorageShape* activeMaskShape = context->GetOptionalInputShape(ACTIVE_MASK_INDEX);
 
     if (activeMaskShape != nullptr) {
-         OP_TILING_CHECK((activeMaskShape->GetStorageShape().GetDimNum() != NUM_ONE),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid", "The dim of active_mask(BS,) should be 1, but got %lu!"),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((activeMaskShape->GetStorageShape().GetDim(0) != tilingData->bs),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid", "active_mask dim(bs,) should be equals to [%d,], but got [%ld,]!"),
+        OP_TILING_CHECK((activeMaskShape->GetStorageShape().GetDimNum() != NUM_ONE),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid",
+                                                              "The dim of active_mask(BS,) should be 1, but got %lu!"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (activeMaskShape->GetStorageShape().GetDim(0) != tilingData->bs),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid",
+                                                  "active_mask dim(bs,) should be equals to [%d,], but got [%ld,]!"),
             return ge::GRAPH_FAILED);
         tailorCfg_ += (1U << ACTIVE_MASK_INDEX);
         tilingData->isActiveMask = 1;
@@ -331,31 +369,42 @@ ge::graphStatus MoeUpdateExpertTiling::CheckActiveMaskShape(const gert::TilingCo
 ge::graphStatus MoeUpdateExpertTiling::CheckOptionalInputShape(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(CheckExpertScalesShape(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "CheckExpertScalesShape failed!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "CheckExpertScalesShape failed!"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckPruningThresholdShape(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "pruningThreshold", "invalid", "CheckPruningThresholdShape failed!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "pruningThreshold", "invalid",
+                                                          "CheckPruningThresholdShape failed!"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckActiveMaskShape(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "activeMask", "invalid", "CheckActiveMaskShape failed!"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "activeMask", "invalid",
+                                                          "CheckActiveMaskShape failed!"),
+                    return ge::GRAPH_FAILED);
 
     // active_mask, expert_scales, pruning_threshold,
     OP_TILING_CHECK(tailorCfg_ == TAILOR_EXPERT_SCALES,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "expert_scales has been set, pruning_threshold must be set"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "expert_scales has been set, pruning_threshold must be set"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tailorCfg_ == TAILOR_PRUNING_THRESHOLD,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "pruning_threshold has been set, expert_scales must be set"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                                          "pruning_threshold has been set, expert_scales must be set"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tailorCfg_ == TAILOR_ACTIVE_MASK,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "active_mask has been set, pruning_threshold and expert_scales must be set"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                        "active_mask has been set, pruning_threshold and expert_scales must be set"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tailorCfg_ == TAILOR_ACTIVE_MASK_EXPERT_SCALES,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "active_mask and expert_scales have been set, pruning_threshold must be set"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                        "active_mask and expert_scales have been set, pruning_threshold must be set"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tailorCfg_ == TAILOR_ACTIVE_MASK_PRUNING_THRESHOLD,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "active_mask and pruning_threshold have been set, expert_scales must be set"),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                        "active_mask and pruning_threshold have been set, expert_scales must be set"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -365,23 +414,33 @@ ge::graphStatus MoeUpdateExpertTiling::CheckOutputShape(const gert::TilingContex
     const gert::StorageShape* balancedExpertIdsStorageShape = context->GetOutputShape(OUTPUT_BALANCED_EXPERT_IDS);
     OP_TILING_CHECK(balancedExpertIdsStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "balanced_expert_ids shape"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((balancedExpertIdsStorageShape->GetStorageShape().GetDimNum() != NUM_TWO),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "The dim of balanced_expert_ids(BS, K) should be 2, but got %lu!"),
+    OP_TILING_CHECK(
+        (balancedExpertIdsStorageShape->GetStorageShape().GetDimNum() != NUM_TWO),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+                                              "The dim of balanced_expert_ids(BS, K) should be 2, but got %lu!"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((balancedExpertIdsStorageShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
-        (balancedExpertIdsStorageShape->GetStorageShape().GetDim(1) != tilingData->k)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "balanced_expert_ids dim(bs, k) should be equals to expert_ids's dim[%d, %d], but got [%ld, %ld]!"),
+    OP_TILING_CHECK(
+        ((balancedExpertIdsStorageShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
+         (balancedExpertIdsStorageShape->GetStorageShape().GetDim(1) != tilingData->k)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+            "balanced_expert_ids dim(bs, k) should be equals to expert_ids's dim[%d, %d], but got [%ld, %ld]!"),
         return ge::GRAPH_FAILED);
 
     const gert::StorageShape* balancedActiveMaskShape = context->GetOutputShape(OUTPUT_ACTIVE_MASK_IDS);
     OP_TILING_CHECK(balancedActiveMaskShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(MOE_UPDATE_EXPERT_DEBUG, "balanced_active_mask shape"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((balancedActiveMaskShape->GetStorageShape().GetDimNum() != NUM_TWO),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid", "The dim of balanced_active_mask(BS, K) should be 2, but got %lu!"),
+    OP_TILING_CHECK(
+        (balancedActiveMaskShape->GetStorageShape().GetDimNum() != NUM_TWO),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "BS", "invalid",
+                                              "The dim of balanced_active_mask(BS, K) should be 2, but got %lu!"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((balancedActiveMaskShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
-        (balancedActiveMaskShape->GetStorageShape().GetDim(1) != tilingData->k)),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(MOE_UPDATE_EXPERT_DEBUG, "x", "invalid", "balanced_active_mask dim(bs, k) should be equals to expert_ids's dim[%d, %d], but got [%ld, %ld]!"),
+    OP_TILING_CHECK(
+        ((balancedActiveMaskShape->GetStorageShape().GetDim(0) != tilingData->bs) ||
+         (balancedActiveMaskShape->GetStorageShape().GetDim(1) != tilingData->k)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            MOE_UPDATE_EXPERT_DEBUG, "x", "invalid",
+            "balanced_active_mask dim(bs, k) should be equals to expert_ids's dim[%d, %d], but got [%ld, %ld]!"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

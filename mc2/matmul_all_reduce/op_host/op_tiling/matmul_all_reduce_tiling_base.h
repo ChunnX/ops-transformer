@@ -212,7 +212,8 @@ protected:
     AllReduceScenario GetAllReduceScenario(
         const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* dequantScale,
         const gert::StorageShape* antiQuantScale) const;
-    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* antiQuantScale) const;
+    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType,
+                         const gert::StorageShape *antiQuantScale) const;
     bool AnalyzeInputs();
     bool SetArgs(ge::DataType aType, ge::DataType bType, ge::DataType cType, ge::DataType biasType, bool isBias);
     uint64_t GetNValue() const;

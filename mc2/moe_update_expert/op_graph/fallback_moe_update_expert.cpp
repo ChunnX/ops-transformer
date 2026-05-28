@@ -50,8 +50,8 @@ namespace fallback
         const auto activeMask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(IDX_IN_ACTIVE_MASK));
 
         const auto balancedExpertIds = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_EXPERT_IDS));
-        OPS_CHECK(balancedExpertIds == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedExpertIds"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(balancedExpertIds == nullptr,
+                  OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedExpertIds"), return ge::GRAPH_FAILED);
 
         const auto balancedActiveMask = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_ACTIVE_MASK));
         OPS_CHECK(balancedActiveMask == nullptr,

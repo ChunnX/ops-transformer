@@ -73,9 +73,9 @@ struct QuantParas {
     Mc2QuantType type;
 };
 
-inline ge::graphStatus GetQuantPara(
-    const gert::OpExecuteContext* host_api_ctx, size_t scale_idx, size_t offset_idx, size_t dequant_idx, size_t pertoken_idx,
-    size_t comm_quant_scale_1_idx, size_t comm_quant_scale_2_idx, QuantParas& para)
+inline ge::graphStatus GetQuantPara(const gert::OpExecuteContext *host_api_ctx, size_t scale_idx, size_t offset_idx,
+                                    size_t dequant_idx, size_t pertoken_idx, size_t comm_quant_scale_1_idx,
+                                    size_t comm_quant_scale_2_idx, QuantParas &para)
 {
     const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"),

@@ -42,12 +42,13 @@ ge::graphStatus WeightQuantTilingTransferHelper::GetShapeAttrsInfo()
     matmulInfoPtr_->quantType = tilingProcesser_.quantType_;
     matmulInfoPtr_->bFormat =
         static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtxInfo_.x2->GetStorageFormat()));
-    OP_TILING_CHECK((matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
-                        (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        opName_, "antiquant_scale", std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType)).c_str(),
-                        "Nz weight input only supports per-channel scene."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
+            (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "antiquant_scale",
+                                              std::to_string(static_cast<int>(matmulInfoPtr_->antiQuantType)).c_str(),
+                                              "Nz weight input only supports per-channel scene."),
+        return ge::GRAPH_FAILED);
     PrintTilingInputParam(*matmulInfoPtr_);
     return ge::GRAPH_SUCCESS;
 }
@@ -255,7 +256,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     if (mmrCtxInfo_.bias_shape != nullptr) {
         OP_TILING_CHECK(x1Type != mmrCtxInfo_.bias->GetDataType(),
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                            context_->GetNodeName(), "bias", Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType()).c_str(),
+                            context_->GetNodeName(), "bias",
+                            Ops::Base::ToString(mmrCtxInfo_.bias->GetDataType()).c_str(),
                             "The dtype of input bias should be the same as the dtype of input x1."),
                         return ge::GRAPH_FAILED);
     }
@@ -269,11 +271,12 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     // antiquantScale和antiquantOffset数据类型相同
     if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
         auto antiquantOffsetType = mmrCtxInfo_.antiquant_offset->GetDataType();
-        OP_TILING_CHECK(antiquantOffsetType != antiquantScaleType,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                            context_->GetNodeName(), "antiquant_offset", Ops::Base::ToString(antiquantOffsetType).c_str(),
-                            "The dtype of input antiquant_offset should be the same as the dtype of input antiquant_scale."),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            antiquantOffsetType != antiquantScaleType,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(), "antiquant_offset", Ops::Base::ToString(antiquantOffsetType).c_str(),
+                "The dtype of input antiquant_offset should be the same as the dtype of input antiquant_scale."),
+            return ge::GRAPH_FAILED);
     }
     // antiquantgroupsize 校验
     uint64_t kValue = GetKValue();

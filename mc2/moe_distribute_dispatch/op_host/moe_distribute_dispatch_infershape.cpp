@@ -83,11 +83,16 @@ static ge::graphStatus InferExpertIdsShape(gert::InferShapeContext *context, int
     int64_t bsTmp = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(0);
     k = expertIdsShape->GetDimNum() == 1U ? NEG_ONE : expertIdsShape->GetDim(1);
     globalBsReal = (*globalBs == 0) ? (bs * epWorldSize) : *globalBs;
-    OP_CHECK_IF(globalBsReal < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "BS", "invalid", "real global bs should be larger than 0"
-        " but got %ld."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", "invalid", "Input shape of xShape or input shape of expertIdsShape is incorrect, "
-        "xShape [%ld, %ld], expertIdsShape [%ld, %ld]"),
+    OP_CHECK_IF(globalBsReal < 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "BS", "invalid",
+                                                      "real global bs should be larger than 0"
+                                                      " but got %ld."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        (bs <= 0) || (h <= 0) || (bsTmp <= 0) || (k <= 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", "invalid",
+                                              "Input shape of xShape or input shape of expertIdsShape is incorrect, "
+                                              "xShape [%ld, %ld], expertIdsShape [%ld, %ld]"),
         return ge::GRAPH_FAILED);
 
     expandIdxShape->SetDimNum(DIM_ONE);
@@ -125,8 +130,11 @@ static ge::graphStatus InferExpandXAndScalesShape(gert::InferShapeContext *conte
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "epRankId", "invalid",
         "epRankId shoule be in [0, epWorldSize)"), return ge::GRAPH_FAILED);
     int64_t moeRankNum = epWorldSize - *sharedExpertRankNum;
-    OP_CHECK_IF(moeRankNum <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "epWorldSize", "invalid", "moeRankNum(epWorldSize - sharedExpertRankNum)"
-        " should be larger than 0, but got %ld."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(moeRankNum <= 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "epWorldSize", "invalid",
+                                                      "moeRankNum(epWorldSize - sharedExpertRankNum)"
+                                                      " should be larger than 0, but got %ld."),
+                return ge::GRAPH_FAILED);
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
     bool isSharedExpert = (*expertShardType == 0)
         ? (*epRankId < *sharedExpertRankNum) : (*epRankId >= (epWorldSize - *sharedExpertRankNum));

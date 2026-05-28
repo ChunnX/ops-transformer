@@ -73,7 +73,8 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
         shapeInfo.bs = x_shape->GetDim(0) * x_shape->GetDim(1);
         shapeInfo.hiddenSize = x_shape->GetDim(AXIS_TWO);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", "invalid", "x dim must be 2 or 3, but actual value is: %zu");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", "invalid",
+                                              "x dim must be 2 or 3, but actual value is: %zu");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -90,9 +91,11 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantAllRed
 
     // 通过attr获取卡数
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
-    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get rank_size failed in quant_all_reduce");
+    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(),
+               "Get rank_size failed in quant_all_reduce");
     OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "H", "invalid", "Rank size must be in %s, but the actual value is %ld"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "H", "invalid",
+                                                          "Rank size must be in %s, but the actual value is %ld"),
                     return ge::GRAPH_FAILED);
 
     shapeInfo.rankNum = *rankSize;
@@ -110,12 +113,14 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
     QuantAllReduceShapeInfo shapeInfo;
     // get shape_info
     OPS_CHECK(GetShapeInfo(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "Failed to get shape info in quant_all_reduce"),
+              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
+                                        "Failed to get shape info in quant_all_reduce"),
               return ge::GRAPH_FAILED);
 
     // get rank_size
     OPS_CHECK(GetRankSize(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "Failed to get rank size in quant_all_reduce"),
+              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
+                                        "Failed to get rank size in quant_all_reduce"),
               return ge::GRAPH_FAILED);
 
     auto output_shape = context->GetOutputShape(OUTPUT_INDEX);

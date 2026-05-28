@@ -47,10 +47,10 @@ static ge::graphStatus CheckScaleShape(
     } else {
         expect_scale = {k_value, shape.n};
     }
-    OPS_CHECK(
-        expect_scale != *scale_shape,
-        OP_LOGE_WITH_INVALID_ATTR(kInnerDebug, "attr", "invalid", "Expect antiquant scale shape to be [%ld,%ld], but actually [%ld,%ld]"),
-        return ge::GRAPH_FAILED);
+    OPS_CHECK(expect_scale != *scale_shape,
+              OP_LOGE_WITH_INVALID_ATTR(kInnerDebug, "attr", "invalid",
+                                        "Expect antiquant scale shape to be [%ld,%ld], but actually [%ld,%ld]"),
+              return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -75,9 +75,9 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool* trans_a = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X1));
-    OPS_CHECK(
-        trans_a != nullptr && *trans_a, OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "x1 does not support transpose."),
-        return ge::GRAPH_FAILED);
+    OPS_CHECK(trans_a != nullptr && *trans_a,
+              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "x1 does not support transpose."),
+              return ge::GRAPH_FAILED);
     const bool* trans_b = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X2));
     const bool is_trans_b = ((trans_b != nullptr) && (*trans_b));
     if (dim_num_x1 == kMC2MaxShapeSize) {
@@ -92,19 +92,19 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
         (shape.k == -1 || shape_x2->GetDim(shapeX2KIndex) == -1 || shape.k == 0 ||
          shape_x2->GetDim(shapeX2KIndex) == 0 || shape.k == 1 || shape_x2->GetDim(shapeX2KIndex) == 1);
     if (!is_dynamic_shape) {
-        OPS_CHECK(
-            (shape.k != shape_x2->GetDim(shapeX2KIndex)),
-            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "Invalid shape for x1(k): %ld, x2(k): %ld"),
-            return ge::GRAPH_FAILED);
+        OPS_CHECK((shape.k != shape_x2->GetDim(shapeX2KIndex)),
+                  OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
+                                            "Invalid shape for x1(k): %ld, x2(k): %ld"),
+                  return ge::GRAPH_FAILED);
         const size_t scale_idx =
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
         const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
         const int64_t group_size = (p != nullptr ? *p : 0);
-        OPS_CHECK(
-            CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
-                ge::GRAPH_SUCCESS,
-            OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "Failed to check antiquant scale shape."),
-            return ge::GRAPH_FAILED);
+        OPS_CHECK(CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
+                      ge::GRAPH_SUCCESS,
+                  OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
+                                            "Failed to check antiquant scale shape."),
+                  return ge::GRAPH_FAILED);
     }
     shape.output_dim = dim_num_x1;
     OP_LOGD(kInnerDebug, "Matmul x1 dim %zu s %ld m %ld n %ld k %ld.", dim_num_x1, shape.s, shape.m, shape.n, shape.k);
@@ -118,10 +118,10 @@ static ge::graphStatus InferShapeForMatmulAllReduce(gert::InferShapeContext* con
     auto shape_out = context->GetOutputShape(static_cast<size_t>(MC2OutputIdx::K_Y));
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out);
     MatmulShapeInfo shape;
-    OPS_CHECK(
-        InferShapeForMatmul(context, shape, false) != ge::GRAPH_SUCCESS,
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "Failed to infer shape for matmul all reduce"),
-        return ge::GRAPH_FAILED);
+    OPS_CHECK(InferShapeForMatmul(context, shape, false) != ge::GRAPH_SUCCESS,
+              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
+                                        "Failed to infer shape for matmul all reduce"),
+              return ge::GRAPH_FAILED);
     shape_out->SetDimNum(shape.output_dim);
     if (shape.output_dim == kMC2MaxShapeSize) {
         shape_out->SetDim(0U, shape.s);
