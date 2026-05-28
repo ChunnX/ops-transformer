@@ -42,10 +42,6 @@ private:
     __aicore__ inline void InitConstInfo();
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     __aicore__ inline void CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow);
-    __aicore__ inline void ProcessPooling(uint32_t batchIdx, uint32_t headIdx);
-    __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx);
-    __aicore__ inline void ProcessTopK(uint32_t batchIdx, uint32_t headIdx);
-    __aicore__ inline void ProcessMaskGen(uint32_t batchIdx, uint32_t headIdx);
 
     TPipe *pipe = nullptr;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData = nullptr;
@@ -100,6 +96,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.activeCoreNum = mcInfo.activeCoreNum;
     constInfo.rowsPerCore = mcInfo.rowsPerCore;
     constInfo.totalRows = mcInfo.totalRows;
+    constInfo.qChunkSize = baseInfo.qChunkSize;
+    constInfo.kChunkSize = baseInfo.kChunkSize;
 
     auto &outInfo = tilingData->outputParams;
     constInfo.qCmpOffset = 0;
@@ -213,19 +211,75 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
     for (uint32_t batchIdx = 0; batchIdx < constInfo.batchSize; batchIdx++) {
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
-            uint32_t headBaseRow = batchIdx * constInfo.numHeads * constInfo.xBlocks + headIdx * constInfo.xBlocks;
 
-            ProcessPooling(batchIdx, headIdx);
-            SyncAll();
+            // ========== Stage 1a: Pooling Key (全核参与) ==========
+            if ASCEND_IS_AIV {
+                for (uint32_t kBlockIdx = 0; kBlockIdx < constInfo.yBlocks; kBlockIdx++) {
+                    vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx,
+                                                      keyGm, actualBlockLenKVGm, kCmpGm);
+                }
+            }
+            SyncAll<false>();
 
-            ProcessMatmulSoftmax(batchIdx, headIdx);
-            SyncAll();
+            // ========== Stage 1b+2: Pooling Query + Matmul + OnlineSoftmax ==========
+            for (uint32_t qChunkStart = startRow; qChunkStart < endRow;
+                 qChunkStart += constInfo.qChunkSize) {
 
-            ProcessTopK(batchIdx, headIdx);
-            SyncAll();
+                uint32_t qChunkEnd = BSAMin(qChunkStart + constInfo.qChunkSize, endRow);
+                uint32_t curQChunkSize = qChunkEnd - qChunkStart;
 
-            ProcessMaskGen(batchIdx, headIdx);
-            SyncAll();
+                // Pooling Query (仅AIV, 无需SyncAll)
+                if ASCEND_IS_AIV {
+                    for (uint32_t qBlockIdx = qChunkStart; qBlockIdx < qChunkEnd; qBlockIdx++) {
+                        vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx,
+                                                          queryGm, actualBlockLenQGm, qCmpGm);
+                    }
+                }
+
+                // Matmul + OnlineSoftmax第一遍: 循环kBlock, 每次算qChunk×kChunk
+                T mFinal = -1e38f;
+                T lFinal = 0.0f;
+                for (uint32_t kChunkStart = 0; kChunkStart < constInfo.yBlocks;
+                     kChunkStart += constInfo.kChunkSize) {
+
+                    uint32_t kChunkEnd = BSAMin(kChunkStart + constInfo.kChunkSize, constInfo.yBlocks);
+                    uint32_t curKChunkSize = kChunkEnd - kChunkStart;
+
+                    if ASCEND_IS_AIC {
+                        matmulService.ComputeMatmulChunk(qChunkStart, curQChunkSize,
+                                                         kChunkStart, curKChunkSize);
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+                    }
+
+                    if ASCEND_IS_AIV {
+                        CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[kChunkStart & 1]);
+                        vectorService.OnlineSoftmaxFirstPassChunk(
+                            qChunkStart, curQChunkSize, kChunkStart, curKChunkSize,
+                            mFinal, lFinal);
+                    }
+                }
+
+                // OnlineSoftmax第二遍: 归一化 + Cast FP32→FP16
+                if ASCEND_IS_AIV {
+                    for (uint32_t qBlockIdx = qChunkStart; qBlockIdx < qChunkEnd; qBlockIdx++) {
+                        vectorService.SoftmaxSecondPassAndCast(
+                            qBlockIdx, mFinal, lFinal);
+                    }
+                }
+            }
+            SyncAll<false>();
+
+            // ========== Stage 3: Radix TopK/BottomK ==========
+            if ASCEND_IS_AIV {
+                radixTopKService.ProcessRadixTopK(batchIdx, headIdx);
+            }
+            SyncAll<false>();
+
+            // ========== Stage 4: Mask生成 ==========
+            if ASCEND_IS_AIV {
+                vectorService.ProcessMaskGen(batchIdx, headIdx);
+            }
+            SyncAll<false>();
         }
     }
 
@@ -234,51 +288,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
         radixTopKService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPooling(uint32_t batchIdx, uint32_t headIdx)
-{
-    if ASCEND_IS_AIV {
-        vectorService.ProcessPooling(batchIdx, headIdx, queryGm, keyGm,
-                                     actualBlockLenQGm, actualBlockLenKVGm,
-                                     qCmpGm, kCmpGm);
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx)
-{
-    uint32_t startRow, endRow;
-    CalcMultiCoreOffset(startRow, endRow);
-
-    for (uint32_t qBlockIdx = startRow; qBlockIdx < endRow; qBlockIdx++) {
-        if ASCEND_IS_AIC {
-            matmulService.ComputeMatmul(qBlockIdx);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_FLAG[qBlockIdx & 1]);
-        }
-
-        if ASCEND_IS_AIV {
-            CrossCoreWaitFlag(SYNC_C1_TO_V1_FLAG[qBlockIdx & 1]);
-            vectorService.ProcessSoftmaxAndCast(qBlockIdx);
-        }
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessTopK(uint32_t batchIdx, uint32_t headIdx)
-{
-    if ASCEND_IS_AIV {
-        radixTopKService.ProcessRadixTopK(batchIdx, headIdx);
-    }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessMaskGen(uint32_t batchIdx, uint32_t headIdx)
-{
-    if ASCEND_IS_AIV {
-        vectorService.ProcessMaskGen(batchIdx, headIdx);
     }
 }
 

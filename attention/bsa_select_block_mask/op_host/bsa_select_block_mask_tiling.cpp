@@ -262,6 +262,8 @@ ge::graphStatus BSASelectBlockMaskTilingBase::GetShapeAttrsInfo()
     baseParams_->set_kvLayout(static_cast<uint8_t>(tilingKeyLayoutKV));
     baseParams_->set_useActualBlockLenQ(useActualBlockLenQ);
     baseParams_->set_useActualBlockLenK(useActualBlockLenK);
+    baseParams_->set_qChunkSize(Q_CHUNK_SIZE);
+    baseParams_->set_kChunkSize(K_CHUNK_SIZE);
 
     OP_LOGD(opName, "INPUTPARAM batchSize:[%u], numHeads:[%u], maxQSeqlen:[%u], maxKvSeqlen:[%u], "
             "xBlocks:[%u], yBlocks:[%u], topKValue:[%u], sparsity:[%f].",

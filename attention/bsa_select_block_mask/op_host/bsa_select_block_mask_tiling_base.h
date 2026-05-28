@@ -30,6 +30,8 @@ static constexpr float SPARSITY_MIN = 0.3f;
 static constexpr float SPARSITY_MAX = 0.98f;
 static constexpr uint32_t HEAD_NUM_MIN = 1;
 static constexpr uint32_t HEAD_NUM_MAX = 40;
+static constexpr uint16_t Q_CHUNK_SIZE = 128;
+static constexpr uint16_t K_CHUNK_SIZE = 128;
 static constexpr uint8_t SCHEDULE_MODE_ALL_CORE = 1;
 
 template <typename T>

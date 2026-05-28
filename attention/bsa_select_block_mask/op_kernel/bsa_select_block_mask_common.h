@@ -25,6 +25,8 @@ static constexpr uint32_t AIC_AIV_RATIO = 2;
 static constexpr uint32_t FLOAT_DATA_BLOCK_NUM = 8;
 static constexpr uint32_t FLOAT_REPEAT_NUM = 64;
 static constexpr uint32_t D_SIZE = 128;
+static constexpr uint32_t Q_CHUNK_SIZE = 128;
+static constexpr uint32_t K_CHUNK_SIZE = 128;
 static constexpr uint32_t REPEAT_SIZE = 256;
 static constexpr uint32_t BYTE_SIZE = 8;
 static constexpr uint16_t XOR_OP_VALUE_16 = 0x8000;
@@ -92,6 +94,8 @@ struct BSAConstInfo {
     uint32_t activeCoreNum;
     uint32_t rowsPerCore;
     uint32_t totalRows;
+    uint32_t qChunkSize;
+    uint32_t kChunkSize;
 
     uint64_t qCmpOffset;
     uint64_t kCmpOffset;

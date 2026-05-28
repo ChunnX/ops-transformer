@@ -31,29 +31,24 @@ public:
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
-    __aicore__ inline void ProcessPooling(uint32_t batchIdx, uint32_t headIdx,
-                                          GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-                                          GlobalTensor<int64_t> &actualBlockLenQGm,
-                                          GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                          GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm);
-    __aicore__ inline void ProcessSoftmaxAndCast(uint32_t qBlockIdx);
+    __aicore__ inline void PoolingSingleQBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
+                                                GlobalTensor<IN_T> &queryGm,
+                                                GlobalTensor<int64_t> &actualBlockLenQGm,
+                                                GlobalTensor<IN_T> &qCmpGm);
+    __aicore__ inline void PoolingSingleKBlock(uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
+                                                GlobalTensor<IN_T> &keyGm,
+                                                GlobalTensor<int64_t> &actualBlockLenKVGm,
+                                                GlobalTensor<IN_T> &kCmpGm);
+    __aicore__ inline void OnlineSoftmaxFirstPassChunk(uint32_t qChunkStart, uint32_t qChunkSize,
+                                                        uint32_t kChunkStart, uint32_t kChunkSize,
+                                                        T &mFinal, T &lFinal);
+    __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qBlockIdx, T mFinal, T lFinal);
     __aicore__ inline void ProcessMaskGen(uint32_t batchIdx, uint32_t headIdx);
 
 private:
-    __aicore__ inline void PoolingQ(uint32_t batchIdx, uint32_t headIdx,
-                                     GlobalTensor<IN_T> &queryGm,
-                                     GlobalTensor<int64_t> &actualBlockLenQGm,
-                                     GlobalTensor<IN_T> &qCmpGm);
-    __aicore__ inline void PoolingK(uint32_t batchIdx, uint32_t headIdx,
-                                     GlobalTensor<IN_T> &keyGm,
-                                     GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                     GlobalTensor<IN_T> &kCmpGm);
-    __aicore__ inline void PoolingSingleBlock(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
-                                               uint32_t actualLen, uint32_t blockSize,
-                                               GlobalTensor<IN_T> &dstGm, uint64_t dstOffset);
-    __aicore__ inline void OnlineSoftmaxFirstPass(uint32_t qBlockIdx, T &mFinal, T &lFinal);
-    __aicore__ inline void SimpleSoftmaxSecondPass(uint32_t qBlockIdx, T mFinal, T lFinal);
-    __aicore__ inline void CastAttnScoreToFp16(uint32_t qBlockIdx);
+    __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
+                                                   uint32_t actualLen, uint32_t blockSize,
+                                                   GlobalTensor<IN_T> &dstGm, uint64_t dstOffset);
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -170,103 +165,82 @@ __aicore__ inline void BSAVectorService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::ProcessPooling(
-    uint32_t batchIdx, uint32_t headIdx,
-    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm)
-{
-    // TODO: 实现均值池化压缩
-    // 1. PoolingQ: 对当前(batch,head)的query做分核池化 → qCmpGm
-    // 2. PoolingK: 对当前(batch,head)的key做分核池化 → kCmpGm
-    // 每个block: 搬入blockShape个token → Cast FP32 → ReduceSum → Divs → Cast回原类型 → 写出
-    // actualBlockLen=0时填0向量
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PoolingQ(
-    uint32_t batchIdx, uint32_t headIdx,
+__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleQBlock(
+    uint32_t batchIdx, uint32_t headIdx, uint32_t qBlockIdx,
     GlobalTensor<IN_T> &queryGm,
     GlobalTensor<int64_t> &actualBlockLenQGm,
     GlobalTensor<IN_T> &qCmpGm)
 {
-    // TODO: 对query做均值池化
-    // for qBlock in 本核负责的qBlocks:
-    //   actualLen = useActualBlockLenQ ? actualBlockLenQGm[batchIdx*xBlocks+qBlock] : blockShapeX
-    //   PoolingSingleBlock(queryGm, srcOffset, actualLen, blockShapeX, qCmpGm, dstOffset)
+    // TODO: 单个query block的均值池化
+    // 1. 计算 srcOffset: 根据 layout(BNSD/TND) + batchIdx + headIdx + qBlockIdx + blockShapeX
+    // 2. 获取 actualLen:
+    //    useActualBlockLenQ ? actualBlockLenQGm[batchIdx*xBlocks+qBlockIdx] : blockShapeX
+    //    末尾不完整块: min(actualLen, maxQSeqlen - qBlockIdx*blockShapeX)
+    // 3. 计算 dstOffset: qBlockIdx * dSize
+    // 4. PoolingSingleBlockImpl(queryGm, srcOffset, actualLen, blockShapeX, qCmpGm, dstOffset)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PoolingK(
-    uint32_t batchIdx, uint32_t headIdx,
+__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleKBlock(
+    uint32_t batchIdx, uint32_t headIdx, uint32_t kBlockIdx,
     GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenKVGm,
     GlobalTensor<IN_T> &kCmpGm)
 {
-    // TODO: 对key做均值池化（同PoolingQ逻辑）
+    // TODO: 单个key block的均值池化（同PoolingSingleQBlock逻辑）
+    // 1. 计算 srcOffset: 根据 layout + batchIdx + headIdx + kBlockIdx + blockShapeY
+    // 2. 获取 actualLen:
+    //    useActualBlockLenK ? actualBlockLenKVGm[batchIdx*yBlocks+kBlockIdx] : blockShapeY
+    // 3. 计算 dstOffset: kBlockIdx * dSize
+    // 4. PoolingSingleBlockImpl(keyGm, srcOffset, actualLen, blockShapeY, kCmpGm, dstOffset)
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleBlock(
+__aicore__ inline void BSAVectorService<BSAT>::PoolingSingleBlockImpl(
     GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
     uint32_t actualLen, uint32_t blockSize,
     GlobalTensor<IN_T> &dstGm, uint64_t dstOffset)
 {
-    // TODO: 单个block的均值池化
-    // if actualLen == 0: Duplicate 0向量 → 写出
+    // TODO: 单个block的均值池化实现
+    // if actualLen == 0:
+    //   Duplicate(poolOutputUb_, 0, dSize) → DataCopyPad写出0向量
     // else:
-    //   1. DataCopyPad: GM→UB 搬入 actualLen×D 数据
-    //   2. Cast: IN_T → FP32
-    //   3. ReduceSum: 沿token维度求和
-    //   4. Divs: 除以 actualLen
-    //   5. Cast: FP32 → IN_T
-    //   6. DataCopyPad: UB→GM 写出 D 个元素
+    //   1. DataCopyPad: GM→UB 搬入 actualLen×D 数据到 poolInputUb_
+    //   2. Cast: poolInputUb_(IN_T) → poolAccumUb_(FP32)
+    //   3. ReduceSum: 沿token维度(actualLen)求和 → poolAccumUb_
+    //   4. Divs: poolAccumUb_ 除以 actualLen
+    //   5. Cast: poolAccumUb_(FP32) → poolOutputUb_(IN_T)
+    //   6. DataCopyPad: UB→GM 写出 D 个元素到 dstGm[dstOffset]
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::ProcessSoftmaxAndCast(uint32_t qBlockIdx)
+__aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPassChunk(
+    uint32_t qChunkStart, uint32_t qChunkSize,
+    uint32_t kChunkStart, uint32_t kChunkSize,
+    T &mFinal, T &lFinal)
 {
-    // TODO: Online Softmax 两遍循环 + Cast FP32→FP16
-    // 第一遍: OnlineSoftmaxFirstPass → 得到 mFinal, lFinal
-    // 第二遍: SimpleSoftmaxSecondPass → 归一化
-    // Cast: CastAttnScoreToFp16 → 写入workspace
-    T mFinal = 0.0f;
-    T lFinal = 0.0f;
-    OnlineSoftmaxFirstPass(qBlockIdx, mFinal, lFinal);
-    SimpleSoftmaxSecondPass(qBlockIdx, mFinal, lFinal);
-    CastAttnScoreToFp16(qBlockIdx);
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::OnlineSoftmaxFirstPass(uint32_t qBlockIdx,
-                                                                       T &mFinal, T &lFinal)
-{
-    // TODO: Online Softmax 第一遍
-    // m = -inf, l = 0
-    // for kIter in kBlock迭代:
-    //   搬入 score_partial (从workspace)
+    // TODO: Online Softmax 第一遍（对一个kChunk的score块）
+    // 输入: score[qChunkStart:qChunkStart+qChunkSize, kChunkStart:kChunkStart+kChunkSize]
+    //       存储在 softmaxTmpGm (FP32)
+    // 对每个 qBlock 行维护 m(标量) 和 l(标量):
+    //   搬入 score_partial (qChunkSize × kChunkSize 个 FP32)
     //   m_new = max(m, max(score_partial))
     //   l_new = l * exp(m - m_new) + Σexp(score_partial - m_new)
-    //   将原始score_partial写回workspace
+    //   将原始score_partial写回 softmaxTmpGm
     //   m = m_new, l = l_new
-    // mFinal = m, lFinal = l
+    // 输出: mFinal, lFinal 通过引用返回（跨kChunk累积）
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::SimpleSoftmaxSecondPass(uint32_t qBlockIdx,
-                                                                        T mFinal, T lFinal)
+__aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
+    uint32_t qBlockIdx, T mFinal, T lFinal)
 {
-    // TODO: SimpleSoftmax 第二遍归一化
-    // for each stored score chunk:
-    //   attn_score = exp(score - m_final) / l_final
-    //   写回workspace (FP32)
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::CastAttnScoreToFp16(uint32_t qBlockIdx)
-{
-    // TODO: Cast attn_score FP32 → FP16 写入workspace
-    // 逐chunk读FP32 score → Cast → 写FP16
+    // TODO: SimpleSoftmax 第二遍归一化 + Cast FP32→FP16
+    // 对 qBlockIdx 行的所有 Yblocks 个 score:
+    //   逐chunk读 softmaxTmpGm 中的 FP32 score
+    //   attn_score = exp(score - mFinal) / lFinal
+    //   Cast FP32 → FP16
+    //   写入 attnScoreGm[qBlockIdx * yBlocks :] (FP16)
 }
 
 template <typename BSAT>
@@ -277,7 +251,7 @@ __aicore__ inline void BSAVectorService<BSAT>::ProcessMaskGen(uint32_t batchIdx,
     //   初始化mask全0 → topK位置写1
     // else (BottomK):
     //   初始化mask全1 → bottomK位置写0
-    // DataCopyPad: mask workspace → 输出GM
+    // DataCopyPad: maskTmpGm → maskOutGm[batchIdx*numHeads*xBlocks*yBlocks + headIdx*xBlocks*yBlocks]
 }
 
 #endif // BSA_SELECT_BLOCK_MASK_VECTOR_H

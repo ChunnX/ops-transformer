@@ -70,8 +70,8 @@ public:
     uint8_t kvLayout;
     uint8_t useActualBlockLenQ;
     uint8_t useActualBlockLenK;
-    uint8_t rsvd1;
-    uint8_t rsvd2;
+    uint16_t qChunkSize;
+    uint16_t kChunkSize;
     uint8_t rsvd3;
 
     uint32_t get_batchSize() const { return batchSize; }
@@ -108,6 +108,10 @@ public:
     void set_useActualBlockLenQ(uint8_t v) { this->useActualBlockLenQ = v; }
     uint8_t get_useActualBlockLenK() const { return useActualBlockLenK; }
     void set_useActualBlockLenK(uint8_t v) { this->useActualBlockLenK = v; }
+    uint16_t get_qChunkSize() const { return qChunkSize; }
+    void set_qChunkSize(uint16_t v) { this->qChunkSize = v; }
+    uint16_t get_kChunkSize() const { return kChunkSize; }
+    void set_kChunkSize(uint16_t v) { this->kChunkSize = v; }
 };
 
 class BSAMultiCoreParams {

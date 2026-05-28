@@ -20,7 +20,8 @@ public:
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
                                    GlobalTensor<MM_OUT_T> &attnScoreGm);
     __aicore__ inline void AllocEventID();
-    __aicore__ inline void ComputeMatmul(uint32_t qBlockIdx);
+    __aicore__ inline void ComputeMatmulChunk(uint32_t qChunkStart, uint32_t qChunkSize,
+                                               uint32_t kChunkStart, uint32_t kChunkSize);
     __aicore__ inline void FreeEventID();
 
 private:
@@ -109,12 +110,17 @@ __aicore__ inline void BSAMatmulService<BSAT>::FreeEventID()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmul(uint32_t qBlockIdx)
+__aicore__ inline void BSAMatmulService<BSAT>::ComputeMatmulChunk(
+    uint32_t qChunkStart, uint32_t qChunkSize,
+    uint32_t kChunkStart, uint32_t kChunkSize)
 {
-    // TODO: 对 qBlockIdx 行，遍历所有 kBlock 做 Matmul
-    // 1. CopyInQToL1(qBlockIdx)
-    // 2. for kIter: CopyInKToL1 + MmadInner + FixCopyOut
-    // score[qBlockIdx, :] = q_cmp[qBlockIdx] × k_cmp[:].T
+    // TODO: 对 qChunkStart 开始的 qChunkSize 行，与 kChunkStart 开始的 kChunkSize 列做 Matmul
+    // 1. for qBlockIdx in [qChunkStart, qChunkStart+qChunkSize):
+    //      CopyInQToL1(qBlockIdx)
+    // 2. CopyInKToL1(kChunkStart, kChunkSize, pingpongFlag)
+    // 3. MmadInner + FixCopyOut
+    // score[qChunkStart:qChunkStart+qChunkSize, kChunkStart:kChunkStart+kChunkSize]
+    //   = q_cmp[qChunkStart:] × k_cmp[kChunkStart:].T
 }
 
 template <typename BSAT>
