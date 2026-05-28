@@ -739,8 +739,8 @@ NormRopeConcatGrad<normType, addedNormType, ropeType, concatOrder>::Init(TPipe *
             avgHeadsLow_ <<= 1;
         }
 
-        uint32_t headDimNums = batch_ * ((maxAffineSeq + GetBlockNum() - 1) / GetBlockNum()) * splitHeadNum_;
-        uint32_t current = 1;
+        uint64_t headDimNums = static_cast<uint64_t>(batch_) * ((maxAffineSeq + GetBlockNum() - 1) / GetBlockNum()) * splitHeadNum_;
+        uint64_t current = 1;
         while (current < headDimNums && avgHeadsLow_ != 1) {
             current *= avgHeadsLow_;
             affineBlockNums_++;
