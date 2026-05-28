@@ -285,22 +285,22 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
 
     const auto *xScaleDesc = context.GetInputDesc(X_SCALE_INDEX);
     auto xScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xScaleDesc->GetFormat().GetStorageFormat()));
-    OP_CHECK_IF(xScaleFormat != ge::FORMAT_ND,
-        OP_LOGE(params.opName, "xScale format must be ND, got %s.",
+    OP_CHECK_IF(xScaleFormat != ge::FORMAT_ND && xScaleFormat != ge::FORMAT_NCL,
+        OP_LOGE(params.opName, "xScale format must be ND or NCL, but got %s.",
             ge::TypeUtils::FormatToSerialString(xScaleFormat).c_str()),
         return false);
 
     const auto *groupListDesc = context.GetInputDesc(GROUPLIST_INDEX);
     auto groupListFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(groupListDesc->GetFormat().GetStorageFormat()));
     OP_CHECK_IF(groupListFormat != ge::FORMAT_ND,
-        OP_LOGE(params.opName, "groupList format must be ND, got %s.",
+        OP_LOGE(params.opName, "groupList format must be ND, but got %s.",
             ge::TypeUtils::FormatToSerialString(groupListFormat).c_str()),
         return false);
 
     const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetFormat().GetStorageFormat()));
-    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND,
-        OP_LOGE(params.opName, "weightScale format must be ND, got %s.",
+    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND && xScaleFormat != ge::FORMAT_NCL,
+        OP_LOGE(params.opName, "weightScale format must be ND or NCL, but got %s.",
             ge::TypeUtils::FormatToSerialString(wScaleFormat).c_str()),
         return false);
 
