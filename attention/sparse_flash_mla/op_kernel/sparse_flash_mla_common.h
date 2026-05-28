@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef SPARSE_ATTN_SHAREDKV_COMMON_H
-#define SPARSE_ATTN_SHAREDKV_COMMON_H
+#ifndef SPARSE_FLASH_MLA_COMMON_H
+#define SPARSE_FLASH_MLA_COMMON_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
