@@ -103,7 +103,6 @@ public:
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
     uint32_t executedTaskCount = 0U;
-    uint32_t validTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
 
@@ -407,7 +406,7 @@ public:
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
-        validTaskCount = 0;
+        uint32_t validTaskCount = 0;
         while (shouldDispatchTask || validTaskCount) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
