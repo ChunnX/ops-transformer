@@ -82,6 +82,10 @@ inline const char* GetOpApiLibName(void) {
   return "libopapi.so";
 }
 
+inline const char* GetTransformerOpApiLibName(void) {
+  return "libopapi_transformer.so";
+}
+
 inline const char* GetCustOpApiLibName(void) {
   return "libcust_opapi.so";
 }
@@ -133,6 +137,14 @@ inline void* GetOpApiFuncAddr(const char* apiName) {
       if (funcAddr != nullptr) {
           return funcAddr;
       }
+  }
+  
+  static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+  if (transformerOpApiHandler != nullptr) {
+    auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+    if (funcAddr != nullptr) {
+      return funcAddr;
+    }
   }
   OP_LOGD("aclnnfallback", "opapi lib is not exist,will use aclnn lib.");
   return GetAclnnArrdByApiName(apiName);
