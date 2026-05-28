@@ -363,35 +363,64 @@ std::vector<ge::fusion::PatternUniqPtr> AlltoAllvQuantGroupedMatMulTransposeFusi
     patternGraphs.emplace_back(MakePatternForTransposeD(static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE), "_TransposeD_MmWeightScale"));
     
     // === DEBUG: 添加最简单的 Pattern，只匹配 MC2 算子本身 ===
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 only (no Transpose) ===");
+    // 参考 MatmulAlltoAll：可选输入传 nullptr
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 only (no Transpose, optional inputs as nullptr) ===");
     {
         auto debugBuilder = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_ONLY").c_str());
-        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale, dSendCountsTensor,
-              dRecvCountsTensor, dMmX, dMmWeight, dMmXScale, dMmWeightScale] = debugBuilder.CreateInputs<10>();
+        auto [dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale] = debugBuilder.CreateInputs<4>();
         std::string dGroup = "";
         int64_t dEpWorldSize = 0;
         std::vector<int64_t> dSendCountsVec = {};
         std::vector<int64_t> dRecvCountsVec = {};
         int64_t dGmmXQuantMode = 0;
         int64_t dGmmWeightQuantMode = 0;
-        int64_t dMmXQuantMode = 0;
-        int64_t dMmWeightQuantMode = 0;
         int64_t dGroupSize = 0;
         int64_t dYDtype = 28;
         int64_t dMmDtype = 28;
         bool dPermuteOutFlag = false;
         auto debugMc2 = ge::es::AlltoAllvQuantGroupedMatMul(
             dGmmX, dGmmWeight, dGmmXScale, dGmmWeightScale,
-            dSendCountsTensor, dRecvCountsTensor,
-            dMmX, dMmWeight, dMmXScale, dMmWeightScale,
+            nullptr, nullptr,
+            nullptr, nullptr, nullptr, nullptr,
             dGroup.c_str(), dEpWorldSize, dSendCountsVec, dRecvCountsVec,
             dGmmXQuantMode, dGmmWeightQuantMode, false, false, dPermuteOutFlag,
-            dMmXQuantMode, dMmWeightQuantMode, dGroupSize, dYDtype, dMmDtype);
+            0, 0, dGroupSize, dYDtype, dMmDtype);
         auto debugGraph = debugBuilder.BuildAndReset({debugMc2.gmm_y});
         auto debugPattern = std::make_unique<ge::fusion::Pattern>(std::move(*debugGraph));
         debugPattern->CaptureTensor({*debugMc2.gmm_y.GetProducer(), 0});
         patternGraphs.emplace_back(std::move(debugPattern));
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added ===");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added (4 required inputs, 6 nullptr optional) ===");
+    }
+    
+    // DEBUG: Pattern with mm inputs
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Creating DEBUG pattern: MC2 with mm inputs (no Transpose) ===");
+    {
+        auto debugBuilder2 = ge::es::EsGraphBuilder((FUSION_PASS_NAME + "_DEBUG_MC2_WITH_MM").c_str());
+        auto [d2GmmX, d2GmmWeight, d2GmmXScale, d2GmmWeightScale, d2MmX, d2MmWeight, d2MmXScale, d2MmWeightScale] = debugBuilder2.CreateInputs<8>();
+        std::string d2Group = "";
+        int64_t d2EpWorldSize = 0;
+        std::vector<int64_t> d2SendCountsVec = {};
+        std::vector<int64_t> d2RecvCountsVec = {};
+        int64_t d2GmmXQuantMode = 0;
+        int64_t d2GmmWeightQuantMode = 0;
+        int64_t d2MmXQuantMode = 0;
+        int64_t d2MmWeightQuantMode = 0;
+        int64_t d2GroupSize = 0;
+        int64_t d2YDtype = 28;
+        int64_t d2MmDtype = 28;
+        bool d2PermuteOutFlag = false;
+        auto debugMc22 = ge::es::AlltoAllvQuantGroupedMatMul(
+            d2GmmX, d2GmmWeight, d2GmmXScale, d2GmmWeightScale,
+            nullptr, nullptr,
+            d2MmX, d2MmWeight, d2MmXScale, d2MmWeightScale,
+            d2Group.c_str(), d2EpWorldSize, d2SendCountsVec, d2RecvCountsVec,
+            d2GmmXQuantMode, d2GmmWeightQuantMode, false, false, d2PermuteOutFlag,
+            d2MmXQuantMode, d2MmWeightQuantMode, d2GroupSize, d2YDtype, d2MmDtype);
+        auto debugGraph2 = debugBuilder2.BuildAndReset({debugMc22.gmm_y});
+        auto debugPattern2 = std::make_unique<ge::fusion::Pattern>(std::move(*debugGraph2));
+        debugPattern2->CaptureTensor({*debugMc22.gmm_y.GetProducer(), 0});
+        patternGraphs.emplace_back(std::move(debugPattern2));
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== DEBUG pattern added (8 inputs, 2 nullptr optional) ===");
     }
     
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Patterns DONE, total %zu patterns ===", patternGraphs.size());
