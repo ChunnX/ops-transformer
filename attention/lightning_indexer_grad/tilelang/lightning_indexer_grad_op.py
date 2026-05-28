@@ -259,7 +259,10 @@ class LightningIndexerGrad:
                     # ========== 步骤5: Vec2 - ReduceSum (TileLang) ==========
                     # 计算 dWeights = sum(reluIn * dy, axis=topk)
                     # 输入: FP16, 输出: FP16 (内部 Cast 到 FP32 累加)
-                    relu_in_dy = relu_in * dy_s1.unsqueeze(0)  # (g, topk) FP16
+                    # 注意: 确保内存连续，避免 MPU address access invalid
+                    relu_in_contiguous = relu_in.contiguous()
+                    dy_s1_contiguous = dy_s1.contiguous().unsqueeze(0)
+                    relu_in_dy = relu_in_contiguous * dy_s1_contiguous  # (g, topk) FP16
                     d_weights_group = self.kernel_reduce(relu_in_dy)  # (g,) FP16
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
@@ -279,7 +282,8 @@ class LightningIndexerGrad:
                     # ========== 步骤7: Cube4 - scatter_add = reluGrad_out^T @ Query (TileLang) ==========
                     # 输入: FP16, 输出: FP16 (内部 L0C FP32 累加)
                     relu_grad_out_T = relu_grad_out.transpose(0, 1).contiguous()  # (topk, g) FP16
-                    scatter_add = self.kernel_cube4(relu_grad_out_T, query_group)  # (topk, D) FP16
+                    query_group_contiguous = query_group.contiguous()
+                    scatter_add = self.kernel_cube4(relu_grad_out_T, query_group_contiguous)  # (topk, D) FP16
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
                         print(f"[调试] Cube4 scatter_add shape: {scatter_add.shape}, dtype: {scatter_add.dtype}, [0,0:5]: {scatter_add[0, 0:5].tolist()}")
