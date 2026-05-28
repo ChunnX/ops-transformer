@@ -216,9 +216,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     uint64_t rankSliceBytes = rankSliceElems * sizeof(C_DTYPE);
 
     // All2All 的 stride（单位：元素数），即每张卡数据在全局中的间隔
-    // uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
-    // 验证修改：stride 与 rankSliceElems 保持一致
-    uint64_t stride = rankSliceElems;
+    uint64_t stride = static_cast<uint64_t>(cfg.rankM / cfg.rankDim) * static_cast<uint64_t>(cfg.rankN);
     // 通信重复次数, 1次
     uint8_t repeat = 1;
     // 若是尾块，通信 handleId 存放的起始偏移为 tileCnt
@@ -247,6 +245,13 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
             hccl_.Wait(handles_[i + handleShift]); 
         }
         SyncAll<true>();
+
+        // === 验证 tag 残留 ===
+        if (GetBlockIdx() == 0) {
+            hccl_.BarrierAll();  // 强制同步所有 rank，重置 flag 状态
+        }
+        SyncAll<true>();
+        // === 验证结束 ===
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
