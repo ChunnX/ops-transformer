@@ -146,20 +146,22 @@ def matmul_relu_kernel(
 
 @jit(out_idx=[-1], pass_configs=pass_configs)
 def matmul_broadcast_kernel(
-    M: int, K: int, N: int,
-    block_m: int, block_k: int, block_n: int,
+    M: int, N: int,
+    block_m: int, block_n: int,
     dtype: str = 'float16',
     accum_dtype: str = 'float32'
 ):
     """
-    带广播的 MatMul 内核: A @ B，其中 A 是 (M, 1) 广播
-    用于 Cube2: Weights @ Dy
+    外积内核 (使用 Cube 单元): A(M,1) @ B(1,N) -> C(M,N)
+    用于 Cube2: Weights ⊗ Dy
     
-    A: (M,) - Weights 分块 (广播)
-    B: (N,) - Dy 分块
-    输出: (M, N)
+    输入:
+        A: (M, 1) - Weights reshape
+        B: (1, N) - Dy reshape
+    输出:
+        C: (M, N) - 外积结果
     
-    使用 Developer 模式 alloc_fragment/alloc_shared。
+    使用 Cube 单元 (gemm_v0)，比 Vector 外积更高效。
     L0C → GM 直接搬运，不走 UB。
     """
     
@@ -168,8 +170,8 @@ def matmul_broadcast_kernel(
     
     @T.prim_func
     def main(
-        A: T.Tensor((M,), dtype),
-        B: T.Tensor((N,), dtype),
+        A: T.Tensor((M, 1), dtype),
+        B: T.Tensor((1, N), dtype),
         C: T.Tensor((M, N), dtype),
     ):
         with T.Kernel(m_num * n_num, threads=VEC_NUM, is_npu=True) as (cid):
@@ -182,10 +184,10 @@ def matmul_broadcast_kernel(
             B_L0B = T.alloc_fragment((1, block_n), dtype)
             C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
             
-            T.copy(A[m_idx * block_m], A_L1)
+            T.copy(A[m_idx * block_m, 0], A_L1)
             T.copy(A_L1, A_L0A)
             
-            T.copy(B[n_idx * block_n], B_L1)
+            T.copy(B[0, n_idx * block_n], B_L1)
             T.copy(B_L1, B_L0B)
             
             T.gemm_v0(A_L0A, B_L0B, C_L0C, init=True)

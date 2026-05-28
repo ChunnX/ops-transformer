@@ -113,12 +113,12 @@ class LightningIndexerGrad:
             self.dtype
         )
         
-        # Cube2: Weights(g,) ⊗ Dy(topk,) -> relu_grad_in (g, topk) FP16
-        # 使用 matmul_broadcast_kernel (Cube单元) 而非 outer_product_kernel (Vector)
-        # 外积 = (M,1) @ (1,N) -> (M,N)，Cube 单元更高效
+        # Cube2: Weights(g,1) @ Dy(1,topk) -> relu_grad_in (g, topk) FP16
+        # 使用 matmul_broadcast_kernel (Cube单元) 
+        # 输入需 reshape: weights(g,) -> (g,1), dy(topk,) -> (1,topk)
         self.kernel_cube2 = matmul_broadcast_kernel(
-            g, topk, 1,
-            g, D, 1,  # block_m=64, block_n=128, block_k=1
+            g, topk,
+            g, D,  # block_m=64, block_n=128
             self.dtype
         )
         
@@ -231,9 +231,12 @@ class LightningIndexerGrad:
                     if b == 0 and n2_idx == 0 and s1 == 0:
                         print(f"[调试] Cube1 relu_in shape: {relu_in.shape}, dtype: {relu_in.dtype}, max: {relu_in.abs().max().item():.2f}")
                     
-                    # ========== 步骤3: Cube2 - reluGradIn = weights ⊗ dy (TileLang 外积) ==========
-                    # 输入: FP16, 输出: FP16
-                    relu_grad_in = self.kernel_cube2(weights_group, dy_s1)  # (g, topk) FP16
+                    # ========== 步骤3: Cube2 - reluGradIn = weights ⊗ dy (TileLang Cube外积) ==========
+                    # 输入: FP16, 需 reshape: weights(g,) -> (g,1), dy(topk,) -> (1,topk)
+                    # 输出: FP16
+                    weights_group_2d = weights_group.unsqueeze(1)  # (g, 1)
+                    dy_s1_2d = dy_s1.unsqueeze(0)  # (1, topk)
+                    relu_grad_in = self.kernel_cube2(weights_group_2d, dy_s1_2d)  # (g, topk) FP16
                     
                     if b == 0 and n2_idx == 0 and s1 == 0:
                         print(f"[调试] Cube2 relu_grad_in shape: {relu_grad_in.shape}, dtype: {relu_grad_in.dtype}, max: {relu_grad_in.abs().max().item():.2f}")
