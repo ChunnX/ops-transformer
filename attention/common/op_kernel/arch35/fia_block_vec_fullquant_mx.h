@@ -963,10 +963,8 @@ public:
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
-            if (constInfo.sparseMode == static_cast<uint32_t>(BAND)) {
-                if constexpr (USE_DN) {
-                    tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // (128 / 2) * 256
-                } else {
+            if constexpr (!USE_DN) {
+                if (constInfo.sparseMode == static_cast<uint32_t>(BAND)) {
                     tPipe->InitBuffer(attenMaskInQue[1], 1, 16384); // 256 * 64
                 }
             }
@@ -1128,11 +1126,12 @@ public:
         }
 
         if (!isSkipMaskForPre) {
-            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1].template AllocTensor<uint8_t>();
+            LocalTensor<uint8_t> attenMaskUbPre =
+                this->stage1OutQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
                 maskInfo, true);
             MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
-            this->attenMaskInQue[1].template FreeTensor(attenMaskUbPre);
+            this->stage1OutQue[runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
         }
     }
 
