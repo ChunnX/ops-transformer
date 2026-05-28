@@ -24,6 +24,7 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Block {
+constexpr int64_t INNER_AXIS_MIN_SPLIT_VAL_PRO = 128;
 
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 class BlockSchedulerGmmAswtWithTailSplitPro {
@@ -149,10 +150,10 @@ public:
         int64_t nMin = AscendC::BLOCK_CUBE;
 
         if constexpr (TransA_) {
-            mMin = INNER_AXIS_MIN_SPLIT_VAL;
+            mMin = INNER_AXIS_MIN_SPLIT_VAL_PRO;
         }
         if constexpr (!TransB_) {
-            nMin = INNER_AXIS_MIN_SPLIT_VAL;
+            nMin = INNER_AXIS_MIN_SPLIT_VAL_PRO;
         }
         int64_t mTile = Min(CeilDiv(mBaseTail_, mMin), remainTile);
         int64_t nTile = Min(CeilDiv(nBaseTail_, nMin), remainTile);
@@ -229,11 +230,11 @@ public:
         int64_t singleCoreMSplit = (singleCoreM + mTailCnt_ - 1) / mTailCnt_;
         int64_t singleCoreNSplit = (singleCoreN + nTailCnt_ - 1) / nTailCnt_;
         if constexpr (TransA_) {
-            singleCoreMSplit = Align(singleCoreMSplit, INNER_AXIS_MIN_SPLIT_VAL);
+            singleCoreMSplit = Align(singleCoreMSplit, INNER_AXIS_MIN_SPLIT_VAL_PRO);
         }
         singleCoreNSplit = Align(singleCoreNSplit, nTailAlign_);
         if constexpr (!TransB_) {
-            singleCoreNSplit = Align(singleCoreNSplit, INNER_AXIS_MIN_SPLIT_VAL);
+            singleCoreNSplit = Align(singleCoreNSplit, INNER_AXIS_MIN_SPLIT_VAL_PRO);
         }
         int64_t mSplitIdx = (blockIdx_ % tailCnt_) % mTailCnt_;
         int64_t nSplitIdx = (blockIdx_ % tailCnt_) / mTailCnt_;

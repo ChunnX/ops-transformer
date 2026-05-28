@@ -163,7 +163,6 @@ private:
     uint16_t yPingPongID_ = 0;
     uint16_t logitPingPongID_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
-    bool isDeter_ = false;
     uint64_t groupAccumM_ = 0;
 };
 
@@ -219,15 +218,12 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                                                    afterBiasPong + HALF_DB_MAX_SINGLE_MNSD * sizeof(DataTypeOut),
                                                    HALF_DB_MAX_SINGLE_MNSD);
 
-    if (params_->workspaceGM != nullptr) {
-        isDeter_ = true;
-        pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
-        uint32_t wsElemCount = params_->deterWorkspaceSize / sizeof(DataTypeOut);
-        mmQuantOutGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM), wsElemCount);
-        rowIndexGlobal_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
-    }
+    pipe->InitBuffer(deterDmaQue_, 1, DETER_UB_SIZED);
+    uint32_t wsElemCount = params_->deterWorkspaceSize / sizeof(DataTypeOut);
+    mmQuantOutGm_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ DataTypeOut *>(params_->workspaceGM), wsElemCount);
+    rowIndexGlobal_.SetGlobalBuffer(
+        reinterpret_cast<__gm__ DataTypeRowIndex *>(params_->rowIndexGmAddr));
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS

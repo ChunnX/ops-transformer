@@ -565,7 +565,7 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
 
 void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
 {
-    if (context_->GetDeterministic() == 0) {
+    if (context_->GetDeterministic() == 0 || inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8) {
         tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
         return;
     }

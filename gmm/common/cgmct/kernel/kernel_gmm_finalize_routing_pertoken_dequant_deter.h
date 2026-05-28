@@ -132,7 +132,6 @@ public:
     AscendC::LocalTensor<CType> l0cOutUb_;
     bool isVecSetSyncCom_ = false;
     DeterSyncConfig deterSync_;
-    bool isDeter_ = false;
     uint64_t cumulativeGroupM_ = 0;
 
     struct GMMTiling {
@@ -142,15 +141,14 @@ public:
         int32_t baseN;
         int32_t baseK;
         uint8_t hasBias;
-        uint32_t deterministicFlag;
         uint32_t deterWorkspaceSize;
         uint32_t coreNum;
         const TCubeTiling *__restrict matmulTiling;
         __aicore__ GMMTiling() {}
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
-                             uint8_t hasBias_, uint32_t detFlag_, uint32_t deterWsSize_, uint32_t coreNum_)
+                             uint8_t hasBias_, uint32_t deterWsSize_, uint32_t coreNum_)
             : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
-              hasBias(hasBias_), deterministicFlag(detFlag_), deterWorkspaceSize(deterWsSize_), coreNum(coreNum_) {}
+              hasBias(hasBias_), deterWorkspaceSize(deterWsSize_), coreNum(coreNum_) {}
     };
 
     struct Arguments {
@@ -324,7 +322,7 @@ public:
         }
     }
 
-    __aicore__ inline void FinalFlush(const Params &params)
+    __aicore__ inline void FRDeterministic(const Params &params)
     {
         uint64_t totalM = deterSync_.curGroupM - deterSync_.windowStartM;
         if (totalM == 0) {
@@ -352,12 +350,9 @@ public:
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
 
-        isDeter_ = (params.gmmParams.deterministicFlag == 1);
-        if (isDeter_) {
-            deterSync_.windowSize = params.gmmParams.deterWorkspaceSize /
-                (params.gmmParams.matmulTiling->N * sizeof(CType));
-            deterSync_.lowBoundM = deterSync_.windowSize;
-        }
+        deterSync_.windowSize = params.gmmParams.deterWorkspaceSize /
+            (params.gmmParams.matmulTiling->N * sizeof(CType));
+        deterSync_.lowBoundM = deterSync_.windowSize;
 
         SyncAll<false>();
         if ASCEND_IS_AIV {
@@ -375,10 +370,10 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            if (isDeter_ && (cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
+            if ((cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
-                if ASCEND_IS_AIV { FinalFlush(params); }
+                if ASCEND_IS_AIV { FRDeterministic(params); }
                 deterSync_.windowStartM = deterSync_.curGroupM;
                 deterSync_.lowBoundM = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
@@ -388,12 +383,9 @@ public:
             deterSync_.curGroupM = cumulativeGroupM_;
         }
 
-        if (isDeter_) {
-            SyncAll<false>();
-            if ASCEND_IS_AIV { FinalFlush(params); }
-            deterSync_.windowStartM = deterSync_.curGroupM;
-            SyncAll<false>();
-        }
+        SyncAll<false>();
+        if ASCEND_IS_AIV { FRDeterministic(params); }
+        SyncAll<false>();
 
         End();
     }
