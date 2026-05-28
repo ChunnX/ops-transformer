@@ -1,4 +1,5 @@
 namespace MoeDispatchLog_NEW {
+#include<ccelib/print/print.h>
 
 template<typename T>
 constexpr bool is_decimal_integer_v =
