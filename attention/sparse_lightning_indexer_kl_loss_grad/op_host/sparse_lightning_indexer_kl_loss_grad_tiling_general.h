@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 #include <numeric>
 #include <algorithm>
 #include "../op_kernel/sparse_lightning_indexer_kl_loss_grad_template_tiling_key.h"
-#include "../op_kernel/sparse_lightning_indexer_kl_loss_grad_tiling.h"
+#include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_tiling.h"
 #include "err/ops_err.h"
 
 // tiling_base 需要

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_common.h"
-#include "sparse_lightning_indexer_kl_loss_grad_metadata.h"
+#include "../sparse_lightning_indexer_kl_loss_grad_metadata.h"
 #include "sparse_lightning_indexer_kl_loss_grad_tiling.h"
 #include "sparse_lightning_indexer_kl_loss_grad_vector.h"
 #include "sparse_lightning_indexer_kl_loss_grad_vector2.h"
