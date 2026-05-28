@@ -1769,7 +1769,8 @@ static void UbUsedCal(const uint64_t ubSize, const gert::TilingContext *context,
     uint32_t bsKFloatAlign = (axisBS * axisK * sizeof(float) + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint32_t mulBufSize = hFloatAlign256Size > bsKFloatAlign ? hFloatAlign256Size : bsKFloatAlign;
     uint32_t flagRcvCount = axisK + tilingData->moeDistributeCombineV2Info.sharedExpertNum;
-    uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size, totalBufferSize = 0;
+    uint32_t maxSizeRowTmpFloatBuf = hFloatAlign32Size;
+    uint32_t totalBufferSize = 0;
 
     if (isInputExpertMaskFlag || enableSpecialExpert) {
         uint32_t activeMaskAlignHalfSize = activeMaskAlignSize * sizeof(DTYPE_SIZE_HALF);
