@@ -81,11 +81,7 @@ ge::graphStatus MatmulAlltoAllTilingUtil::GetAndConvertCommMode(const gert::Tili
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (strncmp(commModeStr, "", maxLength) == 0) {
         uint32_t rankDim = contextInfo.args_.rankDim;
-        if (rankDim <= 8) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        }
+        commMode = (rankDim <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE(opName, "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
