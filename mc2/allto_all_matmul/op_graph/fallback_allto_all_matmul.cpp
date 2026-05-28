@@ -39,7 +39,8 @@ constexpr size_t INDEX_ATTR_COMMON_QUANT_DTYPE = 8;
 constexpr size_t INDEX_ATTR_TRANS_X1 = 9;
 constexpr size_t INDEX_ATTR_TRANS_X2 = 10;
 constexpr size_t INDEX_ATTR_GROUP_SIZE = 11;
-constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 12;
+constexpr size_t INDEX_ATTR_COMM_MODE = 12;
+constexpr size_t INDEX_ATTR_ALLTOALL_OUT_FLAG = 13;
 constexpr size_t INDEX_OUT = 0;
 constexpr size_t INDEX_OUT_ALL2ALL_OUT = 1;
 // kc量化模式
@@ -78,6 +79,7 @@ struct AttrParas {
     bool transposeX1;
     bool transposeX2;
     int64_t groupSize = 0;
+    const char* commMode;
     bool alltoAllOutFlag;
 };
 
@@ -144,6 +146,9 @@ static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
 {
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
     OPS_CHECK(para.group == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "group is null"), return ge::GRAPH_FAILED);
+    para.commMode = attrs->GetStr(INDEX_ATTR_COMM_MODE);
+    OPS_CHECK(para.commMode == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "commMode is null."),
+            return ge::GRAPH_FAILED);
 
     const bool* transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);
     const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
@@ -268,16 +273,16 @@ static ge::graphStatus AlltoAllMatmulExecuteFunc(gert::OpExecuteContext* host_ap
     const int64_t* x2QuantModePtr = attrs->GetInt(INDEX_ATTR_X2_QUANT_MODE);
     const int64_t x2QuantMode = (x2QuantModePtr != nullptr ? *x2QuantModePtr : 0);
     if (x1QuantMode == 0 && x2QuantMode == 0) {
-        const auto ret = EXEC_OPAPI_CMD(aclnnAlltoAllMatmul, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray, attrParas.group, attrParas.transposeX1,
-                                        attrParas.transposeX2, output, alltoAllOut);
+        const auto ret = EXEC_OPAPI_CMD(aclnnAlltoAllMatmulV2, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray, attrParas.group, attrParas.commMode,
+                                        attrParas.transposeX1, attrParas.transposeX2, output, alltoAllOut);
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS, OPS_LOG_E(AlltoAllMatmulInfo, "Aclnn allto all matmul api error code %d", ret),
                    return ge::GRAPH_FAILED);
     } else if ((x1QuantMode == X1_DYN_PERTOKEN_QUANT_MODE_NUM && x2QuantMode == X2_PERCHANNEL_QUANT_MODE_NUM)
                || (x1QuantMode == X1_MX_QUANT_MODE_NUM && x2QuantMode == X2_MX_QUANT_MODE_NUM)) {
         QuantMatmulParas quantMatmulParas;
         retPara = GetQuantMatmulPara(host_api_ctx, attrs, quantMatmulParas);
-        const auto ret = EXEC_OPAPI_CMD(aclnnAlltoAllQuantMatmul, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
-                                        attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, attrParas.group, actSeqArray,
+        const auto ret = EXEC_OPAPI_CMD(aclnnAlltoAllQuantMatmulV2, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
+                                        attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, attrParas.group, attrParas.commMode, actSeqArray,
                                         x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype, attrParas.x1QuantDtype, attrParas.groupSize, attrParas.transposeX1,
                                         attrParas.transposeX2, output, alltoAllOut);
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,

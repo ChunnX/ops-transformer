@@ -74,8 +74,8 @@ constexpr size_t ALLTOALLMATMUL_ATTR_COMMON_QUANTDTYPE_INDEX = 8;
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX = 9;
 constexpr size_t ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX = 10;
 constexpr size_t ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX = 11;
-constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 12;
-constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 0; // AlltoAllMatmul原型修改时再更改该值
+constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 13;
+constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 12; // AlltoAllMatmul原型修改时再更改该值
 
 // 用来存放MatmulAlltoAll和AllToAllMatmul错位的属性信息的处理，
 // 比如说MatmulAllToAll存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
