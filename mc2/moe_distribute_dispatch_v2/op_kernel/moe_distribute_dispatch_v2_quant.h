@@ -75,7 +75,7 @@ public:
             scaleOutBytes = sizeof(float); // PERTOKEN量化一个token生成一个scale
         }
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else if constexpr (QuantMode == MX_QUANT) {
+        else if constexpr (QuantMode == MX_QUANT || QuantMode == MX_CLIP_QUANT) {
             if constexpr (Std::IsSame<ExpandXOutType, fp4x2_e2m1_t>::value ||
                 Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value) {
                 hOutSizeAlign_ = Align256(Ceil(axisH_, FP4_ELEMS_PER_BYTE));
@@ -113,7 +113,7 @@ public:
             QuantDynamicPerToken(outLocal, inLocal, expertIndex, scalesGMTensor_);
         } 
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else if constexpr (QuantMode == MX_QUANT) {
+        else if constexpr (QuantMode == MX_QUANT || QuantMode == MX_CLIP_QUANT) {
             QuantDynamicMx(outLocal, inLocal);
         } else if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
             QuantDynamicPerGroup(outLocal, inLocal, expertIndex, scalesGMTensor_);
