@@ -26,102 +26,6 @@ constexpr uint32_t BN_DROPOUT4BIT_LEN = 16;
 using matmul::Matmul;
 using matmul::MatmulType;
 
-__aicore__ const constexpr MatmulConfig GetMm1Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
-    if (dTemplateType == DTemplateType::NotAligned72) {
-        if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
-            // FAG_CP_CFG_31_D72_S1S2_48_MM1_MM2;
-            return MatmulConfig{true, false, false, 48, 48, 80, false, false, false, false,
-                                0, 48, 48, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
-            // FAG_CP_CFG_31_D72_S1S2_60_MM1_MM2;
-            return MatmulConfig{true, false, false, 64, 64, 80, false, false, false, false,
-                                0, 60, 60, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
-            // FAG_CP_CFG_31_D72_S1S2_64_MM1_MM2;
-            return MatmulConfig{true, false, false, 64, 64, 80, false, false, false, false,
-                                0, 64, 64, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
-            // FAG_CP_CFG_31_D72_S1S2_30_MM1_MM2;
-            return MatmulConfig{true, false, false, 32, 32, 80, false, false, false, false,
-                                0, 30, 30, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
-            // FAG_CP_CFG_31_D72_S1S2_32_MM1_MM2;
-            return MatmulConfig{true, false, false, 32, 32, 80, false, false, false, false,
-                                0, 32, 32, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        }
-    }
-    return FAG_CP_CFG_31_41_DEFAULT;
-}
-
-__aicore__ const constexpr MatmulConfig GetMm2Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
-    if (dTemplateType == DTemplateType::NotAligned72) {
-        if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
-            // FAG_CP_CFG_31_D72_S1S2_48_MM31;
-            return MatmulConfig{true, false, false, 48, 80, 48, false, false, false, false,
-                                0, 48, 72, 48, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
-            // FAG_CP_CFG_31_D72_S1S2_60_MM31;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 60, 72, 60, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
-            // FAG_CP_CFG_31_D72_S1S2_64_MM31;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 64, 72, 64, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
-            // FAG_CP_CFG_31_D72_S1S2_30_MM31;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 30, 72, 30, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
-            // FAG_CP_CFG_31_D72_S1S2_32_MM31;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 32, 72, 32, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        }
-    }
-    return FAG_CP_CFG_31_41_DEFAULT;
-}
-
-__aicore__ const constexpr MatmulConfig GetMm3Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
-    if (dTemplateType == DTemplateType::NotAligned72) {
-        if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
-            // FAG_CP_CFG_31_D72_S1S2_48_MM32_MM4;
-            return MatmulConfig{true, false, false, 48, 80, 48, false, false, false, false,
-                                0, 48, 72, 48, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
-            // FAG_CP_CFG_31_D72_S1S2_60_MM32_MM4;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 60, 72, 60, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
-            // FAG_CP_CFG_31_D72_S1S2_64_MM32_MM4;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 64, 72, 64, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
-            // FAG_CP_CFG_31_D72_S1S2_30_MM32_MM4;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 30, 72, 30, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
-            // FAG_CP_CFG_31_D72_S1S2_32_MM32_MM4;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 32, 72, 32, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
-        }
-    }
-    return FAG_CP_CFG_31_41_DEFAULT;
-}
-
 #if __CCE_KT_TEST__
 #define MIX_LOG1(...)                                                                                                  \
     do {                                                                                                               \
@@ -153,12 +57,9 @@ public:
 
     __aicore__ inline void Process();
 
-    constexpr static MatmulConfig MM_1_2_CONFIG31 =
-        GetMm1Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
-    constexpr static MatmulConfig MM_31_CONFIG31 =
-        GetMm2Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
-    constexpr static MatmulConfig MM_32_4_CONFIG31 =
-        GetMm3Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
+    constexpr static MatmulConfig MM_1_2_CONFIG31 = FAG_CP_CFG_31_41_DEFAULT;
+    constexpr static MatmulConfig MM_31_CONFIG31 = FAG_CP_CFG_31_41_DEFAULT;
+    constexpr static MatmulConfig MM_32_4_CONFIG31 = FAG_CP_CFG_31_41_DEFAULT;
 
     using biasType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
