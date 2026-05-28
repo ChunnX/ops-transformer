@@ -118,7 +118,6 @@ private:
     int64_t headDim_ = 0;
     int64_t sparseMode_ = 0;
     int64_t cmpRatio_ = 1;
-    int64_t deterministic_ = 0;
     int64_t aicCoreNum_ = 25;
     std::string layout_ = "BSND";
     std::string layoutK_ = "BSND";

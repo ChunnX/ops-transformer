@@ -32,7 +32,7 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, Tensor? metadata=None, "
             "str layout_q=\"TND\", str layout_k=\"TND\", int mask_mode=3, "
-            "int cmp_ratio=1, int deterministic=0) -> (Tensor, Tensor, Tensor, Tensor)"
+            "int cmp_ratio=1) -> (Tensor, Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
@@ -54,7 +54,6 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             layout_k="TND",
             mask_mode=3,
             cmp_ratio=1,
-            deterministic=0,
         ):
             dq = torch.empty_like(q)
             dk = torch.empty_like(k)
@@ -85,7 +84,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad(
     layout_k="TND",
     mask_mode=3,
     cmp_ratio=1,
-    deterministic=0,
 ):
     return op_module.npu_sparse_lightning_indexer_kl_loss_grad(
         q,
@@ -103,7 +101,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad(
         layout_k,
         mask_mode,
         cmp_ratio,
-        deterministic,
     )
 
 
@@ -139,7 +136,6 @@ if _TORCHAIR_AVAILABLE:
         layout_k: str = "TND",
         mask_mode: int = 3,
         cmp_ratio: int = 1,
-        deterministic: int = 0,
         meta_outputs: TensorSpec = None,
     ):
         return torchair.ge.custom_op(
@@ -162,7 +158,6 @@ if _TORCHAIR_AVAILABLE:
                 "layout_k": attr.Str(layout_k),
                 "mask_mode": attr.Int(mask_mode),
                 "cmp_ratio": attr.Int(cmp_ratio),
-                "deterministic": attr.Int(deterministic),
             },
             outputs=["dq", "dk", "dw", "softmax_out"],
         )

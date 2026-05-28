@@ -43,7 +43,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     char *layoutK,
     int64_t maskMode,
     int64_t cmpRatio,
-    int64_t deterministic,
     const aclTensor *metadata,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
@@ -77,7 +76,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 | layoutK | 输入属性 | k 侧 layout。 | STRING | - | `BSND` / `TND` | - |
 | maskMode | 输入属性 | mask 模式。`0` 表示无 mask，`3` 表示右下角 causal mask。 | INT64 | - | `0` / `3` | - |
 | cmpRatio | 输入属性 | 压缩比。 | INT64 | - | `[1,128]` | - |
-| deterministic | 输入属性 | 确定性计算开关。`0` 表示跟随 torch 全局配置；`1` 表示不启用确定性计算；`2` 表示启用确定性计算。当前 metadata 生成只做参数透传和校验。 | INT64 | - | `0` / `1` / `2` | - |
 | metadata | 输出 | 分核 metadata。 | INT32 | ND | `(x,)`，当前实现为 `(64,)` | - |
 | workspaceSize | 输出 | 返回用户需要在 device 侧申请的 workspace 大小。当前实现返回 `0`。 | UINT64 | - | 标量 | - |
 | executor | 输出 | 返回 op 执行器，包含算子计算流程。 | aclOpExecutor* | - | - | - |
@@ -93,7 +91,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 - `numHeadsQ/numHeadsK/headDim` 必须为正数，且 `numHeadsQ` 必须能被 `numHeadsK` 整除。
 - `maskMode` 当前支持 `0` 和 `3`。
 - `cmpRatio` 范围为 `[1,128]`。
-- `deterministic` 当前支持 `0/1/2`。
 - 输出 metadata 当前布局如下：
 
 | 字段 | index | 说明 |
@@ -208,7 +205,6 @@ int main()
     const int64_t topk = 512;
     const int64_t maskMode = 3;
     const int64_t cmpRatio = 4;
-    const int64_t deterministic = 0;
 
     std::vector<int64_t> cuSeqLensShape = {batchSize + 1};
     std::vector<int64_t> metadataShape = {64};
@@ -237,8 +233,8 @@ int main()
     aclOpExecutor *executor = nullptr;
     ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
         cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK,
-        headDim, topk, const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, deterministic,
-        metadata, &workspaceSize, &executor);
+        headDim, topk, const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, metadata,
+        &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);

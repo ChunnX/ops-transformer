@@ -39,7 +39,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     char *layoutK,
     int64_t maskMode,
     int64_t cmpRatio,
-    int64_t deterministic,
     const aclTensor* metadata,
     uint64_t* workspaceSize,
     aclOpExecutor** executor);

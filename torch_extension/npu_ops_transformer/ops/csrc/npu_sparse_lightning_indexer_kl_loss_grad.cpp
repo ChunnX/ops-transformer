@@ -30,8 +30,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_sparse_lightning_
     std::string layout_q,
     std::string layout_k,
     int64_t mask_mode,
-    int64_t cmp_ratio,
-    int64_t deterministic)
+    int64_t cmp_ratio)
 {
     at::Tensor dq = at::empty_like(q);
     at::Tensor dk = at::empty_like(k);
@@ -43,7 +42,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_sparse_lightning_
 
     ACLNN_CMD(aclnnSparseLightningIndexerKLLossGrad,
         q, k, w, sparse_indices, attn_softmax_l1_norm, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
-        cmp_residual_k, metadata, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, deterministic,
+        cmp_residual_k, metadata, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio,
         dq, dk, dw, softmax_out);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dq, dk, dw, softmax_out);

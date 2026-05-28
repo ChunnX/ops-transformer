@@ -102,7 +102,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
     char *layoutK,
     int64_t maskMode,
     int64_t cmpRatio,
-    int64_t deterministic,
     const aclTensor *dq,
     const aclTensor *dk,
     const aclTensor *dw,
@@ -138,7 +137,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
 | layoutK | 输入属性 | k/dk 的 layout。 | STRING | - | `BSND` / `TND` | - |
 | maskMode | 输入属性 | mask 模式。`0` 表示无 mask，`3` 表示右下角 causal mask。 | INT64 | - | `0` / `3` | - |
 | cmpRatio | 输入属性 | 压缩比。 | INT64 | - | `[1,128]` | - |
-| deterministic | 输入属性 | 确定性计算开关。`0` 表示跟随 torch 全局配置；`1` 表示不启用确定性计算；`2` 表示启用确定性计算。 | INT64 | - | `0` / `1` / `2` | - |
 | dq | 输出 | `q` 的梯度。 | FLOAT16 / BFLOAT16 | ND | 与 `q` 相同 | - |
 | dk | 输出 | `k` 的梯度。 | FLOAT16 / BFLOAT16 | ND | 与 `k` 相同 | - |
 | dw | 输出 | `w` 的梯度。 | FLOAT32 | ND | 与 `w` 相同 | - |
@@ -257,7 +255,6 @@ int main()
     const int64_t topk = 512;
     const int64_t maskMode = 3;
     const int64_t cmpRatio = 4;
-    const int64_t deterministic = 0;
 
     std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
     std::vector<int64_t> kShape = {t2, numHeadsK, headDim};
@@ -346,7 +343,7 @@ int main()
     aclOpExecutor *metadataExecutor = nullptr;
     ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
         cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, t1, t2, numHeadsQ, numHeadsK, headDim, topk,
-        const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, deterministic, metadata,
+        const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, metadata,
         &metadataWorkspaceSize, &metadataExecutor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -367,7 +364,7 @@ int main()
     aclOpExecutor *executor = nullptr;
     ret = aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize(
         q, k, w, sparseIndices, attnSoftmaxL1Norm, cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, metadata,
-        const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, deterministic, dq, dk, dw,
+        const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, dq, dk, dw,
         softmaxOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize failed. ERROR: %d\n", ret);

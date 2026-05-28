@@ -81,7 +81,6 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::Prepare(CpuKernelContext
     GetAttrValueOpt(ctx, "layout_k", layoutK_);
     GetAttrValueOpt(ctx, "mask_mode", sparseMode_);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
-    GetAttrValueOpt(ctx, "deterministic", deterministic_);
     GetAttrValueOpt(ctx, "aic_core_num", aicCoreNum_);
 
     if (layout_ == "BSND") {
@@ -145,10 +144,6 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::ParamsCheck()
     }
     if (cmpRatio_ < 1 || cmpRatio_ > 128) {
         KERNEL_LOG_ERROR("cmp_ratio must be in [1, 128], but got %ld", cmpRatio_);
-        return false;
-    }
-    if (deterministic_ < 0 || deterministic_ > 2) {
-        KERNEL_LOG_ERROR("deterministic only supports 0, 1 or 2, but got %ld", deterministic_);
         return false;
     }
     if (layoutType_ == SliLayout::TND && (!IsTensorValid(cuSeqLensQuery_) || !IsTensorValid(cuSeqLensKey_))) {

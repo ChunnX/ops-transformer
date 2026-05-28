@@ -37,7 +37,7 @@ class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int? batch_size=None, "
             "int? max_seqlen_q=None, int? max_seqlen_k=None, int? topk=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
-            "int? cmp_ratio=None, int? deterministic=None) -> Tensor"
+            "int? cmp_ratio=None) -> Tensor"
         )
 
     def register_meta(self):
@@ -60,7 +60,6 @@ class SparseLightningIndexerKLLossGradMetadataOpBuilder(OpBuilder):
             layout_k=None,
             mask_mode=None,
             cmp_ratio=None,
-            deterministic=None,
         ):
             return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
@@ -88,7 +87,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     layout_k=None,
     mask_mode=None,
     cmp_ratio=None,
-    deterministic=None,
 ):
     batch_size = 0 if batch_size is None else batch_size
     max_seqlen_q = 0 if max_seqlen_q is None else max_seqlen_q
@@ -98,7 +96,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     layout_k = "BSND" if layout_k is None else layout_k
     mask_mode = 0 if mask_mode is None else mask_mode
     cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
-    deterministic = 0 if deterministic is None else deterministic
 
     return op_module.npu_sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
@@ -117,7 +114,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata(
         layout_k,
         mask_mode,
         cmp_ratio,
-        deterministic,
     )
 
 
@@ -142,7 +138,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     layout_k=None,
     mask_mode=None,
     cmp_ratio=None,
-    deterministic=None,
 ):
     return npu_sparse_lightning_indexer_kl_loss_grad_metadata(
         num_heads_q,
@@ -161,7 +156,6 @@ def npu_sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
         layout_k=layout_k,
         mask_mode=mask_mode,
         cmp_ratio=cmp_ratio,
-        deterministic=deterministic,
     )
 
 
@@ -198,7 +192,6 @@ if _TORCHAIR_AVAILABLE:
         layout_k: Optional[str] = None,
         mask_mode: Optional[int] = None,
         cmp_ratio: Optional[int] = None,
-        deterministic: Optional[int] = None,
         meta_outputs: TensorSpec = None,
     ):
         batch_size = 0 if batch_size is None else batch_size
@@ -209,7 +202,6 @@ if _TORCHAIR_AVAILABLE:
         layout_k = "BSND" if layout_k is None else layout_k
         mask_mode = 0 if mask_mode is None else mask_mode
         cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
-        deterministic = 0 if deterministic is None else deterministic
         stream_info = torch.npu.get_stream_limit(torch.npu.current_stream())
         aic_core_num = stream_info.get("cube_core_num") or SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM
         return torchair.ge.custom_op(
@@ -233,7 +225,6 @@ if _TORCHAIR_AVAILABLE:
                 "layout_k": attr.Str(layout_k),
                 "mask_mode": attr.Int(mask_mode),
                 "cmp_ratio": attr.Int(cmp_ratio),
-                "deterministic": attr.Int(deterministic),
                 "aic_core_num": attr.Int(aic_core_num),
             },
             outputs=["metadata"],

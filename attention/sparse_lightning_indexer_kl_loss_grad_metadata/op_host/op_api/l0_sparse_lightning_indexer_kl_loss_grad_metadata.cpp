@@ -43,7 +43,6 @@ const aclTensor* SparseLightningIndexerKLLossGradMetadata(
     char *layoutK,
     int64_t maskMode,
     int64_t cmpRatio,
-    int64_t deterministic,
     int64_t aicCoreNum,
     const aclTensor* metadata,
     aclOpExecutor* executor)
@@ -51,19 +50,18 @@ const aclTensor* SparseLightningIndexerKLLossGradMetadata(
     L0_DFX(SparseLightningIndexerKLLossGradMetadata, cuSeqLensQOptional, cuSeqLensKOptional,
            seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional,
            batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, layoutQ, layoutK, maskMode,
-           cmpRatio, deterministic, aicCoreNum, metadata);
+           cmpRatio, aicCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("SparseLightningIndexerKLLossGradMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         SparseLightningIndexerKLLossGradMetadata,
         OP_ATTR_NAMES({"batch_size", "max_seqlen_q", "max_seqlen_k", "num_heads_q", "num_heads_k", "head_dim",
-                       "topk", "layout_q", "layout_k", "mask_mode", "cmp_ratio", "deterministic",
-                       "aic_core_num"}),
+                       "topk", "layout_q", "layout_k", "mask_mode", "cmp_ratio", "aic_core_num"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional, cmpResidualKOptional),
         OP_OUTPUT(metadata),
         OP_ATTR(batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, layoutQ, layoutK, maskMode,
-                cmpRatio, deterministic, aicCoreNum));
+                cmpRatio, aicCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseLightningIndexerKLLossGradMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);

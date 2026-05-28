@@ -438,7 +438,6 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
         layout_k=case.layout,
         mask_mode=case.sparse_mode,
         cmp_ratio=cmp_ratio,
-        deterministic=0,
     )
     print_slig_metadata(metadata)
 
@@ -455,7 +454,6 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
         layout_k=case.layout,
         mask_mode=case.sparse_mode,
         cmp_ratio=cmp_ratio,
-        deterministic=0,
     )
     torch.npu.synchronize()
     return {

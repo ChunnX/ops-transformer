@@ -52,7 +52,6 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<char>(LAYOUT_K_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(MASK_MODE_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX));
-    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(DETERMINISTIC_ATTR_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetWorkspaceSizes(1));
 
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(QUERY_INPUT_INDEX));
@@ -76,7 +75,7 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeAttrs()
     keyLayout = attrs->GetAttrPointer<char>(LAYOUT_K_ATTR_INDEX);
     sparseMode = *attrs->GetAttrPointer<int64_t>(MASK_MODE_ATTR_INDEX);
     cmpRatio = *attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
-    deterministic = (*attrs->GetAttrPointer<int64_t>(DETERMINISTIC_ATTR_INDEX) != 0);
+    deterministic = (context_->GetDeterministic() == 1);
     scaleValue = 1.0f;
     hasSoftmaxInput = 1;
     hasRope = false;

@@ -38,7 +38,6 @@ REG_OP(SparseLightningIndexerKLLossGradMetadata)
     .ATTR(layout_k, String, "BSND")
     .ATTR(mask_mode, Int, 0)
     .ATTR(cmp_ratio, Int, 1)
-    .ATTR(deterministic, Int, 0)
     .OP_END_FACTORY_REG(SparseLightningIndexerKLLossGradMetadata)
 
 } // namespace ge

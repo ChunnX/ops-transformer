@@ -35,7 +35,6 @@ const aclTensor* SparseLightningIndexerKLLossGradMetadata(
     char *layoutK,
     int64_t maskMode,
     int64_t cmpRatio,
-    int64_t deterministic,
     int64_t aicCoreNum,
     const aclTensor* metadata,
     aclOpExecutor* executor);

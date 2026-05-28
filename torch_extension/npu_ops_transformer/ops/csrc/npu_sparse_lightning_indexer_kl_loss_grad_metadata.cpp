@@ -56,8 +56,7 @@ at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     std::string layout_q,
     std::string layout_k,
     int64_t mask_mode,
-    int64_t cmp_ratio,
-    int64_t deterministic)
+    int64_t cmp_ratio)
 {
     at::Tensor output = at::empty(
         {SLI_KL_LOSS_GRAD_METADATA_SIZE},
@@ -70,7 +69,7 @@ at::Tensor npu_sparse_lightning_indexer_kl_loss_grad_metadata(
     ACLNN_CMD(aclnnSparseLightningIndexerKLLossGradMetadata,
         cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
         batch_size, max_seqlen_q, max_seqlen_k, num_heads_q, num_heads_k, head_dim, topk,
-        layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, deterministic, output);
+        layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio, output);
 
     return output;
 }
