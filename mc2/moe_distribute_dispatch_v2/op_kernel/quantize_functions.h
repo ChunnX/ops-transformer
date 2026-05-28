@@ -24,6 +24,8 @@ constexpr int DIGIT_TWO = 2;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
 constexpr uint16_t BF16_EXP_BIAS = 0x7f00;
 constexpr uint16_t MAX_EXP_FOR_FP8 = 0x00ff;
+constexpr uint32_t MAX_EXP_FOR_FP32 = 0x7f800000;
+constexpr uint32_t MAX_EXP_FOR_FP8_IN_FP32 = 0x000000ff;
 constexpr uint16_t NAN_CUSTOMIZATION = 0x7f81;
 constexpr uint16_t SPECIAL_EXP_THRESHOLD = 0x0040;
 constexpr int16_t SHR_NUM_FOR_BF16 = 7;
@@ -40,6 +42,10 @@ constexpr float HIFP8_MAX_VALUE = 32768.0f;
 constexpr float INT8_MAX_VALUE = 127.0f;
 constexpr uint16_t INVALID_FLOAT16 = 0x7c00;
 constexpr uint16_t NEW_MANTISSA = 0x0008;
+constexpr uint16_t NAN_CUSTOMIZATION_PACK = 0x00007f81;
+constexpr uint32_t MAN_MASK_FLOAT = 0x007fffff;
+constexpr uint32_t FP32_EXP_BIAS_CUBLAS = 0x00007f00;
+constexpr uint16_t ABS_MASK_FOR_16BIT = 0x7fff;
 
 using namespace AscendC;
 
@@ -133,6 +139,44 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T* srcAddr, __ubuf__ uint16_t* max
 }
 
 template<typename T>
+__aicore__ inline void ComputeMaxExpcuBLAS(__ubuf__ T* srcAddr, __ubuf__ uint16_t* maxExpAddr, uint32_t totalCountInUB)
+{
+    uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(T); // 每个向量寄存器可以存储的元素个数
+    uint16_t elementAfterReduce = GetVRegSizeDispatch() / GetUbBlockSizeDispatch(); // Reduce操作后搬出的元素个数
+    uint16_t loopNum = Ceil(totalCountInUB, 2 * vlForHalfNumber);
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<T> vdExp0;
+        MicroAPI::RegTensor<T> vdExp1;
+        MicroAPI::RegTensor<uint16_t> vdMaxExp;
+
+        MicroAPI::RegTensor<uint16_t> absMask16Bit;
+        MicroAPI::Duplicate(absMask16Bit, ABS_MASK_FOR_16BIT);
+
+        MicroAPI::MaskReg Mask = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
+        MicroAPI::UnalignReg ureg;
+
+        for (uint16_t i = 0; i < loopNum; i++) {
+            MicroAPI::LoadAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_DINTLV_B16>(
+                vdExp0, vdExp1, srcAddr, vlForHalfNumber * DIGIT_TWO);
+            MicroAPI::And(
+                (MicroAPI::RegTensor<uint16_t>&)vdExp0, (MicroAPI::RegTensor<uint16_t>&)vdExp0,
+                absMask16Bit, Mask);
+            MicroAPI::And(
+                (MicroAPI::RegTensor<uint16_t>&)vdExp1, (MicroAPI::RegTensor<uint16_t>&)vdExp1,
+                absMask16Bit, Mask);
+            MicroAPI::Max(
+                vdMaxExp, (MicroAPI::RegTensor<uint16_t>&)vdExp0,
+                (MicroAPI::RegTensor<uint16_t>&)vdExp1, Mask);
+            MicroAPI::ReduceMaxWithDataBlock(vdMaxExp, vdMaxExp, Mask);
+            MicroAPI::StoreUnAlign<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                maxExpAddr, vdMaxExp, ureg, elementAfterReduce);
+        }
+        MicroAPI::StoreUnAlignPost(maxExpAddr, ureg, 0);
+    }
+}
+
+template<typename T>
 __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
     __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t totalScaleInUB)
 {
@@ -201,6 +245,100 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint
 
             MicroAPI::DataCopy<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(halfScaleLocalAddr,
                 halfScale, vlForHalfNumber, preMaskScale);
+        }
+    }
+}
+
+template<typename T>
+__aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
+    __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t totalScaleInUB)
+{
+    uint32_t vlForHalfNumber = GetVRegSizeDispatch() / sizeof(uint32_t);
+    uint16_t loopNumScale = Ceil(totalScaleInUB, vlForHalfNumber);
+    __VEC_SCOPE__
+    {
+        MicroAPI::RegTensor<uint16_t> max16;
+        MicroAPI::RegTensor<uint32_t> max32;
+        MicroAPI::RegTensor<uint32_t> exp32;
+        MicroAPI::RegTensor<uint32_t> man32;
+        MicroAPI::RegTensor<uint32_t> normalExp32;
+        MicroAPI::RegTensor<uint32_t> expAddOne32;
+        MicroAPI::RegTensor<uint32_t> extractExp;
+        MicroAPI::RegTensor<uint16_t> expOut;
+        MicroAPI::RegTensor<uint32_t> halfScale;
+        MicroAPI::RegTensor<uint16_t> recExpOut;
+
+        MicroAPI::RegTensor<uint32_t> invMax;
+        MicroAPI::Duplicate(invMax, dtypeMax);
+        MicroAPI::RegTensor<uint32_t> manMaskFP32;
+        MicroAPI::Duplicate(manMaskFP32, MAN_MASK_FLOAT);
+        MicroAPI::RegTensor<uint32_t> expMask;
+        MicroAPI::Duplicate(expMask, MAX_EXP_FOR_FP32);
+        MicroAPI::RegTensor<uint32_t> zeroRegTensor32;
+        MicroAPI::Duplicate(zeroRegTensor32, 0);
+        MicroAPI::RegTensor<uint32_t> scaleBias;
+        MicroAPI::Duplicate(scaleBias, FP32_EXP_BIAS_CUBLAS);
+        MicroAPI::RegTensor<uint32_t> nanRegTensor;
+        MicroAPI::Duplicate(nanRegTensor, NAN_CUSTOMIZATION_PACK);
+        MicroAPI::RegTensor<uint32_t> fp8NanRegTensor;
+        MicroAPI::Duplicate(fp8NanRegTensor, MAX_EXP_FOR_FP8_IN_FP32);
+
+        MicroAPI::MaskReg cmpResult;
+        MicroAPI::MaskReg zeroMask;
+        MicroAPI::MaskReg p0;
+        MicroAPI::MaskReg p1;
+        MicroAPI::MaskReg p2;
+        // MicroAPI::MaskReg maskHalf = MicroAPI::CreateMask<uint16_t>();
+        uint32_t SixtyFour = 64;
+        MicroAPI::MaskReg dataMaskB16Half = MicroAPI::UpdateMask<uint16_t>(SixtyFour);
+        MicroAPI::MaskReg maskFloat = MicroAPI::CreateMask<uint32_t>();
+
+        static constexpr MicroAPI::CastTrait castTraitHalf2Float = {
+            MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+            MicroAPI::MaskMergeMode::ZEROING, MicroAPI::RoundMode::UNKNOWN};
+        for (uint16_t i = 0; i < loopNumScale; i++) {
+            MicroAPI::LoadAlign<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                max16, maxExpAddr, vlForHalfNumber);// 单搬 64 个数
+
+            MicroAPI::Cast<float, T, castTraitHalf2Float>(
+                (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<T>&)max16, maskFloat);
+            MicroAPI::Compare<uint32_t, CMPMODE::LT>(cmpResult, max32, expMask, maskFloat);
+            MicroAPI::Compare<uint32_t, CMPMODE::NE>(zeroMask, max32, zeroRegTensor32, maskFloat);
+
+            MicroAPI::Mul(
+                (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<float>&)max32,
+                (MicroAPI::RegTensor<float>&)invMax, maskFloat);
+            MicroAPI::ShiftRights(exp32, max32, SHR_NUM_FOR_FP32, maskFloat);
+            MicroAPI::And(man32, max32, manMaskFP32, maskFloat);
+
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p0, exp32, NUMBER_ZERO, maskFloat);
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::LT>(p1, exp32, NUMBER_TWO_FIVE_FOUR, maskFloat);
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p2, man32, NUMBER_ZERO, maskFloat);
+            MicroAPI::MaskAnd(p0, p0, p1, maskFloat);
+            MicroAPI::MaskAnd(p0, p0, p2, maskFloat);
+
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::EQ>(p1, exp32, NUMBER_ZERO, maskFloat);
+            MicroAPI::CompareScalar<uint32_t, CMPMODE::GT>(p2, man32, NUMBER_HALF, maskFloat);
+            MicroAPI::MaskAnd(p1, p1, p2, maskFloat);
+            MicroAPI::MaskOr(p0, p0, p1, maskFloat);
+
+            MicroAPI::Adds(expAddOne32, exp32, 1, maskFloat);
+            MicroAPI::Select(extractExp, expAddOne32, exp32, p0);
+            MicroAPI::Select<uint32_t>(extractExp, extractExp, fp8NanRegTensor, cmpResult);
+            MicroAPI::Select<uint32_t>(extractExp, extractExp, zeroRegTensor32, zeroMask);
+            MicroAPI::Pack<uint16_t, uint32_t, MicroAPI::HighLowPart::LOWEST>(expOut, extractExp);
+            // 64 个 max 计算得到 64 * 1 Bytes = 32 * sizeof(uint16_t) Bytes
+            MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_PACK_B16>(
+                mxScaleLocalAddr + i * 32, expOut, dataMaskB16Half);
+
+            MicroAPI::ShiftLefts(extractExp, extractExp, SHR_NUM_FOR_BF16, maskFloat);
+            MicroAPI::Sub(halfScale, scaleBias, extractExp, maskFloat);
+            MicroAPI::Select<uint32_t>(halfScale, halfScale, nanRegTensor, cmpResult);
+            MicroAPI::Select<uint32_t>(halfScale, halfScale, zeroRegTensor32, zeroMask);
+            MicroAPI::Pack<uint16_t, uint32_t, MicroAPI::HighLowPart::LOWEST>(recExpOut, halfScale);
+
+            MicroAPI::StoreAlign<uint16_t>(
+                halfScaleLocalAddr + i * vlForHalfNumber, recExpOut, dataMaskB16Half);
         }
     }
 }
