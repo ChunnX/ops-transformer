@@ -560,7 +560,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>S1、S2</td>
             <td>S1支持1~8K，S2支持1~512K</td>
-            <td>S1、S2支持不等长</td>
+            <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
             <td>N1</td>
