@@ -512,6 +512,11 @@ function build_example()
 {
     log "Start to run example,name:${EXAMPLE_NAME} mode:${EXAMPLE_MODE}"
 
+    local verbose_option=""
+    if [ "${VERBOSE}" == "true" ];then
+        verbose_option="-v"
+    fi
+
     if [ ! -d "${BUILD_PATH}" ]; then
     	mkdir -p ${BUILD_PATH}
     fi
@@ -585,7 +590,7 @@ function build_example()
                 MC2_APPEND_INCLUDE_AND_LIBRARY="-lpthread -Wl,--no-as-needed -lhccl -lhccl_fwk"
             fi
             if [[ "${PKG_MODE}" == "" ]]; then
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${INCLUDE_PATH} -I ${ACLNN_INCLUDE_PATH} -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} \
                     -L ${EAGER_LIBRARY_OPP_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lopapi_transformer -lascendcl -lnnopbase \
@@ -603,7 +608,7 @@ function build_example()
                     CUST_LIBRARY_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/lib"
                     CUST_INCLUDE_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/include"
                 fi
-                g++ ${file} \
+                g++ ${verbose_option} ${file} \
                     -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} \
                     -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} \
                     -lopapi_math -lcust_opapi -lascendcl -lnnopbase \
@@ -655,7 +660,7 @@ function build_example()
                 found_specific_example=true
             fi
             echo "Start compile and run example file: $file"
-            g++ ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
+            g++ ${verbose_option} ${file} -I ${GRAPH_INCLUDE_PATH} -I ${GE_INCLUDE_PATH} -I ${LINUX_INCLUDE_PATH} -I ${INC_INCLUDE_PATH} -L ${GRAPH_LIBRARY_STUB_PATH} -L ${GRAPH_LIBRARY_PATH} -lgraph -lge_runner -lgraph_base -lge_compiler -o test_geir_${EXAMPLE_NAME}
             ./test_geir_${EXAMPLE_NAME}
             run_result=$?
             if [ $run_result -ne 0 ]; then
