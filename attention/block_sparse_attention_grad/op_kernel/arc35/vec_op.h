@@ -303,6 +303,9 @@ private:
         uint64_t sftgGmOffset = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * sub_m_process * 8;
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
 
+        SET_FLAG(V, MTE2, EVENT_ID0);
+        WAIT_FLAG(V, MTE2, EVENT_ID0);
+
         DataCopy(lse_tensor_, sftg_workspace_[sftgGmOffset], sub_real_m_process * 8);
         SET_FLAG(MTE2, V, EVENT_ID0);
         WAIT_FLAG(MTE2, V, EVENT_ID0);
