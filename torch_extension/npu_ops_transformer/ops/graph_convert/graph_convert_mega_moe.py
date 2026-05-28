@@ -35,7 +35,8 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
         [False, False, False, False, True, True, True, True, True, True, False, False],
-        [False, False, False, False, False, False, False, False, False, False, True, True])
+        [False, False, False, False, False, False, False, False, False, False],
+        [False, False, False, False, False, True, True])
     def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
                 weight1: List[Tensor], weight2: List[Tensor],
                 weight_scales1: List[Tensor], weight_scales2: List[Tensor],
@@ -43,9 +44,10 @@ if _TORCHAIR_AVAILABLE:
                 x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
                 moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
                 max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
-                dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
-                num_max_token_per_rank: int = 0,
-                activation: str = "swiglu", activation_clamp: float = 3.4028234663852886e+38,
+                dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
+                num_max_token_per_rank: int = 0, activation: str = "swiglu",
+                activation_clamp: float = 3.4028234663852886e+38, activation_out_dtype: int = 28,
+                transpose_weight1: bool = False, transpose_weight2: bool = False, weight1_interleave: int = 0,
                 dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
@@ -57,8 +59,8 @@ if _TORCHAIR_AVAILABLE:
             DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .DYNAMIC_INPUT(weight2, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2,\n
             DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
-        .DYNAMIC_INPUT(weight_scales1, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
-        .DYNAMIC_INPUT(weight_scales2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
+        .DYNAMIC_INPUT(weight_scales1, TensorType({DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64}))\n
+        .DYNAMIC_INPUT(weight_scales2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64}))\n
         .DYNAMIC_INPUT(bias1, TensorType({DT_FLOAT}))\n
         .DYNAMIC_INPUT(bias2, TensorType({DT_FLOAT}))\n
         .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))\n
@@ -70,12 +72,16 @@ if _TORCHAIR_AVAILABLE:
         .REQUIRED_ATTR(ccl_buffer_size, Int)\n
         .ATTR(max_recv_token_num, Int, 0)\n
         .ATTR(dispatch_quant_mode, Int, 0)\n
-        .ATTR(dispatch_quant_out_type, Int, 28)\n
+        .ATTR(dispatch_quant_out_dtype, Int, 28)\n
         .ATTR(combine_quant_mode, Int, 0)\n
         .ATTR(comm_alg, String, "")\n
         .ATTR(num_max_token_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
+        .ATTR(activation_out_dtype, Int, 28)\n
+        .ATTR(transpose_weight1, Bool, false)\n
+        .ATTR(transpose_weight2, Bool, false)\n
+        .ATTR(weight1_interleave, Int, 0)\n
         """
         inputs = {
             "context": context,
@@ -98,12 +104,16 @@ if _TORCHAIR_AVAILABLE:
             "ccl_buffer_size": attr.Int(ccl_buffer_size),
             "max_recv_token_num": attr.Int(max_recv_token_num),
             "dispatch_quant_mode": attr.Int(dispatch_quant_mode),
-            "dispatch_quant_out_type": attr.Int(dispatch_quant_out_type),
+            "dispatch_quant_out_dtype": attr.Int(dispatch_quant_out_dtype),
             "combine_quant_mode": attr.Int(combine_quant_mode),
             "comm_alg": attr.Str(comm_alg),
             "num_max_token_per_rank": attr.Int(num_max_token_per_rank),
             "activation": attr.Str(activation),
             "activation_clamp": attr.Float(activation_clamp),
+            "activation_out_dtype": attr.Int(dispatch_quant_out_dtype),
+            "transpose_weight1": attr.Bool(transpose_weight1),
+            "transpose_weight2": attr.Bool(transpose_weight2),
+            "weight1_interleave": attr.Int(weight1_interleave)
         }
 
         outputs = [
@@ -127,8 +137,8 @@ if _TORCHAIR_AVAILABLE:
                 "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .dynamic_input("weight2", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, " \
                 "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0") \
-            .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0") \
+            .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64") \
+            .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64") \
             .dynamic_input("bias1", "DT_FLOAT") \
             .dynamic_input("bias2", "DT_FLOAT") \
             .optional_input("x_active_mask", "DT_INT8") \
@@ -138,12 +148,16 @@ if _TORCHAIR_AVAILABLE:
             .required_attr("ccl_buffer_size", attr.Int) \
             .attr("max_recv_token_num", attr.Int(0)) \
             .attr("dispatch_quant_mode", attr.Int(0)) \
-            .attr("dispatch_quant_out_type", attr.Int(28)) \
+            .attr("dispatch_quant_out_dtype", attr.Int(28)) \
             .attr("combine_quant_mode", attr.Int(0)) \
             .attr("comm_alg", attr.Str("")) \
             .attr("num_max_token_per_rank", attr.Int(0)) \
             .attr("activation", attr.Str("swiglu")) \
             .attr("activation_clamp", attr.Float(3.4028234663852886e+38)) \
+            .attr("activation_out_dtype", attr.Int(28)) \
+            .attr("transpose_weight1", attr.Bool(false)) \
+            .attr("transpose_weight2", attr.Bool(false)) \
+            .attr("weight1_interleave", attr.Int(0)) \
             .output("y", "DT_BF16, DT_FLOAT16") \
             .output("expert_token_nums", "DT_INT32")
         )
@@ -168,12 +182,16 @@ if _TORCHAIR_AVAILABLE:
         scales: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_type: int = 28,
+        dispatch_quant_out_dtype: int = 28,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
         num_max_token_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e+38,
+        activation_out_dtype: int = 28,
+        transpose_weight1: bool = False,
+        transpose_weight2: bool = False,
+        weight1_interleave: int = 0,
         weight1_type: int = 28,
         weight2_type: int = 28,
         meta_outputs: TensorSpec = None):
@@ -195,10 +213,14 @@ if _TORCHAIR_AVAILABLE:
                        ccl_buffer_size=ccl_buffer_size,
                        max_recv_token_num=max_recv_token_num,
                        dispatch_quant_mode=dispatch_quant_mode,
-                       dispatch_quant_out_type=dispatch_quant_out_type,
+                       dispatch_quant_out_dtype=dispatch_quant_out_dtype,
                        combine_quant_mode=combine_quant_mode,
                        comm_alg=comm_alg,
                        num_max_token_per_rank=num_max_token_per_rank,
                        activation=activation,
-                       activation_clamp=activation_clamp)
+                       activation_clamp=activation_clamp,
+                       activation_out_dtype=activation_out_dtype,
+                       transpose_weight1=transpose_weight1,
+                       transpose_weight2=transpose_weight2,
+                       weight1_interleave=weight1_interleave)
 
