@@ -64,7 +64,6 @@ private:
     ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
-    static constexpr const char *BSH_STR = "BSH";
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *TND_STR = "TND";
@@ -128,32 +127,7 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        if (strcmp(qInputLayout, BSH_STR) == 0) {
-            // BSH layout
-            if (queryShape->GetOriginShape().GetDimNum() != 3) {
-                OP_LOGE(context_->GetNodeName(), "The shape of query must be 3 dimension.");
-                return ge::GRAPH_FAILED;
-            }
-            auto kv_head_num = *context_->GetAttrs()->GetAttrPointer<int64_t>(2);
-            // query
-            q_batch_num = queryShape->GetStorageShape().GetDim(0);
-            q_seq_len = queryShape->GetStorageShape().GetDim(1);
-            int32_t q_hidden_state = queryShape->GetStorageShape().GetDim(2);
-            q_head_num = q_hidden_state / q_head_dim;
-            // key
-            k_batch_num = keyShape->GetStorageShape().GetDim(0);
-            k_seq_len = keyShape->GetStorageShape().GetDim(1);
-            int32_t k_hidden_state = keyShape->GetStorageShape().GetDim(2);
-            k_head_num = kv_head_num;
-            k_head_dim = k_hidden_state / k_head_num;
-            // value
-            v_batch_num = valueShape->GetStorageShape().GetDim(0);
-            v_seq_len = valueShape->GetStorageShape().GetDim(1);
-            int32_t v_hidden_state = valueShape->GetStorageShape().GetDim(2);
-            v_head_num = kv_head_num;
-            v_head_dim = v_hidden_state / v_head_num;
-            q_group = q_head_num / kv_head_num;
-        } else if (strcmp(qInputLayout, BSND_STR) == 0) {
+        if (strcmp(qInputLayout, BSND_STR) == 0) {
             // BSND layout
             if (queryShape->GetOriginShape().GetDimNum() != 4) {
                 OP_LOGE(context_->GetNodeName(), "The shape of query must be 4 dimension.");
@@ -227,7 +201,7 @@ protected:
             v_head_dim = valueShape->GetStorageShape().GetDim(2);
             q_group = q_head_num / k_head_num;
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSH or BSDN or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
@@ -291,7 +265,7 @@ protected:
         uint64_t sys_workspace_size = ascendcPlatform.GetLibApiWorkSpaceSize();
         uint64_t usr_workspace_offset = 0;
 
-        if (strcmp(layout_, BSH_STR) == 0 || strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
+        if (strcmp(layout_, BSND_STR) == 0 || strcmp(layout_, BNSD_STR) == 0) {
             dq_size = batch_num_ * q_seq_len_ * q_head_num_ * head_dim_;
             dk_size = batch_num_ * kv_seq_len_ * kv_head_num_ * head_dim_;
             dv_size = dk_size;
@@ -340,7 +314,7 @@ protected:
          */
         default_key = (dataType_ == ge::DT_BF16) ? default_key : default_key + 0b001;
 
-        if (strcmp(layout_, BSH_STR) == 0 || strcmp(layout_, BSND_STR) == 0) {
+        if (strcmp(layout_, BSND_STR) == 0) {
             default_key += 0b000;
         } else if (strcmp(layout_, BNSD_STR) == 0) {
             default_key += 0b010;
