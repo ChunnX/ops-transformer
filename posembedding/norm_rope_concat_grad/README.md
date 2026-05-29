@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：（多模态）transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。
+- 算子功能：（多模态）transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。
 
 - 计算公式：
   - **LayerNorm反向推导：**
