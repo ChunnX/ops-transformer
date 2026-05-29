@@ -114,12 +114,12 @@ static ge::graphStatus InferShapeQuantReduceScatter(gert::InferShapeContext *con
     QuantReduceScatterShapeInfo shapeInfo;
     // get shape_info
     OPS_CHECK(GetShapeInfo(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to get shape info in quant_reduce_scatter"),
+              OP_LOGE(context->GetNodeName(), "Failed to get shape info in quant_reduce_scatter"),
               return ge::GRAPH_FAILED);
 
     // get rank_size
     OPS_CHECK(GetRankSize(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to get rank size in quant_reduce_scatter"),
+              OP_LOGE(context->GetNodeName(), "Failed to get rank size in quant_reduce_scatter"),
               return ge::GRAPH_FAILED);
 
     auto output_shape = context->GetOutputShape(OUTPUT_INDEX);
