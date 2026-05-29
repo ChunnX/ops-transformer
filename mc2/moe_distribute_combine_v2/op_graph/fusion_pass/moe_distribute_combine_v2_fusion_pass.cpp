@@ -34,7 +34,7 @@
 #include "ge/fusion/pass/pattern_fusion_pass.h"
 #include "mc2_common_log.h"
 #include "mc2_platform_info.h"
-#include "op_graph/mc2_moe_context.h"
+#include "op_graph/mc2_moe_graph_context.h"
 
 namespace ops {
 namespace {
@@ -281,7 +281,7 @@ ge::graphStatus MoeDistributeCombineV2FusionPass::Fusion(
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     int64_t hccl_buff_size = 0;
 
-    if (MoeContextManager::GetMc2ContextA5(graph, MOE_CONTEXT_TAG, MOE_EP_NAME,
+    if (Mc2MoeGraphContext::GetMc2ContextA5(graph, MOE_CONTEXT_TAG, MOE_EP_NAME,
                                             moeDistributeCombineNode,
                                             sharedCtxNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
         OPS_LOG_I(PASS_NAME.c_str(), "GetMc2ContextA5 doesn't support current case, combine Failed");

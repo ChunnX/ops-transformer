@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file mc2_moe_context.cpp
+ * \file mc2_moe_graph_context.cpp
  * \brief MC2 MoE Context Manager implementation for graph-level fusion pass
  */
-#include "op_graph/mc2_moe_context.h"
+#include "op_graph/mc2_moe_graph_context.h"
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
@@ -37,7 +37,7 @@ constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
 
 namespace ops {
 
-MoeContextManager::~MoeContextManager()
+Mc2MoeGraphContext::~Mc2MoeGraphContext()
 {
     if (hcclLibHandle_ != nullptr) {
         dlclose(hcclLibHandle_);
@@ -46,7 +46,7 @@ MoeContextManager::~MoeContextManager()
     ResetAllFunctionPointers();
 }
 
-void MoeContextManager::ResetAllFunctionPointers()
+void Mc2MoeGraphContext::ResetAllFunctionPointers()
 {
     HcomGetCommHandleByGroup = nullptr;
     HcclRankGraphGetLinks = nullptr;
@@ -64,13 +64,13 @@ void MoeContextManager::ResetAllFunctionPointers()
     HcclRankGraphGetRanksByLayer = nullptr;
 }
 
-MoeContextManager &MoeContextManager::GetInstance()
+Mc2MoeGraphContext &Mc2MoeGraphContext::GetInstance()
 {
-    static MoeContextManager instance;
+    static Mc2MoeGraphContext instance;
     return instance;
 }
 
-const std::string MoeContextManager::GetLibPath()
+const std::string Mc2MoeGraphContext::GetLibPath()
 {
     const char *ascendPath = std::getenv("ASCEND_HOME_PATH");
     if (ascendPath == nullptr) {
@@ -88,7 +88,7 @@ const std::string MoeContextManager::GetLibPath()
 }
 
 template <typename T>
-T MoeContextManager::GetHcclLibFunc(void *handle, const std::string &funcName)
+T Mc2MoeGraphContext::GetHcclLibFunc(void *handle, const std::string &funcName)
 {
     T func = reinterpret_cast<T>(dlsym(handle, funcName.c_str()));
     if (func == nullptr) {
@@ -98,7 +98,7 @@ T MoeContextManager::GetHcclLibFunc(void *handle, const std::string &funcName)
     return func;
 }
 
-ge::graphStatus MoeContextManager::LoadSymbol(void **ptr, const char *name)
+ge::graphStatus Mc2MoeGraphContext::LoadSymbol(void **ptr, const char *name)
 {
     *ptr = GetHcclLibFunc<void *>(hcclLibHandle_, name);
     if (*ptr == nullptr) {
@@ -111,7 +111,7 @@ ge::graphStatus MoeContextManager::LoadSymbol(void **ptr, const char *name)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::LoadHcclSymbols()
+ge::graphStatus Mc2MoeGraphContext::LoadHcclSymbols()
 {
     if (hcclLibHandle_ != nullptr) {
         OPS_LOG_I(LOG_TAG, "HCCL symbols already loaded, skip dlopen");
@@ -162,7 +162,7 @@ ge::graphStatus MoeContextManager::LoadHcclSymbols()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetCommHandle(const char *groupEp, HcclComm &hcclHandle)
+ge::graphStatus Mc2MoeGraphContext::GetCommHandle(const char *groupEp, HcclComm &hcclHandle)
 {
     OPS_LOG_I(LOG_TAG, "Get HCCL comm handle, groupEp: %s", groupEp);
     auto ret = HcomGetCommHandleByGroup(groupEp, &hcclHandle);
@@ -174,8 +174,8 @@ ge::graphStatus MoeContextManager::GetCommHandle(const char *groupEp, HcclComm &
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetHcclCommLink(const HcclComm &hcclHandle, const LinkQueryParams &params,
-                                                   CommLink *&links)
+ge::graphStatus Mc2MoeGraphContext::GetHcclCommLink(const HcclComm &hcclHandle, const LinkQueryParams &params,
+                                                    CommLink *&links)
 {
     OPS_LOG_D(LOG_TAG, "Start to get HCCL communication link");
     CommLink *linksList = nullptr;
@@ -212,7 +212,7 @@ ge::graphStatus MoeContextManager::GetHcclCommLink(const HcclComm &hcclHandle, c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers)
+ge::graphStatus Mc2MoeGraphContext::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers)
 {
     auto hcclRet = HcclRankGraphGetRankSizeByLayer(hcclHandle, netLayers, &rankSizePerServer_);
     if (hcclRet != HCCL_SUCCESS) {
@@ -223,9 +223,9 @@ ge::graphStatus MoeContextManager::GetRankSizePerServer(const HcclComm &hcclHand
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::SetupChannelDesc(const HcclComm &hcclHandle, const ChannelInitParams &params,
-                                                    uint32_t *netLayerList, uint32_t netLayerNum,
-                                                    std::vector<HcclChannelDesc> &channelDesc)
+ge::graphStatus Mc2MoeGraphContext::SetupChannelDesc(const HcclComm &hcclHandle, const ChannelInitParams &params,
+                                                     uint32_t *netLayerList, uint32_t netLayerNum,
+                                                     std::vector<HcclChannelDesc> &channelDesc)
 {
     for (uint32_t i = 0; i < params.rankDim; ++i) {
         if (i == params.srcRankId) {
@@ -251,7 +251,7 @@ ge::graphStatus MoeContextManager::SetupChannelDesc(const HcclComm &hcclHandle, 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::InitHcclChannel(const HcclComm &hcclHandle, const ChannelInitParams &params,
+ge::graphStatus Mc2MoeGraphContext::InitHcclChannel(const HcclComm &hcclHandle, const ChannelInitParams &params,
                                                     std::vector<HcclChannelDesc> &channelDesc)
 {
     uint32_t channelNum = channelDesc.size();
@@ -287,7 +287,7 @@ ge::graphStatus MoeContextManager::InitHcclChannel(const HcclComm &hcclHandle, c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetHcclCommChannel(const HcclComm &hcclHandle, const ChannelAcquireParams &params,
+ge::graphStatus Mc2MoeGraphContext::GetHcclCommChannel(const HcclComm &hcclHandle, const ChannelAcquireParams &params,
                                                        std::vector<ChannelHandle> &channels)
 {
     OPS_LOG_D(LOG_TAG, "Start to get HCCL communication channel");
@@ -314,9 +314,9 @@ ge::graphStatus MoeContextManager::GetHcclCommChannel(const HcclComm &hcclHandle
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::FillContextBuffer(const HcclComm &hcclHandle, const CommEngine &engine,
-                                                     Mc2MoeContext *context, uint32_t rankId,
-                                                     const std::vector<ChannelHandle> &channels)
+ge::graphStatus Mc2MoeGraphContext::FillContextBuffer(const HcclComm &hcclHandle, const CommEngine &engine,
+                                                      Mc2MoeContext *context, uint32_t rankId,
+                                                      const std::vector<ChannelHandle> &channels)
 {
     for (uint32_t i = 0; i < epRankSize_; ++i) {
         void *tempBuffer = nullptr;
@@ -340,7 +340,7 @@ ge::graphStatus MoeContextManager::FillContextBuffer(const HcclComm &hcclHandle,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
+ge::graphStatus Mc2MoeGraphContext::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
                                                         const CommProtocol &protocol, Mc2MoeContext *context)
 {
     OPS_LOG_D(LOG_TAG, "Start to get HCCL communication resource");
@@ -366,7 +366,7 @@ ge::graphStatus MoeContextManager::GetHcclCommResource(const HcclComm &hcclHandl
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &params, Mc2MoeContext *context)
+ge::graphStatus Mc2MoeGraphContext::CreatMc2Context(const ContextCreateParams &params, Mc2MoeContext *context)
 {
     OPS_LOG_D(LOG_TAG, "Start to create HCCL context");
     void *ctx = nullptr;
@@ -423,7 +423,7 @@ ge::graphStatus MoeContextManager::CreatMc2Context(const ContextCreateParams &pa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+ge::graphStatus Mc2MoeGraphContext::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
 {
     if (linksList == nullptr) {
         OPS_LOG_E(LOG_TAG, "linksList is nullptr");
@@ -437,7 +437,7 @@ ge::graphStatus MoeContextManager::CheckLinks(uint32_t &netLinkNum, CommLink *li
     return ge::GRAPH_FAILED;
 }
 
-ge::graphStatus MoeContextManager::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList,
+ge::graphStatus Mc2MoeGraphContext::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList,
                                                          uint32_t &layerNum)
 {
     uint32_t srcRankId = 0;
@@ -487,7 +487,7 @@ ge::graphStatus MoeContextManager::CheckProtocolSupport(const HcclComm &hcclHand
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
+ge::graphStatus Mc2MoeGraphContext::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
 {
     OPS_LOG_D(LOG_TAG, "Start to get HCCL communication protocol");
     uint32_t layerNum = 0;
@@ -516,7 +516,7 @@ ge::graphStatus MoeContextManager::GetCommProtocol(const HcclComm &hcclHandle, C
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::ValidateContextTag(const std::string &mc2ContextTag)
+ge::graphStatus Mc2MoeGraphContext::ValidateContextTag(const std::string &mc2ContextTag)
 {
     if (mc2ContextTag.size() > MAX_CONTEXT_TAG_SIZE) {
         OPS_LOG_E(LOG_TAG, "Mc2ContextTag is too long, max size is %llu, but current size is %zu", MAX_CONTEXT_TAG_SIZE,
@@ -526,7 +526,7 @@ ge::graphStatus MoeContextManager::ValidateContextTag(const std::string &mc2Cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetMc2Context(const ContextAcquireParams &params, Mc2MoeContext *context,
+ge::graphStatus Mc2MoeGraphContext::GetMc2Context(const ContextAcquireParams &params, Mc2MoeContext *context,
                                                   int64_t &hcclBuffSize)
 {
     ContextCreateParams createParams{params.hcclHandle, params.engine, params.protocol, params.mc2ContextTag};
@@ -540,8 +540,8 @@ ge::graphStatus MoeContextManager::GetMc2Context(const ContextAcquireParams &par
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::GetHcclContext(const std::string &contextTag, const std::string &groupEp,
-                                                    Mc2MoeContext *context, int64_t &hcclBuffSize)
+ge::graphStatus Mc2MoeGraphContext::GetHcclContext(const std::string &contextTag, const std::string &groupEp,
+                                                   Mc2MoeContext *context, int64_t &hcclBuffSize)
 {
     OPS_LOG_I(LOG_TAG, "GetHcclContext start, tag=%s, groupEp=%s", contextTag.c_str(), groupEp.c_str());
     auto status = LoadHcclSymbols();
@@ -589,7 +589,7 @@ ge::graphStatus MoeContextManager::GetHcclContext(const std::string &contextTag,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeContextManager::CreateContextNode(ge::Graph& graph, const Mc2MoeContext& context,
+ge::graphStatus Mc2MoeGraphContext::CreateContextNode(ge::Graph& graph, const Mc2MoeContext& context,
                                                       ge::GNode& constNode)
 {
     static const std::string kContextConstName = "mc2_moe_context";
@@ -615,7 +615,7 @@ ge::graphStatus MoeContextManager::CreateContextNode(ge::Graph& graph, const Mc2
     return ge::GRAPH_SUCCESS;
 }
 
-bool MoeContextManager::TryGetBufferSizeCache(const std::string& key, int64_t& hcclBuffSize)
+bool Mc2MoeGraphContext::TryGetBufferSizeCache(const std::string& key, int64_t& hcclBuffSize)
 {
     auto it = hcclBuffSizeCacheA5_.find(key);
     if (it != hcclBuffSizeCacheA5_.end()) {
@@ -625,12 +625,12 @@ bool MoeContextManager::TryGetBufferSizeCache(const std::string& key, int64_t& h
     return false;
 }
 
-void MoeContextManager::UpdateBufferSizeCache(const std::string& key, int64_t hcclBuffSize)
+void Mc2MoeGraphContext::UpdateBufferSizeCache(const std::string& key, int64_t hcclBuffSize)
 {
     hcclBuffSizeCacheA5_[key] = hcclBuffSize;
 }
 
-ge::graphStatus MoeContextManager::GetMc2ContextA5(
+ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
     ge::Graph& graph, const std::string& contextTag, const std::string& epName,
     const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize)
 {
@@ -647,7 +647,7 @@ ge::graphStatus MoeContextManager::GetMc2ContextA5(
     }
     std::string groupEp(groupEpStr.GetString());
 
-    MoeContextManager& manager = GetInstance();
+    Mc2MoeGraphContext& manager = GetInstance();
     std::string uniqueKey = contextTag + "_" + groupEp;
 
     OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph entry, key=%s", uniqueKey.c_str());
@@ -697,7 +697,7 @@ ge::graphStatus MoeContextManager::GetMc2ContextA5(
     return ge::GRAPH_SUCCESS;
 }
 
-template void *MoeContextManager::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
+template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
 }  // namespace ops
 
