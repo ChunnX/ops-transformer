@@ -265,7 +265,12 @@ private:
         int32_t data_size = sub_m_process * n_process_align;
         int32_t sub_real_m_process =
             v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
-        uint64_t lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process * q_head_num_;
+        uint64_t lse_offset;
+        if constexpr (INPUT_LAYOUT == TND) {
+            lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process * q_head_num_;
+        } else {
+            lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process;
+        }
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
         if (sub_real_m_process <= 0) {
             return;

@@ -73,16 +73,16 @@ __aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
 
 template <uint32_t INPUT_LAYOUT>
 __aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n_idx)
 {
     if constexpr (INPUT_LAYOUT == BSND) {
         return batch_idx * (current_seq_len * head_num * head_dim) + (seqlen_idx * head_num * head_dim) +
-               (n1Idx * head_dim);
+               (n_idx * head_dim);
     } else if (INPUT_LAYOUT == BNSD) {
-        return batch_idx * (head_num * current_seq_len * head_dim) + (n1Idx * current_seq_len * head_dim) +
+        return batch_idx * (head_num * current_seq_len * head_dim) + (n_idx * current_seq_len * head_dim) +
                (seqlen_idx * head_dim);
     } else if constexpr (INPUT_LAYOUT == TND) {
-        return lastBatchSum * (head_num * head_dim) + (n1Idx * head_num * head_dim) + (seqlen_idx * head_dim);
+        return lastBatchSum * (head_num * head_dim) + (seqlen_idx * head_num * head_dim) + (n_idx * head_dim);
     }
 }
 
