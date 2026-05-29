@@ -127,12 +127,12 @@ struct PrologueMxCastWOffsetParam {
 // Macro aliases keep this dispatch-policy specialization concise and readable.
 #define WQBMM_PROLOGUE_TEMPLATE_PARAM template <class OutType_, class InType_>
 
-#define WQBMM_PROLOGUE_CLASS BlockPrologue<KernelMixDynamicKL1NTailResplit, OutType_, InType_>
+#define WQBMM_PROLOGUE_CLASS BlockPrologue<MatmulMxFp8Fp4DynamicKL1TailResplit, OutType_, InType_>
 
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 class WQBMM_PROLOGUE_CLASS {
 public:
-    using DispatchPolicy = KernelMixDynamicKL1NTailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
     using OutType = OutType_;
     using InType = InType_;
 
