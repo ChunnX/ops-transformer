@@ -286,7 +286,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>
           <ul>
                 <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>支持传入TND、BSND和PA_BSND，其中PA_BSND在使能PageAttention时使用。</li>
+                <li>支持传入TND、BSND和PA_BSND，其中PA_BSND在开启PageAttention时使用。</li>
           </ul>
       </td>
       <td>STRING</td>

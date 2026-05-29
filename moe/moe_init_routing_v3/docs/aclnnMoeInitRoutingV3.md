@@ -49,9 +49,9 @@
       <td align="left">输出模式为count模式。</td>
     </tr>
     <tr align="center">
-      <td>不使能</td>
+      <td>不开启</td>
       <td>false</td>
-      <td>不使能</td>
+      <td>不开启</td>
       <td align="left">不输出expertTokensCountOrCumsumOut。</td>
     </tr>
   </table>

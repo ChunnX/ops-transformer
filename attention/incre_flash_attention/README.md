@@ -120,21 +120,21 @@
 
 - page attention场景:
 
-  - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
-  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+  - page attention的开启必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。
+  - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在开启page attention场景下，blockSize需要传入非0值, 且blocksize最大不超过512。key、value输入类型为FLOAT16/BFLOAT16时需要16对齐，key、value 输入类型为INT8时需要32对齐，推荐使用128。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
   - page attention场景下，当query的inputLayout为BNSD时，kvCache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kvCache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
   - page attention场景下，kvCache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kvCache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
-  - page attention使能场景下，当输入kvCache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 numKvHeads）或调整kvCache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
+  - page attention开启场景下，当输入kvCache排布格式为（blocknum, blocksize, H），且 numKvHeads * headDim 超过64k时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 numKvHeads）或调整kvCache排布格式为（blocknum, numKvHeads, blocksize, D）解决。
   - page attention场景下，必须传入输入actualSeqLengths。
   - page attention场景下，blockTable必须为二维，第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）。
-  - page attention使能场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
-  - 使能 Attention Mask，例如 mask shape为 (B, 1, 1, S)。
-  - 使能 pseShift，例如 pseShift shape为(B, N, 1, S)。
+  - page attention开启场景下，以下场景输入S需要大于等于maxBlockNumPerSeq * blockSize。
+  - 开启 Attention Mask，例如 mask shape为 (B, 1, 1, S)。
+  - 开启 pseShift，例如 pseShift shape为(B, N, 1, S)。
 - kv左padding场景:
     - kvCache的搬运起点计算公式为：Smax - kvPaddingSize - actualSeqLengths；kvCache的搬运终点计算公式为：Smax - kvPaddingSize。其中kvCache的搬运起点或终点小于0时，返回数据结果为全0。
     - kvPaddingSize小于0时将被置为0。
-    - 需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
-    - 与Attention Mask参数一起使能时，需要保证Attention Mask含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。
+    - 需要与actualSeqLengths参数一起开启，否则默认为kv右padding场景。
+    - 与Attention Mask参数一起开启时，需要保证Attention Mask含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。
 
 ## 调用说明
 

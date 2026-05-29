@@ -318,7 +318,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
 - 确定性计算：
   - aclnnMatmulAllReduceAddRmsNorm默认非确定性实现，支持通过配置`HCCL_DETERMINISTIC`环境变量为true开启确定性计算
 
-- 使用场景同融合算子aclnnMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2。
+- 使用场景同融合算子aclnnMatmulAllReduce一致：增量场景不开启MC2，全量场景开启MC2。
 - 输入x1可为二维或者三维，其shape为(b, s, k)或者(m, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等。bias若非空，bias为一维，其shape为(n)。
 - b*s、m、k、n的值均不得超过2147483647(INT32_MAX)。
 - 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的m。输入gamma必须是一维，其shape为(n)。

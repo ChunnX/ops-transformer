@@ -744,8 +744,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>innerPrecise为3时，代表高性能模式，且做行无效修正。</li>
             <li>sparse_mode为0或1，并传入用户自定义mask的情况下，建议开启行无效修正。</li>
             <li>BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。</li>
-            <li>当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来使能行无效功能以提升精度，但是该配置会导致性能下降。</li>
-            <li>如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparse_mode为3，Sq > Skv场景。</li>
+            <li>当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。</li>
+            <li>如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。</li>
         </ul>
         </td>
         <td>INT64</td>
@@ -1542,7 +1542,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 sparseMode 需要满足以下条件：
 
       - sparseMode 支持输入范围为 0-4，默认值为 0
-      - sparseMode 在不使能 mask 时，仅支持输入为0
+      - sparseMode 在不开启 mask 时，仅支持输入为0
       - sparseMode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
 
       | sparseMode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
@@ -1782,15 +1782,15 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - MxFP8 全量化场景下，仅支持blockSize取值512
 - 存在性约束
   - 公共
-    - PagedAttention 使能情况下，必须传入 actualSeqLengthsKv
+    - PagedAttention 开启情况下，必须传入 actualSeqLengthsKv
     - PagedAttention 不支持tensorlist场景，不支持左padding场景，不支持公共前缀场景，不支持D不等长场景
 - 一致性约束
   - 无
 - 特性交叉约束
   - 公共
-    - PagedAttention的使能场景下，若同时使能attenMask，传入attenMask的最后一维需要大于等于 maxBlockNumPerSeq * blockSize
+    - PagedAttention的开启场景下，若同时开启attenMask，传入attenMask的最后一维需要大于等于 maxBlockNumPerSeq * blockSize
     - PagedAttention场景下，kv cache排布为BnNBsD时性能通常优于kv cache排布为BnBsH时的性能，建议优先选择BnNBsD格式。
-    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
+    - PagedAttention场景下，当输入kv cache排布格式为BnBsH（blocknum, blocksize, H），且 KV_N * D 超过65535时，受硬件指令约束，会被拦截报错。可通过开启GQA（减小 KV_N）或调整kv cache排布格式为BnNBsD（blocknum, KV_N, blocksize, D）解决。
   - 伪量化
     - PagedAttention场景下，kv cache 的 layout 为 4 维时，inputLayout 必须为 BNSD、BNSD_BSND 或 TND
   - 全量化
@@ -1907,9 +1907,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 无
 - 特性交叉约束
   - 公共
-    - LearnableSink 使能场景下，tensor dtype需要和query dtype保持一致
-    - LearnableSink 使能场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
-    - LearnableSink 使能场景下，innerPrecise 必须为高精度模式 (0)
+    - LearnableSink 开启场景下，tensor dtype需要和query dtype保持一致
+    - LearnableSink 开启场景下，QueryHeadDim/KeyHeadDim 仅支持 64、128、192，ValueHeadDim 仅支持 64、128
+    - LearnableSink 开启场景下，innerPrecise 必须为高精度模式 (0)
     - LearnableSink 不支持左padding场景、不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持后量化场景
     - LearnableSink 不支持全量化场景、不支持伪量化场景、不支持Decode MLA场景
 

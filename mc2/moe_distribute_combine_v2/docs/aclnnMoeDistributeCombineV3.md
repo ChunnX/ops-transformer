@@ -38,15 +38,15 @@
 
 - 新增支持特殊专家场景：
 
-  - **zeroExpertNum≠0**：通过传入大于0的`zeroExpertNum`参数使能。
+  - **zeroExpertNum≠0**：通过传入大于0的`zeroExpertNum`参数开启。
 
     $$Moe(oriXOptional) = 0$$
 
-  - **copyExpertNum≠0**：通过传入大于0的`copyExpertNum`参数使能，且需传入有效的`oriXOptional`参数。
+  - **copyExpertNum≠0**：通过传入大于0的`copyExpertNum`参数开启，且需传入有效的`oriXOptional`参数。
 
     $$Moe(oriXOptional) = oriXOptional$$
 
-  - **constExpertNum≠0**：通过传入大于0的`constExpertNum`参数使能，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
+  - **constExpertNum≠0**：通过传入大于0的`constExpertNum`参数开启，且需传入有效的`oriXOptional`、`constExpertAlpha1Optional`、`constExpertAlpha2Optional`、`constExpertVOptional`参数。
 
     $$Moe(oriXOptional) = constExpertAlpha1Optional * oriXOptional + constExpertAlpha2Optional * constExpertVOptional$$
 
@@ -265,7 +265,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <td>oriXOptional</td>
     <td>输入</td>
     <td>表示未经过FFN（Feed-Forward Neural network）的token数据。</td>
-    <td>在使能copyExpert或使能constExpert的场景下需要本输入数据。可选择传入有效数据或填空指针，当<code>copyExpertNum</code>不为0或<code>constExpertNum</code>不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，数据类型需跟<code>expandX</code>保持一致。</td>
+    <td>在开启copyExpert或开启constExpert的场景下需要本输入数据。可选择传入有效数据或填空指针，当<code>copyExpertNum</code>不为0或<code>constExpertNum</code>不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，数据类型需跟<code>expandX</code>保持一致。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td><code>(BS, H)</code></td>
@@ -274,7 +274,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertAlpha1Optional</td>
     <td>输入</td>
-    <td>在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -284,7 +284,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertAlpha2Optional</td>
     <td>输入</td>
-    <td>在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -294,7 +294,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>constExpertVOptional</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，在使能constExpert的场景下需要输入的计算系数。</td>
+    <td>Device侧的aclTensor，在开启constExpert的场景下需要输入的计算系数。</td>
     <td>-</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
@@ -561,7 +561,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum 当前取值范围[0, 4]。
     - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-    - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可使能。
+    - commQuantMode 取值范围0或2（0表示不量化，2表示int8量化），取值为2仅当tpWorldSize < 2时可开启。
     - expandScalesOptional 预留参数，当前版本不支持，传空指针即可。
     - elasticInfoOptional 当前版本不支持，传空指针即可。
     - constExpertAlpha1Optional 可选择传入有效数据或填空指针，当constExpertNum不为0时必须传入有效输入；当传入有效数据时，要求是一个2D的Tensor，shape为<code>(constExpertNum, H)</code>，数据类型需与expandX保持一致。

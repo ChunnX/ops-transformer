@@ -159,28 +159,28 @@
   <tr>
    <td>ori_x_optional</td>
    <td>可选输入</td>
-   <td>表示未经过FFN（Feed-Forward Neural network）的token数据，在使能copyExpert或使能constExpert的场景下需要本输入数据。</td>
+   <td>表示未经过FFN（Feed-Forward Neural network）的token数据，在开启copyExpert或开启constExpert的场景下需要本输入数据。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>const_expert_alpha_1_optional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>const_expert_alpha_2_optional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>const_expert_v_optional</td>
    <td>可选输入</td>
-   <td>在使能constExpert的场景下需要输入的计算系数。</td>
+   <td>在开启constExpert的场景下需要输入的计算系数。</td>
    <td>FLOAT16、BFLOAT16</td>
    <td>ND</td>
   </tr>
@@ -366,7 +366,7 @@
         - `tp_world_size`：取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
         - `tp_rank_id`：取值范围[0, 1]，同一个TP通信域中各卡的`tp_rank_id`不重复。无TP域通信时，传0即可。
         - `shared_expert_num`：当前取值范围[0, 4]。
-        - `comm_quant_mode`：int8量化当且仅当`tp_world_size` < 2时可使能。
+        - `comm_quant_mode`：int8量化当且仅当`tp_world_size` < 2时可开启。
         - `performance_info_optional`：预留参数，当前版本不支持，传空指针即可。
         - `ccl_buffer_size`：调用get_low_latency_ccl_buffer_size接口(../../torch_extension/npu_ops_transformer/ops/deep_ep.py)。
 
