@@ -310,7 +310,7 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
 
         static constexpr MicroAPI::CastTrait castTraitHalf2Float = {
             MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-            MicroAPI::MaskMergeMode::ZEROING, MicroAPI::RoundMode::UNKNOWN};
+            MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
         for (uint16_t i = 0; i < loopNumScale; i++) {
             MicroAPI::LoadAlign<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
                 max16, maxExpAddr, vlForHalfNumber);// 单搬 64 个数
