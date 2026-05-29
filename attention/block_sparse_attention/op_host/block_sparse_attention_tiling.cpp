@@ -541,7 +541,6 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
 {
-    // printf("tkd parameterIndex: %d\n", parameterIndex);
     std::string parameterName;
     switch (parameterIndex) {
         case Q_DEQUANT_SCALE_INDEX:
@@ -614,25 +613,21 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
 
 ge::graphStatus BSATiling::ValidateQDequantScale(gert::TilingContext *bsaContext)
 {
-    // printf("tkd ValidateQDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, Q_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateKDequantScale(gert::TilingContext *bsaContext)
 {
-    // printf("tkd ValidateKDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, K_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext)
 {
-    // printf("tkd ValidateVDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bsaContext)
 {
-    // printf("tkd CheckBlockShapeQuantContraint\n");
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
@@ -650,54 +645,6 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bs
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
-{
-    int requiredParameterNum = 3;
-    for (uint32_t parameterIndex = 0; parameterIndex < requiredParameterNum; parameterIndex++) {
-        auto parameterTensor = bsaContext->GetInputTensor(parameterIndex);
-        bool isParameterNull = parameterTensor == nullptr;
-        std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
-        std::cout << "tkd required parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
-        auto parameterDtype = bsaContext->GetInputDesc(parameterIndex)->GetDataType();
-        std::cout << "tkd required parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
-                  << std::endl;
-        auto parameterShape = bsaContext->GetInputShape(parameterIndex);
-        int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
-        std::cout << "tkd required parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
-        for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
-            std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
-                      << std::endl;
-        }
-        printf("tkd ===============================\n");
-    }
-
-    int optionalParameterNum = 12;
-    for (uint32_t parameterIndex = 3; parameterIndex < optionalParameterNum; parameterIndex++) {
-        auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
-        bool isParameterNull = parameterTensor == nullptr;
-        std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
-        std::cout << "tkd optional parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
-        auto parameterDesc = bsaContext->GetOptionalInputDesc(parameterIndex);
-        if (parameterDesc != nullptr) {
-            auto parameterDtype = parameterDesc->GetDataType();
-            std::cout << "tkd optional parameter index: " << parameterIndex
-                      << " ,dtype: " << DataTypeToString(parameterDtype) << std::endl;
-        }
-        auto parameterShape = bsaContext->GetOptionalInputShape(parameterIndex);
-        if (parameterShape != nullptr) {
-            int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
-            std::cout << "tkd optional parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum
-                      << std::endl;
-            for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
-                std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
-                          << std::endl;
-            }
-        }
-        printf("tkd ===============================\n");
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -708,8 +655,6 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     }
 
     if (socVer_ == SOC_VER_950_CODE) {
-        // CheckAllInputInfo(bsaContext);
-        // printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -916,7 +861,6 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    // const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
     selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
@@ -1122,7 +1066,6 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
-    printf("tkd tilingKey: %lu\n", tilingKey);
     
     return tilingKey;
 }

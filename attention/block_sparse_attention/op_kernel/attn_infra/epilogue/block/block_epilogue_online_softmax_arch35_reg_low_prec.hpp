@@ -195,24 +195,6 @@ public:
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
-        // AscendC::printf("tkd ELE_NUM_PER_C0: %u\n", ELE_NUM_PER_C0);
-        // AscendC::printf("tkd actualBlockShape.m(): %u\n", static_cast<uint32_t>(actualBlockShape.m()));
-        // AscendC::printf("tkd actualBlockShape.n(): %u\n",static_cast<uint32_t>(actualBlockShape.n()));
-        // AscendC::printf("tkd mCopyOffset: %u\n", mCopyOffset);
-        // AscendC::printf("tkd m: %u\n", m);
-        // AscendC::printf("tkd n: %u\n", n);
-        // AscendC::printf("tkd mRound: %u\n", mRound);
-        // AscendC::printf("tkd nRound: %u\n", nRound);
-        // AscendC::printf("tkd blockStride: %u\n", blockStride);
-        // AscendC::printf("tkd vlSize: %u\n", static_cast<uint32_t>(vlSize));
-        // AscendC::printf("tkd nLoops: %u\n", static_cast<uint32_t>(nLoops));
-        // AscendC::printf("tkd tailN: %u\n", tailN);
-        // AscendC::printf("tkd mLoops: %u\n", mLoops);
-        // AscendC::printf("tkd tailM: %u\n", tailM);
-        // AscendC::printf("tkd nPadding: %u\n", nPadding);
-
-        // AscendC::printf("tkd S matrix after dequantScale\n");
-        // AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 140);
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(
@@ -224,35 +206,26 @@ public:
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxAddr, lastMaxAddr, mLoops, tailM);
         }
-        // AscendC::printf("tkd S matrix after scaled\n");
-        // AscendC::DumpTensor(lsUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 140);
-        // AscendC::printf("tkd inital lpUbTensor\n");
-        // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 0, 32);
-        // AscendC::printf("tkd initial max\n");
-        // AscendC::DumpTensor(lmUbTensor, 0, 32);
-        // AscendC::printf("tkd initial sum\n");
-        // AscendC::DumpTensor(llUbTensor, 0, 32);
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         if (kvBaseTileRegStages == 1) {
-            ComputeExpSubSum16<KvBaseTileRegSplitStages::ONE>(
-                pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
-            // AscendC::printf("tkd after ONE lpUbTensor\n");
-            // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
-            // AscendC::printf("tkd after ONE max\n");
-            // AscendC::DumpTensor(lmUbTensor, 1, 32);
-            // AscendC::printf("tkd after ONE sum\n");
-            // AscendC::DumpTensor(llUbTensor, 1, 32);
+            if constexpr (FULL_QUANT_FP8) {
+                ComputeExpSubSum16FP8<KvBaseTileRegSplitStages::ONE>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
+                                                                     blockStride, nRound);
 
+            } else {
+                ComputeExpSubSum16<KvBaseTileRegSplitStages::ONE>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
+                                                                  blockStride, nRound);
+            }
         } else if (kvBaseTileRegStages == 2) {
-            ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(
-                pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN, blockStride, nRound);
-            // AscendC::printf("tkd after TWO lpUbTensor\n");
-            // AscendC::DumpTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM], 1, 140);
-            // AscendC::printf("tkd after TWO max\n");
-            // AscendC::DumpTensor(lmUbTensor, 1, 32);
-            // AscendC::printf("tkd after TWO sum\n");
-            // AscendC::DumpTensor(llUbTensor, 1, 32);
+            if constexpr (FULL_QUANT_FP8) {
+                ComputeExpSubSum16FP8<KvBaseTileRegSplitStages::TWO>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
+                                                                  blockStride, nRound);
+
+            } else {
+                ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(pAddr, sAddr, nowMaxAddr, nowSumAddr, m, tailN,
+                                                                     blockStride, nRound);
+            }
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -437,6 +410,84 @@ private:
         uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
         using namespace AscendC::MicroAPI;
+        RegTensor<ElementInput> expVreg;
+        RegTensor<ElementInput> expSumVreg;
+        RegTensor<ElementInput> maxVreg;
+
+        RegTensor<ElementOutput> expDstVreg;
+
+        UnalignReg expSumUreg;
+
+        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
+        for (uint16_t i = 0; i < m; ++i) {
+            LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
+            LoadAlign(expVreg, srcUb + i * S2BaseSize);
+            Sub(expDstVreg, expVreg, maxVreg, pregTailN);
+            Exp(expDstVreg, expDstVreg, pregTailN);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                expUb + i * ELE_NUM_PER_C0,
+                expDstVreg, blockStride, pregTailN);
+            ReduceSum(expSumVreg, expDstVreg, pregTailN);
+            StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
+        }
+        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(
+        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
+        __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
+        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+    {
+        using namespace AscendC::MicroAPI;
+        RegTensor<ElementInput> expVreg0;
+        RegTensor<ElementInput> expVreg1;
+        RegTensor<ElementInput> expSumVreg;
+        RegTensor<ElementInput> maxVreg;
+
+        RegTensor<ElementOutput> expDstVreg0;
+        RegTensor<ElementOutput> expDstVreg1;
+
+        UnalignReg expSumUreg;
+
+        MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
+        for (uint16_t i = 0; i < m; ++i) {
+            LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
+            // Duplicate(expSumVreg, 0);
+            LoadAlign(expVreg0, srcUb + i * S2BaseSize);
+            LoadAlign(expVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
+            Sub(expDstVreg0, expVreg0, maxVreg, pregFull);
+            Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
+            Exp(expDstVreg0, expDstVreg0, pregFull);
+            Exp(expDstVreg1, expDstVreg1, pregTailN);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                expUb + i * ELE_NUM_PER_C0,
+                expDstVreg0, blockStride, pregFull);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                expDstVreg1, blockStride, pregTailN);
+            Add<ElementOutput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregTailN);
+
+            ReduceSum(expSumVreg, expDstVreg0, pregFull);
+            StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
+        }
+        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <KvBaseTileRegSplitStages kvBaseTileRegSplitStages>
+    __simd_vf__ inline void ComputeExpSubSum16FP8(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
+        __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
+        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+    {
+    }
+
+    template <>
+    __simd_vf__ inline void ComputeExpSubSum16FP8<KvBaseTileRegSplitStages::ONE>(
+        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
+        __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+    {
+        using namespace AscendC::MicroAPI;
 
         RegTensor<ElementInput> expVreg;
         RegTensor<ElementInput> expSumVreg;
@@ -447,9 +498,6 @@ private:
 
         UnalignReg expSumUreg;
 
-        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
-
-        // fp8
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -492,8 +540,8 @@ private:
             AscendC::RoundMode::CAST_RINT,
         };
 
-        RegTensor<float> floatVreg0;
-        RegTensor<float> floatVreg1;
+        RegTensor<float> floatExpVreg0;
+        RegTensor<float> floatExpVreg1;
         RegTensor<float> deInterleaveVreg0;
         RegTensor<float> deInterleaveVreg1;
         RegTensor<float> deInterleaveVreg2;
@@ -504,56 +552,48 @@ private:
         RegTensor<ElementOutput> pVreg3;
 
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
+        MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
         MaskReg pRegFp16All = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pregFp16TailN = UpdateMask<ElementInput>(tailN);
         MaskReg pRegFp32All = CreateMask<float, MaskPattern::ALL>();
 
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
-            Sub(expDstVreg, expVreg, maxVreg, pregTailN);
-            Exp(expDstVregResult, expDstVreg, pregTailN);
-            Exp(expDstVreg, expDstVreg, pregTailN);
+            Sub(expDstVreg, expVreg, maxVreg, pregFp16TailN);
+            Exp(expDstVregResult, expDstVreg, pregFp16TailN);
+            Exp(expDstVreg, expDstVreg, pregFp16TailN);
 
-            if constexpr (FULL_QUANT_FP8) {
-                constexpr half maxValueFP8 = static_cast<half>(448.0f);
-                Muls(expDstVreg, expDstVreg, maxValueFP8, pregTailN);
+            constexpr half maxValueFP8 = static_cast<half>(448.0f);
+            Muls(expDstVreg, expDstVreg, maxValueFP8, pregFp16TailN);
 
-                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg, pRegFp16All);
-                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg, pRegFp16All);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatExpVreg0, expDstVreg, pRegFp16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(floatExpVreg1, expDstVreg, pRegFp16All);
 
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, floatVreg0, floatVreg0);
-                DeInterleave(deInterleaveVreg2, deInterleaveVreg3, floatVreg1, floatVreg1);
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, floatExpVreg0, floatExpVreg0);
+            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, floatExpVreg1, floatExpVreg1);
 
-                Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, deInterleaveVreg0, pRegFp32All);
-                Cast<ElementOutput, float, castTraitOneRINT>(pVreg1, deInterleaveVreg2, pRegFp32All);
-                Cast<ElementOutput, float, castTraitTwoRINT>(pVreg2, deInterleaveVreg1, pRegFp32All);
-                Cast<ElementOutput, float, castTraitThreeRINT>(pVreg3, deInterleaveVreg3, pRegFp32All);
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, deInterleaveVreg0, pRegFp32All);
+            Cast<ElementOutput, float, castTraitOneRINT>(pVreg1, deInterleaveVreg2, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg2, deInterleaveVreg1, pRegFp32All);
+            Cast<ElementOutput, float, castTraitThreeRINT>(pVreg3, deInterleaveVreg3, pRegFp32All);
 
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg2,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3,
-                   pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg2, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
-                                                                         blockStride, pRegUint8All);
-            } else {
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg,
-                                                                         blockStride, pregTailN);
-            }
-
-            ReduceSum(expSumVreg, expDstVregResult, pregTailN);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
+                                                                     blockStride, pRegUint8VL128);
+            ReduceSum(expSumVreg, expDstVregResult, pregFp16TailN);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
     }
 
     template <>
-    __simd_vf__ inline void ComputeExpSubSum16<KvBaseTileRegSplitStages::TWO>(
-        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
-        __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+    __simd_vf__ inline void ComputeExpSubSum16FP8<KvBaseTileRegSplitStages::TWO>(
+        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *nowMaxUb,
+        __ubuf__ ElementInput *expSumUb, uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
         using namespace AscendC::MicroAPI;
 
@@ -568,10 +608,6 @@ private:
 
         UnalignReg expSumUreg;
 
-        MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
-        MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
-
-        // fp8
         constexpr static CastTrait castTraitZeroUNKNOWN = {
             RegLayout::ZERO,
             SatMode::UNKNOWN,
@@ -640,71 +676,56 @@ private:
         MaskReg pRegUint8All = CreateMask<uint8_t, MaskPattern::ALL>();
         MaskReg pRegUint8VL128 = CreateMask<uint8_t, MaskPattern::VL128>();
         MaskReg pRegFp16All = CreateMask<ElementInput, MaskPattern::ALL>();
+        MaskReg pregFp16TailN = UpdateMask<ElementInput>(tailN);
         MaskReg pRegFp32All = CreateMask<float, MaskPattern::ALL>();
 
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
-            // Duplicate(expSumVreg, 0);
             LoadAlign(expVreg0, srcUb + i * S2BaseSize);
             LoadAlign(expVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
-            Sub(expDstVreg0, expVreg0, maxVreg, pregFull);
-            Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
-            Exp(expDstVreg0Fp8, expDstVreg0, pregFull);
-            Exp(expDstVreg1Fp8, expDstVreg1, pregTailN);
-            Exp(expDstVreg0, expDstVreg0, pregFull);
-            Exp(expDstVreg1, expDstVreg1, pregTailN);
+            Sub(expDstVreg0, expVreg0, maxVreg, pRegFp16All);
+            Sub(expDstVreg1, expVreg1, maxVreg, pregFp16TailN);
+            Exp(expDstVreg0Fp8, expDstVreg0, pRegFp16All);
+            Exp(expDstVreg1Fp8, expDstVreg1, pregFp16TailN);
+            Exp(expDstVreg0, expDstVreg0, pRegFp16All);
+            Exp(expDstVreg1, expDstVreg1, pregFp16TailN);
 
-            if constexpr (FULL_QUANT_FP8) {
-                constexpr half maxValueFP8 = static_cast<half>(448.0f);
-                Muls(expDstVreg0Fp8, expDstVreg0Fp8, maxValueFP8, pregFull);
-                Muls(expDstVreg1Fp8, expDstVreg1Fp8, maxValueFP8, pregTailN);
+            constexpr half maxValueFP8 = static_cast<half>(448.0f);
+            Muls(expDstVreg0Fp8, expDstVreg0Fp8, maxValueFP8, pRegFp16All);
+            Muls(expDstVreg1Fp8, expDstVreg1Fp8, maxValueFP8, pregFp16TailN);
 
-                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg0Fp8, pRegFp16All);
-                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg0Fp8, pRegFp16All);
-                Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg2, expDstVreg1Fp8, pRegFp16All);
-                Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg3, expDstVreg1Fp8, pRegFp16All);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg0, expDstVreg0Fp8, pRegFp16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg1, expDstVreg0Fp8, pRegFp16All);
+            Cast<float, ElementInput, castTraitZeroUNKNOWN>(floatVreg2, expDstVreg1Fp8, pRegFp16All);
+            Cast<float, ElementInput, castTraitOneUNKNOWN>(floatVreg3, expDstVreg1Fp8, pRegFp16All);
 
-                DeInterleave(deInterleaveVreg0, deInterleaveVreg1, floatVreg0, floatVreg0);
-                DeInterleave(deInterleaveVreg2, deInterleaveVreg3, floatVreg1, floatVreg1);
-                DeInterleave(deInterleaveVreg4, deInterleaveVreg5, floatVreg2, floatVreg2);
-                DeInterleave(deInterleaveVreg6, deInterleaveVreg7, floatVreg3, floatVreg3);
+            DeInterleave(deInterleaveVreg0, deInterleaveVreg1, floatVreg0, floatVreg0);
+            DeInterleave(deInterleaveVreg2, deInterleaveVreg3, floatVreg1, floatVreg1);
+            DeInterleave(deInterleaveVreg4, deInterleaveVreg5, floatVreg2, floatVreg2);
+            DeInterleave(deInterleaveVreg6, deInterleaveVreg7, floatVreg3, floatVreg3);
 
-                Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, deInterleaveVreg0, pRegFp32All);
-                Cast<ElementOutput, float, castTraitOneRINT>(pVreg1, deInterleaveVreg2, pRegFp32All);
-                Cast<ElementOutput, float, castTraitTwoRINT>(pVreg2, deInterleaveVreg1, pRegFp32All);
-                Cast<ElementOutput, float, castTraitThreeRINT>(pVreg3, deInterleaveVreg3, pRegFp32All);
-                Cast<ElementOutput, float, castTraitZeroRINT>(pVreg4, deInterleaveVreg4, pRegFp32All);
-                Cast<ElementOutput, float, castTraitOneRINT>(pVreg5, deInterleaveVreg6, pRegFp32All);
-                Cast<ElementOutput, float, castTraitTwoRINT>(pVreg6, deInterleaveVreg5, pRegFp32All);
-                Cast<ElementOutput, float, castTraitThreeRINT>(pVreg7, deInterleaveVreg7, pRegFp32All);
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg0, deInterleaveVreg0, pRegFp32All);
+            Cast<ElementOutput, float, castTraitOneRINT>(pVreg1, deInterleaveVreg2, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg2, deInterleaveVreg1, pRegFp32All);
+            Cast<ElementOutput, float, castTraitThreeRINT>(pVreg3, deInterleaveVreg3, pRegFp32All);
+            Cast<ElementOutput, float, castTraitZeroRINT>(pVreg4, deInterleaveVreg4, pRegFp32All);
+            Cast<ElementOutput, float, castTraitOneRINT>(pVreg5, deInterleaveVreg6, pRegFp32All);
+            Cast<ElementOutput, float, castTraitTwoRINT>(pVreg6, deInterleaveVreg5, pRegFp32All);
+            Cast<ElementOutput, float, castTraitThreeRINT>(pVreg7, deInterleaveVreg7, pRegFp32All);
 
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg2,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg5,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg6,
-                   pRegUint8All);
-                Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg7,
-                   pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg1, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg2, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg0, (RegTensor<uint8_t> &)pVreg3, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg5, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg6, pRegUint8All);
+            Or((RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg4, (RegTensor<uint8_t> &)pVreg7, pRegUint8All);
 
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
-                                                                         blockStride, pRegUint8VL128);
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * HALF_VECTOR_SIZE, pVreg4,
-                    blockStride, pRegUint8All);
-            } else {
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg0,
-                                                                         blockStride, pregFull);
-                StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg1,
-                    blockStride, pregTailN);
-            }
-            Add<ElementInput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregTailN);
-            ReduceSum(expSumVreg, expDstVreg0, pregFull);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FP8, pVreg0,
+                                                                     blockStride, pRegUint8VL128);
+            StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
+                expUb + i * ELE_NUM_PER_C0_FP8 + blockStride * HALF_VECTOR_SIZE, pVreg4, blockStride, pRegUint8VL128);
+            Add<ElementInput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregFp16TailN);
+            ReduceSum(expSumVreg, expDstVreg0, pRegFp16All);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
