@@ -42,6 +42,12 @@ struct RunTimeInfo {
     int32_t need_compute{0};   // 是否存在任务需要计算
 };
 
+
+inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
+{
+    return a > b ? a : b;
+}
+
 template <typename T>
 inline __aicore__ T CeilDiv(const T dividend, const T divisor)
 {
