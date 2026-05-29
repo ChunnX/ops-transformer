@@ -115,7 +115,7 @@ public:
                         bool isLastKvSTile,
                         uint32_t colStrideCurSubCore,
                         Arch::CrossCoreFlag mm2ToReFlag,
-                        bool fullQuantFP8)
+                        bool isFullQuantFp8)
     {
         uint32_t rowNumCurSubCore = tla::get<0>(gOTensorTlaTile.shape());
         uint32_t colNumCurSubCore = tla::get<1>(gOTensorTlaTile.shape());
@@ -173,7 +173,7 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
-            if (fullQuantFp8) {
+            if (isFullQuantFp8) {
                 if (dStages == 1) {
                     deQuantScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
                 } else if (dStages == 2) {
@@ -417,7 +417,7 @@ public:
 
         for (uint16_t i = 0; i < row; ++i) {
             LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg, goUb + i * colStride);
-            constexpr float = maxValueReciprocal = 1.0f / 448.0f;
+            constexpr float maxValueReciprocal = 1.0f / 448.0f;
             Muls(oVreg, oVreg, maxValueReciprocal, pregTail);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg, pregTail);
         }
@@ -437,7 +437,7 @@ public:
         for (uint16_t i = 0; i < row; ++i) {
             LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg0, goUb + i * colStride);
             LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg1, goUb + i * colStride + vlElemNum);
-            constexpr float = maxValueReciprocal = 1.0f / 448.0f;
+            constexpr float maxValueReciprocal = 1.0f / 448.0f;
             Muls(oVreg0, oVreg0, maxValueReciprocal, pregAll);
             Muls(oVreg1, oVreg1, maxValueReciprocal, pregTail);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, oVreg0, pregAll);
@@ -454,7 +454,7 @@ public:
                     bool isFirstKvSTile,
                     bool isLastKvSTile,
                     Arch::CrossCoreFlag mm2ToReFlag,
-                    bool isFullQuantFP8 = false)
+                    bool isFullQuantFp8 = false)
     {
         uint32_t rowNumOri = actualOriShape[0];
         uint32_t colNumOri = actualOriShape[1];
@@ -484,7 +484,7 @@ public:
                 isLastKvSTile,
                 colStrideCurSubCore,
                 mm2ToReFlag,
-                isFullQuantFP8);
+                isFullQuantFp8);
         } else {
             Arch::CrossCoreWaitFlag<4, PIPE_V>(mm2ToReFlag);
             Arch::CrossCoreSetFlag<4, PIPE_V>(mm2ToReFlag);
