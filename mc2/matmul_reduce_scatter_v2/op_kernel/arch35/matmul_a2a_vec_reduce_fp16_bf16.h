@@ -314,7 +314,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CubeNot
     // CrossCoreWaitFlag(SYNC_AIC_ONLY_ALL_DET_FLAG);
     // 通知 AIV
     // CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_DET_FLAG);
-    Sync<false>();
+    SyncAll<false>();
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -322,7 +322,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::VecWait
 {
     // 等待 AIC 完成
     // CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
-    Sync<false>();
+    SyncAll<false>();
 }
 
 } // namespace MatmulReduceScatterV2Impl
