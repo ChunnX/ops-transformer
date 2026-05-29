@@ -27,7 +27,8 @@ static const size_t ATTR_COMM_MODE_INDEX = 15;
 static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 static const size_t RANK_DIM_BOUNDARY = 8;
 static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, int64_t &rankSize,
-                                            std::string &commMode) {
+                                            std::string &commMode)
+{
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
@@ -73,7 +74,7 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
 }
 
 ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                             std::vector<std::vector<uint8_t>> &tasks)
+                                                  std::vector<std::vector<uint8_t>> &tasks)
 {
     int64_t rankSize = 0;
     std::string commMode;

@@ -250,7 +250,7 @@ static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteCon
     }
 
     ret = CheckInputsAndAttrs(inputs.gmmX, inputs.gmmWeight, attrsData.group, attrsData.transGmmWeight,
-                            attrsData.epWorldSize, attrsData.commMode);
+                              attrsData.epWorldSize, attrsData.commMode);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
