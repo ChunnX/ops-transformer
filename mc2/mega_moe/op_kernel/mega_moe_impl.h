@@ -61,7 +61,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
 
     GlobalTensor<int32_t> groupFlagListGm2;
     groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList2);
@@ -156,6 +155,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
 
+    // wave-grain dispatch flag: 每 wave (L1_TILE_M 行) 一个槽，dispatch 完成该 wave 内行数累加。
+    // 目标值 = 该 wave 实际行数 = min(L1_TILE_M, m - mLoc)（尾 wave 可能 < L1_TILE_M）。
+    // 仅在 wave 切换时等待，跨 nLoc 不同的同 mLoc tile 复用上次等待结果。
+    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -165,14 +169,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
         if constexpr (g_coreType == AscendC::AIC) {
-            if (loopIdx == startLoopIdx) {
-                uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
-                __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
+            uint32_t waveIdx = mLoc / L1_TILE_M;
+            if (waveIdx != lastWaveWaited) {
+                uint32_t targetValue = (mLoc + L1_TILE_M > m) ? (m - mLoc) : L1_TILE_M;
+                __gm__ int32_t* flagValueAddr =
+                    (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr() + waveIdx;
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                lastWaveWaited = waveIdx;
             }
 
             if (vecSetSyncCom) {
