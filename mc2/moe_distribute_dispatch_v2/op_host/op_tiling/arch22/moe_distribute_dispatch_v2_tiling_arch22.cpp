@@ -411,24 +411,34 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             ((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                  "xActiveMask must be 1-dimension or 2-dimension, but got %lu dim"),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "x", "invalid",
+                std::string("xActiveMask must be 1-dimension or 2-dimension, but got ") +
+                    std::to_string(xActiveMaskDimNums) +
+                    " dim"
+            ),
             return GRAPH_FAILED);
 
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(xActiveMaskDim0 != static_cast<int64_t>(bs),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             nodeName, "x", "invalid",
-                            "xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is %ld, "
-                            "expertIds's dim0 is %ld"),
+                            std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
+                                std::to_string(xActiveMaskDim0) +
+                                ", expertIds's dim0 is " +
+                                std::to_string(bs)
+                        ),
                         return GRAPH_FAILED);
 
         OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
                          (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             nodeName, "x", "invalid",
-                            "xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is %ld, "
-                            "expertIds's dim1 is %ld"),
+                            std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
+                                std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
+                                ", expertIds's dim1 is " +
+                                std::to_string(k)
+                        ),
                         return GRAPH_FAILED);
     }
 
@@ -441,10 +451,15 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(
                                                                   0) != static_cast<int64_t>(*epWorldSizePtr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         K_INNER_DEBUG, "epWorldSize", "invalid",
-                        "The Size of performanceInfo should be equal to epWorldSize when performanceInfo is not null,"
-                        "but performanceInfo Size is %ld and epWorldSize is %d."),
+                        std::string("The Size of performanceInfo should be equal to epWorldSize when"
+                                        "performanceInfo is not null,but performanceInfo Size is ") +
+                            std::to_string(performanceInfoStorageShape->GetStorageShape().GetDim(0)) +
+                            " and epWorldSize is " +
+                            std::to_string(*epWorldSizePtr) +
+                            "."
+                    ),
                     return GRAPH_FAILED);
 
     info.isTokenMask = ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == ONE_DIM));
@@ -677,8 +692,14 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
     OP_TILING_CHECK(
         (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))) ||
             ((!isScales) && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode", "invalid",
-                                              "quant mode and scales not match, isScales is %d, quantMode is %u."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "quantMode", "invalid",
+            std::string("quant mode and scales not match, isScales is ") +
+                std::to_string(static_cast<int32_t>(isScales)) +
+                ", quantMode is " +
+                std::to_string(quantMode) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -687,9 +708,13 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const cha
 {
     OP_TILING_CHECK(((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
                      (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "commAlg", "invalid",
-                                                          "Attr commAlg is invalid, current only support hierarchy, "
-                                                          "fullmesh_v1 and fullmesh_v2, but got commAlg = %s."),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName, "commAlg", "invalid",
+                        std::string("Attr commAlg is invalid, current only support hierarchy, fullmesh_v1 and"
+                                        "fullmesh_v2, but got commAlg = ") +
+                            std::string(commAlgPtr) +
+                            "."
+                    ),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -700,8 +725,14 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModePtr(const i
     OP_TILING_CHECK(
         (*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
             (*quantModePtr > static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "quantMode", "invalid",
-                                              "quantMode is invalid, only support [0, %ld], but got quantMode=%ld."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "quantMode", "invalid",
+            std::string("quantMode is invalid, only support [0, ") +
+                std::to_string(static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) +
+                "], but got quantMode=" +
+                std::to_string(*quantModePtr) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -83,14 +83,23 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsWithoutRelation(
 
     OP_TILING_CHECK((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
                         (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "groupEp", "invalid",
-                                                          "groupEp length should be [1, %lu), get %lu."),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "groupEp", "invalid",
+                        std::string("groupEp length should be [1, ") +
+                            std::to_string(MAX_GROUP_NAME_LENGTH) +
+                            "), get " +
+                            std::to_string(strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH)) +
+                            "."
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
                       (*epWorldSizePtr == GROUP_EP_SIZE_8)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
-                                                          "epWorldSize should be in {2, 4, 8}, get %lu"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "epWorldSize", "invalid",
+                        std::string("epWorldSize should be in {2, 4, 8}, get ") +
+                            std::to_string(*epWorldSizePtr)
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
@@ -99,8 +108,13 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsWithoutRelation(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*quantModePtr != NON_QUANT),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "quantMode", "invalid",
-                                                          "quantMode shoud be equal to %lu, get %lu"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "quantMode", "invalid",
+                        std::string("quantMode shoud be equal to ") +
+                            std::to_string(NON_QUANT) +
+                            ", get " +
+                            std::to_string(*quantModePtr)
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -114,8 +128,13 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsComplex()
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
-                                              "ep_rankId shoud be within the range of epWorldSize[0, %lu), get %lu"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "epWorldSize", "invalid",
+            std::string("ep_rankId shoud be within the range of epWorldSize[0, ") +
+                std::to_string(*epWorldSizePtr) +
+                "), get " +
+                std::to_string(*epRankIdPtr)
+        ),
         return ge::GRAPH_FAILED);
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
@@ -131,9 +150,12 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsComplex()
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr) != 0),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         nodeName_, "epWorldSize", "invalid",
-                        "moeExpertNum should follow moeExpertNum %% (epWorldSize - sharedExpertRankNum) = 0, got %ld"),
+                        std::string("moeExpertNum should follow moeExpertNum %% (epWorldSize - sharedExpertRankNum)"
+                                        "= 0, got ") +
+                            std::to_string((*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr)))
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -142,15 +164,27 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsComplex()
 ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckBsHKSize(int64_t bs, int64_t h, int64_t k)
 {
     OP_TILING_CHECK(((bs != BS_SIZE_8) && (bs != BS_SIZE_16) && (bs != BS_SIZE_256)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "BS", "invalid", "Bs should be 8/16/256, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "BS", "invalid",
+                        std::string("Bs should be 8/16/256, get ") +
+                            std::to_string(bs)
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(((h != H_SIZE_4096) && (h != H_SIZE_7168)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "H", "invalid", "H should be 4096/7168, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "H", "invalid",
+                        std::string("H should be 4096/7168, get ") +
+                            std::to_string(h)
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(((k != K_SIZE_6) && (k != K_SIZE_8)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "H", "invalid", "K should be 6/8, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "H", "invalid",
+                        std::string("K should be 6/8, get ") +
+                            std::to_string(k)
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

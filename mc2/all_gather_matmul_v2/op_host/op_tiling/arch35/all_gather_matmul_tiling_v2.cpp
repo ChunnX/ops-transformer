@@ -115,7 +115,12 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Tiling data size[%zu] not aligned to 8."),
+                                        OP_LOGE_FOR_INVALID_VALUE(
+                        opName_, "param", "invalid",
+                        std::string("Tiling data size[") +
+                            std::to_string(sizeof(AllGatherMatmulTilingDataV2)) +
+                            "] not aligned to 8."
+                    ),
                     return ge::GRAPH_FAILED);
     PrintAllTilingData();
     context_->SetBlockDim(args_.aicCoreNum);

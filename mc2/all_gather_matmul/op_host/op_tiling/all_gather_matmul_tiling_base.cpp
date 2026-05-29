@@ -143,8 +143,13 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
     uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
 
     OP_TILING_CHECK(outputDim0 != mValue,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "m-axis should be %lu, but output's m-axis is %lu"),
+                                        OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "param", "invalid",
+                        std::string("m-axis should be ") +
+                            std::to_string(mValue) +
+                            ", but output's m-axis is " +
+                            std::to_string(outputDim0)
+                    ),
                     return false);
 
     return true;
@@ -174,8 +179,11 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     } else {
         auto gatherIndex = context->GetAttrs()->GetAttrPointer<int64_t>(GATHER_IDX);
         OP_TILING_CHECK(*gatherIndex != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                                  "the gatherIndex should be 0, but real value is %d"),
+                                                OP_LOGE_FOR_INVALID_VALUE(
+                            context->GetNodeName(), "param", "invalid",
+                            std::string("the gatherIndex should be 0, but real value is ") +
+                                std::to_string(*gatherIndex)
+                        ),
                         return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A_IDX);
@@ -184,8 +192,12 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
                                                   "the isTransA should be false, but real value is 1"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK((valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                                  "The k-axis should be in range[256, 65535), but it is: %lu."),
+                                                OP_LOGE_FOR_INVALID_VALUE(
+                            context->GetNodeName(), "param", "invalid",
+                            std::string("The k-axis should be in range[256, 65535), but it is: ") +
+                                std::to_string(valueTwo) +
+                                "."
+                        ),
                         return ge::GRAPH_FAILED);
     }
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(GROUP_IDX));
@@ -369,7 +381,11 @@ ge::graphStatus AllGatherMatmulTilingBase::SetMatmulTilingAllGatherMatmul(gert::
             PrintTilingData(tilingData.localL2Tiling);
         }
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "cmdType", "invalid", "args.cmdType error %d");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "cmdType", "invalid",
+            std::string("args.cmdType error ") +
+                std::to_string(static_cast<int>(args.cmdType))
+        );
         return ge::GRAPH_FAILED;
     }
 
@@ -579,8 +595,12 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
 
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(commTurn != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "commTurn should be 0, but the actual value is %d."),
+                                        OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "param", "invalid",
+                        std::string("commTurn should be 0, but the actual value is ") +
+                            std::to_string(commTurn) +
+                            "."
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("AllGatherMatmul", " group is %s, rankSize is %u, isTransA is %d, isTransB is %d, gatherIndex is %d,"

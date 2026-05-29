@@ -60,8 +60,12 @@ static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBar
     const char *nodeName = context->GetNodeName();
     const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(config.timeOutIndex);
     OP_TILING_CHECK(timeOutStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "timeOut", "invalid",
-                                                          "timeOut dim must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "timeOut", "invalid",
+                        std::string("timeOut dim must be 1, but current dim num is ") +
+                            std::to_string(timeOutStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     auto timeOutDesc = context->GetOptionalInputDesc(config.timeOutIndex);
     OP_TILING_CHECK(timeOutDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "timeOutDesc"), return false);
@@ -76,8 +80,12 @@ static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBar
         return false);
     const int64_t timeOutDim0 = timeOutStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(timeOutDim0 != 1,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "timeOut", "invalid",
-                                                          "timeOut's dim0 should be 1, current timeOut's dim0 is %ld."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "timeOut", "invalid",
+                        std::string("timeOut's dim0 should be 1, current timeOut's dim0 is ") +
+                            std::to_string(timeOutDim0) +
+                            "."
+                    ),
                     return false);
     return true;
 }
@@ -87,8 +95,12 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
     const char *nodeName = context->GetNodeName();
     const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
     OP_TILING_CHECK(elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "elasticInfo", "invalid",
-                                                          "elasticInfo dim must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "elasticInfo", "invalid",
+                        std::string("elasticInfo dim must be 1, but current dim num is ") +
+                            std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
     OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"), return false);
@@ -104,9 +116,14 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
                     return false);
     const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * worldsize),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "epWorldSize", "invalid",
-                                                          "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
-                                                          "elasticInfo's dim0 is %ld, epWorldSize is %u."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "epWorldSize", "invalid",
+                        std::string("elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, elasticInfo's dim0 is ") +
+                            std::to_string(elasticInfoDim0) +
+                            ", epWorldSize is " +
+                            std::to_string(worldsize) +
+                            "."
+                    ),
                     return false);
     return true;
 }
@@ -201,8 +218,12 @@ static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const
     OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextShape"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "contextShape dims must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("contextShape dims must be 1, but current dim num is ") +
+                            std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return ge::GRAPH_FAILED);
     int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);

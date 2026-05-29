@@ -136,8 +136,14 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(gert::Tiling
         return GRAPH_FAILED);
     OP_TILING_CHECK(
         !isLayered && *moeExpertNumPtr / *epWorldSizePtr > UNLAYERED_EXP_NUM_PER_RANK_A2,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "moeExpertNum", "invalid",
-                                              "moeExpertNum is %d, in case of unlayered, it must no more than %d."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG, "moeExpertNum", "invalid",
+            std::string("moeExpertNum is ") +
+                std::to_string(*moeExpertNumPtr / *epWorldSizePtr) +
+                ", in case of unlayered, it must no more than " +
+                std::to_string(UNLAYERED_EXP_NUM_PER_RANK_A2) +
+                "."
+        ),
         return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"), return GRAPH_FAILED);
@@ -409,15 +415,23 @@ ge::graphStatus MoeDistributeDispatchTilingA2A3::CheckEpWorldSizeAttrs(const cha
     // 检验epWorldSize是否是8的倍数
     OP_TILING_CHECK(
         epWorldSize % 8 != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize", "invalid",
-                                              "epWorldSize should be divisible by 8, but got epWorldSize = %u."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "epWorldSize", "invalid",
+            std::string("epWorldSize should be divisible by 8, but got epWorldSize = ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             nodeName, "epWorldSize", "invalid",
-            "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u."),
+            std::string("epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize"
+                            "= ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

@@ -401,24 +401,34 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             ((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid",
-                                                  "xActiveMask must be 1-dimension or 2-dimension, but got %lu dim"),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                K_INNER_DEBUG, "x", "invalid",
+                std::string("xActiveMask must be 1-dimension or 2-dimension, but got ") +
+                    std::to_string(xActiveMaskDimNums) +
+                    " dim"
+            ),
             return GRAPH_FAILED);
 
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(xActiveMaskDim0 != static_cast<int64_t>(bs),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             K_INNER_DEBUG, "x", "invalid",
-                            "xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is %ld, "
-                            "expertIds's dim0 is %ld"),
+                            std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
+                                std::to_string(xActiveMaskDim0) +
+                                ", expertIds's dim0 is " +
+                                std::to_string(bs)
+                        ),
                         return GRAPH_FAILED);
 
         OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
                          (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             K_INNER_DEBUG, "x", "invalid",
-                            "xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is %ld, "
-                            "expertIds's dim1 is %ld"),
+                            std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
+                                std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
+                                ", expertIds's dim1 is " +
+                                std::to_string(k)
+                        ),
                         return GRAPH_FAILED);
     }
 
@@ -455,12 +465,22 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         int64_t oriXDim1 = oriXStorageShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(
             oriXDim0 != static_cast<int64_t>(bs),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid",
-                                                  "ori_x's dim0 not equal to bs, ori_x's dim0 = %ld, bs = %ld"),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                K_INNER_DEBUG, "x", "invalid",
+                std::string("ori_x's dim0 not equal to bs, ori_x's dim0 = ") +
+                    std::to_string(oriXDim0) +
+                    ", bs = " +
+                    std::to_string(static_cast<int64_t>(bs))
+            ),
             return GRAPH_FAILED);
         OP_TILING_CHECK(oriXDim1 != static_cast<int64_t>(h),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            K_INNER_DEBUG, "x", "invalid", "ori_x's dim1 not equal to h, ori_x's dim1 = %ld, h = %ld"),
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            K_INNER_DEBUG, "x", "invalid",
+                            std::string("ori_x's dim1 not equal to h, ori_x's dim1 = ") +
+                                std::to_string(oriXDim1) +
+                                ", h = " +
+                                std::to_string(static_cast<int64_t>(h))
+                        ),
                         return GRAPH_FAILED);
     }
 
@@ -477,10 +497,14 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         int64_t constExpertAlpha1Dim0 = constExpertAlpha1StorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(
             constExpertAlpha1Dim0 != *constExpertNumPtr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 K_INNER_DEBUG, "x", "invalid",
-                "const_expert_alpha_1's dim0 not equal to const_expert_num, const_expert_alpha_1's dim0 = %ld, "
-                "const_expert_num = %ld"),
+                std::string("const_expert_alpha_1's dim0 not equal to const_expert_num, const_expert_alpha_1's dim0"
+                                "= ") +
+                    std::to_string(constExpertAlpha1Dim0) +
+                    ", const_expert_num = " +
+                    std::to_string(*constExpertNumPtr)
+            ),
             return GRAPH_FAILED);
     }
 
@@ -497,10 +521,14 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         int64_t constExpertAlpha2Dim0 = constExpertAlpha2StorageShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(
             constExpertAlpha2Dim0 != *constExpertNumPtr,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 K_INNER_DEBUG, "x", "invalid",
-                "const_expert_alpha_2's dim0 not equal to const_expert_num, const_expert_alpha_2's dim0 = %ld, "
-                "const_expert_num = %ld"),
+                std::string("const_expert_alpha_2's dim0 not equal to const_expert_num, const_expert_alpha_2's dim0"
+                                "= ") +
+                    std::to_string(constExpertAlpha2Dim0) +
+                    ", const_expert_num = " +
+                    std::to_string(*constExpertNumPtr)
+            ),
             return GRAPH_FAILED);
     }
 
@@ -516,14 +544,23 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
         int64_t constExpertVDim0 = constExpertVStorageShape->GetStorageShape().GetDim(0);
         int64_t constExpertVDim1 = constExpertVStorageShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(constExpertVDim0 != *constExpertNumPtr,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid",
-                                                              "const_expert_v's dim0 not equal to const_expert_num, "
-                                                              "const_expert_v's dim0 = %ld, const_expert_num = %ld"),
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            K_INNER_DEBUG, "x", "invalid",
+                            std::string("const_expert_v's dim0 not equal to const_expert_num, const_expert_v's dim0"
+                                            "= ") +
+                                std::to_string(constExpertVDim0) +
+                                ", const_expert_num = " +
+                                std::to_string(*constExpertNumPtr)
+                        ),
                         return GRAPH_FAILED);
         OP_TILING_CHECK(constExpertVDim1 != static_cast<int64_t>(h),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             K_INNER_DEBUG, "x", "invalid",
-                            "const_expert_v's dim1 not equal to h, const_expert_v's dim1 = %ld, h = %ld"),
+                            std::string("const_expert_v's dim1 not equal to h, const_expert_v's dim1 = ") +
+                                std::to_string(constExpertVDim1) +
+                                ", h = " +
+                                std::to_string(static_cast<int64_t>(h))
+                        ),
                         return GRAPH_FAILED);
     }
 
@@ -538,10 +575,15 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(
                                                                   0) != static_cast<int64_t>(*epWorldSizePtr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         K_INNER_DEBUG, "epWorldSize", "invalid",
-                        "The Size of performanceInfo should be equal to epWorldSize when performanceInfo is not null,"
-                        "but performanceInfo Size is %ld and epWorldSize is %d."),
+                        std::string("The Size of performanceInfo should be equal to epWorldSize when"
+                                        "performanceInfo is not null,but performanceInfo Size is ") +
+                            std::to_string(performanceInfoStorageShape->GetStorageShape().GetDim(0)) +
+                            " and epWorldSize is " +
+                            std::to_string(*epWorldSizePtr) +
+                            "."
+                    ),
                     return GRAPH_FAILED);
 
     info.isTokenMask =  ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == ONE_DIM));

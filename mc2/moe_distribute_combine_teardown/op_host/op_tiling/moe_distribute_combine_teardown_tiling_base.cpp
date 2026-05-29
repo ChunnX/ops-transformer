@@ -200,8 +200,12 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckAttrsNullptr()
     OP_TILING_CHECK(expertShardTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertShardTypePtr"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*expertShardTypePtr != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "expertShardType", "invalid",
-                                                          "expertShardType[%ld] is invalid, should be 0"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "expertShardType", "invalid",
+                        std::string("expertShardType[") +
+                            std::to_string(*expertShardTypePtr) +
+                            "] is invalid, should be 0"
+                    ),
                     return ge::GRAPH_FAILED);
 
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
@@ -224,8 +228,13 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckAttrsNullptr()
     OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commTypePtr"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*commTypePtr != COMM_TYPE_NUM,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "commType", "invalid",
-                                                          "commType[%ld] is invalid, should be %d"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "commType", "invalid",
+                        std::string("commType[") +
+                            std::to_string(*commTypePtr) +
+                            "] is invalid, should be " +
+                            std::to_string(COMM_TYPE_NUM)
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 判非空指针
@@ -252,15 +261,31 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckOneTensorDim(std::s
     } else if (tensortype == OPTIONINPUT) {
         StorageShape = context_->GetOptionalInputShape(index);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "x", "invalid",
-                                              "TensorType Only Support input or output. type:%u, name: %s, index:%u");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "x", "invalid",
+            std::string("TensorType Only Support input or output. type:") +
+                std::to_string(static_cast<int32_t>(tensortype)) +
+                ", name: " +
+                std::string(name.c_str()) +
+                ", index:" +
+                std::to_string(index)
+        );
         return ge::GRAPH_FAILED;
     }
 
     OP_TILING_CHECK(StorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, name.c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(StorageShape->GetStorageShape().GetDimNum() != dims,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x", "invalid", "%s got %lu dim, expected %u dim"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("") +
+                            std::string(name.c_str()) +
+                            " got " +
+                            std::to_string(StorageShape->GetStorageShape().GetDimNum()) +
+                            " dim, expected " +
+                            std::to_string(dims) +
+                            " dim"
+                    ),
                     return ge::GRAPH_FAILED);
 
     for (uint32_t d = 0; d < dims; d++) {
@@ -299,8 +324,12 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckOptionalInputTensor
         // 传入有效数字时，sharedExpertNum需为0
         OP_TILING_CHECK(
             tilingData_->moeDistributeCombineTeardownInfo.sharedExpertNum != 0,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "sharedExpertNum", "invalid",
-                                                  "sharedExpertNum[%u] must be 0, when sharedExpertX is not nullptr"),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName_, "sharedExpertNum", "invalid",
+                std::string("sharedExpertNum[") +
+                    std::to_string(tilingData_->moeDistributeCombineTeardownInfo.sharedExpertNum) +
+                    "] must be 0, when sharedExpertX is not nullptr"
+            ),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             CheckOneTensorDim("sharedExpertX", OPTIONINPUT, SHARED_EXPERT_X_INDEX, TWO_DIMS) != ge::GRAPH_SUCCESS &&
@@ -357,36 +386,74 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
         ALIGN_512);
     OP_TILING_CHECK(quantExpandXStorageShape->GetStorageShape().GetDim(1) != tempTokenMsgSize,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName_, "x", "invalid", "quantexpandx's dim1[%ld] should be equal to tokenMsgSize[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("quantexpandx's dim1[") +
+                            std::to_string(quantExpandXStorageShape->GetStorageShape().GetDim(1)) +
+                            "] should be equal to tokenMsgSize[" +
+                            std::to_string(tempTokenMsgSize) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 校验xOut的H
     OP_TILING_CHECK(xOutStorageShape->GetStorageShape().GetDim(1) != H,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x", "invalid",
-                                                          "expandx's dim1[%ld] should be equal to xout's dim1[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expandx's dim1[") +
+                            std::to_string(H) +
+                            "] should be equal to xout's dim1[" +
+                            std::to_string(xOutStorageShape->GetStorageShape().GetDim(1)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 校验expertScales、xOut的Bs
     OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDim(0) != Bs,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName_, "x", "invalid", "expertIds's dim0[%ld] should be equal to expertScales' dim0[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expertIds's dim0[") +
+                            std::to_string(Bs) +
+                            "] should be equal to expertScales' dim0[" +
+                            std::to_string(expertScalesStorageShape->GetStorageShape().GetDim(0)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xOutStorageShape->GetStorageShape().GetDim(0) != Bs,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x", "invalid",
-                                                          "expertIds's dim0[%ld] should be equal to xOut's dim0[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expertIds's dim0[") +
+                            std::to_string(Bs) +
+                            "] should be equal to xOut's dim0[" +
+                            std::to_string(xOutStorageShape->GetStorageShape().GetDim(0)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 校验expertScales的K
     OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDim(1) != K,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName_, "x", "invalid", "expertIds's dim1[%ld] should be equal to expertscales' dim1[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expertIds's dim1[") +
+                            std::to_string(K) +
+                            "] should be equal to expertscales' dim1[" +
+                            std::to_string(expertScalesStorageShape->GetStorageShape().GetDim(1)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 校验expandIdx的Bs*K
     OP_TILING_CHECK(expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x", "invalid",
-                                                          "expandIdx's dim0[%ld] should be equal to Bs[%ld] * K[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expandIdx's dim0[") +
+                            std::to_string(expandIdxStorageShape->GetStorageShape().GetDim(0)) +
+                            "] should be equal to Bs[" +
+                            std::to_string(Bs) +
+                            "] * K[" +
+                            std::to_string(K) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     return CheckTensorShapeRelationSecondPart();
@@ -406,9 +473,14 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
 
     // 补充Attr的globalBs校验
     OP_TILING_CHECK((globalBs != 0) && ((globalBs < Bs * epWorldSize) || (globalBs > MAX_BS * epWorldSize)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         nodeName_, "epWorldSize", "invalid",
-                        "globalBs[%u] should be >= Bs * epWorldSize[%lu] and <= MaxBs * epWorldSize, or = 0"),
+                        std::string("globalBs[") +
+                            std::to_string(globalBs) +
+                            "] should be >= Bs * epWorldSize[" +
+                            std::to_string(Bs * epWorldSize) +
+                            "] and <= MaxBs * epWorldSize, or = 0"
+                    ),
                     return ge::GRAPH_FAILED);
 
     // 校验A的取值约束
@@ -417,11 +489,28 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
                                           (A == globalBs * sharedExpertNum / sharedExpertRankNum);
         OP_TILING_CHECK(
             !AisValid,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 nodeName_, "epWorldSize", "invalid",
-                "For shared expert, globalBs[%u], A[%ld] should be equal to Bs[%ld] * epWorldSize[%u] * "
-                "sharedExpertNum[%u] / sharedExpertRankNum[%u] if globalBs =0, else equal to globalBs[%u] * "
-                "sharedExpertNum[%u] / sharedExpertRankNum[%u]"),
+                std::string("For shared expert, globalBs[") +
+                    std::to_string(globalBs) +
+                    "], A[" +
+                    std::to_string(A) +
+                    "] should be equal to Bs[" +
+                    std::to_string(Bs) +
+                    "] * epWorldSize[" +
+                    std::to_string(epWorldSize) +
+                    "] * sharedExpertNum[" +
+                    std::to_string(sharedExpertNum) +
+                    "] / sharedExpertRankNum[" +
+                    std::to_string(sharedExpertRankNum) +
+                    "] if globalBs =0, else equal to globalBs[" +
+                    std::to_string(globalBs) +
+                    "] * sharedExpertNum[" +
+                    std::to_string(sharedExpertNum) +
+                    "] / sharedExpertRankNum[" +
+                    std::to_string(sharedExpertRankNum) +
+                    "]"
+            ),
             return ge::GRAPH_FAILED);
     } else { // MoE专家
         bool AisValid = (globalBs == 0) ?
@@ -429,19 +518,47 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
                             (A >= (globalBs * std::min(static_cast<int64_t>(localMoeExpertNum), K)));
         OP_TILING_CHECK(
             !AisValid,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 nodeName_, "epWorldSize", "invalid",
-                "For moe expert, globalBs[%u], if globalBs =0, A[%ld] should >= Bs[%ld] * epWorldSize[%u] * "
-                "min(localMoeExpertNum[%u], K[%ld]) / "
-                "sharedExpertRankNum[%u]; else A[%ld] should >= globalBs[%u] * min(localMoeExpertNum[%u], K[%ld]) / "
-                "sharedExpertRankNum[%u]"),
+                std::string("For moe expert, globalBs[") +
+                    std::to_string(globalBs) +
+                    "], if globalBs =0, A[" +
+                    std::to_string(A) +
+                    "] should >= Bs[" +
+                    std::to_string(Bs) +
+                    "] * epWorldSize[" +
+                    std::to_string(epWorldSize) +
+                    "] * min(localMoeExpertNum[" +
+                    std::to_string(localMoeExpertNum) +
+                    "], K[" +
+                    std::to_string(K) +
+                    "]) / sharedExpertRankNum[" +
+                    std::to_string(sharedExpertRankNum) +
+                    "]; else A[" +
+                    std::to_string(A) +
+                    "] should >= globalBs[" +
+                    std::to_string(globalBs) +
+                    "] * min(localMoeExpertNum[" +
+                    std::to_string(localMoeExpertNum) +
+                    "], K[" +
+                    std::to_string(K) +
+                    "]) / sharedExpertRankNum[" +
+                    std::to_string(sharedExpertRankNum) +
+                    "]"
+            ),
             return ge::GRAPH_FAILED);
     }
 
     // 校验quantExpandX的A
     OP_TILING_CHECK(context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0) != A,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName_, "x", "invalid", "expandx's dim0[%ld] should be equal to quantexpandx's dim0[%ld]"),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("expandx's dim0[") +
+                            std::to_string(A) +
+                            "] should be equal to quantexpandx's dim0[" +
+                            std::to_string(context_->GetInputShape(QUANT_EXPAND_X_INDEX)->GetStorageShape().GetDim(0)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     return CheckTensorShapeRelationThirdPart();
@@ -462,16 +579,31 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     // 校验commCmdInfoSize的取值约束
     OP_TILING_CHECK(
         (commCmdInfoSize != (A + epWorldSize) * COMM_CMD_INFO_SIZE),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
-                                              "commCmdInfoSize[%ld] should be (A[%ld] + epWorldSize[%u]) * %u"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "epWorldSize", "invalid",
+            std::string("commCmdInfoSize[") +
+                std::to_string(commCmdInfoSize) +
+                "] should be (A[" +
+                std::to_string(A) +
+                "] + epWorldSize[" +
+                std::to_string(epWorldSize) +
+                "]) * " +
+                std::to_string(COMM_CMD_INFO_SIZE)
+        ),
         return ge::GRAPH_FAILED);
 
     if (tilingData_->moeDistributeCombineTeardownInfo.isActiveMask) {
         auto xActiveMaskStorageShape = context_->GetOptionalInputShape(X_ACTIVE_MASK_INDEX); // Bs
         OP_TILING_CHECK(
             xActiveMaskStorageShape->GetStorageShape().GetDim(0) != Bs,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x", "invalid",
-                                                  "xactivemask's dim0[%lu] should be equal to expertIds's dim0[%lu]"),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName_, "x", "invalid",
+                std::string("xactivemask's dim0[") +
+                    std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(0)) +
+                    "] should be equal to expertIds's dim0[" +
+                    std::to_string(Bs) +
+                    "]"
+            ),
             return ge::GRAPH_FAILED);
     }
 
@@ -480,26 +612,52 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
             context_->GetOptionalInputShape(SHARED_EXPERT_X_INDEX);                 // Bs, H 或 a, b, H (a * b = Bs)
         if (sharedExpertXStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) { // Bs, H
             OP_TILING_CHECK(sharedExpertXStorageShape->GetStorageShape().GetDim(0) != Bs,
-                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                nodeName_, "x", "invalid", "sharedExpertX's dim0[%ld] should be equal to Bs[%ld]"),
+                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                nodeName_, "x", "invalid",
+                                std::string("sharedExpertX's dim0[") +
+                                    std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(0)) +
+                                    "] should be equal to Bs[" +
+                                    std::to_string(Bs) +
+                                    "]"
+                            ),
                             return ge::GRAPH_FAILED);
             OP_TILING_CHECK(
                 sharedExpertXStorageShape->GetStorageShape().GetDim(1) != H,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    nodeName_, "x", "invalid", "sharedExpertX's dim1[%ld] should be equal to expandx's dim1[%ld]"),
+                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName_, "x", "invalid",
+                    std::string("sharedExpertX's dim1[") +
+                        std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(1)) +
+                        "] should be equal to expandx's dim1[" +
+                        std::to_string(H) +
+                        "]"
+                ),
                 return ge::GRAPH_FAILED);
         } else if (sharedExpertXStorageShape->GetStorageShape().GetDimNum() == THREE_DIMS) { // a, b, H (a * b = Bs)
             OP_TILING_CHECK(
                 sharedExpertXStorageShape->GetStorageShape().GetDim(0) *
                         sharedExpertXStorageShape->GetStorageShape().GetDim(1) !=
                     Bs,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    nodeName_, "x", "invalid", "sharedExpertX's dim0[%ld] * dim1[%ld] should be equal to Bs[%ld]"),
+                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName_, "x", "invalid",
+                    std::string("sharedExpertX's dim0[") +
+                        std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(0)) +
+                        "] * dim1[" +
+                        std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(1)) +
+                        "] should be equal to Bs[" +
+                        std::to_string(Bs) +
+                        "]"
+                ),
                 return ge::GRAPH_FAILED);
             OP_TILING_CHECK(
                 sharedExpertXStorageShape->GetStorageShape().GetDim(2) != H,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    nodeName_, "x", "invalid", "sharedExpertX's dim2[%ld] should be equal to expandx's dim1[%ld]"),
+                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName_, "x", "invalid",
+                    std::string("sharedExpertX's dim2[") +
+                        std::to_string(sharedExpertXStorageShape->GetStorageShape().GetDim(2)) +
+                        "] should be equal to expandx's dim1[" +
+                        std::to_string(H) +
+                        "]"
+                ),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -526,8 +684,14 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeSize()
 
     auto expandIdxStorageShape = context_->GetInputShape(EXPAND_IDX_INDEX); // Bs * K
     OP_TILING_CHECK((expandIdxStorageShape->GetStorageShape().GetDim(0) != Bs * K),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "x", "invalid",
-                                                          "ExpandIdx should be BS * K [%ld], but got [%ld]"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "x", "invalid",
+                        std::string("ExpandIdx should be BS * K [") +
+                            std::to_string(Bs * K) +
+                            "], but got [" +
+                            std::to_string(expandIdxStorageShape->GetStorageShape().GetDim(0)) +
+                            "]"
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

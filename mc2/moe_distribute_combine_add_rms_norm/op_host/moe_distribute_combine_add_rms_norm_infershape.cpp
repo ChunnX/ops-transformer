@@ -33,16 +33,24 @@ static ge::graphStatus InferShapeCheck(gert::InferShapeContext* context) {
 
     for (uint32_t i = 0; i < IDX_THREE; ++i) {
         if (context->GetOutputShape(i) == nullptr) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "H", "invalid",
-                                                  "infer shape check output %u is nullptr");
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context->GetNodeName(), "H", "invalid",
+                std::string("infer shape check output ") +
+                    std::to_string(i) +
+                    " is nullptr"
+            );
             return GRAPH_FAILED;
         }
     }
 
     for (uint32_t i = 0; i < IDX_EIGHT; ++i) {
         if (context->GetInputShape(i) == nullptr) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "H", "invalid",
-                                                  "infer shape check input %u is nullptr");
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context->GetNodeName(), "H", "invalid",
+                std::string("infer shape check input ") +
+                    std::to_string(i) +
+                    " is nullptr"
+            );
             return GRAPH_FAILED;
         }
     }

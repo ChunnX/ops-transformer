@@ -70,9 +70,12 @@ static ge::graphStatus InferShapeMegaMoe(gert::InferShapeContext *context)
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSize);
 
     OP_CHECK_IF(*epWorldSize < 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "epWorldSize", "invalid",
-                                                      "epWorldSize must be greater than zero, but got"
-                                                      " epWorldSize: %ld."),
+                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "epWorldSize", "invalid",
+                    std::string("epWorldSize must be greater than zero, but got epWorldSize: ") +
+                        std::to_string(*epWorldSize) +
+                        "."
+                ),
                 return ge::GRAPH_FAILED);
 
     int64_t bs = xShape->GetDim(0);

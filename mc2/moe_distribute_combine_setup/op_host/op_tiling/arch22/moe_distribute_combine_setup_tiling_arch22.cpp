@@ -48,8 +48,15 @@ ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckEpWorldSize()
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
 
     OP_TILING_CHECK(((*epWorldSizePtr < MIN_GROUP_EP_SIZE) || (*epWorldSizePtr > MAX_GROUP_EP_SIZE)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
-                                                          "epWorldSize should be [%ld, %ld], get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "epWorldSize", "invalid",
+                        std::string("epWorldSize should be [") +
+                            std::to_string(MIN_GROUP_EP_SIZE) +
+                            ", " +
+                            std::to_string(MAX_GROUP_EP_SIZE) +
+                            "], get " +
+                            std::to_string(*epWorldSizePtr)
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -62,8 +69,13 @@ ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckMoeExpertNum()
 
     OP_TILING_CHECK(
         ((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MAX_MOE_EXPERT_NUM)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "moeExpertNum", "invalid",
-                                              "moeExpertNum shoud be within the range of (0, %ld], get %ld"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "moeExpertNum", "invalid",
+            std::string("moeExpertNum shoud be within the range of (0, ") +
+                std::to_string(MAX_MOE_EXPERT_NUM) +
+                "], get " +
+                std::to_string(*moeExpertNumPtr)
+        ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -77,19 +89,33 @@ ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckSharedExpertAttr()
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
 
     OP_TILING_CHECK((*expertShardTypePtr != 0),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "expertShardType", "invalid",
-                                                          "expertShardType only support 0, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "expertShardType", "invalid",
+                        std::string("expertShardType only support 0, get ") +
+                            std::to_string(*expertShardTypePtr)
+                    ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "sharedExpertNum", "invalid",
-                                              "sharedExpertNum should be within the range of [0, %ld], get %ld"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "sharedExpertNum", "invalid",
+            std::string("sharedExpertNum should be within the range of [0, ") +
+                std::to_string(MAX_SHARED_EXPERT_NUM) +
+                "], get " +
+                std::to_string(*sharedExpertNumPtr)
+        ),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((*sharedExpertRankNumPtr < 0) ||
          (*sharedExpertRankNumPtr > (tilingData_->moeDistributeCombineSetupInfo.epWorldSize / 2))),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "sharedExpertRankNum", "invalid",
-                                              "sharedExpertRankNum should be within the range of [0, %u], get %ld."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "sharedExpertRankNum", "invalid",
+            std::string("sharedExpertRankNum should be within the range of [0, ") +
+                std::to_string(tilingData_->moeDistributeCombineSetupInfo.epWorldSize / 2) +
+                "], get " +
+                std::to_string(*sharedExpertRankNumPtr) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -99,19 +125,43 @@ ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckTensorShapeSize(int64_t 
 {
     OP_TILING_CHECK(
         (h < MIN_H) || (h > MAX_H),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "H", "invalid", "H[%ld] should be within range [%ld, %ld]."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "H", "invalid",
+            std::string("H[") +
+                std::to_string(h) +
+                "] should be within range [" +
+                std::to_string(MIN_H) +
+                ", " +
+                std::to_string(MAX_H) +
+                "]."
+        ),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (bs <= 0) || (bs > MAX_BS),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "BS", "invalid", "BS[%ld] should be within range (0, %ld]."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "BS", "invalid",
+            std::string("BS[") +
+                std::to_string(bs) +
+                "] should be within range (0, " +
+                std::to_string(MAX_BS) +
+                "]."
+        ),
         return ge::GRAPH_FAILED);
 
     uint32_t &moeExpertNum = tilingData_->moeDistributeCombineSetupInfo.moeExpertNum;
     OP_TILING_CHECK(
         (k <= 0) || (k > MAX_K) || (k > static_cast<int64_t>(moeExpertNum)),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "moeExpertNum", "invalid",
-                                              "K[%ld] should be within range (0, min(%ld, moeExpertNum[%u])]."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName_, "moeExpertNum", "invalid",
+            std::string("K[") +
+                std::to_string(k) +
+                "] should be within range (0, min(" +
+                std::to_string(MAX_K) +
+                ", moeExpertNum[" +
+                std::to_string(moeExpertNum) +
+                "])]."
+        ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

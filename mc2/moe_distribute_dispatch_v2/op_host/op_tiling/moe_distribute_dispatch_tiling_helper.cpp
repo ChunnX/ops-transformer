@@ -25,8 +25,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDim(const gert::T
     const gert::StorageShape *xStorageShape = context->GetInputShape(X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape"), return false);
     OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "xShape dims must be 2, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("xShape dims must be 2, but current dim num is ") +
+                            std::to_string(xStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "x dim0 = %ld", xStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "x dim1 = %ld", xStorageShape->GetStorageShape().GetDim(1));
@@ -35,8 +39,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDim(const gert::T
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdShape"),
                     return false);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "expertIdShape dims must be 2, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("expertIdShape dims must be 2, but current dim num is ") +
+                            std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "expertId dim0 = %ld", expertIdStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expertId dim1 = %ld", expertIdStorageShape->GetStorageShape().GetDim(1));
@@ -48,18 +56,27 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDim(const gert::T
         if (quantMode != static_cast<uint32_t>(QuantModeA5::STATIC_QUANT)) {
             // the cond is compatible with A2/A3 because static quant is only supported on A5
             OP_TILING_CHECK(scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                                 nodeName, "quantMode", "invalid",
-                                "scales dims must be 2 when quantMode=%u, but current dim num is %lu."),
+                                std::string("scales dims must be 2 when quantMode=") +
+                                    std::to_string(quantMode) +
+                                    ", but current dim num is " +
+                                    std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) +
+                                    "."
+                            ),
                             return false);
             OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
             OP_LOGD(nodeName, "scales dim1 = %ld", scalesStorageShape->GetStorageShape().GetDim(1));
         } else {
             OP_TILING_CHECK((scalesStorageShape->GetStorageShape().GetDimNum() != ONE_DIM) &&
                                 (scalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS),
-                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                                 nodeName, "quantMode", "invalid",
-                                "scalesShape dims must be 1 or 2 when quantMode is 1, but current dim num is %lu."),
+                                std::string("scalesShape dims must be 1 or 2 when quantMode is 1, but current dim"
+                                                "num is ") +
+                                    std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) +
+                                    "."
+                            ),
                             return false);
             // additional check for hif8 quant
             auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
@@ -67,9 +84,13 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDim(const gert::T
             OP_TILING_CHECK(
                 (expandXDesc->GetDataType() == ge::DT_HIFLOAT8) &&
                     (scalesStorageShape->GetStorageShape().GetDimNum() != ONE_DIM),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     nodeName, "scales", "invalid",
-                    "scalesShape dims must be 1 when x dtype is hif8 in static quant, but current dim num is %lu."),
+                    std::string("scalesShape dims must be 1 when x dtype is hif8 in static quant, but current dim"
+                                    "num is ") +
+                        std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) +
+                        "."
+                ),
                 return false);
             OP_LOGD(nodeName, "scales dim0 = %ld", scalesStorageShape->GetStorageShape().GetDim(0));
             if (scalesStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
@@ -89,17 +110,31 @@ inline bool MoeDistributeDispatchTilingHelper::CheckDynamicScalesDim(const gert:
     if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT))) {
         // quantMode 2: 1dim, the same in A2/A3/A5
         OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_ONE_DIM_NUM,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             nodeName, "quantMode", "invalid",
-                            "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu."),
+                            std::string("dynamicScalesShape dims must be ") +
+                                std::to_string(DYNAMIC_SCALE_TWO_DIM_NUM) +
+                                " when quantMode=" +
+                                std::to_string(quantMode) +
+                                ", but current dim num is " +
+                                std::to_string(dynamicScalesStorageShape->GetStorageShape().GetDimNum()) +
+                                "."
+                        ),
                         return false);
         OP_LOGD(nodeName, "dynamicScales dim0 = %ld", dynamicScalesStorageShape->GetStorageShape().GetDim(0));
     } else {
         // MX/PERTILE
         OP_TILING_CHECK(dynamicScalesStorageShape->GetStorageShape().GetDimNum() != DYNAMIC_SCALE_TWO_DIM_NUM,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                             nodeName, "quantMode", "invalid",
-                            "dynamicScalesShape dims must be %u when quantMode=%u, but current dim num is %lu."),
+                            std::string("dynamicScalesShape dims must be ") +
+                                std::to_string(DYNAMIC_SCALE_ONE_DIM_NUM) +
+                                " when quantMode=" +
+                                std::to_string(quantMode) +
+                                ", but current dim num is " +
+                                std::to_string(dynamicScalesStorageShape->GetStorageShape().GetDimNum()) +
+                                "."
+                        ),
                         return false);
         OP_LOGD(nodeName, "dynamicScales dim0=%ld, dim1=%ld",
             dynamicScalesStorageShape->GetStorageShape().GetDim(0),
@@ -114,8 +149,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckOutputTensorDim(gert::Tiling
     const gert::StorageShape *expandXStorageShape = context->GetOutputShape(OUTPUT_EXPAND_X_INDEX);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandXShape"), return false);
     OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "expandXShape dims must be 2, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("expandXShape dims must be 2, but current dim num is ") +
+                            std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "expandX dim0 = %ld", expandXStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expandX dim1 = %ld", expandXStorageShape->GetStorageShape().GetDim(1));
@@ -131,8 +170,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckOutputTensorDim(gert::Tiling
     OP_TILING_CHECK(expandIdxStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandIdxShape"),
                     return false);
     OP_TILING_CHECK(expandIdxStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "expandIdxShape dims must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("expandIdxShape dims must be 1, but current dim num is ") +
+                            std::to_string(expandIdxStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "expandIdx dim0 = %ld", expandIdxStorageShape->GetStorageShape().GetDim(0));
 
@@ -140,8 +183,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckOutputTensorDim(gert::Tiling
     OP_TILING_CHECK(expertTokenNumsStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertTokenNumsShape"), return false);
     OP_TILING_CHECK(expertTokenNumsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid", "expertTokenNumsShape dims must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("expertTokenNumsShape dims must be 1, but current dim num is ") +
+                            std::to_string(expertTokenNumsStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsStorageShape->GetStorageShape().GetDim(0));
     return true;
@@ -154,8 +201,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
     OP_TILING_CHECK(epRecvCountStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epRecvCountShape"),
                     return false);
     OP_TILING_CHECK(epRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "H", "invalid", "epRecvCountShape dims must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "H", "invalid",
+                        std::string("epRecvCountShape dims must be 1, but current dim num is ") +
+                            std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
 
@@ -163,8 +214,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
     OP_TILING_CHECK(tpRecvCountStorageShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountShape"), return false);
     OP_TILING_CHECK(tpRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "H", "invalid", "tpRecvCountShape dims must be 1, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "H", "invalid",
+                        std::string("tpRecvCountShape dims must be 1, but current dim num is ") +
+                            std::to_string(tpRecvCountStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     OP_LOGD(nodeName, "tpRecvCount dim0 = %ld", tpRecvCountStorageShape->GetStorageShape().GetDim(0));
     return true;
@@ -406,8 +461,12 @@ inline bool MoeDistributeDispatchTilingHelper::CheckDistinctTensorDataType(gert:
     } else {
         // static/dynamic/pertolen/pertile/hif8
         OP_TILING_CHECK(!CheckTensorDataTypeStaticOrDynamic(context, nodeName, isScales),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "quantMode", "invalid",
-                                                              "CheckTensorDataType for quantMode %u failed."),
+                                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            nodeName, "quantMode", "invalid",
+                            std::string("CheckTensorDataType for quantMode ") +
+                                std::to_string(quantMode) +
+                                " failed."
+                        ),
                         return false);
     }
     return true;
@@ -572,8 +631,12 @@ bool MoeDistributeDispatchTilingHelper::CheckTokenMask(const gert::TilingContext
     OP_TILING_CHECK(xActiveMaskStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskStorageShape"),
                     return false);
     OP_TILING_CHECK(xActiveMaskStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "xActiveMask must be 1-dim, but current dim num is %lu."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("xActiveMask must be 1-dim, but current dim num is ") +
+                            std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDimNum()) +
+                            "."
+                    ),
                     return false);
     auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
     OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"), return false);

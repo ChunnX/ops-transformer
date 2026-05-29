@@ -63,8 +63,12 @@ inline bool MoeDistributeCombineTilingHelper::CheckInputTensorDim(const gert::Ti
         OP_TILING_CHECK(
             ((sharedExpertX->GetStorageShape().GetDimNum() != TWO_DIMS) &&
              (sharedExpertX->GetStorageShape().GetDimNum() != THREE_DIMS)),
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                  "sharedExpertX must be 2-dimension or 3-dimension, but got %lu dim"),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName, "x", "invalid",
+                std::string("sharedExpertX must be 2-dimension or 3-dimension, but got ") +
+                    std::to_string(sharedExpertX->GetStorageShape().GetDimNum()) +
+                    " dim"
+            ),
             return false);
     }
     return true;
@@ -160,8 +164,12 @@ inline bool MoeDistributeCombineTilingHelper::CheckActiveMask(const gert::Tiling
                     return false);
     const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(xActiveMaskDimNums != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "xActiveMask must be 1-dim, but current dim num is %ld."),
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "x", "invalid",
+                        std::string("xActiveMask must be 1-dim, but current dim num is ") +
+                            std::to_string(xActiveMaskDimNums) +
+                            "."
+                    ),
                     return false);
     auto xActiveMaskDesc = context->GetOptionalInputDesc(X_ACTIVE_MASK_INDEX);
     OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"), return false);
@@ -225,10 +233,15 @@ bool MoeDistributeCombineTilingHelper::CheckTensorDataType(const gert::TilingCon
     auto sharedExpertXDesc = context->GetOptionalInputDesc(SHARED_EXPERT_X_INDEX);
     if (sharedExpertXDesc != nullptr) {
         OP_TILING_CHECK(sharedExpertXDesc->GetDataType() != expandXDesc->GetDataType(),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                             nodeName, "x", "invalid",
-                            "sharedExpertX dataType should be the same as expandX dataType, but got sharedExpertX"
-                            "dataType %s, expandX dataType %s."),
+                            std::string("sharedExpertX dataType should be the same as expandX dataType, but got"
+                                            "sharedExpertXdataType ") +
+                                std::string(Ops::Base::ToString(sharedExpertXDesc->GetDataType()).c_str()) +
+                                ", expandX dataType " +
+                                std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
+                                "."
+                        ),
                         return false);
     }
     auto xDesc = context->GetOutputDesc(OUTPUT_X_INDEX);

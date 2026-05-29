@@ -25,8 +25,12 @@ ge::graphStatus AllGatherMatmulTilingA2A3::CheckValidRank(Mc2Tiling::AllGatherMa
     auto it = std::find(VALID_RANK.at(tilingData->socParam.isA3).begin(),
     VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
     OP_TILING_CHECK(it == VALID_RANK.at(tilingData->socParam.isA3).end(),
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "world_size value is %u, which is illegal."),
+                                        OP_LOGE_FOR_INVALID_VALUE(
+                        context->GetNodeName(), "param", "invalid",
+                        std::string("world_size value is ") +
+                            std::to_string(rankSize) +
+                            ", which is illegal."
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

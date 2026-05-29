@@ -98,8 +98,13 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     if (winSizeData.isLayered) {
         // 校验可变bs
         OP_TILING_CHECK((bs != maxBs),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "maxBs", "invalid", "Layered cannot support variableBs, bs is %lu, maxBs is %lu"),
+                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            nodeName, "maxBs", "invalid",
+                            std::string("Layered cannot support variableBs, bs is ") +
+                                std::to_string(bs) +
+                                ", maxBs is " +
+                                std::to_string(maxBs)
+                        ),
                         return ge::GRAPH_FAILED);
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),

@@ -36,15 +36,23 @@ ge::graphStatus MoeDistributeDispatchTilingA5::CheckEpWorldSizeAttrs(const char 
     // 检验epWorldSize是否是2的倍数
     OP_TILING_CHECK(
         epWorldSize % 2 != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "epWorldSize", "invalid",
-                                              "epWorldSize should be divisible by 2, but got epWorldSize = %u."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName, "epWorldSize", "invalid",
+            std::string("epWorldSize should be divisible by 2, but got epWorldSize = ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             nodeName, "epWorldSize", "invalid",
-            "epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u."),
+            std::string("epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got"
+                            "epWorldSize = ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

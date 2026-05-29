@@ -78,8 +78,11 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckEpWorldSize()
 
     OP_TILING_CHECK((!((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
                        (*epWorldSizePtr == GROUP_EP_SIZE_8))),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
-                                                          "epWorldSize should be in {2, 4, 8}, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "epWorldSize", "invalid",
+                        std::string("epWorldSize should be in {2, 4, 8}, get ") +
+                            std::to_string(*epWorldSizePtr)
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -106,8 +109,11 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
 
     OP_TILING_CHECK((*expertShardTypePtr != 0),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "expertShardType", "invalid",
-                                                          "expertShardType only support 0, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "expertShardType", "invalid",
+                        std::string("expertShardType only support 0, get ") +
+                            std::to_string(*expertShardTypePtr)
+                    ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (*sharedExpertNumPtr != 0),
@@ -124,15 +130,27 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckSharedExpertAttr()
 ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckTensorShapeSize(int64_t h, int64_t bs, int64_t k)
 {
     OP_TILING_CHECK(((bs != BS_SIZE_8) && (bs != BS_SIZE_16) && (bs != BS_SIZE_256)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "BS", "invalid", "Bs should be 8/16/256, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "BS", "invalid",
+                        std::string("Bs should be 8/16/256, get ") +
+                            std::to_string(bs)
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(((h != H_SIZE_4096) && (h != H_SIZE_7168)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "H", "invalid", "H should be 4096/7168, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "H", "invalid",
+                        std::string("H should be 4096/7168, get ") +
+                            std::to_string(h)
+                    ),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(((k != K_SIZE_6) && (k != K_SIZE_8)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "H", "invalid", "K should be 6/8, get %ld"),
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "H", "invalid",
+                        std::string("K should be 6/8, get ") +
+                            std::to_string(k)
+                    ),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
