@@ -1,0 +1,464 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+import math
+import os
+import random
+
+import torch
+
+import check_valid_param
+
+
+DATA_RANGE_LEFT = -1.0
+DATA_RANGE_RIGHT = 1.0
+EMPTY_LSE = -3.4028234663852886e38
+MASK_VALUE = -10000.0
+
+
+def _fp8_dtype():
+    return getattr(torch, "float8_e4m3fn", torch.float16)
+
+
+def _torch_dtype(value):
+    if value in (torch.bfloat16, "torch.bfloat16", "bfloat16", "bf16"):
+        return torch.bfloat16
+    if value in (torch.float16, "torch.float16", "float16", "fp16"):
+        return torch.float16
+    return value
+
+
+def _normalize_params(params):
+    if not isinstance(params, dict):
+        raise ValueError("block_sparse_attention params should be a dict")
+
+    normalized = dict(params)
+    normalized.setdefault("Testcase_Name", None)
+    normalized.setdefault("layout_q", "BSND")
+    normalized.setdefault("kv_layout", "PA_BSND")
+    normalized.setdefault("output_dtype", torch.bfloat16)
+    normalized.setdefault("q_block_size", 128)
+    normalized.setdefault("kv_block_size", 128)
+    normalized.setdefault("sparse_indices_layout", "BNQQbKb")
+    normalized.setdefault("quant_mode", 0)
+    normalized.setdefault("mask_mode", 0)
+    normalized.setdefault("return_softmax_lse", False)
+    normalized.setdefault("actlen_mode", "full")
+    normalized.setdefault("S1EQS2", False)
+    normalized.setdefault("seed", 0)
+    normalized.setdefault("sparse_pattern", "sequential")
+    normalized.setdefault("scale_pattern", "ones")
+    normalized.setdefault("block_table_pattern", "sequential")
+    normalized.setdefault("p_scale_value", 1.0)
+    normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
+    for key in ("B", "S1", "S2", "N1", "N2", "D", "q_block_size", "kv_block_size", "sparse_count", "seed"):
+        if isinstance(normalized.get(key), float) and normalized[key].is_integer():
+            normalized[key] = int(normalized[key])
+    normalized["sparse_count"] = normalized.get("sparse_count") or math.ceil(
+        normalized["S2"] / normalized["kv_block_size"])
+    normalized["softmax_scale"] = normalized.get("softmax_scale") or (1.0 / math.sqrt(normalized["D"]))
+    return normalized
+
+
+def _make_lengths(batch, max_len, mode, rng):
+    if mode == "full":
+        return [max_len] * batch
+    if mode != "random":
+        raise ValueError(f"unsupported actlen_mode: {mode}")
+    low = max(1, max_len // 2)
+    return [rng.randint(low, max_len) for _ in range(batch)]
+
+
+def _prefix(lengths):
+    values = [0]
+    for length in lengths:
+        values.append(values[-1] + int(length))
+    return torch.tensor(values, dtype=torch.int32)
+
+
+def _rand_float(shape, generator):
+    return torch.empty(shape, dtype=torch.float32).uniform_(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, generator=generator)
+
+
+def _rand_fp8(shape, generator):
+    return _rand_float(shape, generator).to(_fp8_dtype())
+
+
+def _physical_ids(start, count, pattern, rng):
+    ids = list(range(start, start + count))
+    if pattern == "reverse":
+        ids.reverse()
+    elif pattern == "random":
+        rng.shuffle(ids)
+    elif pattern != "sequential":
+        raise ValueError(f"unsupported block_table_pattern: {pattern}")
+    return ids
+
+
+def _pack_pa(dense_tensor, block_size, pattern, rng, block_table=None):
+    batch, seq_len, head_num, head_dim = dense_tensor.shape
+    block_num_per_batch = math.ceil(seq_len / block_size)
+    create_table = block_table is None
+    if create_table:
+        block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
+    pa_tensor = torch.zeros((batch * block_num_per_batch, block_size, head_num, head_dim), dtype=torch.float32)
+
+    for batch_idx in range(batch):
+        if create_table:
+            physical_ids = _physical_ids(batch_idx * block_num_per_batch, block_num_per_batch, pattern, rng)
+        else:
+            physical_ids = [int(block_table[batch_idx, block_idx].item()) for block_idx in range(block_num_per_batch)]
+        for block_idx, physical_block in enumerate(physical_ids):
+            block_table[batch_idx, block_idx] = int(physical_block)
+            start = block_idx * block_size
+            end = min(start + block_size, seq_len)
+            pa_tensor[physical_block, :end - start] = dense_tensor[batch_idx, start:end].to(torch.float32)
+
+    return pa_tensor.to(_fp8_dtype()), block_table
+
+
+def _allowed_blocks(mask_mode, qb_idx, q_block_size, kv_block_size, q_len, kv_len):
+    block_num = math.ceil(kv_len / kv_block_size)
+    if block_num <= 0:
+        return []
+    if mask_mode == 0:
+        return list(range(block_num))
+
+    max_token = (qb_idx + 1) * q_block_size - 1
+    if mask_mode == 2:
+        max_token += q_len - kv_len
+    if max_token < 0:
+        return []
+    max_block = min(block_num - 1, max_token // kv_block_size)
+    return list(range(max_block + 1))
+
+
+def _select_blocks(blocks, sparse_count, pattern, rng):
+    if sparse_count <= 0 or not blocks or pattern == "empty":
+        return []
+    if pattern in ("sequential", "dense", "causal"):
+        return blocks[:min(sparse_count, len(blocks))]
+    if pattern == "reverse":
+        return list(reversed(blocks[-min(sparse_count, len(blocks)):]))
+    if pattern == "tail":
+        selected = blocks[:max(0, min(sparse_count, len(blocks)) - 1)]
+        if blocks[-1] not in selected:
+            selected.append(blocks[-1])
+        return selected[:sparse_count]
+    if pattern == "random":
+        selected = blocks[:]
+        rng.shuffle(selected)
+        return selected[:min(sparse_count, len(selected))]
+    if pattern == "empty_tail":
+        return blocks[:min(sparse_count, len(blocks))]
+    raise ValueError(f"unsupported sparse_pattern: {pattern}")
+
+
+def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
+    batch = case["B"]
+    n1 = case["N1"]
+    n2 = case["N2"]
+    group = n1 // n2
+    qb_max = math.ceil(case["S1"] / case["q_block_size"])
+    sparse_count = case["sparse_count"]
+    sparse_indices = torch.zeros((batch, n2, group, qb_max, sparse_count), dtype=torch.int32)
+    sparse_seq_len = torch.zeros((batch, n2, group, qb_max), dtype=torch.int32)
+
+    for batch_idx in range(batch):
+        for qb_idx in range(qb_max):
+            allowed = _allowed_blocks(
+                case["mask_mode"], qb_idx, case["q_block_size"], case["kv_block_size"],
+                q_lengths[batch_idx], kv_lengths[batch_idx])
+            for n2_idx in range(n2):
+                for group_idx in range(group):
+                    if case["sparse_pattern"] == "empty_tail" and qb_idx == qb_max - 1:
+                        selected = []
+                    else:
+                        selected = _select_blocks(allowed, sparse_count, case["sparse_pattern"], rng)
+                    sparse_seq_len[batch_idx, n2_idx, group_idx, qb_idx] = len(selected)
+                    if selected:
+                        sparse_indices[batch_idx, n2_idx, group_idx, qb_idx, :len(selected)] = torch.tensor(
+                            selected, dtype=torch.int32)
+    return sparse_indices, sparse_seq_len
+
+
+def _query_index(layout_q, cu_seqlens_q, batch_idx, q_idx):
+    if layout_q == "BSND":
+        return batch_idx, q_idx
+    return int(cu_seqlens_q[batch_idx].item()) + q_idx
+
+
+def _kv_index(layout_q, cu_seqlens_kv, batch_idx, kv_idx):
+    if layout_q == "BSND":
+        return batch_idx, kv_idx
+    return int(cu_seqlens_kv[batch_idx].item()) + kv_idx
+
+
+def _get_query(query, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx):
+    if layout_q == "BSND":
+        return query[batch_idx, q_idx, head_idx]
+    return query[_query_index(layout_q, cu_seqlens_q, batch_idx, q_idx), head_idx]
+
+
+def _get_q_scale(q_scale, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx):
+    if layout_q == "BSND":
+        return q_scale[batch_idx, q_idx, head_idx]
+    return q_scale[_query_index(layout_q, cu_seqlens_q, batch_idx, q_idx), head_idx]
+
+
+def _get_k_scale(k_scale, layout_q, cu_seqlens_kv, batch_idx, positions, n2_idx):
+    if layout_q == "BSND":
+        return k_scale[batch_idx, positions, n2_idx]
+    indices = [int(cu_seqlens_kv[batch_idx].item()) + pos for pos in positions]
+    return k_scale[indices, n2_idx]
+
+
+def _set_output(output, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
+    if layout_q == "BSND":
+        output[batch_idx, q_idx, head_idx] = value
+    else:
+        output[_query_index(layout_q, cu_seqlens_q, batch_idx, q_idx), head_idx] = value
+
+
+def _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
+    if layout_q == "BSND":
+        softmax_lse[batch_idx, head_idx, q_idx] = value
+    else:
+        softmax_lse[head_idx, _query_index(layout_q, cu_seqlens_q, batch_idx, q_idx)] = value
+
+
+def _make_scale_tensor(shape, pattern):
+    if pattern == "ones":
+        return torch.ones(shape, dtype=torch.float32)
+    numel = math.prod(shape)
+    values = torch.linspace(0.25, 2.0, steps=numel, dtype=torch.float32)
+    return values.reshape(shape)
+
+
+def _make_scales(case, cu_seqlens_q, cu_seqlens_kv):
+    layout_q = case["layout_q"]
+    if layout_q == "BSND":
+        q_shape = (case["B"], case["S1"], case["N1"])
+        k_shape = (case["B"], case["S2"], case["N2"])
+    else:
+        q_shape = (int(cu_seqlens_q[-1].item()), case["N1"])
+        k_shape = (int(cu_seqlens_kv[-1].item()), case["N2"])
+
+    q_scale = _make_scale_tensor(q_shape, case["scale_pattern"])
+    k_scale = _make_scale_tensor(k_shape, case["scale_pattern"])
+    if case["scale_pattern"] == "ones":
+        v_scale = torch.ones((case["N2"],), dtype=torch.float32)
+    else:
+        v_scale = torch.linspace(0.5, 1.75, steps=case["N2"], dtype=torch.float32)
+    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
+    return q_scale, k_scale, v_scale, p_scale
+
+
+def _mask_positions(case, q_idx, positions, q_len, kv_len):
+    if case["mask_mode"] == 0:
+        return torch.ones((len(positions),), dtype=torch.bool)
+    if case["mask_mode"] == 1:
+        limit = q_idx
+    else:
+        limit = q_idx + q_len - kv_len
+    return torch.tensor([pos <= limit for pos in positions], dtype=torch.bool)
+
+
+def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, n2_idx, group_idx, qb_idx, kv_len):
+    block_count = int(sparse_seq_len[batch_idx, n2_idx, group_idx, qb_idx].item())
+    positions = []
+    for block_idx in sparse_indices[batch_idx, n2_idx, group_idx, qb_idx, :block_count].tolist():
+        if block_idx < 0:
+            continue
+        start = int(block_idx) * case["kv_block_size"]
+        end = min(start + case["kv_block_size"], kv_len)
+        if start < kv_len:
+            positions.extend(range(start, end))
+    return positions
+
+
+def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
+                         sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths):
+    layout_q = case["layout_q"]
+    batch = case["B"]
+    n1 = case["N1"]
+    n2 = case["N2"]
+    group = n1 // n2
+    head_dim = case["D"]
+    output_dtype = case["output_dtype"]
+
+    if layout_q == "BSND":
+        attention_out = torch.zeros((batch, case["S1"], n1, head_dim), dtype=output_dtype)
+        softmax_lse = torch.full((batch, n1, case["S1"]), EMPTY_LSE, dtype=torch.float32)
+    else:
+        total_q = int(cu_seqlens_q[-1].item())
+        attention_out = torch.zeros((total_q, n1, head_dim), dtype=output_dtype)
+        softmax_lse = torch.full((n1, total_q), EMPTY_LSE, dtype=torch.float32)
+
+    p_scale_value = float(p_scale[0].item())
+    for batch_idx in range(batch):
+        for q_idx in range(q_lengths[batch_idx]):
+            qb_idx = q_idx // case["q_block_size"]
+            for head_idx in range(n1):
+                n2_idx = head_idx // group
+                group_idx = head_idx % group
+                positions = _positions_from_sparse(
+                    case, sparse_indices, sparse_seq_len, batch_idx, n2_idx, group_idx, qb_idx, kv_lengths[batch_idx])
+                if not positions:
+                    continue
+
+                valid_mask = _mask_positions(case, q_idx, positions, q_lengths[batch_idx], kv_lengths[batch_idx])
+                if not bool(valid_mask.any()):
+                    continue
+
+                q_vec = _get_query(query, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx).to(torch.float32)
+                k_mat = dense_key[batch_idx, positions, n2_idx].to(torch.float32)
+                v_mat = dense_value[batch_idx, positions, n2_idx].to(torch.float32)
+                q_scale_value = _get_q_scale(q_scale, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx).to(torch.float32)
+                k_scale_vec = _get_k_scale(k_scale, layout_q, cu_seqlens_kv, batch_idx, positions, n2_idx).to(torch.float32)
+                scores = torch.matmul(q_vec, k_mat.transpose(0, 1))
+                scores = scores * q_scale_value * k_scale_vec * float(case["softmax_scale"])
+                scores = torch.where(valid_mask, scores, torch.full_like(scores, MASK_VALUE))
+
+                probs = torch.softmax(scores, dim=-1)
+                probs = torch.where(valid_mask, probs, torch.zeros_like(probs))
+                p_quant = (probs / p_scale_value).to(_fp8_dtype()).to(torch.float32)
+                attn = torch.matmul(p_quant, v_mat) * p_scale_value * float(v_scale[n2_idx].item())
+                _set_output(attention_out, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx, attn.to(output_dtype))
+                _set_lse(softmax_lse, layout_q, cu_seqlens_q, batch_idx, q_idx, head_idx,
+                         torch.logsumexp(scores[valid_mask], dim=-1))
+
+    return attention_out, softmax_lse
+
+
+def save_test_case(input_data, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    case_name = input_data["Testcase_Name"]
+    input_filepath = os.path.join(output_dir, f"bsa_case_{case_name}.pt")
+    torch.save(input_data, input_filepath)
+    print(f"saved test case to: {input_filepath}")
+    return input_filepath
+
+
+def generate_and_save_testdata(params, save_pt=False, save_path=""):
+    case = _normalize_params(params)
+    check_valid_param.check_valid_param(case)
+
+    rng = random.Random(case["seed"])
+    generator = torch.Generator().manual_seed(case["seed"])
+
+    batch = case["B"]
+    s1 = case["S1"]
+    s2 = case["S2"]
+    n1 = case["N1"]
+    n2 = case["N2"]
+    head_dim = case["D"]
+    q_block_size = case["q_block_size"]
+    kv_block_size = case["kv_block_size"]
+
+    q_lengths = _make_lengths(batch, s1, case["actlen_mode"], rng)
+    kv_lengths = _make_lengths(batch, s2, case["actlen_mode"], rng)
+    if case["S1EQS2"]:
+        kv_lengths = [min(length, s2) for length in q_lengths]
+
+    cu_seqlens_q = _prefix(q_lengths)
+    cu_seqlens_kv = _prefix(kv_lengths)
+    seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+    seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+
+    if case["layout_q"] == "BSND":
+        query = _rand_fp8((batch, s1, n1, head_dim), generator)
+        cu_seqlens_q_input = None
+        cu_seqlens_kv_input = None
+    else:
+        query = _rand_fp8((int(cu_seqlens_q[-1].item()), n1, head_dim), generator)
+        cu_seqlens_q_input = cu_seqlens_q
+        cu_seqlens_kv_input = cu_seqlens_kv
+
+    dense_key = _rand_fp8((batch, s2, n2, head_dim), generator)
+    dense_value = _rand_fp8((batch, s2, n2, head_dim), generator)
+    key, block_table = _pack_pa(dense_key, kv_block_size, case["block_table_pattern"], rng)
+    value, _ = _pack_pa(dense_value, kv_block_size, case["block_table_pattern"], rng, block_table)
+    q_scale, k_scale, v_scale, p_scale = _make_scales(case, cu_seqlens_q, cu_seqlens_kv)
+    atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
+    sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
+
+    attention_out, softmax_lse = _reference_attention(
+        case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
+        sparse_indices, sparse_seq_len, cu_seqlens_q, cu_seqlens_kv, q_lengths, kv_lengths)
+
+    if case["Testcase_Name"] is None:
+        mode = "prefill" if case["layout_q"] == "TND" else "decode"
+        case["Testcase_Name"] = (
+            f"blockSparseAttention_{mode}_{case['layout_q']}_{case['kv_layout']}_"
+            f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"
+        )
+
+    max_seqlen_q = max(q_lengths)
+    max_seqlen_kv = max(kv_lengths)
+    case["max_seqlen_q"] = max_seqlen_q
+    case["max_seqlen_kv"] = max_seqlen_kv
+
+    golden = {
+        "attention_out": attention_out,
+        "softmax_lse": softmax_lse,
+    }
+    input_data = {
+        "Testcase_Name": case["Testcase_Name"],
+        "params": case,
+        "metadata_input": {
+            "num_heads_q": n1,
+            "num_heads_kv": n2,
+            "head_dim": head_dim,
+            "batch_size": batch,
+            "max_seqlen_q": max_seqlen_q,
+            "max_seqlen_kv": max_seqlen_kv,
+            "layout_q": case["layout_q"],
+            "kv_layout": case["kv_layout"],
+        },
+        "input": {
+            "query": query,
+            "key": key,
+            "value": value,
+            "q_scale": q_scale,
+            "k_scale": k_scale,
+            "v_scale": v_scale,
+            "p_scale": p_scale,
+            "cu_seqlens_q": cu_seqlens_q_input,
+            "cu_seqlens_kv": cu_seqlens_kv_input,
+            "seqused_q": seqused_q,
+            "seqused_kv": seqused_kv,
+            "sparse_indices": sparse_indices,
+            "sparse_seq_len": sparse_seq_len,
+            "block_table": block_table,
+            "atten_mask": atten_mask,
+            "metadata": None,
+            "max_seqlen_q": max_seqlen_q,
+            "max_seqlen_kv": max_seqlen_kv,
+            "softmax_scale": case["softmax_scale"],
+            "q_block_size": q_block_size,
+            "kv_block_size": kv_block_size,
+            "kv_layout": case["kv_layout"],
+            "sparse_indices_layout": case["sparse_indices_layout"],
+            "quant_mode": case["quant_mode"],
+            "mask_mode": case["mask_mode"],
+            "return_softmax_lse": case["return_softmax_lse"],
+        },
+        "golden": golden,
+        "cpu_output": attention_out,
+        "cpu_softmax_lse": softmax_lse,
+    }
+
+    if save_pt:
+        save_test_case(input_data, save_path)
+
+    return input_data
