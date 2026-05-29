@@ -20,7 +20,7 @@
 #include "op_kernel/math_util.h"
 #include "../common/basic_block_config.h"
 #include "../common/basic_block_vf_mx.h"
-#include "../common/tool.h"
+#include "../common/gmmsq_tools.h"
 #include "gmmsq_weight_quant_vcv_basic_block.h"
 #include "grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
 

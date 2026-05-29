@@ -19,8 +19,8 @@
 #include "op_kernel/math_util.h"
 #include "../common/basic_block_config.h"
 #include "../common/basic_block_vf_mx.h"
-#include "../common/tool.h"
-#include "../common/gmm_swiglu_quant_mx_vf.h"
+#include "../common/gmmsq_tools.h"
+#include "gmmsq_quant_mx_vf.h"
 #include "gmmsq_weight_quant_cube_compute_tools.h"
 
 using AscendC::BLOCK_CUBE;
