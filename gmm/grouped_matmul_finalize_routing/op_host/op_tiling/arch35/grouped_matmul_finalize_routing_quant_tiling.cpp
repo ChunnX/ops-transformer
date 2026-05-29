@@ -113,7 +113,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto scaleDesc = context_->GetInputDesc(SCALE_INDEX);
     OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleDesc is nullptr."), return false);
-    inputParams_.scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : inputParams_.scaleDtype;
+    inputParams_.scaleDtype = scaleDesc->GetDataType();
     if (inputParams_.scaleDtype == ge::DT_FLOAT) {
         scaleType_ = 1;
     } else if (inputParams_.scaleDtype == ge::DT_BF16) {
@@ -455,6 +455,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     tilingData_.gmmFinalizeRoutingDataParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmFinalizeRoutingDataParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias ? 1 : 0);
 
+    DeterministicTilingProcess();
     PrintQuantParams();
     return ge::GRAPH_SUCCESS;
 }
@@ -560,6 +561,39 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
         << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
         << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias);
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+}
+
+void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
+{
+    if (context_->GetDeterministic() == 0 || inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8) {
+        tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
+        return;
+    }
+    tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 1;
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint64_t l2Size;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
+    deterWorkspaceSize_ = static_cast<uint32_t>((l2Size - SYS_WORKSPACE_SIZE) * DETER_WORKSPACE_RATIO);
+    tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+    OP_LOGD(context_->GetNodeName(), "DeterministicTilingProcess: flag=%u, wsSize=%u",
+            tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag,
+            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize);
+}
+
+ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
+{
+    auto ret = GroupedQmmTiling::GetWorkspaceSize();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+    if (tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag == 1) {
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
+        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu",
+                deterWorkspaceSize_, workspaces[0]);
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulFinalizeRouting, GroupedMatmulFinalizeRoutingQuantTiling, 1);
