@@ -460,10 +460,6 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
                           seqOffsetOptional, cacheMode, isSeqLensCumsum),
                    DFX_OUT(keyRef, valueRef));
 
-    OP_LOGE(ACLNN_SUCCESS,
-            ">>> aclnnGatherPaKvCacheGetWorkspaceSize ENTER, cacheMode=%s, isSeqLensCumsum=%d",
-            (cacheMode != nullptr) ? cacheMode : "null", isSeqLensCumsum);
-
     CHECK_RET(CheckNullptr(keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
                            workspaceSize, executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
@@ -473,7 +469,6 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     bool keyRefEmpty = keyRef->GetViewShape().GetShapeSize() == 0;
     bool valueRefEmpty = valueRef->GetViewShape().GetShapeSize() == 0;
     if (keyCacheEmpty || valueCacheEmpty || keyRefEmpty || valueRefEmpty) {
-        OP_LOGE(ACLNN_SUCCESS, ">>> Empty tensor detected, skip compute");
         *workspaceSize = 0;
         auto uniqueExecutor = CREATE_EXECUTOR();
         CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -502,19 +497,12 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
-            OP_LOGE(ACLNN_SUCCESS,
-                    ">>> NonContiguous path: isCacheNC=%d, isKeyAndCacheNC=%d",
-                    isCacheNonContiguous, isKeyAndCacheNonContiguous);
             return ProcessNonContiguous(
                 keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
                 seqOffsetOptional, cacheMode, isSeqLensCumsum,
                 workspaceSize, executor, uniqueExecutor, isKeyAndCacheNonContiguous);
         }
     }
-
-    OP_LOGE(ACLNN_SUCCESS,
-            ">>> Contiguous path, isArch35=%d, isCacheModeNorm=%d",
-            isArch35, isCacheModeNorm);
     return ProcessContiguous(
         keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
         seqOffsetOptional, cacheMode, isSeqLensCumsum,
@@ -528,7 +516,7 @@ aclnnStatus aclnnGatherPaKvCache(
     aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGatherPaKvCache);
-    OP_LOGE(ACLNN_SUCCESS, ">>> aclnnGatherPaKvCache LAUNCH");
+    OP_LOGI(ACLNN_SUCCESS, ">>> aclnnGatherPaKvCache LAUNCH");
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
                "GatherPaKvCache launch aicore failed.");
     return ACLNN_SUCCESS;
