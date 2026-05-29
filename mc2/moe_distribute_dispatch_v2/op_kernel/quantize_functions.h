@@ -52,6 +52,7 @@ constexpr uint16_t NAN_CUSTOMIZATION_PACK = 0x00007f81;
 constexpr uint32_t MAN_MASK_FLOAT = 0x007fffff;
 constexpr uint32_t FP32_EXP_BIAS_CUBLAS = 0x00007f00;
 constexpr uint16_t ABS_MASK_FOR_16BIT = 0x7fff;
+constexpr uint32_t EPS_1E_4_FP32 = 0x38D1B717; // 1e-4 的 FP32 bit pattern，用于 cuBLAS scale 路径下限 clamp
 
 using namespace AscendC;
 
@@ -294,6 +295,8 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
         MicroAPI::Duplicate(nanRegTensor, NAN_CUSTOMIZATION_PACK);
         MicroAPI::RegTensor<uint32_t> fp8NanRegTensor;
         MicroAPI::Duplicate(fp8NanRegTensor, MAX_EXP_FOR_FP8_IN_FP32);
+        MicroAPI::RegTensor<uint32_t> epsTensor;
+        MicroAPI::Duplicate(epsTensor, EPS_1E_4_FP32);
 
         MicroAPI::MaskReg cmpResult;
         MicroAPI::MaskReg zeroMask;
@@ -316,6 +319,14 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
                 (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<T>&)max16, maskFloat);
             MicroAPI::Compare<uint32_t, CMPMODE::LT>(cmpResult, max32, expMask, maskFloat);
             MicroAPI::Compare<uint32_t, CMPMODE::NE>(zeroMask, max32, zeroRegTensor32, maskFloat);
+
+            // 1e-4 下限 clamp：抑制 block 内 max_abs 过小导致 scale 噪声放大
+            // 注意：cmpResult/zeroMask 已在 clamp 前用原始 max32 算好，特殊路径不受影响
+            MicroAPI::Max(
+                (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<float>&)max32,
+                (MicroAPI::RegTensor<float>&)epsTensor, maskFloat);
+            // 等价的整数 Max 版本（max32 来自 |x|，非负 IEEE 浮点 bit pattern 与值序一致）：
+            // MicroAPI::Max(max32, max32, epsTensor, maskFloat);
 
             MicroAPI::Mul(
                 (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<float>&)max32,
