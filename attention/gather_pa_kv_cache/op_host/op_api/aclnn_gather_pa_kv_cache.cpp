@@ -221,7 +221,6 @@ static bool IsAxesContiguous(const aclTensor *tensor, int64_t startAxis, int64_t
     auto viewShape = tensor->GetViewShape();
     auto viewStrides = tensor->GetViewStrides();
     int64_t dimNum = viewShape.GetDimNum();
-
     if (endAxis > dimNum) {
         return false;
     }
@@ -248,7 +247,6 @@ static bool IsFirstAxisNonContiguous(const aclTensor *tensor)
     auto viewShape = tensor->GetViewShape();
     auto viewStrides = tensor->GetViewStrides();
     int64_t dimNum = viewShape.GetDimNum();
-
     if (dimNum < 2) {
         return false;
     }
@@ -268,7 +266,6 @@ static bool IsLastAxisContiguous(const aclTensor *tensor)
     auto viewShape = tensor->GetViewShape();
     auto viewStrides = tensor->GetViewStrides();
     int64_t dimNum = viewShape.GetDimNum();
-
     if (dimNum < 1) {
         return false;
     }
@@ -475,7 +472,6 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     bool valueCacheEmpty = valueCache->GetViewShape().GetShapeSize() == 0;
     bool keyRefEmpty = keyRef->GetViewShape().GetShapeSize() == 0;
     bool valueRefEmpty = valueRef->GetViewShape().GetShapeSize() == 0;
-
     if (keyCacheEmpty || valueCacheEmpty || keyRefEmpty || valueRefEmpty) {
         OP_LOGE(ACLNN_SUCCESS, ">>> Empty tensor detected, skip compute");
         *workspaceSize = 0;
@@ -502,11 +498,9 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     bool isCacheModeNorm = (cacheMode == nullptr ||
                             strlen(cacheMode) == 0 ||
                             strcmp(cacheMode, "Norm") == 0);
-
     if (isArch35 && isCacheModeNorm) {
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
-
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
             OP_LOGE(ACLNN_SUCCESS,
                     ">>> NonContiguous path: isCacheNC=%d, isKeyAndCacheNC=%d",

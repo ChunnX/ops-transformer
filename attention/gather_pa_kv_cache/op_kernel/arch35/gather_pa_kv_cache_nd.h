@@ -274,7 +274,8 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
                                 curBlockSize * hiddenSizeK_ - (fracBlockCount - 1) * maxUbHiddenSizeK_;
                         }
                         uint64_t keyCacheOffset = keyCacheStart + fracBlockId * maxUbHiddenSizeK_;
-                        GatherKvCache(outKeyGm_[keyOffset], keyCacheGm_[keyCacheOffset], curFracBlockLen, isFilledWithZero);
+                        GatherKvCache(outKeyGm_[keyOffset], keyCacheGm_[keyCacheOffset],
+                                      curFracBlockLen, isFilledWithZero);
                         keyOffset += curFracBlockLen;
                     }
                 } else {
