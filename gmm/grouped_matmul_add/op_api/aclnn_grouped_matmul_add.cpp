@@ -112,14 +112,17 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
         auto groupNum = params.groupList->GetViewShape().GetDim(0);
         auto yDimNum = params.yRef->GetViewShape().GetDimNum();
         if (yDimNum != 3) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnGroupedMatmulAddGetWorkspaceSize", "y", Ops::Transformer::Gmm::FormatString("%zu", yDimNum).c_str(),
-                                                     Ops::Transformer::Gmm::FormatString("The shape dim of %s must be %d", "y", 3).c_str());
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                "aclnnGroupedMatmulAddGetWorkspaceSize", "y",
+                Ops::Transformer::Gmm::FormatString("%zu", yDimNum).c_str(),
+                Ops::Transformer::Gmm::FormatString("The shape dim of %s must be %d", "y", 3).c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }
         auto groupNumY = params.yRef->GetViewShape().GetDim(0);
         if (groupNum != groupNumY) {
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                "aclnnGroupedMatmulAddGetWorkspaceSize", "groupList", Ops::Transformer::Gmm::FormatString("%ld", groupNum).c_str(),
+                "aclnnGroupedMatmulAddGetWorkspaceSize", "groupList",
+                Ops::Transformer::Gmm::FormatString("%ld", groupNum).c_str(),
                 Ops::Transformer::Gmm::FormatString(
                     "When %s is %s, the shape size of %s must be equal to the size (%ld) of the %s axis of %s",
                     "group_type", "2", "groupList", groupNumY, "first", "y")

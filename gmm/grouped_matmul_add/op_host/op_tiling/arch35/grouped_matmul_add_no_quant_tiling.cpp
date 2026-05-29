@@ -53,7 +53,8 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
     }
     OP_CHECK_IF(wDimNum != MIN_DIM || xDimNum_ != MIN_DIM,
                 OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-                    context->GetNodeName(), "x, weight", Ops::Transformer::Gmm::FormatString("%u, %u", xDimNum_, wDimNum).c_str(),
+                    context->GetNodeName(), "x, weight",
+                    Ops::Transformer::Gmm::FormatString("%u, %u", xDimNum_, wDimNum).c_str(),
                     Ops::Transformer::Gmm::FormatString("The shape dims of %s must be %d", "x, weight", 2).c_str()),
                 return false);
     xKDim_ = transposeX_ ? 0U : xDimNum_ - 1U;
@@ -87,16 +88,16 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
     transposeX_ = transposeXPtr != nullptr ? *transposeXPtr : false;
     groupType_ = groupTypePtr != nullptr ? *groupTypePtr : SPLIT_K;
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
-    OP_CHECK_IF(
-        groupType_ != SPLIT_K || !transposeX_ || transposeWeight_,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-            context->GetNodeName(), "group_type, transposeX, transposeWeight",
-            Ops::Transformer::Gmm::FormatString("%d, %s, %s", groupType_, transposeX_ ? "TRUE" : "FALSE", transposeWeight_ ? "TRUE" : "FALSE")
-                .c_str(),
-            Ops::Transformer::Gmm::FormatString("When %s is %d, the values of %s must be %s", "group_type", 2, "transposeX, transposeWeight",
-                         "TRUE, FALSE")
-                .c_str()),
-        return false);
+    OP_CHECK_IF(groupType_ != SPLIT_K || !transposeX_ || transposeWeight_,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    context->GetNodeName(), "group_type, transposeX, transposeWeight",
+                    Ops::Transformer::Gmm::FormatString("%d, %s, %s", groupType_, transposeX_ ? "TRUE" : "FALSE",
+                                                        transposeWeight_ ? "TRUE" : "FALSE")
+                        .c_str(),
+                    Ops::Transformer::Gmm::FormatString("When %s is %d, the values of %s must be %s", "group_type", 2,
+                                                        "transposeX, transposeWeight", "TRUE, FALSE")
+                        .c_str()),
+                return false);
 
     auto xDesc = context->GetDynamicInputDesc(INDEX_X, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context->GetNodeName(), "xDesc is nullptr."), return false);
@@ -111,7 +112,7 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
                 OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                     context->GetNodeName(), "x, weight",
                     Ops::Transformer::Gmm::FormatString("%s, %s", (xFormat != ge::FORMAT_ND) ? "not ND" : "ND",
-                                 (wFormat != ge::Format::FORMAT_ND) ? "not ND" : "ND")
+                                                        (wFormat != ge::Format::FORMAT_ND) ? "not ND" : "ND")
                         .c_str(),
                     Ops::Transformer::Gmm::FormatString("The formats of %s must be %s", "x, weight", "ND").c_str()),
                 return false);
@@ -215,7 +216,9 @@ bool GroupedMatmulAddNoQuantTiling::CalMatMulTiling(const gert::TilingContext *c
     OP_CHECK_IF(groupNum_ < 1U || groupNum_ > MAX_TENSOR,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context->GetNodeName(), "groupNum", Ops::Transformer::Gmm::FormatString("%u", groupNum_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1, 1024).c_str()),
+                    Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%d, %d]", "groupNum",
+                                                        1, 1024)
+                        .c_str()),
                 return false);
     uint32_t remainCoreNum = std::max(1U, compileInfoPtr->aicNum / groupNum_);
     FormulateBasicBlock(compileInfoPtr, remainCoreNum);
