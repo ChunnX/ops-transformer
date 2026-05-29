@@ -169,8 +169,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     uint32_t scaleAllocCount = CeilAlignU32(scaleNumsPerBlock_, scaleAlignNum);
     uint64_t scaleInQueSize = scaleAllocCount * sizeof(ScalesType);
 
-    tPipe->InitBuffer(xInQueue_, 1, xPerBlock_ * sizeof(XType));
-    tPipe->InitBuffer(scaleInQue_, 1, scaleInQueSize);
+    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xPerBlock_ * sizeof(XType));
+    tPipe->InitBuffer(scaleInQue_, BUFFER_NUM, scaleInQueSize);
     tPipe->InitBuffer(sumBuf_, xPerBlock_ * sizeof(float));
     sumTensor_ = sumBuf_.Get<float>();
 }
