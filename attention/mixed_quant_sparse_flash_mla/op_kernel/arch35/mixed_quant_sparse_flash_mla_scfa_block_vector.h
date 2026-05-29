@@ -18,21 +18,9 @@
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 
-#if __has_include("../../common/op_kernel/buffers_policy.h")
-#include "../../common/op_kernel/buffers_policy.h"
-#else
-#include "../common/buffers_policy.h"
-#endif
-#if __has_include("../../common/op_kernel/buffer_manager.h")
-#include "../../common/op_kernel/buffer_manager.h"
-#else
-#include "../common/buffer_manager.h"
-#endif
-#if __has_include("../../common/op_kernel/buffer.h")
-#include "../../common/op_kernel/buffer.h"
-#else
-#include "../common/buffer.h"
-#endif
+#include "common/buffers_policy.h"
+#include "common/buffer_manager.h"
+#include "common/buffer.h"
 
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"

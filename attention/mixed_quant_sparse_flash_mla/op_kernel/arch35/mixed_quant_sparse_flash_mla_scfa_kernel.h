@@ -23,21 +23,9 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "../mixed_quant_sparse_flash_mla_metadata.h"
 
-#if __has_include("../../common/op_kernel/matmul.h")
-#include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-#if __has_include("../../common/op_kernel/FixpipeOut.h")
-#include "../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../common/FixpipeOut.h"
-#endif
-#if __has_include("../../common/op_kernel/CopyInL1.h")
-#include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
-#endif
+#include "common/matmul.h"
+#include "common/FixpipeOut.h"
+#include "common/CopyInL1.h"
 
 
 using matmul::MatmulType;
