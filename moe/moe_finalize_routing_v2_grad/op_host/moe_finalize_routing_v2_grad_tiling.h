@@ -134,6 +134,18 @@ protected:
     virtual ge::graphStatus CheckOptionalInputDtype();
     ge::graphStatus CheckOutput();
     ge::graphStatus CheckParams();
+    std::string DimNumToString(size_t dimNum) const
+    {
+        return std::to_string(dimNum) + "D";
+    }
+    std::string DtypeToString(ge::DataType dtype) const
+    {
+        return Ops::Base::ToString(dtype);
+    }
+    std::string ShapeToString(const gert::Shape& shape) const
+    {
+        return Ops::Base::ToString(shape);
+    }
 
 protected:
     // platform info

@@ -172,24 +172,49 @@ protected:
     {
         uint8_t pseMode = hasPse ? static_cast<uint8_t>(pseType) : static_cast<uint8_t>(PseType::PSE_NONE_TYPE);
         OP_LOGD(opName, "TND TilingKey info is implMode:%d, s1TemplateType:%d, s2TemplateType:%d, dTemplateType:%d,"
-            "pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, regbase:%d", static_cast<uint8_t>(implMode),
-            static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), pseMode, hasAttenMask, hasDropOut, hasRope,
-            static_cast<uint8_t>(regbase));
+            "pseMode:%d, hasAttenMask:%d, hasDropOut:%d, hasRope:%d, regbase:%d, optionalDn:%d",
+            static_cast<uint8_t>(implMode), static_cast<uint16_t>(s1TemplateType),
+            static_cast<uint16_t>(s2TemplateType), static_cast<uint16_t>(dTemplateType), pseMode, hasAttenMask,
+            hasDropOut, hasRope, static_cast<uint8_t>(regbase), optionalDn);
 
         // Const 128
         if (dTemplateType == dVTemplateType) {
             return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
-            static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
-            static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED), pseMode, hasAttenMask,
-            hasDropOut, hasRope, static_cast<uint8_t>(outDtype), static_cast<uint8_t>(regbase));
+                static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
+                static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(DTemplateType::NONALIGNED),
+                pseMode, hasAttenMask, hasDropOut, hasRope, static_cast<uint8_t>(outDtype),
+                static_cast<uint8_t>(regbase), optionalDn);
         }
         return GET_TPL_TILING_KEY(0, static_cast<uint8_t>(implMode), static_cast<uint8_t>(tilingKeyLayout),
             static_cast<uint16_t>(s1TemplateType), static_cast<uint16_t>(s2TemplateType),
             static_cast<uint16_t>(dTemplateType), static_cast<uint16_t>(dVTemplateType), pseMode, hasAttenMask,
-            hasDropOut, hasRope, 0, static_cast<uint8_t>(regbase));
+            hasDropOut, hasRope, 0, static_cast<uint8_t>(regbase), optionalDn);
     }
 
+    void AnalyzeOptionalDn() override
+    {
+        if ((hasAttenMask && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::LEFT_UP_CAUSAL_MODE)
+            && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) ||
+            !hasAttenMask || hasPse || hasRope || hasDropOut || inputDtypeBytes == DATA_TYPE_FP32 ||
+            inputDtypeBytes == DATA_TYPE_FP8 || dTemplateType > DTemplateType::ALIGNED_256 ||
+            dTemplateType != dVTemplateType || s1TemplateType == STemplateType::ALIGNED_64) {
+            return;
+        }
+        int64_t s1TotalLen = 0;
+        int64_t s2TotalLen = 0;
+        for (int64_t i = 0; i < bSize; ++i) {
+            s1TotalLen += actualSeqLenData[i];
+            s2TotalLen += actualSeqLenKvData[i];
+        }
+        
+        int64_t s1AvgLen = s1TotalLen / bSize;
+        int64_t s2AvgLen = s2TotalLen / bSize;
+        if (s1AvgLen < NUM_1536 || s2AvgLen < NUM_1536) {
+            return;
+        }
+        optionalDn = true;
+    }
+    
     bool IsCapable() override
     {
         if (npuArch != NpuArch::DAV_3510) {

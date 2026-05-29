@@ -24,7 +24,7 @@
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
@@ -168,7 +168,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
-        const char *opName = "moe_distribute_dispatch_combine_v2";
+        const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(

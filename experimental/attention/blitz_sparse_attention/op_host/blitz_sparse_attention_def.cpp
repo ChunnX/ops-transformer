@@ -81,6 +81,10 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND});
+        this->Output("softmax_lse")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("num_heads")
             .AttrType(REQUIRED)
             .Int(1);
@@ -105,6 +109,12 @@ public:
         this->Attr("inner_precise")
             .AttrType(OPTIONAL)
             .Int(1);
+        this->Attr("softmax_lse_flag")
+            .AttrType(OPTIONAL)
+            .Bool(false);
+        this->Attr("block_shape")
+            .AttrType(OPTIONAL)
+            .ListInt({128, 128});
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -183,6 +193,11 @@ public:
         config_310p.Output("attention_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        config_310p.Output("softmax_lse")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         config_310p.DynamicCompileStaticFlag(true)

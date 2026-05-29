@@ -413,6 +413,10 @@ aclnnStatus aclnnAllGatherMatmulV2(
   - `aclnnAllGatherMatmulV2`默认确定性实现。
 - <term>Ascend 950PR/Ascend 950DT</term>：
     - 输入x1为2维，其维度为\(m, k\)。x2必须是2维，其维度为\(k, n\)，轴满足mm算子入参要求，k轴相等，且k轴取值范围为\[256, 65535\)。
+    - x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
+        - m为空，k不为空，n不为空；
+        - m不为空，k不为空，n为空；
+        - m为空，k不为空，n为空。
     - bias为1维，shape为\(n,\)。
     - 输出output为2维，其维度为\(m*rank\_size, n\)，rank\_size为卡数。
     - 输出gatherout为2维，其维度为\(m*rank\_size, k\)，rank\_size为卡数。

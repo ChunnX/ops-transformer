@@ -80,7 +80,10 @@ __aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, Co
                                                  ServerMode>::QuantMatmulCompute()
 {
     // 计算本片的块
-    QuantMatmulLocalCompute();
+    // 当N=0时，跳过本地计算
+    if (this->paramInTiling_->rankN != 0) {
+        QuantMatmulLocalCompute();
+    }
 
     // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
     this->addrs_->aGM = this->gatherX1Addr_;
@@ -139,6 +142,13 @@ __aicore__ inline void AllGatherQuantBmmPerBlock<AType, BType, CType, MmType, Co
     MmType& mmOp, uint32_t count, const Mc2Tiling::MC2TileInfo& tileInfo, bool isTail)
 {
     uint32_t strideCount = this->paramInTiling_->rankM;
+    // 当N=0时，跳过计算，只wait通信
+    if (this->paramInTiling_->rankN == 0) {
+        for (uint32_t i = 0; i < count; i++) {
+            this->HcclWait(i, isTail);
+        }
+        return;
+    }
     // 按照切分的片数进行逐片处理
     for (uint32_t i = 0; i < count; i++) {
         // 开始计算前确认是否搬运完成，debug模式只做本片内计算，则不需要判断搬运状态

@@ -20,6 +20,7 @@
 #include <string>
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeCombineSetupUT {
 
@@ -248,5 +249,17 @@ TEST_P(MoeDistributeCombineSetupArch35TilingTest, GeneralCases)
 
 INSTANTIATE_TEST_CASE_P(MoeDistributeCombineSetupTilingUT, MoeDistributeCombineSetupArch35TilingTest,
                         testing::ValuesIn(g_testCases));
+
+TEST_F(MoeDistributeCombineSetupArch35TilingTest, TestTilingParse)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl(OP_NAME.c_str());
+    ASSERT_NE(opImpl, nullptr);
+    auto tilingParseFunc = opImpl->tiling_parse;
+    ASSERT_NE(tilingParseFunc, nullptr);
+    auto ret = tilingParseFunc(nullptr);
+    ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+}
 
 } // namespace MoeDistributeCombineSetupUT

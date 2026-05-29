@@ -123,9 +123,6 @@ public:
     bool enablePreSfmg;
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
-    uint64_t qSize;
-    uint64_t kSize;
-    uint64_t vSize;
 
     int64_t get_coreNum() const {return coreNum;}
     int64_t get_b() const {return b;}
@@ -162,9 +159,6 @@ public:
     uint32_t get_sinkOptional() const {return sinkOptional;}
     uint64_t get_s1SinkOuter() const {return s1SinkOuter;}
     uint64_t get_s2SinkOuter() const {return s2SinkOuter;}
-    uint64_t get_qSize() const {return qSize;}
-    uint64_t get_kSize() const {return kSize;}
-    uint64_t get_vSize() const {return vSize;}
 
     void set_coreNum(int64_t coreNumParam) { this->coreNum = coreNumParam; }
     void set_b(int64_t bParam) { this->b = bParam; }
@@ -204,9 +198,6 @@ public:
     void set_sinkOptional(uint32_t sinkOptionalParam) { this->sinkOptional = sinkOptionalParam; }
     void set_s1SinkOuter(uint64_t s1SinkOuterParam) { this->s1SinkOuter = s1SinkOuterParam; }
     void set_s2SinkOuter(uint64_t s2SinkOuterParam) { this->s2SinkOuter = s2SinkOuterParam; }
-    void set_qSize(uint64_t qSizeParam) { this->qSize = qSizeParam; }
-    void set_kSize(uint64_t kSizeParam) { this->kSize = kSizeParam; }
-    void set_vSize(uint64_t vSizeParam) { this->vSize = vSizeParam; }
 };
 
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParamsRegbase {
@@ -323,7 +314,7 @@ public:
     uint64_t maskTailCoreLastLoopNum;
     uint32_t dropoutIsDivisibleBy8;
     bool sValueZeroUnderTND;
-    uint8_t reserved1; // tilingData需要8字节对齐
+    bool hasInvalidCol;
     uint8_t reserved2; // tilingData需要8字节对齐
     uint8_t reserved3; // tilingData需要8字节对齐
 
@@ -366,6 +357,7 @@ public:
     uint64_t get_maskTailCoreLastLoopNum() const { return maskTailCoreLastLoopNum; }
     uint32_t get_dropoutIsDivisibleBy8() const { return dropoutIsDivisibleBy8; }
     bool get_sValueZeroUnderTND() const { return sValueZeroUnderTND; }
+    bool get_hasInvalidCol() const { return hasInvalidCol; }
     uint32_t get_sfmgUsedCoreNum() const {return sfmgUsedCoreNum;}
     uint32_t get_sfmgDyBufferLen() const {return sfmgDyBufferLen;}
     uint32_t get_sfmgYBufferLen() const {return sfmgYBufferLen;}
@@ -404,6 +396,7 @@ public:
     void set_maskTailCoreLastLoopNum(uint64_t val) { maskTailCoreLastLoopNum = val; }
     void set_dropoutIsDivisibleBy8(uint32_t val) { dropoutIsDivisibleBy8 = val; }
     void set_sValueZeroUnderTND(bool val) { sValueZeroUnderTND = val; }
+    void set_hasInvalidCol(bool val) { hasInvalidCol = val; }
     void set_sfmgUsedCoreNum(uint32_t val) { sfmgUsedCoreNum = val; }
     void set_sfmgDyBufferLen(uint32_t val) { sfmgDyBufferLen = val; }
     void set_sfmgYBufferLen(uint32_t val) { sfmgYBufferLen = val; }

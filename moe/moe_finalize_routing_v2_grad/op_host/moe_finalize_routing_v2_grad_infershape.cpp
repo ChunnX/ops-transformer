@@ -60,7 +60,12 @@ static ge::graphStatus MoeFinalizeRoutingV2GradInferShape(gert::InferShapeContex
 
     OP_CHECK_IF(
         (gradYShape->GetDimNum() != DIM_NUM_2 || expandedRowIdxShape->GetDimNum() != DIM_NUM_1),
-        OP_LOGE(context->GetNodeName(), "grad_y must be 2D and expanded_row_idx must be 1D."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context->GetNodeName(), "grad_y and expanded_row_idx",
+            (std::to_string(gradYShape->GetDimNum()) + "D and " +
+             std::to_string(expandedRowIdxShape->GetDimNum()) + "D").c_str(),
+            "grad_y must be 2D and expanded_row_idx must be 1D"),
+        return ge::GRAPH_FAILED);
 
     int64_t dropPadMode = 0;
     int64_t activeNum = 0;
@@ -77,7 +82,10 @@ static ge::graphStatus MoeFinalizeRoutingV2GradInferShape(gert::InferShapeContex
     if (dropPadMode == 1) {
         OP_CHECK_IF(
             (attrs->GetAttrNum() <= ATTR_3_IDX),
-            OP_LOGE(context->GetNodeName(), "expert_num and expert_Capacity is required."), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context->GetNodeName(), "expert_num and expert_capacity", "null",
+                "expert_num and expert_capacity is required"),
+            return ge::GRAPH_FAILED);
         expertNum = *(attrs->GetAttrPointer<int64_t>(ATTR_2_IDX));
         expertCapacity = *(attrs->GetAttrPointer<int64_t>(ATTR_3_IDX));
     }
@@ -98,7 +106,9 @@ static ge::graphStatus MoeFinalizeRoutingV2GradInferShape(gert::InferShapeContex
     const gert::Shape* scalesShape = context->GetOptionalInputShape(INPUT_3_IDX);
     if (scalesShape != nullptr && !IsUnknownRank(scalesShape)) {
         OP_CHECK_IF(
-            (scalesShape->GetDimNum() != DIM_NUM_2), OP_LOGE(context->GetNodeName(), "scales must be 2D."),
+            (scalesShape->GetDimNum() != DIM_NUM_2),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                context->GetNodeName(), "scales", (std::to_string(scalesShape->GetDimNum()) + "D").c_str(), "2D"),
             return ge::GRAPH_FAILED);
         gradScalesShape->SetDim(1, scalesShape->GetDim(1));
     }
