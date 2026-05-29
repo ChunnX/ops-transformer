@@ -125,12 +125,18 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
 {
     auto &outInfo = tilingData->outputParams;
 
-    qCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.qCmpOffset));
-    kCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.kCmpOffset));
-    attnScoreGm.SetGlobalBuffer((__gm__ MM_OUT_T *)(workspace + constInfo.attnScoreOffset));
-    softmaxTmpGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset));
-    topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset));
-    maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset));
+    qCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.qCmpOffset),
+                           outInfo.qCmpSize / sizeof(IN_T));
+    kCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.kCmpOffset),
+                           outInfo.kCmpSize / sizeof(IN_T));
+    attnScoreGm.SetGlobalBuffer((__gm__ MM_OUT_T *)(workspace + constInfo.attnScoreOffset),
+                                outInfo.attnScoreSize / sizeof(MM_OUT_T));
+    softmaxTmpGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset),
+                                 outInfo.softmaxTmpSize / sizeof(T));
+    topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
+                                    outInfo.topkWorkspaceSize / sizeof(int32_t));
+    maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset),
+                              outInfo.maskSize / sizeof(uint8_t));
 
     SyncAll();
 }

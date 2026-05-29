@@ -95,28 +95,36 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
     uint32_t poolInputSize = constInfo.blockShapeX * constInfo.dSize;
     poolInputUb_ = uBuf_.GetWithOffset<IN_T>(poolInputSize, ubOffset);
     ubOffset += poolInputSize * sizeof(IN_T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     poolAccumUb_ = uBuf_.GetWithOffset<T>(constInfo.dSize, ubOffset);
     ubOffset += constInfo.dSize * sizeof(T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     poolOutputUb_ = uBuf_.GetWithOffset<IN_T>(constInfo.dSize, ubOffset);
     ubOffset += constInfo.dSize * sizeof(IN_T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     uint32_t scoreSize = constInfo.yBlocks;
     scoreUb_ = uBuf_.GetWithOffset<T>(scoreSize, ubOffset);
     ubOffset += scoreSize * sizeof(T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     softmaxTmpUb_ = uBuf_.GetWithOffset<T>(scoreSize, ubOffset);
     ubOffset += scoreSize * sizeof(T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     castOutputUb_ = uBuf_.GetWithOffset<T>(scoreSize, ubOffset);
     ubOffset += scoreSize * sizeof(T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     maskUb_ = uBuf_.GetWithOffset<uint8_t>(constInfo.yBlocks, ubOffset);
     ubOffset += constInfo.yBlocks;
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     mScalarUb_ = uBuf_.GetWithOffset<T>(1, ubOffset);
     ubOffset += sizeof(T);
+    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
     lScalarUb_ = uBuf_.GetWithOffset<T>(1, ubOffset);
 }

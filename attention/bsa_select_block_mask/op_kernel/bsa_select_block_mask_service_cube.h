@@ -43,7 +43,7 @@ private:
     GlobalTensor<MM_OUT_T> scoreGmLocal;
 
     TBuf<TPosition::A1> qBuf;
-    TBuf<TPosition::B2> kBuf[2];
+    TBuf<TPosition::B1> kBuf[2];
     TBuf<TPosition::A2> tmpBufL0A[2];
     TBuf<TPosition::B2> tmpBufL0B[2];
     TBuf<TPosition::CO1> tmpBufL0C[2];
