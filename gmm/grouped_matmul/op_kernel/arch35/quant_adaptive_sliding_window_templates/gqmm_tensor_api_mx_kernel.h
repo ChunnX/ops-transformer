@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 #include "blaze/gemm/block/block_mmad_mx.h"
+#include "blaze/gemm/block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -60,7 +61,9 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
         Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
                                       LayoutC>;
     using BlockEpilogue = void;
-    using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue>;
+    using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmAswtWithTailSplit<
+        ProblemShape, Blaze::Gemm::IsTrans<LayoutA>::value, Blaze::Gemm::IsTrans<LayoutB>::value>;
+    using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
 
