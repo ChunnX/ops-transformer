@@ -29,6 +29,7 @@ pass_configs = {
 BLOCK_M = 64
 BLOCK_K = 128
 BLOCK_N = 128
+CUBE_VEC_NUM = 1
 VEC_NUM = 2
 
 
@@ -58,13 +59,13 @@ def matmul_kernel(
         B: T.Tensor((N, K), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(m_num * n_num, threads=VEC_NUM, is_npu=True) as (cid):
+        with T.Kernel(m_num * n_num, threads=CUBE_VEC_NUM, is_npu=True) as (cid):
             m_idx = cid // n_num
             n_idx = cid % n_num
 
-            A_L1 = T.alloc_L1((block_m, block_k), dtype)
-            B_L1 = T.alloc_L1((block_n, block_k), dtype)
-            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_shared((block_m, block_k), dtype)
+            B_L1 = T.alloc_shared((block_n, block_k), dtype)
+            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -101,13 +102,13 @@ def matmul_relu_kernel(
         B: T.Tensor((N, K), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(m_num * n_num, threads=VEC_NUM, is_npu=True) as (cid):
+        with T.Kernel(m_num * n_num, threads=CUBE_VEC_NUM, is_npu=True) as (cid):
             m_idx = cid // n_num
             n_idx = cid % n_num
 
-            A_L1 = T.alloc_L1((block_m, block_k), dtype)
-            B_L1 = T.alloc_L1((block_n, block_k), dtype)
-            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_shared((block_m, block_k), dtype)
+            B_L1 = T.alloc_shared((block_n, block_k), dtype)
+            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -156,7 +157,7 @@ def matmul_broadcast_kernel(
         B: T.Tensor((1, N), dtype),
         C: T.Tensor((M, N), dtype),
     ):
-        with T.Kernel(m_num * n_num, threads=VEC_NUM, is_npu=True) as (cid):
+        with T.Kernel(m_num * n_num, threads=CUBE_VEC_NUM, is_npu=True) as (cid):
             m_idx = cid // n_num
             n_idx = cid % n_num
 
@@ -200,13 +201,13 @@ def matmul_dq_kernel(
         B: T.Tensor((K, D), dtype),
         C: T.Tensor((M, D), dtype),
     ):
-        with T.Kernel(m_num * d_num, threads=VEC_NUM, is_npu=True) as (cid):
+        with T.Kernel(m_num * d_num, threads=CUBE_VEC_NUM, is_npu=True) as (cid):
             m_idx = cid // d_num
             d_idx = cid % d_num
 
-            A_L1 = T.alloc_L1((block_m, block_k), dtype)
-            B_L1 = T.alloc_L1((block_k, block_d), dtype)
-            C_L0C = T.alloc_L0C((block_m, block_d), accum_dtype)
+            A_L1 = T.alloc_shared((block_m, block_k), dtype)
+            B_L1 = T.alloc_shared((block_k, block_d), dtype)
+            C_L0C = T.alloc_fragment((block_m, block_d), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -244,13 +245,13 @@ def matmul_scatter_kernel(
         B: T.Tensor((M, D), dtype),
         C: T.Tensor((K, D), dtype),
     ):
-        with T.Kernel(k_num * d_num, threads=VEC_NUM, is_npu=True) as (cid):
+        with T.Kernel(k_num * d_num, threads=CUBE_VEC_NUM, is_npu=True) as (cid):
             k_idx = cid // d_num
             d_idx = cid % d_num
 
-            A_L1 = T.alloc_L1((block_k, block_m), dtype)
-            B_L1 = T.alloc_L1((block_m, block_d), dtype)
-            C_L0C = T.alloc_L0C((block_k, block_d), accum_dtype)
+            A_L1 = T.alloc_shared((block_k, block_m), dtype)
+            B_L1 = T.alloc_shared((block_m, block_d), dtype)
+            C_L0C = T.alloc_fragment((block_k, block_d), accum_dtype)
 
             for m_idx in T.serial(m_num):
                 T.copy(A[k_idx * block_k, m_idx * block_m], A_L1)

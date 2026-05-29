@@ -231,9 +231,9 @@ class LightningIndexerGrad:
                     relu_in = self.kernel_cube1(query_group, key_gather_npu)
                     
                     # ========== 步骤3: Cube2 - reluGradIn = weights ⊗ dy ==========
-                    weights_group_2d = weights_group.unsqueeze(1)
-                    dy_s1_2d = dy_s1.unsqueeze(0)
-                    relu_grad_in = self.kernel_cube2(weights_group_2d, dy_s1_2d)
+                    # 外积: (g,1) ⊗ (1,topk) -> (g, topk)
+                    # K=1 不满足 Cube 对齐要求，用 PyTorch 直接计算
+                    relu_grad_in = weights_group.unsqueeze(1) * dy_s1.unsqueeze(0)
                     
                     # ========== 步骤4: Vec2 - ReLU反向 ==========
                     # relu_grad_out = relu_grad_in * (relu_in > 0)
