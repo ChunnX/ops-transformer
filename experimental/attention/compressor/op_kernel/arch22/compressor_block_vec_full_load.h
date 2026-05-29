@@ -210,9 +210,9 @@ private:
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
-    GlobalTensor<X_T> normWeightGm_;
-    GlobalTensor<X_T> ropeSinGm_;
-    GlobalTensor<X_T> ropeCosGm_;
+    GlobalTensor<T> normWeightGm_;
+    GlobalTensor<T> ropeSinGm_;
+    GlobalTensor<T> ropeCosGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
 
     // ================================Local Buffer区====================================
