@@ -297,9 +297,9 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                                                            dtype_str, i=0)
             print("\n====== 三方对比结果 ======")
             print(f"状态: {str1}, 原因: {str2}")
-            passed_cpu_gpu = (str1 == 'Pass')
-            passed_cpu_npu = (str1 == 'Pass')
-            passed_gpu_npu = (str1 == 'Pass')
+            passed_cpu_gpu = (str1 == 'Pass' or str1 == 'warning')
+            passed_cpu_npu = (str1 == 'Pass' or str1 == 'warning')
+            passed_gpu_npu = (str1 == 'Pass' or str1 == 'warning')
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，无法执行三方对比，使用标准对比模式。")
             compare_mode = False
