@@ -275,6 +275,11 @@ inline const char *GetCustOpApiLibName(void)
     return "libcust_opapi.so";
 }
 
+inline const char *GetTransformerOpApiLibName(void)
+{
+    return "libopapi_transformer.so";
+}
+
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
     auto funcAddr = dlsym(handler, apiName);
@@ -341,6 +346,14 @@ inline void *GetOpApiFuncAddr(const char *apiName)
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler == nullptr) {
         return nullptr;
+    }
+
+    static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+    if (transformerOpApiHandler != nullptr) {
+        auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+        if (funcAddr != nullptr) {
+            return funcAddr;
+        }
     }
     return GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
 }
