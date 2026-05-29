@@ -203,9 +203,33 @@ function(gen_aclnn_with_opdef)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
     install(FILES ${opbuild_out_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
     install(FILES ${aclnn_master_header} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+    install(CODE "
+      set(level2_dest \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${ACLNN_INC_LEVEL2_INSTALL_DIR}\")
+      foreach(h ${opbuild_out_headers} ${aclnn_master_header})
+        get_filename_component(h_name \"\${h}\" NAME)
+        set(dest_file \"\${level2_dest}/\${h_name}\")
+        if(EXISTS \"\${dest_file}\")
+          execute_process(
+            COMMAND ${ASCEND_PYTHON_EXECUTABLE} \"${PROJECT_SOURCE_DIR}/scripts/util/add_deprecation_warning.py\" \"\${dest_file}\"
+          )
+        endif()
+      endforeach()
+    ")
     if (BUILD_OPEN_PROJECT)
       install(FILES ${mc2_aclnn_master_headers} DESTINATION ${ACLNN_INC_INSTALL_DIR} OPTIONAL)
       install(FILES ${mc2_level2_headers} DESTINATION ${ACLNN_INC_LEVEL2_INSTALL_DIR} OPTIONAL)
+      install(CODE "
+        set(level2_dest \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${ACLNN_INC_LEVEL2_INSTALL_DIR}\")
+        foreach(h ${mc2_aclnn_master_headers} ${mc2_level2_headers})
+          get_filename_component(h_name \"\${h}\" NAME)
+          set(dest_file \"\${level2_dest}/\${h_name}\")
+          if(EXISTS \"\${dest_file}\")
+            execute_process(
+              COMMAND ${ASCEND_PYTHON_EXECUTABLE} \"${PROJECT_SOURCE_DIR}/scripts/util/add_deprecation_warning.py\" \"\${dest_file}\"
+            )
+          endif()
+        endforeach()
+      ")
     endif()
   endif()
 

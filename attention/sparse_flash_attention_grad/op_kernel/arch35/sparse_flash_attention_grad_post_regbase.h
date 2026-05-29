@@ -46,7 +46,6 @@ public:
     uint32_t loop;
     uint32_t inputTotalSize;
     uint32_t qPostTailNum;
-    bool hasDvOut{true};
 };
 
 template <typename T1, typename T2, typename OUTDTYPE, bool IS_ROPE, const bool IS_TND>
@@ -61,7 +60,6 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
 
     dqkv[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
     dqkv[1].SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
-    hasDvOut = (dv != nullptr);
     dqkv[2].SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
 
     dqkRope[0].SetGlobalBuffer((__gm__ OUTDTYPE *)dqRope);
@@ -92,9 +90,6 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
         return;
     }
     for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
-        if (qkvIdx == 2 && !hasDvOut) {
-            continue;
-        }
         if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.kPostBlockTotal;

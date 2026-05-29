@@ -1,32 +1,37 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file repeat_interleave_grad_proto.h
- * \brief
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include "infershape_test_util.h"
-#include "ut_op_common.h"
-#include "log/log.h"
-#include "kernel_run_context_facker.h"
-#include "../../../op_graph/kv_rms_norm_rope_cache_proto.h"
-#include "runtime/infer_shape_range_context.h"
-#include "exe_graph/runtime/storage_format.h"
-#include "exe_graph/runtime/storage_shape.h"
-#include "register/op_impl_registry.h"
+#include <vector>
+#include "infer_shape_context_faker.h"
+#include "infer_shape_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_datatype_context_faker.h"
 
-class KvRmsNormRopeCache : public testing::Test
+using namespace std;
+
+namespace {
+const gert::InfershapeContextPara::TensorDescription kOptionalInput = {{{}, {}}, ge::DT_UNDEFINED, ge::FORMAT_ND};
+
+std::vector<gert::InfershapeContextPara::OpAttr> CommonAttrs()
 {
+    return {
+        {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
+        {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
+        {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+    };
+}
+}
+
+class KvRmsNormRopeCache : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -39,259 +44,204 @@ protected:
     }
 };
 
+// A path: kv shape [B,N,S,D] with full dims, no v input
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershapeA)
 {
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{64, 1, 1, 576}, {64, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 64}, {64, 288, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 512}, {64, 288, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{64, 1, 1, 576}, {64, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape ckv_scale_shape = {{512}, {512}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_SUCCESS);
-    auto output0 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(0);
-    auto output1 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(1);
-    auto output2 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(2);
-    auto output3 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(3);
-
-    ASSERT_EQ(Ops::Base::ToString(*output0), "[64, 288, 1, 64]");
-    ASSERT_EQ(Ops::Base::ToString(*output1), "[64, 288, 1, 512]");
-    ASSERT_EQ(Ops::Base::ToString(*output2), "[64, 1, 1, 64]");
-    ASSERT_EQ(Ops::Base::ToString(*output3), "[64, 1, 1, 512]");
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {64, 288, 1, 64}, {64, 288, 1, 512}, {64, 1, 1, 64}, {64, 1, 1, 512}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// B path: kv shape [B,N,S,D] with smaller dims, has v input
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershapeB)
 {
-    
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{64, 1, 1, 192}, {64, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 192}, {64, 288, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 128}, {64, 288, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{192}, {192}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            {{{64, 1, 1, 128}, {64, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 192}, {64, 288, 1, 192}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_scale_shape = {{192}, {192}};
-    gert::StorageShape ckv_scale_shape = {{128}, {128}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 192}, {64, 288, 1, 192}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 192}, {64, 1, 1, 192}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_SUCCESS);
-    auto output0 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(0);
-    auto output1 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(1);
-    auto output2 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(2);
-    auto output3 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(3);
-
-    ASSERT_EQ(Ops::Base::ToString(*output0), "[64, 288, 1, 192]");
-    ASSERT_EQ(Ops::Base::ToString(*output1), "[64, 288, 1, 128]");
-    ASSERT_EQ(Ops::Base::ToString(*output2), "[64, 1, 1, 192]");
-    ASSERT_EQ(Ops::Base::ToString(*output3), "[64, 1, 1, 128]");
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {64, 288, 1, 192}, {64, 288, 1, 128}, {64, 1, 1, 192}, {64, 1, 1, 128}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// Dynamic shape A: kv_shape uses {-2}, output dims derive from cache shapes
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershape_2A)
 {
-    
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 64}, {64, 288, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 512}, {64, 288, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            kOptionalInput,
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{-2}, {-2}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape ckv_scale_shape = {{512}, {512}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_SUCCESS);
-    auto output0 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(0);
-    auto output1 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(1);
-    auto output2 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(2);
-    auto output3 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(3);
-
-    ASSERT_EQ(Ops::Base::ToString(*output0), "[64, 288, 1, 64]");
-    ASSERT_EQ(Ops::Base::ToString(*output1), "[64, 288, 1, 512]");
-    ASSERT_EQ(Ops::Base::ToString(*output2), "[-1, -1, -1, 64]");
-    ASSERT_EQ(Ops::Base::ToString(*output3), "[-1, -1, -1, 512]");
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {64, 288, 1, 64}, {64, 288, 1, 512}, {-1, -1, -1, 64}, {-1, -1, -1, 512}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// Dynamic shape B: kv_shape {-2}, v_shape also {-2}
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershape_2B)
 {
-    
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{192}, {192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 64}, {64, 288, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 128}, {64, 288, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            {{{-2}, {-2}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{-2}, {-2}};
-    gert::StorageShape gamma_shape = {{192}, {192}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape ckv_scale_shape = {{128}, {128}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape v_shape = {{-2}, {-2}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_SUCCESS);
-    auto output0 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(0);
-    auto output1 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(1);
-    auto output2 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(2);
-    auto output3 = holder.GetContext<gert::InferShapeContext>()->GetOutputShape(3);
-
-    ASSERT_EQ(Ops::Base::ToString(*output0), "[64, 288, 1, 64]");
-    ASSERT_EQ(Ops::Base::ToString(*output1), "[64, 288, 1, 128]");
-    ASSERT_EQ(Ops::Base::ToString(*output2), "[-1, -1, -1, 192]");
-    ASSERT_EQ(Ops::Base::ToString(*output3), "[-1, -1, -1, 64]");
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {64, 288, 1, 64}, {64, 288, 1, 128}, {-1, -1, -1, 192}, {-1, -1, -1, 64}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// Error dim A: 5D kv shape should cause GRAPH_FAILED
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershape_error_dimA)
 {
-    
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{64, 1, 1, 1, 576}, {64, 1, 1, 1, 576}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 64}, {64, 288, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 512}, {64, 288, 1, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{512}, {512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{64, 1, 1, 1, 576}, {64, 1, 1, 1, 576}};
-    gert::StorageShape gamma_shape = {{512}, {512}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape ckv_scale_shape = {{512}, {512}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 512}, {64, 288, 1, 512}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 512}, {64, 1, 1, 512}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(11, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_FAILED);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
 
+// Error dim B: 5D kv_shape + 5D v_shape should cause GRAPH_FAILED
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_infershape_error_dimB)
 {
-    
-    auto inferShapeFunc = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_shape;
+    gert::InfershapeContextPara infershapeContextPara(
+        "KvRmsNormRopeCache",
+        {
+            {{{64, 1, 1, 1, 192}, {64, 1, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{128}, {128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 1, 1, 64}, {64, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{64, 288, 1, 64}, {64, 288, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64, 288, 1, 128}, {64, 288, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{64}, {64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{128}, {128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            kOptionalInput,
+            kOptionalInput,
+            {{{64, 1, 1, 1, 128}, {64, 1, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        CommonAttrs());
 
-    gert::StorageShape kv_shape = {{64, 1, 1, 1, 192}, {64, 1, 1, 1, 192}};
-    gert::StorageShape gamma_shape = {{128}, {128}};
-    gert::StorageShape index_shape = {{64}, {64}};
-    gert::StorageShape cos_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape sin_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape k_cache_shape = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_scale_shape = {{64}, {64}};
-    gert::StorageShape ckv_scale_shape = {{128}, {128}};
-    gert::StorageShape k_cache_shape_out = {{64, 288, 1, 64}, {64, 288, 1, 64}};
-    gert::StorageShape ckv_cache_shape_out = {{64, 288, 1, 128}, {64, 288, 1, 128}};
-    gert::StorageShape k_rope_shape = {{64, 1, 1, 64}, {64, 1, 1, 64}};
-    gert::StorageShape ckv_shape = {{64, 1, 1, 128}, {64, 1, 1, 128}};
-    gert::StorageShape v_shape = {{64, 1, 1, 1, 128}, {64, 1, 1, 1, 128}};
-
-    auto holder = gert::InferShapeContextFaker()
-                      .NodeIoNum(12, 4)
-                      .IrInstanceNum({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1})
-                      .InputShapes(
-                          {&kv_shape, &gamma_shape, &cos_shape, &sin_shape, &index_shape, &k_cache_shape,
-                           &ckv_cache_shape, &k_rope_scale_shape, &ckv_scale_shape, nullptr, nullptr, &v_shape})
-                      .OutputShapes({&k_cache_shape_out, &ckv_cache_shape_out, &k_rope_shape, &ckv_shape})
-                      .NodeAttrs(
-                          {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
-                           {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
-                           {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                      .Build();
-
-    ASSERT_EQ(inferShapeFunc(holder.GetContext<gert::InferShapeContext>()), ge::GRAPH_FAILED);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
 
+// Infer dtype test 1: all FLOAT16 inputs, FLOAT16 outputs
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test1)
 {
-    
-    auto data_type_func = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_datatype;
-    
+    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("KvRmsNormRopeCache"),
+              nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("KvRmsNormRopeCache")
+                              ->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
     ge::DataType input_0 = ge::DT_FLOAT16;
     ge::DataType input_1 = ge::DT_INT64;
     ge::DataType input_2 = ge::DT_FLOAT;
@@ -315,10 +265,10 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test1)
                                   {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
                                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
                                    {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                              .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes(
                                   {&input_0, &input_0, &input_0, &input_0, &input_1, &input_0, &input_0, &input_2,
                                    &input_2, &input_2, &input_2})
@@ -334,11 +284,17 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test1)
     EXPECT_EQ(context->GetOutputDataType(3), ge::DT_FLOAT16);
 }
 
+// Infer dtype test 2: all BF16 inputs, BF16 outputs
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test2)
 {
-    
-    auto data_type_func = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_datatype;
-    
+    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("KvRmsNormRopeCache"),
+              nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("KvRmsNormRopeCache")
+                              ->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
     ge::DataType input_0 = ge::DT_BF16;
     ge::DataType input_1 = ge::DT_INT64;
     ge::DataType input_2 = ge::DT_FLOAT;
@@ -362,10 +318,10 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test2)
                                   {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
                                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
                                    {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                              .NodeOutputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes(
                                   {&input_0, &input_0, &input_0, &input_0, &input_1, &input_0, &input_0, &input_2,
                                    &input_2, &input_2, &input_2, &input_0})
@@ -381,11 +337,17 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test2)
     EXPECT_EQ(context->GetOutputDataType(3), ge::DT_BF16);
 }
 
+// Infer dtype test 3: FLOAT16 kv/gamma with INT8 cache, mixed output dtypes
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test3)
 {
-    
-    auto data_type_func = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_datatype;
-    
+    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("KvRmsNormRopeCache"),
+              nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("KvRmsNormRopeCache")
+                              ->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
     ge::DataType input_0 = ge::DT_FLOAT16;
     ge::DataType input_1 = ge::DT_INT64;
     ge::DataType input_2 = ge::DT_INT8;
@@ -411,13 +373,13 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test3)
                                   {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
                                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
                                    {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                              .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(3, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes(
                                   {&input_0, &input_0, &input_0, &input_0, &input_1, &input_2, &input_2, &input_3,
-                                   &input_3, &input_3, &input_3, &input_0,})
+                                   &input_3, &input_3, &input_3, &input_0})
                               .OutputDataTypes({&output_0, &output_0, &output_1, &output_1})
                               .Build();
     auto context = context_holder.GetContext<gert::InferDataTypeContext>();
@@ -430,11 +392,17 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test3)
     EXPECT_EQ(context->GetOutputDataType(3), ge::DT_FLOAT16);
 }
 
+// Infer dtype test 4: BF16 kv/gamma with INT8 cache, mixed output dtypes
 TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test4)
 {
-    
-    auto data_type_func = gert::OpImplRegistry::GetInstance().GetOpImpl("KvRmsNormRopeCache")->infer_datatype;
-    
+    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("KvRmsNormRopeCache"),
+              nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("KvRmsNormRopeCache")
+                              ->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
     ge::DataType input_0 = ge::DT_BF16;
     ge::DataType input_1 = ge::DT_INT64;
     ge::DataType input_2 = ge::DT_INT8;
@@ -460,10 +428,10 @@ TEST_F(KvRmsNormRopeCache, KvRmsNormRopeCache_inferdtype_test4)
                                   {{"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-05)},
                                    {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BNSD")},
                                    {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}})
-                              .NodeOutputTd(0, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(1, ge::DT_INT8, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-                              .NodeOutputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(3, ge::FORMAT_ND, ge::FORMAT_ND)
                               .InputDataTypes(
                                   {&input_0, &input_0, &input_0, &input_0, &input_1, &input_2, &input_2, &input_3,
                                    &input_3, &input_3, &input_3, &input_0})

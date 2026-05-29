@@ -102,7 +102,7 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
         uint64_t startK = (i + startTaskId) * tokenSizeK_;
         uint64_t blocksIdx = static_cast<uint64_t>(cacheIndex) / tilingData_->blockSize;
         uint64_t blocksOffset = static_cast<uint64_t>(cacheIndex) - tilingData_->blockSize * blocksIdx;
-        uint64_t cacheStartK = blocksIdx * tilingData_->blockSize * tokenSizeK_ + blocksOffset * lastDimK_;
+        uint64_t cacheStartK = blocksIdx * tilingData_->keyCacheStride0 + blocksOffset * lastDimK_;
         LocalTensor<T1> inputKey = inputKeyQueue_.AllocTensor<T1>();
         DataCopyPad(inputKey, inputKeyGm_[startK], copyParamsInK, kPadParams);
         inputKeyQueue_.EnQue(inputKey);
@@ -121,7 +121,7 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
         DataCopyPad(outputKeyCacheGm_[cacheStartK], inputKey, copyParamsOutK);
         inputKeyQueue_.FreeTensor(inputKey);
         if constexpr (InOutMode == DUAL_IN_OUT) {
-            uint64_t cacheStartV = blocksIdx * tilingData_->blockSize * tokenSizeV_ + blocksOffset * lastDimV_;
+            uint64_t cacheStartV = blocksIdx * tilingData_->valueCacheStride0 + blocksOffset * lastDimV_;
             LocalTensor<T2> inputValue = inputValueQueue_.DeQue<T2>();
             DataCopyPad(outputValueCacheGm_[cacheStartV], inputValue, copyParamsOutV);
             inputValueQueue_.FreeTensor(inputValue);

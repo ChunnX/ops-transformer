@@ -194,7 +194,7 @@ def mega_moe(
     weight2_type: int = 28
 ):
 
-    return _npu_mega_moe(
+    return torch.ops.npu_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
         topk_ids,
@@ -204,18 +204,18 @@ def mega_moe(
         sym_buffer.num_experts,
         sym_buffer.ep_world_size.value,
         sym_buffer.ccl_buffer_size.value,
-        l1_weights_sf,
-        l2_weights_sf,
-        x_active_mask,
-        scales,
-        sym_buffer.max_recv_token_num,
-        sym_buffer.dispatch_quant_mode,
-        sym_buffer.combine_quant_mode,
-        sym_buffer.comm_alg,
-        sym_buffer.num_max_tokens_per_rank,
-        sym_buffer.dispatch_quant_out_type,
-        weight1_type,
-        weight2_type
+        weight_scales1=l1_weights_sf,
+        weight_scales2=l2_weights_sf,
+        x_active_mask=x_active_mask,
+        scales=scales,
+        max_recv_token_num=sym_buffer.max_recv_token_num,
+        dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
+        combine_quant_mode=sym_buffer.combine_quant_mode,
+        comm_alg=sym_buffer.comm_alg,
+        global_bs=sym_buffer.num_max_tokens_per_rank,
+        dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
+        weight1_type=weight1_type,
+        weight2_type=weight2_type
     )
 
 

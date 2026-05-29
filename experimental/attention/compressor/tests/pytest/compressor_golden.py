@@ -622,8 +622,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
             cur_end_block_id = (cur_end - 1) // block_size
             for j in range(cur_start_block_id, cur_end_block_id + 1):
-                block_table[i][j] = next_block_id
-                next_block_id = next_block_id + 1
+                if next_block_id < block_num:
+                    block_table[i][j] = next_block_id
+                    next_block_id = next_block_id + 1
             # 需要写入state的范围
             end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
             if save_state_seqlens is not None:
@@ -638,7 +639,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
             next_end_block_id = (next_end - 1) // block_size
             for j in range(next_start_block_id, next_end_block_id + 1):
-                if block_table[i][j] == 0:
+                if next_block_id < block_num and block_table[i][j] == 0:
                     block_table[i][j] = next_block_id
                     next_block_id = next_block_id + 1
 
@@ -646,8 +647,8 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
         token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
@@ -672,9 +673,9 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(data_type)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
+    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(torch.float32)
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32)
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32)
     print(f"start_pos={start_pos}")
     print(f"seqused={seqused}")
     print(f"cu_seqlens={cu_seqlens}")
@@ -697,11 +698,31 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     x = x.to("npu:%s" % DEVICE_ID)
     wkv = wkv.to("npu:%s" % DEVICE_ID)
     wgate = wgate.to("npu:%s" % DEVICE_ID)
-    if cache_mode == 1:  # 连续buffer
-        state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
-        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
-        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
-        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    is_contiguous_flag = True
+    if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
+        if is_contiguous_flag:
+            state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
+            state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+            state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+            state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        else :
+            layer_stride = random.randint(1, 10)
+            print(f"layer_stride: {layer_stride}")
+            # state_cache_pad: [batch, (num_layers + stride) * head_dim * 2]
+            state_cache_pad = torch.zeros((kv_state.shape[0], (kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2))
+            print(f"state_cache_pad: shape {state_cache_pad.shape}")
+            state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+            # 使用 as_strided 创建非连续视图
+            # stride(0) = (b + stride) * c, stride(1) = c, stride(2) = 1
+            state_cache = torch.as_strided(
+                state_cache_pad,
+                size=(kv_state.shape[0], kv_state.shape[1], kv_state.shape[2] * 2),
+                stride=((kv_state.shape[1] + layer_stride) * kv_state.shape[2] * 2, kv_state.shape[2] * 2, 1)
+            )
+            # 填充数据
+            state_cache[:, :, :kv_state.shape[2]] = kv_state.clone()
+            state_cache[:, :, kv_state.shape[2]:] = score_state.clone()
+            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}")
     else:
         layer_pad = random.randint(1, 50)
         layer_start_idx = random.randint(0, layer_pad-1)

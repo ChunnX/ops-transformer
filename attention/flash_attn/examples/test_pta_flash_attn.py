@@ -46,8 +46,7 @@ for B in B_list:
                     layout_q = "BNSD",
                     layout_kv = "BNSD",
                     layout_out = "BNSD",
-                    return_softmax_lse=0,
-                    deterministic=0)
+                    return_softmax_lse=0)
         out = out.cpu()
 
         print("************end*************", out, out.shape)

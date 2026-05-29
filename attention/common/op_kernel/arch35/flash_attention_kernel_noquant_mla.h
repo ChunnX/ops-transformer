@@ -396,6 +396,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process()
 {
     int32_t actualCoreNums = this->tilingData->multiCoreParamsRegbase.coreNum;
+    // SyncAll Cube和Vector都需要调用
+    if (this->tilingData->initOutputParams.needInit) {
+        SyncAll<false>();
+    }
     if (aicIdx >= actualCoreNums) {
         return;
     }
@@ -439,6 +443,9 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1]);
 
         gS1EndIdx = runParam.s1LoopTimes;
+        if (lastBN && runParam.s1LoopTimes == 0) {
+            runParam.s1LoopTimes += 1;
+        }
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
             this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, multiCoreInnerIdx, runParam);
