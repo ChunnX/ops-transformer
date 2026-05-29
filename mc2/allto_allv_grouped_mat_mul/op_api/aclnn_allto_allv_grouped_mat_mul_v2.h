@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 #ifndef OP_API_INC_ALL_TO_ALLV_GROUPED_MATMUL_V2_
 #define OP_API_INC_ALL_TO_ALLV_GROUPED_MATMUL_V2_
 
@@ -59,14 +59,14 @@ extern "C" {
  * A = recvCounts的累加和;
  */
 ACLNN_API aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX, const aclTensor* gmmWeight,
-                                                                  const aclTensor* sendCountsTensorOptional,
-                                                                  const aclTensor* recvCountsTensorOptional,
-                                                                  const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-                                                                  const char* group, const char* commMode, int64_t epWorldSize,
-                                                                  const aclIntArray* sendCounts, const aclIntArray* recvCounts,
-                                                                  bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
-                                                                  aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
-                                                                  uint64_t* workspaceSize, aclOpExecutor** executor);
+                                                                    const aclTensor* sendCountsTensorOptional,
+                                                                    const aclTensor* recvCountsTensorOptional,
+                                                                    const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
+                                                                    const char* group, const char* commMode, int64_t epWorldSize,
+                                                                    const aclIntArray* sendCounts, const aclIntArray* recvCounts,
+                                                                    bool transGmmWeight, bool transMmWeight, bool permuteOutFlag, 
+                                                                    aclTensor* gmmY, aclTensor* mmYOptional, aclTensor* permuteOutOptional,
+                                                                    uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnAlltoAllvGroupedMatMul的第二段接口，用于执行计算。
@@ -77,7 +77,7 @@ ACLNN_API aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTen
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void* workspace, uint64_t workspaceSize,
-                                                  aclOpExecutor* executor, aclrtStream stream);
+                                                    aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }
