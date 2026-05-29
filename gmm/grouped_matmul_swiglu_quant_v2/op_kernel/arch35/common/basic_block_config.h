@@ -22,7 +22,7 @@
 #include "kernel_operator_intf.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "tool.h"
+#include "gmmsq_tools.h"
 
 namespace GMMSQWeightQuant {
 
