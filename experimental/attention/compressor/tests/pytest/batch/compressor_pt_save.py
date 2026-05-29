@@ -145,25 +145,25 @@ def compressor_output_single(data_case):
         cu_seqlens = [cu_seqlens]
     elif isinstance(cu_seqlens, list):
         cu_seqlens = cu_seqlens
-    elif cu_seqlens != None:
+    elif cu_seqlens is not None:
         cu_seqlens = [int(x.strip()) for x in cu_seqlens.split(',')]
     # print(f"===== {start_pos} =====")
     if isinstance(start_pos, int):
         start_pos = [start_pos]
     elif isinstance(start_pos, list):
         start_pos = start_pos
-    elif start_pos != None and batch_size !=1:
+    elif start_pos is not None and batch_size !=1:
         start_pos = [int(x.strip()) for x in start_pos.split(',')]
-    elif start_pos != None:
+    elif start_pos is not None:
         start_pos = [int(start_pos)]
     # print(f"===== {seqused} =====")
     if isinstance(seqused, int):
         seqused = [seqused]
     elif isinstance(seqused, list):
         seqused = seqused
-    elif seqused != None and batch_size !=1:
+    elif seqused is not None and batch_size !=1:
         seqused = [int(x.strip()) for x in seqused.split(',')]
-    elif seqused != None:
+    elif seqused is not None:
         seqused = [int(seqused)]
 
     x_datarange = [float(x.strip()) for x in x_datarange.split(',')]
@@ -289,8 +289,9 @@ def compressor_output_single(data_case):
             cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
             cur_end_block_id = (cur_end - 1) // block_size
             for j in range(cur_start_block_id, cur_end_block_id + 1):
-                block_table[i][j] = next_block_id
-                next_block_id = next_block_id + 1
+                if next_block_id < block_num:
+                    block_table[i][j] = next_block_id
+                    next_block_id = next_block_id + 1
             # 需要写入state的范围
             end_pos = get_seq_used_by_batch(i, Seq_len, seqused, cu_seqlens)
             if save_state_seqlens is not None:
@@ -305,15 +306,15 @@ def compressor_output_single(data_case):
             next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
             next_end_block_id = (next_end - 1) // block_size
             for j in range(next_start_block_id, next_end_block_id + 1):
-                if block_table[i][j] == 0:
+                if next_block_id < block_num and block_table[i][j] == 0:
                     block_table[i][j] = next_block_id
                     next_block_id = next_block_id + 1
         if batch_size==0:
             kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (block_num, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(batch_size)), batch_size), dtype=torch.int32)
         token_size = (2*cmp_ratio+Seq_len-1) if coff == 2 else (cmp_ratio+Seq_len-1)
@@ -338,9 +339,9 @@ def compressor_output_single(data_case):
     wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
-    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(data_type)
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type)
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type)
+    norm_weight = torch.tensor(np.random.uniform(norm_weight_datarange[0], norm_weight_datarange[1], (head_dim))).to(torch.float32)
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32)
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
     cpu_kv_state = kv_state.clone()

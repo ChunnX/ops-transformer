@@ -483,7 +483,6 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 * actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
 * 根据算子支持的输入 Layout，query 张量 Shape 中对应的 head 维度大小记为 N1，key 和 value 张量 Shape 中对应的 head 维度大小记为 N2。必须满足 N1 >= N2 且 N1 % N2 == 0。(例如：在 BNSD 布局下，N1 对应 query 的第 2 维，N2 对应 key/value 的第 2 维)
 * headdim=128。
-* 当前只支持 BNSD 和 MHA(N1==N2)。
 
 ## 调用示例
 
@@ -497,7 +496,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
 #include <cstdint>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "../op_host/op_api/aclnn_block_sparse_attention_grad.h"
+#include "aclnnop/aclnn_block_sparse_attention_grad.h"
 
 using namespace std;
 

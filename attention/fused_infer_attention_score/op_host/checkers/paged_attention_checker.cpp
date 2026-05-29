@@ -486,20 +486,14 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
                 fiaInfo.blockSize),
             return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::NO_MLA && (fiaInfo.blockSize > BLOCK_SIZE_MAX || 
-            fiaInfo.blockSize < NUM_32 || fiaInfo.blockSize % NUM_32 != 0),
-            OP_LOGE(fiaInfo.opName,
-                "In per-tensor quant scenario, when page attention enable, "
-                "blockSize(%d) should be a multiple of %u, and should be in range of [%u, %u].",
-                fiaInfo.blockSize, NUM_32, NUM_32, BLOCK_SIZE_MAX),
-            return ge::GRAPH_FAILED);
-        // mxfp8 仅支持blocksize等于512
+        // mxfp8 仅支持blocksize等于512或者1024
         OP_CHECK_IF(
-            fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT && (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8),
+            fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT &&
+            (fiaInfo.blockSize != BLOCK_SIZE_FOR_MXFP8 && fiaInfo.blockSize != BLOCK_SIZE_1024_FOR_MXFP8),
             OP_LOGE(fiaInfo.opName,
                     "In MXFP8 fullquant scenario, when page attention enable, "
-                    "blockSize(%d) should be %u.",
-                    fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8),
+                    "blockSize(%d) should be %u or %u.",
+                    fiaInfo.blockSize, BLOCK_SIZE_FOR_MXFP8, BLOCK_SIZE_1024_FOR_MXFP8),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -227,9 +227,6 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     // 索引9: return_softmax_lse (Int)
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
-    // 索引10: deterministic (Int)
-    opParamInfo_.deterministic = attrs->GetAttrPointer<int64_t>(ATTR_DETERMINISTIC_INDEX);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -510,7 +507,6 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
 
     // 公共参数组 - 其他属性
-    faInfo.deterministicFlag = (deterministic_ != 0);
     faInfo.maxSeqQ = maxSeqQ_;
     faInfo.maxSeqKv = maxSeqKv_;
 }
@@ -639,7 +635,6 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
 
     softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : *opParamInfo_.softmaxScale;
-    deterministic_ = (opParamInfo_.deterministic == nullptr) ? 0 : *opParamInfo_.deterministic;
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 

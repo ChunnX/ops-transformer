@@ -19,13 +19,13 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/op_host/op_api/mc2_3rd_matmul_util.h"
 #include "aclnnInner_distribute_barrier.h"
 #include "distribute_barrier_base.h"
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
@@ -80,8 +80,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclTensor *mc2Context = nullptr;
-    aclnnStatus getWorkspaceSizesRes;
-    aclnnStatus ret;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
+    aclnnStatus ret = ACLNN_ERR_INNER;
 
     if (!is950) {
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
@@ -108,15 +108,14 @@ aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
-    if (is950) {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    if (is950) {
         OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
-#endif
-    } else {
-        return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
-                                           stream);
     }
+#endif
+    return aclnnInnerDistributeBarrier(workspace, workspaceSize, executor,
+                                       stream);
 }
 #ifdef __cplusplus
 }

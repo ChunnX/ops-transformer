@@ -24,7 +24,6 @@ struct FlashAttnHostUtParamBase : public HostUtParamBase {
     std::string layout_kv = "BSND";
     std::string layout_out = "BSND";
     int64_t return_softmax_lse = 0;
-    int64_t deterministic = 0;
 
     FlashAttnHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
     {
@@ -38,7 +37,6 @@ struct FlashAttnHostUtParamBase : public HostUtParamBase {
         layout_kv = ReadMap(csvMap, "layout_kv", "BSND");
         layout_out = ReadMap(csvMap, "layout_out", "BSND");
         return_softmax_lse = std::stoll(ReadMap(csvMap, "return_softmax_lse", "0"));
-        deterministic = std::stoll(ReadMap(csvMap, "deterministic", "0"));
     }
 };
 

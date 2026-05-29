@@ -123,6 +123,8 @@ private:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+
+    uint32_t crossCoreSyncBufId = 0;
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -139,10 +141,12 @@ template <typename CubeBlockType, typename VecBlockType>
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
+        constInfo.aicIdx = this->aicIdx;
         constInfo.aivIdx = 0;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
+        constInfo.aicIdx = this->aicIdx;
         this->tilingData = tiling;
     }
 
@@ -219,7 +223,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitCalcParamsE
     }
 
     if constexpr (IS_SPLIT_G) {
-        maxS2LoopCnt = avgBaseNum * (constInfo.s2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+        maxS2LoopCnt = avgBaseNum * (constInfo.sparseBlockCount + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
 
     if (aicIdx >= usedCoreNum) {
@@ -347,6 +351,12 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
         l1RightBuffers.Get().SetCrossCore();
         l1RightBuffers.Get().SetCrossCore();
@@ -354,10 +364,16 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     }
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
@@ -372,6 +388,12 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     }
     gmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -622,7 +644,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64; // N1=128场景，相邻cube核处理一个s1，第一个cube核承担0-63行g，第二个cube核承担后64行g
+        uint32_t firstHalfG = (constInfo.gSize + 1) >> 1;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : firstHalfG; // N1>64场景，相邻cube核处理一个s1，第一个cube核承担前一半，第二个cube核承担后一半
     } else {
         runParam.goIdx = 0;
     }
