@@ -444,7 +444,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
+    LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow,
+    int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     uint64_t blockElementNum = 16;
     DataCopyParams dataCopyParams;
