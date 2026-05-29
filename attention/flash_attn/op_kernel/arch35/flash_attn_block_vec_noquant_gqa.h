@@ -56,6 +56,8 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
+    // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
+    static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
@@ -107,6 +109,8 @@ public:
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
 
     static constexpr uint32_t DB = 2;
+    // 索引使用 loop & (DB - 1) 代替 loop % DB，要求 DB 必须是2的幂，否则位掩码结果错误
+    static_assert(DB > 0 && (DB & (DB - 1)) == 0, "DB must be a power of two for bitmask indexing");
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
 
@@ -166,6 +170,9 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    // 这三组buffer深度为 PRELOAD_N+1(=3)，与 C1 C1 C2 预取流水深度严格对应。
+    // 3 非2的幂，对应的索引保留 % (PRELOAD_N+1) 取模；若改为位掩码需将深度抬到4，
+    // 会额外多占 1/3 的 UB，得不偿失。本PR只替换了高频、位于内层循环、构成scalar bound瓶颈的 % DB。
     TBuf<> softmaxMaxBuf[PRELOAD_N + 1];
     TBuf<> softmaxSumBuf[PRELOAD_N + 1];
     TBuf<> softmaxExpBuf[PRELOAD_N + 1];
