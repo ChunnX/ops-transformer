@@ -1664,7 +1664,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
                          fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
         isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) &&
+            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
              fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
              bandCond);
