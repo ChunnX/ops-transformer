@@ -15,7 +15,6 @@
 
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
-#include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
