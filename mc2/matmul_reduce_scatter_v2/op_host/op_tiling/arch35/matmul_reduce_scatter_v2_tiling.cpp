@@ -181,6 +181,14 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
     DoSplitMTiling(matmulReduceScatterV2TilingData_->param);
     GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
     GE_ASSERT_GRAPH_SUCCESS(DoAllMatmulTiling());
+    auto& param = matmulReduceScatterV2TilingData_->param;
+    auto& tileTiling = matmulReduceScatterV2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
+    uint64_t stride = static_cast<uint64_t>(param.rankM / param.rankDim) * static_cast<uint64_t>(param.rankN);
+    uint64_t rankSliceElems = static_cast<uint64_t>(tileTiling.M / param.rankDim) * static_cast<uint64_t>(tileTiling.N);
+    OP_LOGE(opName_, "=== DEBUG: stride=%lu, rankSliceElems=%lu, tileCnt=%u, tailCnt=%u, "
+        "tileM=%u, rankM=%u, rankN=%u, rankDim=%u ===",
+        stride, rankSliceElems, param.tileCnt, param.tailCnt,
+        tileTiling.M, param.rankM, param.rankN, param.rankDim);
     SetTilingResult(matmulReduceScatterV2TilingData_->param, MutableMC2MmV3TileTilingData().tCubeTiling,
                     MutableMC2MmV3TailTilingData().tCubeTiling, matmulReduceScatterV2TilingData_->debugMode,
                     matmulReduceScatterV2TilingData_->dataType);

@@ -310,17 +310,19 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CubeNotifyVector()
 {
     // 先全 AIC 同步一次
-    CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_AIC_ONLY_ALL_DET_FLAG);
-    CrossCoreWaitFlag(SYNC_AIC_ONLY_ALL_DET_FLAG);
+    // CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_AIC_ONLY_ALL_DET_FLAG);
+    // CrossCoreWaitFlag(SYNC_AIC_ONLY_ALL_DET_FLAG);
     // 通知 AIV
-    CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_DET_FLAG);
+    // CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_AIC_AIV_DET_FLAG);
+    SyncAll<false>();
 }
 
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::VecWaitCube()
 {
     // 等待 AIC 完成
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+    // CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+    SyncAll<false>();
 }
 
 } // namespace MatmulReduceScatterV2Impl
