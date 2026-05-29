@@ -62,9 +62,9 @@ def matmul_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
 
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_n, block_k), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_n, block_k), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -105,9 +105,9 @@ def matmul_relu_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
 
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_n, block_k), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_n, block_k), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -134,14 +134,19 @@ def matmul_broadcast_kernel(
     用于 Cube2: Weights ⊗ Dy
 
     输入:
-        A: (M, 1) - Weights reshape
-        B: (1, N) - Dy reshape
+        A: (M, 1) - Weights reshape (GM 中逻辑 K=1)
+        B: (1, N) - Dy reshape (GM 中逻辑 K=1)
     输出:
         C: (M, N) - 外积结果
 
-    使用 Cube 单元 (gemm_v0)，比 Vector 外积更高效。
+    按照原版 Ascend C Cube2 实现:
+        - C0_SIZE = 16, baseK = 16 (Nd2Nz 格式转换对齐要求)
+        - L0A 分配 (block_m, 16), L0B 分配 (16, block_n)
+        - Mmad(m=blockM, n=realN, k=1) 实际计算 K=1
+        - Nd2Nz 将 K=1 数据对齐填充到 K=16
     """
 
+    C0_SIZE = 16
     m_num = M // block_m
     n_num = N // block_n
 
@@ -155,9 +160,9 @@ def matmul_broadcast_kernel(
             m_idx = cid // n_num
             n_idx = cid % n_num
 
-            A_L1 = T.alloc_shared((block_m, 1), dtype)
-            B_L1 = T.alloc_shared((1, block_n), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_n), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, C0_SIZE), dtype)
+            B_L1 = T.alloc_L1((C0_SIZE, block_n), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_n), accum_dtype)
 
             T.copy(A[m_idx * block_m, 0], A_L1)
             T.copy(B[0, n_idx * block_n], B_L1)
@@ -199,9 +204,9 @@ def matmul_dq_kernel(
             m_idx = cid // d_num
             d_idx = cid % d_num
 
-            A_L1 = T.alloc_shared((block_m, block_k), dtype)
-            B_L1 = T.alloc_shared((block_k, block_d), dtype)
-            C_L0C = T.alloc_fragment((block_m, block_d), accum_dtype)
+            A_L1 = T.alloc_L1((block_m, block_k), dtype)
+            B_L1 = T.alloc_L1((block_k, block_d), dtype)
+            C_L0C = T.alloc_L0C((block_m, block_d), accum_dtype)
 
             for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
@@ -243,9 +248,9 @@ def matmul_scatter_kernel(
             k_idx = cid // d_num
             d_idx = cid % d_num
 
-            A_L1 = T.alloc_shared((block_k, block_m), dtype)
-            B_L1 = T.alloc_shared((block_m, block_d), dtype)
-            C_L0C = T.alloc_fragment((block_k, block_d), accum_dtype)
+            A_L1 = T.alloc_L1((block_k, block_m), dtype)
+            B_L1 = T.alloc_L1((block_m, block_d), dtype)
+            C_L0C = T.alloc_L0C((block_k, block_d), accum_dtype)
 
             for m_idx in T.serial(m_num):
                 T.copy(A[k_idx * block_k, m_idx * block_m], A_L1)
@@ -287,10 +292,10 @@ def reduce_sum_kernel(
         with T.Kernel(m_num, threads=VEC_NUM, is_npu=True) as (cid):
             m_idx = cid
 
-            A_UB = T.alloc_shared((block_m, block_k), dtype)
-            A_fp32_UB = T.alloc_shared((block_m, block_k), 'float32')
-            C_fp32_UB = T.alloc_shared((block_m,), 'float32')
-            C_UB = T.alloc_shared((block_m,), dtype)
+            A_UB = T.alloc_ub((block_m, block_k), dtype)
+            A_fp32_UB = T.alloc_ub((block_m, block_k), 'float32')
+            C_fp32_UB = T.alloc_ub((block_m,), 'float32')
+            C_UB = T.alloc_ub((block_m,), dtype)
 
             for i in T.Parallel(block_m):
                 C_fp32_UB[i] = T.float32(0)

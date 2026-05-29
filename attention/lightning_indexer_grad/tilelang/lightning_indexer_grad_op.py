@@ -120,7 +120,7 @@ class LightningIndexerGrad:
         )
         
         # Cube2: Weights(g,1) @ Dy(1,topk) -> relu_grad_in (g, topk) FP16
-        # 使用 Vector 外积替代 Cube (K=1 不满足 Cube 对齐要求)
+        # 按原版 Ascend C: baseK=16 (C0_SIZE对齐), Nd2Nz格式转换K=1->K=16
         self.kernel_cube2 = matmul_broadcast_kernel(
             g, topk,
             bm, bd,
