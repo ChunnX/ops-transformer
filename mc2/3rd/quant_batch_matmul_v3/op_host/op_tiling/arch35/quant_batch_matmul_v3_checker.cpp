@@ -581,7 +581,7 @@ groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32.",
                     return false);
     if (pertokenShape == nullptr) {
         OP_LOGE(inputParams_.opName,
-                              "The pertokenScale is required input when scale dtype is FLOAT8_E8M0, \
+            "The pertokenScale is required input when scale dtype is FLOAT8_E8M0, \
 but pertoken is null.");
         return false;
     }

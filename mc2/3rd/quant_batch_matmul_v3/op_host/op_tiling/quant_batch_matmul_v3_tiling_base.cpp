@@ -401,7 +401,8 @@ the shape of x1 and x1Scale(pertokenScale) not match any of quantification: %s."
 }
 
 std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(
-    const std::vector<BasicQuantMode>& quantModeList) const {
+    const std::vector<BasicQuantMode>& quantModeList) const
+{
     std::stringstream ss;
     ss << "[";
     for (auto it = quantModeList.begin(); it != quantModeList.end(); it++) {
@@ -565,7 +566,7 @@ by the %s dimension of %s [%lu], the real group_size in %s dimension can not be 
 }
 
 bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleShape,
-                                                        const gert::StorageShape *pertokenShape)
+                                                       const gert::StorageShape *pertokenShape)
 {
     if (pertokenShape == nullptr) {
         return true;
