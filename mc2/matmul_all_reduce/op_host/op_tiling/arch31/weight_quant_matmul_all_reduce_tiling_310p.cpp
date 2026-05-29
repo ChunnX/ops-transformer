@@ -23,9 +23,9 @@ namespace optiling {
 bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-    OP_TILING_CHECK(
-        weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
-        return false);
+    OP_TILING_CHECK(weightTensor == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
+                    return false);
     auto format = weightTensor->GetStorageFormat();
     if (npuArch_ != NpuArch::DAV_2002 || format == ge::Format::FORMAT_ND) {
         OP_LOGI(opName_, "skip weight quant tiling when is not 310p or is not weight nz[%d].", format);
@@ -102,7 +102,8 @@ uint64_t WeightQuantMatmulAllReduceTiling310P::GetTilingKey() const
             static_cast<uint64_t>(SET_NOT_USE_PARAM),
             static_cast<uint64_t>(FORMAT_B_NZ));
 
-        OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. isKZero_ %lu.", emptyTensorKey, isKZero_);
+        OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. isKZero_ %lu.", emptyTensorKey,
+                isKZero_);
         return emptyTensorKey;
     }
 
@@ -122,8 +123,11 @@ uint64_t WeightQuantMatmulAllReduceTiling310P::GetTilingKey() const
         static_cast<uint64_t>(SET_NOT_USE_PARAM),
         static_cast<uint64_t>(FORMAT_B_NZ));
 
-    OP_LOGI(opName_, "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA %lu.", tilingKey,
-        weightQuantMatmul310TPLParam_.antiQuantType, weightQuantMatmul310TPLParam_.hasAntiquantOffset, weightQuantMatmul310TPLParam_.transA);
+    OP_LOGI(opName_,
+            "WeightQuantMatmulAllReduceTiling310P get tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA "
+            "%lu.",
+            tilingKey, weightQuantMatmul310TPLParam_.antiQuantType, weightQuantMatmul310TPLParam_.hasAntiquantOffset,
+            weightQuantMatmul310TPLParam_.transA);
     return tilingKey;
 }
 
@@ -146,8 +150,12 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
 
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+                OP_LOGE_FOR_INVALID_VALUE(
+            opName_, "param", "invalid",
+            std::string("tiling data size[") +
+                std::to_string(tilingDataSize) +
+                "] not aligned to 8"
+        ),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -234,8 +242,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
             weightQuantMatmul310TPLParam_.transA,
             static_cast<uint64_t>(SET_NOT_USE_PARAM),
             static_cast<uint64_t>(FORMAT_B_NZ));
-        OP_LOGI(opName_, " tilematmulTiling tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA %lu.", tileTilingKey_,
-            weightQuantMatmul310TPLParam_.antiQuantType, weightQuantMatmul310TPLParam_.hasAntiquantOffset, weightQuantMatmul310TPLParam_.transA);
+        OP_LOGI(opName_, " tilematmulTiling tilingKey %lu. AntiQuantType %lu, hasAntiquantOffset %lu, transA %lu.",
+                tileTilingKey_, weightQuantMatmul310TPLParam_.antiQuantType,
+                weightQuantMatmul310TPLParam_.hasAntiquantOffset, weightQuantMatmul310TPLParam_.transA);
         if (MutableRCSTilingData().tailCnt == 0) {
             return ge::GRAPH_SUCCESS;
         }
