@@ -299,10 +299,11 @@ int main()
 
     aclnnStatus aclnn_ret = aclnnMhcPreClampSinkhornGetWorkspaceSize(
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
+        min_val, max_val,
         hc_mult, num_iters, hc_eps, norm_eps, need_backward,
         tensors.hin, tensors.h_post, tensors.h_res,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
-        tensors.sum_out, tensors.norm_out,
+        tensors.sum_out, tensors.norm_out, tensors.reduce_out,
         &workspace_size, &executor);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
