@@ -27,7 +27,11 @@
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#else
+#error "HCOMM version must be >= 89999700 to support MC2 context"
 #endif
+#else
+#error "BUILD_OPEN_PROJECT is not defined. This code requires open project build."
 #endif
 
 using namespace Ops::Transformer;
