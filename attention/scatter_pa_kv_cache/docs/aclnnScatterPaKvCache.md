@@ -119,7 +119,7 @@
 
 - 上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三，符合第四种构造走场景四，符合第五种构造走场景五，符合第六种构造走场景六。场景一、场景二、场景六没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数。场景四没有compressSeqOffsetOptional可选参数。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
-- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、四、五。
+- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一、二、三、四、五。
 
 ## 函数原型
 
@@ -185,7 +185,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">FLOAT16、FLOAT、BFLOAT16、INT8、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">3-4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">keyCacheRef（aclTensor*）</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4-5</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">slotMapping（aclTensor*）</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">INT32、INT64</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">value（aclTensor*）</td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、3、4</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">valueCacheRef（aclTensor*）</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与key保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">0、4、5</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">compressLensOptional（aclTensor*）</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与slotMapping保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">compressSeqOffsetOptional（aclTensor*）</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与slotMapping保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">seqLensOptional（aclTensor*）</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnScatterPaKvCache(
       <td class="tg-0pky">与slotMapping保持一致</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">x</td>
+      <td class="tg-0pky">√</td>
     </tr>
     <tr>
       <td class="tg-0pky">cacheModeOptional（char*）</td>
@@ -415,7 +415,8 @@ aclnnStatus aclnnScatterPaKvCache(
 - 确定性计算：
   - aclnnScatterPaKvCache默认确定性实现。
 - key、value、keyCacheRef、valueCacheRef的数据类型必须一致；
-- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致；
+- 当cacheModeOptional为“PA_NZ”时key、keyCacheRef和value、valueCacheRef的数据类可以不一致；
+- slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致（对应场景一；
 - slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性；
 - 当key和value都是3维，则key和value的前两维shape必须相同；
 - 当key和value都是4维，则key和value的前三维shape必须相同，且keyCacheRef和valueCacheRef的第三维必须是1；
