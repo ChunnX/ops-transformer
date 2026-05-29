@@ -146,14 +146,6 @@ inline void* GetOpApiFuncAddr(const char* apiName) {
           return funcAddr;
       }
   }
-
-  static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
-  if (transformerOpApiHandler != nullptr) {
-      auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
-      if (funcAddr != nullptr) {
-          return funcAddr;
-      }
-  }
   OP_LOGD("aclnnfallback", "opapi lib is not exist,will use aclnn lib.");
   return GetAclnnArrdByApiName(apiName);
 }
