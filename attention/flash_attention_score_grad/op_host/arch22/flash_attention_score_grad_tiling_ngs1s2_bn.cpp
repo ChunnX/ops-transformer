@@ -159,8 +159,9 @@ public:
             return tilingKey;
         } else {
             // SBH: B*H <= 65535
-            if (unique == OptionEnum::DISABLE && mmPreIsNZOut == OptionEnum::ENABLE && mmNextIsNZOut == OptionEnum::DISABLE
-            && dtype == DtypeEnum::BFLOAT16 && layout == optiling::LayoutEnum::BSND) {
+            if (unique == OptionEnum::DISABLE && mmPreIsNZOut == OptionEnum::ENABLE &&
+                mmNextIsNZOut == OptionEnum::DISABLE && dtype == DtypeEnum::BFLOAT16 &&
+                layout == optiling::LayoutEnum::BSND && basicParams.sQ == td_->opInfo.get_sKV()) {
                 if (basicParams.d == static_cast<int64_t>(D_SIZE_72) &&
                     basicParams.sQ == static_cast<int64_t>(S_SIZE_60)) {
                     dTemplateType = DTemplateType::NonAligned72;
