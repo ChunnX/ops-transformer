@@ -623,11 +623,11 @@ ge::graphStatus TilingForMhcPreClampSinkhorn(gert::TilingContext *context)
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto socVersion = ascendcPlatform.GetSocVersion();
-    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
-        OP_LOGD(context->GetNodeName(), "Using arch35 tiling for ASCEND950");
-        MhcPreClampSinkhornTilingRegbase mhcPreSinkhornTiling(context);
-        return mhcPreSinkhornTiling.DoOpTiling();
-    }
+    // if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
+    //     OP_LOGD(context->GetNodeName(), "Using arch35 tiling for ASCEND950");
+    //     MhcPreClampSinkhornTilingRegbase mhcPreSinkhornTiling(context);
+    //     return mhcPreSinkhornTiling.DoOpTiling();
+    // }
 
     MhcPreClampSinkhornTiling mhcPreSinkhornTiling(context);
     return mhcPreSinkhornTiling.DoOpTiling();
