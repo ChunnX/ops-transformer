@@ -31,7 +31,8 @@ namespace ge {
 * @li expanded_x: A 2D tensor. Shape is: (B*S*K, H). When quant_mode is -1, type is:Int8, BFloat16, Float16, Float32,
                   Hif8, FLOAT8_E5M2, FLOAT8_E4M3FN or FLOAT4_E2M1.
                   The data type must be the same as that of x.
-                  When quant_mode in [0, 1], type is Int8 or Int4.
+                  When quant_mode is 0, type is Int8.
+                  When quant_mode is 1, type is Int8 or Int4.
                   When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN].
                   When quant_mode in [6, 7, 8], type is Hif8.
                   When quant_mode is 9, type is FLOAT4_E2M1.
