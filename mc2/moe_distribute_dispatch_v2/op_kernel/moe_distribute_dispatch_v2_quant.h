@@ -276,9 +276,13 @@ public:
 
         quant::ComputeMaxExpcuBLAS(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
         // 计算scales并填充
-        quant::ComputeScalecuBLAS<ExpandXOutType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
-        quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
-            AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        quant::ComputeScalecuBLAS<ExpandXOutType, XInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
+            Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
+            // 计算量化后的expandx并填充
+            quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        }
     }
     #endif
 

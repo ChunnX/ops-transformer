@@ -256,7 +256,7 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint
     }
 }
 
-template<typename T>
+template<typename T, typename U>
 __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
     __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t totalScaleInUB)
 {
@@ -315,8 +315,8 @@ __aicore__ inline void ComputeScalecuBLAS(__ubuf__ uint16_t* maxExpAddr, __ubuf_
             MicroAPI::LoadAlign<uint16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
                 max16, maxExpAddr, vlForHalfNumber);// 单搬 64 个数
 
-            MicroAPI::Cast<float, T, castTraitHalf2Float>(
-                (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<T>&)max16, maskFloat);
+            MicroAPI::Cast<float, U, castTraitHalf2Float>(
+                (MicroAPI::RegTensor<float>&)max32, (MicroAPI::RegTensor<U>&)max16, maskFloat);
             MicroAPI::Compare<uint32_t, CMPMODE::LT>(cmpResult, max32, expMask, maskFloat);
             MicroAPI::Compare<uint32_t, CMPMODE::NE>(zeroMask, max32, zeroRegTensor32, maskFloat);
 
