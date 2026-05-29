@@ -551,9 +551,9 @@ uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetWeightNzDepthWithHighBW(uint64_
 }
 
 void GroupedMatmulSwigluQuantV2Tiling950::ModifyWeightNzDepthForUnalign(uint64_t leftL1Size,
-                                                                             uint64_t baseASize,
-                                                                             uint64_t baseBSize,
-                                                                             uint64_t baseScaleABSize)
+                                                                        uint64_t baseASize,
+                                                                        uint64_t baseBSize,
+                                                                        uint64_t baseScaleABSize)
 {
     if (inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0) {
         return;
