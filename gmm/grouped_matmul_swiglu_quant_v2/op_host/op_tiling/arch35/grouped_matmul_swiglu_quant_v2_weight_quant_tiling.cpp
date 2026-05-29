@@ -94,18 +94,35 @@ bool CheckDynamicInputShapeNotEmpty(const gert::TilingContext& context, uint32_t
     return true;
 }
 
-bool CheckDynamicInputShapeEmpty(const gert::TilingContext& context, uint32_t inputIndex, const char* inputName)
+bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
 {
-    const auto *shapePtr = context.GetDynamicInputShape(inputIndex, 0);
-    if (shapePtr == nullptr) {
+    if (context.GetInputDesc(index) == nullptr) {
         return true;
     }
 
+    const auto *shapePtr = context.GetDynamicInputShape(index, 0);
+    if (shapePtr == nullptr) {
+        return true;
+    }
     const auto &storageShape = shapePtr->GetStorageShape();
-    OP_CHECK_IF(storageShape.GetShapeSize() != 0 && storageShape.GetShapeSize() != 1,
-        OP_LOGE(&context, "Dynamic input shape of %s must be empty.", inputName),
-        return false);
-    return true;
+    return storageShape.GetShapeSize() == 0;
+}
+
+ge::graphStatus CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
+{
+    const auto *rawTiling = context.GetRawTilingData();
+    OP_CHECK_IF(rawTiling == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "GetRawTilingData can not be empty."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTiling->GetData() == nullptr,
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "RawTilingData should not be a null pointer."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(rawTiling->GetCapacity() < tilingDataSize,
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(),
+            "context tiling data capacity %zu < actual tiling data size %zu.",
+            rawTiling->GetCapacity(), tilingDataSize),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSize)
@@ -124,14 +141,8 @@ ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSi
     OP_CHECK_IF(context.GetInputDesc(GROUPLIST_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc groupList is nullptr."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_INDEX, "weight"),
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "Invalid dynamic input shape of weight."),
-        return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc weight is nullptr."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckDynamicInputShapeNotEmpty(context, WEIGHT_SCALE_INDEX, "weightScale"),
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "Invalid dynamic input shape of weightScale."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetInputDesc(WEIGHT_SCALE_INDEX) == nullptr,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "InputDesc weightScale is nullptr."),
@@ -143,30 +154,19 @@ ge::graphStatus CheckContext(gert::TilingContext& context, uint64_t tilingDataSi
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "OutputDesc yScale is nullptr."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(!CheckDynamicInputShapeEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX, "weight_assist_matrix"),
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "weight_assist_matrix must be empty."),
+    OP_CHECK_IF(!IsDynamicInputEmpty(context, WEIGHT_ASSIST_MATRIX_INDEX),
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), 
+        "weightAssistMatrix is not supported, please pass a null pointer or an empty list."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetOptionalInputDesc(BIAS_INDEX) != nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "bias is not supported, please pass in a null pointer."),
+        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "bias is not supported, please pass a null pointer."),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.GetOptionalInputDesc(SMOOTH_SCALE_INDEX) != nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "smooth_scale is not supported, please pass in a null pointer."),
-        return ge::GRAPH_FAILED);
-
-    const auto *rawTiling = context.GetRawTilingData();
-    OP_CHECK_IF(rawTiling == nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "RawTilingData is nullptr."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTiling->GetData() == nullptr,
-        OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(), "RawTilingData->GetData() is nullptr."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(rawTiling->GetCapacity() < tilingDataSize,
         OPS_REPORT_CUBE_INNER_ERR(context.GetNodeName(),
-            "context tiling data capacity %zu < actual tiling data size %zu.",
-            rawTiling->GetCapacity(), tilingDataSize),
+        "smoothScale is not supported, please pass a null pointer."),
         return ge::GRAPH_FAILED);
 
-    return ge::GRAPH_SUCCESS;
+    return CheckTilingDataCapacity(context, tilingDataSize);
 }
 
 bool GetAttrs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& context)
@@ -388,7 +388,7 @@ bool IsInputShapeInvalid(gert::TilingContext& context, const GMMSQWeightQuantInp
         OP_LOGE(params.opName, "N size %ld not %u aligned.", params.nSize, ALIGN_SIZE_N),
         return false);
     OP_CHECK_IF(params.groupNum < 1 || params.groupNum > MAX_GROUP_NUM,
-        OP_LOGE(params.opName, "The input range for the group num is [1, %ld), but got %ld",
+        OP_LOGE(params.opName, "The input range for the group num is [1, %ld], but got %ld",
             MAX_GROUP_NUM, params.groupNum),
         return false);
     return true;
@@ -486,7 +486,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::GetPlatformInfo()
                 return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
     OP_LOGI(context_,
-        "Compile info: aicNum(%zu) aivNum(%lu) ubSize(%lu) baseM(%lu) baseN(%lu) supportL12BtBf16(%lu).",
+        "Compile info: aicNum(%u) aivNum(%lu) ubSize(%lu) baseM(%lu) baseN(%lu) supportL12BtBf16(%lu).",
         compileInfoPtr_->aicNum_, compileInfoPtr_->aivNum_, compileInfoPtr_->ubSize_,
         compileInfoPtr_->baseM_, compileInfoPtr_->baseN_, compileInfoPtr_->supportL12BtBf16);
 
@@ -540,7 +540,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2WeightQuantTiling::DoOpTiling()
 
     OP_LOGD(context_->GetNodeName(),
             "Tiling data set: coreNum=%u, groupNum=%ld, "
-            "kSize=%ld, nSize=%ld, groupListType=%d.",
+            "kSize=%ld, nSize=%ld, groupListType=%u.",
             tilingData_.coreNum, tilingData_.groupNum, tilingData_.kSize, tilingData_.nSize,
             tilingData_.groupListType);
 
