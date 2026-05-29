@@ -739,7 +739,7 @@ NormRopeConcatGrad<normType, addedNormType, ropeType, concatOrder>::Init(TPipe *
             avgHeadsLow_ <<= 1;
         }
 
-        uint64_t headDimNums = static_cast<uint64_t>(batch_) * 
+        uint64_t headDimNums = static_cast<uint64_t>(batch_) *
                                ((maxAffineSeq + GetBlockNum() - 1) / GetBlockNum()) * splitHeadNum_;
         uint64_t current = 1;
         while (current < headDimNums && avgHeadsLow_ != 1) {
@@ -887,7 +887,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ + 
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
                                          static_cast<uint64_t>(outputSeq + s) * headDim_;
                 uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
                 uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
@@ -935,7 +935,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(outputSeq + s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ + 
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
                                          static_cast<uint64_t>(outputSeq + s) * headDim_;
                 uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
                 uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
@@ -983,7 +983,7 @@ __aicore__ inline void NormRopeConcatGrad<normType, addedNormType, ropeType, con
         for (uint32_t s = startSeq; s < endSeq; ++s) {
             ropeOp.PreProcess(s);
             for (uint32_t b = 0; b < batch_; ++b) {
-                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ + 
+                uint64_t outGradOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ +
                                         static_cast<uint64_t>(outputSeq + s) * headDim_;
                 uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
                 uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
