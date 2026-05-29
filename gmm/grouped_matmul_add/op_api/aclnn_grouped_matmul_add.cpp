@@ -125,7 +125,7 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
                 Ops::Transformer::Gmm::FormatString("%ld", groupNum).c_str(),
                 Ops::Transformer::Gmm::FormatString(
                     "When %s is %s, the shape size of %s must be equal to the size (%ld) of the %s axis of %s",
-                    "group_type", "2", "groupList", groupNumY, "first", "y")
+                    "groupType", "2", "groupList", groupNumY, "first", "y")
                     .c_str());
             return ACLNN_ERR_PARAM_INVALID;
         }

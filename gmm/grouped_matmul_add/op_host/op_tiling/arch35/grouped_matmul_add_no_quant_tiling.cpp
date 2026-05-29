@@ -70,8 +70,8 @@ bool GroupedMatmulAddNoQuantTiling::Init(const gert::TilingContext *context)
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-        context->GetNodeName(), "group_type", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
-        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %d", "group_type", groupType_).c_str());
+        context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
+        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %d", "groupType", groupType_).c_str());
     return false;
 }
 
@@ -90,11 +90,11 @@ bool GroupedMatmulAddNoQuantTiling::GetAttrs(const gert::TilingContext *context)
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
     OP_CHECK_IF(groupType_ != SPLIT_K || !transposeX_ || transposeWeight_,
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
-                    context->GetNodeName(), "group_type, transposeX, transposeWeight",
+                    context->GetNodeName(), "groupType, transposeX, transposeWeight",
                     Ops::Transformer::Gmm::FormatString("%d, %s, %s", groupType_, transposeX_ ? "TRUE" : "FALSE",
                                                         transposeWeight_ ? "TRUE" : "FALSE")
                         .c_str(),
-                    Ops::Transformer::Gmm::FormatString("When %s is %d, the values of %s must be %s", "group_type", 2,
+                    Ops::Transformer::Gmm::FormatString("When %s is %d, the values of %s must be %s", "groupType", 2,
                                                         "transposeX, transposeWeight", "TRUE, FALSE")
                         .c_str()),
                 return false);
@@ -215,9 +215,9 @@ bool GroupedMatmulAddNoQuantTiling::CalMatMulTiling(const gert::TilingContext *c
 {
     OP_CHECK_IF(groupNum_ < 1U || groupNum_ > MAX_TENSOR,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupNum", Ops::Transformer::Gmm::FormatString("%u", groupNum_).c_str(),
-                    Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%d, %d]", "groupNum",
-                                                        1, 1024)
+                    context->GetNodeName(), "groupList", Ops::Transformer::Gmm::FormatString("%u", groupNum_).c_str(),
+                    Ops::Transformer::Gmm::FormatString("The group number of %s must be within the range [%d, %d]",
+                                                        "groupList", 1, 1024)
                         .c_str()),
                 return false);
     uint32_t remainCoreNum = std::max(1U, compileInfoPtr->aicNum / groupNum_);
