@@ -172,7 +172,7 @@ struct Tensors {
     void *x_addr = nullptr, *phi_addr = nullptr, *alpha_addr = nullptr, *bias_addr = nullptr;
     void *hin_addr = nullptr, *h_post_addr = nullptr, *h_res_addr = nullptr;
     void *h_pre_addr = nullptr, *hc_before_norm_addr = nullptr, *inv_rms_addr = nullptr;
-    void *sum_out_addr = nullptr, *norm_out_addr = nullptr, *reduce_out = nullptr;
+    void *sum_out_addr = nullptr, *norm_out_addr = nullptr, *reduce_out_addr = nullptr;
     aclTensor *x = nullptr, *phi = nullptr, *alpha = nullptr, *bias = nullptr;
     aclTensor *hin = nullptr, *h_post = nullptr, *h_res = nullptr;
     aclTensor *h_pre = nullptr, *hc_before_norm = nullptr, *inv_rms = nullptr;
