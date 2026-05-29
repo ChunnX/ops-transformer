@@ -103,6 +103,7 @@ class SymmBuffer:
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: Optional[int] = None,
+        activation_out_dtype: Optional[int] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -124,6 +125,7 @@ class SymmBuffer:
         self.intermediate_hidden = intermediate_hidden
         self.dispatch_quant_mode = dispatch_quant_mode
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
+        self.activation_out_dtype = activation_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
 
@@ -172,6 +174,7 @@ def get_symm_buffer_for_mega_moe(
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_dtype: Optional[int] = None,
+    activation_out_dtype: Optional[int] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = ""
 ) -> SymmBuffer:
@@ -186,6 +189,7 @@ def get_symm_buffer_for_mega_moe(
         max_recv_token_num,
         dispatch_quant_mode,
         dispatch_quant_out_dtype,
+        activation_out_dtype,
         combine_quant_mode,
         comm_alg
     )
@@ -228,16 +232,16 @@ def mega_moe(
         scales=scales,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
-        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
         num_max_token_per_rank=sym_buffer.num_max_token_per_rank,
         activation="swiglu",
         activation_clamp=3.4028234663852886e+38,
-        activation_out_dtype=28,
         transpose_weight1=False,
         transpose_weight2=False,
         weight1_interleave=0,
+        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        activation_out_dtype=sym_buffer.activation_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type
     )

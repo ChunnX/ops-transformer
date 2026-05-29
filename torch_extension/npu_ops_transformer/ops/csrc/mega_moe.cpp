@@ -115,6 +115,10 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
          ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
          : 28;
 
+    int64_t activation_out_result_dtype = activation_out_dtype.has_value()	 
+         ? static_cast<int64_t>(GetAclDataType(activation_out_dtype.value()))
+         : 28;
+
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
@@ -142,7 +146,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
         x_active_mask, scales, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
-        comm_alg_ptr, num_max_token_per_rank, activation_ptr, activation_clamp, activation_out_dtype,
+        comm_alg_ptr, num_max_token_per_rank, activation_ptr, activation_clamp, activation_out_result_dtype,
         transpose_weight1, transpose_weight2, weight1_interleave, y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
