@@ -582,7 +582,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
         return false);
-    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CCU_LEN) == 0) || (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == AI_CPU_LEN) ||
+    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CCU_LEN) == 0) || (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == 0) ||
         (std::strlen(commMode_) == 0)),
         VECTOR_INNER_ERR_REPORT_TILING(opName_,
         "comm_mode should be ccu or ai_cpu or empty string, but the actual value is %s.", commMode_),
