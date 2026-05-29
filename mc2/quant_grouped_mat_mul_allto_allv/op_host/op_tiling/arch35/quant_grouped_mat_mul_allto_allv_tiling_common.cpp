@@ -43,6 +43,8 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 
+constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
+
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
     return std::count(list.begin(), list.end(), value) > 0;
@@ -806,7 +808,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommM
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (std::strcmp(commModeStr, "") == 0) {
-        if (rankDim <= 8) {
+        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
