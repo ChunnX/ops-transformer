@@ -354,12 +354,6 @@ public:
                         l0TileNAct,
                         l0TileKAct,
                         initMmad);
-                        // AscendC::printf("tkd print PV l0ATensor[l0ABufId]\n");
-                        // AscendC::DumpTensor(l0ATensor[l0ABufId], 0, 32);
-                        // AscendC::printf("tkd print PV l0BTensor[l0BBufId]\n");
-                        // AscendC::DumpTensor(l0BTensor[l0BBufId], 0, 32);
-                        // AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
-                        // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 32);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
@@ -397,7 +391,6 @@ public:
                     uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag, uint64_t deqScalar)
     {
-        // uint32_t time = 0;
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
         CopyL0CToDst copyL0CToDstSub1;
@@ -495,8 +488,6 @@ public:
                     if (mL0Itr == 0 && kL0Itr == 0) {
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
-                    // AscendC::printf("tkd time: %u\n", time);
-                    // time += 1;
                     tileMmad(
                         l0CTensorTlaTile,
                         l0ATensorTla,
@@ -505,8 +496,6 @@ public:
                         l0TileNAct,
                         l0TileKAct,
                         initMmad);
-                    // AscendC::printf("tkd print PV l0CTensor[l0CBufId]\n");
-                    // AscendC::DumpTensor(l0CTensor[l0CBufId], 0, 64 * 16);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 }
