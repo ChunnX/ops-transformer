@@ -361,6 +361,7 @@ gmm@ops-transformer:
         release:
             huawei_style: 
                 - ops/ops-transformer/gmm/grouped_matmul
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null 
@@ -369,6 +370,8 @@ gmm@ops-transformer:
             test_code: 
                 - ops/ops-transformer/gmm/grouped_matmul/tests
                 - ops/ops-transformer/gmm/grouped_matmul/examples
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/tests
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/examples
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/tests
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/examples
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/tests
