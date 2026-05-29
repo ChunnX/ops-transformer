@@ -1098,13 +1098,13 @@
   </tr>
   <tr>
     <td>mhc</td>
-    <td><a href="../../mhc/mhc_pre_sinkhorn/README.md">mhc_pre_sinkhorn</a></td>
+    <td><a href="../../mhc/mhc_pre_clamp_sinkhorn/README.md">mhc_pre_clamp_sinkhorn</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>mhc_pre_sinkhorn算子，支持MHC架构中Hin、Hpre、Hres和Hpost矩阵输出。</td>
+    <td>mhc_pre_clamp_sinkhorn算子，支持MHC架构中Hin、Hpre、Hres和Hpost矩阵输出。</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -1114,7 +1114,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
+    <td>mhc_pre_clamp_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
     <td>posembedding</td>
