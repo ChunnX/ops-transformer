@@ -38,19 +38,19 @@ using Blaze::Gemm::GroupedMatmulRecipe::MX_GROUP_SIZE;
 using Blaze::Gemm::GroupedMatmulRecipe::NON_FINAL_ACCUMULATION;
 using Blaze::Gemm::GroupedMatmulRecipe::SYNC_MODE4;
 
-namespace Blaze{
+namespace Blaze {
 namespace Gemm {
 namespace Block {
-// Macro aliases keep the specialization declaration compact for this single dispatch-policy binding.
+// Macro aliases keep the specialization declaration compact for this dispatch-policy binding.
 #define WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM                                                                             \
     template <                                                                                                        \
         class ATypeTuple_, class LayoutATuple_, class BTypeTuple_, class LayoutBTuple_, class CType_, class LayoutC_, \
-        class BiasType_>
+        class BiasType_, class LayoutBias_>
 
 #define WQBMM_CUBE_COMPUTE_CLASS                                                                                   \
     BlockMmad<                                                                                                     \
-        KernelMixDynamicKL1NTailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, LayoutC_, \
-        BiasType_, void>
+        MatmulMxFp8Fp4DynamicKL1TailResplit, ATypeTuple_, LayoutATuple_, BTypeTuple_, LayoutBTuple_, CType_, LayoutC_, \
+        BiasType_, LayoutBias_>
 
 /*!
  * \brief AIC tile-compute unit for one tile inside one group in the weight-quant grouped matmul pipeline.
@@ -82,7 +82,9 @@ namespace Block {
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 class WQBMM_CUBE_COMPUTE_CLASS {
 public:
-    using DispatchPolicy = KernelMixDynamicKL1NTailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
+    using ProblemShape = AscendC::Te::Shape<uint64_t, uint64_t, uint64_t, uint64_t>;
+    using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
     using AType = typename AscendC::Std::tuple_element<0, ATypeTuple_>::type;
     using ScaleBType = typename AscendC::Std::tuple_element<1, BTypeTuple_>::type;
@@ -103,15 +105,16 @@ public:
     constexpr static int32_t SCALE_C0 = 2;
     constexpr static int32_t L0C_C0 = 16;
 
-    // Parameters are initialized by the kernel wrapper and passed to this block-level compute unit.
-    // struct Params {
-    //     __gm__ AType* ptrA;
-    //     __gm__ ScaleAType* ptrScaleA;
-    //     __gm__ ScaleBType* ptrScaleB;
-    //     __gm__ CType* ptrC;
-    //     __ubuf__ CType* ptrCUbFirst;
-    //     __ubuf__ CType* ptrCUbSecond;
-    // };
+    // Keep the common BlockMmad Init form while preserving the Tensor-based operator() path.
+    struct L1Params {
+        uint64_t kL1;
+        uint64_t scaleKL1;
+        uint64_t l1BufNum;
+    };
+
+    __aicore__ inline void Init(
+        const ProblemShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool isBias,
+        bool dbL0C);
 
     __aicore__ inline BlockMmad();
     template <typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC>
@@ -127,6 +130,8 @@ private:
         uint64_t kbL1Size;
         uint64_t nL1Size;
         uint64_t kSize;
+        uint64_t scaleKL1Size;
+        uint64_t l0KSize;
     };
 
     __aicore__ inline void WaitAivToAic();
@@ -164,6 +169,27 @@ private:
     static constexpr uint64_t L1_K_CONFIG_256 = 256;
     static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
     static constexpr uint64_t L1_K_DYNAMIC_CONFIG_N_THRESHOLD = L1_N >> 1;
+
+    // Init state. Comments record which old implicit/runtime values they replace.
+    uint64_t m_{1};
+    uint64_t n_{1};
+    // Previously `kSize`, derived from tensorA.Layout() in operator().
+    uint64_t k_{1};
+    // Previously the nominal `kbL1Size` chosen for non-tail tiles.
+    uint64_t kL1_{1};
+    // Previously the fixed constant `MX_SCALE_K_L1_SIZE`.
+    uint64_t scaleKL1_{MX_SCALE_K_L1_SIZE};
+    uint64_t l1BufNum_{DOUBLE_BUFFER};
+    // Nominal tile M/N from Init. Actual current-tile M/N still come from tensorC.Layout() for tail compatibility.
+    uint64_t baseM_{L1_M};
+    uint64_t baseN_{L1_N};
+    // Previously `l0KSize`, derived as `(mL1Size <= 128 && nL1Size <= 128) ? 256 : 128`.
+    uint64_t baseK_{128};
+    uint64_t kaL1Size_{L1_K_CONFIG_256};
+    uint64_t kbL1Size_{L1_K_CONFIG_256};
+    bool isBias_{false};
+    bool enableL0cPingPong_{false};
+    bool hasInitConfig_{false};
 
     uint64_t aL1BufIdx_ = 0;
     uint64_t bL1BufIdx_ = 0;
@@ -230,7 +256,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ProcessTileL1(
     // Decide the MMAD accumulation mode for this K-tile.
     bool isLastGmK = kbOffset + kbL1RealSize >= param.kSize;
     bool isFirstGmK = kbOffset == 0;
-    uint64_t l0KSize = (param.mL1Size <= 128 && param.nL1Size <= 128) ? 256 : 128;
+    uint64_t l0KSize = param.l0KSize;
     for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += l0KSize) {
         bool isLastL1K = l1KOffset + l0KSize >= kbL1RealSize;
         uint64_t realL0k = isLastL1K ? kbL1RealSize - l1KOffset : l0KSize;
@@ -251,7 +277,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ProcessTileL1(
         auto CopyL12L0MxA8W4ScaleA3510 = AscendC::Te::MakeCopy(Tile::CopyL12L0MxA8W4ScaleA3510{});
         AscendC::Te::Copy(
             CopyL12L0MxA8W4ScaleA3510, tensorScaleAL0, tensorScaleAL1_,
-            AscendC::Te::MakeCoord(0, ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE)));
+            AscendC::Te::MakeCoord(0, ((l1KOffset + kbOffset) % param.scaleKL1Size)));
 
         auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
         auto layoutBL0 = MakeLayoutBL0{}(realL0k, param.nL1Size);
@@ -267,7 +293,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ProcessTileL1(
         auto CopyL12L0MxA8W4ScaleB3510 = AscendC::Te::MakeCopy(Tile::CopyL12L0MxA8W4ScaleB3510{});
         AscendC::Te::Copy(
             CopyL12L0MxA8W4ScaleB3510, tensorScaleBL0, tensorScaleBL1_,
-            AscendC::Te::MakeCoord(((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE), 0));
+            AscendC::Te::MakeCoord(((l1KOffset + kbOffset) % param.scaleKL1Size), 0));
 
         SetFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
         WaitFlag<HardEvent::MTE1_M>(eventIdMte1ToM_);
@@ -337,8 +363,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(
     uint64_t kbL1Offset)
 {
     uint64_t scaleKGmSize = param.kSize / MX_GROUP_SIZE;
-    uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUP_SIZE;
-    uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
+    uint64_t scaleKL1StandardLen = param.scaleKL1Size / MX_GROUP_SIZE;
+    uint64_t scaleKL1RealSize = (kbL1Offset + param.scaleKL1Size) > param.kSize ?
                                     (param.kSize - kbL1Offset) / MX_GROUP_SIZE :
                                     scaleKL1StandardLen;
     auto CopyScaleGM2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
@@ -395,6 +421,40 @@ __aicore__ inline WQBMM_CUBE_COMPUTE_CLASS::~BlockMmad()
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(
+    const ProblemShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool isBias,
+    bool dbL0C)
+{
+    m_ = AscendC::Te::Get<IDX_M_IDX>(problemShape);
+    n_ = AscendC::Te::Get<IDX_N_IDX>(problemShape);
+    // k_ replaces the old runtime `kSize`, which was previously derived from tensorA.Layout().
+    k_ = AscendC::Te::Get<IDX_K_IDX>(problemShape);
+
+    // kL1_ replaces the old nominal kbL1Size input for non-tail tiles.
+    kL1_ = l1Params.kL1;
+    // scaleKL1_ replaces the old fixed MX_SCALE_K_L1_SIZE value.
+    scaleKL1_ = l1Params.scaleKL1;
+    l1BufNum_ = l1Params.l1BufNum;
+
+    // baseM_/baseN_ are the caller-provided nominal tile sizes. operator() still reads the current tile M/N from
+    // tensorC.Layout() because the Tensor-only interface must preserve tail-tile behavior.
+    baseM_ = AscendC::Te::Get<IDX_M_IDX>(l0TileShape);
+    baseN_ = AscendC::Te::Get<IDX_N_IDX>(l0TileShape);
+    // baseK_ replaces the old internal l0KSize heuristic once the caller explicitly provides l0TileShape.k.
+    baseK_ = AscendC::Te::Get<IDX_K_IDX>(l0TileShape);
+
+    isBias_ = isBias;
+    enableL0cPingPong_ = dbL0C;
+    CalcDynamicKBlock(baseM_, baseN_, kaL1Size_, kbL1Size_);
+
+    aL1BufIdx_ = 0;
+    bL1BufIdx_ = 0;
+    scaleL1BufIdx_ = 0;
+    l0BufIdx_ = 0;
+    hasInitConfig_ = true;
+}
+
+WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CalcDynamicKBlock(
     uint64_t mL1Size, uint64_t nL1Size, uint64_t& kaL1Size, uint64_t& kbL1Size) const
 {
@@ -417,17 +477,37 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::operator()(
     const TensorA& tensorA, const TensorScaleA& tensorScaleA, const TensorScaleB& tensorScaleB, const TensorC& tensorC)
 {
     BlockMmadOffsetParam blockParam = {};
+    // These still come from tensorC.Layout() because operator() needs the real current tile shape, including tails.
     blockParam.mL1Size =
         AscendC::Te::GetElement<AscendC::Te::AttrInfo::Shape, AscendC::Te::AttrInfo::Row, 1>(tensorC.Layout());
-    blockParam.kSize =
-        AscendC::Te::GetElement<AscendC::Te::AttrInfo::Shape, AscendC::Te::AttrInfo::Column, 1>(tensorA.Layout());
     blockParam.nL1Size =
         AscendC::Te::GetElement<AscendC::Te::AttrInfo::Shape, AscendC::Te::AttrInfo::Column, 1>(tensorC.Layout());
-    CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, blockParam.kaL1Size, blockParam.kbL1Size);
+    if (hasInitConfig_) {
+        // kSize originally came from tensorA.Layout(); after Init it comes from problemShape.K.
+        blockParam.kSize = k_;
+        // scaleKL1Size originally used the fixed MX_SCALE_K_L1_SIZE constant.
+        blockParam.scaleKL1Size = scaleKL1_;
+        // l0KSize originally used the internal `(mL1Size <= 128 && nL1Size <= 128) ? 256 : 128` rule.
+        blockParam.l0KSize = baseK_;
+        if (blockParam.mL1Size == baseM_ && blockParam.nL1Size == baseN_) {
+            blockParam.kaL1Size = kaL1Size_;
+            blockParam.kbL1Size = kbL1Size_;
+        } else {
+            // Tail M/N tiles keep the original dynamic ka/kb derivation from the actual Tensor shape.
+            CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, blockParam.kaL1Size, blockParam.kbL1Size);
+        }
+    } else {
+        blockParam.kSize =
+            AscendC::Te::GetElement<AscendC::Te::AttrInfo::Shape, AscendC::Te::AttrInfo::Column, 1>(tensorA.Layout());
+        blockParam.scaleKL1Size = MX_SCALE_K_L1_SIZE;
+        blockParam.l0KSize = (blockParam.mL1Size <= 128 && blockParam.nL1Size <= 128) ? 256 : 128;
+        CalcDynamicKBlock(blockParam.mL1Size, blockParam.nL1Size, blockParam.kaL1Size, blockParam.kbL1Size);
+    }
+
     for (uint64_t kbGmOffset = 0; kbGmOffset < blockParam.kSize; kbGmOffset += blockParam.kbL1Size, bL1BufIdx_ ^= 1) {
         uint64_t kbL1RealSize = (kbGmOffset + blockParam.kbL1Size) >= blockParam.kSize ? blockParam.kSize - kbGmOffset :
                                                                                          blockParam.kbL1Size;
-        if (kbGmOffset % MX_SCALE_K_L1_SIZE == 0) {
+        if (kbGmOffset % blockParam.scaleKL1Size == 0) {
             WaitScaleMTE1ToMTE2();
             CopyMxScaleGmToL1(tensorScaleA, tensorScaleB, blockParam, kbGmOffset);
         }
@@ -443,7 +523,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::operator()(
         if (nextKbGmOffset % blockParam.kaL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             SetMTE1ToMTE2();
         }
-        if (nextKbGmOffset % MX_SCALE_K_L1_SIZE == 0 || nextKbGmOffset >= blockParam.kSize) {
+        if (nextKbGmOffset % blockParam.scaleKL1Size == 0 || nextKbGmOffset >= blockParam.kSize) {
             SetScaleMTE1ToMTE2();
         }
         SetAicToAiv();
