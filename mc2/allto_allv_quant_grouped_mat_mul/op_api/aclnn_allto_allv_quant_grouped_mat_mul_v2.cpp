@@ -111,7 +111,8 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
     return true;
 }
 
-static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
+static bool CheckGmmWeightValid(const aclTensor *gmmWeight)
+{
     if (gmmWeight == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In AlltoAllvQuantGroupedMatmul, input gmmWeight should not be null.");
         return false;
@@ -120,7 +121,8 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight) {
     return true;
 }
 
-static bool CheckMmWeightValid(const aclTensor *mmWeightOptional) {
+static bool CheckMmWeightValid(const aclTensor *mmWeightOptional)
+{
     if (mmWeightOptional == nullptr) {
         return false;
     }
@@ -334,7 +336,9 @@ bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t 
 }
 
 static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight,
-    const aclTensor *gmmWeightScale, const aclTensor *mmWeightOptional, const aclTensor *mmWeightScaleOptional)
+                                                        const aclTensor *gmmWeightScale,
+                                                        const aclTensor *mmWeightOptional,
+                                                        const aclTensor *mmWeightScaleOptional)
 {
     // pertensor量化场景：weightScale dimNum < 4，不需要转置，跳过校验
     if (gmmWeight != nullptr && gmmWeightScale != nullptr && gmmWeightScale->GetViewShape().GetDimNum() >= 4) {
@@ -394,17 +398,18 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype, const char *commMode,
-    aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype,
+    const char *commMode, aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize,
-                                                        aclOpExecutor *executor, aclrtStream stream);
+                                                             aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
+{
     // 获取卡数
     uint32_t rankSize = 0;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -436,10 +441,11 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, aclTensor *gmmY, aclTensor *mmYOptional,
-    aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight,
+    bool transMmWeight, bool permuteOutFlag, int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize,
+    aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     char *str_commMode = const_cast<char *>(commMode);
     int64_t yDtype = gmmY->GetDataType();
@@ -451,8 +457,8 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
-        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional, permuteOutOptional,
-        workspaceSize, executor);
+        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional,
+        permuteOutOptional, workspaceSize, executor);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
         NnopbaseSetUserHandle(*executor, args);
@@ -466,19 +472,20 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
-    aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag,
+    aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前支持转置的gmmWeight涉及该处理
-    CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);	// 先检查gmmWeight是否合法，避免非法操作
+    CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);
     bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
     auto transposeGmmWeight = gmmWeight;    // 复制一个gmmWeight
     if (notContiguous && transGmmWeight) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
+    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         transGmmWeight = !transGmmWeight;
         // 把非连续gmmWeight转成连续
         transposeGmmWeight = TransGmmWeightTensor(gmmWeight);
@@ -514,7 +521,6 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
             CHECK_RET(transMmWeightOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
             mmWeightOptional = transMmWeightOptional;
         }
-        
     }
     
     auto transMmWeightScaleOptional = mmWeightScaleOptional;
@@ -554,7 +560,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
 }
 
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
-                                                        aclOpExecutor *executor, aclrtStream stream)
+                                                          aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
