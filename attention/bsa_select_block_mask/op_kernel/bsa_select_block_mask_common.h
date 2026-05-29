@@ -91,6 +91,7 @@ struct BSAConstInfo {
     uint32_t coreNum;
     uint32_t activeCoreNum;
     uint32_t rowsPerCore;
+    uint32_t extraCores;
     uint32_t totalRows;
     uint32_t qChunkSize;
     uint32_t kChunkSize;

@@ -119,12 +119,11 @@ public:
     uint32_t coreNum;
     uint32_t activeCoreNum;
     uint32_t rowsPerCore;
-    uint32_t tailCoreNum;
+    uint32_t extraCores;
     uint32_t totalRows;
     uint32_t rsvd0;
     uint32_t rsvd1;
     uint32_t rsvd2;
-    int64_t coreStartRow[MAX_CORE_NUM];
 
     uint32_t get_coreNum() const { return coreNum; }
     void set_coreNum(uint32_t v) { this->coreNum = v; }
@@ -132,11 +131,10 @@ public:
     void set_activeCoreNum(uint32_t v) { this->activeCoreNum = v; }
     uint32_t get_rowsPerCore() const { return rowsPerCore; }
     void set_rowsPerCore(uint32_t v) { this->rowsPerCore = v; }
-    uint32_t get_tailCoreNum() const { return tailCoreNum; }
-    void set_tailCoreNum(uint32_t v) { this->tailCoreNum = v; }
+    uint32_t get_extraCores() const { return extraCores; }
+    void set_extraCores(uint32_t v) { this->extraCores = v; }
     uint32_t get_totalRows() const { return totalRows; }
     void set_totalRows(uint32_t v) { this->totalRows = v; }
-    int64_t *get_coreStartRowPtr() { return coreStartRow; }
 };
 
 class BSAOutputParams {

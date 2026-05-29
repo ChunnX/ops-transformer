@@ -192,19 +192,15 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
 {
     uint32_t coreNum = aicNum;
     uint32_t activeCoreNum = BSAMin(xBlocks, coreNum);
-    uint32_t rowsPerCore = BSACeilDivision(xBlocks, activeCoreNum);
+    uint32_t baseRows = xBlocks / activeCoreNum;
+    uint32_t extraCores = xBlocks % activeCoreNum;
+    uint32_t rowsPerCore = baseRows + (extraCores > 0 ? 1 : 0);
 
     multiCoreParams_->set_coreNum(coreNum);
     multiCoreParams_->set_activeCoreNum(activeCoreNum);
     multiCoreParams_->set_rowsPerCore(rowsPerCore);
+    multiCoreParams_->set_extraCores(extraCores);
     multiCoreParams_->set_totalRows(xBlocks);
-    multiCoreParams_->set_tailCoreNum(activeCoreNum);
-
-    int64_t *coreStartRow = multiCoreParams_->get_coreStartRowPtr();
-    for (uint32_t i = 0; i < MAX_CORE_NUM; i++) {
-        uint32_t start = i * rowsPerCore;
-        coreStartRow[i] = (start < xBlocks) ? static_cast<int64_t>(start) : static_cast<int64_t>(xBlocks);
-    }
 }
 
 void BSASelectBlockMaskTilingBase::CalcOutputParams()

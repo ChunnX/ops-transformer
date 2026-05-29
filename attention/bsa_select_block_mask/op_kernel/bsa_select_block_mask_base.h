@@ -103,6 +103,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.coreNum = mcInfo.coreNum;
     constInfo.activeCoreNum = mcInfo.activeCoreNum;
     constInfo.rowsPerCore = mcInfo.rowsPerCore;
+    constInfo.extraCores = mcInfo.extraCores;
     constInfo.totalRows = mcInfo.totalRows;
     constInfo.qChunkSize = baseInfo.qChunkSize;
     constInfo.kChunkSize = baseInfo.kChunkSize;
@@ -135,8 +136,17 @@ template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow)
 {
     uint32_t coreIdx = constInfo.aicIdx;
-    startRow = coreIdx * constInfo.rowsPerCore;
-    endRow = BSAMin(startRow + constInfo.rowsPerCore, constInfo.totalRows);
+    uint32_t extraCores = constInfo.extraCores;
+    uint32_t rowsPerCore = constInfo.rowsPerCore;
+
+    if (coreIdx < extraCores) {
+        startRow = coreIdx * rowsPerCore;
+        endRow = startRow + rowsPerCore;
+    } else {
+        uint32_t baseRows = rowsPerCore - 1;
+        startRow = extraCores * rowsPerCore + (coreIdx - extraCores) * baseRows;
+        endRow = startRow + baseRows;
+    }
     if (startRow >= constInfo.totalRows) {
         startRow = constInfo.totalRows;
         endRow = constInfo.totalRows;
