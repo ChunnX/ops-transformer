@@ -185,7 +185,8 @@ template <typename mmType, bool sync, typename CHANNELDTYPE>
 __aicore__ inline void GMMSwigluCompute<mmType, sync, CHANNELDTYPE>::UpdateMnConfig(MNConfig &mnConfig)
 {
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += static_cast<int64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<32>(mnConfig.n); // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<int64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<32>(mnConfig.n); // 16: nz format last two dim size
     } else {
         mnConfig.wBaseOffset += static_cast<int64_t>(mnConfig.k) * mnConfig.n;
     }

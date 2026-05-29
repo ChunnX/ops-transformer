@@ -346,7 +346,8 @@ protected:
     }
 
 public:
-    void Initialize(const char *opName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
+    void Initialize(const char *opName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
+                    aclOpExecutor **executor)
     {
         opName_ = opName;
         gmmDsqParams_ = params;

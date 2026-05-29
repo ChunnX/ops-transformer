@@ -55,12 +55,10 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
         handler->Initialize(opName, params, workspaceSize, executor);
         return handler->Process();
     } else {
-         std::ostringstream reason;
-         reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
-         std::string reasonStr = reason.str();
-         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                 "In op [%s], %s.",
-                 opName, reasonStr.c_str());
+        std::ostringstream reason;
+        reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
+        std::string reasonStr = reason.str();
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", opName, reasonStr.c_str());
     }
 
     return ACLNN_ERR_PARAM_INVALID;

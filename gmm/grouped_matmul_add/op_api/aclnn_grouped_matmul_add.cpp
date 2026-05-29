@@ -47,7 +47,8 @@ static aclnnStatus CheckNotNull(gmm_add_advanced::GroupedMatmulAddParams params,
                "weight");
     CHECK_COND(params.groupList != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [%s] must not be nullptr.", opName,
                "groupList");
-    CHECK_COND(params.yRef != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [%s] must not be nullptr.", opName, "yRef");
+    CHECK_COND(params.yRef != nullptr, ACLNN_ERR_PARAM_NULLPTR, "In op [%s], [%s] must not be nullptr.", opName,
+               "yRef");
     CHECK_COND(params.groupListType == 0 || params.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when non-quant add, [%s] is not supported, got [%ld].", opName, "groupListType",
                params.groupListType);
@@ -63,12 +64,12 @@ static aclnnStatus CheckFormat(gmm_add_advanced::GroupedMatmulAddParams params, 
                "In op [%s], when non-quant add, the format of [%s] is not supported, got [%s].", opName, "weight",
                op::ToString(params.weight->GetStorageFormat()).GetString());
     CHECK_COND(params.groupList->GetStorageFormat() == Format::FORMAT_ND, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when non-quant add, the format of [%s] is not supported, got [%s].", opName,
-               "groupList", op::ToString(params.groupList->GetStorageFormat()).GetString());
-    CHECK_COND(params.yRef->GetStorageFormat() == Format::FORMAT_ND ||
-                   params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
-               ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant add, the format of [%s] is not supported, got [%s].", opName,
-               "yRef", op::ToString(params.yRef->GetStorageFormat()).GetString());
+               "In op [%s], when non-quant add, the format of [%s] is not supported, got [%s].", opName, "groupList",
+               op::ToString(params.groupList->GetStorageFormat()).GetString());
+    CHECK_COND(
+        params.yRef->GetStorageFormat() == Format::FORMAT_ND || params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
+        ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant add, the format of [%s] is not supported, got [%s].",
+        opName, "yRef", op::ToString(params.yRef->GetStorageFormat()).GetString());
     return ACLNN_SUCCESS;
 }
 

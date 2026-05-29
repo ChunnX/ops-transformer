@@ -237,9 +237,11 @@ __aicore__ inline void GMMProcess<ComputeType>::SetMKN(const int32_t splitValue,
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
+__aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig)
+{
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<uint64_t>(AlignUp<16>(mnConfig.k)) * AlignUp<16>(mnConfig.n); // 16: nz format last two dim size
     } else {
         mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }

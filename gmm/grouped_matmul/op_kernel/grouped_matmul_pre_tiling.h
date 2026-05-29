@@ -128,7 +128,8 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams& tilingData, T
             bestSingleN = AlignUp(Ceil(n, i), BASE_SINGLE_N_ALIGN_UP);
             curNDim = Ceil(n, bestSingleN);
             curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum);
-            ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(coreNum)));
+            ratio =
+                static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(coreNum)));
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
             isModifySingleN = ratio >= EFFECTIVE_TASK_RATIO;
 #else

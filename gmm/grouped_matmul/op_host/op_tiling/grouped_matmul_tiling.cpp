@@ -633,7 +633,8 @@ int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
         }
         curNDim = CeilDiv(maxN_, bestSingleN);
         curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
-        ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(usedCoreNum)));
+        ratio =
+            static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(usedCoreNum)));
         if (ratio >= EFFECTIVE_TASK_RATIO) {
             return bestSingleN;
         }
