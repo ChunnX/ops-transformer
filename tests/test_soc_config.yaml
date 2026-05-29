@@ -19,6 +19,7 @@ all_soc:
   options:
     - ascend310p
     - ascend910b
+    - ascend910_93
     - ascend950
 
 ascend310p:
@@ -80,6 +81,26 @@ ascend910b:
     - mc2/quant_reduce_scatter/tests/ut/op_host
   options:
     - ascend910b
+
+ascend910_93:
+  module: True
+  src:
+    - mc2/moe_distribute_combine/op_host
+    - mc2/moe_distribute_combine/tests/ut/op_host
+    - mc2/moe_distribute_combine_add_rms_norm/op_host
+    - mc2/moe_distribute_combine_add_rms_norm/tests/ut/op_host
+    - mc2/moe_distribute_combine_v2/op_host
+    - mc2/moe_distribute_combine_v2/tests/ut/op_host
+    - mc2/moe_distribute_combine_v3/op_host
+    - mc2/moe_distribute_combine_v3/tests/ut/op_host
+    - mc2/moe_distribute_dispatch/op_host
+    - mc2/moe_distribute_dispatch/tests/ut/op_host
+    - mc2/moe_distribute_dispatch_v2/op_host
+    - mc2/moe_distribute_dispatch_v2/tests/ut/op_host
+    - mc2/moe_distribute_dispatch_v3/op_host
+    - mc2/moe_distribute_dispatch_v3/tests/ut/op_host
+  options:
+    - ascend910_93
 
 ascend950:
   module: True
