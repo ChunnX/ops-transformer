@@ -306,11 +306,13 @@ public:
         Get<K_VALUE>(problemShape_) = params.gmmParams.matmulTiling->Ka;
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
-                perGroupBOffset_ = Align16(Get<N_VALUE>(problemShape_)) * (IS_FP4 ? Align64(Get<K_VALUE>(problemShape_))
-                                                                                  : Align32(Get<K_VALUE>(problemShape_)));
+                perGroupBOffset_ = Align16(Get<N_VALUE>(problemShape_)) 
+                                * (IS_FP4 ? Align64(Get<K_VALUE>(problemShape_))
+                                        : Align32(Get<K_VALUE>(problemShape_)));
             } else {
-                perGroupBOffset_ = (IS_FP4 ? Align64(Get<N_VALUE>(problemShape_)) : Align32(Get<N_VALUE>(problemShape_))) *
-                                   Align16(Get<K_VALUE>(problemShape_));
+                perGroupBOffset_ = (IS_FP4 ? Align64(Get<N_VALUE>(problemShape_)) 
+                                        : Align32(Get<N_VALUE>(problemShape_)))
+                                * Align16(Get<K_VALUE>(problemShape_));
             }
         } else {
             perGroupBOffset_ = Get<N_VALUE>(problemShape_) * Get<K_VALUE>(problemShape_);
