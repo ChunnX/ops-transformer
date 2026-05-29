@@ -719,10 +719,16 @@ and greater or equal to 4, but actual value is %lu.",
         DataType xScaleDtype = gmmDsqParams_.xScale->GetDataType();
         DataType weightScaleDtype = ((*gmmDsqParams_.weightScale)[0])->GetDataType();
         const aclTensor *x = gmmDsqParams_.x;
+        const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         const aclTensor *xScale = gmmDsqParams_.xScale;
         const aclTensor *groupList = gmmDsqParams_.groupList;
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
+        if (weight->GetStorageFormat() == ge::FORMAT_ND && (weight->GetDataType() == DataType::DT_FLOAT4_E1M2 ||
+            gmmDsqParams_.x->GetDataType() == DataType::DT_FLOAT4_E1M2 || gmmDsqParams_.output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,"ND format weight does not support weight/x/quant_dtype with DT_FLOAT4_E1M2 data type.");
+            return false;
+        }
         if(std::find(X_DTYPE_SUPPORT_LIST.begin(), X_DTYPE_SUPPORT_LIST.end(), xDtype) == X_DTYPE_SUPPORT_LIST.end() &&
            std::find(X_DTYPE_SUPPORT_LIST_MXFP4.begin(), X_DTYPE_SUPPORT_LIST_MXFP4.end(), xDtype) == X_DTYPE_SUPPORT_LIST_MXFP4.end() && 
            std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) == XW_DTYPE_SUPPORT_LIST_PERTOKEN.end()){
