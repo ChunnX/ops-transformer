@@ -426,9 +426,29 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::MatmulProcess()
     ProblemShape problemShape{tilingData->qbmmTilingData.m, tilingData->qbmmTilingData.n,
         tilingData->qbmmTilingData.k, 1UL};
     typename BlockMmad::Params mmadParams{selfRankAddr_, bGM_, cGM_, scaleAAddr_, scaleInv2GM};
-    typename KernelImpl::L1Params l1Params{
-        static_cast<uint64_t>(tilingData->qbmmTilingData.stepK) * tilingData->qbmmTilingData.baseK,
-        tilingData->qbmmTilingData.scaleKL1};
+
+    // K-stagger：与 AllGather 的 kBlockStart 严格对齐。
+    // AG 每个 K block 步幅 = 2 * X_PER_BLOCK_NUM = 1024 elements；matmul 每个 kL1 iter = kL1 elements。
+    // 1 个 AG K block 等价于 (AG_BLOCK_ELEMENTS / kL1) 个 matmul iter。
+    // 公式：matmul_kIterStart = AG_kBlockStart * (AG_BLOCK_ELEMENTS / kL1)
+    //                       = ((R * kLoop) / rankSize) * (AG_BLOCK_ELEMENTS / kL1)
+    // 仅在 scaleKL1 >= K（一个 scale window 覆盖全 K）时安全启用。
+    constexpr uint64_t AG_BLOCK_ELEMENTS = 2UL * 512UL;  // 与 all_gather_mte.h 的 X_PER_BLOCK_NUM*2 保持同步
+    uint64_t kL1_local = static_cast<uint64_t>(tilingData->qbmmTilingData.stepK) * tilingData->qbmmTilingData.baseK;
+    uint64_t scaleKL1_local = tilingData->qbmmTilingData.scaleKL1;
+    uint64_t kProblem_local = tilingData->qbmmTilingData.k;
+    uint64_t kL1Iter_local = (kProblem_local + kL1_local - 1) / kL1_local;
+    uint64_t kIterStart_local = 0UL;
+    if (scaleKL1_local >= kProblem_local && rankSize_ > 1U && kL1Iter_local > 0U &&
+        AG_BLOCK_ELEMENTS >= kL1_local && (AG_BLOCK_ELEMENTS % kL1_local) == 0UL) {
+        uint64_t kLoop_local = kProblem_local / AG_BLOCK_ELEMENTS;
+        if (kLoop_local > 0UL) {
+            uint64_t agKBlockStart = (static_cast<uint64_t>(rankId_) * kLoop_local) / rankSize_;
+            uint64_t matmulItersPerAgBlock = AG_BLOCK_ELEMENTS / kL1_local;
+            kIterStart_local = agKBlockStart * matmulItersPerAgBlock;
+        }
+    }
+    typename KernelImpl::L1Params l1Params{kL1_local, scaleKL1_local, kIterStart_local};
     kL1_ = l1Params.kL1;
     typename KernelImpl::BlockSchedulerParams schedulerParams{
         tilingData->qbmmTilingData.baseM,

@@ -98,6 +98,8 @@ public:
     uint64_t kL1Iter_{0UL};
     uint64_t kL1_{0UL};
     uint64_t scaleKL1_{0UL};
+    uint64_t kIterStart_{0UL};
+    bool useStaggeredK_{false};
     uint64_t baseM_{0UL};
     uint64_t baseN_{0UL};
     uint64_t baseK_{0UL};
@@ -126,6 +128,9 @@ public:
     struct L1Params {
         uint64_t kL1;
         uint64_t scaleKL1;
+        // K-stagger：rank R 的 K loop 从 kIterStart 这个 logical iter 起步、模 kL1Iter 绕回。
+        // 仅在 scaleL1Window >= kL1Iter（一个 scale window 覆盖全 K）时启用，否则 BlockMmad 忽略。
+        uint64_t kIterStart{0UL};
     };
 
     __aicore__ inline BlockMmad()
@@ -195,6 +200,9 @@ public:
             l1BufferScaleBOffset_[bufferId] = l1BufferScaleAOffset_[bufferId] + scaleAL1OneBuffer_;
         }
         kL1Iter_ = CeilDiv(k_, kL1_);
+        // Staggered K 只有在一个 scale window 覆盖全 K 时安全，避免 scale 加载 boundary 错位
+        useStaggeredK_ = (l1Params.kIterStart != 0UL) && (scaleL1Window_ >= kL1Iter_);
+        kIterStart_ = useStaggeredK_ ? (l1Params.kIterStart % kL1Iter_) : 0UL;
     }
 
     template <typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB, typename TensorC>
@@ -216,18 +224,23 @@ public:
             }
             uint64_t l1BufId = abL1LoopCnt_ & L1_BUFFER_MASK;
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
-            uint64_t kL1Offset = iter0 * kL1_;
-            auto curGmBKL1 = (iter0 + 1 == kL1Iter_) ? (k_ - kL1Offset) : kL1_;
+            // K-stagger：rank R 的 K loop 从 kIterStart 起步、绕 kL1Iter 循环。
+            // cmatrixInitVal/FINAL_ACCUMULATION 仍挂 iter0（循环计数），保证累加正确。
+            uint64_t logicalIter = useStaggeredK_ ? ((iter0 + kIterStart_) % kL1Iter_) : iter0;
+            uint64_t kL1Offset = logicalIter * kL1_;
+            auto curGmBKL1 = (logicalIter + 1 == kL1Iter_) ? (k_ - kL1Offset) : kL1_;
             auto curPadKL1 = CeilAlign(curGmBKL1, MXFP_DIVISOR_SIZE);
             auto curGmAKL1 = curGmBKL1;
             if (scaleWindowIter == 0) {
                 // Scale fragments are refreshed only when the current K chunk
-                // enters a new scale reuse window.
+                // enters a new scale reuse window. Staggered 路径下要求 scale
+                // 一窗覆盖全 K，从 K=0 整片加载，避免窗口边界与 logicalIter 错位。
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
 
+                uint64_t scaleK1Start = useStaggeredK_ ? 0UL : kL1Offset;
                 uint64_t curScaleKL1 = scaleKL1_;
-                if (kL1Offset + curScaleKL1 > k_) {
-                    curScaleKL1 = k_ - kL1Offset;
+                if (scaleK1Start + curScaleKL1 > k_) {
+                    curScaleKL1 = k_ - scaleK1Start;
                 }
 
                 auto CopyScaleGM2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
@@ -238,7 +251,7 @@ public:
                     AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, fp8_e8m0_t>(l1BufferScaleAOffset_[scaleL1BufId]),
                     layoutScaleAL1);
                 auto gmBlockScaleA = gmScaleA.Slice(
-                    AscendC::Te::MakeCoord(0, kL1Offset / MXFP_GROUP_SIZE),
+                    AscendC::Te::MakeCoord(0, scaleK1Start / MXFP_GROUP_SIZE),
                     AscendC::Te::MakeShape(curM, CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
                 AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleAL1, gmBlockScaleA);
 
@@ -249,7 +262,7 @@ public:
                     AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, fp8_e8m0_t>(l1BufferScaleBOffset_[scaleL1BufId]),
                     layoutScaleBL1);
                 auto gmBlockScaleB = gmScaleB.Slice(
-                    AscendC::Te::MakeCoord(kL1Offset / MXFP_GROUP_SIZE, 0),
+                    AscendC::Te::MakeCoord(scaleK1Start / MXFP_GROUP_SIZE, 0),
                     AscendC::Te::MakeShape(CeilDiv(curScaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, curN));
                 AscendC::Te::Copy(CopyScaleGM2L1, tensorScaleBL1, gmBlockScaleB);
             }
@@ -301,7 +314,8 @@ public:
                     tensorBL1.Slice(AscendC::Te::MakeCoord(kL0Offset, 0), AscendC::Te::MakeShape(curKL0, curN));
                 AscendC::Te::Copy(CopyL12L0B, tensorBL0, tensorBlockBL1);
 
-                auto coordScaleKL1 = scaleWindowIter * kL1ScaleSize_;
+                // Staggered 时 scale L1 是按全 K 布局的，用 logicalIter；否则保持原行为
+                auto coordScaleKL1 = (useStaggeredK_ ? logicalIter : scaleWindowIter) * kL1ScaleSize_;
                 auto layoutScaleAL0 =
                     AscendC::Te::MakeFrameLayout<AscendC::Te::ZZLayoutPtn, AscendC::Std::Int<SCALE_C0>>(
                         curM, CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE);

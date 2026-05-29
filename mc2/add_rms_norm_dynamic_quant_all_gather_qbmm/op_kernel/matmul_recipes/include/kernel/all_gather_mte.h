@@ -668,9 +668,16 @@ __aicore__ inline void AllGatherMte<AllGatherTemplateType>::ExecuteAllGather(
             }
             PipeBarrier<PIPE_MTE3>();
         } else {
-            // ── 模式 2：切 K 硬同步 ──
-            // 每个 K 块后 PipeBarrier 确保所有核同步
-            for (uint64_t curKBlock = 0; curKBlock < kLoop; ++curKBlock) {
+            // ── 模式 2：切 K 硬同步 + K-stagger 错峰 ──
+            // 错峰：rank R 从 kBlockStart = R * (kLoop / rankSize) 起步、绕 kLoop 循环搬运，
+            // 避免多张卡同时对同一段 K 的 peer-win 发起远端读、撞 cross-card HBM/HCCL 拥塞。
+            // 循环次数仍为 kLoop、SyncAll/SetFlag(9) 次数不变，AIC 侧等价等待序列保持一致。
+            uint32_t kBlockStart = 0U;
+            if (rankSize_ > 1U && kLoop > 0U) {
+                kBlockStart = static_cast<uint32_t>((mteComm_.curRankId_ * kLoop) / rankSize_);
+            }
+            for (uint64_t k = 0; k < kLoop; ++k) {
+                uint64_t curKBlock = (k + kBlockStart) % kLoop;
                 uint64_t innerCurXOffset = curXOffset + curKBlock * X_PER_BLOCK_NUM * 2;
                 ReadDataBlock(innerCurXOffset, mMteCoreM_);
                 PipeBarrier<PIPE_MTE3>();
