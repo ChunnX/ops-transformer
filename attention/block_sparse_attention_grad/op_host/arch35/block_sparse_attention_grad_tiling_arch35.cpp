@@ -118,12 +118,12 @@ protected:
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
-            OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
+            OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
         int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
         if (blockShapeList == nullptr) {
-            OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
+            OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
 
