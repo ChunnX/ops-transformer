@@ -121,9 +121,9 @@ public:
     uint32_t rowsPerCore;
     uint32_t extraCores;
     uint32_t totalRows;
+    uint32_t yBlocksPerCore;
+    uint32_t extraYCores;
     uint32_t rsvd0;
-    uint32_t rsvd1;
-    uint32_t rsvd2;
 
     uint32_t get_coreNum() const { return coreNum; }
     void set_coreNum(uint32_t v) { this->coreNum = v; }
@@ -135,6 +135,10 @@ public:
     void set_extraCores(uint32_t v) { this->extraCores = v; }
     uint32_t get_totalRows() const { return totalRows; }
     void set_totalRows(uint32_t v) { this->totalRows = v; }
+    uint32_t get_yBlocksPerCore() const { return yBlocksPerCore; }
+    void set_yBlocksPerCore(uint32_t v) { this->yBlocksPerCore = v; }
+    uint32_t get_extraYCores() const { return extraYCores; }
+    void set_extraYCores(uint32_t v) { this->extraYCores = v; }
 };
 
 class BSAOutputParams {

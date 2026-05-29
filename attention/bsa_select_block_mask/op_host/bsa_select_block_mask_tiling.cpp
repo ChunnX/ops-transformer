@@ -191,16 +191,26 @@ bool BSASelectBlockMaskTilingBase::CrossShapeVerify()
 void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
 {
     uint32_t coreNum = aicNum;
+    
+    // xBlocks 分核（用于 Matmul/Softmax 阶段）
     uint32_t activeCoreNum = BSAMin(xBlocks, coreNum);
     uint32_t baseRows = xBlocks / activeCoreNum;
     uint32_t extraCores = xBlocks % activeCoreNum;
     uint32_t rowsPerCore = baseRows + (extraCores > 0 ? 1 : 0);
+    
+    // yBlocks 分核（用于 Key 池化阶段）
+    uint32_t activeYCoreNum = BSAMin(yBlocks, coreNum);
+    uint32_t baseYRows = yBlocks / activeYCoreNum;
+    uint32_t extraYCores = yBlocks % activeYCoreNum;
+    uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
 
     multiCoreParams_->set_coreNum(coreNum);
     multiCoreParams_->set_activeCoreNum(activeCoreNum);
     multiCoreParams_->set_rowsPerCore(rowsPerCore);
     multiCoreParams_->set_extraCores(extraCores);
     multiCoreParams_->set_totalRows(xBlocks);
+    multiCoreParams_->set_yBlocksPerCore(yBlocksPerCore);
+    multiCoreParams_->set_extraYCores(extraYCores);
 }
 
 void BSASelectBlockMaskTilingBase::CalcOutputParams()

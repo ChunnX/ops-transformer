@@ -93,6 +93,8 @@ struct BSAConstInfo {
     uint32_t rowsPerCore;
     uint32_t extraCores;
     uint32_t totalRows;
+    uint32_t yBlocksPerCore;
+    uint32_t extraYCores;
     uint32_t qChunkSize;
     uint32_t kChunkSize;
 

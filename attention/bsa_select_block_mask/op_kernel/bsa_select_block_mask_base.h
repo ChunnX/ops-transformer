@@ -42,6 +42,7 @@ private:
     __aicore__ inline void InitConstInfo();
     __aicore__ inline void InitWorkspace(__gm__ uint8_t *workspace);
     __aicore__ inline void CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow);
+    __aicore__ inline void CalcKPoolingRange(uint32_t &startKBlock, uint32_t &endKBlock);
     __aicore__ inline void ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void ProcessPoolingQ(uint32_t batchIdx, uint32_t headIdx,
                                            uint32_t tokenStart, uint32_t tokenEnd);
@@ -105,6 +106,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.rowsPerCore = mcInfo.rowsPerCore;
     constInfo.extraCores = mcInfo.extraCores;
     constInfo.totalRows = mcInfo.totalRows;
+    constInfo.yBlocksPerCore = mcInfo.yBlocksPerCore;
+    constInfo.extraYCores = mcInfo.extraYCores;
     constInfo.qChunkSize = baseInfo.qChunkSize;
     constInfo.kChunkSize = baseInfo.kChunkSize;
 
@@ -150,6 +153,27 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcMultiCoreOffset(uint32_
     if (startRow >= constInfo.totalRows) {
         startRow = constInfo.totalRows;
         endRow = constInfo.totalRows;
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSASelectBlockMaskBase<BSAT>::CalcKPoolingRange(uint32_t &startKBlock, uint32_t &endKBlock)
+{
+    uint32_t coreIdx = constInfo.aicIdx;
+    uint32_t extraYCores = constInfo.extraYCores;
+    uint32_t yBlocksPerCore = constInfo.yBlocksPerCore;
+
+    if (coreIdx < extraYCores) {
+        startKBlock = coreIdx * yBlocksPerCore;
+        endKBlock = startKBlock + yBlocksPerCore;
+    } else {
+        uint32_t baseYRows = yBlocksPerCore - 1;
+        startKBlock = extraYCores * yBlocksPerCore + (coreIdx - extraYCores) * baseYRows;
+        endKBlock = startKBlock + baseYRows;
+    }
+    if (startKBlock >= constInfo.yBlocks) {
+        startKBlock = constInfo.yBlocks;
+        endKBlock = constInfo.yBlocks;
     }
 }
 
@@ -282,7 +306,9 @@ template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx)
 {
     if ASCEND_IS_AIV {
-        for (uint32_t kBlockIdx = 0; kBlockIdx < constInfo.yBlocks; kBlockIdx++) {
+        uint32_t startKBlock, endKBlock;
+        CalcKPoolingRange(startKBlock, endKBlock);
+        for (uint32_t kBlockIdx = startKBlock; kBlockIdx < endKBlock; kBlockIdx++) {
             vectorService.PoolingSingleKBlock(batchIdx, headIdx, kBlockIdx,
                                               keyGm, actualBlockLenKVGm, kCmpGm);
         }
