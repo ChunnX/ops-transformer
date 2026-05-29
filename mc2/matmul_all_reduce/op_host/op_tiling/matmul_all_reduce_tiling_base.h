@@ -134,7 +134,7 @@ public:
         OP_TILING_CHECK(memset_s(
                             context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                             context_->GetRawTilingData()->GetCapacity()) != EOK,
-                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to memset tiling data"), return;);
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
@@ -212,7 +212,8 @@ protected:
     AllReduceScenario GetAllReduceScenario(
         const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* dequantScale,
         const gert::StorageShape* antiQuantScale) const;
-    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* antiQuantScale) const;
+    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType,
+                         const gert::StorageShape *antiQuantScale) const;
     bool AnalyzeInputs();
     bool SetArgs(ge::DataType aType, ge::DataType bType, ge::DataType cType, ge::DataType biasType, bool isBias);
     uint64_t GetNValue() const;

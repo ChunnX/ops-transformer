@@ -55,7 +55,7 @@ bool AllGatherMatmulTilingBase::CheckInputParaEmptyPointer()
     const gert::StorageShape* x1Shape = context_->GetInputShape(INPUT_X1);
     const gert::StorageShape* x2Shape = context_->GetInputShape(INPUT_X2);
     OP_TILING_CHECK((x1Shape == nullptr) || (x2Shape == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the shape is invalid"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the shape is invalid"), return false);
     auto x1TensorDesc = context_->GetInputDesc(INPUT_X1);
     auto x2TensorDesc = context_->GetInputDesc(INPUT_X2);
     auto scaleShape = context_->GetOptionalInputShape(SCALE);
@@ -63,20 +63,24 @@ bool AllGatherMatmulTilingBase::CheckInputParaEmptyPointer()
     auto amaxOutShape = context_->GetOutputShape(OUTPUT_AMAX);
 
     OP_TILING_CHECK((x1TensorDesc == nullptr) || (x2TensorDesc == nullptr) || (yTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the tensor is invalid"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the tensor is invalid"), return false);
     OP_TILING_CHECK((scaleShape != nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the quantscale tensor should be nullptr"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the quantscale tensor should be nullptr"),
+                    return false);
     if (amaxOutShape != nullptr) {
         OP_LOGI(opName_, "amaxOutShapeDim0 is %lu", amaxOutShape->GetStorageShape().GetDim(0));
     }
-    OP_TILING_CHECK((amaxOutShape != nullptr) && (amaxOutShape->GetStorageShape().GetDim(0) != 0),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the amaxOut tensor should be nullptr or empty tensor, but amaxOut is %lu", 
-                                                    amaxOutShape->GetStorageShape().GetDim(0)), return false);
+    OP_TILING_CHECK(
+        (amaxOutShape != nullptr) && (amaxOutShape->GetStorageShape().GetDim(0) != 0),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                  "the amaxOut tensor should be nullptr or empty tensor, but amaxOut is %lu"),
+        return false);
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK((attrs == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "failed to get attrs"), return false);
-    auto outputShape = context_->GetOutputShape(OUTPUT_Y);
-    OP_TILING_CHECK((outputShape == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "the outputShape is nullptr"),
+    OP_TILING_CHECK((attrs == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "failed to get attrs"),
                     return false);
+    auto outputShape = context_->GetOutputShape(OUTPUT_Y);
+    OP_TILING_CHECK((outputShape == nullptr),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the outputShape is nullptr"), return false);
     return true;
 }
 
@@ -86,15 +90,17 @@ bool AllGatherMatmulTilingBase::CheckGroupSize()
     ge::DataType bType = context_->GetInputDesc(INPUT_X2)->GetDataType();
     auto attrsPtr = context_->GetAttrs();
     auto groupSizePtr = attrsPtr->GetAttrPointer<uint64_t>(GROUPSIZE_INDEX);
-    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
+    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) ||
+        ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr){
-            OP_TILING_CHECK((*groupSizePtr != 0), 
-                        CUBE_INNER_ERR_REPORT(opName_, "when the datatype of x1 and x2 are fp16 or bf16,"
-                            "groupSizePtr should be nullptr or 0."),
-                        return false);
+            OP_TILING_CHECK((*groupSizePtr != 0),
+                            OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid",
+                                                      "when the datatype of x1 and x2 are fp16 or bf16,"
+                                                      "groupSizePtr should be nullptr or 0."),
+                            return false);
         }
     }
-    return true;          
+    return true;
 }
 
 bool AllGatherMatmulTilingBase::CheckInputScale()
@@ -104,19 +110,23 @@ bool AllGatherMatmulTilingBase::CheckInputScale()
     auto scale1Shape = context_->GetOptionalInputShape(SCALE_INV1);
     auto scale2Shape = context_->GetOptionalInputShape(SCALE_INV2);
     auto scaleShape = context_->GetOptionalInputShape(SCALE);
-    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
-        OP_TILING_CHECK((scale1Shape != nullptr),
-                VECTOR_INNER_ERR_REPORT_TILING(opName_, 
-                    "when the datatype of x1 and x2 are fp16 or bf16, scale1 should be None"),
-                     return false);
-        
-        OP_TILING_CHECK((scale2Shape != nullptr),
-                VECTOR_INNER_ERR_REPORT_TILING(opName_, 
-                    "when the datatype of x1 and x2 are fp16 or bf16, scale2 should be None"), 
-                    return false);
+    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) ||
+        ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
+        OP_TILING_CHECK(
+            (scale1Shape != nullptr),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                      "when the datatype of x1 and x2 are fp16 or bf16, scale1 should be None"),
+            return false);
+
+        OP_TILING_CHECK(
+            (scale2Shape != nullptr),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                      "when the datatype of x1 and x2 are fp16 or bf16, scale2 should be None"),
+            return false);
     }
     OP_TILING_CHECK((scaleShape != nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the quantscale tensor should be nullptr"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the quantscale tensor should be nullptr"),
+                    return false);
     return true;
 }
 
@@ -128,7 +138,7 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
     uint64_t x2ShapeDimNum = x2Shape->GetStorageShape().GetDimNum();
 
     OP_TILING_CHECK((x1ShapeDimNum != 2) || (x2ShapeDimNum != 2),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the dimNum is not 2"), return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the dimNum is not 2"), return false);
     int64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
     int64_t x1Dim1 = x1Shape->GetStorageShape().GetDim(1);
     int64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
@@ -142,15 +152,16 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
     }
 
     if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
-        OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim1 %ld, x2KValue %ld",
-                                           x1Dim1, x2KValue), return false);
+        OP_TILING_CHECK(
+            (x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the value is invalid. x1Dim1 %ld, x2KValue %ld"),
+            return false);
     }
 
-    OP_TILING_CHECK(
-        (x1Dim1 < KVALUE_MIN) || (x1Dim1 >= KVALUE_MAX),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The k-axis should be in range[256, 65535), but it is: %ld.", x1Dim1),
-        return false);
+    OP_TILING_CHECK((x1Dim1 < KVALUE_MIN) || (x1Dim1 >= KVALUE_MAX),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                              "The k-axis should be in range[256, 65535), but it is: %ld."),
+                    return false);
 
     return true;
 }
@@ -166,12 +177,12 @@ bool AllGatherMatmulTilingBase::CheckInputAndOutputParaFormat()
     auto yFormat = yTensorDesc->GetStorageFormat();
 
     OP_TILING_CHECK(x1Format != yFormat,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "output format is not same as x1 format"), return false);
-    OP_TILING_CHECK(
-        !mc2tiling::CheckSuppportedFormat(x1Format) || !mc2tiling::CheckSuppportedFormat(x2Format),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "a shape Format, b shape Format only support ND, the format is %s",
-                                        TypeUtils::FormatToSerialString(x1Format).c_str()),
-        return false);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "output format is not same as x1 format"),
+                    return false);
+    OP_TILING_CHECK(!mc2tiling::CheckSuppportedFormat(x1Format) || !mc2tiling::CheckSuppportedFormat(x2Format),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                              "a shape Format, b shape Format only support ND, the format is %s"),
+                    return false);
 
     return true;
 }
@@ -189,20 +200,19 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
 
     if ((*isGatherout) && (gatherOutShape != nullptr)) {
         OP_TILING_CHECK((*gatherIndex != 0),
-                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "gather_index should be 0 in nowadays," 
-                                                        "the actual value is %ld\n", *gatherIndex),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "gather_index should be 0 in nowadays,"
+                                                        "the actual value is %ld\n"),
                         return false);
         int64_t gatherOutDim0 = gatherOutShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK((gatherOutDim0 != mValue),
-                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "m-axis should be %ld, but gatherout is %ld\n", mValue,
-                                                        gatherOutDim0),
-                        return false);
+        OP_TILING_CHECK(
+            (gatherOutDim0 != mValue),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "m-axis should be %ld, but gatherout is %ld\n"),
+            return false);
         int64_t gatherOutDim1 = gatherOutShape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(
             (x1Dim1 != gatherOutDim1),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, 
-                "The k-axis of x1 and gatherOut should be same," 
-                "but x1's k-axis is: %ld and gatherOut's k-axis is: %ld.", x1Dim1, gatherOutDim1),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "The k-axis of x1 and gatherOut should be same,"
+                "but x1's k-axis is: %ld and gatherOut's k-axis is: %ld."),
             return false);
     }
 
@@ -219,7 +229,7 @@ bool AllGatherMatmulTilingBase::CheckOutputParaDim0()
 
     OP_TILING_CHECK(
         (outputDim0 != mValue),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "m-axis should be %lu, but output is %lu \n", mValue, outputDim0),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "m-axis should be %lu, but output is %lu \n"),
         return false);
 
     return true;
@@ -238,7 +248,7 @@ bool AllGatherMatmulTilingBase::CheckBiasParaDim0()
         uint64_t biasDim0 = matrix_bias->GetStorageShape().GetDim(0);
         OP_TILING_CHECK(
             (biasDim0 != nValue),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "bias n-axis should be %lu, but it's %lu\n", nValue, biasDim0),
+            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "bias n-axis should be %lu, but it's %lu\n"),
             return false);
     }
     return true;
@@ -332,7 +342,7 @@ void AllGatherMatmulTilingBase::SetTilingArgsGatherStatus()
         int64_t mulGatherShape = 1;
         for (uint32_t i = 0; i < gatherOutShape->GetStorageShape().GetDimNum(); i++) {
             mulGatherShape = mulGatherShape * gatherOutShape->GetStorageShape().GetDim(i);
-            OP_LOGD("AllGatherMatmul", "gatherOutShape StorageShape=%ld, Dim=%u.", 
+            OP_LOGD("AllGatherMatmul", "gatherOutShape StorageShape=%ld, Dim=%u.",
                     gatherOutShape->GetStorageShape().GetDim(i), i);
         }
         if (mulGatherShape == 0) {
@@ -362,15 +372,16 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
 {
     opName_ = context_->GetNodeName();
     OP_TILING_CHECK(((!AnalyzeAttrs()) || (!AnalyzeInputs()) || (!SetCommAlgo())),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to analyze context info"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "fail to analyze context info"),
+                    return ge::GRAPH_FAILED);
     commAlgorithm_ = static_cast<uint64_t>(args_.commAlg);
     return ge::GRAPH_SUCCESS;
 }
 
 
-void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, 
+void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg,
                                                         ::TCubeTiling& mmTiling,
-                                                        ::TCubeTiling& tailTiling, 
+                                                        ::TCubeTiling& tailTiling,
                                                         uint32_t debugMode)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
@@ -388,7 +399,7 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rc
 }
 
 /**
- * Due to communication constraints: 
+ * Due to communication constraints:
  * 1. The maximum number of communication attempts is limited to 63
  * 2. The data volume of a single communication shall not exceed 256MB;
  * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
@@ -396,22 +407,26 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rc
 ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
-    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu \
-                still exceeds 256MB.", sizeOfSingleM),
-                return ge::GRAPH_FAILED);
-    
+    OP_TILING_CHECK(
+        sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "x", "invalid", "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu \
+                still exceeds 256MB."),
+        return ge::GRAPH_FAILED);
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 63 parts (rounded up), the size %lu \
-                still exceeds 256MB.", sizeOfSplitM),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName_, "x", "invalid",
+                        "Unsupported x1 size. Even after splitting data M into 63 parts (rounded up), the size %lu \
+                still exceeds 256MB."),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, 
-                                                  ::TCubeTiling& mmTiling, 
+void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg,
+                                                  ::TCubeTiling& mmTiling,
                                                   ::TCubeTiling& tailTiling,
                                                   uint32_t& debugMode, uint32_t& dataType)
 {
@@ -455,7 +470,7 @@ bool AllGatherMatmulTilingBase::SetCommAlgo()
 {
     args_.commAlg = mc2tiling::Mc2GetCommAlgo(rankSize_, args_.orgMValue, group_, context_);
     if (args_.commAlg == mc2tiling::COMM_ALG_DEFAULT) {
-        OP_LOGE(opName_, "CommAlgo %u is not supported.", args_.commAlg);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commAlg", "invalid", "CommAlgo %u is not supported.");
         return false;
     }
     return true;
@@ -571,30 +586,31 @@ void AllGatherMatmulTilingBase::Reset()
 bool AllGatherMatmulTilingBase::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK((attrs == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "failed to get attrs"), return false);
+    OP_TILING_CHECK((attrs == nullptr), OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "failed to get attrs"),
+                    return false);
     group_ = attrs->GetAttrPointer<char>(GROUP);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
     auto gatherIndexPtr = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
-    OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
-                    "GetRankSize failed."), return false);
+    OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_),
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "GetRankSize failed."), return false);
     OP_TILING_CHECK(
         SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld.", rankSize_),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                  "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld."),
         return false);
-    OP_TILING_CHECK(commTurn == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn is nullptr!"),
+    OP_TILING_CHECK(commTurn == nullptr, OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "commTurn is nullptr!"),
                     return false);
-    OP_TILING_CHECK(
-        *commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The expected value of commTurn is 0, but the actual value is %ld.", 
-                                        *commTurn), return false);
-    OP_TILING_CHECK(gatherIndexPtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "gatherIndex is nullptr!"),
+    OP_TILING_CHECK(*commTurn != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
+                                              "The expected value of commTurn is 0, but the actual value is %ld."),
                     return false);
+    OP_TILING_CHECK(gatherIndexPtr == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "gatherIndex is nullptr!"), return false);
     OP_TILING_CHECK(
         (*gatherIndexPtr != 0),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the gatherIndex should be 0, but real value is %ld", *gatherIndexPtr),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the gatherIndex should be 0, but real value is %ld"),
         return false);
     args_.isATrans = isTransA ? *isTransA : 0;
     args_.isBTrans = isTransB ? *isTransB : 0;
@@ -602,12 +618,15 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     args_.rankDim = static_cast<uint32_t>(rankSize_);
     args_.commTurn = commTurn ? *commTurn : 0;
     gatherIndex_ = gatherIndexPtr ? static_cast<uint32_t>(*gatherIndexPtr) : 0;
-    OP_TILING_CHECK((args_.isATrans != 0),
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is true"),
-                    return false);
+    OP_TILING_CHECK(
+        (args_.isATrans != 0),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "the isTransA should be false, but real value is true"),
+        return false);
     auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
-    OP_TILING_CHECK(blockSize != 0, VECTOR_INNER_ERR_REPORT_TILING(opName_,
-                    "blockSize should be 0, but the actual value is %ld.", blockSize), return false);
+    OP_TILING_CHECK(
+        blockSize != 0,
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "blockSize should be 0, but the actual value is %ld."),
+        return false);
     OP_LOGD(opName_,
             " group=%s, rankSize=%ld, is_trans_a=%u, is_trans_b=%d, gather_index=%u,"
             " comm_turn=%lu",
@@ -619,7 +638,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
 ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
+    OP_TILING_CHECK(platformInfo == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "fail to get platform info"),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
@@ -687,7 +707,8 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling& rcsCfg)
 ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 {
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get workspace failed"),
+    OP_TILING_CHECK(workspaces == nullptr,
+                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "get workspace failed"),
                     return ge::GRAPH_FAILED);
 
     workspaceSize_ = libApiWorkSpaceSize_ + storageA_ + biasLen_;

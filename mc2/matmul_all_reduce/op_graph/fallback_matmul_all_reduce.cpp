@@ -30,15 +30,18 @@ inline ge::graphStatus GetMatmulPara(
     const gert::OpExecuteContext* host_api_ctx, size_t x1_idx, size_t x2_idx, size_t bias_idx, MatmulParas& para)
 {
     const auto x1 = host_api_ctx->GetInputTensor(x1_idx);
-    OPS_CHECK(x1 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1 is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x1 == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1"),
+        return ge::GRAPH_FAILED);
 
     const auto x2 = host_api_ctx->GetInputTensor(x2_idx);
-    OPS_CHECK(x2 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2 is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2"),
+        return ge::GRAPH_FAILED);
 
     para.bias = host_api_ctx->GetOptionalInputTensor(bias_idx);
 
     const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "Attrs is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"),
+        return ge::GRAPH_FAILED);
 
     para.x1_acl = ConvertMmType(x1, false);
     OPS_CHECK(para.x1_acl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1_acl is null"), return ge::GRAPH_FAILED);
@@ -70,12 +73,13 @@ struct QuantParas {
     Mc2QuantType type;
 };
 
-inline ge::graphStatus GetQuantPara(
-    const gert::OpExecuteContext* host_api_ctx, size_t scale_idx, size_t offset_idx, size_t dequant_idx, size_t pertoken_idx,
-    size_t comm_quant_scale_1_idx, size_t comm_quant_scale_2_idx, QuantParas& para)
+inline ge::graphStatus GetQuantPara(const gert::OpExecuteContext *host_api_ctx, size_t scale_idx, size_t offset_idx,
+                                    size_t dequant_idx, size_t pertoken_idx, size_t comm_quant_scale_1_idx,
+                                    size_t comm_quant_scale_2_idx, QuantParas &para)
 {
     const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "Attrs is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"),
+        return ge::GRAPH_FAILED);
 
     const auto antiquant_scale = host_api_ctx->GetOptionalInputTensor(scale_idx);
     if (antiquant_scale != nullptr) {
@@ -124,10 +128,12 @@ struct CommParas {
 inline ge::graphStatus GetCommPara(const gert::OpExecuteContext* host_api_ctx, CommParas& para)
 {
     const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"),
+        return ge::GRAPH_FAILED);
 
     para.group = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP));
-    OPS_CHECK(para.group == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "group is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(para.group == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "group"),
+        return ge::GRAPH_FAILED);
 
     para.op = attrs->GetStr(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_OP));
     para.op = (para.op == nullptr ? "sum" : para.op);
@@ -147,7 +153,8 @@ ge::graphStatus GetAllReducePara(const gert::OpExecuteContext* host_api_ctx, All
 {
     const auto attrs = host_api_ctx->GetAttrs();
 
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "attrs"),
+        return ge::GRAPH_FAILED);
 
     const int64_t* group_size_ptr = attrs->GetInt(static_cast<size_t>(ops::MmAllReduceAttrIdx::K_GROUP_SIZE));
     para.group_size = (group_size_ptr != nullptr ? *group_size_ptr : 0);
@@ -199,7 +206,8 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     const auto comm_quant_scale_2 =
         host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2InputIdx::K_COMMQUANTSCALE2));
     const auto y = host_api_ctx->GetOutputTensor(static_cast<size_t>(ops::MC2OutputIdx::K_Y));
-    OPS_CHECK(y == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "y is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(y == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "y"),
+        return ge::GRAPH_FAILED);
 
     switch (quant_para.type) {
         case Mc2QuantType::K_NONE_QUANT:

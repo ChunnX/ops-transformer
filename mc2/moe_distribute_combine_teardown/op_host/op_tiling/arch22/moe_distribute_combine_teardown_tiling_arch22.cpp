@@ -58,28 +58,30 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA3::CheckAttrsWithoutRelation(
 
     OP_TILING_CHECK((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
                         (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                    OP_LOGE(nodeName_, "groupEp length should be [1, %lu), get %lu.", MAX_GROUP_NAME_LENGTH,
-                            strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "groupEp", "invalid",
+                                                          "groupEp length should be [1, %lu), get %lu."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*epWorldSizePtr < MIN_GROUP_EP_SIZE) || (*epWorldSizePtr > MAX_GROUP_EP_SIZE),
-                    OP_LOGE(nodeName_, "epWorldSize should be [%lu, %lu], get %lu", MIN_GROUP_EP_SIZE,
-                            MAX_GROUP_EP_SIZE, *epWorldSizePtr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
+                                                          "epWorldSize should be [%lu, %lu], get %lu"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*expertShardTypePtr != 0,
-                    OP_LOGE(nodeName_, "expertShardType only support 0, get %lu", *expertShardTypePtr),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM),
-                    OP_LOGE(nodeName_, "sharedExpertNum shoud be within the range of [0, %lu], get %lu",
-                            MAX_SHARED_EXPERT_NUM, *sharedExpertNumPtr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "expertShardType", "invalid",
+                                                          "expertShardType only support 0, get %lu"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        (*quantModePtr != NON_QUANT) && (*quantModePtr != DYNAMIC_QUANT),
-        OP_LOGE(nodeName_, "quantMode shoud be equal to %lu or %lu, get %lu", NON_QUANT, DYNAMIC_QUANT, *quantModePtr),
+        (*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "sharedExpertNum", "invalid",
+                                              "sharedExpertNum shoud be within the range of [0, %lu], get %lu"),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        (*commTypePtr < SDMA_COMM) || (*commTypePtr > URMA_COMM),
-        OP_LOGE(nodeName_, "commType only support [%lu, %lu], get [%lu]", SDMA_COMM, URMA_COMM, *commTypePtr),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*quantModePtr != NON_QUANT) && (*quantModePtr != DYNAMIC_QUANT),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "quantMode", "invalid",
+                                                          "quantMode shoud be equal to %lu or %lu, get %lu"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*commTypePtr < SDMA_COMM) || (*commTypePtr > URMA_COMM),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "commType", "invalid",
+                                                          "commType only support [%lu, %lu], get [%lu]"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -90,29 +92,31 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA3::CheckAttrsComplex()
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
-    OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
-                    OP_LOGE(nodeName_, "ep_rankId shoud be within the range of epWorldSize[0, %lu), get %lu",
-                            *epWorldSizePtr, *epRankIdPtr),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "epWorldSize", "invalid",
+                                              "ep_rankId shoud be within the range of epWorldSize[0, %lu), get %lu"),
+        return ge::GRAPH_FAILED);
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
-    OP_TILING_CHECK((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MAX_MOE_EXPERT_NUM),
-                    OP_LOGE(nodeName_, "moeExpertNum shoud be within the range of (0, %lu], get %lu",
-                            MAX_MOE_EXPERT_NUM, *moeExpertNumPtr),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MAX_MOE_EXPERT_NUM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "moeExpertNum", "invalid",
+                                              "moeExpertNum shoud be within the range of (0, %lu], get %lu"),
+        return ge::GRAPH_FAILED);
 
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
-    OP_TILING_CHECK((*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr > *epWorldSizePtr / 2),
-                    OP_LOGE(nodeName_, "sharedExpertRankNum shoud be within the range of [0, %lu], get %lu",
-                            *epWorldSizePtr / 2, *sharedExpertRankNumPtr),
-                    return ge::GRAPH_FAILED);
-
     OP_TILING_CHECK(
-        (*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr) != 0),
-        OP_LOGE(nodeName_,
-                "moeExpertNum should follow moeExpertNum %% (epWorldSize - sharedExpertRankNum) = 0, got %ld",
-                (*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr))),
+        (*sharedExpertRankNumPtr < 0) || (*sharedExpertRankNumPtr > *epWorldSizePtr / 2),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName_, "sharedExpertRankNum", "invalid",
+                                              "sharedExpertRankNum shoud be within the range of [0, %lu], get %lu"),
         return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK((*moeExpertNumPtr % (*epWorldSizePtr - *sharedExpertRankNumPtr) != 0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        nodeName_, "epWorldSize", "invalid",
+                        "moeExpertNum should follow moeExpertNum %% (epWorldSize - sharedExpertRankNum) = 0, got %ld"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
