@@ -47,7 +47,7 @@ struct MegaMoeConfig {
     uint32_t attrdispatchQuantOutDtypeIndex = 5U;
     uint32_t attrCombineQuantModeIndex = 6U;
     uint32_t attrCommAlgIndex = 7U;
-    uint32_t attrNumMaxTokenPerRankIndex = 8U;
+    uint32_t attrNumMaxTokensPerRankIndex = 8U;
     uint32_t attrActivationIndex = 9U;
     uint32_t attrActivationClampIndex = 10U;
     uint32_t attractivationOutDtypeIndex = 11U;

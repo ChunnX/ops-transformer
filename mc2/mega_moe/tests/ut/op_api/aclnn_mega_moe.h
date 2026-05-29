@@ -50,7 +50,7 @@ extern "C" {
  * @param [in] dispatchQuantOutDtype: 计算可选输入，int。dispatch量化后输出的数据类型。支持23（FP8_E5M2）或24（FP8_E4M3）。
  * @param [in] combineQuantMode: 计算可选输入，int。预留参数，暂不支持。默认值为0。
  * @param [in] commAlg: 计算可选输入，str。预留参数，暂不支持。默认值为""。
- * @param [in] numMaxTokenPerRank: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
+ * @param [in] numMaxTokensPerRank: 计算可选输入，int。每个Rank最大可接收Token数，默认值为0表示所有卡的token数相同且为当前bs（x的dim0）。
  * @param [in] activation: 计算可选输入，str。激活函数类型，支持"swiglu"、"gelu"、"silu"、"relu"等，默认值为"swiglu"。
  * @param [in] activationClamp: 计算可选输入，float。激活函数截断值，默认值为float最大值。
  * @param [in] activationOutDtype: 计算可选输入，int。GMM2的x数据类型，默认值为DT_UNDEFINED。
@@ -73,7 +73,7 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
+    const char* commAlg, int64_t numMaxTokensPerRank, const char* activation, double activationClamp,
     int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
     aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor);
