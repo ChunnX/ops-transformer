@@ -416,7 +416,7 @@ std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(
 }
 
 bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape,
-                                                    const gert::StorageShape *pertokenShape)
+                                                   const gert::StorageShape *pertokenShape)
 {
     if (!compileInfo_.supportL12BtBf16) {
         inputParams_.isPerTensor = scaleShape.GetDim(0) == 1;
