@@ -230,8 +230,9 @@ int32_t ExecuteSparseFlashAttention(TensorResources& resources, aclrtStream stre
     bool returnSoftmaxLse = false;
     aclOpExecutor* executor;
 
-    int32_t ret = aclnnSparseFlashAttentionGetWorkspaceSize(resources.queryTensor, resources.keyTensor, resources.sparseIndicesTensor, resources.valueTensor, nullptr, nullptr, nullptr, resources.queryRopeTensor, resources.keyRopeTensor,
-                                                    scaleValue, sparseBlockSize, layoutQuery, layoutKv, sparseMode, preTokens,
+    int32_t ret = aclnnSparseFlashAttentionGetWorkspaceSize(resources.queryTensor, resources.keyTensor, resources.valueTensor, resources.sparseIndicesTensor,
+                                                    scaleValue, nullptr, nullptr, nullptr, resources.queryRopeTensor, resources.keyRopeTensor,
+                                                    sparseBlockSize, layoutQuery, layoutKv, sparseMode, preTokens,
                                                     nextTokens, attentionMode, returnSoftmaxLse, resources.attentionOutTensor, resources.softmaxMaxTensor, resources.softmaxSumTensor, workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnSparseFlashAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
