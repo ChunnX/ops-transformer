@@ -52,7 +52,7 @@
 |ori_win_left|可选属性|默认值为-1，表示q和ori_kv计算中q对过去token计算的数量，当前仅支持127|INT32|-|
 |ori_win_right|可选属性|默认值为-1，表示q和ori_kv计算中q对未来token计算的数量，当前仅支持0|INT32|-|
 |layout_q|可选属性|默认值为BSND，用于标识输入q的数据排布格式，支持BSND和TND|STRING|-|
-|layout_kv|可选属性|默认值为BSND，用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BNBD|STRING|-|
+|layout_kv|可选属性|默认值为BSND，用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BBND|STRING|-|
 |topk_value_mode|可选属性|默认值为1，当前仅支持1|INT32|-|
 |return_softmax_lse|可选属性|默认值为False，预留参数，当前暂不支持，表示是否返回softmax_lse。True表示返回，False表示不返回|BOOL|-|
 |batch_invariant|可选属性|默认值为0，表示是否开启batch一致性，支持0、1、2|INT32|-|

@@ -14,12 +14,28 @@
  */
 #ifndef MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
 #define MIXED_QUANT_SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H
-#include "common/offset_calculator.h"
-#include "common/matmul.h"
-#include "common/FixpipeOut.h"
-#include "common/CopyInL1.h"
-#include "kernel_operator_list_tensor_intf.h"
+#if __has_include("../../common/op_kernel/offset_calculator.h")
+#include "../../common/op_kernel/offset_calculator.h"
+#else
+#include "../common/offset_calculator.h"
+#endif
+#if __has_include("../../common/op_kernel/matmul.h")
+#include "../../common/op_kernel/matmul.h"
+#else
+#include "../common/matmul.h"
+#endif
+#if __has_include("../../common/op_kernel/FixpipeOut.h")
+#include "../../common/op_kernel/FixpipeOut.h"
+#else
+#include "../common/FixpipeOut.h"
+#endif
+#if __has_include("../../common/op_kernel/CopyInL1.h")
+#include "../../common/op_kernel/CopyInL1.h"
+#else
+#include "../common/CopyInL1.h"
+#endif
 
+#include "kernel_operator_list_tensor_intf.h"
 #include "util_regbase.h"
 #include "mixed_quant_sparse_flash_mla_common_arch35.h"
 
@@ -85,7 +101,7 @@ private:
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-    FaGmTensor<Q_T, Q_FORMAT> queryGm;
+    FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
 
     /* =====================运行时变量==================== */
     CubeCoordInfo coordInfo[3];
