@@ -65,7 +65,8 @@ public:
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
 
     static constexpr uint32_t PRELOAD_N = 2;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
 
@@ -317,7 +318,6 @@ private:
             RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE] = {};
 
             createdTaskCount = 0;
-            executedTaskCount = 0;
             mloop = 0;
             accGS1Loops = 0;
             headS2Split = false;
@@ -330,14 +330,16 @@ private:
             prevGS1Idx = gS1Cur;
 
             bool shouldDispatchTask = true;
-            bool shouldExecuteTask = false;
-            while (shouldDispatchTask || shouldExecuteTask) {
+            uint32_t executedTaskCount = 0;
+            uint32_t validTaskCount = 0;
+            while (shouldDispatchTask || validTaskCount) {
                 shouldDispatchTask = ShouldDispatchTaskCube(bN2Cur, gS1Cur, s2Cur);
                 if (shouldDispatchTask) {
                     TASK_DEAL_MODE taskDealMode = GetTaskDealModeCube(bN2Cur, gS1Cur, s2Cur);
                     if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                         CreateTaskCube(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoCube);
                         createdTaskCount++;
+                        validTaskCount++;
                         UpdateAxisInfoCube(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                         UpdateAxisInfoCube(taskDealMode, bN2Cur, gS1Cur, s2Cur);
@@ -347,10 +349,12 @@ private:
                         continue;
                     }
                 }
-                shouldExecuteTask = ShouldExecuteTaskCube(taskRunInfoCube);
-                if (shouldExecuteTask) {
+                if (validTaskCount) {
                     ExecuteTaskCube(executedTaskCount, taskRunInfoCube);
                     executedTaskCount++;
+                    if (executedTaskCount > PRELOAD_N) {
+                        validTaskCount--;
+                    }
                 }
             }
         }
@@ -360,18 +364,6 @@ private:
     {
         if ASCEND_IS_AIC {
             return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
-        }
-        return false;
-    }
-
-    __aicore__ inline bool ShouldExecuteTaskCube(RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE])
-    {
-        if ASCEND_IS_AIC {
-            for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
-                if (taskRunInfoCube[i].isValid) {
-                    return true;
-                }
-            }
         }
         return false;
     }
@@ -536,8 +528,8 @@ private:
     __aicore__ inline void ExecuteTaskCube(uint64_t loop, RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIC {
-            RunInfoXCube &runInfo0 = taskRunInfoCube[loop % PRELOAD_TASK_CACHE_SIZE];
-            RunInfoXCube &runInfoNegN = taskRunInfoCube[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXCube &runInfo0 = taskRunInfoCube[loop & PRELOAD_TASK_CACHE_MASK];
+            RunInfoXCube &runInfoNegN = taskRunInfoCube[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK];
             if (runInfo0.isValid) {
                 ComputeMm1Cube(runInfo0);
             }
@@ -572,7 +564,7 @@ private:
                                           RunInfoXCube taskRunInfoCube[PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIC {
-            RunInfoXCube &runInfo = taskRunInfoCube[loop % PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXCube &runInfo = taskRunInfoCube[loop & PRELOAD_TASK_CACHE_MASK];
             CalcParamsCube(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
             runInfo.isValid = true;
         }
