@@ -81,6 +81,9 @@ public:
 
 private:
     __aicore__ inline void CopyGlobalParams();
+    __aicore__ inline void OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
+                                      __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
+                                      __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut);
     __aicore__ inline void ScaleInit(__gm__ uint8_t *dequantScaleX, __gm__ uint8_t *dequantScaleWDq,
                                      __gm__ uint8_t *deqScaleQcQrW, __gm__ uint8_t *dequantScaleWDkvkr,
                                      __gm__ uint8_t *quantScaleCkv, __gm__ uint8_t *quantScaleCkr,
@@ -119,11 +122,26 @@ private:
                                             LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
                                             LocalTensor<typename MLAPT::ropeComputType> &sinLocalCkvKr,
                                             CkvkrParams ropeAndScatterKrParams);
+    __aicore__ inline void ScatterKr(LocalTensor<krCacheType> &outputKrLocal,
+                                     CkvkrParams ropeAndScatterKrParams);
     __aicore__ inline void RmsNormAndScatterCkv(LocalTensor<float> &dequantScaleXLocal,
                                                 LocalTensor<uint8_t> &shareTmpUb,
                                                 LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
                                                 LocalTensor<typename MLAPT::ropeComputType> &sinLocalCkvKr,
                                                 CkvkrParams rmsNormAndScatterCkvParams);
+    __aicore__ inline void RmsNormAndQuantizeCkv(LocalTensor<kvCacheType> &outputLocal,
+                                                 LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                 LocalTensor<float> &dequantScaleXLocal,
+                                                 RmsNormParam rmsNormParams,
+                                                 CkvkrParams rmsNormAndScatterCkvParams);
+    __aicore__ inline void RmsNormAndQuantizeCkvMxfp8(
+                                                    LocalTensor<kvCacheType> &outputLocal,
+                                                    LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                    LocalTensor<float> &dequantScaleXLocal,
+                                                    RmsNormParam rmsNormParams,
+                                                    CkvkrParams rmsNormAndScatterCkvParams);
+    __aicore__ inline void ScatterCkv(LocalTensor<kvCacheType> &outputLocal,
+                                      CkvkrParams rmsNormAndScatterCkvParams);
     __aicore__ inline void RmsNormRopeScatterCkvKr(int64_t tokenIndex, int64_t rmsNormCkvOffset, int64_t ropeKrOffset,
                                                    int64_t curVecToken);
     // 低时延算力分组场景
@@ -286,6 +304,29 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
     }
     kvCacheGm_.SetGlobalBuffer((__gm__ kvCacheType *)kvCache);
     krCacheGm_.SetGlobalBuffer((__gm__ krCacheType *)krCache);
+
+    OutputInit(actualSeqLen, queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut);
+    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
+              smoothScaleCq, kNopeClipAlpha);
+    MmParamInit();
+    WorkspaceInit(workspace);
+    if ASCEND_IS_AIV {
+        VectorBufferInit();
+    } else {
+        CubeBufferInit();
+    }
+    constexpr int64_t zeroChunk = 512;
+    pipe_->InitBuffer(zeroBuf_, zeroChunk * sizeof(float));
+    zeroSrc_ = zeroBuf_.Get<float>();
+    Duplicate(zeroSrc_, (float)0, zeroChunk);
+}
+
+template <typename MLAPT>
+__aicore__ inline void
+MlaPrologV3SplitM<MLAPT>::OutputInit(__gm__ uint8_t *actualSeqLen, __gm__ uint8_t *queryOut,
+                                     __gm__ uint8_t *queryRopeOut, __gm__ uint8_t *dequantScaleQNopeOut,
+                                     __gm__ uint8_t *queryNormOut, __gm__ uint8_t *dequantScaleQNormOut)
+{
     qrOutGm_.SetGlobalBuffer((__gm__ ropeOutputType *)queryRopeOut);
     if constexpr (((std::is_same<mmInputType, int8_t>::value && std::is_same<kvCacheType, int8_t>::value) ||
                    (std::is_same<mmInputType, FP8E4M3>::value && std::is_same<kvCacheType, FP8E4M3>::value) ||
@@ -306,20 +347,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
     if constexpr (MLAPT::actualSeqMode == ACTUAL_SEQ_MODE::EN_Q_LEN) {
         actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
     }
-
-    ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW, dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr,
-              smoothScaleCq, kNopeClipAlpha);
-    MmParamInit();
-    WorkspaceInit(workspace);
-    if ASCEND_IS_AIV {
-        VectorBufferInit();
-    } else {
-        CubeBufferInit();
-    }
-    constexpr int64_t zeroChunk = 512;
-    pipe_->InitBuffer(zeroBuf_, zeroChunk * sizeof(float));
-    zeroSrc_ = zeroBuf_.Get<float>();
-    Duplicate(zeroSrc_, (float)0, zeroChunk);
 }
 
 template <typename MLAPT>
@@ -1257,82 +1284,15 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
         baseParams_->kcScale,         // scale
         baseParams_->isKcScaleEnable, // isScaleEnable
     };
+
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
                   (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && !isFp8E8m0) ||
                   std::is_same<rmsNormCkvOutputType, HIF8>::value) {
-        // row = vectorRow_ = 1     col = baseParams_->headSizeCkv
-        LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
-        LocalTensor<uint8_t> sharedBuf =
-            inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
-        RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
-            inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
-            dequantScaleWDkvKrLocal_, dequantScaleXLocal, sharedBuf, rmsNormParams);
-
-        AscendC::DataSyncBarrier<MemDsbT::UB>();
-        float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
-
-        if constexpr (isPertile) {
-            PerTileQuantParams perTileQuantParams = {
-                static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
-                static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
-                kNopeClipAlpha,                                                          // alpha
-                static_cast<uint32_t>(vectorRow_),                                       // row
-                baseParams_->headSizeCkv                                                 // col
-            };
-            if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value) {
-                QuantPerTile(outputLocal, inputLocal, sharedBuf, perTileQuantParams);
-            } else {
-                QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
-            }
-            AscendC::PipeBarrier<PIPE_V>();
-        } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                             std::is_same<mmCkvKrOutputType, float>::value) {
-            Rectangle rectangleParams{
-                (uint32_t)vectorRow_,               // row
-                (uint32_t)baseParams_->headSizeCkv, // col
-                (uint32_t)baseParams_->headSizeCkv  // columnStride
-            };
-            QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-            AscendC::PipeBarrier<PIPE_V>();
-        } else {
-            Rectangle rectangleParams{
-                (uint32_t)vectorRow_,               // row
-                (uint32_t)baseParams_->headSizeCkv, // col
-                (uint32_t)baseParams_->headSizeCkv  // columnStride
-            };
-            QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
+        RmsNormAndQuantizeCkv(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal,
+            rmsNormParams, rmsNormAndScatterCkvParams);
     } else if constexpr (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && isFp8E8m0) {
-        LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
-        LocalTensor<uint8_t> sharedBuf =
-            inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
-        RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
-            inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
-            dequantScaleWDkvKrLocal_, dequantScaleXLocal, sharedBuf, rmsNormParams);
-
-        AscendC::DataSyncBarrier<MemDsbT::UB>();
-
-        if constexpr (isPertile) {
-            float defaultAlpha = 1.0f;
-            PerTileQuantParams perTileQuantParams = {
-                static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
-                static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
-                defaultAlpha,                      // alpha，mxfp8不需要传入knopeclipalpha
-                static_cast<uint32_t>(vectorRow_), // row
-                baseParams_->headSizeCkv           // col
-            };
-            QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
-            AscendC::PipeBarrier<PIPE_V>();
-        } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
-            Rectangle rectangleParams{
-                (uint32_t)vectorRow_,               // row
-                (uint32_t)baseParams_->headSizeCkv, // col
-                (uint32_t)baseParams_->headSizeCkv  // columnStride
-            };
-            QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
+        RmsNormAndQuantizeCkvMxfp8(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal,
+            rmsNormParams, rmsNormAndScatterCkvParams);
     } else {
         RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, rmsNormCkvOutputType, dequantScaleType>(
             outputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
@@ -1343,6 +1303,109 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
     // Scatter(Ckv)
     // RmsNorm(Ckv) ──> Scatter(Ckv) ──> kv_cache_out
+    ScatterCkv(outputLocal, rmsNormAndScatterCkvParams);
+
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTensor<kvCacheType> &outputLocal,
+                                                                       LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                                       LocalTensor<float> &dequantScaleXLocal,
+                                                                       RmsNormParam rmsNormParams,
+                                                                       CkvkrParams rmsNormAndScatterCkvParams)
+{
+    // row = vectorRow_ = 1     col = baseParams_->headSizeCkv
+    LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
+    LocalTensor<uint8_t> sharedBuf =
+        inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
+    RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
+        inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
+        dequantScaleWDkvKrLocal_, dequantScaleXLocal, sharedBuf, rmsNormParams);
+
+    AscendC::DataSyncBarrier<MemDsbT::UB>();
+    float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
+
+    if constexpr (isPertile) {
+        PerTileQuantParams perTileQuantParams = {
+            static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
+            static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
+            kNopeClipAlpha,                                                          // alpha
+            static_cast<uint32_t>(vectorRow_),                                       // row
+            baseParams_->headSizeCkv                                                 // col
+        };
+        if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value) {
+            QuantPerTile(outputLocal, inputLocal, sharedBuf, perTileQuantParams);
+        } else {
+            QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+    } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
+                            std::is_same<mmCkvKrOutputType, float>::value) {
+        Rectangle rectangleParams{
+            (uint32_t)vectorRow_,               // row
+            (uint32_t)baseParams_->headSizeCkv, // col
+            (uint32_t)baseParams_->headSizeCkv  // columnStride
+        };
+        QuantPerTensor(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+    } else {
+        Rectangle rectangleParams{
+            (uint32_t)vectorRow_,               // row
+            (uint32_t)baseParams_->headSizeCkv, // col
+            (uint32_t)baseParams_->headSizeCkv  // columnStride
+        };
+        QuantPerChannel(outputLocal, inputLocal, quantScaleCkvLocal_, sharedBuf, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkvMxfp8(
+                                                                        LocalTensor<kvCacheType> &outputLocal,
+                                                                        LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                                        LocalTensor<float> &dequantScaleXLocal,
+                                                                        RmsNormParam rmsNormParams,
+                                                                        CkvkrParams rmsNormAndScatterCkvParams)
+{
+    LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
+    LocalTensor<uint8_t> sharedBuf =
+        inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
+    RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
+        inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
+        dequantScaleWDkvKrLocal_, dequantScaleXLocal, sharedBuf, rmsNormParams);
+
+    AscendC::DataSyncBarrier<MemDsbT::UB>();
+
+    if constexpr (isPertile) {
+        float defaultAlpha = 1.0f;
+        PerTileQuantParams perTileQuantParams = {
+            static_cast<uint32_t>(baseParams_->tileSize),                            // baseParams_->tileSize
+            static_cast<uint32_t>(baseParams_->headSizeCkv / baseParams_->tileSize), // tileNum
+            defaultAlpha,                      // alpha，mxfp8不需要传入knopeclipalpha
+            static_cast<uint32_t>(vectorRow_), // row
+            baseParams_->headSizeCkv           // col
+        };
+        QuantPerTile8Bit(outputLocal, inputLocal, perTileQuantParams);
+        AscendC::PipeBarrier<PIPE_V>();
+    } else if constexpr (std::is_same<mmCkvKrOutputType, float>::value) {
+        Rectangle rectangleParams{
+            (uint32_t)vectorRow_,               // row
+            (uint32_t)baseParams_->headSizeCkv, // col
+            (uint32_t)baseParams_->headSizeCkv  // columnStride
+        };
+        QuantPerTensorToFP8e4m3(outputLocal, inputLocal, quantScaleCkvLocal_, rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::ScatterCkv(LocalTensor<kvCacheType> &outputLocal,
+                                                            CkvkrParams rmsNormAndScatterCkvParams)
+{
     if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ) || (MLAPT::cacheMode == CACHE_MODE::PA_BSND) ||
                   (MLAPT::cacheMode == CACHE_MODE::ND)) {
         int64_t paTokenIndex;
@@ -1384,11 +1447,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
             rmsNormAndScatterCkvParams.rowsInCurBatch, rmsNormAndScatterCkvParams.cacheOffset,
             rmsNormAndScatterCkvParams.nextBatchOffset);
     }
-
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 template <typename MLAPT>
@@ -1446,6 +1504,18 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RopeAndScatterKr(LocalTensor<fl
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
     // scatter(Kr)
     // Rope(Kr) ──> Scatter(Kr) ──> kr_cache_out
+    ScatterKr(outputKrLocal, ropeAndScatterKrParams);
+
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+}
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::ScatterKr(LocalTensor<krCacheType> &outputKrLocal,
+                                                           CkvkrParams ropeAndScatterKrParams)
+{
     int64_t paTokenIndex;
     if constexpr ((MLAPT::cacheMode == CACHE_MODE::PA_NZ) || (MLAPT::cacheMode == CACHE_MODE::PA_BSND) ||
                   (MLAPT::cacheMode == CACHE_MODE::ND)) {
@@ -1490,11 +1560,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RopeAndScatterKr(LocalTensor<fl
         int64_t cacheOffset = 0;
         int64_t nextBatchOffset = 0;
     }
-
-    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 template <typename MLAPT>
@@ -1606,7 +1671,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
     uint32_t colOffsetRope = 0;
     // cube一次处理row*colCube，对应的两个vec一次处理row*colQc，两vec之间切row
     // 等cube生产足够数据了以后，vec开始消费
-    // CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
     uint32_t qcCount = 0;
     uint32_t splitCount = 0;
     uint32_t totalLoops = CeilDivT(mmQcQrParam_.n, mmQcQrParam_.baseN);
@@ -1732,7 +1796,6 @@ MlaPrologV3SplitM<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, in
     CrossCoreWaitFlag(FINISH_MM_QN_SPLIT_N);
     // per-head循环
     for (int64_t loopIdx = 0; loopIdx < mmQnLoops; loopIdx++) {
-        // CrossCoreWaitFlag(FINISH_MM_QN_SPLIT_N);
         DynamicQuantQnWithMulQr<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
             dequantScaleQNopeGm_[scaleQueryNopeOffset], queryOutGm_[dynamicQuantQueryResOffset],
             qrOutGm_[qrPostProcessResOffset], mmQnResGm_[dynamicQuantQueryOffset], shareTmpUb, curStepBatchSizeVec,
