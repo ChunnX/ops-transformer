@@ -117,6 +117,10 @@ void LIInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
+    opParamInfo_.initTensor.tensor = context_->GetOptionalInputTensor(INIT_TENSOR_INDEX);
+    opParamInfo_.initTensor.desc = context_->GetOptionalInputDesc(INIT_TENSOR_INDEX);
+    opParamInfo_.localTensor.tensor = context_->GetOptionalInputTensor(LOCAL_TENSOR_INDEX);
+    opParamInfo_.localTensor.desc = context_->GetOptionalInputDesc(LOCAL_TENSOR_INDEX);
 }
 
 void LIInfoParser::GetInputParaInfo()
@@ -194,8 +198,6 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
                OP_LOGE(opName_, "input attr pre_tokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
                OP_LOGE(opName_, "input attr nextTokens only supported INT64_MAX."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.returnValue && std::string(opParamInfo_.layOutKey) == "PA_BSND",
-               OP_LOGE(opName_, "when return_value is true, key layout do not support PA_BSND."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
