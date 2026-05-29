@@ -259,7 +259,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::KeyNd2NzForPA(uint64_
         uint64_t s2BlkId = (s2L1Offset + s2GmOffset) / constInfo_.kCacheBlockSize;
         uint64_t s2BlkOffset = (s2L1Offset + s2GmOffset) % constInfo_.kCacheBlockSize;
         uint64_t keyGmOffset =
-            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) * 
+            blkTableGm_.GetValue(runInfo.bIdx * constInfo_.maxBlockNumPerBatch + s2BlkId) *
                                  constInfo_.kCacheBlockSize * constInfo_.kHeadNum * constInfo_.headDim +
                                  s2BlkOffset * constInfo_.headDim;
 
@@ -381,7 +381,6 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
         mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
                     CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
                     cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
-    
 }
 
 template <typename LIT>

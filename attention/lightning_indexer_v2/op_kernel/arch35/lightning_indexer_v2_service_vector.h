@@ -351,7 +351,6 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec1(const L
     // V核处理完，通知C核可以把mm1Res搬运到UB
     CrossCoreSetFlag<LIV2Common::ConstInfo::LI_SYNC_MODE4, PIPE_V>(
         LIV2Common::ConstInfo::CROSS_VC_EVENT + info.loop % 2);
-
 }
 
 template <typename LIT>
