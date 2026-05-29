@@ -123,7 +123,7 @@ protected:
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
-        int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
+        const int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
         if (blockShapeList == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
