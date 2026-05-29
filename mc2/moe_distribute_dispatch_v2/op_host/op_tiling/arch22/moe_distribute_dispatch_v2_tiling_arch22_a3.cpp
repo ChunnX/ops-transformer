@@ -152,20 +152,4 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA3::MoeDistributeDispatchV2Tili
         [this](const char *ptr, const char *name) { return CheckCommAlgPtr(ptr, name); });
 }
 
-struct MoeDistributeDispatchCompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext* context)
-{
-    MoeDistributeDispatchV2TilingFuncA3 impl;
-    return impl.MoeDistributeDispatchV2TilingFunc(context);
-}
-
-IMPL_OP_OPTILING(MoeDistributeDispatchV2)
-    .Tiling(MoeDistributeDispatchV2TilingFuncImpl)
-    .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
 } // namespace optiling
