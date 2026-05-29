@@ -2,30 +2,29 @@
 
 ## 产品支持情况
 
-| 产品 | 是否支持 |
-| --- | :---: |
-| Atlas A3 训练系列产品 / Atlas A3 推理系列产品 | √ |
-| Atlas A2 训练系列产品 / Atlas A2 推理系列产品 | √ |
-| Atlas 200I/500 A2 推理产品 | × |
-| Atlas 推理系列产品 | × |
-| Atlas 训练系列产品 | × |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| Ascend 950PR/Ascend 950DT                                   |    x     |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品                 |    √     |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品                 |    √     |
+| Atlas 200I/500 A2 推理产品                                  |    x     |
+| Atlas 推理系列产品                                          |    x     |
+| Atlas 训练系列产品                                          |    x     |
 
 ## 功能说明
 
-`aclnnSparseLightningIndexerKLLossGradMetadata` 用于生成
-`aclnnSparseLightningIndexerKLLossGrad` 的运行时 metadata。metadata 中记录了 batch 与 S1 合轴后的多核切分信息，
-主 kernel 可直接读取该 tensor 完成分核调度，从而避免在主 kernel tiling 阶段访问 host array。
+- 算子功能：该算子为AICPU算子，是aclnnSparseLightningIndexerKLLossGrad算子的前置算子。根据aclnnSparseLightningIndexerKLLossGrad算子的输入shape、layout、mask和压缩比例信息，计算并输出分核切分metadata。输出结果可作为aclnnSparseLightningIndexerKLLossGrad算子的metadataOptional输入，减少主算子tiling阶段对host array的访问。
 
-该接口通常在主 kernel 前调用，输出 `metadata` 作为
-`aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize` 的 `metadataOptional` 输入。
+  **该算子不建议单独使用，建议与aclnnSparseLightningIndexerKLLossGrad算子配合使用，形成完整的工作流。**
+    1. 接收主算子的shape信息，包括batchSize、maxSeqLenQ、maxSeqLenK、numHeadsQ、numHeadsK、headDim、topk、layout和mask信息。
+    2. 根据每个query对应的有效sparse长度估算负载，并将B/S1合轴后的任务均衡切分到可用AIC核上。
+    3. 输出metadata后，后续作为aclnnSparseLightningIndexerKLLossGrad算子的metadataOptional输入使用。
 
 ## 函数原型
 
-每个 aclnn 算子分为两段式接口。必须先调用
-`aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize` 获取 workspace 大小和 executor，再调用
-`aclnnSparseLightningIndexerKLLossGradMetadata` 执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize"获取workspace大小，再调用"aclnnSparseLightningIndexerKLLossGradMetadata"执行计算。
 
-```c++
+``` cpp
 aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     const aclTensor *cuSeqLensQOptional,
     const aclTensor *cuSeqLensKOptional,
@@ -48,7 +47,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     aclOpExecutor **executor);
 ```
 
-```c++
+``` cpp
 aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     void *workspace,
     uint64_t workspaceSize,
@@ -56,217 +55,655 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     aclrtStream stream);
 ```
 
-## aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize 参数说明
+## aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize
 
-| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 | Shape / 取值 | 是否支持非连续 |
-| --- | --- | --- | --- | --- | --- | :---: |
-| cuSeqLensQOptional | 可选输入 | TND layout 下 q 的累积序列长度。 | INT32 | ND | `(B+1,)` | × |
-| cuSeqLensKOptional | 可选输入 | TND layout 下 k 的累积序列长度。 | INT32 | ND | `(B+1,)` | × |
-| seqUsedQOptional | 可选输入 | 预留字段，表示每个 batch 实际使用的 q 长度。 | INT32 | ND | `(B,)` | × |
-| seqUsedKOptional | 可选输入 | 预留字段，表示每个 batch 实际使用的 k 长度。 | INT32 | ND | `(B,)` | × |
-| cmpResidualKOptional | 可选输入 | `maskMode=3` 且 `cmpRatio!=1` 时的预留字段。 | INT32 | ND | `(B,)` | × |
-| batchSize | 输入属性 | batch 数。TND layout 下可由 `cuSeqLensQOptional` 推导；上层 Python 接口传 `None` 时映射为 `0`。 | INT64 | - | 大于等于 0 | - |
-| maxSeqLenQ | 输入属性 | q 的最大序列长度。BSND layout 下需要传入；TND layout 下由 `cuSeqLensQOptional` 参与计算。 | INT64 | - | 大于等于 0 | - |
-| maxSeqLenK | 输入属性 | k 的最大序列长度。BSND layout 下需要传入；TND layout 下由 `cuSeqLensKOptional` 参与计算。 | INT64 | - | 大于等于 0 | - |
-| numHeadsQ | 输入属性 | q 的 head 数，对应主 kernel 的 `N1`。 | INT64 | - | 大于 0 | - |
-| numHeadsK | 输入属性 | k 的 head 数，对应主 kernel 的 `N2`。 | INT64 | - | 大于 0 | - |
-| headDim | 输入属性 | q/k 的 head dim，对应主 kernel 的 `D`。 | INT64 | - | 大于 0 | - |
-| topk | 输入属性 | top-k 大小，对应主 kernel 的 `K`。上层 Python 接口传 `None` 时映射为 `0`。 | INT64 | - | 大于 0 | - |
-| layoutQ | 输入属性 | q 侧 layout。 | STRING | - | `BSND` / `TND` | - |
-| layoutK | 输入属性 | k 侧 layout。 | STRING | - | `BSND` / `TND` | - |
-| maskMode | 输入属性 | mask 模式。`0` 表示无 mask，`3` 表示右下角 causal mask。 | INT64 | - | `0` / `3` | - |
-| cmpRatio | 输入属性 | 压缩比。 | INT64 | - | `[1,128]` | - |
-| metadata | 输出 | 分核 metadata。 | INT32 | ND | `(x,)`，当前实现为 `(64,)` | - |
-| workspaceSize | 输出 | 返回用户需要在 device 侧申请的 workspace 大小。当前实现返回 `0`。 | UINT64 | - | 标量 | - |
-| executor | 输出 | 返回 op 执行器，包含算子计算流程。 | aclOpExecutor* | - | - | - |
+## 参数说明
 
-## 约束与限制
+- **参数说明**
 
-- `cuSeqLensQOptional/cuSeqLensKOptional/seqUsedQOptional/seqUsedKOptional/cmpResidualKOptional/metadata`
-  数据类型均为 `INT32`。
-- `layoutQ` 和 `layoutK` 支持 `BSND` 和 `TND`。
-- 当 `layoutQ=TND` 时，必须传入 `cuSeqLensQOptional` 和 `cuSeqLensKOptional`，且长度至少为 `batchSize + 1`。
-- 当 `batchSize` 为 0 且 `layoutQ=TND` 时，AICPU kernel 会尝试通过 `cuSeqLensQOptional` 的长度推导 batch。
-- 当 `layoutQ=BSND` 时，`batchSize/maxSeqLenQ/maxSeqLenK/topk` 必须为正数。
-- `numHeadsQ/numHeadsK/headDim` 必须为正数，且 `numHeadsQ` 必须能被 `numHeadsK` 整除。
-- `maskMode` 当前支持 `0` 和 `3`。
-- `cmpRatio` 范围为 `[1,128]`。
-- 输出 metadata 当前布局如下：
+  <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
+  <col style="width: 150px">
+  <col style="width: 100px">
+  <col style="width: 350px">
+  <col style="width: 150px">
+  <col style="width: 70px">
+  <col style="width: 70px">
+  <col style="width: 190px">
+  <col style="width: 80px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>cuSeqLensQOptional</td>
+      <td>输入</td>
+      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
+      <td>支持空Tensor。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape为(B+1,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>cuSeqLensKOptional</td>
+      <td>输入</td>
+      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
+      <td>支持空Tensor。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape为(B+1,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>seqUsedQOptional</td>
+      <td>输入</td>
+      <td>预留接口参数，表示不同batch中query实际参与运算的sequence length。</td>
+      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape为(B,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>seqUsedKOptional</td>
+      <td>输入</td>
+      <td>预留接口参数，表示不同batch中key实际参与运算的sequence length。</td>
+      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape为(B,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>cmpResidualKOptional</td>
+      <td>输入</td>
+      <td>预留接口参数，表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
+      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape为(B,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>batchSize</td>
+      <td>输入</td>
+      <td>表示batch数量。</td>
+      <td>支持非负数。TND场景可填0，并通过cuSeqLensQOptional推导。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maxSeqLenQ</td>
+      <td>输入</td>
+      <td>表示query的最大sequence length。</td>
+      <td>支持非负数。BSND场景必须为正数。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maxSeqLenK</td>
+      <td>输入</td>
+      <td>表示key的最大sequence length。</td>
+      <td>支持非负数。BSND场景必须为正数。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>numHeadsQ</td>
+      <td>输入</td>
+      <td>表示query的head个数。</td>
+      <td>必须为正数，并且能被numHeadsK整除。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>numHeadsK</td>
+      <td>输入</td>
+      <td>表示key的head个数。</td>
+      <td>必须为正数。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>headDim</td>
+      <td>输入</td>
+      <td>表示q/k的head dimension。</td>
+      <td>必须为正数。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>topk</td>
+      <td>输入</td>
+      <td>表示从key中筛选出的关键token个数。</td>
+      <td>必须为正数。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutQ</td>
+      <td>输入</td>
+      <td>表示query侧的排列格式。</td>
+      <td>支持BSND/TND，默认值为BSND。</td>
+      <td>STRING</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>layoutK</td>
+      <td>输入</td>
+      <td>表示key侧的排列格式。</td>
+      <td>支持BSND/TND，默认值为BSND。</td>
+      <td>STRING</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>maskMode</td>
+      <td>输入</td>
+      <td>表示sparse mask模式。</td>
+      <td>0: No mask</br>3: Causal</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>cmpRatio</td>
+      <td>输入</td>
+      <td>表示key的压缩率。</td>
+      <td>取值范围[0, 128]。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>metadata</td>
+      <td>输出</td>
+      <td>表示负载均衡结果输出。</td>
+      <td>输出结果作为aclnnSparseLightningIndexerKLLossGrad的metadataOptional输入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>1维，shape固定为(64,)</td>
+      <td>x</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>当前实现返回0。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
+  </table>
 
-| 字段 | index | 说明 |
-| --- | --- | --- |
-| coreNum | 0 | 主 kernel 实际使用的 cube core 数。 |
-| totalSize | 1 | 按 batch 与 S1 合轴后的任务总行数。 |
-| splitFactorSize | 2 | 均分场景下的分核粒度。 |
-| reserved | 3-7 | 预留字段，当前置 0。 |
-| bS1Index | 8-32 | 每个 cube core 的起始 B/S1 合轴索引。 |
+- **返回值：**
 
-## 与主 kernel 的配合方式
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-典型调用顺序如下：
+## aclnnSparseLightningIndexerKLLossGradMetadata
 
-1. 调用 `aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize` 和
-   `aclnnSparseLightningIndexerKLLossGradMetadata` 生成 `metadata`。
-2. 将 `metadata` 作为 `metadataOptional` 传给
-   `aclnnSparseLightningIndexerKLLossGradGetWorkspaceSize`。
-3. 调用 `aclnnSparseLightningIndexerKLLossGrad` 执行反向计算。
+- **参数说明：**
+
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
+    </colgroup>
+    <thead>
+        <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        </tr></thead>
+    <tbody>
+        <tr>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize获取。</td>
+        </tr>
+        <tr>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
+        </tr>
+    </tbody>
+    </table>
+
+- **返回值：**
+
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+## 约束说明
+
+  - aclnnSparseLightningIndexerKLLossGradMetadata为确定性实现，确定性计算配置不会改变其输出规则。
+
+  - BSND场景
+    - 必传batchSize、maxSeqLenQ、maxSeqLenK和topk参数，以获取shape信息。
+  - TND场景
+    - 必传cuSeqLensQOptional、cuSeqLensKOptional和topk参数，以获取正确shape信息。
+    - 当batchSize为0时，通过cuSeqLensQOptional的shape推导batch。
+
+<details>
+<summary><a id="Mask"></a>Mask</summary>
+    &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+        <col style="width: 165px">
+        <col style="width: 625px">
+        <col style="width: 360px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>mask_mode</th>
+                <th>含义</th>
+                <th>备注</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>0</td>
+            <td>无mask。</td>
+            <td>支持</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</td>
+            <td>支持</td>
+        </tr>
+        </tbody>
+    </table>
+</details>
+
+<details>
+<summary><a id="特殊约束"></a>特殊约束</summary>
+
+  - Batch取值规则
+    - 如果batchSize大于0，优先使用batchSize。
+    - 如果batchSize小于等于0，且layoutQ为TND，则通过cuSeqLensQOptional的shape推导batch。
+    - 如果batchSize小于等于0，且layoutQ为BSND，则报错。
+  - Seqlen取值规则
+    - TND场景下，通过cuSeqLensQOptional和cuSeqLensKOptional计算每个batch的实际q/k长度。
+    - BSND场景下，通过maxSeqLenQ和maxSeqLenK获取q/k长度。
+  - layout约束
+    - layoutQ必须为BSND或TND。
+    - layoutK支持BSND和TND，建议与layoutQ保持一致。
+  - head约束
+    - numHeadsQ、numHeadsK和headDim必须为正数。
+    - numHeadsQ必须能被numHeadsK整除。
+  - sparse约束
+    - topk必须为正数。
+    - cmpRatio取值范围为[0, 128]。
+    - maskMode当前仅支持0和3。
+
+</details>
+
+<details>
+<summary><a id="Metadata"></a>Metadata输出布局</summary>
+
+  metadata输出为INT32 Tensor，当前shape固定为(64,)，字段布局如下。
+
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 180px">
+    <col style="width: 150px">
+    <col style="width: 820px">
+    </colgroup>
+    <thead>
+        <tr>
+        <th>字段</th>
+        <th>index</th>
+        <th>说明</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+        <td>coreNum</td>
+        <td>0</td>
+        <td>主kernel实际使用的cube core数量。</td>
+        </tr>
+        <tr>
+        <td>totalSize</td>
+        <td>1</td>
+        <td>B/S1合轴后的任务总行数。</td>
+        </tr>
+        <tr>
+        <td>splitFactorSize</td>
+        <td>2</td>
+        <td>均分场景下的初始分核粒度。</td>
+        </tr>
+        <tr>
+        <td>reserved</td>
+        <td>3-7</td>
+        <td>预留字段，当前置0。</td>
+        </tr>
+        <tr>
+        <td>bS1Index</td>
+        <td>8-32</td>
+        <td>每个cube core的起始B/S1合轴索引，非活跃core填充totalSize。</td>
+        </tr>
+    </tbody>
+  </table>
+
+</details>
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参见[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```cpp
+``` cpp
 #include <algorithm>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <functional>
 #include <iostream>
+#include <utility>
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_sparse_lightning_indexer_kl_loss_grad_metadata.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_LOG_RET(cond, ret_val, fmt, ...)      \
+    do {                                            \
+        if (!(cond)) {                              \
+            printf(fmt "\n", ##__VA_ARGS__);        \
+            return (ret_val);                       \
+        }                                           \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
-    } while (0)
+constexpr uint32_t SLI_METADATA_MAX_CORE_NUM = 25;
+constexpr uint32_t SLI_METADATA_HEADER_SIZE = 8;
+constexpr uint32_t SLI_METADATA_SIZE = 64;
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+struct SliGradKLLossMetaData {
+    int32_t coreNum;
+    int32_t totalSize;
+    int32_t splitFactorSize;
+    int32_t reserved[SLI_METADATA_HEADER_SIZE - 3];
+    int32_t bS1Index[SLI_METADATA_MAX_CORE_NUM];
+};
+
+struct ScopeGuard
+{
+    explicit ScopeGuard(std::function<void()> onExitScope) : m_exitFunc(std::move(onExitScope)),
+        m_isDismissed(false) {}
+    ScopeGuard(const ScopeGuard&) = delete;
+    ScopeGuard& operator=(const ScopeGuard&) = delete;
+
+    ~ScopeGuard()
+    {
+        if (!m_isDismissed) {
+            m_exitFunc();
+        }
+    }
+
+    void Dismiss()
+    {
+        m_isDismissed = true;
+    }
+
+    std::function<void()> m_exitFunc;
+    bool m_isDismissed;
+};
+
+struct Tensor {
+    void *hostAddr { nullptr };
+    void *deviceAddr { nullptr };
+    aclTensor *data { nullptr };
+};
+
+struct ArgScenario {
+    bool hasCuSeq { true };
+};
+
+struct ArgContext {
+    Tensor cuSeqLensQOptional {};
+    Tensor cuSeqLensKOptional {};
+    Tensor seqUsedQOptional {};
+    Tensor seqUsedKOptional {};
+    Tensor cmpResidualKOptional {};
+    Tensor metadata {};
+    int64_t batchSize { 0 };
+    int64_t maxSeqLenQ { 0 };
+    int64_t maxSeqLenK { 0 };
+    int64_t numHeadsQ { 8 };
+    int64_t numHeadsK { 1 };
+    int64_t headDim { 128 };
+    int64_t topk { 512 };
+    char *layoutQ { nullptr };
+    char *layoutK { nullptr };
+    int64_t maskMode { 3 };
+    int64_t cmpRatio { 4 };
+};
+
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
-    for (auto dim : shape) {
-        shapeSize *= dim;
+    for (auto i : shape) {
+        shapeSize *= i;
     }
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
+aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclInit failed. ERROR: %d", ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtCreateContext(context, deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtSetCurrentContext(*context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetCurrentContext failed. ERROR: %d\n", ret); return ret);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSetDevice failed. ERROR: %d", ret);
     ret = aclrtCreateStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtCreateStream failed. ERROR: %d", ret);
     return ACL_SUCCESS;
 }
 
-template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+void Finalize(int32_t deviceId, aclrtStream stream)
 {
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
+    aclrtDestroyStream(stream);
+    aclrtResetDevice(deviceId);
+    aclFinalize();
+}
 
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+aclnnStatus CreateTensor(aclDataType dataType, const std::vector<int64_t> &shape, Tensor &tensor)
+{
+    auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
+    auto ret = aclrtMallocHost(&(tensor.hostAddr), size);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMallocHost failed. ERROR: %d", ret);
+    memset(tensor.hostAddr, 0, size);
 
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND, shape.data(),
-                              shape.size(), *deviceAddr);
+    ret = aclrtMalloc(&(tensor.deviceAddr), size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMalloc failed. ERROR: %d", ret);
+    tensor.data = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
+        shape.data(), shape.size(), tensor.deviceAddr);
+
+    ret = aclrtMemcpy(tensor.deviceAddr, size, tensor.hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
     return ACL_SUCCESS;
 }
 
-void PrintIntResult(const std::vector<int64_t> &shape, void *deviceAddr)
+void SetInt32TensorData(Tensor &tensor, const std::vector<int32_t> &hostData)
 {
-    auto elemCount = GetShapeSize(shape);
-    std::vector<int32_t> resultData(elemCount, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int32_t), deviceAddr,
-                           resultData.size() * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-    for (int64_t i = 0; i < std::min<int64_t>(elemCount, 8); ++i) {
-        LOG_PRINT("metadata[%ld] is: %d\n", i, resultData[i]);
+    auto size = hostData.size() * sizeof(int32_t);
+    memcpy(tensor.hostAddr, hostData.data(), size);
+    aclrtMemcpy(tensor.deviceAddr, size, tensor.hostAddr, size, ACL_MEMCPY_HOST_TO_DEVICE);
+}
+
+void DestroyTensor(Tensor &tensor)
+{
+    if (tensor.data != nullptr) {
+        aclDestroyTensor(tensor.data);
+        tensor.data = nullptr;
+    }
+    if (tensor.deviceAddr != nullptr) {
+        aclrtFree(tensor.deviceAddr);
+        tensor.deviceAddr = nullptr;
+    }
+    if (tensor.hostAddr != nullptr) {
+        aclrtFreeHost(tensor.hostAddr);
+        tensor.hostAddr = nullptr;
     }
 }
 
-int main()
+void DestroyArgs(ArgContext &context)
 {
+    DestroyTensor(context.metadata);
+    DestroyTensor(context.cuSeqLensQOptional);
+    DestroyTensor(context.cuSeqLensKOptional);
+    DestroyTensor(context.seqUsedQOptional);
+    DestroyTensor(context.seqUsedKOptional);
+    DestroyTensor(context.cmpResidualKOptional);
+
+    if (context.layoutQ != nullptr) {
+        free(context.layoutQ);
+        context.layoutQ = nullptr;
+    }
+    if (context.layoutK != nullptr) {
+        free(context.layoutK);
+        context.layoutK = nullptr;
+    }
+}
+
+aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
+{
+    ScopeGuard argsGuard([&] { DestroyArgs(context); });
+    aclnnStatus ret;
+
+    int64_t batchSize = 1;
+    context.maxSeqLenQ = 16;
+    context.maxSeqLenK = 4;
+    context.layoutQ = (char *)malloc(sizeof(char) * 16);
+    context.layoutK = (char *)malloc(sizeof(char) * 16);
+    strcpy(context.layoutQ, scenario.hasCuSeq ? "TND" : "BSND");
+    strcpy(context.layoutK, scenario.hasCuSeq ? "TND" : "BSND");
+
+    ret = CreateTensor(aclDataType::ACL_INT32, { SLI_METADATA_SIZE }, context.metadata);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
+
+    if (scenario.hasCuSeq) {
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensQOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensQOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensKOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensKOptional failed. Error: %d", ret);
+        SetInt32TensorData(context.cuSeqLensQOptional, { 0, static_cast<int32_t>(context.maxSeqLenQ) });
+        SetInt32TensorData(context.cuSeqLensKOptional, { 0, static_cast<int32_t>(context.maxSeqLenK) });
+        context.batchSize = 0;
+    } else {
+        context.batchSize = batchSize;
+    }
+
+    argsGuard.Dismiss();
+    return ACL_SUCCESS;
+}
+
+void PrintMetadata(const SliGradKLLossMetaData &metadata)
+{
+    printf("coreNum          : %d\n", metadata.coreNum);
+    printf("totalSize        : %d\n", metadata.totalSize);
+    printf("splitFactorSize  : %d\n", metadata.splitFactorSize);
+    for (uint32_t i = 0; i < std::min<uint32_t>(metadata.coreNum, SLI_METADATA_MAX_CORE_NUM); ++i) {
+        printf("bS1Index[%u]      : %d\n", i, metadata.bS1Index[i]);
+    }
+}
+
+int main() {
     int32_t deviceId = 0;
-    aclrtContext context;
     aclrtStream stream;
-    auto ret = Init(deviceId, &context, &stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+    auto ret = Init(deviceId, &stream);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Init acl failed. ERROR: %d", ret);
+    ScopeGuard sysGuard([&] { Finalize(deviceId, stream); });
 
-    const int64_t batchSize = 1;
-    const int64_t maxSeqLenQ = 16;
-    const int64_t maxSeqLenK = 4;
-    const int64_t numHeadsQ = 8;
-    const int64_t numHeadsK = 1;
-    const int64_t headDim = 128;
-    const int64_t topk = 512;
-    const int64_t maskMode = 3;
-    const int64_t cmpRatio = 4;
-
-    std::vector<int64_t> cuSeqLensShape = {batchSize + 1};
-    std::vector<int64_t> metadataShape = {64};
-    std::vector<int32_t> cuSeqLensQHostData = {0, static_cast<int32_t>(maxSeqLenQ)};
-    std::vector<int32_t> cuSeqLensKHostData = {0, static_cast<int32_t>(maxSeqLenK)};
-    std::vector<int32_t> metadataHostData(GetShapeSize(metadataShape), 0);
-
-    void *cuSeqLensQDeviceAddr = nullptr;
-    void *cuSeqLensKDeviceAddr = nullptr;
-    void *metadataDeviceAddr = nullptr;
-
-    aclTensor *cuSeqLensQ = nullptr;
-    aclTensor *cuSeqLensK = nullptr;
-    aclTensor *metadata = nullptr;
-
-    ret = CreateAclTensor(cuSeqLensQHostData, cuSeqLensShape, &cuSeqLensQDeviceAddr, aclDataType::ACL_INT32,
-                          &cuSeqLensQ);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(cuSeqLensKHostData, cuSeqLensShape, &cuSeqLensKDeviceAddr, aclDataType::ACL_INT32,
-                          &cuSeqLensK);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ArgScenario scenario {};
+    scenario.hasCuSeq = true;
+    ArgContext context {};
+    ret = CreateArgs(scenario, context);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create input arguments failed. ERROR: %d", ret);
+    ScopeGuard argsGuard([&] { DestroyArgs(context); });
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
-        cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK,
-        headDim, topk, const_cast<char *>("TND"), const_cast<char *>("TND"), maskMode, cmpRatio, metadata,
-        &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
     void *workspaceAddr = nullptr;
-    if (workspaceSize > 0) {
+    ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
+        context.cuSeqLensQOptional.data, context.cuSeqLensKOptional.data, context.seqUsedQOptional.data,
+        context.seqUsedKOptional.data, context.cmpResidualKOptional.data, context.batchSize, context.maxSeqLenQ,
+        context.maxSeqLenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.layoutQ,
+        context.layoutK, context.maskMode, context.cmpRatio, context.metadata.data, &workspaceSize, &executor);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
+        "aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d", ret);
+
+    if (workspaceSize > static_cast<uint64_t>(0)) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "allocate workspace failed. ERROR: %d", ret);
     }
+    ScopeGuard workspaceGuard([&] {
+        if (workspaceAddr != nullptr) {
+            aclrtFree(workspaceAddr);
+            workspaceAddr = nullptr;
+        }
+    });
 
     ret = aclnnSparseLightningIndexerKLLossGradMetadata(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnSparseLightningIndexerKLLossGradMetadata failed. ERROR: %d\n", ret); return ret);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
+        "aclnnSparseLightningIndexerKLLossGradMetadata failed. ERROR: %d", ret);
 
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-    PrintIntResult(metadataShape, metadataDeviceAddr);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d", ret);
 
-    aclDestroyTensor(cuSeqLensQ);
-    aclDestroyTensor(cuSeqLensK);
-    aclDestroyTensor(metadata);
+    SliGradKLLossMetaData result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d", ret);
+    PrintMetadata(result);
 
-    aclrtFree(cuSeqLensQDeviceAddr);
-    aclrtFree(cuSeqLensKDeviceAddr);
-    aclrtFree(metadataDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
-    aclrtDestroyStream(stream);
-    aclrtDestroyContext(context);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
     return 0;
 }
 ```
+
+## 调用说明
+
+| 调用方式  | 样例代码 | 说明 |
+| ----------- | -------- | ---- |
+| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnSparseLightningIndexerKLLossGradMetadata`接口方式调用，输出metadata供`aclnnSparseLightningIndexerKLLossGrad`使用。 |
