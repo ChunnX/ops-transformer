@@ -29,8 +29,11 @@ struct MatmulWithScaleMx {
     constexpr static uint64_t fullLoadMode = FULL_LOAD_MODE_;
 };
 
-/* Mx Matrix A8W4 */
-struct KernelMixDynamicKL1NTailResplit {};
+/**
+ * @struct MatmulMxFp8Fp4DynamicKL1TailResplit
+ * @brief Dispatch policy for the MX FP8/FP4 dynamic KL1 tail-resplit path.
+ */
+struct MatmulMxFp8Fp4DynamicKL1TailResplit {};
 
 } // namespace Gemm
 } // namespace Blaze
