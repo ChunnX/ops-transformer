@@ -72,6 +72,7 @@ if(UT_TEST_ALL OR OP_API_UT)
               ${OPAPI_NAME}_ut
               nnopbase
           -Wl,--no-as-needed
+              acl_rt
           -Wl,--whole-archive
           graph
           gtest

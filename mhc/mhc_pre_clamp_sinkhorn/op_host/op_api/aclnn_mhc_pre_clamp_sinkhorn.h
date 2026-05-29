@@ -13,8 +13,8 @@
  * \brief MhcPreClampSinkhorn ACLNN API
  */
 
-#ifndef OP_API_INC_LEVEL2_ACLNN_MHC_PRE_SINKHORN_H_
-#define OP_API_INC_LEVEL2_ACLNN_MHC_PRE_SINKHORN_H_
+#ifndef OP_API_INC_LEVEL2_ACLNN_MHC_PRE_CLAMP_SINKHORN_H_
+#define OP_API_INC_LEVEL2_ACLNN_MHC_PRE_CLAMP_SINKHORN_H_
 
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
@@ -52,4 +52,4 @@ aclnnStatus aclnnMhcPreClampSinkhorn(void *workspace, uint64_t workspaceSize, ac
 }
 #endif
 
-#endif // OP_API_INC_LEVEL2_ACLNN_MHC_PRE_SINKHORN_H_
+#endif // OP_API_INC_LEVEL2_ACLNN_MHC_PRE_CLAMP_SINKHORN_H_

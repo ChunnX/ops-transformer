@@ -15,8 +15,8 @@
 #include <ctime>
 #include <gtest/gtest.h>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_mhc_pre_sinkhorn.h"
-#include "aclnnop/aclnn_mhc_pre_clamp_sinkhorn.h"
+#include "../../../../../mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h"
+#include "../../../../op_host/op_api/aclnn_mhc_pre_clamp_sinkhorn.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
