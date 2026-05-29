@@ -46,11 +46,12 @@ namespace l0op {
  * @return aclTensor*: Output tensor hin
  */
 const aclTensor *MhcPreClampSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                const aclTensor *bias, float min, float max,
+                                int64_t hcMult, int64_t numIters, double hcEps,
                                 double normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                aclTensor *sumOut, aclTensor *normOut,
+                                aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
                                 aclOpExecutor *executor);
 
 }

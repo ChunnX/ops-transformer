@@ -131,6 +131,8 @@ TILING_DATA_FIELD_DEF(int64_t, stage1NcFactor);           // 每段大小
 TILING_DATA_FIELD_DEF(int64_t, stage1TailNcFactor);       // 尾段大小
 TILING_DATA_FIELD_DEF(int64_t, stage1XCastWsSize);        // X_cast workspace 大小
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
+TILING_DATA_FIELD_DEF(float, min)
+TILING_DATA_FIELD_DEF(float, max)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreClampSinkhorn, MhcPreClampSinkhornTilingData)
@@ -185,6 +187,8 @@ private:
     int64_t iterTimes_ = 0;
     float hcEps_ = 0.0;
     float normEps_ = 0.0;
+    float minVal_ = 0.0f;
+    float maxVal_ = 1.0f;
     bool needGrad_ = true;
     int64_t bsLoop_ = 1;
     int64_t tailBs_ = 0;
@@ -250,6 +254,8 @@ private:
     int64_t iterTimes_ = 0;
     double hcEps_ = 0.0;
     double normEps_ = 0.0;
+    float minVal_ = 0.0f;
+    float maxVal_ = 1.0f;
     bool needGrad_ = false;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
 };

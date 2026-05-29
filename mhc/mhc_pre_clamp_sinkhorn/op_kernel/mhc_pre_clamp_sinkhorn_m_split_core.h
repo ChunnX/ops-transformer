@@ -251,7 +251,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
                                 GM_ADDR post, GM_ADDR combFrag,
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                GM_ADDR sumOut, GM_ADDR normOut,
+                                GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR reduceOut,
                                 GM_ADDR workspace,
                                 const MhcPreClampSinkhornTilingData *tilingDataPtr, TPipe *pipePtr)
     {
@@ -273,6 +273,7 @@ public:
             invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
             sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
             normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
+            reduceOutGm.SetGlobalBuffer((__gm__ float *)reduceOut);
         } else {
             int64_t xCastWsTotalSize = tilingData->stage1XCastWsSize / sizeof(float);
             invRmsGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize);
@@ -455,6 +456,13 @@ public:
                 PipeBarrier<PIPE_V>();
                 AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
                                                 tilingData->hcMult * tilingData->hcMultAlign);
+                if (needGrad_) {
+                    int64_t reduceOutBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
+                                                   rowOuterIdx * curStage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
+                    VToMTE3Sync();
+                    CopyOut(mxies02ReduceLocal, reduceOutGm[reduceOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
+                    MTE3ToVSync();
+                }
                 SoftmaxFP32Perf(mxies02ReduceLocal, mxies02ReduceLocal, reduceLocal, hcBrcbLocal1, curRowFactor * tilingData->hcMult,
                                 tilingData->hcMult, tilingData->hcEps);
                 
@@ -580,6 +588,7 @@ private:
     GlobalTensor<float> invRmsGm;
     GlobalTensor<float> sumOutGm;
     GlobalTensor<float> normOutGm;
+    GlobalTensor<float> reduceOutGm;
 
     bool needGrad_ = false;
     bool isTailBsLoop_ = false;

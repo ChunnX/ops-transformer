@@ -80,12 +80,19 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Output("reduceOut")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("hc_mult").AttrType(OPTIONAL).Int(4);
         this->Attr("num_iters").AttrType(OPTIONAL).Int(20);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f); // default value
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("need_backward").AttrType(OPTIONAL).Bool(true);
+        this->Attr("min").AttrType(OPTIONAL).Float(0.0f);
+        this->Attr("max").AttrType(OPTIONAL).Float(1.0f);
             
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
