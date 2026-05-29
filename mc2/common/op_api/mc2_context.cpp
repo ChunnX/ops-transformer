@@ -24,7 +24,6 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
 } // namespace
 
 namespace Mc2Aclnn {
@@ -293,7 +292,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             return ACLNN_ERR_INNER;
         }
 
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
@@ -535,6 +534,28 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     OP_LOGI("Get Mc2MoeContext Tensor Success");
+    return ACLNN_SUCCESS;
+}
+
+ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
+{
+    OP_LOGD("Start to get Mc2RankSize Tensor");
+    Mc2Context instance;
+
+    auto aclnnRet = instance.LoadHcclSymbols();
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    HcclComm hcclHandle;
+    aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+
+    auto hcclRet = instance.HcclGetRankSize(hcclHandle, &rankSize);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("Get rank size success, rankSize is: %u", rankSize);
+
     return ACLNN_SUCCESS;
 }
 
