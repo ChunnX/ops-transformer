@@ -14,6 +14,7 @@ namespace BSA_ARC35 {
 template <typename BSA_TYPE>
 class AddrComputeModule {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
 
@@ -59,7 +60,14 @@ public:
         this->actualKvseqlen_ = actualKvseqlen;
         this->base_m_ = tilingData->baseM;
         this->base_n_ = tilingData->baseN;
-        UpdateSeqLen();
+        if constexpr (INPUT_LAYOUT == TND) {
+            UpdateSeqLen();
+        } else {
+            cur_q_seq_len_ = q_seq_len_;
+            cur_kv_seq_len_ = kv_seq_len_;
+            last_q_seq_sum_ = 0;
+            last_kv_seq_sum_ = 0;
+        }
 
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
@@ -90,6 +98,9 @@ public:
 private:
     __aicore__ inline void UpdateSeqLen()
     {
+        if constexpr (INPUT_LAYOUT != TND) {
+            return;
+        }
         cur_q_seq_len_ = GetSeqLen(bIdx_, actualQseqlen_);
         cur_kv_seq_len_ = GetSeqLen(bIdx_, actualKvseqlen_);
         while ((cur_q_seq_len_ == 0 || cur_kv_seq_len_ == 0) && bIdx_ < batch_num_ - 1) {
@@ -97,10 +108,8 @@ private:
             cur_q_seq_len_ = GetSeqLen(bIdx_, actualQseqlen_);
             cur_kv_seq_len_ = GetSeqLen(bIdx_, actualKvseqlen_);
         }
-        if (bIdx_ > 0) {
-            last_q_seq_sum_ = GetSeqTotalLen(bIdx_ - 1, actualQseqlen_);
-            last_kv_seq_sum_ = GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_);
-        }
+        last_q_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualQseqlen_) : 0;
+        last_kv_seq_sum_ = bIdx_ > 0 ? GetSeqTotalLen(bIdx_ - 1, actualKvseqlen_) : 0;
     }
 
     __aicore__ inline int32_t GetRecoderS(int32_t sIdx, int32_t sLen, int32_t single_size)
@@ -141,7 +150,9 @@ private:
             s2Idx_ = 0;
             n1Idx_ = 0;
             bIdx_++;
-            UpdateSeqLen();
+            if constexpr (INPUT_LAYOUT == TND) {
+                UpdateSeqLen();
+            }
             return false;
         }
 
@@ -166,11 +177,14 @@ private:
         runTimeInfo.s2Len = s2Len_;
         runTimeInfo.s1LenAlign = RoundUp(s1Len_, 16);
         runTimeInfo.s2LenAlign = RoundUp(s2Len_, 16);
-        runTimeInfo.queryGmOffset = GetQueryGmOffset(last_q_seq_sum_, q_head_num_, head_dim_, s1Idx_, n1Idx_);
-        runTimeInfo.keyGmOffset = GetKeyGmOffset(last_kv_seq_sum_, kv_head_num_, head_dim_, s2Idx_, n2Idx);
-        runTimeInfo.lseGmOffset = GetLseGmOffset(last_q_seq_sum_, q_head_num_, s1Idx_, n1Idx_);
-        // 数据存放逻辑：[N, last_q_seq_sum_, 8]
-        runTimeInfo.sftgGmOffset = GetSftgGmOffset(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, s1Idx_, n1Idx_);
+        runTimeInfo.queryGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_,
+                                                                 head_dim_, bIdx_, s1Idx_, n1Idx_);
+        runTimeInfo.keyGmOffset = GetQKVGmOffset<INPUT_LAYOUT>(last_kv_seq_sum_, cur_kv_seq_len_, kv_head_num_,
+                                                               head_dim_, bIdx_, s2Idx_, n2Idx);
+        runTimeInfo.lseGmOffset =
+            GetLseGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_, s1Idx_, n1Idx_);
+        runTimeInfo.sftgGmOffset =
+            GetSftgGmOffset<INPUT_LAYOUT>(last_q_seq_sum_, cur_q_seq_len_, q_head_num_, bIdx_, s1Idx_, n1Idx_);
         runTimeInfo.need_compute = 1;
         current_cube_idx_++;
 

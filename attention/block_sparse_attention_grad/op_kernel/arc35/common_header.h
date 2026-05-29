@@ -71,25 +71,45 @@ __aicore__ inline int64_t GetSeqTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
     return actualTotalSeqlen;
 }
 
-__aicore__ inline uint64_t GetQueryGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t head_dim, int32_t s1Idx,
-                                            int32_t n1Idx)
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetQKVGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                          int32_t head_dim, int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
 {
-    return lastBatchSum * head_num * head_dim + (s1Idx * head_num * head_dim) + (n1Idx * head_dim);
-}
-__aicore__ inline uint64_t GetKeyGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t head_dim, int32_t s2Idx,
-                                          int32_t n2Idx)
-{
-    return lastBatchSum * head_num * head_dim + (s2Idx * head_num * head_dim) + (n2Idx * head_dim);
-}
-__aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t head_num, int32_t s1Idx, int32_t n1Idx)
-{
-    return lastBatchSum * head_num + (s1Idx * head_num) + n1Idx;
+    if constexpr (INPUT_LAYOUT == BSND) {
+        return batch_idx * (current_seq_len * head_num * head_dim) + (seqlen_idx * head_num * head_dim) +
+               (n1Idx * head_dim);
+    } else if (INPUT_LAYOUT == BNSD) {
+        return batch_idx * (head_num * current_seq_len * head_dim) + (n1Idx * current_seq_len * head_dim) +
+               (seqlen_idx * head_dim);
+    } else if constexpr (INPUT_LAYOUT == TND) {
+        return lastBatchSum * (head_num * head_dim) + (n1Idx * head_num * head_dim) + (seqlen_idx * head_dim);
+    }
 }
 
-__aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
-                                           int32_t s1Idx, int32_t n1Idx)
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetLseGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                          int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
 {
-    return lastBatchSum * head_num * 8 + n1Idx * current_seq_len * 8 + s1Idx * 8;
+    if constexpr (INPUT_LAYOUT == TND) {
+        // TN1
+        return lastBatchSum * head_num + (seqlen_idx * head_num) + n1Idx;
+    } else {
+        // BNS1
+        return batch_idx * (head_num * current_seq_len) + n1Idx * (current_seq_len) + seqlen_idx;
+    }
+}
+
+template <uint32_t INPUT_LAYOUT>
+__aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current_seq_len, int32_t head_num,
+                                           int32_t batch_idx, int32_t seqlen_idx, int32_t n1Idx)
+{
+    if constexpr (INPUT_LAYOUT == TND) {
+        // BNS8
+        return lastBatchSum * head_num * 8 + n1Idx * current_seq_len * 8 + seqlen_idx * 8;
+    } else {
+        // BNS8
+        return batch_idx * (head_num * current_seq_len) * 8 + n1Idx * (current_seq_len) * 8 + seqlen_idx * 8;
+    }
 }
 
 
