@@ -64,6 +64,10 @@ constexpr uint32_t X1_INDEX = 0;
 constexpr uint32_t X2_INDEX = 1;
 } // namespace
 
+static constexpr int64_t CCU_LEN = 3;
+static constexpr int64_t AI_CPU_LEN = 5;
+static constexpr int64_t COMM_MODE_RANKSIZE = 8;
+
 bool AllGatherQuantBmmTiling::IsCapable()
 {
     // geAType 和 geBType 为fp8/hif8时且amax为空时做tiling
@@ -411,10 +415,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
     // Set hccl comm engine with comm_mode
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
-    if (std::strncmp(commMode_, "ccu", 3) == 0) {
+    if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
     } else if (std::strlen(commMode_) == 0) { // empty string
-        if (rankSize_ <= 8) {
+        if (rankSize_ <= COMM_MODE_RANKSIZE) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
     }
@@ -504,10 +508,10 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t quanMmMode = static_cast<uint8_t>(quantMmMode_) - 1;
     // Set hccl comm engine with comm_mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
-    if (std::strncmp(commMode_, "ccu", 3) == 0) {
+    if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (std::strlen(commMode_) == 0) { // empty string
-        if (rankSize_ <= 8) {
+        if (rankSize_ <= COMM_MODE_RANKSIZE) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }
     }
