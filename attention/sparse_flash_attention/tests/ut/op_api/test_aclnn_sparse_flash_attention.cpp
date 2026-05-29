@@ -61,8 +61,8 @@ TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_0)
     aclnnStatus aclRet = aclnnSparseFlashAttentionGetWorkspaceSize(
         query.get(),
         key.get(),
-        value.get(),
         sparseIndices.get(),
+        value.get(),
         nullptr,
         nullptr,
         nullptr,
@@ -106,8 +106,8 @@ TEST_F(sparse_flash_attention_opapi_ut, sparse_flash_attention_aclnn_1)
     aclnnStatus aclRet = aclnnSparseFlashAttentionGetWorkspaceSize(
         query.get(),
         nullptr,
-        value.get(),
         sparseIndices.get(),
+        value.get(),
         nullptr,
         nullptr,
         nullptr,

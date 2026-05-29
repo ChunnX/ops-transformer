@@ -439,8 +439,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoCastTiling()
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr)),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
                return ge::GRAPH_FAILED);
     // input
@@ -448,7 +447,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d2]   dy/attentionIn [b, s1, n1, d2]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
-    const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
+    const gert::StorageShape *valueStorageShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    const gert::Shape &valueShape = (valueStorageShape == nullptr) ? keyShape : valueStorageShape->GetStorageShape();
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));

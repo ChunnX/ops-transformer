@@ -28,8 +28,8 @@ namespace optiling {
 // Inputs Index
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t KEY_INPUT_INDEX = 1;
-constexpr uint32_t VALUE_INPUT_INDEX = 2;
-constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 3;
+constexpr uint32_t SPARSE_INDICES_INPUT_INDEX = 2;
+constexpr uint32_t VALUE_INPUT_INDEX = 3;
 constexpr uint32_t BLOCK_TABLE_INPUT_INDEX = 4;
 constexpr uint32_t ACT_SEQ_LEN_Q_INPUT_INDEX = 5;
 constexpr uint32_t ACT_SEQ_LEN_KV_INPUT_INDEX = 6;

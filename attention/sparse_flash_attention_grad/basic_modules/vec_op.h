@@ -97,6 +97,7 @@ protected:
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
     GlobalTensor<T1> dvGm;
+    bool hasDvOut{true};
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dv
 
@@ -320,6 +321,7 @@ __aicore__ inline void VecOp<SFAGT>::InitGMBuffer(GM_ADDR key, GM_ADDR value, GM
     keyGm.SetGlobalBuffer((__gm__ T1 *)key);
     valueGm.SetGlobalBuffer((__gm__ T1 *)value);
     keyRopeGm.SetGlobalBuffer((__gm__ T1 *)key_rope);
+    hasDvOut = (dv != nullptr);
     dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
 
     /*
@@ -478,7 +480,9 @@ __aicore__ inline void VecOp<SFAGT>::AtomicClean()
 
     DumpGmZero(dqWorkspaceGm, dqSize);
     DumpGmZero(dkWorkspaceGm, dkSize);
-    DumpGmZero(dvGm, dvSize); // FP32 FUNC:T1 FP16
+    if (hasDvOut) {
+        DumpGmZero(dvGm, dvSize); // FP32 FUNC:T1 FP16
+    }
 }
 
 template <typename SFAGT>

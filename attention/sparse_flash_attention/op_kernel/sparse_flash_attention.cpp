@@ -33,7 +33,8 @@ using namespace AscendC;
             BaseApi::SFAVectorServiceDummy<__VA_ARGS__>, BaseApi::SFAVectorService<__VA_ARGS__>>::type;   \
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                       \
-        op.Init(query, key, value, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,      \
+        __gm__ uint8_t *valueIn = (value == nullptr) ? key : value;                              \
+        op.Init(query, key, valueIn, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,    \
 	    blocktable, queryRope, keyRope, attentionOut, softmaxMax, softmaxSum, user, nullptr, tiling, &tPipe);         \
         op.Process();                                                                             \
     } while (0)
@@ -47,7 +48,8 @@ using namespace AscendC;
         templateClass<CubeBlockType, VecBlockType> op;                                            \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tiling_data_in;                                     \
-        op.Init(query, key, value, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,      \
+        __gm__ uint8_t *valueIn = (value == nullptr) ? key : value;                              \
+        op.Init(query, key, valueIn, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,    \
 	    blocktable, queryRope, keyRope, attentionOut, softmaxMax, softmaxSum, user, tilingData, tiling, &tPipe);         \
         op.Process();                                                                             \
     } while (0)
@@ -58,7 +60,8 @@ using namespace AscendC;
         templateClass<SFAType<__VA_ARGS__>> op;                                                   \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                     \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                          \
-        op.Init(query, key, value, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,      \
+        __gm__ uint8_t *valueIn = (value == nullptr) ? key : value;                              \
+        op.Init(query, key, valueIn, sparseIndices, actualSeqLengthsQuery, actualSeqLengthsKV,    \
 	    blocktable, queryRope, keyRope, attentionOut, softmaxMax, softmaxSum, user, tiling_data, tiling, &tPipe);         \
         op.Process();                                                                             \
     } while (0)
@@ -66,8 +69,8 @@ using namespace AscendC;
 
 template<int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int IS_SPLIT_G>
  __global__ __aicore__ void
-sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                       __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blocktable,
+sparse_flash_attention(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *sparseIndices,
+                       __gm__ uint8_t *value, __gm__ uint8_t *blocktable,
                        __gm__ uint8_t *actualSeqLengthsQuery, __gm__ uint8_t *actualSeqLengthsKV,
                        __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
                        __gm__ uint8_t *attentionOut, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum,

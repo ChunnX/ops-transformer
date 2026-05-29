@@ -25,8 +25,8 @@ extern "C" {
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
-    const aclTensor *value,
     const aclTensor *sparseIndices,
+    const aclTensor *value,
     const aclTensor *blockTableOptional,
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,

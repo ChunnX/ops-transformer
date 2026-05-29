@@ -33,9 +33,9 @@ constexpr static uint32_t TND = 3;
 
 template <uint8_t inputDType, bool isTnd, uint16_t gTemplateType, uint16_t s2TemplateType, uint16_t dTemplateType, bool isRope, bool deterministic>
 __global__ __aicore__ void
-sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                            __gm__ uint8_t *sparse_indices, __gm__ uint8_t *d_out, __gm__ uint8_t *out, 
-                            __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum, 
+sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *sparse_indices,
+                            __gm__ uint8_t *d_out, __gm__ uint8_t *out, 
+                            __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum, __gm__ uint8_t *value,
                             __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,
                             __gm__ uint8_t *query_rope, __gm__ uint8_t *key_rope,
                             __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
@@ -43,7 +43,8 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
                             __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     REGISTER_TILING_DEFAULT(optiling::sfag::SparseFlashAttentionGradTilingDataRegbase);
-    RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isRope, deterministic>(query, key, value,
+    __gm__ uint8_t *valueIn = (value == nullptr) ? key : value;
+    RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isRope, deterministic>(query, key, valueIn,
                                 sparse_indices, d_out, out, 
                                 softmax_max, softmax_sum, 
                                 actual_seq_qlen, actual_seq_kvlen,
@@ -64,7 +65,7 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
             SFAG_BASIC::SFAG_TYPE<SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE,      \
                                   IS_BSND, IS_DETERMINISTIC>>                                                           \
             op;                                                                                                         \
-        op.Process(query, key, value, out, d_out, softmax_max, softmax_sum, sparse_indices,                             \
+        op.Process(query, key, valueIn, out, d_out, softmax_max, softmax_sum, sparse_indices,                           \
                    actual_seq_qlen, actual_seq_kvlen, query_rope, key_rope,                                             \
                    dq, dk, dv, dq_rope, dk_rope, user, tilingData);                                                     \
     } while (0)
@@ -95,9 +96,9 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
 
 
 extern "C" __global__ __aicore__ void
-sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                            __gm__ uint8_t *sparse_indices, __gm__ uint8_t *d_out, __gm__ uint8_t *out, 
-                            __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum, 
+sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *sparse_indices,
+                            __gm__ uint8_t *d_out, __gm__ uint8_t *out, 
+                            __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum, __gm__ uint8_t *value,
                             __gm__ uint8_t *actual_seq_qlen, __gm__ uint8_t *actual_seq_kvlen,
                             __gm__ uint8_t *query_rope, __gm__ uint8_t *key_rope,
                             __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
@@ -105,6 +106,7 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
                             __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    __gm__ uint8_t *valueIn = (value == nullptr) ? key : value;
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
     SFAG_DISPATCH_ALL(half)
 #endif

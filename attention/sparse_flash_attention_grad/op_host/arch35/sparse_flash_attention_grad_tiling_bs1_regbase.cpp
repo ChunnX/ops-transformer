@@ -372,8 +372,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
+                (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr)),
                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
                return ge::GRAPH_FAILED);
     // input
@@ -381,13 +380,14 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d1]   dy/attentionIn [b, s1, n1, d1]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
-    const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
+    const gert::StorageShape *valueStorageShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    const gert::Shape &valueShape = (valueStorageShape == nullptr) ? keyShape : valueStorageShape->GetStorageShape();
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
-    const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
+    const gert::StorageShape *dvStorageShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
     tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
@@ -443,9 +443,12 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
+    if (dvStorageShape != nullptr) {
+        const gert::Shape &dvShape = dvStorageShape->GetStorageShape();
+        status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
+        if (status == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
+        }
     }
     if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
         OP_LOGD(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");

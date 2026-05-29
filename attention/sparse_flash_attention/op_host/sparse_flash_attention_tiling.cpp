@@ -1514,9 +1514,9 @@ ge::graphStatus SFAInfoParser::CheckRequiredInOutExistence() const
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor k is nullptr"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE(opName_, "Shape of tensor v is nullptr"),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor v is nullptr"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndices.shape == nullptr, OP_LOGE(opName_, "Shape of tensor sparseIndices is nullptr"),
                return ge::GRAPH_FAILED);
@@ -1644,10 +1644,16 @@ void SFAInfoParser::GetInputParaInfo()
     opParamInfo_.query.shape = context_->GetInputShape(QUERY_INPUT_INDEX);
     opParamInfo_.key.desc = context_->GetInputDesc(KEY_INPUT_INDEX);
     opParamInfo_.key.shape = context_->GetInputShape(KEY_INPUT_INDEX);
-    opParamInfo_.value.desc = context_->GetInputDesc(VALUE_INPUT_INDEX);
-    opParamInfo_.value.shape = context_->GetInputShape(VALUE_INPUT_INDEX);
     opParamInfo_.sparseIndices.desc = context_->GetInputDesc(SPARSE_INDICES_INPUT_INDEX);
     opParamInfo_.sparseIndices.shape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX);
+    opParamInfo_.value.desc = context_->GetOptionalInputDesc(VALUE_INPUT_INDEX);
+    opParamInfo_.value.shape = context_->GetOptionalInputShape(VALUE_INPUT_INDEX);
+    if (opParamInfo_.value.desc == nullptr) {
+        opParamInfo_.value.desc = opParamInfo_.key.desc;
+    }
+    if (opParamInfo_.value.shape == nullptr) {
+        opParamInfo_.value.shape = opParamInfo_.key.shape;
+    }
     GetOptionalInputParaInfo();
 }
 
