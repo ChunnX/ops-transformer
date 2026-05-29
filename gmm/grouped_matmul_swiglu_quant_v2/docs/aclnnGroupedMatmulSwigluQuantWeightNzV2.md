@@ -840,8 +840,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>MXFP8</td>
               <td>(M, K)</td>
               <td><ul>
-              <li>非转置shape形如{(E, N/32, K/16, 16, 32)}</li>
-              <li>转置shape形如{(E, K/32, N/16, 16, 32)}</li></ul></td>
+              <li>非转置shape形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
+              <li>转置shape形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
@@ -853,8 +853,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>MXFP4</td>
               <td>(M, K)</td>
               <td><ul>
-              <li>非转置shape形如{(E, N/64, K/16, 16, 64)}</li>
-              <li>转置shape形如{(E, K/64, N/16, 16, 64)}</li></ul></td>
+              <li>非转置shape形如{(E, ceil(N / 64), ceil(K / 16), 16, 64)}</li>
+              <li>转置shape形如{(E, ceil(K / 64), ceil(N / 16), 16, 64)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>

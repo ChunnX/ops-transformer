@@ -92,7 +92,7 @@ private:
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};
     const std::vector<ge::DataType> quantDtypeMxFp4NzSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
-                                                                  ge::DT_FLOAT4_E1M2};
+                                                                    ge::DT_FLOAT4_E1M2};
 };
 } // namespace optiling
 
