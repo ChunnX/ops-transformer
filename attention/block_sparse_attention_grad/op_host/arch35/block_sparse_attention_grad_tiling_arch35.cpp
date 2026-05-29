@@ -276,7 +276,7 @@ protected:
             dv_size = dk_size;
             sftg_size = q_seq_len_ * q_head_num_ * 8; // 存放逻辑按[B,N,S,8]
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSH or BSDN or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
         tilingData_.set_dqSize(dq_size);
