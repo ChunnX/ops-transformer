@@ -267,6 +267,9 @@ private:
             v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
         uint64_t lse_offset = runTimeInfo.lseGmOffset + v_sub_core_idx_ * sub_m_process * q_head_num_;
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
+        if (sub_real_m_process < = 0) {
+            return;
+        }
 
         Muls(src_ub_tensor, src_ub_tensor, softmax_scale_, data_size);
         PipeBarrier<PIPE_V>();
@@ -316,6 +319,9 @@ private:
             v_sub_core_idx_ == 0 ? sub_m_process : (m_process - sub_m_process); // GM CopyIn仍采用实际的mProcess
         uint64_t sftgGmOffset = runTimeInfo.sftgGmOffset + v_sub_core_idx_ * sub_m_process * 8;
         uint64_t l1_offset = v_sub_core_idx_ * sub_m_process * C0_SIZE;
+        if (sub_real_m_process < = 0) {
+            return;
+        }
 
         SET_FLAG(V, MTE2, EVENT_ID0);
         WAIT_FLAG(V, MTE2, EVENT_ID0);
