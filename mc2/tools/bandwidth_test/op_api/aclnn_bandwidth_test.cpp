@@ -22,11 +22,7 @@
 #define HCCL_CHANNEL_SUPPORT_VERSION 90000000
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#else
-#error "HCOMM version must be >= 90000000 to support MC2 context"
 #endif
-#else
-#error "BUILD_OPEN_PROJECT is not defined. This code requires open project build."
 #endif
 
 using namespace op;
