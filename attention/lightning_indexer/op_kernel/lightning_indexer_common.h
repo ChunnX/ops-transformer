@@ -59,6 +59,7 @@ struct RunInfo {
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
+    bool isInitTensorValid;
 };
 
 struct ConstInfo {
