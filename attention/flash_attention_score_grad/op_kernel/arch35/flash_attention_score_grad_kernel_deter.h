@@ -930,9 +930,6 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 this->cubeBlock.template IterateMmDsK<CALC_TYPE, BaseClass::IS_DQ_WRITE_UB>(
                     this->dqWorkSpaceGm, this->dSL1Buf, this->constInfo,
                     runInfos[(taskId + 1) & 1]); // c3
-                if ASCEND_IS_AIC {
-                    CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
-                }
                 // compute dk
                 this->cubeBlock.template IterateMmDsQ<CALC_TYPE, BaseClass::IS_DK_WRITE_UB>(
                     this->dkWorkSpaceGm, this->dSL1Buf, this->constInfo,
@@ -945,6 +942,9 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                 // compute dv
                 this->cubeBlock.template IterateMmPDy<CALC_TYPE, BaseClass::IS_DV_WRITE_UB>(
                     this->dvWorkSpaceGm, this->pL1Buf, this->constInfo, runInfos[(taskId + 1) & 1]); // c5
+                if ASCEND_IS_AIC {
+                    CrossCoreSetFlag<0, PIPE_FIX>(SYNC_DETER_FIX_FLAG);
+                }
                 if ASCEND_IS_AIC {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_C5_TO_V4_FLAG);
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + SYNC_C5_TO_V4_FLAG);
