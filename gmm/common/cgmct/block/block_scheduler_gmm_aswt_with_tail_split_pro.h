@@ -40,34 +40,6 @@ public:
     static constexpr int64_t l0N = GetIntegralConstant<1, L0TileShape_>();
     static constexpr int64_t l0K = GetIntegralConstant<2, L0TileShape_>();
 
-private:
-    int64_t mCnt_;
-    int64_t nCnt_;
-    int64_t totalCnt_;
-    int64_t m_{0};
-    int64_t n_{0};
-    int64_t k_;
-    int64_t mTailCnt_{1};
-    int64_t nTailCnt_{1};
-    int64_t mTailAlign_{1};
-    int64_t nTailAlign_{1};
-    int64_t tailCnt_{1};
-    int64_t tailBlockBase_{0};
-    int64_t mainMWindow_;
-    int64_t tailWindow_;
-    int64_t mainRow_;
-    int64_t round_;
-    int64_t roundIdx_;
-    int32_t baseM_;
-    int32_t baseN_;
-    int32_t baseK_;
-    int32_t mBaseTail_;
-    int32_t nBaseTail_;
-    uint32_t blockNum_ = AscendC::GetBlockNum();
-    uint32_t blockIdx_ = AscendC::GetBlockIdx() / AscendC::GetTaskRation();
-    uint32_t startBlockIdx_;
-    uint32_t endBlockIdx_{blockNum_ - 1};
-
 public:
     __aicore__ inline BlockSchedulerGmmAswtWithTailSplitPro(int32_t baseM, int32_t baseN, int32_t baseK)
         : baseM_(baseM), baseN_(baseN), baseK_(baseK)
@@ -170,18 +142,6 @@ public:
     // Row-major (行优先) tile index resolution.
     // Within each WINDOW_LEN M-tile window: N changes first, then M advances.
     // Zigzag: N direction reverses between adjacent windows.
-    //
-    // Example (mCnt_=8, nCnt_=4, WINDOW_LEN=4):
-    //   Window 0 (M=0~3), rowIdx=0, N forward:
-    //     M=0: (0,0)(0,1)(0,2)(0,3)
-    //     M=1: (1,0)(1,1)(1,2)(1,3)
-    //     M=2: (2,0)(2,1)(2,2)(2,3)
-    //     M=3: (3,0)(3,1)(3,2)(3,3)
-    //   Window 1 (M=4~7), rowIdx=1, N reversed:
-    //     M=4: (4,3)(4,2)(4,1)(4,0)
-    //     M=5: (5,3)(5,2)(5,1)(5,0)
-    //     M=6: (6,3)(6,2)(6,1)(6,0)
-    //     M=7: (7,3)(7,2)(7,1)(7,0)
     __aicore__ inline bool GetTileIdx(BlockCoord &blockCoord)
     {
         if (round_ == 0 || roundIdx_ > round_ - 1) {
@@ -252,6 +212,34 @@ public:
     {
         return endBlockIdx_;
     }
+
+private:
+    int64_t mCnt_;
+    int64_t nCnt_;
+    int64_t totalCnt_;
+    int64_t m_{0};
+    int64_t n_{0};
+    int64_t k_;
+    int64_t mTailCnt_{1};
+    int64_t nTailCnt_{1};
+    int64_t mTailAlign_{1};
+    int64_t nTailAlign_{1};
+    int64_t tailCnt_{1};
+    int64_t tailBlockBase_{0};
+    int64_t mainMWindow_;
+    int64_t tailWindow_;
+    int64_t mainRow_;
+    int64_t round_;
+    int64_t roundIdx_;
+    int32_t baseM_;
+    int32_t baseN_;
+    int32_t baseK_;
+    int32_t mBaseTail_;
+    int32_t nBaseTail_;
+    uint32_t blockNum_ = AscendC::GetBlockNum();
+    uint32_t blockIdx_ = AscendC::GetBlockIdx() / AscendC::GetTaskRation();
+    uint32_t startBlockIdx_;
+    uint32_t endBlockIdx_{blockNum_ - 1};
 };
 
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
