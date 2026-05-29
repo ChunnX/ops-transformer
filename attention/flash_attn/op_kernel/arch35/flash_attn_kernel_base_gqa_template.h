@@ -91,7 +91,6 @@ public:
     ConstInfoX constInfo;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
-    TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
@@ -134,11 +133,6 @@ public:
     // fd metadata
     FDparamsX fdParams_;
 
-    //  Shared buffer between fa and fd
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2]; // 共用
-    TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
-    TBuf<> SharedBuffer3;                          // 共用
-
     // 非tnd时不使用cuSeqLens，这里保证定义
     typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
                               ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
@@ -159,9 +153,8 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling)
     {
-        this->pipe = tPipe;
         this->tilingData = tiling;
 
         InitConstInfo();
@@ -200,11 +193,11 @@ public:
             FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
+                vecFaBlock.InitVecBlock(cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
                                         attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
-                vecFaBlock.InitVecBlock(tPipe, seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
+                vecFaBlock.InitVecBlock(seqUsedQ, seqUsedKv, attenMask, learnableSink, softmaxLse, attentionOut,
                                         workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
@@ -213,10 +206,10 @@ public:
 
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qCuSeqLensParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qCuSeqLensParser,
                                         kvCuSeqLensParser);
             } else {
-                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, qSeqUsedParser,
+                cubeBlock.InitCubeBlock(query, key, value, blockTable, qSeqUsedParser,
                                         kvSeqUsedParser);
             }
         }
@@ -250,14 +243,17 @@ public:
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        l1BufferManager.Init(pipe, 524288); // 512 * 1024
+        // l1PBuffers 为3buff，实际占用 3*mm2LeftSize；用 LocalTensor(A1, 0, size) 直接指向L1起始
+        l1BufferManager.InitStatic(3U * mm2LeftSize);
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+            // bmm2(DB)+bmm1(DB) 共占 2*mm2ResultSize + 2*mm1ResultSize
+            ubBufferManager.InitStatic(2U * mm2ResultSize + 2U * mm1ResultSize);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2);
+            // 仅 bmm1(DB) 占 2*mm1ResultSize
+            ubBufferManager.InitStatic(2U * mm1ResultSize);
         }
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
 
@@ -774,14 +770,13 @@ public:
             return;
         }
         GetFDSectionInfo(sectionIdx);
-        vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
+        vecFdBlock.InitBuffers();
         AscendC::ICachePreLoad(2);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         SyncAll();
         vecFdBlock.FlashDecode(fdParams_);
         SyncAll();
-        vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
         vecFdBlock.FreeEventID();
     }
 
@@ -820,7 +815,7 @@ public:
         if (constInfo.aicIdx < constInfo.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
-                vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
+                vecFaBlock.InitBuffers();
                 vecFaBlock.AllocEventID();
             } else {
                 cubeBlock.InitBuffers();
