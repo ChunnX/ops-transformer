@@ -24,6 +24,7 @@
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -732,16 +733,31 @@ static aclnnStatus CheckMatmulDataType(const gmm::GroupedMatmulParams &gmmParams
 
 static aclnnStatus CheckNoQuantUnusedParams(const gmm::GroupedMatmulParams &gmmParams) {
   // Check currently disabled parameters when case is no quant
-  CHECK_COND(gmmParams.scaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "ScaleOptional must be nullptr in no quant case.");
-  CHECK_COND(gmmParams.offsetOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "OffsetOptional must be nullptr in no quant case.");
-  CHECK_COND(gmmParams.antiquantScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "AntiquantScaleOptional must be nullptr in no quant case.");
-  CHECK_COND(gmmParams.antiquantOffsetOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "AntiquantOffsetOptional must be nullptr in no quant case.");
-  CHECK_COND(gmmParams.perTokenScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-             "PerTokenScaleOptional must be nullptr in no quant case.");
+  if (unlikely(gmmParams.scaleOptional != nullptr)) {
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+          "not nullptr", "The scaleOptional must be nullptr in no quant case");
+      return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (unlikely(gmmParams.offsetOptional != nullptr)) {
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "offsetOptional",
+          "not nullptr", "The offsetOptional must be nullptr in no quant case");
+      return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (unlikely(gmmParams.antiquantScaleOptional != nullptr)) {
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "antiquantScaleOptional",
+          "not nullptr", "The antiquantScaleOptional must be nullptr in no quant case");
+      return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (unlikely(gmmParams.antiquantOffsetOptional != nullptr)) {
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "antiquantOffsetOptional",
+          "not nullptr", "The antiquantOffsetOptional must be nullptr in no quant case");
+      return ACLNN_ERR_PARAM_INVALID;
+  }
+  if (unlikely(gmmParams.perTokenScaleOptional != nullptr)) {
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional",
+          "not nullptr", "The perTokenScaleOptional must be nullptr in no quant case");
+      return ACLNN_ERR_PARAM_INVALID;
+  }
   return ACLNN_SUCCESS;
 }
 
@@ -751,8 +767,12 @@ static aclnnStatus CheckNonQuantMatmulDataType(const gmm::GroupedMatmulParams &g
   if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
     if (gmmParams.biasOptional != nullptr) {
       biasDtype = (*gmmParams.biasOptional)[0]->GetDataType();
-      CHECK_COND(biasDtype == gmmParams.xDtype || biasDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                 "Non quant case biasDtype should same as xDtype or float32");
+      if (unlikely(!(biasDtype == gmmParams.xDtype || biasDtype == DataType::DT_FLOAT))) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "biasOptional",
+                                              op::ToString(biasDtype).GetString(),
+                                              "The dtype of bias must be same as the dtype of x or float32 in no quant case");
+        return ACLNN_ERR_PARAM_INVALID;
+      }
       CHECK_COND(CheckNoQuantUnusedParams(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                  "Invalid unused params");
     }
@@ -1201,22 +1221,23 @@ bool isActivationAllowed(int64_t act_type) {
 bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     if (gmmParams.scaleOptional == nullptr || gmmParams.scaleOptional->Size() == 0 ||
         (*gmmParams.scaleOptional)[0] == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, Scale should not be null, but now is null.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            "nullptr", "When the activation function is enabled, scaleOptional cannot be nullptr");
         return false;
     }
     const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
     DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
     if (scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dtype of Scale should be float32 or bfloat16, but actual is %s.",
-                gmm::dTypeToString(scaleDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", gmm::dTypeToString(scaleDtype),
+            "When the activation function is enabled, the dtype of scaleOptional must be float32 or bfloat16");
         return false;
     }
     size_t scaleDimNum = scaleShape.GetDimNum();
     if (scaleDimNum != SCALE_TENSOR_EXPECTED_DIMS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dim of Scale should be 2 for perchannel, but actual is %zu.\n", scaleDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", std::to_string(scaleDimNum),
+            "When the activation function is enabled, the shape dim of scaleOptional must be 2 for perchannel");
         return false;
     }
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
@@ -1226,10 +1247,11 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t scaleNSize = scaleShape.GetDim(scaleDimNum - 1);
     int64_t scaleGroupNum = scaleShape.GetDim(0);
     if (scaleNSize != weightNSize || scaleGroupNum != weightGroupNum) {
-              OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "When the activation function is enabled, the shape of scale should be (%ld, %ld), but actual"
-                     " is (%ld, %ld).\n",
-                     weightGroupNum, weightNSize, scaleGroupNum, scaleNSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            "[" + std::to_string(scaleGroupNum) + ", " + std::to_string(scaleNSize) + "]",
+            "When the activation function is enabled, the shape of scaleOptional must be "
+            "[" + std::to_string(weightGroupNum) + ", " + std::to_string(weightNSize) + "]");
         return false;
     }
     return true;
@@ -1250,26 +1272,27 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
     if (perTokenScaleDtype != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled,"
-                " the dtype of perTokenScale should be float32, but actual is %s.",
-                gmm::dTypeToString(perTokenScaleDtype).c_str());
-        return false;
+       OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+           "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
+           "When the activation function is enabled, the dtype of perTokenScaleOptional must be float32");
+       return false;
     }
     const op::Shape &xShape = (*gmmParams.x)[0]->GetViewShape();
     int64_t mSize = xShape.GetDim(xShape.GetDimNum() - 2);
     size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
     int64_t perTokenScaleMSize = perTokenScaleShape.GetDim(perTokenScaleDim - 1);
     if (perTokenScaleDim != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dim of perTokenScale should be 1, but actual is %ld.\n", perTokenScaleDim);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+           "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", std::to_string(perTokenScaleDim),
+           "When the activation function is enabled, the shape dim of perTokenScaleOptional must be 1");
         return false;
     }
     if (perTokenScaleMSize != mSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled and the dim of perTokenScale is 1, the shape of perTokenScale should be (%ld,), but actual"
-                " is (%ld,).\n",
-                mSize, perTokenScaleMSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional",
+            "[" + std::to_string(perTokenScaleMSize) + ",]",
+            "When the activation function is enabled and the shape dim of perTokenScaleOptional is 1, the shape of "
+            "perTokenScaleOptional must be [" + std::to_string(mSize) + ",]");
         return false;
     }
     return CheckScaleForInt8Quant(gmmParams);
@@ -1280,11 +1303,9 @@ bool CheckIsEnabledActive(const gmm::GroupedMatmulParams &gmmParams) {
     auto weightDtype = (*gmmParams.weight)[0]->GetDataType();
     bool isInt8Input = (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8);
     if (!isInt8Input) {
-          OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                  "When the activation function is enabled, the dtype of x and weight should be DT_INT8,"
-                  " actual is %s and %s.",
-                  op::ToString(xDtype).GetString(),
- 	                op::ToString(weightDtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "x, weight",
+            std::string(op::ToString(xDtype).GetString()) + ", " + op::ToString(weightDtype).GetString(),
+            "When the activation function is enabled, the dtype of x and weight must be DT_INT8");
         return false;
     }
     bool isInt8StaticTCQuant = CheckInt8StaticTCQuant(gmmParams);
@@ -1302,18 +1323,30 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     ACLNN_ERR_PARAM_INVALID, "Check310PlatformForFunction failed.");
   if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
     if (IsQuant(gmmParams.xDtype, weightDtype)) {
-      CHECK_COND(isNoActivation || CheckIsEnabledActive(gmmParams), ACLNN_ERR_PARAM_INVALID, "On this platform, activation is supported only when the input is INT8"
-                 " and the quant mode is either pertoken-perchannel or pertensor-perchannel; "
-                 " activation is not supported in other scenarios;"
-                 " activeType[%ld] is not supported.", gmmParams.activeType);
+      if (unlikely(!(isNoActivation || CheckIsEnabledActive(gmmParams)))) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "actType", std::to_string(gmmParams.activeType),
+            "On this platform, activation is supported only when the input is INT8"
+            " and the quant mode is either pertoken-perchannel or pertensor-perchannel; "
+            " activation is not supported in other scenarios");
+        return ACLNN_ERR_PARAM_INVALID;
+      }
       return gmm::AclnnGroupedMatmulDAV3510Checker<aclTensorList>(gmmParams).CheckGroupedMatmulDAV3510();
     } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
-      CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID, "Activation is not supported in weight quant mode now."
-                 " activeType[%ld] is not supported.", gmmParams.activeType);
+      if (unlikely(!isNoActivation)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "actType", std::to_string(gmmParams.activeType),
+            "Activation is not supported in weight quant mode now");
+        return ACLNN_ERR_PARAM_INVALID;
+      }
       return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(gmmParams).CheckGroupedMatmulWeightQuantDAV3510();
     } else {
-      CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID, "When input is No-Quant, activation is not supported on this platforms."
- 	                  " activeType[%ld] is not supported.", gmmParams.activeType);
+      if (unlikely(!isNoActivation)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "actType", std::to_string(gmmParams.activeType),
+            "When input is No-Quant, activation is not supported on this platform");
+        return ACLNN_ERR_PARAM_INVALID;
+      }
     }
   }
   if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {

@@ -450,7 +450,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingConte
         OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType",
                 std::to_string(groupListType_),
-                "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, "
+                "When the dtype of x-weight is bf16/fp16-int4/int32 and groupType is 0, "
                     "groupListType only supports values 0 or 1"),
                     return false);
         auto groupListPtr = context->GetOptionalInputShape(GroupedMatmul::GROUPLIST_INDEX);
@@ -466,7 +466,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingConte
         OP_CHECK_IF(groupListSize != groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(OP_NAME, "groupList",
                 std::to_string(groupListSize),
-                "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the length of "
+                "When the dtype of x-weight is bf16/fp16-int4/int32 and groupType is 0, the length of "
                 "groupList must match the value of first dimension of weight, "
                 "but actual is " + std::to_string(groupListSize) + " and " + std::to_string(groupNum)),
             return false);
@@ -915,7 +915,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert:
                 (groupType_ != static_cast<int64_t>(GroupType::SPLIT_M)),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupType",
                 std::to_string(groupType_),
-                "When x-weight is bf16/fp16-int32/int4, groupType must be -1 or 0"),
+                "When the dtype of x-weight is bf16/fp16-int32/int4, groupType must be -1 or 0"),
             return false);
         if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
             OP_CHECK_IF((splitItem_ != 0 && splitItem_ != 1),
