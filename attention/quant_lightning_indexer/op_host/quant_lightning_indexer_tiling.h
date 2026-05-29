@@ -100,6 +100,7 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
+TILING_DATA_FIELD_DEF(uint32_t, maxS1Size)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
 
@@ -145,6 +146,7 @@ public:
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
+    uint32_t maxS1Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // PageAttention
@@ -223,6 +225,7 @@ public:
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
+    uint32_t maxS1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
     // Layout
