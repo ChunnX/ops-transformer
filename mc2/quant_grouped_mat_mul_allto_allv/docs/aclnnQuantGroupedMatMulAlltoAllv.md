@@ -563,7 +563,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    ```Cpp
+```Cpp
 #include <thread>
 #include <iostream>
 #include <string>
@@ -912,5 +912,5 @@ int main(int argc, char *argv[])
     aclFinalize();
     return 0;
 }
-    ```
+```
     
