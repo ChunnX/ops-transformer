@@ -16,7 +16,7 @@
 
 #### 前置要求
 1、 确认torch_npu为最新版本  
-2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
+2、 参考Attention融合算子Experimental使用说明激活CANN包和自定义算子包
 
 #### custom包调用
 支持custom包调用
@@ -24,7 +24,7 @@
 ## 文件结构
 #### pytest文件结构说明
 - test_run_sh                                  # 执行脚本
-- lightning_indexer_v2_golden.py            # cpu侧算子golden实现
+- lightning_indexer_v2_golden.py               # cpu侧算子golden实现
 - result_compare_method.py                     # cpu golden与npu输出精度对比
 - pytest.ini                                   # 创建测试标记
 
