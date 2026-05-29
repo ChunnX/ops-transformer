@@ -904,7 +904,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScaleDtype()
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", std::to_string(scaleDtype_), "DT_FLOAT"),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
+                    std::to_string(scaleDtype_), "DT_FLOAT"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -962,7 +963,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     tilingDataPtr_->cols = cols_;
 
     // INT4 dynamic quantization packs two values per byte along the H/cols dimension.
-    if (IsInt4DynamicQuantCase() && (cols_ % 2 != 0)) {
+    if (IsInt4DynamicQuantCase() && (cols_ % NUM_TWO != 0)) {
         OP_LOGE(context_, "For INT4 dynamic quantization, cols (%ld) must be even.", cols_);
         return ge::GRAPH_FAILED;
     }
