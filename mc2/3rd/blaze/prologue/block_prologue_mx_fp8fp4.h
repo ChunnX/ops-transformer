@@ -132,7 +132,7 @@ struct PrologueMxCastWOffsetParam {
 WQBMM_PROLOGUE_TEMPLATE_PARAM
 class WQBMM_PROLOGUE_CLASS {
 public:
-    using DispatchPolicy = KernelMixDynamicKL1NTailResplit;
+    using DispatchPolicy = MatmulMxFp8Fp4DynamicKL1TailResplit;
     using OutType = OutType_;
     using InType = InType_;
 
