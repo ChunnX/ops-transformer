@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -87,6 +87,8 @@ static constexpr uint64_t FLAG_ID_MAX = 16;
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
 {
+    ASCENDC_ASSERT(a <= (std::numeric_limits<T>::max() - b),
+                   { KERNEL_LOG(KERNEL_ERROR, "CeilAlign over limit."); });
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b * b;
 }
