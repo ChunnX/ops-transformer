@@ -27,6 +27,7 @@ constexpr uint64_t MX_SCALE_FACTOR_BIT = 8UL;
 constexpr uint64_t MX_SCALE_FACTOR_MASK = 0xFFUL;
 constexpr uint64_t MX_SCALE_FACTOR_DEFAULT = 1UL;
 constexpr uint64_t MX_L1_BUFFER_NUM = 2UL;
+constexpr uint64_t K_DIM = 2UL;
 } // namespace
 
 template <class BlockMmadMxOp_>
@@ -69,7 +70,7 @@ public:
         (void)transA;
         (void)transB;
         AscendC::Shape<int64_t, int64_t, int64_t> blockShape{Get<0>(singleShape), Get<1>(singleShape),
-                                                             Get<2>(singleShape)};
+                                                             Get<K_DIM>(singleShape)};
         mmadOp_(aGlobal, bGlobal, scaleAGlobal, scaleBGlobal, cLocal, blockShape);
     }
 

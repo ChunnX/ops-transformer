@@ -36,7 +36,10 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
-constexpr bool isMxFp4Input = AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value;
+constexpr bool isMxFp4Input = (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value || 
+                                AscendC::IsSameType<DTYPE_X, fp4x2_e1m2_t>::value) && 
+                               (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value || 
+                                AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value);
 #endif
 }
 
