@@ -509,27 +509,6 @@ ge::graphStatus LIV2InfoParser::GetS2Size()
 
 ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
 {
-    // -----------------------check BatchSize-------------------
-    // bSize_ 来源于act_seq_q
-    if (kLayout_ == DataLayout::TND) {
-        OP_CHECK_IF(
-        (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_),
-            OP_LOGE(opName_,
-                "TND case input cu_seqlens_q, cu_seqlens_k are %u, %ld respectively, they must be same.",
-                bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize()),
-            return ge::GRAPH_FAILED);
-    } else { // kLayout_ PA_BSND
-        OP_CHECK_IF(
-        (opParamInfo_.cuSeqlensK.tensor->GetShapeSize() != bSize_) ||
-                (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_),
-            OP_LOGE(
-                opName_,
-                "TND case input cu_seqlens_q, cu_seqlens_k, block_table dim 0 are %u, %ld, %ld respectively, "
-                "they must be same.",
-                bSize_, opParamInfo_.cuSeqlensK.tensor->GetShapeSize(),
-                opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
-            return ge::GRAPH_FAILED);
-    }
     // -----------------------check T-------------------
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||

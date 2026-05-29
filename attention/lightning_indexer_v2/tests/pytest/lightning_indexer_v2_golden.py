@@ -267,13 +267,13 @@ class GeneralizedLIV2:
     def cal_atten_per_batch_bf16(self,b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
-        cur_w = self.cur_wt.to(dtype=torch.float16)
+        cur_w = self.cur_wt.to(dtype=torch.float32)
         sparse_count = self.topk
         sparse_mode = self.mask_mode
         cmp_ratio = self.cmp_ratio
         qk_bmm_res = torch.bmm(
-            cur_q.to(dtype = torch.int32).squeeze(0),
-            cur_k.to(dtype = torch.int32).permute(0, 1, 3, 2).squeeze(0)
+            cur_q.to(dtype = torch.float32).squeeze(0),
+            cur_k.to(dtype = torch.float32).permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
         qk_relu_out = (qk_bmm_res.to(dtype=torch.float32) / 1024.0).clamp_min(0.0).to(torch.float16)
         brc_vmul = torch.bmm(
@@ -545,12 +545,12 @@ def liv2_output_single(params):
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(torch.float32).npu()
         output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], (batch_size, q_seq, 1))).to(torch.int32)
-        output_idx_offset = torch.broadcast_to(output_idx_offset, (batch_size, q_seq, 1, topk)).npu()
+        output_idx_offset = torch.broadcast_to(output_idx_offset.unsqueeze(-1), (batch_size, q_seq, 1, topk)).npu()
     elif layout_query == "TND":
         query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (q_t_size, q_head_num, head_dim))).to(qk_dtype).npu()
         weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(torch.float32).npu()
         output_idx_offset = torch.tensor(np.random.uniform(output_idx_offset_datarange[0], output_idx_offset_datarange[1], (q_t_size, 1))).to(torch.int32)
-        output_idx_offset = torch.broadcast_to(output_idx_offset, (q_t_size, 1, topk)).npu()
+        output_idx_offset = torch.broadcast_to(output_idx_offset.unsqueeze(-1), (q_t_size, 1, topk)).npu()
     if layout_key == "BSND":
         key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
         block_table = None
