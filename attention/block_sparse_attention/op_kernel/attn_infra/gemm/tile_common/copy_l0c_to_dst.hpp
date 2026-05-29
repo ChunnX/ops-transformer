@@ -46,6 +46,7 @@ struct CopyL0CToDstQuantMode<
     static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
+#if (__CCE_AICORE__ == 310)
 template <class ArchTag>
 struct CopyL0CToDstQuantMode<
     ArchTag,
@@ -54,6 +55,7 @@ struct CopyL0CToDstQuantMode<
 > {
     static constexpr auto VALUE = QuantMode_t::QF322F32_PRE;
 };
+#endif
 
 // CopyL0CToGm cast fp32 to fp16
 template <class ArchTag>

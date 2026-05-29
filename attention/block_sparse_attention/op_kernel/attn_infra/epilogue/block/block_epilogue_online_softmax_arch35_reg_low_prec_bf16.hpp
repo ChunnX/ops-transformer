@@ -197,7 +197,6 @@ public:
 
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-
         if (isFirstKvSTile) {
             nowMaxFloatAddr = lastMaxAddr;
             nowSumAddr = lastSumAddr;

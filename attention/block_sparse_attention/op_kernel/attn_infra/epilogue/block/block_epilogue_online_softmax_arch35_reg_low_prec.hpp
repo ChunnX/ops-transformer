@@ -57,7 +57,6 @@ public:
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
     static constexpr uint32_t ELE_NUM_PER_C0_FP8 = 32;
-    // static constexpr uint32_t ELE_NUM_PER_C0 = AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value ? 32 : 16;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -194,7 +193,6 @@ public:
 
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
-
         uint32_t kvBaseTileRegStages = CeilDiv(n, SM_VREG_SIZE);
         if (kvBaseTileRegStages == 1) {
             ComputeScaleAndMax<KvBaseTileRegSplitStages::ONE>(

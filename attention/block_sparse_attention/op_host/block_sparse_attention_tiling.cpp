@@ -471,10 +471,10 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have 4 dims.");
         return ge::GRAPH_FAILED;
     }
-    uint32_t bsmBatch = blockSparseMaskShape->GetStorageShape().GetDim(0);  // batch_size
-    uint32_t bsmNumHead = blockSparseMaskShape->GetStorageShape().GetDim(1);  // num_heads
-    maxQBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(2);
-    maxKvBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(3);
+    uint32_t bsmBatch = blockSparseMaskShape->GetStorageShape().GetDim(DIM_0);  // batch_size
+    uint32_t bsmNumHead = blockSparseMaskShape->GetStorageShape().GetDim(DIM_1);  // num_heads
+    maxQBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(DIM_2);
+    maxKvBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(DIM_3);
     if (bsmBatch != batch_) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask must have consistent batch with context,"
             "but got BlockSparseMask batch(dim0): %u, context batch: %u.", bsmBatch, batch_);
