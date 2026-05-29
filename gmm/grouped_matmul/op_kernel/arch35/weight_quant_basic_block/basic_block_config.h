@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -200,14 +200,14 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(), // 64KB
+            .weightInputLowbitUbTotalSize = 80 * GetKBUnit<int8_t>(), // 80KB
             .highBitDataUbTotalSize = 128 * GetKBUnit<int8_t>(),      // 128KB
             .biasUbTotalSize = 2 * GetKBUnit<half>(),                 // 2KB
             .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),          // 2KB
             .antiQuantScaleUbTotalSize = 0,
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
-            .weightInputLowBitUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
+            .weightInputLowBitUbSingleBufferSize = 80 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum, // 80KB
             .antiQuantScaleUbSingleBufferSize = 0,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
             .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
