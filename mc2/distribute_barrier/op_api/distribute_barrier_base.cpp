@@ -23,10 +23,6 @@
 #include "aclnnInner_distribute_barrier.h"
 #include "distribute_barrier_base.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
 #endif
@@ -87,7 +83,7 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
         getWorkspaceSizesRes = aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef),
             timeOut, elasticInfo, const_cast<char*>(group), worldSize, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT)
         uint64_t hcclBuffSize = 0;
         const char* opName = "distribute_barrier_extend";
         ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
@@ -109,7 +105,7 @@ aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
     if (is950) {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT)
         OP_LOGD("aclnn_disrtibute_barrier_extend inner start");
         return aclnnInnerDistributeBarrierExtend(workspace, workspaceSize, executor, stream);
 #endif
