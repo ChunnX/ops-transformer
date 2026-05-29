@@ -191,11 +191,6 @@ bool GetAttrs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& co
     params.quantMode = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_MODE), MX_QUANT_MODE);
     params.quantDtype = GetOrDefault(attrs->GetAttrPointer<int64_t>(ATTR_INDEX_QUANT_DTYPE),
         static_cast<int64_t>(ge::DataType::DT_FLOAT8_E4M3FN));
-
-    printf("dt_float=%ld, float8_e4m3=%ld | %ld %ld %ld %ld %ld %ld\n",
-        static_cast<int64_t>(ge::DataType::DT_FLOAT), static_cast<int64_t>(ge::DataType::DT_FLOAT8_E4M3FN),
-        params.wTrans, params.groupListType, params.dequantMode, params.dequantDtype,
-        params.quantMode, params.quantDtype);
     return true;
 }
 
