@@ -18,9 +18,9 @@ TEST_PARAMS = {
     "li_default_a5":{
         "batch_size": [1],
         "q_seq": [1],
-        "k_seq": [2048],
+        "k_seq": [256],
         "q_t_size":[1],
-        "k_t_size":[2048],#压缩后的值
+        "k_t_size":[256],#压缩后的值
         "q_head_num": [64],
         "k_head_num": [1],
         "head_dim": [128],
@@ -28,22 +28,22 @@ TEST_PARAMS = {
         "block_num":[8],
         "qk_dtype": [torch.float16],
         "cu_seqlens_q": [[1]],
-        "cu_seqlens_k": [[2048]],
+        "cu_seqlens_k": [[256]],
         "seqused_q": [[1]],
-        "seqused_k": [[2048]],
+        "seqused_k": [[256]],
         "cmp_residual_k": [[0]],
         "output_idx_offset": [[0]],
-        "layout_q": ["TND"],
+        "layout_q": ["BSND"],
         "layout_k":["PA_BSND"],
-        "topk": [512],
-        "mask_mode": [3],
+        "topk": [128],
+        "mask_mode": [0],
         "query_datarange":[[-448,448]],
         "key_datarange":[[-20,20]],
         "weights_datarange":[[-123,123]],
         "output_idx_offset_datarange":[[0, 0]],
         "cmp_ratio":[1],
         "return_value": [0],
-        "max_seqlen_q": [1]
+        "max_seqlen_q": [-1]
     },
 }
 
