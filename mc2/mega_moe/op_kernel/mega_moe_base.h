@@ -132,5 +132,13 @@ inline void ArgsortSimt(int64_t elements, int64_t indexBase, __gm__ int32_t *sor
         expandedRowIdxGmAddr[outIndices] = indexBase + index;
     }
 }
- 
+
+template<AscendC::HardEvent event, int32_t eventId>
+__aicore__ inline void SyncFuncStatic()
+{
+    static_assert(eventId >= 0 && eventId <= 5, "SyncFuncStatic eventId must be [0, 5]!");
+    AscendC::SetFlag<event>(static_cast<event_t>(eventId));
+    AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
+}
+
 #endif
