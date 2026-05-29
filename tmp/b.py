@@ -1,18 +1,265 @@
-FA_WR: aiv=0 n2=0 wsPos=0 vecMbase=0 mStart=0 mDeal=64 gmOff=0
-FD: aiv=0 b=0 n2=0 mStart=0 mLen=64 wsIdx=0 s2SplitNum=2
-FD_RD: aiv=0 splitKV=0 startRow=0 offset=0
-FD_RD: aiv=0 splitKV=1 startRow=0 offset=16384
-FD_RD: aiv=0 splitKV=0 startRow=8 offset=1024
-FD_RD: aiv=0 splitKV=1 startRow=8 offset=17408
-FD_RD: aiv=0 splitKV=0 startRow=16 offset=2048
-FD_RD: aiv=0 splitKV=1 startRow=16 offset=18432
-FD_RD: aiv=0 splitKV=0 startRow=24 offset=3072
-FD_RD: aiv=0 splitKV=1 startRow=24 offset=19456
-FD_RD: aiv=0 splitKV=0 startRow=32 offset=4096
-FD_RD: aiv=0 splitKV=1 startRow=32 offset=20480
-FD_RD: aiv=0 splitKV=0 startRow=40 offset=5120
-FD_RD: aiv=0 splitKV=1 startRow=40 offset=21504
-FD_RD: aiv=0 splitKV=0 startRow=48 offset=6144
-FD_RD: aiv=0 splitKV=1 startRow=48 offset=22528
-FD_RD: aiv=0 splitKV=0 startRow=56 offset=7168
-FD_RD: aiv=0 splitKV=1 startRow=56 offset=23552
+testcase_name	B	N1	N2	S1	S2	D	dtype	out_dtype	input_layout	seqUsedQ	seqUseKv	sparse_mode
+case_1	1	24		256		128	bfloat16		BSND			0
+case_2	1	12		38316		128	bfloat16		BNSD			0
+case_3	1	12		38365		128	bfloat16		BNSD			0
+case_4	1	12		38337		128	bfloat16		BNSD			0
+case_5	1	12		38269		128	bfloat16		BNSD			0
+case_6	1	12		38297		128	bfloat16		BNSD			0
+case_7	1	12		38323		128	bfloat16		BNSD			0
+case_8	1	12		38347		128	bfloat16		BNSD			0
+case_9	1	8	1	8192		128	bfloat16		TND	[8192]	[8192]	4
+case_10	1	32	4	504		128	bfloat16		BSND			0
+case_11	1	32	4	624		128	bfloat16		BSND			0
+case_12	1	32	4	440		128	bfloat16		BSND			0
+case_13	1	32	4	944		128	bfloat16		BSND			0
+case_14	1	32	4	664		128	bfloat16		BSND			0
+case_15	1	32	4	520		128	bfloat16		BSND			0
+case_16	1	32	4	672		128	bfloat16		BSND			0
+case_17	1	32	4	536		128	bfloat16		BSND			0
+case_18	1	32	4	496		128	bfloat16		BSND			0
+case_19	1	32	4	464		128	bfloat16		BSND			0
+case_20	1	32	4	472		128	bfloat16		BSND			0
+case_21	1	32	4	489		128	bfloat16		TND	[489]	[489]	3
+case_22	1	32	4	732		128	bfloat16		TND	[732]	[732]	3
+case_23	1	32	4	455		128	bfloat16		TND	[455]	[455]	3
+case_24	1	32	4	849		128	bfloat16		TND	[849]	[849]	3
+case_25	1	32	4	481		128	bfloat16		TND	[481]	[481]	3
+case_26	1	32	4	1020		128	bfloat16		TND	[1020]	[1020]	3
+case_27	1	32	4	380		128	bfloat16		TND	[380]	[380]	3
+case_28	1	32	4	563		128	bfloat16		TND	[563]	[563]	3
+case_29	1	32	4	553		128	bfloat16		TND	[553]	[553]	3
+case_30	1	32	4	511		128	bfloat16		TND	[511]	[511]	3
+case_31	1	32	4	484		128	bfloat16		TND	[484]	[484]	3
+case_32	1	32	4	425		128	bfloat16		TND	[425]	[425]	3
+case_33	1	32	4	501		128	bfloat16		TND	[501]	[501]	3
+case_34	1	32	4	518		128	bfloat16		TND	[518]	[518]	3
+case_35	1	32	4	537		128	bfloat16		TND	[537]	[537]	3
+case_36	1	32	4	966		128	bfloat16		TND	[966]	[966]	3
+case_37	1	32	4	465		128	bfloat16		TND	[465]	[465]	3
+case_38	1	32	4	478		128	bfloat16		TND	[478]	[478]	3
+case_39	1	32	4	515		128	bfloat16		TND	[515]	[515]	3
+case_40	1	32	4	460		128	bfloat16		TND	[460]	[460]	3
+case_41	1	32	4	443		128	bfloat16		TND	[443]	[443]	3
+case_42	1	32	4	764		128	bfloat16		TND	[764]	[764]	3
+case_43	1	32	4	505		128	bfloat16		TND	[505]	[505]	3
+case_44	1	32	4	503		128	bfloat16		TND	[503]	[503]	3
+case_45	1	32	4	454		128	bfloat16		TND	[454]	[454]	3
+case_46	1	32	4	469		128	bfloat16		TND	[469]	[469]	3
+case_47	1	32	4	407		128	bfloat16		TND	[407]	[407]	3
+case_48	1	32	4	463		128	bfloat16		TND	[463]	[463]	3
+case_49	1	32	4	721		128	bfloat16		TND	[721]	[721]	3
+case_50	1	32	4	894		128	bfloat16		TND	[894]	[894]	3
+case_51	1	32	4	491		128	bfloat16		TND	[491]	[491]	3
+case_52	1	32	4	494		128	bfloat16		TND	[494]	[494]	3
+case_53	1	32	4	482		128	bfloat16		TND	[482]	[482]	3
+case_54	1	32	4	457		128	bfloat16		TND	[457]	[457]	3
+case_55	1	32	4	627		128	bfloat16		TND	[627]	[627]	3
+case_56	1	32	4	869		128	bfloat16		TND	[869]	[869]	3
+case_57	1	32	4	698		128	bfloat16		TND	[698]	[698]	3
+case_58	1	32	4	799		128	bfloat16		TND	[799]	[799]	3
+case_59	1	32	4	807		128	bfloat16		TND	[807]	[807]	3
+case_60	1	32	4	547		128	bfloat16		TND	[547]	[547]	3
+case_61	1	32	4	657		128	bfloat16		TND	[657]	[657]	3
+case_62	1	32	4	581		128	bfloat16		TND	[581]	[581]	3
+case_63	1	32	4	487		128	bfloat16		TND	[487]	[487]	3
+case_64	1	32	4	530		128	bfloat16		TND	[530]	[530]	3
+case_65	1	32	4	618		128	bfloat16		TND	[618]	[618]	3
+case_66	1	32	4	471		128	bfloat16		TND	[471]	[471]	3
+case_67	1	32	4	612		128	bfloat16		TND	[612]	[612]	3
+case_68	1	32	4	810		128	bfloat16		TND	[810]	[810]	3
+case_69	1	32	4	508		128	bfloat16		TND	[508]	[508]	3
+case_70	1	32	4	483		128	bfloat16		TND	[483]	[483]	3
+case_71	1	32	4	458		128	bfloat16		TND	[458]	[458]	3
+case_72	1	32	4	497		128	bfloat16		TND	[497]	[497]	3
+case_73	1	32	4	502		128	bfloat16		TND	[502]	[502]	3
+case_74	1	32	4	430		128	bfloat16		TND	[430]	[430]	3
+case_75	1	32	4	516		128	bfloat16		TND	[516]	[516]	3
+case_76	1	32	4	359		128	bfloat16		TND	[359]	[359]	3
+case_77	1	32	4	556		128	bfloat16		TND	[556]	[556]	3
+case_78	1	32	4	468		128	bfloat16		TND	[468]	[468]	3
+case_79	1	32	4	551		128	bfloat16		TND	[551]	[551]	3
+case_80	1	32	4	534		128	bfloat16		TND	[534]	[534]	3
+case_81	1	32	4	349		128	bfloat16		TND	[349]	[349]	3
+case_82	1	32	4	554		128	bfloat16		TND	[554]	[554]	3
+case_83	1	32	4	535		128	bfloat16		TND	[535]	[535]	3
+case_84	1	32	4	495		128	bfloat16		TND	[495]	[495]	3
+case_85	1	32	4	907		128	bfloat16		TND	[907]	[907]	3
+case_86	1	32	4	730		128	bfloat16		TND	[730]	[730]	3
+case_87	1	32	4	695		128	bfloat16		TND	[695]	[695]	3
+case_88	1	32	4	475		128	bfloat16		TND	[475]	[475]	3
+case_89	1	32	4	742		128	bfloat16		TND	[742]	[742]	3
+case_90	1	32	4	645		128	bfloat16		TND	[645]	[645]	3
+case_91	1	32	4	699		128	bfloat16		TND	[699]	[699]	3
+case_92	1	32	4	381		128	bfloat16		TND	[381]	[381]	3
+case_93	1	32	4	499		128	bfloat16		TND	[499]	[499]	3
+case_94	1	32	4	829		128	bfloat16		TND	[829]	[829]	3
+case_95	1	32	4	753		128	bfloat16		TND	[753]	[753]	3
+case_96	1	32	4	901		128	bfloat16		TND	[901]	[901]	3
+case_97	1	32	4	476		128	bfloat16		TND	[476]	[476]	3
+case_98	1	32	4	748		128	bfloat16		TND	[748]	[748]	3
+case_99	1	32	4	477		128	bfloat16		TND	[477]	[477]	3
+case_100	1	32	4	363		128	bfloat16		TND	[363]	[363]	3
+case_101	1	32	4	946		128	bfloat16		TND	[946]	[946]	3
+case_102	1	32	4	490		128	bfloat16		TND	[490]	[490]	3
+case_103	1	32	4	619		128	bfloat16		TND	[619]	[619]	3
+case_104	1	32	4	671		128	bfloat16		TND	[671]	[671]	3
+case_105	1	32	4	485		128	bfloat16		TND	[485]	[485]	3
+case_106	1	32	4	523		128	bfloat16		TND	[523]	[523]	3
+case_107	1	32	4	533		128	bfloat16		TND	[533]	[533]	3
+case_108	1	32	4	479		128	bfloat16		TND	[479]	[479]	3
+case_109	1	32	4	545		128	bfloat16		TND	[545]	[545]	3
+case_110	1	32	4	559		128	bfloat16		TND	[559]	[559]	3
+case_111	1	32	4	322		128	bfloat16		TND	[322]	[322]	3
+case_112	1	32	4	542		128	bfloat16		TND	[542]	[542]	3
+case_113	1	32	4	666		128	bfloat16		TND	[666]	[666]	3
+case_114	1	32	4	498		128	bfloat16		TND	[498]	[498]	3
+case_115	1	32	4	521		128	bfloat16		TND	[521]	[521]	3
+case_116	1	32	4	461		128	bfloat16		TND	[461]	[461]	3
+case_117	1	32	4	452		128	bfloat16		TND	[452]	[452]	3
+case_118	1	32	4	693		128	bfloat16		TND	[693]	[693]	3
+case_119	1	32	4	649		128	bfloat16		TND	[649]	[649]	3
+case_120	1	32	4	519		128	bfloat16		TND	[519]	[519]	3
+case_121	1	32	4	561		128	bfloat16		TND	[561]	[561]	3
+case_122	1	32	2	8192		128	bfloat16		BSND			3
+case_123	1	16	1	8192		128	bfloat16		BSND			3
+case_124	1	32	2	16384		128	bfloat16		BSND			3
+case_125	1	16	1	16384		128	bfloat16		BSND			3
+case_126	1	32	2	32768		128	bfloat16		BSND			3
+case_127	1	16	1	32768		128	bfloat16		BSND			3
+case_128	1	32	2	65536		128	bfloat16		BSND			3
+case_129	1	16	1	65536		128	bfloat16		BSND			3
+case_130	1	32	2	131072		128	bfloat16		BSND			3
+case_131	1	16	1	131072		128	bfloat16		BSND			3
+case_132	1	32	2	262144		128	bfloat16		BSND			3
+case_133	1	16	1	262144		128	bfloat16		BSND			3
+case_134	1	32	2	8192		128	bfloat16		TND	[8192]		3
+case_135	2	16	1	8192		128	bfloat16		TND	[4096,4096]		3
+case_136	2	32	2	16384		128	bfloat16		TND	[8192,8192]		3
+case_137	4	16	1	16384		128	bfloat16		TND	[4096,4096,4096,4096]		3
+case_138	1	32	2	32768		128	bfloat16		TND	[32768]		3
+case_139	2	16	1	32768		128	bfloat16		TND	[8192,8192,8192,8192]		3
+case_140	2	32	2	65536		128	bfloat16		TND	[32768,32768]		3
+case_141	8	16	1	65536		128	bfloat16		TND	[8192,8192,8192,8192,8192,8192,8192,8192]		3
+case_142	4	32	2	131072		128	bfloat16		TND	[32768,32768,32768,32768]		3
+case_143	16	16	1	131072		128	bfloat16		TND	[8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192]		3
+case_144	8	32	2	262144		128	bfloat16		TND	[32768,32768,32768,32768,32768,32768,32768,32768]		3
+case_145	32	16	1	262144		128	bfloat16		TND	[8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192]		3
+case_146	1	64	4	4096		128	bfloat16		BSND			3
+case_147	1	64	4	2048		128	bfloat16		BSND			3
+case_148	1	64	4	8192		128	bfloat16		BSND			3
+case_149	1	64	4	16384		128	bfloat16		BSND			3
+case_150	1	64	4	32768		128	bfloat16		BSND			3
+case_151	1	64	4	65536		128	bfloat16		BSND			3
+case_152	1	64	4	131072		128	bfloat16		BSND			3
+case_153	1	64	4	4096		128	bfloat16		TND	[4096]		3
+case_154	1	64	4	8192		128	bfloat16		TND	[8192]		3
+case_155	2	64	4	8192		128	bfloat16		TND	[4096,4096]		3
+case_156	2	64	4	16384		128	bfloat16		TND	[8192,8192]		3
+case_157	4	64	4	16384		128	bfloat16		TND	[4096,4096,4096,4096]		3
+case_158	2	64	4	32768		128	bfloat16		TND	[32768]		3
+case_159	4	64	4	32768		128	bfloat16		TND	[8192,8192,81928192]		3
+case_160	2	64	4	65536		128	bfloat16		TND	[32768,32768]		3
+case_161	8	64	4	65536		128	bfloat16		TND	[8192,8192,8192,8192,8192,8192,8192,8192]		3
+case_162	4	64	4	131072		128	bfloat16		TND	[32768,32768,32768,32768]		3
+case_163	1	32	2	4096		128	bfloat16		BSND			3
+case_164	2	32	2	4096		128	bfloat16		TND	[4096]		3
+case_165	4	32	2	131072		128	bfloat16		TND	[32768,32768,32768,32768]		3
+case_166	1	64	4	4096	8192	128	bfloat16		BSND			3
+case_167	1	64	4	2048	8192	128	bfloat16		BSND			3
+case_168	1	64	4	8192	16384	128	bfloat16		BSND			3
+case_169	1	64	4	4096	16384	128	bfloat16		BSND			3
+case_170	1	64	4	16384	32768	128	bfloat16		BSND			3
+case_171	1	64	4	8192	32768	128	bfloat16		BSND			3
+case_172	1	64	4	4096	32768	128	bfloat16		BSND			3
+case_173	1	64	4	32768	65536	128	bfloat16		BSND			3
+case_174	1	64	4	16384	65536	128	bfloat16		BSND			3
+case_175	1	64	4	8192	65536	128	bfloat16		BSND			3
+case_176	1	64	4	65536	131072	128	bfloat16		BSND			3
+case_177	1	64	4	32768	131072	128	bfloat16		BSND			3
+case_178	1	64	4	16384	131072	128	bfloat16		BSND			3
+case_179	1	64	4	131072	262144	128	bfloat16		BSND			3
+case_180	1	64	4	65536	262144	128	bfloat16		BSND			3
+case_181	1	64	4	32768	262144	128	bfloat16		BSND			3
+case_182	1	64	4	4096	8192	128	bfloat16		TND	[4096]	[8192]	3
+case_183	2	64	4	8192	16384	128	bfloat16		TND	[4096,4096]	[8192,8192]	3
+case_184	4	64	4	16384	32768	128	bfloat16		TND	[4096,4096,4096,4096]	[8192,8192,8192,8192]	3
+case_185	4	64	4	8192	32768	128	bfloat16		TND	[8192,8192,8192,8192]	[8192,8192,8192,8192]	3
+case_186	8	64	4	32768	65536	128	bfloat16		TND	[4096,4096,4096,4096,4096,4096,4096,4096]	[8192,8192,8192,8192,8192,8192,8192,8192]	3
+case_187	2	64	4	16384	65536	128	bfloat16		TND	[8192,8192]	[32768,32768]	3
+case_188	2	64	4	8192	65536	128	bfloat16		TND	[4096,4096]	[32768,32768]	3
+case_189	16	64	4	65536	131072	128	bfloat16		TND	[4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096]	[8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192]	3
+case_190	4	64	4	32768	131072	128	bfloat16		TND	[8192,8192,8192,8192]	[32768,32768,32768,32768]	3
+case_191	4	64	4	16384	131072	128	bfloat16		TND	[4096,4096,4096,4096]	[32768,32768,32768,32768]	3
+case_192	32	64	4	131072	262144	128	bfloat16		TND	[4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096,4096]	[8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192,8192]	3
+case_193	8	64	4	65536	262144	128	bfloat16		TND	[8192,8192,8192,8192,8192,8192,8192,8192]	[32768,32768,32768,32768,32768,32768,32768,32768]	3
+case_194	8	64	4	32768	262144	128	bfloat16		TND	[4096,4096,4096,4096,4096,4096,4096,4096]	[32768,32768,32768,32768,32768,32768,32768,32768]	3
+case_195	1	40		32768		128	bfloat16		BSND			
+case_196	1	10		32768		128	bfloat16		BSND			
+case_197	1	5		32768		128	bfloat16		BSND			
+case_198	1	40		65536		128	bfloat16		BSND			
+case_199	1	10		65536		128	bfloat16		BSND			
+case_200	1	5		65536		128	bfloat16		BSND			
+case_201	1	40		131072		128	bfloat16		BSND			
+case_202	1	10		131072		128	bfloat16		BSND			
+case_203	1	5		131072		128	bfloat16		BSND			
+case_204	1	40		262144		128	bfloat16		BSND			
+case_205	1	10		262144		128	bfloat16		BSND			
+case_206	1	5		262144		128	bfloat16		BSND			
+case_207	1	40		32760	512	128	bfloat16		BSND			
+case_208	1	40		32760		128	bfloat16		BSND			
+case_209	1	3	3	4608	4608	128	bfloat16		BSND			
+case_210	1	24	24	256	256	128	bfloat16		BNSD			
+case_211	1	40	8	1	3607	128	bfloat16		BNSD			
+case_212	1	64	8	1	3607	128	bfloat16		BNSD			
+case_213	1	28	4	1	3607	128	bfloat16		BNSD			
+case_214	4	16	16	10764	10764	128	bfloat16		TND	[2691,2691,2691,2691]		
+case_215	1	64	4	16384	16384	128	bfloat16		TND	[16384]		3
+case_216	5	8	4	128	256	128	float16		TND	[128]	[256]	0
+case_217	2	4	1	1001	901	128	float16		TND	[1001]	[901]	0
+case_218	32	2	2	256	256	128	bfloat16		BSND			0
+case_219	32	4	4	256	256	128	bfloat16		BSND			0
+case_220	32	10	10	144	144	128	bfloat16		BSND			0
+case_221	32	20	20	144	144	128	float16		BNSD			0
+case_222	32	2	1	768	768	128	float16		BSND			0
+case_223	32	32	32	144	144	128	bfloat16		BNSD			0
+case_224	32	2	2	1024	1024	128	bfloat16		BSND			0
+case_225	32	8	4	512	512	128	bfloat16		BSND			0
+case_226	32	20	20	256	256	128	bfloat16		BSND			0
+case_227	32	6	6	768	768	128	bfloat16		BSND			0
+case_228	32	2	2	1536	1536	128	bfloat16		BSND			0
+case_229	32	14	14	512	512	128	bfloat16		BSND			0
+case_230	32	2	2	2048	2048	128	float16		BNSD			0
+case_231	32	24	24	512	512	128	float16		BSND			0
+case_232	32	8	8	1024	1024	128	float16		BSND			0
+case_233	32	10	10	1024	1024	128	float16		BSND			0
+case_234	32	12	6	1280	1280	128	float16		BSND			0
+case_235	32	10	10	1536	1536	128	bfloat16		BSND			0
+case_236	32	16	16	1280	1280	128	float16		BSND			0
+case_237	32	10	10	1792	1792	128	bfloat16		BNSD			0
+case_238	32	8	8	2048	2048	128	float16		BNSD			0
+case_239	32	14	14	1536	1536	128	float16		BNSD			0
+case_240	32	20	20	1280	1280	128	float16		BNSD			0
+case_241	32	10	10	2048	2048	128	bfloat16		BNSD			0
+case_242	32	14	14	1792	1792	128	bfloat16		BSND			0
+case_243	32	64	64	768	768	128	float16		BSND			0
+case_244	32	32	32	1280	1280	128	bfloat16		BSND			0
+case_245	32	48	48	1024	1024	128	float16		BSND			0
+case_246	32	24	24	1536	1536	128	bfloat16		BSND			0
+case_247	32	40	40	1280	1280	128	bfloat16		BSND			0
+case_248	32	40	40	1280	1280	128	float16		BSND			0
+case_249	32	64	64	1024	1024	128	bfloat16		BSND			0
+case_250	32	64	64	1024	1024	128	bfloat16		BSND			0
+case_251	32	24	24	1792	1792	128	float16		BSND			0
+case_252	32	32	32	1536	1536	128	float16		BNSD			0
+case_253	32	32	32	1536	1536	128	bfloat16		BSND			0
+case_254	32	48	48	1280	1280	128	float16		BSND			0
+case_255	32	32	32	2048	2048	128	float16		BNSD			0
+case_256	32	10	10	4096	4096	128	float16		BSND			0
+case_257	32	64	64	1536	1536	128	float16		BSND			0
+case_258	32	6	6	9216	9216	128	bfloat16		BNSD			0
+case_259	128	8	8	8192	1024	128	float16		BNSD			0
+case_260	128	8	8	8192	1024	128	float16		BNSD			0
+case_261	8	8	8	8000	8000	128	float16		BNSD			0
+case_262	32	8	8	1280	1280	128	bfloat16		BNSD			0
+case_263	128	8	8	8192	8192	128	float16		BNSD			0
+case_264	128	8	8	8192	8192	128	float16		BNSD			0
