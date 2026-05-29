@@ -19,7 +19,7 @@
 #include "op_kernel/math_util.h"
 #include "../common/basic_block_config.h"
 #include "../common/basic_block_vf_mx.h"
-#include "../common/gmmsq_tools.h"
+#include "weight_quant_tool.h"
 #include "gmmsq_weight_quant_cube_compute.h"
 #include "gmmsq_weight_quant_vec_compute.h"
 #include "gmmsq_weight_quant_cube_compute_tools.h"
@@ -29,6 +29,7 @@ using AscendC::LocalTensor;
 using AscendC::TBuf;
 using AscendC::TPipe;
 using AscendC::TPosition;
+using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
 
