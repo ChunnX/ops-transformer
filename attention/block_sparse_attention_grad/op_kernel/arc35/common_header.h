@@ -113,4 +113,16 @@ __aicore__ inline uint64_t GetSftgGmOffset(int32_t lastBatchSum, int32_t current
 }
 
 
+__aicore__ inline bool IsValidBlock(const int32_t q_head_num, const int32_t q_block_num, const int32_t kv_block_num,
+                                    const int32_t batch_idx, const int32_t n1_idx, const int32_t q_block_idx,
+                                    const int32_t kv_block_idx, __gm__ uint8_t *sparse_block_list)
+
+{
+    uint64_t offset = batch_idx * (q_head_num * q_block_num * kv_block_num) + n1_idx * (q_block_num * kv_block_num) +
+                      q_block_idx * kv_block_num + kv_block_idx;
+    bool is_valid = sparse_block_list[offset];
+    return is_valid;
+}
+
+
 } // namespace BSA_ARC35

@@ -81,7 +81,7 @@ public:
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
         sftg_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->sftgWorkspaceOffset));
 
-        addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
+        addr_.Init(tilingData, actualQseqlen, actualKvseqlen, blockSparseMask);
         tPipe->InitBuffer(ub_buffer_, UB_SIZE);
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
         // ub_buffer [base_m * base_n * sizeof(float) * 2]

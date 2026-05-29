@@ -76,6 +76,8 @@ private:
     int32_t head_dim_ = 0;
     int32_t blockShapeX_ = 0;
     int32_t blockShapeY_ = 0;
+    int32_t max_q_seq_len_ = 0;
+    int32_t max_kv_seq_len_ = 0;
 
 protected:
     bool IsCapable() override
@@ -95,9 +97,9 @@ protected:
             return false;
         }
 
-        if (blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
+        if (blockShapeX_ % 64 != 0 || blockShapeY_ % 64 != 0) {
             OP_LOGE(context_->GetNodeName(),
-                    "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 16.");
+                    "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 64.");
             return false;
         }
 
@@ -241,7 +243,6 @@ protected:
         blockShapeX_ = blockShapeList[0];
         blockShapeY_ = blockShapeList[1];
 
-
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
                           {k_batch_num, k_head_num, k_seq_len, q_head_dim},
                           {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
@@ -259,7 +260,11 @@ protected:
 
         uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
         uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        uint32_t block_num_x = q_seq_len_ / blockShapeX_;
+        uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
 
+        tilingData_.set_BlockX(blockShapeX_);
+        tilingData_.set_BlockY(blockShapeY_);
         tilingData_.set_cubeCoreNum(cubeCoreNum);
         tilingData_.set_baseM(baseM);
         tilingData_.set_baseN(baseN);
