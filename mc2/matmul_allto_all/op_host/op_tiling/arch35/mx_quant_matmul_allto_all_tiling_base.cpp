@@ -521,7 +521,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckQuantGroupSize(const gert:
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_INDEX);
     OP_TILING_CHECK(
-        groupSizePtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "The groupSize is nullptr."),
+        groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "groupSize"),
         return false);
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
@@ -597,7 +597,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 {
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
                     mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
+                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                                                    static_cast<int32_t>(contextInfo.args_.geCType)), return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder matmulAllToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
@@ -702,12 +702,12 @@ ge::graphStatus MxQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
     int64_t yDType = *context_->GetAttrs()->GetAttrPointer<int64_t>(ATTR_Y_DTYPE_INDEX);
     auto scaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale tensor"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = scaleTensorDesc->GetDataType();                
     auto perTokenScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((perTokenScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the perToken scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "perToken scale tensor"),
                     return ge::GRAPH_FAILED);
     inputParams_.perTokenScaleDtype = perTokenScaleTensorDesc->GetDataType();
     inputParams_.outDtype = static_cast<int64_t>(yDType);

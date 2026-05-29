@@ -481,7 +481,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
     }
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, hcclDtype) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
+                    OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
                                                    static_cast<int32_t>(hcclDtype)),
                     return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder allToAllMatmulBuilder =
@@ -567,10 +567,10 @@ ge::graphStatus AlltoAllMxQuantMatmulHelper::GetShapeAttrsInfo()
     auto x1ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     auto x2ScaleTensorDesc = context_->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "The x1scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x1scale tensor"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "The x2scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "x2scale tensor"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = x1ScaleTensorDesc->GetDataType();
     inputParams_.perTokenScaleDtype = x2ScaleTensorDesc->GetDataType();
