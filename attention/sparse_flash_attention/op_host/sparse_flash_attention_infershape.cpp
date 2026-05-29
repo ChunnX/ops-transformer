@@ -64,14 +64,31 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
     if(return_softmax_lse){
         if(queryShape->GetDimNum() == DIM_NUM_3){
             softmaxMaxShape->SetDimNum(DIM_NUM_3);
-            softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            // add tnd+pa_bsnd
+            if(keyShape->GetDimNum() == DIM_NUM_4){
+                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
+            }else {
+                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            }
             softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-            softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+            if(keyShape->GetDimNum() == DIM_NUM_4){
+                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
+            }else {
+                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+            }
 
             softmaxSumShape->SetDimNum(DIM_NUM_3);
-            softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            if(keyShape->GetDimNum() == DIM_NUM_4){
+                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
+            }else {
+                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            }
             softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-            softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+            if(keyShape->GetDimNum() == DIM_NUM_4){
+                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
+            }else {
+                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
+            }
         }else {
             softmaxMaxShape->SetDimNum(DIM_NUM_4);
             softmaxMaxShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
