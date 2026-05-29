@@ -469,7 +469,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.",
+            static_cast<int32_t>(args_.geCType)),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
@@ -643,7 +644,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "antiquant_offset",
                 std::to_string(static_cast<int32_t>(antiquantOffsetType)).c_str(),
-                ("should be same as antiquantScale type=" + std::to_string(static_cast<int32_t>(antiquantScaleType))).c_str()),
+                ("should be same as antiquantScale type=" +
+                    std::to_string(static_cast<int32_t>(antiquantScaleType))).c_str()),
             return ge::GRAPH_FAILED);
     }
     // antiquantgroupsize 校验

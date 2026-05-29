@@ -708,11 +708,14 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckInput()
     // reduceOp为sum
     OP_TILING_CHECK(
         strncmp(mmrCtxInfo_.reduceOp, "sum", 3) != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "reduceOp", mmrCtxInfo_.reduceOp, "should be sum"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "reduceOp", mmrCtxInfo_.reduceOp, "should be sum"),
         return ge::GRAPH_FAILED);
     // commTurn为0
     OP_TILING_CHECK(
-        mmrCtxInfo_.commTurn != 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "commTurn", std::to_string(mmrCtxInfo_.commTurn).c_str(), "should be 0"),
+        mmrCtxInfo_.commTurn != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(),
+            "commTurn", std::to_string(mmrCtxInfo_.commTurn).c_str(), "should be 0"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1517,8 +1520,10 @@ bool MatmulAllReduceTilingBase::CheckPlatformInfo() const
                                 (args_.nValue > MAX_SHAPE_DIM || args_.nValue < MIN_SHAPE_DIM)),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName_, "x1/x2",
-                ("m=" + std::to_string(args_.mValue) + ", k=" + std::to_string(args_.kValue) + ", n=" + std::to_string(args_.nValue)).c_str(),
-                ("MKN should be in [" + std::to_string(MIN_SHAPE_DIM) + ", " + std::to_string(MAX_SHAPE_DIM) + "]").c_str()),
+                ("m=" + std::to_string(args_.mValue) + ", k=" + std::to_string(args_.kValue) +
+                    ", n=" + std::to_string(args_.nValue)).c_str(),
+                ("MKN should be in [" + std::to_string(MIN_SHAPE_DIM) + ", " +
+                    std::to_string(MAX_SHAPE_DIM) + "]").c_str()),
             return false);
     }
     return true;

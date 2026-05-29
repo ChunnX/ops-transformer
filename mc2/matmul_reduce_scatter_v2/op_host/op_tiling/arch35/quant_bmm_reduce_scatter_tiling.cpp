@@ -244,7 +244,9 @@ bool QuantBmmReduceScatterTiling::PertensorSceneParamCheck(const gert::StorageSh
                         OP_LOGE(opName_, "dim num of bias should be 1"), return false);
         uint64_t biasDimValue = static_cast<uint64_t>(biasShape->GetStorageShape().GetDim(0));
         OP_TILING_CHECK(biasDimValue != args_.nValue,
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "bias", std::to_string(biasDimValue).c_str(), std::to_string(args_.nValue).c_str()), return false);
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "bias", std::to_string(biasDimValue).c_str(),
+                            std::to_string(args_.nValue).c_str()),
+                        return false);
     }
 
     return true;

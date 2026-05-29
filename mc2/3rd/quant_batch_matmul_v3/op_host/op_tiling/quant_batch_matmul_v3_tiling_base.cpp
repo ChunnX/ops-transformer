@@ -171,8 +171,10 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
         inputParams_.groupSize = groupSizePtr ? static_cast<uint64_t>(*groupSizePtr) : 0ULL;
         if (inputParams_.groupSize != 0ULL) {
             inputParams_.groupSizeK = inputParams_.groupSize & GROUP_MKN_BIT_SIZE;
-            inputParams_.groupSizeN = (inputParams_.groupSize >> 16U) & GROUP_MKN_BIT_SIZE; // 16 is the bit size of MKN group size
-            inputParams_.groupSizeM = (inputParams_.groupSize >> 32U) & GROUP_MKN_BIT_SIZE; // groupSizeM start at 32 bit of groupSize
+            // 16 is the bit size of MKN group size
+            inputParams_.groupSizeN = (inputParams_.groupSize >> 16U) & GROUP_MKN_BIT_SIZE;
+            // groupSizeM start at 32 bit of groupSize
+            inputParams_.groupSizeM = (inputParams_.groupSize >> 32U) & GROUP_MKN_BIT_SIZE;
         }
     }
 
@@ -356,7 +358,8 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX2QuantMode(BasicQuantMode &x2QuantMode
         auto x2QuantModeList = X2_QUANT_MODE_MAP.find(inputParams_.bDtype);
         OP_TILING_CHECK(x2QuantModeList == X2_QUANT_MODE_MAP.end(),
             OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "x2",
-                ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "see valid dtype list"), return false);
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
+                "see valid dtype list"), return false);
         OP_LOGE(inputParams_.opName, "Unexpected input, for the dtype of x2: %s, \
 the shape of x2 and x2Scale(scale) not match any of quantification: %s.",
             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
@@ -386,7 +389,8 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX1QuantMode(BasicQuantMode &x1QuantMode
         auto x1QuantModeList = X1_QUANT_MODE_MAP.find(inputParams_.aDtype);
         OP_TILING_CHECK(x1QuantModeList == X1_QUANT_MODE_MAP.end(),
             OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opName, "x1",
-                ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "see valid dtype list"), return false);
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                "see valid dtype list"), return false);
         OP_LOGE(inputParams_.opName, "Unexpected input, for the dtype of x1: %s, \
 the shape of x1 and x1Scale(pertokenScale) not match any of quantification: %s.",
             ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
@@ -396,7 +400,8 @@ the shape of x1 and x1Scale(pertokenScale) not match any of quantification: %s."
     return true;
 }
 
-std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(const std::vector<BasicQuantMode>& quantModeList) const {
+std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(
+    const std::vector<BasicQuantMode>& quantModeList) const {
     std::stringstream ss;
     ss << "[";
     for (auto it = quantModeList.begin(); it != quantModeList.end(); it++) {
@@ -409,7 +414,8 @@ std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(const std::vec
     return ss.str();
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape, const gert::StorageShape *pertokenShape)
+bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape,
+                                                    const gert::StorageShape *pertokenShape)
 {
     if (!compileInfo_.supportL12BtBf16) {
         inputParams_.isPerTensor = scaleShape.GetDim(0) == 1;
@@ -558,7 +564,8 @@ by the %s dimension of %s [%lu], the real group_size in %s dimension can not be 
     return true;
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleShape, const gert::StorageShape *pertokenShape)
+bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleShape,
+                                                        const gert::StorageShape *pertokenShape)
 {
     if (pertokenShape == nullptr) {
         return true;
@@ -566,7 +573,8 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleS
     auto &pertoken = pertokenShape->GetStorageShape();
     auto pertokenShapeLen = pertoken.GetDimNum();
     auto scaleShapeLen = scaleShape.GetDimNum();
-    if (pertokenShapeLen < 2 || scaleShapeLen < 2) { // scaleLen < 2 means invalid input, leave it to the checher behind.
+    if (pertokenShapeLen < 2 || scaleShapeLen < 2) {
+        // scaleLen < 2 means invalid input, leave it to the checher behind.
         return true;
     }
     auto pertokenInner = pertoken.GetDim(1);

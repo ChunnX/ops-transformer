@@ -106,9 +106,12 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
         static_cast<uint64_t>(isTransB_),
         static_cast<uint64_t>(FORMAT_B_ND));
 
-    OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, hasAntiQuantOffset_ %lu, isTransB_ %lu,     \
-        enableL2Cache_ %lu, isWeightQuant_ %lu, isKZero_ %lu", tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_,\
-        isWeightQuant_, isKZero_);
+    OP_LOGI(opName_,
+        "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, "
+        "hasAntiQuantOffset_ %lu, isTransB_ %lu, enableL2Cache_ %lu, "
+        "isWeightQuant_ %lu, isKZero_ %lu",
+        tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_,
+        enableL2Cache_, isWeightQuant_, isKZero_);
     return tilingKey;
 }
 
@@ -125,7 +128,8 @@ void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
 {
     const auto weight = context_->GetInputDesc(static_cast<size_t>(ops::MC2InputIdx::K_X2));
     OP_TILING_CHECK(
-        weight == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"), return );
+        weight == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "weight"),
+        return );
     if (weight->GetDataType() != ge::DT_INT8) {
         OP_LOGD(context_->GetNodeName(), "No anti quant for weight data type %u.", weight->GetDataType());
         return;

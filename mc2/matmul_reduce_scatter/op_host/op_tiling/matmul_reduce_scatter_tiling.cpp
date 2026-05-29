@@ -58,7 +58,8 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
     constexpr uint64_t minN = 7168;
     // mata 交织场景
     if (dValue % mataD == 0 && nValue >= minN && ubSize == UB_SIZE &&
-        (args.aType == matmul_tiling::DataType::DT_FLOAT16 || args.aType == matmul_tiling::DataType::DT_BF16) && args.aicCoreNum >= 24) {  // 24 核最小核数
+        (args.aType == matmul_tiling::DataType::DT_FLOAT16 ||
+         args.aType == matmul_tiling::DataType::DT_BF16) && args.aicCoreNum >= 24) {  // 24 核最小核数
         baseN = 96;   // baseN 经验值 96
         baseD = 512;  // baseD 经验值 512
         return;
@@ -74,8 +75,12 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
         baseD = std::max(ops::CeilAlign(dValue, c0), uint64_t(1));
         uint64_t nDim = vectorCoreNum;
         baseN = ubSize / NUMBER_TWO / dtypeSize / baseD;
-        uint64_t round = std::max(Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), baseN), 1UL);
-        baseN = std::max(Ops::Transformer::MathUtil::CeilDivision(Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), round), NCALC_THRES);
+        uint64_t round = std::max(
+            Ops::Transformer::MathUtil::CeilDivision(
+                Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), baseN), 1UL);
+        baseN = std::max(
+            Ops::Transformer::MathUtil::CeilDivision(
+                Ops::Transformer::MathUtil::CeilDivision(nAligned16, nDim), round), NCALC_THRES);
         while (baseN > NCALC_THRES) {
             if (CheckUbOverFlowMC2(ubSize, nAligned16, nValue, baseN, baseD, dtypeSize)) {
                 baseN--;
@@ -94,7 +99,8 @@ static void CalcNd2NzTilingMC2(const mc2tiling::TilingArgs& args, uint64_t ubSiz
         uint64_t dLoop = Ops::Transformer::MathUtil::CeilDivision(dAlignedC0, baseD);
         uint64_t dTail = dAlignedC0 % baseD;
         if (dTail > 0 && dTail < (MIN_TAIL / dtypeSize)) {
-            if (baseD * dtypeSize == CALC_ND_BASIC.at(0)) {  // if dtail < 0.5K && baseD == 3k, give up and return bestbase
+            // if dtail < 0.5K && baseD == 3k, give up and return bestbase
+            if (baseD * dtypeSize == CALC_ND_BASIC.at(0)) {
                 continue;
             }
             dLoop--;
@@ -264,13 +270,15 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
         OP_TILING_CHECK(reduce_op == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "reduce_op"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(strcmp(reduce_op, "sum") != 0,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "reduce_op", reduce_op, "should be sum"), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "reduce_op", reduce_op, "should be sum"),
+            return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(2);
         OP_TILING_CHECK(isTransA == nullptr,
             OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransA"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(*isTransA != false,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", "true", "should be false"), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", "true", "should be false"),
+            return ge::GRAPH_FAILED);
     }
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
@@ -680,7 +688,8 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     auto comm_turn = *comm_turn_ptr;
     OP_TILING_CHECK(comm_turn != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "comm_turn", std::to_string(comm_turn).c_str(), "0"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "comm_turn",
+                        std::to_string(comm_turn).c_str(), "0"),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("MatmulReduceScatter",

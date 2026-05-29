@@ -76,7 +76,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType, const uint8_t dataType)
+ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType,
+                                                                  const uint8_t dataType)
 {
     uint32_t opType1 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLTOALL);
     uint32_t opType2 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLGATHER);
@@ -144,7 +145,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.", static_cast<int32_t>(args_.geCType)),
+        OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %d.",
+            static_cast<int32_t>(args_.geCType)),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
@@ -426,7 +428,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSizeOfCommQuantScaleOr
             tempPadTileM = padTileM * tileN;
             tempPadTailM = padTailM * tailN;
         }
-        commInt8WorkSpace = tempPadTileM * MutableRCSTilingData().tileCnt + tempPadTailM * MutableRCSTilingData().tailCnt;
+        commInt8WorkSpace = tempPadTileM * MutableRCSTilingData().tileCnt +
+            tempPadTailM * MutableRCSTilingData().tailCnt;
         commInt8WorkSpace *= isFp8 ? sizeof(float) : sizeof(int8_t);
         OP_LOGI(opName_, "Set commInt8WorkSpace size=%lu, commFp32WorkSpace size=%lu to context.", commInt8WorkSpace,
                 commFp32WorkSpace);
@@ -475,7 +478,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(QuantMatmulAllReduceTilingDataA5) % sizeof(uint64_t)) != 0,
-        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(sizeof(QuantMatmulAllReduceTilingDataA5)).c_str()),
+        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.",
+            std::to_string(sizeof(QuantMatmulAllReduceTilingDataA5)).c_str()),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -744,7 +748,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((groupSizeM != SUPPORTED_BLOCK_SIZE) || (groupSizeN != SUPPORTED_BLOCK_SIZE) ||
                         (groupSizeK != SUPPORTED_BLOCK_SIZE),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", (std::to_string(groupSizeM) + "," + std::to_string(groupSizeN) + "," + std::to_string(groupSizeK)).c_str(), "should be 128,128,128 in perblock scene"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
+                (std::to_string(groupSizeM) + "," + std::to_string(groupSizeN) +
+                    "," + std::to_string(groupSizeK)).c_str(),
+                "should be 128,128,128 in perblock scene"),
             return ge::GRAPH_FAILED);
     } else if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         shapeInfo.isMxfp = true;
@@ -753,7 +760,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) ||
                         (groupSizeK != MX_GROUP_SIZE_K),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", (std::to_string(groupSizeM) + "," + std::to_string(groupSizeN) + "," + std::to_string(groupSizeK)).c_str(), "should be [1,1,32] in mxfp scene"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
+                (std::to_string(groupSizeM) + "," + std::to_string(groupSizeN) +
+                    "," + std::to_string(groupSizeK)).c_str(),
+                "should be [1,1,32] in mxfp scene"),
             return ge::GRAPH_FAILED);
     }
 
@@ -847,14 +857,16 @@ const gert::Shape QuantTilingTransferHelperA5::GetX1Shape(const size_t index)
     // 判断原始的m是否128对齐,对于perblock三维场景m轴非128对齐按照3维传值，和matmul保持一致
     bool isNotBatchOne = (tilingProcesser_.args_.batchValue != 1ULL);
     bool is128Aligned = ((tilingProcesser_.args_.orgMValue / tilingProcesser_.args_.batchValue) & 127ULL) == 0;
-    // perblock场景下，若x1为（b,m,k)时，量化参数shape为[b,ceilDiv(m,128),ceilDiv(k,128)],仅当ceilDiv(m,128)为整数时，才能保证 b*ceilDiv(m,128) = ceilDiv(b*m,128)
+    // perblock场景下，若x1为（b,m,k)时，量化参数shape为[b,ceilDiv(m,128),ceilDiv(k,128)],
+	    // 仅当ceilDiv(m,128)为整数时，才能保证 b*ceilDiv(m,128) = ceilDiv(b*m,128)
     // mxfp场景下，若x1为（b,m,k)时，量化参数shape为[m,ceilDiv(k,64),2],若batch合轴，量化参数shape为[b*m,ceilDiv(k,64),2]，原shape无法满足计算
     if ((tilingProcesser_.isPerBlock_ && isNotBatchOne && !is128Aligned) ||
         ((tilingProcesser_.scenario_ == AllReduceScenario::MXFP8) && isNotBatchOne) || 
         ((tilingProcesser_.scenario_ == AllReduceScenario::MXFP4) && isNotBatchOne)) {
         return gert::Shape(
             {static_cast<int64_t>(tilingProcesser_.args_.batchValue),
-            static_cast<int64_t>(tilingProcesser_.args_.mValue) / static_cast<int64_t>(tilingProcesser_.args_.batchValue),
+            static_cast<int64_t>(tilingProcesser_.args_.mValue) /
+	                static_cast<int64_t>(tilingProcesser_.args_.batchValue),
             static_cast<int64_t>(tilingProcesser_.args_.kValue)});
     } else {
         return gert::Shape(

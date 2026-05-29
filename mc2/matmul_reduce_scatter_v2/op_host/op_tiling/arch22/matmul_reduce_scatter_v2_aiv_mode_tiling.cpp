@@ -838,31 +838,38 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
                                                       gert::TilingContext *context, int64_t rankSize)
 {
     OP_TILING_CHECK(cocTilingData.m0 != 128 && cocTilingData.m0 != 256,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "m0", std::to_string(cocTilingData.m0).c_str(), "128 or 256"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "m0",
+                        std::to_string(cocTilingData.m0).c_str(), "128 or 256"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.swizzlCount < 1 || cocTilingData.swizzlCount > 16,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlCount", std::to_string(cocTilingData.swizzlCount).c_str(), "1 to 16"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlCount",
+                        std::to_string(cocTilingData.swizzlCount).c_str(), "1 to 16"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.swizzlDirect != 0 && cocTilingData.swizzlDirect != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlDirect", std::to_string(cocTilingData.swizzlDirect).c_str(), "0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlDirect",
+                        std::to_string(cocTilingData.swizzlDirect).c_str(), "0 or 1"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.pValue < 1 || cocTilingData.pValue > 20,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "pValue", std::to_string(cocTilingData.pValue).c_str(), "1 to 20"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "pValue",
+                        std::to_string(cocTilingData.pValue).c_str(), "1 to 20"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.ubMoveNum < 4 || cocTilingData.ubMoveNum > 100,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "ubMoveNum", std::to_string(cocTilingData.ubMoveNum).c_str(), "4 to 100"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "ubMoveNum",
+                        std::to_string(cocTilingData.ubMoveNum).c_str(), "4 to 100"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.commNpuSplit != 0 && cocTilingData.commNpuSplit != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commNpuSplit", std::to_string(cocTilingData.commNpuSplit).c_str(), "0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commNpuSplit",
+                        std::to_string(cocTilingData.commNpuSplit).c_str(), "0 or 1"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.commDataSplit != 8 && cocTilingData.commDataSplit != 16,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commDataSplit", std::to_string(cocTilingData.commDataSplit).c_str(), "8 or 16"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commDataSplit",
+                        std::to_string(cocTilingData.commDataSplit).c_str(), "8 or 16"),
                     return ge::GRAPH_FAILED);
 
     int32_t m_loop = (info.M + cocTilingData.m0 - 1) / (cocTilingData.m0);
@@ -1042,7 +1049,8 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize", std::to_string(rankSize).c_str(), "2, 4 or 8"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize",
+                        std::to_string(rankSize).c_str(), "2, 4 or 8"),
                     return ge::GRAPH_FAILED);
     // 2. set numBlocks
     uint32_t numBlocks = 1U;

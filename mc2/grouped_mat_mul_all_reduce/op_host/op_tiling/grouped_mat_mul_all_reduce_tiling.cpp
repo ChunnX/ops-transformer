@@ -280,7 +280,8 @@ ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* conte
     }
     OP_TILING_CHECK(
         groupNum > MAX_TENSOR_CONT,
-        OP_LOGE_FOR_INVALID_VALUE(opName, "groupNum", std::to_string(groupNum).c_str(), std::to_string(MAX_TENSOR_CONT).c_str()),
+        OP_LOGE_FOR_INVALID_VALUE(opName, "groupNum", std::to_string(groupNum).c_str(),
+            std::to_string(MAX_TENSOR_CONT).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -348,7 +349,9 @@ ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext* c
         return ge::GRAPH_FAILED);
     bool rankSizeSupported = (rankSize_ == 1 || rankSize_ == 2 || rankSize_ == 4 || rankSize_ == 8);
     OP_TILING_CHECK(
-        !rankSizeSupported, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(), "only supports 1,2,4,8"),
+        !rankSizeSupported,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(),
+            "only supports 1,2,4,8"),
         return ge::GRAPH_FAILED);
 
     ubSize_ = PLATFORM_SIZE.ubSize;
@@ -450,7 +453,8 @@ ge::graphStatus GMMAllReduceTiling::DoAllReduceTiling()
     size_t dataSize = msg.GetDataSize(); // Mc2Msg size
     OP_TILING_CHECK(
         dataSize != MC2_MSG_SIZE,
-        OP_LOGE_FOR_INVALID_VALUE(opName, "dataSize", std::to_string(dataSize).c_str(), std::to_string(MC2_MSG_SIZE).c_str()),
+        OP_LOGE_FOR_INVALID_VALUE(opName, "dataSize", std::to_string(dataSize).c_str(),
+            std::to_string(MC2_MSG_SIZE).c_str()),
         return ge::GRAPH_FAILED);
     CoreTilingInfo coreTilingInfo;
     for (uint32_t i = 0; i < groupNum; ++i) {
@@ -566,7 +570,9 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
         baseK_ = std::min<int32_t>(baseK_, SixteenAlign(maxK, true));
     }
     OP_TILING_CHECK(
-        baseK_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", "0", "baseK_ cannot be 0"), return ge::GRAPH_FAILED);
+        baseK_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", "0", "baseK_ cannot be 0"),
+        return ge::GRAPH_FAILED);
     // 基于使能double buffer的L0A内存和L0B内存计算baseM(cube)
     uint32_t maxBaseM = PLATFORM_SIZE.l0CSize / (baseN_ * sizeof(float));
     baseM_ = std::min<uint32_t>((PLATFORM_SIZE.l0ASize / DOUBLE_BUFFER_L0A_L0B) / (baseK_ * mmDataTypeSize), maxBaseM);
@@ -575,7 +581,9 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
         baseM_ = SixteenAlign(maxM, true);
     }
     OP_TILING_CHECK(
-        baseM_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", "0", "baseM_ cannot be 0"), return ge::GRAPH_FAILED);
+        baseM_ == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", "0", "baseM_ cannot be 0"),
+        return ge::GRAPH_FAILED);
     OP_LOGD(opName, "end CalMMTlingData");
 
     return ge::GRAPH_SUCCESS;
