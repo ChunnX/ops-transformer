@@ -102,7 +102,6 @@ public:
     uint32_t accGS1Loops = 0U;
     uint32_t totalSize = 0U;
     uint32_t createdTaskCount = 0U;
-    uint32_t executedTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
     bool enableS1OutSplit = false;
 
@@ -165,18 +164,7 @@ public:
         this->pipe = tPipe;
         this->tilingData = tiling;
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
-        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
-
-        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
-        fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
-
         InitConstInfo();
-
 
         keyPtr = key;
         valuePtr = value;
@@ -193,6 +181,12 @@ public:
         } else {
             seqUsedGmKv.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
+        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+
+        faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
+        
 
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
@@ -200,6 +194,10 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
+            fdMetaDataGm.SetGlobalBuffer(
+            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+            FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
@@ -222,7 +220,6 @@ public:
                                         kvSeqUsedParser);
             }
         }
-
         if (isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
@@ -320,7 +317,8 @@ public:
         constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
-
+        constInfo.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
+        
         constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
@@ -393,7 +391,7 @@ public:
 
         // Reset pipeline state for each section to avoid cross-section deadlock
         createdTaskCount = 0;
-        executedTaskCount = 0;
+        uint32_t executedTaskCount = 0;
         mloop = 0;
         accGS1Loops = 0;
         headS2Split = false;
@@ -406,8 +404,8 @@ public:
         prevGS1Idx = gS1Cur;
 
         bool shouldDispatchTask = true;
-        bool shouldExecuteTask = false;
-        while (shouldDispatchTask || shouldExecuteTask) {
+        uint32_t validTaskCount = 0; // 未执行(有效)的任务数
+        while (shouldDispatchTask || validTaskCount) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
             if (shouldDispatchTask) {
@@ -416,6 +414,7 @@ public:
                     // 创建任务
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
+                    validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                     if ASCEND_IS_AIV {
@@ -429,10 +428,12 @@ public:
                 }
             }
             // 执行任务
-            shouldExecuteTask = ShouldExecuteTask(taskRunInfo);
-            if (shouldExecuteTask) {
+            if (validTaskCount) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
+                if (executedTaskCount > PRELOAD_N) {
+                    validTaskCount--;
+                }
             }
         }
     }
@@ -440,16 +441,6 @@ public:
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         return ((bN2Cur != bN2End_) || (gS1Cur != gS1OEnd_) || (s2Cur != s2OEnd_));
-    }
-
-    __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
-    {
-        for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
-            if (taskRunInfo[i].isValid) {
-                return true;
-            }
-        }
-        return false;
     }
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)

@@ -63,6 +63,7 @@ constexpr uint32_t COFF_ATTR_INDEX = 2;
 constexpr uint32_t NORM_EPS_ATTR_INDEX = 3;
 constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
 constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
+constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
 
 // OUTPUT
 constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
@@ -112,9 +113,9 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
     {STATE_CACHE_NAME,        {ge::DT_FLOAT}},
     {APE_NAME,                {ge::DT_FLOAT}},
-    {NORM_WEIGHT_NAME,        {ge::DT_BF16, ge::DT_FLOAT16}},
-    {ROPE_SIN_NAME,           {ge::DT_BF16, ge::DT_FLOAT16}},
-    {ROPE_COS_NAME,           {ge::DT_BF16, ge::DT_FLOAT16}},
+    {NORM_WEIGHT_NAME,        {ge::DT_FLOAT}},
+    {ROPE_SIN_NAME,           {ge::DT_FLOAT}},
+    {ROPE_COS_NAME,           {ge::DT_FLOAT}},
     {STATE_BLOCK_TABLE_NAME,  {ge::DT_INT32}},
     {CU_SEQLENS_NAME,         {ge::DT_INT32}},
     {SEQUSED_NAME,            {ge::DT_INT32}},
@@ -267,6 +268,7 @@ struct CompressorContext {
     const float *normEps;
     const int *rotaryMode;
     const int *cacheMode;
+    const int *stateCacheStrideDim0;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16; 

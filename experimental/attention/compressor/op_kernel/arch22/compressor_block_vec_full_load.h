@@ -176,7 +176,7 @@ private:
                                           const LocalTensor<T> &normWeightUb, const LocalTensor<T> &tempLocal,
                                           uint32_t dealRowCount);
     __aicore__ inline void SingleCalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
-                                         const LocalTensor<X_T> &cosUb, const LocalTensor<X_T> &sinUb, uint32_t rowCnt,
+                                         const LocalTensor<T> &cosUb, const LocalTensor<T> &sinUb, uint32_t rowCnt,
                                          uint32_t curDealScSize, uint32_t globalScStart);
     __aicore__ inline void CalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
                                    const Vec2SliceInfo &originSliceInfo, uint32_t dealRowCount);
@@ -259,9 +259,9 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
-    normWeightGm_.SetGlobalBuffer((__gm__ X_T *)normWeight);
-    ropeSinGm_.SetGlobalBuffer((__gm__ X_T *)ropeSin);
-    ropeCosGm_.SetGlobalBuffer((__gm__ X_T *)ropeCos);
+    normWeightGm_.SetGlobalBuffer((__gm__ T *)normWeight);
+    ropeSinGm_.SetGlobalBuffer((__gm__ T *)ropeSin);
+    ropeCosGm_.SetGlobalBuffer((__gm__ T *)ropeCos);
     cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
     isExistSeqUsed_ = (seqUsed != nullptr);
     isExistStartPos_ = (startPos != nullptr);
@@ -291,12 +291,12 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitBuffers(TPipe *p
     normWeightUb = normWeightBuf.Get<T>();
     vec1ResUb = vec1ResBuf.Get<T>();
     // apeUb = inputQueApe.Get<T>();
-    LocalTensor<X_T> normweightInUb = inputQue1.AllocTensor<X_T>();
+    LocalTensor<T> normweightInUb = inputQue1.AllocTensor<T>();
     LocalTensor<int32_t> gatherOffsetUb = gatherOffsetBuf.Get<int32_t>();
     DataCopy(normweightInUb, normWeightGm_, constInfo_.headDim); // 获取normWeight，常驻
     inputQue1.EnQue(normweightInUb);
-    inputQue1.DeQue<X_T>();
-    Cast(normWeightUb, normweightInUb, RoundMode::CAST_NONE, constInfo_.headDim);
+    inputQue1.DeQue<T>();
+    DataCopy(normWeightUb, normweightInUb, constInfo_.headDim);
     inputQue1.FreeTensor(normweightInUb);
     if constexpr (COMP::rotaryMode == Compressor::ROTARY_MODE::INTERLEAVE) {
         SetGatherSrcOffset<float>(gatherOffsetUb, constInfo_.ropeHeadDim);
@@ -1059,21 +1059,15 @@ CompressorBlockVectorFullLoad<COMP>::MultRowRmsNorm(const LocalTensor<T> &normRe
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::SingleCalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
-                                               const LocalTensor<X_T> &cosUb, const LocalTensor<X_T> &sinUb,
+                                               const LocalTensor<T> &cosUb, const LocalTensor<T> &sinUb,
                                                uint32_t rowCnt, uint32_t curDealScSize, uint32_t globalScStart)
 {
     uint32_t computeSize = curDealScSize * constInfo_.ropeHeadDim;
     uint64_t SinCosOffset = globalScStart * constInfo_.ropeHeadDim;
 
-    LocalTensor<T> ropeCosFp32Local = tmpBuf2.Get<T>();
-    LocalTensor<T> ropeSinFp32Local = ropeCosFp32Local[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<T>();
-    LocalTensor<T> tempLocal = normResUb[BUFFER_SIZE_BYTE_16K / sizeof(T)].template ReinterpretCast<T>();
-    PipeBarrier<PIPE_V>();
-    Cast(ropeCosFp32Local, cosUb, RoundMode::CAST_NONE, computeSize);
-    Cast(ropeSinFp32Local, sinUb, RoundMode::CAST_NONE, computeSize);
-    PipeBarrier<PIPE_V>();
+    LocalTensor<T> tempLocal = tmpBuf2.Get<T>();
     RotaryPosEmb<COMP::rotaryMode>(normResUb[rowCnt * constInfo_.headDim], normResUb[rowCnt * constInfo_.headDim],
-                                   ropeCosFp32Local, ropeSinFp32Local, tempLocal, gatherOffsetCastUb, curDealScSize,
+                                   cosUb, sinUb, tempLocal, gatherOffsetCastUb, curDealScSize,
                                    constInfo_.ropeHeadDim, constInfo_.headDim,
                                    constInfo_.headDim - constInfo_.ropeHeadDim);
     PipeBarrier<PIPE_V>();
@@ -1101,12 +1095,12 @@ CompressorBlockVectorFullLoad<COMP>::CalRope(const LocalTensor<X_T> &outputUb, c
             uint64_t SinCosOffset = sliceInfo.padScIdx * constInfo_.ropeHeadDim;
 
             // sin与cos各占一半, 实际分别最多只会用8K,总占用16K
-            LocalTensor<X_T> cosUb = inputQue2.AllocTensor<X_T>();
-            LocalTensor<X_T> sinUb = cosUb[BUFFER_SIZE_BYTE_8K / sizeof(X_T)];
+            LocalTensor<T> cosUb = inputQue2.AllocTensor<T>();
+            LocalTensor<T> sinUb = cosUb[BUFFER_SIZE_BYTE_16K / sizeof(T)];
             DataCopy(cosUb, ropeCosGm_[SinCosOffset], computeSize);
             DataCopy(sinUb, ropeSinGm_[SinCosOffset], computeSize);
             inputQue2.EnQue(sinUb);
-            inputQue2.DeQue<X_T>();
+            inputQue2.DeQue<T>();
             SingleCalRope(outputUb, normResUb, cosUb, sinUb, sliceInfo.loopDealedScCnt, sliceInfo.curDealScNum,
                           sliceInfo.padScIdx);
             inputQue2.FreeTensor(sinUb);
