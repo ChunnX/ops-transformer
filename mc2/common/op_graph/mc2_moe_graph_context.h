@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file mc2_moe_context.h
- * \brief MC2 MoE Context Manager for graph-level fusion pass
+ * \file mc2_moe_graph_context.h
+ * \brief MC2 MoE Graph Context Manager for graph-level fusion pass
  */
-#ifndef OPS_TRANSFORMER_MC2_MOE_CONTEXT_H
-#define OPS_TRANSFORMER_MC2_MOE_CONTEXT_H
+#ifndef OPS_TRANSFORMER_MC2_MOE_GRAPH_CONTEXT_H
+#define OPS_TRANSFORMER_MC2_MOE_GRAPH_CONTEXT_H
 
 #include "version/cann_version.h"
 #define GRAPH_FUSION_SUPPORT_VERSION 90000000
@@ -85,18 +85,18 @@ struct ContextAcquireParams {
     const std::string& mc2ContextTag;
 };
 
-class MoeContextManager {
+class Mc2MoeGraphContext {
 public:
     static ge::graphStatus GetMc2ContextA5(
         ge::Graph& graph, const std::string& contextTag, const std::string& epName,
         const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize);
 
 private:
-    MoeContextManager() = default;
-    ~MoeContextManager();
-    MoeContextManager(const MoeContextManager&) = delete;
-    MoeContextManager& operator=(const MoeContextManager&) = delete;
-    static MoeContextManager& GetInstance();
+    Mc2MoeGraphContext() = default;
+    ~Mc2MoeGraphContext();
+    Mc2MoeGraphContext(const Mc2MoeGraphContext&) = delete;
+    Mc2MoeGraphContext& operator=(const Mc2MoeGraphContext&) = delete;
+    static Mc2MoeGraphContext& GetInstance();
     static constexpr const char* LOG_TAG = "Mc2MoeContext";
 
     ge::graphStatus LoadHcclSymbols();
@@ -162,4 +162,4 @@ private:
 #endif  // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #endif  // BUILD_OPEN_PROJECT
 #endif  // CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
-#endif  // OPS_TRANSFORMER_MC2_MOE_CONTEXT_H
+#endif  // OPS_TRANSFORMER_MC2_MOE_GRAPH_CONTEXT_H
