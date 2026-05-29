@@ -60,7 +60,7 @@ struct RunInfo {
     bool isLastS2InnerLoop;
     bool isValid = false;
     bool isNeedLD = false;
- 	uint32_t saveWorkSpaceIdx = 0;
+    uint32_t saveWorkSpaceIdx = 0;
 };
 
 struct ConstInfo {
