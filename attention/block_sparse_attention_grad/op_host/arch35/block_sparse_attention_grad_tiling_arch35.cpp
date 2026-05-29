@@ -38,19 +38,19 @@ ge::graphStatus InputCheck(const std::vector<uint32_t> &q_shape, const std::vect
      */
     if (!IsSameShape(q_shape[0], k_shape[0], v_shape[0])) {
         OP_LOGE(context->GetNodeName(), "q_batch must be same as k_batch and v_batch.");
-        return false;
+        return ge::GRAPH_FAILED;
     } else if (!IsSameShape(q_shape[1], k_shape[1] * q_group, v_shape[1] * q_group)) {
         OP_LOGE(context->GetNodeName(), "q_group * kv_head_num must same as q_head_num.");
-        return false;
+        return ge::GRAPH_FAILED;
     } else if (!IsSameShape(q_shape[2], k_shape[2], v_shape[2])) {
         OP_LOGE(context->GetNodeName(), "q_seq_len must be same as k_seq_len and v_seq_len.");
-        return false;
+        return ge::GRAPH_FAILED;
     } else if (!IsSameShape(q_shape[3], k_shape[3], v_shape[3])) {
         OP_LOGE(context->GetNodeName(), "q_head_dim must be same as k_head_dim and v_head_dim.");
-        return false;
+        return ge::GRAPH_FAILED;
     }
 
-    return true;
+    return ge::GRAPH_SUCCESS;
 }
 
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
