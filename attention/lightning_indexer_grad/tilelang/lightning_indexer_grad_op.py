@@ -75,8 +75,8 @@ class LightningIndexerGrad:
         head_num_k: int,
         group_num: int,
         block_m: int = 64,
-        block_k: int = 128,
-        block_d: int = 128,
+        block_k: int = 32,
+        block_d: int = 32,
         dtype: str = 'float16',
     ):
         self.seqlen_q = seqlen_q
@@ -110,6 +110,9 @@ class LightningIndexerGrad:
         bd = self.block_d
         
         # Cube1: Query(g, D) @ KeyGather^T(topk, D) -> relu_in (g, topk) FP16
+        # matmul_kernel(M, K, N, block_m, block_k, block_n)
+        # L0B = (block_n, block_k) 必须满足 block_n * block_k <= 8192
+        # block_k 切分 K=D=128, block_n 切分 N=topk
         self.kernel_cube1 = matmul_kernel(
             g, D, topk,
             bm, bk, bd,
@@ -117,6 +120,7 @@ class LightningIndexerGrad:
         )
         
         # Cube2: Weights(g,1) @ Dy(1,topk) -> relu_grad_in (g, topk) FP16
+        # 使用 Vector 外积替代 Cube (K=1 不满足 Cube 对齐要求)
         self.kernel_cube2 = matmul_broadcast_kernel(
             g, topk,
             bm, bd,
@@ -124,6 +128,8 @@ class LightningIndexerGrad:
         )
         
         # Cube3: ReluGrad(g, topk) @ KeyGather(topk, D) -> dQuery (g, D) FP16
+        # matmul_dq_kernel(M, K, D, block_m, block_k, block_d)
+        # L0B = (block_k, block_d) 必须满足 block_k * block_d <= 8192
         self.kernel_cube3 = matmul_dq_kernel(
             g, topk, D,
             bm, bk, bd,
@@ -131,6 +137,8 @@ class LightningIndexerGrad:
         )
         
         # Cube4: ReluGrad^T(topk, g) @ Query(g, D) -> scatter_add (topk, D) FP16
+        # matmul_scatter_kernel(K, M, D, block_k, block_m, block_d)
+        # L0B = (block_m, block_d) 必须满足 block_m * block_d <= 8192
         self.kernel_cube4 = matmul_scatter_kernel(
             topk, g, D,
             bd, bm, bk,
@@ -215,9 +223,9 @@ class LightningIndexerGrad:
                     key_gather_npu = torch.from_numpy(key_gather).npu().to(query.dtype)
                     
                     # ========== 加载 Query 组和 weights 组 ==========
-                    query_group = query[b, s1, start_n1:end_n1, :]
-                    weights_group = weights[b, s1, start_n1:end_n1]
-                    dy_s1 = dy[b, s1]
+                    query_group = query[b, s1, start_n1:end_n1, :].contiguous()
+                    weights_group = weights[b, s1, start_n1:end_n1].contiguous()
+                    dy_s1 = dy[b, s1].contiguous()
                     
                     # ========== 步骤2: Cube1 - reluIn = Q @ K^T ==========
                     relu_in = self.kernel_cube1(query_group, key_gather_npu)
