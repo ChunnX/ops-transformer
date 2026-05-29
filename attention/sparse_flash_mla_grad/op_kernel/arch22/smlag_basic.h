@@ -16,9 +16,9 @@
 #pragma once
 #include "lib/matmul_intf.h"
 #include "kernel_operator.h"
-#include "basic_modules/cube_op.h"
-#include "basic_modules/vec_op.h"
-#include "basic_modules/common_header.h"
+#include "basic_modules/sparse_flash_mla_grad_cube_op.h"
+#include "basic_modules/sparse_flash_mla_grad_vec_op.h"
+#include "basic_modules/sparse_flash_mla_grad_common_header.h"
 #include "post.h"
 
 namespace SMLAG_BASIC {

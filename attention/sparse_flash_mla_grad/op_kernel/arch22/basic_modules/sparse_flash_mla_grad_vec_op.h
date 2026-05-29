@@ -15,7 +15,7 @@
 
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
+#include "sparse_flash_mla_grad_common_header.h"
 
 namespace SMLAG_BASIC {
 struct StaticParams {

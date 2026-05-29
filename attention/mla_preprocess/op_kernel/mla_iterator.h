@@ -112,14 +112,14 @@ struct l1_to_fb {
                         uint16_t dstGap) {};
 };
 
-#include "gm_to_l1_iterator.h"
-#include "gm_to_ub_iterator.h"
-#include "l0c_to_gm_iterator.h"
-#include "l0c_to_l1_iterator.h"
-#include "l0c_to_ub_iterator.h"
-#include "l1_to_bt_iterator.h"
-#include "l1_to_fb_iterator.h"
-#include "l1_to_l0_iterator.h"
-#include "l1_to_ub_iterator.h"
+#include "mla_preprocess_gm_to_l1_iterator.h"
+#include "mla_preprocess_gm_to_ub_iterator.h"
+#include "mla_preprocess_l0c_to_gm_iterator.h"
+#include "mla_preprocess_l0c_to_l1_iterator.h"
+#include "mla_preprocess_l0c_to_ub_iterator.h"
+#include "mla_preprocess_l1_to_bt_iterator.h"
+#include "mla_preprocess_l1_to_fb_iterator.h"
+#include "mla_preprocess_l1_to_l0_iterator.h"
+#include "mla_preprocess_l1_to_ub_iterator.h"
 }
 #endif

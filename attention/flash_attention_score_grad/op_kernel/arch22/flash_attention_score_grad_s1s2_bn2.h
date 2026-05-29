@@ -20,7 +20,7 @@
 #include "kernel_operator.h"
 #include "pse.h"
 #include "dropmask.h"
-#include "./basic_modules/common_header.h"
+#include "./basic_modules/flash_attention_score_grad_common_header.h"
 #include "./basic_modules/cube_op_bn2.h"
 using matmul::Matmul;
 using matmul::MatmulType;
