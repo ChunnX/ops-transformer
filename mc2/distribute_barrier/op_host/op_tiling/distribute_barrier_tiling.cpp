@@ -181,7 +181,7 @@ static void DistributeBarrierConfigIndexSet(DistributeBarrierConfig& config)
     return;
 }
 
-static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName,
+static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const char *nodeName,
     const DistributeBarrierConfig &config)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);

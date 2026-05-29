@@ -298,7 +298,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     accumWorkSpacePingPong = tilingData.allGatherMatmulInfo.accumWorkSpacePingPong;
     int32_t workspaceM = accumWorkSpacePingPong ? MAX_BLOCK_COUNT * m0 * pValue : m;
     uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
-                                    + workspaceM * n * worldSize * sizeof(int32_t);
+                                    + static_cast<uint64_t>(workspaceM) * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
@@ -896,6 +896,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 SetBuffFlag((__gm__ int32_t*)stateAddrPerRank[rankId] + FLAG_OFFSET + idx, uBuf_, 0);
             }
         }
+
+        SetAndWaitAivSync(FLAG_ONE_IDX);
 
         if (blockIdx < worldSize && aivIdx == 1) {
             CheckBuffFlag((__gm__ int32_t*)stateAddrPerRank[blockIdx] + FLAG_OFFSET + FLAG_ZERO_IDX, uBuf_, 0);

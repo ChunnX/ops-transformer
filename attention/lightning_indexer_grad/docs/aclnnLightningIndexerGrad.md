@@ -1,17 +1,21 @@
 # aclnnLightningIndexerGrad
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/lightning_indexer_grad)
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A3 训练系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
-- 算子功能：训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。
+- 接口功能：`lightning_indexer_grad`为`lightning_indexer`的反向算子，基于正向算子的输出`sparseIndices`计算`query`、`key`、`weights`的梯度。
 
 - 计算公式：
   LightningIndexer反向计算公式如下：
@@ -49,16 +53,16 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *weights,
   const aclTensor   *actualSeqLengthsQuery,
   const aclTensor   *actualSeqLengthsKey,
-  int64_t           headNum,  
+  int64_t            headNum,  
   char              *layout,
-  int64_t           sparseMode,
-  int64_t           preTokens,
-  int64_t           nextTokens,
-  bool              deterministic,
+  int64_t            sparseMode,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  bool               deterministic,
   const aclTensor   *dQuery,
   const aclTensor   *dKey,
   const aclTensor   *dWeights,
-  uint64_t         *workspaceSize,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
@@ -67,7 +71,7 @@ aclnnStatus aclnnLightningIndexerGrad(
   void             *workspace, 
   uint64_t          workspaceSize, 
   aclOpExecutor    *executor, 
-  aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnLightningIndexerGradGetWorkspaceSize
@@ -133,7 +137,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>公式中的sparseIndices。</td>
       <td>shape支持[B, S1, K]/[T1, K]。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>2-3</td>
       <td>√</td>
@@ -153,7 +157,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>表示query每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>√</td>
@@ -163,7 +167,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>表示key每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>√</td>
@@ -368,12 +372,12 @@ aclnnStatus aclnnLightningIndexerGrad(
 - 关于数据shape的约束，以Layout的BSND举例。其中：
   
   - B（Batchsize）：取值范围为1\~1024。
-  - N（Head-Num）：取值为64。
-  - G（Group）：取值为64。
+  - N（Head-Num）：取值为1\~64。
+  - G（Group）：取值为N。
   - S1（Seq-LengthQ）：取值范围为1\~128K。
   - S2（Seq-LengthK）：取值范围为topK\~128K。
   - D（Head-Dim）：取值为128。
-  - TopK：取值为2048
+  - TopK：取值为2048。
 
 ## 调用示例
 

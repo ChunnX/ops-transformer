@@ -35,6 +35,7 @@ namespace ge {
                   When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN].
                   When quant_mode in [6, 7, 8], type is Hif8.
                   When quant_mode is 9, type is FLOAT4_E2M1.
+                  When quant_mode in [11, 12], type is [FLOAT8_E5M2, FLOAT8_E4M3FN]. (FP8 PerBlock量化)
                   Format support ND.
 * @li expanded_row_idx: A 1D tensor. Shape is: (B*S*K). Type is:Int32. Format support ND.
 * @li expert_tokens_count_or_cumsum: A 1D tensor. represents the number of tokens processed by each expert and the
@@ -42,6 +43,9 @@ namespace ge {
                                        Type is:Int64. shape is (expert_end - expert_start, ). Format support ND.
 * @li expanded_scale: A 1D tensor when quant_mode in [-1, 0, 1]. Shape is: (B*S*K). Type is:Float32. The data type must be the same as that of scale. 
                       A 2D tensor when quant_mode in [2, 3]. Shape is: (B*S*K, M), in which M is CeilAlign(CeilDiv(H, 32), 2). Type is: Float8_E8M0. 
+                      A 3D tensor when quant_mode in [11, 12] (FP8 PerBlock量化，BlockSize=128).
+                      Shape is: (B*S*K, M, 2), in which M is CeilAlign(CeilDiv(H, 256), 2).
+                      Type is: Float32 (FP32 Scale).
                       A 3D tensor when quant_mode is -1 and dtype of input x equals FLOAT4_E2M1 or quant_mode is 9.
                       Shape is: (B*S*K, M, 2), in which M is CeilAlign(CeilDiv(H, 32), 2).
                       Type is: Float8_E8M0.
@@ -58,7 +62,8 @@ namespace ge {
 * @li expert_tokens_num_flag: Optional parameter. Type is:Bool. The value is true (compute tokens) or
                               false(do not compute tokens), which in dropPad scenario. Default: false.
 * @li quant_mode: Optional parameter. Type is:Int. Valid values: -1(unquant), 0(static), 1(dynamic), 2(fp8_e5m2),
-*                 3(fp8_e4m3fn), 6(hif8 cast), 7(hif8_pertensor), 8(hif8_pertoken), 9(fp4_e2m1). Default: -1.
+                  3(fp8_e4m3fn), 6(hif8 cast), 7(hif8_pertensor), 8(hif8_pertoken), 9(fp4_e2m1),
+                  11(fp8_perblock_e5m2), 12(fp8_perblock_e4m3fn). Default: -1.
 * @li active_expert_range: Optional parameter. Type is:ListInt. Like [expert_start, expert_end].
                            expert_start must be greater than or equal to 0, expert_end must be less than or equal to 10240, expert_start must be less than expert_end. Default: [].
 * @li row_idx_type: Optional parameter. Type is:Int. The value is 0(gather) or 1(scatter). Default: 0.

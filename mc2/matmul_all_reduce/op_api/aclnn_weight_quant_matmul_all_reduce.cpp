@@ -78,8 +78,6 @@ static bool CheckDtypeValid(
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(bias, biasDtypeSupportList, return false);
-        const auto x1Dtype = x1->GetDataType();
-        const auto biasDtype = bias->GetDataType();
             // 检查x1和bias的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
     }

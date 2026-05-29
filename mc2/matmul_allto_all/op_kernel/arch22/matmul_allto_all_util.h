@@ -172,6 +172,8 @@ public:
 
     __aicore__ inline void SetBuffFlag(__gm__ int32_t *buff, int32_t flag)
     {
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID2);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.template Get<int32_t>();
         ubTensor(0) = flag;
         SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
@@ -180,7 +182,7 @@ public:
     }
 
     template <typename T>
-    __aicore__ inline void CopyGMToGM(__gm__ T *gm_src, __gm__ T *gm_dst, int32_t copy_size)
+    __aicore__ inline void CopyGMToGM(__gm__ T *gm_src, __gm__ T *gm_dst, int64_t copy_size)
     {
         LocalTensor<T> ubTensor = uBuf_.template Get<T>();
         LocalTensor<T> copyTensor0 = ubTensor;
@@ -240,7 +242,7 @@ public:
     int32_t n0;
     int32_t p_value;
     int32_t max_ub_ping_pong_size;
-    int32_t gm_a_pingpong_size;
+    int64_t gm_a_pingpong_size;
     int32_t len_per_loop;
 
     int32_t m;
