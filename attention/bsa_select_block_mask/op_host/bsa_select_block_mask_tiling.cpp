@@ -190,21 +190,20 @@ bool BSASelectBlockMaskTilingBase::CrossShapeVerify()
 
 void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
 {
-    uint32_t totalRows = batchSize * numHeads * xBlocks;
     uint32_t coreNum = aicNum;
-    uint32_t activeCoreNum = BSAMin(totalRows, coreNum);
-    uint32_t rowsPerCore = BSACeilDivision(totalRows, activeCoreNum);
+    uint32_t activeCoreNum = BSAMin(xBlocks, coreNum);
+    uint32_t rowsPerCore = BSACeilDivision(xBlocks, activeCoreNum);
 
     multiCoreParams_->set_coreNum(coreNum);
     multiCoreParams_->set_activeCoreNum(activeCoreNum);
     multiCoreParams_->set_rowsPerCore(rowsPerCore);
-    multiCoreParams_->set_totalRows(totalRows);
+    multiCoreParams_->set_totalRows(xBlocks);
     multiCoreParams_->set_tailCoreNum(activeCoreNum);
 
     int64_t *coreStartRow = multiCoreParams_->get_coreStartRowPtr();
     for (uint32_t i = 0; i < MAX_CORE_NUM; i++) {
         uint32_t start = i * rowsPerCore;
-        coreStartRow[i] = (start < totalRows) ? static_cast<int64_t>(start) : static_cast<int64_t>(totalRows);
+        coreStartRow[i] = (start < xBlocks) ? static_cast<int64_t>(start) : static_cast<int64_t>(xBlocks);
     }
 }
 
@@ -307,7 +306,7 @@ ge::graphStatus BSASelectBlockMaskTilingBase::DoOpTiling()
 
     CalcOutputParams();
 
-    OP_LOGD(opName, "DoOpTiling: activeCoreNum[%u] rowsPerCore[%u] totalRows[%u].",
+    OP_LOGD(opName, "DoOpTiling: activeCoreNum[%u] rowsPerCore[%u] xBlocks[%u].",
             multiCoreParams_->get_activeCoreNum(), multiCoreParams_->get_rowsPerCore(),
             multiCoreParams_->get_totalRows());
     return ge::GRAPH_SUCCESS;
