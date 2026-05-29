@@ -126,6 +126,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::PostPro
     if ((GetBlockIdx() == 0) && (g_coreType == AIV)) {
         hccl_.Finalize();
     }
+    SyncAll();
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -309,7 +310,6 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::MatMulV
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CubeNotifyVector()
 {
-    pipe_barrier(PIPE_ALL);
     // 先全 AIC 同步一次
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_AIC_ONLY_ALL_DET_FLAG);
     CrossCoreWaitFlag(SYNC_AIC_ONLY_ALL_DET_FLAG);
