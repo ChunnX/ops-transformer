@@ -26,18 +26,18 @@
 #if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
 #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
-    #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
+#include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #else
 // 全量化Mx量化
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
-    #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -64,9 +64,6 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
-    #ifndef DTYPE_BIAS
-    #define DTYPE_BIAS float
-    #endif
     // MxA8W4场景
     AscendC::InitSocState();
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
@@ -78,7 +75,7 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
         DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE,
-        DTYPE_X_SCALE, DTYPE_BIAS, DTYPE_Y, DTYPE_Y_SCALE, false,
+        DTYPE_X_SCALE, float, DTYPE_Y, DTYPE_Y_SCALE, false,
         GMMSQWeightQuant::MXA8W4_NZNK,
         GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
