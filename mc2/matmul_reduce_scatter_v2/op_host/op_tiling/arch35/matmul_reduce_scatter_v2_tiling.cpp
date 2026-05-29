@@ -133,7 +133,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::M
     tilingCfg.SetMatMulV3TilingData(tilingData);
     OP_TILING_CHECK(Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_,
                                                                     tilingCfg, registerCfg) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -142,16 +142,16 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
     OP_LOGD(opName_, "excute DoAllMatmulTiling!");
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get platform info failed"),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "get platform info failed"),
         return ge::GRAPH_FAILED);
     // 获取compileInfo
     OP_TILING_CHECK(mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "init compile info failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "init compile info failed"), return ge::GRAPH_FAILED);
 
     // 根据芯片型号获取策略模板
     std::vector<int32_t> priorities;
     OP_TILING_CHECK(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch_, priorities, opName_) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "get mmv3 priority policy failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "get mmv3 priority policy failed"), return ge::GRAPH_FAILED);
     Mc2MMRegisterCfg registerCfg {"Mc2MatMulV3", npuArch_, priorities};
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
@@ -198,7 +198,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
     rawTilingDataPtr->SetDataSize(sizeof(MatmulReduceScatterV2TilingData));
 
     OP_TILING_CHECK(sizeof(MatmulReduceScatterV2TilingData) % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "tiling data size[%zu] not aligned to 8",
+        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8",
         sizeof(MatmulReduceScatterV2TilingData)),
         return ge::GRAPH_FAILED);
     PrintAllTilingData();

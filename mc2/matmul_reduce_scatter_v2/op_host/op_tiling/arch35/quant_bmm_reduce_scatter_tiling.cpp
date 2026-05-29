@@ -582,8 +582,8 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     rawTilingDataPtr->SetDataSize(sizeof(QuantBatchMatmulV3ReduceScatterTilingData));
 
     OP_TILING_CHECK(sizeof(QuantBatchMatmulV3ReduceScatterTilingData) % sizeof(uint64_t) != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "tiling data size[%zu] not aligned to 8",
-                                                    sizeof(QuantBatchMatmulV3ReduceScatterTilingData)),
+                    OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8",
+                            sizeof(QuantBatchMatmulV3ReduceScatterTilingData)),
                     return ge::GRAPH_FAILED);
     if (MutableRCSTilingDataA5().rankID == 0) {
         PrintRCSTilingData(context_->GetNodeName(), MutableRCSTilingDataA5());
@@ -784,10 +784,10 @@ ge::graphStatus QuantBmmReduceScatterHelper::GetShapeAttrsInfo()
     auto scaleTensorDesc = context_->GetOptionalInputDesc(X2SCALE_INDEX);
     auto perTokenScaleTensorDesc = context_->GetOptionalInputDesc(X1SCALE_INDEX);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(inputParams_.opName, "the scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "scale"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((perTokenScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(inputParams_.opName, "the pertoken scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "pertoken_scale"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = scaleTensorDesc->GetDataType();
     inputParams_.perTokenScaleDtype = perTokenScaleTensorDesc->GetDataType();
