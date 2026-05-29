@@ -661,8 +661,8 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
 
 void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
 {
-    selectIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
-    selectNumIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
+    selectIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
+    selectNumIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
     workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
 }
@@ -677,8 +677,10 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     maxKvBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(3);
     maxQBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(2);
-    selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
-    selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
+    selectIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * CeilDiv(maxKvBlockNum_, 32) * 32 *
+        sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
+    selectNumIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * sizeof(uint32_t) * 32 * batch_ *
+        numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
     
     mm1OutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
