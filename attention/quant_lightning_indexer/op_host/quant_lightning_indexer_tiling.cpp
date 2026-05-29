@@ -534,6 +534,19 @@ ge::graphStatus QLIInfoParser::GetS1Size()
     if (qLayout_ == DataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
     }
+    //计算最大的S1SIZE
+    if (opParamInfo_.actualSeqLengthsQ.tensor != nullptr) {
+        auto shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
+        const int32_t *seqData = reinterpret_cast<const int32_t *>(opParamInfo_.actualSeqLengthsQ.tensor->GetAddr());
+        maxS1Size_ = 0;
+        for (int64_t i = 0; i < shapeSize; ++i) {
+            if (static_cast<uint32_t>(seqData[i]) > maxS1Size_) {
+                maxS1Size_ = static_cast<uint32_t>(seqData[i]);
+            }
+        }
+    } else {
+        maxS1Size_ = s1Size_;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -767,6 +780,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.s1Size = s1Size_;
     QLIInfo.s2Size = s2Size_;
     QLIInfo.gSize = gSize_;
+    QLIInfo.maxS1Size = maxS1Size_;
 
     QLIInfo.inputQType = inputQType_;
     QLIInfo.inputKType = inputKType_;
@@ -888,6 +902,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
     tilingData_.set_blockSize(tilingInfo->blockSize);
     tilingData_.set_maxBlockNumPerBatch(tilingInfo->maxBlockNumPerBatch);
     tilingData_.set_sparseMode(tilingInfo->sparseMode);
+    tilingData_.set_maxS1Size(tilingInfo->maxS1Size);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
