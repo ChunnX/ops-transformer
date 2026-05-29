@@ -30,8 +30,8 @@ bool IsSameShape(Args... shapes)
     return true;
 }
 
-bool InputCheck(const std::vector<uint32_t> &q_shape, const std::vector<uint32_t> &k_shape,
-                const std::vector<uint32_t> &v_shape, const uint32_t q_group, gert::TilingContext *context)
+ge::graphStatus InputCheck(const std::vector<uint32_t> &q_shape, const std::vector<uint32_t> &k_shape,
+                           const std::vector<uint32_t> &v_shape, const uint32_t q_group, gert::TilingContext *context)
 {
     /* function: 根据固定格式传入shape检查输入是否符合要求
      * shape：[b, n, s, d]
@@ -205,9 +205,6 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
-        InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim}, {k_batch_num, k_head_num, k_seq_len, q_head_dim},
-                   {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
-
         tilingData_.set_batchNum(q_batch_num);
         tilingData_.set_qSeqLen(q_seq_len);  // TND时含义为total_seq_len
         tilingData_.set_kvSeqLen(k_seq_len); // TND时含义为total_seq_len
@@ -224,7 +221,10 @@ protected:
         kv_head_num_ = k_head_num;
         head_dim_ = q_head_dim;
 
-        return ge::GRAPH_SUCCESS;
+
+        return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
+                          {k_batch_num, k_head_num, k_seq_len, q_head_dim},
+                          {v_batch_num, v_head_num, v_seq_len, q_head_dim}, q_group, context_);
     }
 
     ge::graphStatus GetPlatformInfo() override
