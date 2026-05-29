@@ -22,11 +22,7 @@
 #define HCCL_CHANNEL_SUPPORT_VERSION 90000000
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#else
-#error "HCOMM version must be >= 89999700 to support MC2 context"
 #endif
-#else
-#error "BUILD_OPEN_PROJECT is not defined. This code requires open project build."
 #endif
 
 using namespace op;
@@ -113,7 +109,6 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    OP_LOGD("==========enter define============");
     aclTensor *mc2Context = nullptr;
     uint64_t hcclBuffSize = 0;
     const char *opName = "bandwidth_test";
@@ -122,8 +117,6 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
         mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
         y, receiveCnt, workspaceSize, executor);
-#else
-    OP_LOGD("==========not enter define============");
 #endif
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
