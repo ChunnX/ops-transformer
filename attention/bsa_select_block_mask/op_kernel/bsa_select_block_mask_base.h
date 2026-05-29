@@ -44,7 +44,7 @@ private:
     __aicore__ inline void CalcMultiCoreOffset(uint32_t &startRow, uint32_t &endRow);
     __aicore__ inline void ProcessPoolingK(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void ProcessPoolingQ(uint32_t batchIdx, uint32_t headIdx,
-                                           uint32_t qChunkStart, uint32_t qChunkEnd);
+                                           uint32_t tokenStart, uint32_t tokenEnd);
     __aicore__ inline void ProcessMatmulSoftmax(uint32_t batchIdx, uint32_t headIdx,
                                                 uint32_t qChunkStart, uint32_t curQChunkSize,
                                                 T &mFinal, T &lFinal);
@@ -229,7 +229,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
                 uint32_t qChunkEnd = BSAMin(qChunkStart + constInfo.qChunkSize, endRow);
                 uint32_t curQChunkSize = qChunkEnd - qChunkStart;
 
-                ProcessPoolingQ(batchIdx, headIdx, qChunkStart, qChunkEnd);
+                uint32_t tokenStart = qChunkStart * constInfo.blockShapeX;
+                uint32_t tokenEnd = BSAMin(qChunkEnd * constInfo.blockShapeX, constInfo.maxQSeqlen);
+                ProcessPoolingQ(batchIdx, headIdx, tokenStart, tokenEnd);
 
                 if ASCEND_IS_AIV {
                     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V1_TO_C1_FLAG[qChunkStart & 1]);
@@ -279,10 +281,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingK(uint32_t ba
 
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::ProcessPoolingQ(
-    uint32_t batchIdx, uint32_t headIdx, uint32_t qChunkStart, uint32_t qChunkEnd)
+    uint32_t batchIdx, uint32_t headIdx, uint32_t tokenStart, uint32_t tokenEnd)
 {
     if ASCEND_IS_AIV {
-        for (uint32_t qBlockIdx = qChunkStart; qBlockIdx < qChunkEnd; qBlockIdx++) {
+        for (uint32_t tokenIdx = tokenStart; tokenIdx < tokenEnd;
+             tokenIdx += constInfo.blockShapeX) {
+            uint32_t qBlockIdx = tokenIdx / constInfo.blockShapeX;
             vectorService.PoolingSingleQBlock(batchIdx, headIdx, qBlockIdx,
                                               queryGm, actualBlockLenQGm, qCmpGm);
         }
