@@ -591,40 +591,78 @@ public:
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
     __aicore__ inline void IterateBmm1NdL0Split(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        uint32_t s1_size = (uint32_t)runInfo.actMSize;
-        uint32_t d_size = (uint32_t)constInfo.dSize;
-        uint32_t s2_size = (uint32_t)runInfo.actSingleLoopS2Size;
-        AscendC::printf("--- s1_size = [%ld] --- d_size = [%ld] --- s2_size = [%ld] ---\n", s1_size, d_size, s2_size);
+        AscendC::printf("--- runInfo.actMSize = [%ld] ---\n", runInfo.actMSize);
+        AscendC::printf("--- constInfo.dSize = [%ld] ---\n", constInfo.dSize);
+        AscendC::printf("--- runInfo.actSingleLoopS2Size = [%ld] ---\n", runInfo.actSingleLoopS2Size);
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-        auto layoutQGm = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(s1_size, d_size);
-        auto layoutKGm = AscendC::Te::MakeFrameLayout<AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(d_size, s2_size);
+        // BSN2GD
+        // 依据layout_pattern.h中对NDExt的定义，创建GM Layout只需要提供行和列
+        auto layoutQGm = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>
+                            (constInfo.bSize * constInfo.s1Size * constInfo.gSize, constInfo.n2Size * constInfo.dSize);
+
+        // 依据Layout定义，尝试提供多维Layout
+        // auto shapeQGm = AscendC::Te::MakeShape(
+        //     AscendC::Te::MakeShape(constInfo.s1Size * constInfo.gSize, constInfo.bSize), 
+        //     AscendC::Te::MakeShape(constInfo.dSize, constInfo.n2Size)
+        // );
+        // auto strideQGm = AscendC::Te::MakeStride(
+        //     AscendC::Te::MakeStride(constInfo.dSize * constInfo.n2Size, constInfo.s1Size * constInfo.gSize * constInfo.dSize * constInfo.n2Size),
+        //     AscendC::Te::MakeStride(AscendC::Te::_1{}, constInfo.dSize)
+        // );
+        // auto layoutQGm = AscendC::Te::MakeLayout(shapeQGm, strideQGm);
         auto gmQ = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(queryGmAddr), layoutQGm);
+
+        // auto shapeKGm = AscendC::Te::MakeShape(
+        //     AscendC::Te::MakeShape(constInfo.s2Size, constInfo.bSize), 
+        //     AscendC::Te::MakeShape(constInfo.dSize, constInfo.n2Size)
+        // );
+        // auto strideKGm = AscendC::Te::MakeStride(
+        //     AscendC::Te::MakeStride(constInfo.dSize * constInfo.n2Size, constInfo.s2Size * constInfo.dSize * constInfo.n2Size),
+        //     AscendC::Te::MakeStride(AscendC::Te::_1{}, constInfo.dSize)
+        // );
+        // auto layoutKGm = AscendC::Te::MakeLayout(shapeKGm, strideKGm);
+        auto layoutKGm = AscendC::Te::MakeFrameLayout<AscendC::Te::DNExtLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>
+                            (constInfo.n2Size * constInfo.dSize, constInfo.bSize * constInfo.s2Size);
         auto gmK = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(keyGmAddr), layoutKGm);
 
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+
         // GM-->L1
-        auto layoutQL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(s1_size, d_size);
+        auto layoutQL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<Q_T>>(runInfo.actMSize, constInfo.dSize);
         uint64_t offsetQL1 = 0;
         auto tensorQL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, Q_T>(offsetQL1), layoutQL1);
-        auto gmTileQ = gmQ.Slice(AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(s1_size, d_size));
+        auto gmTileQ = gmQ.Slice(
+            AscendC::Te::MakeCoord(
+                runInfo.bIdx * constInfo.s1Size * constInfo.gSize + runInfo.gS1Idx, // AscendC::Te::MakeCoord(runInfo.gS1Idx, runInfo.bIdx), 
+                runInfo.n2Idx * constInfo.dSize // AscendC::Te::MakeCoord(0, runInfo.n2Idx)
+            ), 
+            AscendC::Te::MakeShape(runInfo.actMSize, constInfo.dSize));
+        AscendC::printf("--- gmQ current Idx [bIdx | gS1Idx | n2Idx] = [%ld | %ld | %ld] ---\n", runInfo.bIdx, runInfo.gS1Idx, runInfo.n2Idx);
+        AscendC::printf("--- gmQ slice current coord = [%ld, %ld] ---\n", runInfo.bIdx * constInfo.s1Size * constInfo.gSize + runInfo.gS1Idx, runInfo.n2Idx * constInfo.dSize);
         auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
         AscendC::Te::Copy(copyGm2L1, tensorQL1, gmTileQ);
-        asc_dump_gm(gmTileQ.Data().Get(), 1, s1_size * d_size);
+        asc_dump_gm(gmTileQ.Data().Get(), 1, runInfo.actMSize * constInfo.dSize);
 
-        auto layoutKL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(d_size, s2_size);
-        uint64_t offsetKL1 = (s1_size + 15) / 16 * d_size * AscendC::Te::C0_SIZE<Q_T>;
+        auto layoutKL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<KV_T>>(constInfo.dSize, runInfo.actSingleLoopS2Size);
+        uint64_t offsetKL1 = (runInfo.actMSize + 15) / 16 * constInfo.dSize * AscendC::Te::C0_SIZE<Q_T>;
         AscendC::printf("--- offsetKL1 = [%ld] ---\n", offsetKL1);
         auto tensorKL1 = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, KV_T>(offsetKL1), layoutKL1);
-        auto gmTileK = gmK.Slice(AscendC::Te::MakeCoord(0, 0), AscendC::Te::MakeShape(d_size, s2_size));
+        auto gmTileK = gmK.Slice(
+            AscendC::Te::MakeCoord(
+                runInfo.n2Idx * constInfo.dSize, // AscendC::Te::MakeCoord(0, runInfo.n2Idx),
+                runInfo.bIdx * constInfo.s2Size + runInfo.s2Idx // AscendC::Te::MakeCoord(runInfo.s2Idx, runInfo.bIdx)
+            ), 
+            AscendC::Te::MakeShape(constInfo.dSize, runInfo.actSingleLoopS2Size));
+        AscendC::printf("--- gmK slice current coord = [%ld, %ld] ---\n", runInfo.n2Idx * constInfo.dSize, runInfo.bIdx * constInfo.s2Size + runInfo.s2Idx);
         AscendC::Te::Copy(copyGm2L1, tensorKL1, gmTileK);
-        asc_dump_gm(gmTileK.Data().Get(), 1, d_size * s2_size);
+        asc_dump_gm(gmTileK.Data().Get(), 1, constInfo.dSize * runInfo.actSingleLoopS2Size);
         
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
 
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
 
-        auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(s1_size, s2_size);
+        auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(runInfo.actMSize, runInfo.actSingleLoopS2Size);
         auto tensorMM1ResL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(0), layoutMM1ResL0C);
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
@@ -638,7 +676,7 @@ public:
         outputBuf.WaitCrossCore();
         asc_dump_cbuf(tensorMM1ResL0C.Data().Get(), 1, 512);
 
-        auto layoutUB = AscendC::Te::MakeFrameLayout<AscendC::Te::NDLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(((s1_size + 1) >> 1 << 1), s2BaseSize);
+        auto layoutUB = AscendC::Te::MakeFrameLayout<AscendC::Te::NDLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(((runInfo.actMSize + 1) >> 1 << 1), s2BaseSize);
         LocalTensor<T> mmRes = outputBuf.template GetTensor<T>();
         uint64_t outputUBPtr = mmRes.GetPhyAddr();
         auto tensorUB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(outputUBPtr), layoutUB);
