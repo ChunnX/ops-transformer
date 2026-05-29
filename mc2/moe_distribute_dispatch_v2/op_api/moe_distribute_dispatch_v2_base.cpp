@@ -27,11 +27,7 @@
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#else
-#error "HCOMM version must be >= 89999700 to support MC2 context"
 #endif
-#else
-#error "BUILD_OPEN_PROJECT is not defined. This code requires open project build."
 #endif
 
 using namespace Ops::Transformer;
@@ -171,6 +167,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+        OP_LOGD("==================jxh=================\n");
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
