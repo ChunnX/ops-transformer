@@ -309,7 +309,8 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
     // 如果0核都没有启动，说明所有核都没启动
     coreZeroEnable = metadataGm.GetValue(GetAttrAbsIndex(0, LI_CORE_ENABLE_INDEX, false));
 
-    uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(aiCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
+    // LD 第一个workspace的索引
+    uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(aiCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false);
     ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
     if ASCEND_IS_AIV {
         uint32_t vecCoreIdx = tmpBlockIdx; // 此时代表vectoe核数
@@ -343,8 +344,10 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
         } else { // BSND
             actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
         }
-        ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
-                                    ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;  // 搬出Topk的初始偏移地址
+        // 搬出Topk的初始偏移地址
+        ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
+                                     ldInfo.n2Idx * constInfo.sparseCount +
+                                     ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;
         }
 }
 
