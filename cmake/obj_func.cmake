@@ -272,7 +272,7 @@ macro(add_modules_sources_with_soc)
   foreach(ARCH ${OP_ARCH_DIRECTORY})
   if (MODULE_OP_MC2_ENABLE)
     file(GLOB_RECURSE files ${SOURCE_DIR}/op_tiling/${ARCH}/*.cpp)
-    set(A2A3_DIFF_OPS
+    set(MC2_A2A3_DIFF_OPS
         moe_distribute_combine
         moe_distribute_combine_v2
         moe_distribute_combine_v3
@@ -281,8 +281,8 @@ macro(add_modules_sources_with_soc)
         moe_distribute_dispatch_v3
         moe_distribute_combine_add_rms_norm
     )
-    list(FIND A2A3_DIFF_OPS "${OPS_NAME}" A2A3_DIFF_OPS_INDEX)
-    if(NOT A2A3_DIFF_OPS_INDEX EQUAL -1 AND ARCH STREQUAL "arch22")
+    list(FIND MC2_A2A3_DIFF_OPS "${OPS_NAME}" MC2_A2A3_DIFF_OPS_INDEX)
+    if(NOT MC2_A2A3_DIFF_OPS_INDEX EQUAL -1 AND ARCH STREQUAL "arch22")
         if(ASCEND_COMPUTE_UNIT MATCHES "^ascend910b;?$")
             list(FILTER files EXCLUDE REGEX ".*_a3_register\\.cpp$")
         elseif(ASCEND_COMPUTE_UNIT MATCHES "^ascend910_93;?$")
