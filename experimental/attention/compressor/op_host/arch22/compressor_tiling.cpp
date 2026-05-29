@@ -205,7 +205,8 @@ ge::graphStatus CompressorTiling::SetTemplateId()
 ge::graphStatus CompressorTiling::SetInnerSplitInfo()
 {
     if (context_->templateId == TemplateId::FULL_LOAD) {
-        innerSplitParams_->mBaseSize = 256;              // 256:核间切分，M轴基本块大小
+        uint32_t kAlignNum = baseParams_->hiddenSize / 128;
+        innerSplitParams_->mBaseSize = 128;              // 256:核间切分，M轴基本块大小
         innerSplitParams_->dBaseSize = 256 / (coff * 2); // nBase = dBase * coff * 2
         uint32_t dBaseNum = baseParams_->headDim / innerSplitParams_->dBaseSize;
         uint32_t mBaseNum = (baseParams_->tokenSize + innerSplitParams_->mBaseSize - 1) / innerSplitParams_->mBaseSize;
@@ -214,30 +215,31 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
-            uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
-            baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
+            baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
             baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
             baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
             if (baseParams_->kBaseNum > 1) {
                 uint32_t kStartIdx = i / dBaseNum;
-                if (kStartIdx + 1 < baseParams_->coreGroupNum) {
-                    uint32_t dealKSize = baseParams_->kBaseSize;
-                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
-                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                uint32_t dealKSize = baseParams_->kBaseSize;
+                if (kStartIdx < kAlignNum % baseParams_->kBaseNum) {
+                    dealKSize += 128;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * dealKSize;
+                } else if (kStartIdx < baseParams_->kBaseNum) {
+                    baseParams_->splitCoreParam[i].kStart =
+                        kStartIdx * baseParams_->kBaseSize + (kAlignNum % baseParams_->kBaseNum) * 128;
                 } else {
-                    uint32_t dealKSize = kStartIdx < baseParams_->coreGroupNum ?
-                                        baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize : 0;
-                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
-                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                    dealKSize = 0;
+                    baseParams_->splitCoreParam[i].kStart = 0;
                 }
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
                 baseParams_->splitCoreParam[i].mStart = 0;
                 baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
                 baseParams_->mLoopNum = 1;
             } else {
                 baseParams_->splitCoreParam[i].kStart = 0;
-                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
+                baseParams_->splitCoreParam[i].kEnd = baseParams_->hiddenSize;
                 baseParams_->splitCoreParam[i].mStart = (i / dBaseNum) * innerSplitParams_->mBaseSize;
                 baseParams_->splitCoreParam[i].mEnd =
                     baseParams_->splitCoreParam[i].mStart + innerSplitParams_->mBaseSize;
