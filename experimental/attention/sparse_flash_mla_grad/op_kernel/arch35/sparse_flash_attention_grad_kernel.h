@@ -294,6 +294,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                         break;
                     }
                 }
+                if (deterTaskId == 0) {
+                    if ASCEND_IS_AIC {
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                    } else {
+                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+                    }
+                }
                 this->template SetDeterRunInfo<true>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
                 if (deterTaskId > 0) {
                     if ASCEND_IS_AIC {
@@ -324,6 +332,14 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
                     taskId++;
                     if (curTaskS2RealSize < this->constInfo.selectedCountOffset) {
                         break;
+                    }
+                }
+                if (deterTaskId == 0) {
+                    if ASCEND_IS_AIC {
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+                    } else {
+                        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                     }
                 }
                 this->template SetDeterRunInfo<false>(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
