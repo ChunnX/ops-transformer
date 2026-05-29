@@ -47,9 +47,9 @@ __global__ __aicore__ void lightning_indexer_v2(__gm__ uint8_t *q, __gm__ uint8_
 
     if (ORIG_DTYPE_Q == DT_BF16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerV2Kernel, bfloat16_t, bfloat16_t, int32_t, float, uint32_t,
-            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
+            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), true);
     } else if (ORIG_DTYPE_Q == DT_FLOAT16) {
         INVOKE_LI_NO_KFC_OP_IMPL(LightningIndexerV2Kernel, half, half, int32_t, float, uint32_t,
-            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), DT_W_FLAG);
+            PAGE_ATTENTION, LI_V2_LAYOUT(LAYOUT_T), LI_V2_LAYOUT(K_LAYOUT_T), true);
     }
 }
