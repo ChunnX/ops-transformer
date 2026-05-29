@@ -67,15 +67,15 @@ private:
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
     static constexpr const char *TND_STR = "TND";
-    uint32_t batch_num_ = 0;
-    uint32_t q_seq_len_ = 0;
-    uint32_t kv_seq_len_ = 0;
-    uint32_t q_head_num_ = 0;
-    uint32_t q_group_ = 0;
-    uint32_t kv_head_num_ = 0;
-    uint32_t head_dim_ = 0;
-    uint32_t blockShapeX_ = 0;
-    uint32_t blockShapeY_ = 0;
+    int32_t batch_num_ = 0;
+    int32_t q_seq_len_ = 0;
+    int32_t kv_seq_len_ = 0;
+    int32_t q_head_num_ = 0;
+    int32_t q_group_ = 0;
+    int32_t kv_head_num_ = 0;
+    int32_t head_dim_ = 0;
+    int32_t blockShapeX_ = 0;
+    int32_t blockShapeY_ = 0;
 
 protected:
     bool IsCapable() override
@@ -116,12 +116,12 @@ protected:
         const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
         const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
-        auto blockShapeOptional = context->GetInputTensor(8);
+        auto blockShapeOptional = context_->GetInputTensor(8);
         if (blockShapeOptional == nullptr) {
             OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
-        blockShapeList = blockShapeOptional->GetData<int64_t>();
+        int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
         if (blockShapeList == nullptr) {
             OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
