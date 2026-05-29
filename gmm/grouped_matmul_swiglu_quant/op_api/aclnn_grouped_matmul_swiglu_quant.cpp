@@ -492,7 +492,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSize(const aclTensor *x, co
                                                           aclTensor *outputScale, aclTensor *outputOffset,
                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulSwigluQuantGetWorkspaceSize";
+    const char *opName = "grouped_matmul_swiglu_quant";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuant, DFX_IN(x, weight, bias, offset, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale, outputOffset));
@@ -509,7 +509,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize(const aclTenso
                                                                   aclTensor *outputScale, aclTensor *outputOffset,
                                                                   uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulSwigluQuantWeightNZGetWorkspaceSize";
+    const char *opName = "grouped_matmul_swiglu_quant";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNZ,
                    DFX_IN(x, weight, bias, offset, weightScale, xScale, groupList),
