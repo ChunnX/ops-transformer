@@ -244,8 +244,8 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         return SeparatedXSeparatedWeight(context);
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-        context->GetNodeName(), "group_type", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
-        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %s", "group_type", "this value").c_str());
+        context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
+        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %s", "groupType", "this value").c_str());
     return false;
 }
 
@@ -443,15 +443,15 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
         return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
     OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
-        context->GetNodeName(), "x, weight, y",
+        context->GetNodeName(), "x, weight, out",
         Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
                                             isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
             .c_str(),
         Ops::Transformer::Gmm::FormatString(
-            "Under SPLIT_M scene, x, weight, y only support 7 combinations: "
+            "Under SPLIT_M scene, x, weight, out only support 7 combinations: "
             "multi-multi-multi, single-single-single, multi-multi-single, single-multi-multi, "
             "single-multi-single, multi-single-multi, multi-single-single, "
-            "but current x is %s tensor, weight is %s tensor, y is %s tensor, "
+            "but current x is %s tensor, weight is %s tensor, out is %s tensor, "
             "this combination is not supported",
             isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
             .c_str());
@@ -471,14 +471,14 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
     OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
-        context->GetNodeName(), "x, weight, y",
+        context->GetNodeName(), "x, weight, out",
         Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
                                             isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
             .c_str(),
         Ops::Transformer::Gmm::FormatString(
-            "Under SPLIT_K scene, x, weight, y only support 4 combinations: "
+            "Under SPLIT_K scene, x, weight, out only support 4 combinations: "
             "single-multi-multi, multi-single-multi, multi-single-single, single-single-single, "
-            "but current x is %s tensor, weight is %s tensor, y is %s tensor, "
+            "but current x is %s tensor, weight is %s tensor, out is %s tensor, "
             "this combination is not supported",
             isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
             .c_str());
