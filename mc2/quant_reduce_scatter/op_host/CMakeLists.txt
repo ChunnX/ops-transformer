@@ -24,10 +24,19 @@ if (BUILD_OPEN_PROJECT)  # custom
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT}) 
     if("${CONDITION_UNIT}" STREQUAL "ascend950") 
-        add_ops_compile_options( 
-            OP_NAME QuantReduceScatter 
-            OPTIONS --cce-auto-sync=off 
-        ) 
+        if(ENABLE_PROFILING)
+            add_ops_compile_options( 
+                OP_NAME QuantReduceScatter 
+                OPTIONS --cce-auto-sync=off;-DENABLE_PROFILING=1
+            )
+            target_compile_definitions(op_host_aclnnInner PRIVATE ENABLE_PROFILING=1)
+            target_include_directories(op_host_aclnnInner PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel)
+        else()
+            add_ops_compile_options( 
+                OP_NAME QuantReduceScatter 
+                OPTIONS --cce-auto-sync=off 
+            ) 
+        endif()
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE quant_reduce_scatter quant_reduce_scatter ACLNNTYPE aclnn aclnn_inner)

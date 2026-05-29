@@ -21,6 +21,7 @@
 #include "quant_reduce_scatter_tiling_data.h"
 #include "quant_reduce_scatter_tiling_key.h"
 #include "quant_reduce_scatter_mte.h"
+#include "profiler.h"
 
 using namespace AscendC;
 using namespace QuantReduceScatterImpl;
@@ -34,10 +35,26 @@ __global__ __aicore__ void quant_reduce_scatter(GM_ADDR x, GM_ADDR scales, GM_AD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantReduceScatterTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantReduceScatterTilingData, tilingData, tilingGM);
+
+    GM_ADDR profBufGm = (GM_ADDR)tilingData.quantReduceScatterTilingInfo.profBufAddr;
+    
+    if (profBufGm != nullptr && GetBlockIdx() == 0) {
+        __gm__ uint64_t* debugPtr = (__gm__ uint64_t*)profBufGm;
+        AscendC::GlobalTensor<uint64_t> gt;
+        gt.SetGlobalBuffer(debugPtr, 1);
+        gt.SetValue(0, 0xDEADBEEFCAFEBABEULL);
+        AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(gt);
+    }
+    
+    PROF_INIT(profBufGm);
+    PROF_MARK(profBufGm, EVT_KERNEL_BEGIN, 0);
+
     TPipe pipe;
     if constexpr (quantReduceScatterCommMode == MTE_COMM) {
         QuantReduceScatterMte<DTYPE_X, DTYPE_SCALES, DTYPE_OUT_PUT> op;
         op.Init(x, scales, output, &pipe, &tilingData);
-        op.Process();
+        op.Process(profBufGm);
     }
+
+    PROF_MARK(profBufGm, EVT_KERNEL_END, 0);
 }

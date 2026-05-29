@@ -1,0 +1,38 @@
+/**
+ * \file profiler_config.h.in
+ * \brief Chip-specific profiler constants — shared between device and host.
+ *
+ * Processed by CMake configure_file() to generate profiler_config.h.
+ * Both device-side profiler.h and host-side code include this header,
+ * eliminating manual constant duplication.
+ *
+ * CMake usage:
+ *   set(PROF_N_CORES 56)
+ *   set(PROF_AIV_CORES 28)
+ *   configure_file(profiler_config.h.in ${CMAKE_BINARY_DIR}/generated/profiler_config.h @ONLY)
+ *   # Add ${CMAKE_BINARY_DIR}/generated to include paths for both device and host
+ */
+
+#pragma once
+
+// Total core count (AIV + AIC).
+// Query at runtime: GetCoreNumForMixVectorCore(&aicNum, &aivNum)
+// Ascend 950PR configs (aicNum=28):
+//   AIV-only:  56  (56 AIV, no AIC)
+//   MIX 1:1:   56  (28 AIV + 28 AIC)
+//   MIX 1:2:   84  (56 AIV + 28 AIC)
+#ifndef PROF_N_CORES
+#define PROF_N_CORES @PROF_N_CORES@
+#endif
+
+// AIV core count. Used as AIC offset in GetCoreId().
+//   MIX 1:1:   28
+//   MIX 1:2:   56
+#ifndef PROF_AIV_CORES
+#define PROF_AIV_CORES @PROF_AIV_CORES@
+#endif
+
+// Buffer layout constants (shared between device and host)
+#define PROF_SLOTS_PER_CORE 4096
+#define PROF_RECORD_BYTES  16
+#define PROF_RINGIDX_ALIGN 64

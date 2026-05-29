@@ -28,6 +28,16 @@
 #include "common/utils/hccl_util.h"
 #include "aclnn_kernels/transdata.h"
 
+#ifdef ENABLE_PROFILING
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+#include <fstream>
+static constexpr uint32_t PROF_BUF_TOTAL = 56 * 64 + 56 * 4096 * 16;
+static constexpr uint64_t PROF_BUF_OFFSET = 16ULL * 1024 * 1024;
+#endif
+
 namespace {
 
 using namespace op;
@@ -221,6 +231,9 @@ extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor* x, c
     aclnnStatus ret = aclnnInnerQuantAllReduceGetWorkspaceSize(x, scales, const_cast<char*>(group),
         const_cast<char*>(reduceOp), yDtype, worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantAllReduce, aclnnGetWorkspaceSize ret %d.", ret);
+#ifdef ENABLE_PROFILING
+    *workspaceSize += PROF_BUF_TOTAL;
+#endif
     return ret;
 }
 
@@ -230,10 +243,27 @@ extern "C" aclnnStatus aclnnQuantAllReduce(void* workspace, uint64_t workspaceSi
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
+#ifdef ENABLE_PROFILING
+    aclrtMemset((uint8_t*)workspace + PROF_BUF_OFFSET, PROF_BUF_TOTAL, 0, PROF_BUF_TOTAL);
+#endif
     aclnnStatus ret = aclnnInnerQuantAllReduce(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "QuantAllReduce, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
+#ifdef ENABLE_PROFILING
+    const char* dumpEnv = std::getenv("PROF_DUMP");
+    if (dumpEnv && std::strlen(dumpEnv) > 0) {
+        aclrtSynchronizeStreamWithTimeout(stream, 30000);
+        std::vector<uint8_t> hostBuf(PROF_BUF_TOTAL);
+        aclrtMemcpy(hostBuf.data(), PROF_BUF_TOTAL, (uint8_t*)workspace + PROF_BUF_OFFSET, PROF_BUF_TOTAL, ACL_MEMCPY_DEVICE_TO_HOST);
+        static int dumpCounter = 0;
+        char fname[256];
+        std::snprintf(fname, sizeof(fname), "%s/prof_qar_%d.bin", dumpEnv, dumpCounter++);
+        std::ofstream ofs(fname, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(hostBuf.data()), PROF_BUF_TOTAL);
+        std::printf("[PROFILER] QAR dumped to %s (%u bytes)\n", fname, (uint32_t)PROF_BUF_TOTAL);
+    }
+#endif
     return ACLNN_SUCCESS;
 }
