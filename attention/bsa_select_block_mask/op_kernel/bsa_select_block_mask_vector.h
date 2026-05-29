@@ -22,7 +22,7 @@ public:
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                   GlobalTensor<half> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
+                                   GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
                                    GlobalTensor<uint8_t> &maskTmpGm,
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
@@ -54,7 +54,7 @@ private:
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
     GlobalTensor<IN_T> qCmpGmLocal, kCmpGmLocal;
-    GlobalTensor<half> attnScoreGmLocal;
+    GlobalTensor<T> attnScoreGmLocal;
     GlobalTensor<T> softmaxTmpGmLocal;
     GlobalTensor<uint8_t> maskTmpGmLocal;
     GlobalTensor<IN_T> queryGmLocal, keyGmLocal;
@@ -68,7 +68,7 @@ private:
     LocalTensor<IN_T> poolOutputUb_;
     LocalTensor<T> scoreUb_;
     LocalTensor<T> softmaxTmpUb_;
-    LocalTensor<half> castOutputUb_;
+    LocalTensor<T> castOutputUb_;
     LocalTensor<uint8_t> maskUb_;
     LocalTensor<T> mScalarUb_;
     LocalTensor<T> lScalarUb_;
@@ -109,8 +109,8 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
     softmaxTmpUb_ = uBuf_.GetWithOffset<T>(scoreSize, ubOffset);
     ubOffset += scoreSize * sizeof(T);
 
-    castOutputUb_ = uBuf_.GetWithOffset<half>(scoreSize, ubOffset);
-    ubOffset += scoreSize * sizeof(half);
+    castOutputUb_ = uBuf_.GetWithOffset<T>(scoreSize, ubOffset);
+    ubOffset += scoreSize * sizeof(T);
 
     maskUb_ = uBuf_.GetWithOffset<uint8_t>(constInfo.yBlocks, ubOffset);
     ubOffset += constInfo.yBlocks;
@@ -124,7 +124,7 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitGM(
     GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-    GlobalTensor<half> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
+    GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
     GlobalTensor<uint8_t> &maskTmpGm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,

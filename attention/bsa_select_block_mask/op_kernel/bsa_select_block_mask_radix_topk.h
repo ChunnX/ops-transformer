@@ -18,7 +18,7 @@ public:
     __aicore__ inline void InitParams(const BSAConstInfo &constInfo,
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitGM(GlobalTensor<half> &attnScoreGm,
+    __aicore__ inline void InitGM(GlobalTensor<float> &attnScoreGm,
                                    GlobalTensor<int32_t> &topkWorkspaceGm,
                                    GlobalTensor<uint8_t> &maskTmpGm);
     __aicore__ inline void AllocEventID();
@@ -40,7 +40,7 @@ private:
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
-    GlobalTensor<half> attnScoreGmLocal;
+    GlobalTensor<float> attnScoreGmLocal;
     GlobalTensor<int32_t> topkWorkspaceGmLocal;
     GlobalTensor<uint8_t> maskTmpGmLocal;
 
@@ -115,7 +115,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
-    GlobalTensor<half> &attnScoreGm,
+    GlobalTensor<float> &attnScoreGm,
     GlobalTensor<int32_t> &topkWorkspaceGm,
     GlobalTensor<uint8_t> &maskTmpGm)
 {

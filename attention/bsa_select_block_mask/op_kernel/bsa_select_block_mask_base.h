@@ -67,7 +67,7 @@ private:
     GlobalTensor<OUT_T> maskOutGm;
 
     GlobalTensor<IN_T> qCmpGm, kCmpGm;
-    GlobalTensor<half> attnScoreGm;
+    GlobalTensor<MM_OUT_T> attnScoreGm;
     GlobalTensor<T> softmaxTmpGm;
     GlobalTensor<uint8_t> maskTmpGm;
     GlobalTensor<int32_t> topkWorkspaceGm;
@@ -127,7 +127,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
 
     qCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.qCmpOffset));
     kCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.kCmpOffset));
-    attnScoreGm.SetGlobalBuffer((__gm__ half *)(workspace + constInfo.attnScoreOffset));
+    attnScoreGm.SetGlobalBuffer((__gm__ MM_OUT_T *)(workspace + constInfo.attnScoreOffset));
     softmaxTmpGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset));
     topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset));
     maskTmpGm.SetGlobalBuffer((__gm__ uint8_t *)(workspace + constInfo.maskOffset));
