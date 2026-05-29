@@ -39,7 +39,7 @@ struct MegaMoeA2A3TilingData {
     int32_t  dispatchQuantOutDtype;
     uint32_t combineQuantMode;
     uint32_t commAlgCode;
-    uint32_t numMaxTokenPerRank;
+    uint32_t numMaxTokensPerRank;
     uint32_t activationCode;
     float    activationClamp;
     uint32_t isTransposeW1;

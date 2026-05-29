@@ -49,7 +49,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
     const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char* commAlg, int64_t numMaxTokenPerRank, const char* activation, double activationClamp,
+    const char* commAlg, int64_t numMaxTokensPerRank, const char* activation, double activationClamp,
     int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
     aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
@@ -58,7 +58,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     int a = *test;
     printf("aclnn_mega_moe WorkspaceSize start");
     // ========== 添加打印：检查输入参数 ==========
-    printf("aclnnMegaMoeGetWorkspaceSize: numMaxTokenPerRank = %ld", numMaxTokenPerRank);
+    printf("aclnnMegaMoeGetWorkspaceSize: numMaxTokensPerRank = %ld", numMaxTokensPerRank);
     printf("aclnnMegaMoeGetWorkspaceSize: moeExpertNum = %ld, epWorldSize = %ld", moeExpertNum, epWorldSize);
     printf("aclnnMegaMoeGetWorkspaceSize: local expert num = %ld", moeExpertNum / epWorldSize);
     auto expertTokenNumsOutShape = expertTokenNumsOut->GetViewShape();
@@ -94,7 +94,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, scalesOptional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
-        combineQuantMode, commAlgNonConst, numMaxTokenPerRank, activationNonConst, activationClamp,
+        combineQuantMode, commAlgNonConst, numMaxTokensPerRank, activationNonConst, activationClamp,
         activationOutDtype, transposeWeight1, transposeWeight2, weight1Interleave,
         yOut, expertTokenNumsOut, workspaceSize, executor);
 
