@@ -38,6 +38,7 @@ constexpr uint32_t NUM_TWO = 2;
 constexpr uint32_t E_MAX_VALUE_NON_QUANT = 48;
 constexpr uint32_t MAX_BSK = 52428800;
 constexpr uint32_t MAX_SHAPE_SIZE = 65536;
+static const size_t ATTR_COMM_MODE_INDEX = 7;
 
 ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* context)
 {
@@ -529,7 +530,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
-    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
+    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
