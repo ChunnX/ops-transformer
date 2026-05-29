@@ -24,7 +24,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::GetCommonPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "can not get platform info."), return ge::GRAPH_FAILED);
+        OP_LOGE(context_->GetNodeName(), "can not get platform info."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
