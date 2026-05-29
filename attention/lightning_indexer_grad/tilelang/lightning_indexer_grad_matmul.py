@@ -74,7 +74,7 @@ def matmul_kernel(
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
-            for k_idx in T.Pipelined(k_num, num_stages=2):
+            for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
                 T.copy(B[n_idx * block_n, k_idx * block_k], B_L1)
                 T.gemm_v0(A_L1, B_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
@@ -124,7 +124,7 @@ def matmul_relu_kernel(
             for i, j in T.Parallel(block_m, block_n):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
-            for k_idx in T.Pipelined(k_num, num_stages=2):
+            for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
                 T.copy(B[n_idx * block_n, k_idx * block_k], B_L1)
                 T.gemm_v0(A_L1, B_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
@@ -225,7 +225,7 @@ def matmul_dq_kernel(
             for i, j in T.Parallel(block_m, block_d):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
-            for k_idx in T.Pipelined(k_num, num_stages=2):
+            for k_idx in T.serial(k_num):
                 T.copy(A[m_idx * block_m, k_idx * block_k], A_L1)
                 T.copy(B[k_idx * block_k, d_idx * block_d], B_L1)
                 T.gemm_v0(A_L1, B_L1, C_L0C, init=(k_idx == 0))
@@ -276,7 +276,7 @@ def matmul_scatter_kernel(
             for i, j in T.Parallel(block_k, block_d):
                 C_L0C[i, j] = T.cast(0, accum_dtype)
             
-            for m_idx in T.Pipelined(m_num, num_stages=2):
+            for m_idx in T.serial(m_num):
                 T.copy(A[k_idx * block_k, m_idx * block_m], A_L1)
                 T.copy(B[m_idx * block_m, d_idx * block_d], B_L1)
                 T.gemm_v0(A_L1, B_L1, C_L0C, init=(m_idx == 0))
