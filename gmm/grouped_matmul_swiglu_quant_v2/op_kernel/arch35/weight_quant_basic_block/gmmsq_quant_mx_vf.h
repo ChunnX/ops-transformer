@@ -393,6 +393,6 @@ __simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, 
     }
 }
 
-} // namespace GMMSQWeightQuantWeightQuant
+} // namespace GMMSQWeightQuant
 
 #endif // GMMSQ_QUANT_MX_VF_H
