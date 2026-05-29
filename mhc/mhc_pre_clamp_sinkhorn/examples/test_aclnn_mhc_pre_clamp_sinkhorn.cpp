@@ -172,11 +172,11 @@ struct Tensors {
     void *x_addr = nullptr, *phi_addr = nullptr, *alpha_addr = nullptr, *bias_addr = nullptr;
     void *hin_addr = nullptr, *h_post_addr = nullptr, *h_res_addr = nullptr;
     void *h_pre_addr = nullptr, *hc_before_norm_addr = nullptr, *inv_rms_addr = nullptr;
-    void *sum_out_addr = nullptr, *norm_out_addr = nullptr;
+    void *sum_out_addr = nullptr, *norm_out_addr = nullptr, *reduce_out = nullptr;
     aclTensor *x = nullptr, *phi = nullptr, *alpha = nullptr, *bias = nullptr;
     aclTensor *hin = nullptr, *h_post = nullptr, *h_res = nullptr;
     aclTensor *h_pre = nullptr, *hc_before_norm = nullptr, *inv_rms = nullptr;
-    aclTensor *sum_out = nullptr, *norm_out = nullptr;
+    aclTensor *sum_out = nullptr, *norm_out = nullptr, *reduce_out = nullptr;
 };
 
 int CreateInputTensors(const std::vector<int64_t> &x_shape, const std::vector<int64_t> &phi_shape,
@@ -203,7 +203,8 @@ int CreateOutputTensors(const std::vector<int64_t> &hin_shape, const std::vector
                         const std::vector<int64_t> &h_res_shape, const std::vector<int64_t> &h_pre_shape,
                         const std::vector<int64_t> &hc_before_norm_shape, const std::vector<int64_t> &inv_rms_shape,
                         const std::vector<int64_t> &sum_out_shape, const std::vector<int64_t> &norm_out_shape,
-                        Tensors &tensors)
+                        const std::vector<int64_t> &reduce_out_shape,
+                        Tensors &tensors)            
 {
     int ret = CreateAclTensorBfloat16Output(hin_shape, tensors.hin_addr, tensors.hin);
     CHECK_RET(ret == 0, LOG_PRINT("Create hin_tensor failed\n"); return -1);
@@ -221,6 +222,8 @@ int CreateOutputTensors(const std::vector<int64_t> &hin_shape, const std::vector
     CHECK_RET(ret == 0, LOG_PRINT("Create sum_out_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32Output(norm_out_shape, tensors.norm_out_addr, tensors.norm_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create norm_out_tensor failed\n"); return -1);
+    ret = CreateAclTensorFloat32Output(reduce_out_shape, tensors.reduce_out_addr, tensors.reduce_out);
+    CHECK_RET(ret == 0, LOG_PRINT("Create reduce_out_tensor failed\n"); return -1);
     return 0;
 }
 
@@ -238,6 +241,7 @@ void DestroyTensors(Tensors &tensors)
     aclDestroyTensor(tensors.inv_rms);
     aclDestroyTensor(tensors.sum_out);
     aclDestroyTensor(tensors.norm_out);
+    aclDestroyTensor(tensors.reduce_out);
 }
 
 void FreeDeviceMemory(Tensors &tensors)
@@ -254,6 +258,7 @@ void FreeDeviceMemory(Tensors &tensors)
     aclrtFree(tensors.inv_rms_addr);
     aclrtFree(tensors.sum_out_addr);
     aclrtFree(tensors.norm_out_addr);
+    aclrtFree(tensors.reduce_out_addr);
 }
 
 int main()
@@ -283,7 +288,10 @@ int main()
     std::vector<int64_t> inv_rms_shape = {bs, seq_len, 1};
     std::vector<int64_t> sum_out_shape = {num_iters * 2, bs, seq_len, n};
     std::vector<int64_t> norm_out_shape = {num_iters * 2, bs, seq_len, n, n};
-
+    std::vector<int64_t> reduce_out_shape = {num_iters * 2, bs, seq_len, n, n};
+    
+    float min_val = 0.0f;
+    float max_val = 1.0f;
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
 
@@ -291,7 +299,7 @@ int main()
     CHECK_RET(ret == 0, return -1);
 
     ret = CreateOutputTensors(hin_shape, h_post_shape, h_res_shape, h_pre_shape, hc_before_norm_shape,
-                              inv_rms_shape, sum_out_shape, norm_out_shape, tensors);
+                              inv_rms_shape, sum_out_shape, norm_out_shape, reduce_out_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
     uint64_t workspace_size = 0;
