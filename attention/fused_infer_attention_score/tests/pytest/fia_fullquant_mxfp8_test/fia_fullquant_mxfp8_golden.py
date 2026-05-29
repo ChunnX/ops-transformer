@@ -75,7 +75,7 @@ DEVICE_ID = 0
 # ==============================================================================
 
 def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """Q/K per-token-group quant_scale, 输出: (B, N, S, ceil(D/group))"""
+    """Vectorized Q/K per-token-group quant_scale."""
     if fp8_dtype == torch.float8_e4m3fn:
         emax_elem = 8
     elif fp8_dtype == torch.float8_e5m2:
@@ -84,25 +84,20 @@ def get_mxfp8_per_token_group_quant_scale(tensor, fp8_dtype, group_size=32):
         raise ValueError(f"{fp8_dtype} not supported")
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    scale = torch.ones([dim1, dim2, dim3, math.ceil(dim4 / group_size)], dtype=torch.float32)
+    num_groups = math.ceil(dim4 / group_size)
+    pad_size = num_groups * group_size - dim4
+    if pad_size > 0:
+        tensor = torch.nn.functional.pad(tensor, (0, pad_size))
 
-    for b in range(dim1):
-        for n in range(dim2):
-            for s in range(dim3):
-                for d in range(0, dim4, group_size):
-                    chunk = tensor[b, n, s, d:min(d + group_size, dim4)]
-                    if torch.all(chunk == 0):
-                        scale[b, n, s, d // group_size] = 1.0
-                        continue
-                    max_val = torch.max(torch.abs(chunk)).clamp(min=1e-12)
-                    shared_exp = torch.floor(torch.log2(max_val)) - emax_elem
-                    scale[b, n, s, d // group_size] = 2 ** shared_exp
-    return scale
-
+    grouped = tensor.reshape(dim1, dim2, dim3, num_groups, group_size)
+    all_zero_mask = torch.all(grouped == 0, dim=-1)
+    max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
+    shared_exp = torch.floor(torch.log2(max_vals)) - emax_elem
+    return torch.where(all_zero_mask, torch.ones_like(shared_exp), 2 ** shared_exp).to(torch.float32)
 
 
 def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
-    """V per-channel-group quant_scale, 输出: (B, N, ceil(S/group), D)"""
+    """Vectorized V per-channel-group quant_scale."""
     if fp8_dtype == torch.float8_e4m3fn:
         emax_elem = 8
     elif fp8_dtype == torch.float8_e5m2:
@@ -111,46 +106,28 @@ def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
         raise ValueError(f"{fp8_dtype} not supported")
 
     dim1, dim2, dim3, dim4 = tensor.shape
-    scale = torch.ones([dim1, dim2, math.ceil(dim3 / group_size), dim4], dtype=torch.float32)
+    num_groups = math.ceil(dim3 / group_size)
+    pad_size = num_groups * group_size - dim3
+    if pad_size > 0:
+        tensor = torch.nn.functional.pad(tensor, (0, 0, 0, pad_size))
 
-    for b in range(dim1):
-        for n in range(dim2):
-            for d in range(dim4):
-                for s in range(0, dim3, group_size):
-                    chunk = tensor[b, n, s:min(s + group_size, dim3), d]
-                    if torch.all(chunk == 0):
-                        scale[b, n, s // group_size, d] = 1.0
-                        continue
-                    max_val = torch.max(torch.abs(chunk)).clamp(min=1e-12)
-                    shared_exp = torch.floor(torch.log2(max_val)) - emax_elem
-                    scale[b, n, s // group_size, d] = 2 ** shared_exp
-    return scale
+    grouped = tensor.reshape(dim1, dim2, num_groups, group_size, dim4)
+    all_zero_mask = torch.all(grouped == 0, dim=-2)
+    max_vals = torch.max(torch.abs(grouped), dim=-2)[0].clamp(min=1e-12)
+    shared_exp = torch.floor(torch.log2(max_vals)) - emax_elem
+    return torch.where(all_zero_mask, torch.ones_like(shared_exp), 2 ** shared_exp).to(torch.float32)
 
 
 def mxfp8_per_token_group_quant(tensor, quant_scale, group_size=32):
-    dim1, dim2, dim3, dim4 = tensor.shape
-    result = torch.zeros_like(tensor, dtype=torch.float32)
-    for b in range(dim1):
-        for n in range(dim2):
-            for s in range(dim3):
-                for d in range(0, dim4, group_size):
-                    d_end = min(d + group_size, dim4)
-                    qs = quant_scale[b, n, s, d // group_size].item()
-                    result[b, n, s, d:d_end] = tensor[b, n, s, d:d_end] * qs
-    return result
+    dim4 = tensor.shape[-1]
+    scale_expanded = quant_scale.repeat_interleave(group_size, dim=-1)[..., :dim4]
+    return (tensor * scale_expanded.to(tensor.dtype)).to(torch.float32)
 
 
 def mxfp8_per_channel_group_quant(tensor, quant_scale, group_size=32):
-    dim1, dim2, dim3, dim4 = tensor.shape
-    result = torch.zeros_like(tensor, dtype=torch.float32)
-    for b in range(dim1):
-        for n in range(dim2):
-            for d in range(dim4):
-                for s in range(0, dim3, group_size):
-                    s_end = min(s + group_size, dim3)
-                    qs = quant_scale[b, n, s // group_size, d].item()
-                    result[b, n, s:s_end, d] = tensor[b, n, s:s_end, d] * qs
-    return result
+    dim3 = tensor.shape[2]
+    scale_expanded = quant_scale.repeat_interleave(group_size, dim=2)[:, :, :dim3, :]
+    return (tensor * scale_expanded.to(tensor.dtype)).to(torch.float32)
 
 
 def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
@@ -718,14 +695,17 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
     ln_p_scale = torch.tensor([math.log(p_scale)], dtype=torch.float32)
 
+    dequant_scale_q_expanded = dequant_scale_q.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)
+    dequant_scale_k_expanded = dequant_scale_k.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)
+    dequant_scale_v_expanded = dequant_scale_v.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
+
     print(f"[CPU Golden] TILES_Q={TILES_Q}, TILES_KV={TILES_KV}, Sq={Sq}, Skv={Skv}")
 
     for i in range(TILES_Q):
         Qi = Q_BLOCKS[i]
         Sq_start = i * Q_BLOCK_SIZE
         Sq_end = min(Sq_start + Q_BLOCK_SIZE, Sq)
-        deq_scale_q_i = dequant_scale_q[:, :, Sq_start:Sq_end, :]
-        deq_scale_q_i_expanded = deq_scale_q_i.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)
+        deq_scale_q_i = dequant_scale_q_expanded[:, :, Sq_start:Sq_end, :]
 
         for j in range(0, TILES_KV, 2):
             oi, si, mi = o_BLOCKS[i], s_BLOCKS[i], m_BLOCKS[i]
@@ -733,10 +713,9 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             Kj = K_BLOCKS[j]
             Sk_start = j * K_BLOCK_SIZE
             Sk_end = min(Sk_start + K_BLOCK_SIZE, Skv)
-            deq_scale_k_j = dequant_scale_k[:, :, Sk_start:Sk_end, :]
-            deq_scale_k_j_expanded = deq_scale_k_j.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)
+            deq_scale_k_j = dequant_scale_k_expanded[:, :, Sk_start:Sk_end, :]
 
-            S_ij = torch.matmul(Qi * deq_scale_q_i_expanded, (Kj * deq_scale_k_j_expanded).permute(0, 1, 3, 2))
+            S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
             if ENABLE_ROPE and qr_bf16 is not None:
                 Qri, Krj = Qr_BLOCKS[i], Kr_BLOCKS[j]
                 Qri = Qri.to(torch.float32)
@@ -758,10 +737,9 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 Kj1 = K_BLOCKS[j + 1]
                 Sk1_start = (j + 1) * K_BLOCK_SIZE
                 Sk1_end = min(Sk1_start + K_BLOCK_SIZE, Skv)
-                deq_scale_k_j1 = dequant_scale_k[:, :, Sk1_start:Sk1_end, :]
-                deq_scale_k_j1_expanded = deq_scale_k_j1.repeat_interleave(QUANT_GROUP_SIZE, dim=-1)
+                deq_scale_k_j1 = dequant_scale_k_expanded[:, :, Sk1_start:Sk1_end, :]
 
-                S_ij1 = torch.matmul(Qi * deq_scale_q_i_expanded, (Kj1 * deq_scale_k_j1_expanded).permute(0, 1, 3, 2))
+                S_ij1 = torch.matmul(Qi * deq_scale_q_i, (Kj1 * deq_scale_k_j1).permute(0, 1, 3, 2))
                 if ENABLE_ROPE and qr_bf16 is not None:
                     Krj1 = Kr_BLOCKS[j + 1]
                     Krj1 = Krj1.to(torch.float32)
@@ -783,13 +761,9 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = (j // 2) * V_BLOCK_SIZE
                 Sv_end = min(Sv_start + V_BLOCK_SIZE, Skv)
-                v_scale_start = Sv_start // QUANT_GROUP_SIZE
-                v_scale_end = (Sv_end - 1) // QUANT_GROUP_SIZE + 1
 
-                deq_scale_v_j = dequant_scale_v[:, :, v_scale_start:v_scale_end, :]
-                deq_scale_v_j_tmp = deq_scale_v_j.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
-                deq_scale_v_j_expanded = deq_scale_v_j_tmp[:, :, :Vj.shape[2], :]
-                Vj_dequant = Vj * deq_scale_v_j_expanded
+                deq_scale_v_j = dequant_scale_v_expanded[:, :, Sv_start:Sv_end, :]
+                Vj_dequant = Vj * deq_scale_v_j[:, :, :Vj.shape[2], :]
 
                 V_part1 = Vj_dequant[:, :, :Kj.shape[2], :]
                 V_part2 = Vj_dequant[:, :, Kj.shape[2]:Kj.shape[2] + Kj1.shape[2], :]
@@ -803,14 +777,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = j * K_BLOCK_SIZE
                 Sv_end = min(Sv_start + K_BLOCK_SIZE, Skv)
-                v_scale_start = Sv_start // QUANT_GROUP_SIZE
-                v_scale_end = (Sv_end - 1) // QUANT_GROUP_SIZE + 1
 
-                deq_scale_v_j = dequant_scale_v[:, :, v_scale_start:v_scale_end, :]
-                deq_scale_v_j_tmp = deq_scale_v_j.repeat_interleave(QUANT_GROUP_SIZE, dim=2)
-                deq_scale_v_j_expanded = deq_scale_v_j_tmp[:, :, :Kj.shape[2], :]
+                deq_scale_v_j = dequant_scale_v_expanded[:, :, Sv_start:Sv_end, :]
                 Vj_expanded = Vj[:, :, :Kj.shape[2], :]
-                Vj_dequant = Vj_expanded * deq_scale_v_j_expanded
+                Vj_dequant = Vj_expanded * deq_scale_v_j[:, :, :Kj.shape[2], :]
 
                 P_ij_Vj = torch.matmul(P_ij_drop, Vj_dequant)
                 update_mul_si = torch.exp(mi - m_block_j)
@@ -836,6 +806,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
                  block_table_torch=None,
                  qr_bf16=None, kr_bf16=None):
     """调用 NPU 算子，支持 N2TGD layout"""
+    device_id = DEVICE_ID
+    torch_npu.npu.set_device(int(device_id))
+
     softmax_scale = 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
 
     q_runtime_layout, q_group, q_s1, q_gs1 = resolve_q_scale_layout(actual_seq_q)
@@ -990,12 +963,9 @@ class Network(nn.Module):
 def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_kv,
                        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                        block_table, q_n, kv_n, softmax_scale, layout, block_size, sparse_mode, out_dtype):
-
-    device_id = DEVICE_ID
-    torch_npu.npu.set_device(int(device_id))
-
     if GRAPH_PATH == 0:
         print("[NPU] 调用单算子模式...")
+        torch.npu.synchronize()
         atten_out, lse_out = torch_npu.npu_fused_infer_attention_score_v2(
             q, k, v,
             query_rope=q_rope,
@@ -1025,11 +995,13 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_k
             quant_scale_p=p_scale,
             out_dtype=out_dtype,
         )
+        torch.npu.synchronize()
         return atten_out, lse_out 
 
-    npu_mode = Network().to("npu:%s" % device_id)
+    npu_mode = Network().to("npu:%s" % int(DEVICE_ID))
     config = CompilerConfig()
     with torch.no_grad():
+        torch.npu.synchronize()
         npu_backend = tng.get_npu_backend(compiler_config=config)
         if GRAPH_PATH == 3:
             print("[NPU] 调用静态图...")
@@ -1085,7 +1057,8 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask, actual_seq_q, actual_seq_k
 
         atten_out = atten_out.cpu().detach()
         lse_out = lse_out.cpu().detach()
-        return atten_out, lse_out 
+        torch.npu.synchronize()
+        return atten_out, lse_out
 
 # ==============================================================================
 # Main
