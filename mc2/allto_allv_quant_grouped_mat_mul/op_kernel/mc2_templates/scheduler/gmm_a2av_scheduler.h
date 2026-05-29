@@ -19,6 +19,7 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "basic_api/kernel_basic_intf.h"
+#include "../a2av_gmm_utils.h"
 
 using namespace AscendC;
 
@@ -33,21 +34,30 @@ public:
 
     __aicore__ inline void Process()
     {
-        uint32_t expertNumInOneRank = taskTilingInfo_->e;
+        uint32_t e = taskTilingInfo_->e;
+        uint32_t expertNum = taskTilingInfo_->expertNum;
+        bool isNeedPermute = expertNum > 1;
 
-        for (uint32_t expertIdx = 0U; expertIdx < expertNumInOneRank; expertIdx++) {
-            computeOp_.Process(expertIdx);
+        for (uint32_t start = 0; start < e; start += expertNum) {
+            uint32_t actualExpertNum = (start + expertNum > e) ? (e - start) : expertNum;
+            computeOp_.Process(start, actualExpertNum);
             SyncAll<false>();
-            hcclOp_.Launch(expertIdx, 1); // 每次专家数量设置为1
+            if (isNeedPermute) {
+                hcclOp_.PermuteSendAfterCompute(start, actualExpertNum);
+                SyncAll<true>();
+            }
+            hcclOp_.LaunchCommData(start, actualExpertNum);
         }
 
         if (IsNeedMM) {
-            shareComputeOp_.Process(0);
-            SyncAll<false>();
+            shareComputeOp_.Process(0, 1);
         }
 
-        hcclOp_.WaitAll(expertNumInOneRank);
-        End();
+        for (uint32_t start = 0; start < e; start += expertNum) {
+            hcclOp_.Wait(start);
+        }
+
+        this->End();
     }
 
     __aicore__ inline void End()
