@@ -13,8 +13,8 @@
  */
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
-#include "matmul.h"
+#include "sparse_flash_mla_grad_common_header.h"
+#include "sparse_flash_mla_grad_matmul.h"
 using namespace AscendC;
 
 namespace SMLAG_BASIC {
@@ -61,7 +61,7 @@ private:
                                                                        const int32_t mmPingPongIdx,
                                                                        const int64_t lastBlockSize,
                                                                        const bool isLastBasicBlock,
-                                                                       const RunInfo &runInfo);
+                 const RunInfo &runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube4Process(const int64_t dsGmOffset,
                                                                        const int64_t queryGmOffset,
@@ -208,7 +208,7 @@ private:
     uint32_t cBlockIdx;
     uint32_t singleN;
     int64_t s1BasicSize;
-    int64_t dOriKvSize;                                                     
+    int64_t dOriKvSize;
 };
 
 template <typename SMLAGT>

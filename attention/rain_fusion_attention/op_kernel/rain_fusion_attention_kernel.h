@@ -16,7 +16,7 @@
 #ifndef RAIN_FUSION_ATTENTION_KERNEL_H
 #define RAIN_FUSION_ATTENTION_KERNEL_H
 
-#include "kernel_common.hpp"
+#include "rain_fusion_attention_kernel_common.hpp"
 
 using namespace NpuArch;
 using namespace RfaKenelCommon;
