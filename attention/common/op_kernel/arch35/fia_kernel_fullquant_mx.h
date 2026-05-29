@@ -372,7 +372,7 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
@@ -471,20 +471,24 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
-
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
+        if (curS2Start >= curS2End) {
             return TASK_DEAL_MODE::SKIP;
         }
 
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
+        if (s2Cur < curS2Start) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
+        if (s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
         }
 
         if (s2Cur == curS2Start) {
             mloop++;
+        }
+
+        if (SkipForS1OutSplit()) {
+            return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
@@ -739,6 +743,11 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        }
+
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
