@@ -16,13 +16,14 @@ namespace BSA_ARC35 {
 template <typename... Args>
 bool IsSameShape(Args... shapes)
 {
-    std::array<uint32_t, sizeof...(Args)> arr = {shapes...};
+    std::array<int32_t, sizeof...(Args)> arr = {shapes...};
     if (arr.size() <= 1)
         return true;
-    uint32_t first = arr[0];
-    if (first == 0) {
+    int32_t first = arr[0];
+    if (first <= 0) {
         return false;
     }
+
     for (size_t i = 1; i < arr.size(); ++i) {
         if (arr[i] != first)
             return false;
@@ -30,8 +31,8 @@ bool IsSameShape(Args... shapes)
     return true;
 }
 
-ge::graphStatus InputCheck(const std::vector<uint32_t> &q_shape, const std::vector<uint32_t> &k_shape,
-                           const std::vector<uint32_t> &v_shape, const uint32_t q_group, gert::TilingContext *context)
+ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
+                           const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
 {
     /* function: 根据固定格式传入shape检查输入是否符合要求
      * shape：[b, n, s, d]
