@@ -201,7 +201,7 @@ protected:
             v_head_dim = valueShape->GetStorageShape().GetDim(2);
             q_group = q_head_num / k_head_num;
         } else {
-            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
+            OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSND or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
 
