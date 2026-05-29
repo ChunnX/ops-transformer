@@ -342,16 +342,16 @@ namespace optiling{
         uint32_t totalTaskNum = 0;
         uint32_t groupSize = faInfo_.numHeads / faInfo_.kvHeads;
         for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
-            uint32_t qSeqlen = *(faInfo_.qSeqlenList + batchIdx);
-            uint32_t kvSeqlen = *(faInfo_.kvSeqlenList + batchIdx);
+            uint64_t qSeqlen64 = static_cast<uint64_t>(*(faInfo_.qSeqlenList + batchIdx));
+            uint64_t kvSeqlen64 = static_cast<uint64_t>(*(faInfo_.kvSeqlenList + batchIdx));
             if (batchIdx > 0) {
-                uint64_t prevQSeqlenSum = *(faInfo_.qSeqlenList + batchIdx - 1);
-                qSeqlen = qSeqlen - prevQSeqlenSum;
+                qSeqlen64 -= static_cast<uint64_t>(*(faInfo_.qSeqlenList + batchIdx - 1));
                 if (!faInfo_.pagedCacheFlag) {
-                    uint64_t prevKvSeqlenSum = *(faInfo_.kvSeqlenList + batchIdx - 1);
-                    kvSeqlen = kvSeqlen - prevKvSeqlenSum;
+                    kvSeqlen64 -= static_cast<uint64_t>(*(faInfo_.kvSeqlenList + batchIdx - 1));
                 }
             }
+            uint32_t qSeqlen = static_cast<uint32_t>(qSeqlen64);
+            uint32_t kvSeqlen = static_cast<uint32_t>(kvSeqlen64);
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = (groupSize + curQNBlockTile - 1) / curQNBlockTile;
             uint32_t curQNBlockNum = qNBlockNumPerGroup * faInfo_.kvHeads;
@@ -369,16 +369,16 @@ namespace optiling{
 
     BatchParams FAInferTiling::getBatchParams(uint32_t bIdx, uint32_t groupSize) {
         BatchParams p;
-        p.qSeqlen = *(faInfo_.qSeqlenList + bIdx);
-        p.kvSeqlen = *(faInfo_.kvSeqlenList + bIdx);
+        uint64_t qSeqlen64 = static_cast<uint64_t>(*(faInfo_.qSeqlenList + bIdx));
+        uint64_t kvSeqlen64 = static_cast<uint64_t>(*(faInfo_.kvSeqlenList + bIdx));
         if (bIdx > 0 && faInfo_.layout == "TND") {
-            uint64_t prevQSeqlenSum = *(faInfo_.qSeqlenList + bIdx - 1);
-            p.qSeqlen = p.qSeqlen - prevQSeqlenSum;
+            qSeqlen64 -= static_cast<uint64_t>(*(faInfo_.qSeqlenList + bIdx - 1));
             if (!faInfo_.pagedCacheFlag) {
-                uint64_t prevKvSeqlenSum = *(faInfo_.kvSeqlenList + bIdx - 1);
-                p.kvSeqlen = p.kvSeqlen - prevKvSeqlenSum;
+                kvSeqlen64 -= static_cast<uint64_t>(*(faInfo_.kvSeqlenList + bIdx - 1));
             }
         }
+        p.qSeqlen = static_cast<uint32_t>(qSeqlen64);
+        p.kvSeqlen = static_cast<uint32_t>(kvSeqlen64);
         p.curQNBlockTile = GetQNBlockTile(p.qSeqlen, groupSize);
         p.qNBlockNumPerGroup = (groupSize + p.curQNBlockTile - 1) / p.curQNBlockTile;
         p.curQNBlockNum = p.qNBlockNumPerGroup * faInfo_.kvHeads;
@@ -627,7 +627,7 @@ namespace optiling{
 
         for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
             BatchParams p = getBatchParams(batchIdx, groupSize);
-            totalTaskNum += faInfo_.numHeads * p.qSeqlen * p.kvSeqlen;
+            totalTaskNum += static_cast<uint64_t>(faInfo_.numHeads) * p.qSeqlen * p.kvSeqlen;
         }
         uint64_t perCoreTaskNum = (totalTaskNum + blockNum_ - 1) / blockNum_;
         fillCoreInfoForFlashDecode(faTilingData, groupSize, perCoreTaskNum);

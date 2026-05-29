@@ -106,20 +106,22 @@ public:
             uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2] : splitInfo->lseTaskOffset[process/2] + sum_former;
             uint32_t addrOOffset = vectorsubBlockID == 0 ? splitInfo->oTaskOffset[process/2] : splitInfo->oTaskOffset[process/2] + sum_former * headSizeV;
 
-            uint32_t prevQSeqlenSum = 0;
+            uint64_t prevQSeqlenSum64 = 0;
             if (inputLayoutTND) {
-                prevQSeqlenSum = (batchIdx == 0) ?
-                    0 : static_cast<uint32_t>(gActualQseqlen.GetValue(batchIdx - 1));
+                prevQSeqlenSum64 = (batchIdx == 0) ? 0 :
+                    static_cast<uint64_t>(gActualQseqlen.GetValue(batchIdx - 1));
             }
-            uint32_t baseGmOffset = prevQSeqlenSum * qHeads * headSizeV + qStartIndx * qHeads * headSizeV + headStartIndx * headSizeV;
-            uint32_t gmOScalar = 0;
+            uint64_t baseGmOffset = prevQSeqlenSum64 * qHeads * headSizeV +
+                static_cast<uint64_t>(qStartIndx) * qHeads * headSizeV +
+                static_cast<uint64_t>(headStartIndx) * headSizeV;
+            uint64_t gmOScalar = 0;
             if (q_len == 1) {
                 gmOScalar = vectorsubBlockID == 0 ? baseGmOffset
-                                                : baseGmOffset + sum_former * headSizeV;
+                                                : baseGmOffset + static_cast<uint64_t>(sum_former) * headSizeV;
             } else {
                 uint32_t q_half = q_len / 2;
                 gmOScalar = vectorsubBlockID == 0 ? baseGmOffset
-                                                : baseGmOffset + q_half * qHeads * headSizeV;
+                                                : baseGmOffset + static_cast<uint64_t>(q_half) * qHeads * headSizeV;
             }
 
             uint32_t splitNum = splitInfo->splitNum[process/2];

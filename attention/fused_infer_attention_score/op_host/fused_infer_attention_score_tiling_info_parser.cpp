@@ -984,8 +984,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
         }
     } else {
         if (maskDimNum == 3U) {
-            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) *
-                                    maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
+            attenMaskBatchStride_ = static_cast<uint32_t>(
+                static_cast<uint64_t>(maskTensor->GetStorageShape().GetDim(maskDimNum - 1)) *
+                maskTensor->GetStorageShape().GetDim(maskDimNum - 2));
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
             OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.",
@@ -1067,8 +1068,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
             }
         } else if (maskDimNum == 3U || maskDimNum == 4U) {
             if (maskTensor->GetStorageShape().GetDim(0) == bSize_) { // BSS B1SS BatchStride = S1*S2
-                attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) *
-                                        maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
+                attenMaskBatchStride_ = static_cast<uint32_t>(
+                    static_cast<uint64_t>(maskTensor->GetStorageShape().GetDim(maskDimNum - 1)) *
+                    maskTensor->GetStorageShape().GetDim(maskDimNum - 2));
             } else { // 1SS 11SS
                 attenMaskBatchStride_ = 0;
             }
