@@ -148,7 +148,7 @@ protected:
             v_seq_len = valueShape->GetStorageShape().GetDim(1);
             v_head_num = valueShape->GetStorageShape().GetDim(2);
             v_head_dim = valueShape->GetStorageShape().GetDim(3);
-            q_group = q_head_num / k_head_dim;
+            q_group = q_head_num / k_head_num;
         } else if (strcmp(qInputLayout, BNSD_STR) == 0) {
             // BNSD layout
             if (queryShape->GetOriginShape().GetDimNum() != 4) {
@@ -170,7 +170,7 @@ protected:
             v_head_num = valueShape->GetStorageShape().GetDim(1);
             v_seq_len = valueShape->GetStorageShape().GetDim(2);
             v_head_dim = valueShape->GetStorageShape().GetDim(3);
-            q_group = q_head_num / k_head_dim;
+            q_group = q_head_num / k_head_num;
         } else if (strcmp(qInputLayout, TND_STR) == 0) {
             // TND layout
             if (queryShape->GetOriginShape().GetDimNum() != 3) {
