@@ -795,7 +795,7 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    auto numMaxTokenPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokenPerRankIndex));
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE(nodeName, "moeExpertNumPtr is nullptr."), return ge::GRAPH_FAILED);
@@ -813,8 +813,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE(nodeName, "combineQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr,
         OP_LOGE(nodeName, "commAlgPtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numMaxTokenPerRankPtr == nullptr,
-        OP_LOGE(nodeName, "numMaxTokenPerRankPtr is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
+        OP_LOGE(nodeName, "numMaxTokensPerRankPtr is nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -926,12 +926,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "Invalid commAlg(%s), expecting default value("").", commAlgPtr),
         return ge::GRAPH_FAILED);
 
-    auto numMaxTokenPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokenPerRankIndex));
-    int64_t numMaxTokenPerRank = static_cast<int64_t>(*numMaxTokenPerRankPtr);
-    if (numMaxTokenPerRank != 0) {
-        OP_TILING_CHECK(numMaxTokenPerRank < 0 || bs < numMaxTokenPerRank || numMaxTokenPerRank >= MAX_BS,
-            OP_LOGE(nodeName, "numMaxTokenPerRank(%ld) either be 0 or between bs(%ld) and MAX_BS(%ld).",
-                numMaxTokenPerRank, bs, MAX_BS),
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    if (numMaxTokensPerRank != 0) {
+        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs < numMaxTokensPerRank || numMaxTokensPerRank >= MAX_BS,
+            OP_LOGE(nodeName, "numMaxTokensPerRank(%ld) either be 0 or between bs(%ld) and MAX_BS(%ld).",
+                numMaxTokensPerRank, bs, MAX_BS),
             return ge::GRAPH_FAILED);
     }
 

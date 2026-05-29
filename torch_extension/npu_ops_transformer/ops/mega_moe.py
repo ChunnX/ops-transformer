@@ -32,7 +32,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
             "Tensor? x_active_mask=None, Tensor? scales=None, int max_recv_token_num=0, " \
             "int dispatch_quant_mode=0, int combine_quant_mode=0, " \
-            "str comm_alg=\"\", int num_max_token_per_rank=0, str activation=\"swiglu\", " \
+            "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
             "float activation_clamp=3.4028234663852886e+38, " \
             "bool transpose_weight1=False, bool transpose_weight2=False, int weight1_interleave=0, " \
             "int? dispatch_quant_out_dtype=None, int? activation_out_dtype=None,  " \
@@ -45,7 +45,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                               weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
                               x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
                               combine_quant_mode=0, comm_alg="",
-                              num_max_token_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38, 
+                              num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38, 
                               transpose_weight1=False, transpose_weight2=False, weight1_interleave=0,
                               dispatch_quant_out_dtype=None, activation_out_dtype=None,
                               weight1_type=None, weight2_type=None):
@@ -74,14 +74,14 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
                   x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
                   combine_quant_mode=0, comm_alg="",
-                  num_max_token_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38,
+                  num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38,
                   transpose_weight1=False, transpose_weight2=False, weight1_interleave=0, 
                   dispatch_quant_out_dtype=None, activation_out_dtype=None,
                   weight1_type=None, weight2_type=None):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask, scales, max_recv_token_num,
-        dispatch_quant_mode, combine_quant_mode, comm_alg, num_max_token_per_rank, activation,
+        dispatch_quant_mode, combine_quant_mode, comm_alg, num_max_tokens_per_rank, activation,
         activation_clamp, transpose_weight1, transpose_weight2, weight1_interleave,
         dispatch_quant_out_dtype, activation_out_dtype, weight1_type, weight2_type)
 
@@ -96,7 +96,7 @@ class SymmBuffer:
         self,
         group,
         num_experts: int,
-        num_max_token_per_rank: int,
+        num_max_tokens_per_rank: int,
         num_topk: int,
         hidden: int,
         intermediate_hidden: int,
@@ -119,7 +119,7 @@ class SymmBuffer:
         update_context_by_hccl_channel(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
         self.num_experts = num_experts
         self.max_recv_token_num = max_recv_token_num
-        self.num_max_token_per_rank = num_max_token_per_rank
+        self.num_max_tokens_per_rank = num_max_tokens_per_rank
         self.num_topk = num_topk
         self.hidden = hidden
         self.intermediate_hidden = intermediate_hidden
@@ -131,7 +131,7 @@ class SymmBuffer:
 
 
 def npu_get_mega_moe_ccl_buffer_size(
-    ep_world_size: int, moe_expert_num: int, num_max_token_per_rank: int,
+    ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
     dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
     combine_quant_mode: int = 0, comm_alg: str = ""
@@ -142,9 +142,9 @@ def npu_get_mega_moe_ccl_buffer_size(
                      lambda: (f"ep_world_size only support in [2, 768], but got {ep_world_size=}."))
     torch._check(((hidden >= 1024) and (hidden <= 8192)),
                     lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
-    torch._check(((num_max_token_per_rank >= 1) and (num_max_token_per_rank <= 512)),
-                    lambda: (f"num_max_token_per_rank only support in [1, 512], "
-                            f"but got {num_max_token_per_rank=}."))
+    torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
+                    lambda: (f"num_max_tokens_per_rank only support in [1, 512], "
+                            f"but got {num_max_tokens_per_rank=}."))
     torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 1024)),
                     lambda: (f"moe_expert_num only support in [1, 1024], but got {moe_expert_num=}."))
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
@@ -156,8 +156,8 @@ def npu_get_mega_moe_ccl_buffer_size(
     mb_conversion = 1024 * 1024
     dispatch_token_per_expert = ep_world_size * \
         inline_align(ep_world_size * local_moe_expert_num, 128) * 4
-    quant_token_scales = inline_align(num_max_token_per_rank * num_topk * (hidden + hidden // 32), 512)
-    combine_out = inline_align(num_max_token_per_rank * hidden * num_topk * y_out_dtype_size, 512)
+    quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
+    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, 512)
     ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size
@@ -166,7 +166,7 @@ def npu_get_mega_moe_ccl_buffer_size(
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,
-    num_max_token_per_rank: int,
+    num_max_tokens_per_rank: int,
     num_topk: int,
     hidden: int,
     intermediate_hidden: int,
@@ -182,7 +182,7 @@ def get_symm_buffer_for_mega_moe(
     return SymmBuffer(
         group,
         num_experts,
-        num_max_token_per_rank,
+        num_max_tokens_per_rank,
         num_topk,
         hidden,
         intermediate_hidden,
@@ -205,11 +205,10 @@ def mega_moe(
     *,
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
-    l1_bias_sf: Optional[List[torch.Tensor]] = None,
- 	l2_bias_sf: Optional[List[torch.Tensor]] = None,
+    l1_bias: Optional[List[torch.Tensor]] = None,
+ 	l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
     scales: Optional[torch.Tensor] = None,
-    
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None
 ):
@@ -226,15 +225,15 @@ def mega_moe(
         sym_buffer.ccl_buffer_size.value,
         weight_scales1=l1_weights_sf,
         weight_scales2=l2_weights_sf,
-        bias1=l1_bias_sf,
-        bias2=l2_bias_sf,
+        bias1=l1_bias,
+        bias2=l2_bias,
         x_active_mask=x_active_mask,
         scales=scales,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
-        num_max_token_per_rank=sym_buffer.num_max_token_per_rank,
+        num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation="swiglu",
         activation_clamp=3.4028234663852886e+38,
         transpose_weight1=False,

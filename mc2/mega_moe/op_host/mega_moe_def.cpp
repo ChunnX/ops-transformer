@@ -100,7 +100,7 @@ public:
     this->Attr("dispatch_quant_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("combine_quant_mode").AttrType(OPTIONAL).Int(0);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
-    this->Attr("num_max_token_per_rank").AttrType(OPTIONAL).Int(0);
+    this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
     this->Attr("activation").AttrType(OPTIONAL).String("swiglu");
     this->Attr("activation_clamp").AttrType(OPTIONAL).Float(std::numeric_limits<float>::max());
     this->Attr("activation_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));

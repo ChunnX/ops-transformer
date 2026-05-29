@@ -45,7 +45,7 @@ if _TORCHAIR_AVAILABLE:
                 moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
                 max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
                 dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
-                num_max_token_per_rank: int = 0, activation: str = "swiglu",
+                num_max_tokens_per_rank: int = 0, activation: str = "swiglu",
                 activation_clamp: float = 3.4028234663852886e+38, activation_out_dtype: int = 28,
                 transpose_weight1: bool = False, transpose_weight2: bool = False, weight1_interleave: int = 0,
                 dependencies=[], node_name=None):
@@ -75,7 +75,7 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(dispatch_quant_out_dtype, Int, 28)\n
         .ATTR(combine_quant_mode, Int, 0)\n
         .ATTR(comm_alg, String, "")\n
-        .ATTR(num_max_token_per_rank, Int, 0)\n
+        .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
         .ATTR(activation_out_dtype, Int, 28)\n
@@ -107,7 +107,7 @@ if _TORCHAIR_AVAILABLE:
             "dispatch_quant_out_dtype": attr.Int(dispatch_quant_out_dtype),
             "combine_quant_mode": attr.Int(combine_quant_mode),
             "comm_alg": attr.Str(comm_alg),
-            "num_max_token_per_rank": attr.Int(num_max_token_per_rank),
+            "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
             "activation_clamp": attr.Float(activation_clamp),
             "activation_out_dtype": attr.Int(dispatch_quant_out_dtype),
@@ -151,7 +151,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("dispatch_quant_out_dtype", attr.Int(28)) \
             .attr("combine_quant_mode", attr.Int(0)) \
             .attr("comm_alg", attr.Str("")) \
-            .attr("num_max_token_per_rank", attr.Int(0)) \
+            .attr("num_max_tokens_per_rank", attr.Int(0)) \
             .attr("activation", attr.Str("swiglu")) \
             .attr("activation_clamp", attr.Float(3.4028234663852886e+38)) \
             .attr("activation_out_dtype", attr.Int(28)) \
@@ -184,7 +184,7 @@ if _TORCHAIR_AVAILABLE:
         dispatch_quant_mode: int = 0,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
-        num_max_token_per_rank: int = 0,
+        num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e+38,
         transpose_weight1: bool = False,
@@ -216,7 +216,7 @@ if _TORCHAIR_AVAILABLE:
                        dispatch_quant_out_dtype=dispatch_quant_out_dtype,
                        combine_quant_mode=combine_quant_mode,
                        comm_alg=comm_alg,
-                       num_max_token_per_rank=num_max_token_per_rank,
+                       num_max_tokens_per_rank=num_max_tokens_per_rank,
                        activation=activation,
                        activation_clamp=activation_clamp,
                        activation_out_dtype=activation_out_dtype,
