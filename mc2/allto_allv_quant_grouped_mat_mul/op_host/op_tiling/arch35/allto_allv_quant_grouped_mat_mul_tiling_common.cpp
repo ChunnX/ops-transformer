@@ -22,6 +22,8 @@ using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 
+constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
+
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetPlatformInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start quant GetPlatformInfo.");
@@ -266,12 +268,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
     } else if (std::strcmp(commModeStr, "") == 0) {
-        if (rankDim <= 8) {
+        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %d, will use commMode: %d.", rankDim, commMode);
+        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
         return ge::GRAPH_FAILED;
