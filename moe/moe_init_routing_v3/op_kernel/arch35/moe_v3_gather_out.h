@@ -203,13 +203,8 @@ __aicore__ inline void MoeGatherOut<T>::CopyXOut(int64_t xDstOffset, int64_t row
                                                     int64_t alignedColsPerRow)
 {
     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
-    DataCopyExtParams copyParams{
-        static_cast<uint16_t>(rows),
-        static_cast<uint32_t>(cols * sizeof(T)),
-        static_cast<uint32_t>((alignedColsPerRow - cols) * sizeof(T) / 32),
-        0,
-        0
-    };
+    DataCopyExtParams copyParams{static_cast<uint16_t>(rows), static_cast<uint32_t>(cols * sizeof(T)),
+        static_cast<uint32_t>((alignedColsPerRow - cols) * sizeof(T) / BLOCK_BYTES), 0, 0};
     DataCopyPad(expandedXGm_[xDstOffset], xLocal, copyParams);
     xCopyInQueue_.FreeTensor(xLocal);
 }
