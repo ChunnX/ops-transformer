@@ -403,16 +403,14 @@ static bool checkX1InputEmptyTensor(const aclTensor *x1, const aclTensor *x2)
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMode, uint8_t &commModeEnum)
 {
-    // 获取卡数
     uint32_t rankSize = 0;
-
-
     // 获取通信引擎参数
     if (std::strncmp(commMode, "ai_cpu", 5) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_AICPU;
     } else if (std::strncmp(commMode, "ccu", 3) == 0) {
         commModeEnum = Mc2Comm::COMM_MODE_CCU;
     } else if (std::strlen(commMode) == 0) {
+        // 获取卡数 
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
     CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
