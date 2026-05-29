@@ -80,7 +80,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize";
+    const char *opName = "grouped_matmul_swiglu_quant_v2";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
@@ -112,7 +112,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize";
+    const char *opName = "grouped_matmul_swiglu_quant_v2";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),

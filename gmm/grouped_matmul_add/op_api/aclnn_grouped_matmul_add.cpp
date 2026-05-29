@@ -194,7 +194,7 @@ static aclnnStatus CheckDtype(gmm_add_advanced::GroupedMatmulAddParams params, c
 
 static aclnnStatus CheckParams(gmm_add_advanced::GroupedMatmulAddParams params, const char *opName)
 {
-    CHECK_RET(CheckNotNull(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckNotNull(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckFormat(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(params, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -242,7 +242,7 @@ aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSize(const aclTensor *x, const aclT
                                                   bool transposeWeight, int64_t groupType, uint64_t *workspaceSize,
                                                   aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulAddGetWorkspaceSize";
+    const char *opName = "grouped_matmul_add";
     gmm_add_advanced::GroupedMatmulAddParams params{x, weight, groupList, yRef, transposeX, transposeWeight, groupType};
     // Standard syntax, Check parameters.
     L2_DFX_PHASE_1(aclnnGroupedMatmulAdd, DFX_IN(x, weight, groupList, yRef, transposeX, transposeWeight, groupType),
@@ -255,7 +255,7 @@ aclnnStatus aclnnGroupedMatmulAddV2GetWorkspaceSize(const aclTensor *x, const ac
                                                     bool transposeWeight, int64_t groupType, int64_t groupListType,
                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "aclnnGroupedMatmulAddV2GetWorkspaceSize";
+    const char *opName = "grouped_matmul_add";
     gmm_add_advanced::GroupedMatmulAddParams params{x,          weight,          groupList, yRef,
                                                     transposeX, transposeWeight, groupType, groupListType};
     // Standard syntax, Check parameters.
