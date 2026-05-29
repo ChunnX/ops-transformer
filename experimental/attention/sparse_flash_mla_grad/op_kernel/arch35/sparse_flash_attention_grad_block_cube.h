@@ -566,6 +566,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
     if (runInfo.commonRunInfo.s2RealSize == 0) {
         return;
     }
+    event_t eventIDFIXToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+    event_t eventIDMToFIX = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::M_FIX));
+    SetFlag<HardEvent::FIX_M>(eventIDFIXToM);    
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
     constexpr uint32_t baseN = CUBE_BASEN;
     uint32_t nLoops = ((uint32_t)constInfo.dTotalSize + baseN - 1) / baseN; // 尾块处理
@@ -620,13 +623,15 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
             true,
             true
         };
+        WaitFlag<HardEvent::FIX_M>(eventIDFIXToM);
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
             dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
  
         if (!runInfo.isNextS1IdxNoChange) {
             qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         }
- 
+        SetFlag<HardEvent::M_FIX>(eventIDMToFIX);
+        WaitFlag<HardEvent::M_FIX>(eventIDMToFIX);
         dkL0CBuffer.Set<HardEvent::M_FIX>();
         dkL0CBuffer.Wait<HardEvent::M_FIX>();
  
@@ -644,7 +649,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
         Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.mm4ResWsAddr + n * CUBE_BASEN], dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
 
         dkL0CBuffer.Set<HardEvent::FIX_M>();
+        SetFlag<HardEvent::FIX_M>(eventIDFIXToM);
     }
+    WaitFlag<HardEvent::FIX_M>(eventIDFIXToM);
 }
  
 TEMPLATES_DEF_NO_DEFAULT
