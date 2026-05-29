@@ -91,7 +91,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - `ccl_buffer_size`：CCL 通信缓冲区大小，数据数据类型支持`int64`。
     - `num_experts`：MoE 模型的总专家数量，数据数据类型支持`int64`。
     - `max_recv_token_num`：每个Rank最大可接收Token数，默认值为0表示自动计算，数据数据类型支持`int64`。
-    - `num_max_tokens_per_rank`：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小，数据数据类型支持`int64`。
+    - `num_max_token_per_rank`：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小，数据数据类型支持`int64`。
     - `dispatch_quant_mode`：dispatch通信时量化模式，目前仅支持4（MX模式），数据数据类型支持`int64`。
     - `dispatch_quant_out_dtype`：dispatch量化后输出的数据类型，支持输入23（torch.float8_e5m2）、24（torch.float8_e4m3fn），数据数据类型支持`int64`。
     - `combine_quant_mode`：暂不支持该参数，使用默认值即可。
@@ -148,13 +148,13 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 
 ## get\_symm\_buffer\_for\_mega\_moe接口说明
 ```
-get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
+get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_token_per_rank: int, num_topk: int, hidden: int, intermediate_hidden: int, max_recv_token_num: int = 0, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> SymmBuffer:
 ```
 ## 参数说明
 
 - **group**(`String`)：必选参数，EP通信域名称（专家并行通信域）。
 - **num_experts**(`int`)：必选参数，MoE 模型的总专家数量。
-- **num_max_tokens_per_rank**(`int`)：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小。
+- **num_max_token_per_rank**(`int`)：每张卡上的token数量，当每个rank的BS不同时，最大的BS大小。
 - **num_topk**(`int`)：必选参数，表示每个token发送的专家数。预留参数，暂不支持。
 - **hidden**(`int`)：必选参数，表示每个token大小。预留参数，暂不支持。
 - **intermediate_hidden**(`int`)：必选参数，表示中间层投影维度。预留参数，暂不支持。
@@ -288,7 +288,7 @@ get_symm_buffer_for_mega_moe(group, num_experts: int, num_max_tokens_per_rank: i
         # 构造distribute_buffer
         distribute_buffer = get_symm_buffer_for_mega_moe(
             ep_group, num_experts=num_experts,
-            num_max_tokens_per_rank=0, num_topk=topK,
+            num_max_token_per_rank=0, num_topk=topK,
             hidden=H, intermediate_hidden=0,
             max_recv_token_num=max_recv_token_num,
             dispatch_quant_mode=4, dispatch_quant_out_dtype=23
