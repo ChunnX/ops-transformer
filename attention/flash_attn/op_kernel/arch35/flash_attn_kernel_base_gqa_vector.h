@@ -66,7 +66,6 @@ private:
             RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE] = {};
 
             vectorData->createdTaskCount = 0;
-            vectorData->executedTaskCount = 0;
             vectorData->mloop = 0;
             vectorData->accGS1Loops = 0;
             vectorData->headS2Split = false;
@@ -82,14 +81,16 @@ private:
                 vectorData->GetFAMetaDataIndex(vectorData->constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
 
             bool shouldDispatchTask = true;
-            bool shouldExecuteTask = false;
-            while (shouldDispatchTask || shouldExecuteTask) {
+            uint32_t executedTaskCount = 0;
+            uint32_t validTaskCount = 0;
+            while (shouldDispatchTask || validTaskCount) {
                 shouldDispatchTask = ShouldDispatchTaskVector(bN2Cur, gS1Cur, s2Cur);
                 if (shouldDispatchTask) {
                     TASK_DEAL_MODE taskDealMode = GetTaskDealModeVector(bN2Cur, gS1Cur, s2Cur);
                     if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                         CreateTaskVector(vectorData->createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfoVec);
                         vectorData->createdTaskCount++;
+                        validTaskCount++;
                         UpdateAxisInfoVector(taskDealMode, bN2Cur, gS1Cur, s2Cur);
                     } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
                         vectorData->vecFaBlock.DealZeroActSeqLen(bN2Cur);
@@ -100,10 +101,12 @@ private:
                         continue;
                     }
                 }
-                shouldExecuteTask = ShouldExecuteTaskVector(taskRunInfoVec);
-                if (shouldExecuteTask) {
-                    ExecuteTaskVector(vectorData->executedTaskCount, taskRunInfoVec);
-                    vectorData->executedTaskCount++;
+                if (validTaskCount) {
+                    ExecuteTaskVector(executedTaskCount, taskRunInfoVec);
+                    executedTaskCount++;
+                    if (executedTaskCount > VectorData::PRELOAD_N) {
+                        validTaskCount--;
+                    }
                 }
             }
         }
@@ -113,18 +116,6 @@ private:
     {
         if ASCEND_IS_AIV {
             return ((bN2Cur != vectorData->bN2End_) || (gS1Cur != vectorData->gS1OEnd_) || (s2Cur != vectorData->s2OEnd_));
-        }
-        return false;
-    }
-
-    __aicore__ inline bool ShouldExecuteTaskVector(RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
-    {
-        if ASCEND_IS_AIV {
-            for (uint32_t i = 0; i < VectorData::PRELOAD_TASK_CACHE_SIZE; i++) {
-                if (taskRunInfoVec[i].isValid) {
-                    return true;
-                }
-            }
         }
         return false;
     }
@@ -288,8 +279,8 @@ private:
     __aicore__ inline void ExecuteTaskVector(uint64_t loop, RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIV {
-            RunInfoXVec &runInfo0 = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
-            RunInfoXVec &runInfoNegN = taskRunInfoVec[(loop - VectorData::PRELOAD_N) % VectorData::PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXVec &runInfo0 = taskRunInfoVec[loop & VectorData::PRELOAD_TASK_CACHE_MASK];
+            RunInfoXVec &runInfoNegN = taskRunInfoVec[(loop - VectorData::PRELOAD_N) & VectorData::PRELOAD_TASK_CACHE_MASK];
             if (runInfo0.isValid) {
                 ComputeVec1Vector(runInfo0);
             }
@@ -326,7 +317,7 @@ private:
                                             RunInfoXVec taskRunInfoVec[VectorData::PRELOAD_TASK_CACHE_SIZE])
     {
         if ASCEND_IS_AIV {
-            RunInfoXVec &runInfo = taskRunInfoVec[loop % VectorData::PRELOAD_TASK_CACHE_SIZE];
+            RunInfoXVec &runInfo = taskRunInfoVec[loop & VectorData::PRELOAD_TASK_CACHE_MASK];
             CalcParamsVector(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
             runInfo.isValid = true;
         }

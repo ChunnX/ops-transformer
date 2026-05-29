@@ -87,7 +87,8 @@ public:
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
 
     static constexpr uint32_t PRELOAD_N = 2;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
 
@@ -171,7 +172,8 @@ public:
     static constexpr uint32_t s2BaseSize = VecFaBlockType::s2BaseSize;
 
     static constexpr uint32_t PRELOAD_N = 2;
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
+    static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
 
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
