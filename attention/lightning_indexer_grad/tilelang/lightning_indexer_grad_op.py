@@ -229,6 +229,8 @@ class LightningIndexerGrad:
                     
                     # ========== 步骤2: Cube1 - reluIn = Q @ K^T ==========
                     relu_in = self.kernel_cube1(query_group, key_gather_npu)
+                    torch.npu.synchronize()
+                    print(f"  [b={b},s1={s1}] Cube1 OK, relu_in shape={relu_in.shape}")
                     
                     # ========== 步骤3: Cube2 - reluGradIn = weights ⊗ dy ==========
                     # 外积: (g,1) ⊗ (1,topk) -> (g, topk)
@@ -251,12 +253,16 @@ class LightningIndexerGrad:
                     
                     # ========== 步骤6: Cube3 - dQuery = reluGrad_out @ K_gather ==========
                     d_query_group = self.kernel_cube3(relu_grad_out, key_gather_npu)
+                    torch.npu.synchronize()
+                    print(f"  [b={b},s1={s1}] Cube3 OK, d_query_group shape={d_query_group.shape}")
                     
                     d_query[b, s1, start_n1:end_n1, :] = d_query_group
                     
                     # ========== 步骤7: Cube4 - scatter_add = reluGrad_out^T @ Query ==========
                     relu_grad_out_T = relu_grad_out.transpose(0, 1).contiguous()
                     scatter_add = self.kernel_cube4(relu_grad_out_T, query_group)
+                    torch.npu.synchronize()
+                    print(f"  [b={b},s1={s1}] Cube4 OK, scatter_add shape={scatter_add.shape}")
                     
                     # ========== 步骤8: Vec3 - ScatterAdd (CPU辅助) ==========
                     scatter_add_cpu = scatter_add.cpu().numpy()
