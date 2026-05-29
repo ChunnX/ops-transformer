@@ -74,12 +74,14 @@ private:
     uint32_t q_group_ = 0;
     uint32_t kv_head_num_ = 0;
     uint32_t head_dim_ = 0;
+    uint32_t blockShapeX_ = 0;
+    uint32_t blockShapeY_ = 0;
 
 protected:
     bool IsCapable() override
     {
         if (context_->GetDeterministic() == 1) {
-            OP_LOGE(context_, "BlockSparseAttentionGrad not support Deterministic.");
+            OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad not support Deterministic.");
             return false;
         }
 
@@ -90,6 +92,12 @@ protected:
 
         if (head_dim_ != 128) {
             OP_LOGE(context_->GetNodeName(), "BlockSparseAttentionGrad only support head_dim 128.");
+            return false;
+        }
+
+        if (blockShapeX_ % 16 != 0 || blockShapeY_ % 16 != 0) {
+            OP_LOGE(context_->GetNodeName(),
+                    "BlockSparseAttentionGrad only support blockShapeX_ and blockShapeY_ be multiple of 16.");
             return false;
         }
 
@@ -108,7 +116,16 @@ protected:
         const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
         const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
-        layout_ = qInputLayout;
+        auto blockShapeOptional = context->GetInputTensor(8);
+        if (blockShapeOptional == nullptr) {
+            OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
+            return ge::GRAPH_FAILED;
+        }
+        blockShapeList = blockShapeOptional->GetData<int64_t>();
+        if (blockShapeList == nullptr) {
+            OP_LOGE(context->GetNodeName(), "Block shape tensor is null");
+            return ge::GRAPH_FAILED;
+        }
 
         if (qInputDesc == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Query inputDesc is null");
@@ -220,6 +237,9 @@ protected:
         q_group_ = q_group;
         kv_head_num_ = k_head_num;
         head_dim_ = q_head_dim;
+        layout_ = qInputLayout;
+        blockShapeX_ = blockShapeList[0];
+        blockShapeY_ = blockShapeList[1];
 
 
         return InputCheck({q_batch_num, q_head_num, q_seq_len, q_head_dim},
@@ -236,10 +256,13 @@ protected:
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
-        tilingData_.set_cubeCoreNum(cubeCoreNum);
-        tilingData_.set_baseM(128);
-        tilingData_.set_baseN(128);
 
+        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
+        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+
+        tilingData_.set_cubeCoreNum(cubeCoreNum);
+        tilingData_.set_baseM(baseM);
+        tilingData_.set_baseN(baseN);
         context_->SetBlockDim(cubeCoreNum);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
@@ -279,6 +302,7 @@ protected:
             OP_LOGE(context_->GetNodeName(), "Invaild Input Layout: InputLayout must be BSDN or BNSD or TND.");
             return ge::GRAPH_FAILED;
         }
+
         tilingData_.set_dqSize(dq_size);
         tilingData_.set_dkSize(dk_size);
         tilingData_.set_sftgWorkspaceOffset(usr_workspace_offset);
