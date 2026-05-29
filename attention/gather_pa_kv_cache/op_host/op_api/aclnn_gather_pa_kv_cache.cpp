@@ -37,7 +37,14 @@ extern "C" {
 
 namespace {
 
-static const std::initializer_list<op::DataType> KEY_VALUE_DTYPE_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_910B = {
+    DataType::DT_FLOAT16, DataType::DT_FLOAT, DataType::DT_BF16,
+    DataType::DT_INT8, DataType::DT_UINT8,
+    DataType::DT_INT16, DataType::DT_UINT16,
+    DataType::DT_INT32, DataType::DT_UINT32
+};
+
+static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_A5 = {
     DataType::DT_FLOAT16, DataType::DT_FLOAT, DataType::DT_BF16,
     DataType::DT_INT8, DataType::DT_UINT8,
     DataType::DT_INT16, DataType::DT_UINT16,
@@ -81,12 +88,17 @@ static aclnnStatus CheckDtypeValid(
     const aclTensor *seqOffsetOptional,
     char *cacheModeOptional)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT(keyCache, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(valueCache, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    auto& platformInfo = op::GetCurrentPlatformInfo();
+    auto socVersion = platformInfo.GetCurNpuArch();
+    bool isArch35 = (socVersion == NpuArch::DAV_3510);
+    const auto& kvDtypeList = isArch35 ? DTYPE_SUPPORT_LIST_A5 : DTYPE_SUPPORT_LIST_910B;
+
+    OP_CHECK_DTYPE_NOT_SUPPORT(keyCache, kvDtypeList, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(valueCache, kvDtypeList, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(blockTables, INDEX_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(seqLens, INDEX_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(keyRef, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(valueRef, KEY_VALUE_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(keyRef, kvDtypeList, return ACLNN_ERR_PARAM_INVALID);
+    OP_CHECK_DTYPE_NOT_SUPPORT(valueRef, kvDtypeList, return ACLNN_ERR_PARAM_INVALID);
 
     auto keyCacheDtype = keyCache->GetDataType();
     auto keyRefDtype = keyRef->GetDataType();
