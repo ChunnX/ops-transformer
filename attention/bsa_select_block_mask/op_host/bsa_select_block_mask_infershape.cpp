@@ -42,41 +42,29 @@ ge::graphStatus InferShapeBSASelectBlockMask(gert::InferShapeContext *context)
     auto qLayoutPtr = attrs->GetAttrPointer<char>(idx++);
     auto kvLayoutPtr = attrs->GetAttrPointer<char>(idx++);
 
-    auto blockShapeTensor = context->GetOptionalInputShape(blockShapeEnum);
-    if (blockShapeTensor != nullptr && blockShapeTensor->GetStorageShape().GetDimNum() != 0) {
-        const int64_t *blockShapeData = blockShapeTensor->GetData<int64_t>();
-        if (blockShapeData != nullptr) {
-            int64_t blockShapeX = blockShapeData[0];
-            int64_t blockShapeY = blockShapeData[1];
+    int64_t sqLen = 0;
+    int64_t skvLen = 0;
+    int64_t batchSize = 0;
+    int64_t numHeads = 0;
 
-            int64_t sqLen = 0;
-            int64_t skvLen = 0;
-            int64_t batchSize = 0;
-            int64_t numHeads = 0;
-
-            size_t qDimNum = queryShape->GetDimNum();
-            if (qLayoutPtr != nullptr && qLayoutPtr[0] == 'B' && qDimNum == 4) {
-                batchSize = queryShape->GetDim(0);
-                numHeads = queryShape->GetDim(1);
-                sqLen = queryShape->GetDim(2);
-                skvLen = keyShape->GetDim(2);
-            } else if (qDimNum == 3) {
-                numHeads = queryShape->GetDim(1);
-                sqLen = queryShape->GetDim(0);
-                skvLen = keyShape->GetDim(0);
-                batchSize = 1;
-            }
-
-            int64_t xBlocks = (sqLen + blockShapeX - 1) / blockShapeX;
-            int64_t yBlocks = (skvLen + blockShapeY - 1) / blockShapeY;
-
-            maskShape->SetDimNum(4);
-            maskShape->SetDim(0, batchSize);
-            maskShape->SetDim(1, numHeads);
-            maskShape->SetDim(2, xBlocks);
-            maskShape->SetDim(3, yBlocks);
-        }
+    size_t qDimNum = queryShape->GetDimNum();
+    if (qLayoutPtr != nullptr && qLayoutPtr[0] == 'B' && qDimNum == 4) {
+        batchSize = queryShape->GetDim(0);
+        numHeads = queryShape->GetDim(1);
+        sqLen = queryShape->GetDim(2);
+        skvLen = keyShape->GetDim(2);
+    } else if (qDimNum == 3) {
+        numHeads = queryShape->GetDim(1);
+        sqLen = queryShape->GetDim(0);
+        skvLen = keyShape->GetDim(0);
+        batchSize = 1;
     }
+
+    maskShape->SetDimNum(4);
+    maskShape->SetDim(0, batchSize);
+    maskShape->SetDim(1, numHeads);
+    maskShape->SetDim(2, sqLen);
+    maskShape->SetDim(3, skvLen);
 
     OP_LOGD(context->GetNodeName(), "End to do InferShapeBSASelectBlockMask");
     return GRAPH_SUCCESS;

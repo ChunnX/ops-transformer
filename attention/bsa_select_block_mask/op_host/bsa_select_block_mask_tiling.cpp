@@ -96,7 +96,7 @@ bool BSASelectBlockMaskTilingBase::AnalyzeDtype()
 
     OP_CHECK_IF(queryDtype != keyDtype,
         OP_LOGE(opName, "query and key dtype must be same."), return false);
-    OP_CHECK_IF(queryDtype != ge::DT_FLOAT16 && queryDtype != ge::DT_BFLOAT16,
+    OP_CHECK_IF(queryDtype != ge::DT_FLOAT16 && queryDtype != ge::DT_BF16,
         OP_LOGE(opName, "query dtype must be FP16 or BF16."), return false);
 
     return true;
@@ -193,13 +193,13 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     uint32_t coreNum = aicNum;
     
     // xBlocks 分核（用于 Matmul/Softmax 阶段）
-    uint32_t activeCoreNum = BSAMin(xBlocks, coreNum);
+    uint32_t activeCoreNum = std::min(xBlocks, coreNum);
     uint32_t baseRows = xBlocks / activeCoreNum;
     uint32_t extraCores = xBlocks % activeCoreNum;
     uint32_t rowsPerCore = baseRows + (extraCores > 0 ? 1 : 0);
     
     // yBlocks 分核（用于 Key 池化阶段）
-    uint32_t activeYCoreNum = BSAMin(yBlocks, coreNum);
+    uint32_t activeYCoreNum = std::min(yBlocks, coreNum);
     uint32_t baseYRows = yBlocks / activeYCoreNum;
     uint32_t extraYCores = yBlocks % activeYCoreNum;
     uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
@@ -217,7 +217,7 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * sizeof(float);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * sizeof(float);
-    uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(half);
+    uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint16_t);
     uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
     uint64_t topkWorkspaceSize = static_cast<uint64_t>(RADIX_NUM_BINS * aicNum + aicNum + aicNum) * sizeof(int32_t);
     uint64_t maskSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint8_t);
