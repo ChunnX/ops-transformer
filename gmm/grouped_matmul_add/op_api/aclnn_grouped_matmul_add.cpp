@@ -29,7 +29,7 @@
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
 #include "log/log.h"
-#include "gmm/common/op_host/op_tiling/log_format_util.h"
+#include "gmm/common/op_host/log_format_util.h"
 
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "grouped_matmul_add_util.h"

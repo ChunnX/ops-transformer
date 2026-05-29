@@ -10,7 +10,7 @@
 
 #include "grouped_matmul_no_quant_950_checker.h"
 #include "log/log.h"
-#include "gmm/common/op_host/op_tiling/log_format_util.h"
+#include "gmm/common/op_host/log_format_util.h"
 
 using namespace gmm;
 

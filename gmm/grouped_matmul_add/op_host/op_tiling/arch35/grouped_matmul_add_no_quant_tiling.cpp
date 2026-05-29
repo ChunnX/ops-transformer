@@ -13,7 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_add_no_quant_tiling.h"
-#include "gmm/common/op_host/op_tiling/log_format_util.h"
+#include "gmm/common/op_host/log_format_util.h"
 
 namespace optiling {
 
