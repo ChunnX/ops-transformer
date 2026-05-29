@@ -980,9 +980,6 @@ MlaPrologV3SplitM<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int
         weightUkOffset +=
             static_cast<int64_t>(baseParams_->dimHeadSizeQc) * static_cast<int64_t>(baseParams_->headSizeCkv);
         qnResOffset += static_cast<int64_t>(baseParams_->headSizeCkv);
-        // if constexpr (needQnDynamicQuant) {
-        //     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QN_SPLIT_N);
-        // }
     }
     if constexpr (needQnDynamicQuant) {
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QN_SPLIT_N);
@@ -1567,7 +1564,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
     uint32_t colOffsetRope = 0;
     // cube一次处理row*colCube，对应的两个vec一次处理row*colQc，两vec之间切row
     // 等cube生产足够数据了以后，vec开始消费
-    // CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
     uint32_t qcCount = 0;
     uint32_t splitCount = 0;
     uint32_t totalLoops = CeilDivT(mmQcQrParam_.n, mmQcQrParam_.baseN);
@@ -1691,7 +1687,6 @@ MlaPrologV3SplitM<MLAPT>::DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, in
     CrossCoreWaitFlag(FINISH_MM_QN_SPLIT_N);
     // per-head循环
     for (int64_t loopIdx = 0; loopIdx < mmQnLoops; loopIdx++) {
-        // CrossCoreWaitFlag(FINISH_MM_QN_SPLIT_N);
         DynamicQuantQnWithMulQr<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
             dequantScaleQNopeGm_[scaleQueryNopeOffset], queryOutGm_[dynamicQuantQueryResOffset],
             qrOutGm_[qrPostProcessResOffset], mmQnResGm_[dynamicQuantQueryOffset], shareTmpUb, curStepBatchSizeVec,
