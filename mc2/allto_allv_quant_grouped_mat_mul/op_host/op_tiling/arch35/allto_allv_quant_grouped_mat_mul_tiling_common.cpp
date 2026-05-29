@@ -90,7 +90,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
-    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, expertNum_));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -158,9 +158,13 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    tilingData->taskTilingInfo.mainLoopExpertNum = e_;
-    tilingData->taskTilingInfo.tailLoopExpertNum = 0;
-    tilingData->taskTilingInfo.totalLoopCount = e_;
+    uint32_t expertNum = 1;
+    tilingData->taskTilingInfo.expertNum = expertNum;
+    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
+    tilingData->taskTilingInfo.tailLoopExpertNum =
+        (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
+    tilingData->taskTilingInfo.totalLoopCount =
+        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum)));
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
@@ -230,7 +234,8 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
         << ", N2=" << taskTilingInfo.N2;
     ss << ", epWorldSize=" << taskTilingInfo.epWorldSize
         << ", e=" << taskTilingInfo.e;
-    ss << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum
+    ss << ", expertNum=" << taskTilingInfo.expertNum
+        << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum
         << ", tailLoopExpertNum=" << taskTilingInfo.tailLoopExpertNum
         << ", totalLoopCount=" << taskTilingInfo.totalLoopCount;
     // SendCounts 信息
