@@ -18,6 +18,7 @@
 #include <cstring>
 namespace fallback
 {
+constexpr size_t K_COMM_MODE = 6;
 // 输入参数和属性的校验
 static ge::graphStatus CheckInputsAndAttrs(
     const gert::Tensor* gmmX,
@@ -123,7 +124,7 @@ static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*
         GetBool(static_cast<size_t>(ops::AlltoAllvGroupedMatMulAttrIdx::K_TRANS_MM_WEIGHT));
     const bool* permuteOutFlag = attrs->
         GetBool(static_cast<size_t>(ops::AlltoAllvGroupedMatMulAttrIdx::K_PERMUTE_OUT_FLAG));
-    const char* commMode = attrs->GetStr(static_cast<size_t>(ops::AlltoAllvGroupedMatMulAttrIdx::K_COMM_MODE));
+    const char* commMode = attrs->GetStr(static_cast<size_t>(K_COMM_MODE));
 
     // 输入参数和属性的校验
     ge::graphStatus ret = CheckInputsAndAttrs(gmmX, gmmWeight, group, epWorldSize, transGmmWeight, commMode);
