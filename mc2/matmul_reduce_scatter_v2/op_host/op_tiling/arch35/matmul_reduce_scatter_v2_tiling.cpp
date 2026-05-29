@@ -83,12 +83,12 @@ void MatmulReduceScatterV2Tiling::PrintAllTilingData() const
 ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
-    OP_TILING_CHECK(x1ScaleShape != nullptr, CUBE_INNER_ERR_REPORT(opName_,
-                    "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
+                    "x1Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
-    OP_TILING_CHECK(x2ScaleShape != nullptr, CUBE_INNER_ERR_REPORT(opName_,
-                    "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
+                    "x2Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -191,7 +191,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr),
-                    CUBE_INNER_ERR_REPORT(opName_, "rawTilingDataPtr is nullptr"),
+                    OP_LOGE(opName_, "rawTilingDataPtr is nullptr."),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
         sizeof(MatmulReduceScatterV2TilingData), rawTilingDataPtr->GetCapacity());

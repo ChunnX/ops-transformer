@@ -141,7 +141,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const int64_t *groupSizePtr = attrs->GetAttrPointer<int64_t>(ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX);
-    OP_TILING_CHECK(groupSizePtr == nullptr, CUBE_INNER_ERR_REPORT(opName, "GroupSizePtr shouldn't be nullptr"),
+    OP_TILING_CHECK(groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "groupSize"),
                     return ge::GRAPH_FAILED);
     uint64_t groupSize = static_cast<uint64_t>(*groupSizePtr);
     OP_LOGI(opName, "groupSize=%lu", groupSize);
@@ -157,14 +157,14 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
     uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
     shapeInfo.isMxfp = true;
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-                    CUBE_INNER_ERR_REPORT(opName, "Failed to execute inferGroupSize in mx scene."),
+                    OP_LOGE(opName, "Failed to execute inferGroupSize in mx scene."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) ||
                         (groupSizeK != MX_SCALE_BLOCK_K),
-                    CUBE_INNER_ERR_REPORT(opName,
-                                          "[groupSizeM, groupSizeN, groupSizeK] should be [1, 1, 32] in mx scene,"
-                                          " but actual is [groupSizeM=%lu, groupSizeN=%lu, groupSizeK=%lu]",
-                                          groupSizeM, groupSizeN, groupSizeK),
+                    OP_LOGE_WITH_INVALID_ATTR(opName, "groupSize",
+                        (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
+                         std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]").c_str(),
+                        "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
