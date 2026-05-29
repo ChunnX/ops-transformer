@@ -286,6 +286,16 @@
   </tr>
   <tr>
     <td>ffn</td>
+    <td><a href="../../ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>√</td>
+    <td>AI Core</td>
+    <td>完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
     <td><a href="../../ffn/swin_attention_ffn/README.md">swin_attention_ffn</a></td>
     <td>√</td>
     <td>√</td>
