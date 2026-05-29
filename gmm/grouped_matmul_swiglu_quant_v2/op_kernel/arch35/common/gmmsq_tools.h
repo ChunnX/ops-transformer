@@ -9,11 +9,11 @@
  */
 
 /* !
- * \file tool.h
+ * \file gmmsq_tools.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
+#ifndef GROUPED_MATMUL_WEIGHT_QUANT_GMMSQ_TOOLS_H
+#define GROUPED_MATMUL_WEIGHT_QUANT_GMMSQ_TOOLS_H
 
 #include "kernel_operator.h"
 

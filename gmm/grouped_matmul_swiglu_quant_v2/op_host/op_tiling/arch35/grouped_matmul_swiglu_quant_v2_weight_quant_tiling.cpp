@@ -102,7 +102,7 @@ bool CheckDynamicInputShapeEmpty(const gert::TilingContext& context, uint32_t in
     }
 
     const auto &storageShape = shapePtr->GetStorageShape();
-    OP_CHECK_IF(storageShape.GetShapeSize() != 0,
+    OP_CHECK_IF(storageShape.GetShapeSize() != 0 && storageShape.GetShapeSize() != 1,
         OP_LOGE(&context, "Dynamic input shape of %s must be empty.", inputName),
         return false);
     return true;

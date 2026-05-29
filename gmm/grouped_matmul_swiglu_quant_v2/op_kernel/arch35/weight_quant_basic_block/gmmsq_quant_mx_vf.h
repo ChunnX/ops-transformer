@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file gmm_swiglu_quant_mx_vf.h
+ * \file gmmsq_quant_mx_vf.h
  * \brief SIMD-VF functions for GMM SwiGLU + MX Quantization.
  */
 
-#ifndef GMM_SWIGLU_QUANT_MX_VF_H
-#define GMM_SWIGLU_QUANT_MX_VF_H
+#ifndef GMMSQ_QUANT_MX_VF_H
+#define GMMSQ_QUANT_MX_VF_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -23,7 +23,7 @@
 #include "kernel_operator_intf.h"
 #endif
 
-#include "basic_block_vf_mx.h"
+#include "../common/basic_block_vf_mx.h"
 
 namespace GMMSQWeightQuant {
 
@@ -395,4 +395,4 @@ __simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, 
 
 } // namespace GMMSQWeightQuantWeightQuant
 
-#endif // GMM_SWIGLU_QUANT_MX_VF_H
+#endif // GMMSQ_QUANT_MX_VF_H
