@@ -106,12 +106,12 @@ public:
             uint32_t addrLOffset = vectorsubBlockID == 0 ? splitInfo->lseTaskOffset[process/2] : splitInfo->lseTaskOffset[process/2] + sum_former;
             uint32_t addrOOffset = vectorsubBlockID == 0 ? splitInfo->oTaskOffset[process/2] : splitInfo->oTaskOffset[process/2] + sum_former * headSizeV;
 
-            uint64_t prevQSeqlenSum64 = 0;
+            uint64_t prevQSeqlenSum = 0;
             if (inputLayoutTND) {
-                prevQSeqlenSum64 = (batchIdx == 0) ? 0 :
+                prevQSeqlenSum = (batchIdx == 0) ? 0 :
                     static_cast<uint64_t>(gActualQseqlen.GetValue(batchIdx - 1));
             }
-            uint64_t baseGmOffset = prevQSeqlenSum64 * qHeads * headSizeV +
+            uint64_t baseGmOffset = prevQSeqlenSum * qHeads * headSizeV +
                 static_cast<uint64_t>(qStartIndx) * qHeads * headSizeV +
                 static_cast<uint64_t>(headStartIndx) * headSizeV;
             uint64_t gmOScalar = 0;
