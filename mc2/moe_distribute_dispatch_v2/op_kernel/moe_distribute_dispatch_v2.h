@@ -1513,28 +1513,26 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
         return;	 
     }	 
     // 等待 LocalWindowCopy 的 DataCopyPad(..., outCountLocal=gatherMaskOutBuf_, ...)
-    // 读取完毕，再写入gatherMaskOutBuf_，避免覆盖
-    SyncFunc<AscendC::HardEvent::MTE3_V>();
+    // 读取完毕，再通过MTE2写入gatherMaskOutBuf_，避免覆盖
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);
-    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,
-                                    static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};
-    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
-    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
+    uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
+    LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
+    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
+    uint32_t countCopyOffset = 0;
+    while (countCopyOffset < localStatusSectionNum) {
+        uint32_t countCopyBlockCount = MIN(localStatusSectionNum - countCopyOffset,
+            MAX_COMPACT_COUNT_COPY_BLOCK_COUNT);
+        DataCopyExtParams countCopyParams{static_cast<uint16_t>(countCopyBlockCount), sizeof(float),
+            STATE_OFFSET - sizeof(float), 0U, 0U};
+        uint32_t srcOffset = countCopyOffset * FLAG_OFFSET + STATUS_BLOCK_COUNT_FIELD_OFFSET;
+        DataCopyPad<float, PaddingMode::Compact>(expertCountTensor[countCopyOffset],
+            windowInstatusFp32Tensor_[srcOffset], countCopyParams, countCopyPadParams);
+        countCopyOffset += countCopyBlockCount;
+    }
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
-    LocalTensor<uint32_t> gatherTmpTensor = scalarBuf_.GetWithOffset<uint32_t>(UB_ALIGN / sizeof(uint32_t), 0);
-    // 2 = 0b00000010，只选中8个元素中的下标1(count)，不选下标0(flag)
-    gatherTmpTensor.SetValue(0, STATUS_BLOCK_COUNT_SEL_MASK);
-    // mask覆盖flag/count两个字段，配合gatherTmpTensor使GatherMask只选中count
-    uint32_t mask = STATUS_BLOCK_FIELD_NUM;
-    uint64_t rsvdCnt = 0;
-    SyncFunc<AscendC::HardEvent::S_V>();
-    GatherMask(expertCountTensor, allStatusTensorFp32, gatherTmpTensor, true, mask,
-        {1, localStatusSectionNum, 1, 0}, rsvdCnt);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> expertTokenNumTensor = statusBuf_.Get<float>();
     uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
     ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
