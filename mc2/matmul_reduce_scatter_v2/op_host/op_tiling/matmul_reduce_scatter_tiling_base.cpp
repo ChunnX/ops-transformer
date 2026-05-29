@@ -317,8 +317,7 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
              OP_TILING_CHECK((*groupSizePtr != 0), 
-                CUBE_INNER_ERR_REPORT(opName_, "when the datatype of x1 and x2 are fp16 or bf16,"
-                    "groupSizePtr should be nullptr or 0, but got %lu.", *groupSizePtr),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "should be nullptr or 0"),
                 return false);
         }
     }

@@ -89,7 +89,7 @@ void Mc2AdaptiveSlidingWindowTiling::Reset()
         tilingData_ = DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams();
         OP_TILING_CHECK(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                                  0, context_->GetRawTilingData()->GetCapacity()) != EOK,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName, "Fail to clear tiling data"), return);
+                        OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
     }
 }
 
@@ -97,7 +97,7 @@ bool Mc2AdaptiveSlidingWindowTiling::CheckDtype() const
 {
     Mc2QuantBatchMatmulV3Checker qmmV3Checker(context_, inputParams_);
     OP_TILING_CHECK(!qmmV3Checker.CheckDtype(),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "CheckDtype fail"), return false);
+                    OP_LOGE(inputParams_.opName, "CheckDtype fail"), return false);
     return true;
 }
 
@@ -108,7 +108,7 @@ bool Mc2AdaptiveSlidingWindowTiling::CheckShape(const std::vector<gert::Shape *>
 {
     Mc2QuantBatchMatmulV3Checker qmmV3Checker(context_, inputParams_);
     OP_TILING_CHECK(!qmmV3Checker.CheckShape(mandatoryShape, biasShape, pertokenShape, dimValueOfMKN),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "CheckShape fail"), return false);
+                    OP_LOGE(inputParams_.opName, "CheckShape fail"), return false);
     return true;
 }
 
@@ -240,7 +240,7 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetWorkspaceSize()
 ge::graphStatus Mc2AdaptiveSlidingWindowTiling::PostTiling()
 {
     OP_TILING_CHECK(tilingDataSize_ % sizeof(uint64_t) != 0UL,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Tiling data size[%zu] is not aligned to 8.",
+                    OP_LOGE(inputParams_.opName, "Tiling data size[%zu] is not aligned to 8.",
                                           tilingDataSize_),
                     return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -348,10 +348,9 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
     if (isSmallBlock && !inputParams_.isPerBlock) {
         AdjustBasicBlock();
         OP_TILING_CHECK(adaptiveWin_.baseM == 0UL || adaptiveWin_.baseN == 0UL || adaptiveWin_.baseK == 0UL,
-                        CUBE_INNER_ERR_REPORT(
-                            inputParams_.opName,
-                            "BaseM, baseN and baseK should be greater than 0, but baseM: %lu, baseN: %lu, baseK: %lu,",
-                            adaptiveWin_.baseM, adaptiveWin_.baseN, adaptiveWin_.baseK),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input",
+                        std::to_string(adaptiveWin_.baseM).c_str(),
+                        "BaseM, baseN and baseK should be greater than 0."),
                         return false);
     }
     return true;

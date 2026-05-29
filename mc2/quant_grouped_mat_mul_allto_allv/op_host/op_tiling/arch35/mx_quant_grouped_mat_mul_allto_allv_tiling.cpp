@@ -389,11 +389,11 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLoca
     OP_TILING_CHECK(((groupSizeM != MX_GROUP_SIZE_M) && (groupSizeM != 0)) ||
                         ((groupSizeN != MX_GROUP_SIZE_N) && (groupSizeN != 0)) ||
                         ((groupSizeK != MX_GROUP_SIZE_K) && (groupSizeK != 0)),
-                    CUBE_INNER_ERR_REPORT(
-                        opName_,
-                        "The groupSizeM, groupSizeN should be 0 or 1, and groupSizeK should be 0 or 32 in mxfp8 scene,"
-                        " but actual is groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu.",
-                        groupSizeM, groupSizeN, groupSizeK),
+                    OP_LOGE_WITH_INVALID_ATTR(
+                        opName_, "groupSize",
+                        (std::string("groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
+                         std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK)).c_str(),
+                        "groupSizeM=0/1, groupSizeN=0/1, groupSizeK=0/32"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

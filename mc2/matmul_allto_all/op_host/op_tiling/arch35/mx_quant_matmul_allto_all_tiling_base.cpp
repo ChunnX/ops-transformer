@@ -537,15 +537,15 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckQuantGroupSize(const gert:
     };
 
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize."),
+            OP_LOGE(opName_, "Failed to execute inferGroupSize."),
             return ge::GRAPH_FAILED);
     OP_TILING_CHECK((groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) ||
                     (groupSizeK != MX_GROUP_SIZE_K),
-        CUBE_INNER_ERR_REPORT(
-            opName_,
-            "GroupSizeM, groupSizeN and groupSizeK should be [1, 1, 32] in mxfp scene,"
-            " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu].",
-            groupSizeM, groupSizeN, groupSizeK),
+        OP_LOGE_WITH_INVALID_ATTR(
+            opName_, "groupSize",
+            (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
+             std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]").c_str(),
+            "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

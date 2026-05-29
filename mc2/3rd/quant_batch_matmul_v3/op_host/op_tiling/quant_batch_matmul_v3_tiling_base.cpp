@@ -97,11 +97,11 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo()
 
     inputParams_.opName = context_->GetNodeName();
     OPS_LOG_D(inputParams_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
-    OP_TILING_CHECK(CheckContext() != ge::GRAPH_SUCCESS, CUBE_INNER_ERR_REPORT(inputParams_.opName, "Invalid context."),
+    OP_TILING_CHECK(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid context."),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeInputs(),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Fail to analyze context info."),
+                    OP_LOGE(inputParams_.opName, "Fail to analyze context info."),
                     return ge::GRAPH_FAILED);
     auto transA_str = inputParams_.transA ? "true" : "false";
     auto transB_str = inputParams_.transB ? "true" : "false";
@@ -126,7 +126,7 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::CheckContext()
     auto outputDesc = context_->GetOutputDesc(0);
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Function context_->GetAttrs() failed!"),
+                    OP_LOGE(inputParams_.opName, "Function context_->GetAttrs() failed!"),
                     return ge::GRAPH_FAILED);
     auto dtypeAttr = attrs->GetAttrPointer<int64_t>(0);
 
@@ -143,7 +143,7 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::CheckContext()
     OPS_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData()->GetData());
     OP_TILING_CHECK(
         context_->GetRawTilingData()->GetCapacity() < tilingDataSize_,
-        CUBE_INNER_ERR_REPORT(inputParams_.opName, "context tiling data capacity %zu < actual tiling data size %zu.",
+        OP_LOGE(inputParams_.opName, "context tiling data capacity %zu < actual tiling data size %zu.",
                               context_->GetRawTilingData()->GetCapacity(), tilingDataSize_),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -163,7 +163,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
             groupSizePtr = attrs->GetAttrPointer<int64_t>(idx++);
         }
         OP_TILING_CHECK(!dtypePtr,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName, "There should be at least the required dtype attr."),
+                        OP_LOGE(inputParams_.opName, "There should be at least the required dtype attr."),
                         return false);
         inputParams_.outDtype = *dtypePtr;
         inputParams_.transA = transposeX1Ptr ? *transposeX1Ptr : false;
@@ -181,10 +181,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
     if (!compileInfo_.supportL0c2Out) {
         OP_TILING_CHECK(
             trans != Mc2QuantBatchMatmulV3Trans::B_TRANS,
-            CUBE_INNER_ERR_REPORT(
-                inputParams_.opName,
-                "This platform only support output transpose_x1 false and transpose_x2 true, actual [%s, %s].",
-                inputParams_.transA ? "true" : "false", inputParams_.transB ? "true" : "false"),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", inputParams_.transA ? "true" : "false", "This platform only support output transpose_x1 false and transpose_x2 true, actual [%s, %s]."),
             return false);
     }
     return true;
@@ -205,7 +202,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeDtype()
     isUbQuant_ = inputParams_.cDtype == ge::DT_BF16 || pertokenScaleDesc != nullptr;
     SetFormat();
 
-    OP_TILING_CHECK(!CheckDtype(), CUBE_INNER_ERR_REPORT(inputParams_.opName, "CheckDtype failed!"), return false);
+    OP_TILING_CHECK(!CheckDtype(), OP_LOGE(inputParams_.opName, "CheckDtype failed!"), return false);
     return true;
 }
 
@@ -290,21 +287,15 @@ void Mc2QuantBatchMatmulV3TilingBase::DoBatchFusion(uint64_t fusedDimValue)
 bool Mc2QuantBatchMatmulV3TilingBase::CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const
 {
     OP_TILING_CHECK(x1ShapeLen < MIN_DIM_NUM_ND || x2ShapeLen < MIN_DIM_NUM_ND,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                          "input x1 deminsion and x2 deminsion should be greater than 1, \
-but x1 deminsion: %zu, x2 deminsion: %zu",
-                                          x1ShapeLen, x2ShapeLen), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "input x1 deminsion and x2 deminsion should be greater than 1, \
+but x1 deminsion: %zu, x2 deminsion: %zu"), return false);
     OP_TILING_CHECK(x1ShapeLen > MAX_DIM_NUM_ND || x2ShapeLen > MAX_DIM_NUM_ND,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                          "x1 deminsion and x2 deminsion should be less than 7, \
-but x1 deminsion: %zu, x2 deminsion: %zu",
-                                          x1ShapeLen, x2ShapeLen), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "x1 deminsion and x2 deminsion should be less than 7, \
+but x1 deminsion: %zu, x2 deminsion: %zu"), return false);
 
     if (inputParams_.aDtype == ge::DT_INT4 && !inputParams_.isPertoken) {
         OP_TILING_CHECK(x2ShapeLen != A4W4_X2_LEN,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                              "If input dtype is int4 and without pertoken scale, \
-the dimension of x2 must be 2."), return false);
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x2", std::to_string(x2ShapeLen).c_str(), "If input dtype is int4 and without pertoken scale, the dimension of x2 must be 2, but it is the given value."), return false);
     }
     return true;
 }
@@ -356,11 +347,9 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX2QuantMode(BasicQuantMode &x2QuantMode
     } else {
         auto x2QuantModeList = X2_QUANT_MODE_MAP.find(inputParams_.bDtype);
         OP_TILING_CHECK(x2QuantModeList == X2_QUANT_MODE_MAP.end(),
-            CUBE_INNER_ERR_REPORT(inputParams_.opName, "The dtype of x2 is invalid."), return false);
-        CUBE_INNER_ERR_REPORT(inputParams_.opName, "Unexpected input, for the dtype of x2: %s, \
-the shape of x2 and x2Scale(scale) not match any of quantification: %s.",
-            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
-            QuantModeMapToString(x2QuantModeList->second).c_str());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", "", "The dtype of x2 is invalid."), return false);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "Unexpected input, for the dtype of x2: %s, \
+the shape of x2 and x2Scale(scale) not match any of quantification: %s.");
         return false;
     }
     return true;
@@ -385,11 +374,9 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX1QuantMode(BasicQuantMode &x1QuantMode
     } else {
         auto x1QuantModeList = X1_QUANT_MODE_MAP.find(inputParams_.aDtype);
         OP_TILING_CHECK(x1QuantModeList == X1_QUANT_MODE_MAP.end(),
-            CUBE_INNER_ERR_REPORT(inputParams_.opName, "The dtype of x1 is invalid."), return false);
-        CUBE_INNER_ERR_REPORT(inputParams_.opName, "Unexpected input, for the dtype of x1: %s, \
-the shape of x1 and x1Scale(pertokenScale) not match any of quantification: %s.",
-            ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
-            QuantModeMapToString(x1QuantModeList->second).c_str());
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", "", "The dtype of x1 is invalid."), return false);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "Unexpected input, for the dtype of x1: %s, \
+the shape of x1 and x1Scale(pertokenScale) not match any of quantification: %s.");
         return false;
     }
     return true;
@@ -420,7 +407,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape
     bool isFp8Hif8Input = inputParams_.aDtype == ge::DT_HIFLOAT8 || isFp8Input;
     if (!SetX1QuantMode(x1QuantMode, isFp8Hif8Input, pertokenShape) ||
         !SetX2QuantMode(x2QuantMode, isFp8Hif8Input, scaleShape)) {
-        CUBE_INNER_ERR_REPORT(inputParams_.opName, "Get quantification of x1/x2 failed.");
+        OP_LOGE(inputParams_.opName, "Get quantification of x1/x2 failed.");
         return false;
     }
     inputParams_.isPerChannel = x2QuantMode == BasicQuantMode::PERCHANNEL_MODE;
@@ -432,9 +419,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape
     OP_TILING_CHECK(
         !(inputParams_.isPerChannel || inputParams_.isDoubleScale || inputParams_.isPerTensor ||
           inputParams_.isPertoken || inputParams_.isMxPerGroup || inputParams_.isPerBlock),
-        CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                              "Unexpected quantification, quantification of x1: %s, quantification of x2: %s",
-                              QuantModeToString(x1QuantMode).c_str(), QuantModeToString(x2QuantMode).c_str()),
+        OP_LOGE(inputParams_.opName, "Unexpected quantification, quantification of x1: %s, quantification of x2: %s", QuantModeToString(x1QuantMode).c_str(), QuantModeToString(x2QuantMode).c_str()),
         return false);
     return true;
 }
@@ -471,7 +456,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     inputParams_.batchB = GetBatchSize(x2Shape);
     AnalyzeBatchInfo(context_->GetInputShape(0)->GetOriginShape(), context_->GetInputShape(1)->GetOriginShape());
     OP_TILING_CHECK(!InferOutBatchDim(x1Shape, x2Shape),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Batch dimension can not be broadcasted."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", "", "Batch dimension can not be broadcasted."), return false);
     if (!SetQuantMode(scaleShape, pertokenShape)) {
         return false;
     }
@@ -479,15 +464,12 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
         return false;
     }
     OP_TILING_CHECK(!CheckOutputShapeAvailable(),
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                                          "Multiple of output shape dims should be in boundary of INT64_MAX"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "output", "", "Multiple of output shape dims should be in boundary of INT64_MAX"),
                                           return false);
     uint64_t fusedDimValue = inputParams_.mSize * inputParams_.batchA;
     int8_t resultCheckFusionBatchA = CheckFusionBatchA(x1Shape, x2Shape, biasShape->GetStorageShape(), fusedDimValue);
     OP_TILING_CHECK(resultCheckFusionBatchA == OUTPUT_INFER_FAIL,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                    "The fused M [%lu] exceed INT32_MAX [%d] in a4w4 case",
-                    fusedDimValue, INT32_MAX), return false);
+                    OP_LOGE(inputParams_.opName, "The fused M [%lu] exceed INT32_MAX [%d] in a4w4 case", fusedDimValue, INT32_MAX), return false);
     if (resultCheckFusionBatchA == OUTPUT_INFER_SUCCESS) {
         DoBatchFusion(fusedDimValue);
     }
@@ -541,16 +523,11 @@ bool Mc2QuantBatchMatmulV3TilingBase::ReCalcGroupSize(uint64_t &groupSize, uint6
             scaleName =  "scale";
         }
         OP_TILING_CHECK(scaleSize == 0ULL,
-            CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                "The %s dimension of %s is 0, invalid shape!",
-                dimensionName, scaleName.c_str()),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The %s dimension of %s is 0, invalid shape!"),
             return false);
         OP_TILING_CHECK(inputSize % scaleSize != 0ULL,
-            CUBE_INNER_ERR_REPORT(inputParams_.opName,
-                "The group_size in %s dimension is 0 and the %s dimension of %s [%lu] is not divisible \
-by the %s dimension of %s [%lu], the real group_size in %s dimension can not be inferred.",
-                dimensionName, dimensionName, inputName.c_str(), inputSize, dimensionName,
-                scaleName.c_str(), scaleSize, dimensionName),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The group_size in %s dimension is 0 and the %s dimension of %s [%lu] is not divisible \
+by the %s dimension of %s [%lu], the real group_size in %s dimension can not be inferred."),
             return false);
         groupSize = inputSize / scaleSize;
     }
@@ -690,7 +667,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetPlatformInfoForTiling()
     if (!compileInfoInit_) {
         auto mmCompileInfo =  reinterpret_cast<const Mc2QuantBatchMatmulV3CompileInfo*>(context_->GetCompileInfo());
         OP_TILING_CHECK(mmCompileInfo == nullptr,
-                        CUBE_INNER_ERR_REPORT(inputParams_.opName, "quant_batch_matmul_v3_tiling GetCompileInfo is null"),
+                        OP_LOGE(inputParams_.opName, "quant_batch_matmul_v3_tiling GetCompileInfo is null"),
                         return false);
         compileInfo_ = *mmCompileInfo;
     }
