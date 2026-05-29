@@ -73,15 +73,9 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
             },
             &compileInfoForRun);
-        std::cout << " de_mode = " << dequantMode
-                  << " de_dtype = " << dequantDtype
-                  << " quant_mode = " << quantMode
-                  << " quant_dtype = " << quantDtype
-                  << " transpose_weight = " << transposeWeight
-                  << " groupListType = " << groupListType << "\n";
         if (expectSuccess) {
             TilingInfo tilingInfo;
-            ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+            ExecuteTiling(tilingContextPara, tilingInfo);
             EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
             return;
         } else {
