@@ -101,6 +101,7 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
+    fa_base_matmul::idCounterNum = 0;
 
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
