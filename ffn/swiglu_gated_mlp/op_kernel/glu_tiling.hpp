@@ -26,6 +26,7 @@
 #include <cstdint>
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+#include "swiglu_gated_mlp_stage.h"
 
 using namespace AscendC;
 
@@ -39,11 +40,6 @@ using namespace AscendC;
 
 #define WG_MLP_EMPTY_TILING_KEY  100
 #define WG_MLP_ALIGN_UNIT        16U
-
-#define WG_MLP_STAGE_MM1         101U
-#define WG_MLP_STAGE_SWIGLU      102U
-#define WG_MLP_STAGE_MM2         103U
-#define WG_MLP_STAGE_FUSED       104U
 
 #define WG_MLP_KEY_FP16_MM1      1101
 #define WG_MLP_KEY_FP16_SWIGLU   1102

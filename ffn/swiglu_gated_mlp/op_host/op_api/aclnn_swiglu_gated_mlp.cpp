@@ -29,6 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "opdev/shape_utils.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -287,11 +288,15 @@ aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(
     const aclTensor* downExec = MaybeContiguous(downWeight, uniqueExecutor.get());
     CHECK_RET(downExec != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    // Build the fused MLP as one executor graph and copy the final matmul
-    // result into the user-provided output tensor.
     const aclTensor* nativeOut =
-        l0op::SwigluGatedMlp(xExec, gateUpExec, downExec, y, cubeMathType, uniqueExecutor.get());
+        l0op::SwigluGatedMlp(xExec, gateUpExec, downExec, cubeMathType, uniqueExecutor.get());
     CHECK_RET(nativeOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto shapedOut = uniqueExecutor->CreateView(nativeOut, y->GetViewShape(), nativeOut->GetViewOffset());
+    CHECK_RET(shapedOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    auto viewCopyResult = l0op::ViewCopy(shapedOut, y, uniqueExecutor.get());
+    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

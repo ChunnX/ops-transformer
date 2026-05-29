@@ -47,7 +47,6 @@ constexpr uint32_t MM_MAX_BASE_K = 128;
 constexpr uint32_t SWI_MAX_BASE_COLS = 2048;
 constexpr uint32_t SWI_BUFFER_NUM = 2;
 constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024UL * 1024UL;
-constexpr int64_t WG_MLP_STAGE_DTYPE_STRIDE = 1000;
 
 constexpr size_t INPUT_X = 0;
 constexpr size_t INPUT_GATE_UP_WEIGHT = 1;

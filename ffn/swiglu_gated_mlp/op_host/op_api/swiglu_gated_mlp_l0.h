@@ -26,7 +26,6 @@ const aclTensor* SwigluGatedMlp(
     const aclTensor* x,
     const aclTensor* gateUpWeight,
     const aclTensor* downWeight,
-    const aclTensor* y,
     int64_t cubeMathType,
     aclOpExecutor* executor);
 

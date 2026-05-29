@@ -27,6 +27,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
+#include "../../op_kernel/swiglu_gated_mlp_stage.h"
 
 using namespace op;
 
@@ -43,12 +44,6 @@ namespace l0op {
 OP_TYPE_REGISTER(SwigluGatedMlp);
 
 namespace {
-constexpr int64_t WG_MLP_STAGE_MM1 = 101;
-constexpr int64_t WG_MLP_STAGE_SWIGLU = 102;
-constexpr int64_t WG_MLP_STAGE_MM2 = 103;
-constexpr int64_t WG_MLP_STAGE_FUSED = 104;
-constexpr int64_t WG_MLP_STAGE_DTYPE_STRIDE = 1000;
-
 op::Shape Make2DShape(int64_t dim0, int64_t dim1)
 {
     op::Shape shape;
@@ -128,7 +123,6 @@ const aclTensor* SwigluGatedMlp(
     const aclTensor* x,
     const aclTensor* gateUpWeight,
     const aclTensor* downWeight,
-    const aclTensor* y,
     int64_t cubeMathType,
     aclOpExecutor* executor)
 {
@@ -140,10 +134,9 @@ const aclTensor* SwigluGatedMlp(
     const int64_t gateUpCols = gateUpShape.GetDim(1);
     const int64_t intermediate = gateUpCols / 2;
 
-    auto out = const_cast<aclTensor*>(y);
     auto x2d = executor->CreateView(x, Make2DShape(rows, hiddenSize), x->GetViewOffset());
     auto hidden = executor->AllocTensor(Make2DShape(rows, intermediate), x->GetDataType(), Format::FORMAT_ND);
-    if (x2d == nullptr || hidden == nullptr || out == nullptr) {
+    if (x2d == nullptr || hidden == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "alloc SwigluGatedMlp internal tensors failed.");
         return nullptr;
     }
@@ -165,19 +158,7 @@ const aclTensor* SwigluGatedMlp(
         return nullptr;
     }
 
-    auto shapedOut = executor->CreateView(nativeOut, y->GetViewShape(), nativeOut->GetViewOffset());
-    if (shapedOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp output view reshape failed.");
-        return nullptr;
-    }
-
-    auto copiedOut = l0op::ViewCopy(shapedOut, out, executor);
-    if (copiedOut == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp final ViewCopy failed.");
-        return nullptr;
-    }
-
-    return out;
+    return nativeOut;
 }
 
 }  // namespace l0op

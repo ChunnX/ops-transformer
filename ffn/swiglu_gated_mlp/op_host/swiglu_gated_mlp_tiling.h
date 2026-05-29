@@ -25,6 +25,7 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
+#include "../op_kernel/swiglu_gated_mlp_stage.h"
 
 namespace optiling {
 
@@ -39,10 +40,11 @@ constexpr uint64_t WG_MLP_DYNAMIC_FLOAT16 = 1;
 constexpr uint64_t WG_MLP_DYNAMIC_FLOAT32 = 2;
 constexpr uint64_t WG_MLP_DYNAMIC_BF16 = 3;
 
-constexpr int64_t WG_MLP_STAGE_MM1 = 101;
-constexpr int64_t WG_MLP_STAGE_SWIGLU = 102;
-constexpr int64_t WG_MLP_STAGE_MM2 = 103;
-constexpr int64_t WG_MLP_STAGE_FUSED = 104;
+using ::WG_MLP_STAGE_MM1;
+using ::WG_MLP_STAGE_SWIGLU;
+using ::WG_MLP_STAGE_MM2;
+using ::WG_MLP_STAGE_FUSED;
+using ::WG_MLP_STAGE_DTYPE_STRIDE;
 
 constexpr uint64_t WG_MLP_KEY_FP16_MM1 = 1101;
 constexpr uint64_t WG_MLP_KEY_FP16_SWIGLU = 1102;

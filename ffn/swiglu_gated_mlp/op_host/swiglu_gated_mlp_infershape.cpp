@@ -22,6 +22,7 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
+#include "../op_kernel/swiglu_gated_mlp_stage.h"
 
 using namespace ge;
 
@@ -35,11 +36,6 @@ constexpr int64_t WEIGHT_RANK = 2;
 constexpr int64_t MIN_X_RANK = 2;
 constexpr int64_t SPLIT_NUM = 2;
 constexpr size_t ATTR_CUBE_MATH_TYPE = 0;
-constexpr int64_t WG_MLP_STAGE_MM1 = 101;
-constexpr int64_t WG_MLP_STAGE_SWIGLU = 102;
-constexpr int64_t WG_MLP_STAGE_MM2 = 103;
-constexpr int64_t WG_MLP_STAGE_FUSED = 104;
-constexpr int64_t WG_MLP_STAGE_DTYPE_STRIDE = 1000;
 
 bool IsUnknownDimNum(const gert::Shape& shape)
 {
