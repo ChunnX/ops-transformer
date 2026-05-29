@@ -50,6 +50,7 @@ static constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2;
 static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
 static constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
 static constexpr int64_t SCALE_THIRD_DIM_SIZE = 2;
+static constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128LL;
 
 enum DropPadMode : int8_t {
     NO_DROP_PAD = 0,
@@ -65,7 +66,9 @@ enum QuantMode : int8_t {
     HIF8_CAST = 6,
     HIF8_PERTENSOR = 7,
     HIF8_PERTOKEN = 8,
-    MXQUANT_FP4_E2M1 = 9
+    MXQUANT_FP4_E2M1 = 9,
+    FP8_PERBLOCK_E5M2 = 11,
+    FP8_PERBLOCK_E4M3FN = 12
 };
 
 const std::set<int64_t> validQuantModes = {
@@ -77,7 +80,9 @@ const std::set<int64_t> validQuantModes = {
     QuantMode::HIF8_CAST,
     QuantMode::HIF8_PERTENSOR,
     QuantMode::HIF8_PERTOKEN,
-    QuantMode::MXQUANT_FP4_E2M1
+    QuantMode::MXQUANT_FP4_E2M1,
+    QuantMode::FP8_PERBLOCK_E5M2,
+    QuantMode::FP8_PERBLOCK_E4M3FN
 };
 
 enum ExpertTokenNumType : int8_t {
@@ -316,7 +321,8 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                   QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
                   QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode ||
-                  QuantMode::MXQUANT_FP4_E2M1 == quantMode)),
+                   QuantMode::MXQUANT_FP4_E2M1 == quantMode ||
+                   QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode)),
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
@@ -731,6 +737,13 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     } else if (QuantMode::HIF8_PERTOKEN == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
         expandedScaleShape->SetDim(0U, outNum);
+    } else if (QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
+        // FP8 PerBlock: expanded_scale shape = [n*k, CeilDiv(H, 256), 2]
+        expandedScaleShape->SetDimNum(DIM_THREE);
+        expandedScaleShape->SetDim(0U, outNum);
+        int64_t colsAligned = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, 256);
+        expandedScaleShape->SetDim(1U, colsAligned);
+        expandedScaleShape->SetDim(DIM_TWO, SCALE_THIRD_DIM_SIZE);
     }
 
     ShowOutputShapeInfo(context, expandedXShape, expandedRowIdxShape, expertTokenCumsumOrCountShape,
@@ -775,7 +788,8 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
                                       "DT_FLOAT16 or DT_BF16");
             return ge::GRAPH_FAILED;
         }
-    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
+    } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode || QuantMode::FP8_PERBLOCK_E5M2 == quantMode ||
+               QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
             OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "xDtype", Ops::Base::ToString(xDtype),
                                       "DT_FLOAT16 or DT_BF16");
@@ -796,6 +810,9 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         expandedXDtype = ge::DT_FLOAT4_E2M1;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
+    } else if (QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
+        expandedXDtype = (QuantMode::FP8_PERBLOCK_E5M2 == quantMode) ? ge::DT_FLOAT8_E5M2 : ge::DT_FLOAT8_E4M3FN;
+        expandedScaleDtype = ge::DT_FLOAT;
     }
 
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X, expandedXDtype);
