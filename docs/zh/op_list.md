@@ -286,7 +286,7 @@
   </tr>
   <tr>
     <td>ffn</td>
-    <td><a href="../../ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
+    <td><a href="../../experimental/ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
