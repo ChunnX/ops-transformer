@@ -150,8 +150,8 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
 
     if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
         OP_TILING_CHECK((x1Dim1 != x2KValue) || (x1Dim1 == 0) || (x2KValue == 0),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim1 %ld, x2KValue %ld",
-                                           x1Dim1, x2KValue), return false);
+            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim1 %ld, x2KValue %ld", x1Dim1, x2KValue),
+            return false);
     }
 
     OP_TILING_CHECK((x1Dim1 < KVALUE_MIN) || (x1Dim1 >= KVALUE_MAX),
@@ -390,8 +390,8 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
     }
 }
 
-/**
- * Due to communication constraints: 
+/* *
+ * Due to communication constraints:
  * 1. The maximum number of communication attempts is limited to 63
  * 2. The data volume of a single communication shall not exceed 256MB;
  * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 63 parts
@@ -401,22 +401,22 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
     uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu \
-                still exceeds 256MB.", sizeOfSingleM),
-                return ge::GRAPH_FAILED);
-    
+                still exceeds 256MB.",
+        sizeOfSingleM),
+        return ge::GRAPH_FAILED);
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, 63UL) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 63 parts (rounded up), the size %lu \
-                still exceeds 256MB.", sizeOfSplitM),
-                return ge::GRAPH_FAILED);
+                still exceeds 256MB.",
+        sizeOfSplitM),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, 
-                                                  ::TCubeTiling& mmTiling, 
-                                                  ::TCubeTiling& tailTiling,
-                                                  uint32_t& debugMode, uint32_t& dataType)
+void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
+    ::TCubeTiling &tailTiling, uint32_t &debugMode, uint32_t &dataType)
 {
     auto debugMode_ = mc2tiling::Mc2TilingUtils::GetDebugMode();
     debugMode = debugMode_;
@@ -582,8 +582,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
         return false);
-    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CCU_LEN) == 0) || (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == 0) ||
-        (std::strlen(commMode_) == 0)),
+    OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CCU_LEN) == 0) ||
+        (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == 0) || (std::strlen(commMode_) == 0)),
         VECTOR_INNER_ERR_REPORT_TILING(opName_,
         "comm_mode should be ccu or ai_cpu or empty string, but the actual value is %s.", commMode_),
         return false);
@@ -655,9 +655,9 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
     // DAV_3510 全场景未使用nd2nzLen这个空间，无需申请
     if (npuArch_ != NpuArch::DAV_3510) {
         // step1: ND2NZ
-        if (gatherIndex == 0U) {  // 转置B
+        if (gatherIndex == 0U) { // 转置B
             // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
-            uint64_t alignByte = 256 / args_.inputDtypeSize;  // 256B 对齐shape
+            uint64_t alignByte = 256 / args_.inputDtypeSize; // 256B 对齐shape
             uint64_t kALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankK), alignByte);
             uint64_t nALign = ops::CeilAlign(static_cast<uint64_t>(rcsCfg.rankN), alignByte);
             nd2nzLen = kALign * nALign * args_.inputDtypeSize;

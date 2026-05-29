@@ -419,7 +419,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
         auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
         CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
-        commModeEnum = (rankSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU; 
+        commModeEnum = (rankSize <= COMM_MODE_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "comm_mode only support empty string, 'ccu' or 'ai_cpu', current comm_mode is %s", commMode);
