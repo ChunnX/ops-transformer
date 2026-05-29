@@ -116,21 +116,19 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
+ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint32_t expertNum)
 {
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
-    // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
+        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_, expertNum));
         GE_ASSERT_GRAPH_SUCCESS(gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->gmmQuantTilingData);
     }
-    // mm group matmul tiling
     if (bs_ != 0) {
         AlltoAllvMXQuantGmmTilingHelper mmHelper(*this);
-        GE_ASSERT_GRAPH_SUCCESS(mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_));
+        GE_ASSERT_GRAPH_SUCCESS(mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_, 1));
         GE_ASSERT_GRAPH_SUCCESS(mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->mmQuantTilingData);
@@ -482,24 +480,25 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
 {
     // permuteout size(范围校验能够确保不溢出)
-    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_);
+    permuteOutSize_ = a_ * h1_;
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
         // mxfp4 场景占半字节，shapesize大小除以二
         permuteOutSize_ = Ops::Base::CeilDiv(permuteOutSize_, MXFP4_PACK_FACTOR);
     }
     // 将 permuteOutSize 对齐到 512 字节
     permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    // 重排空间
+    permuteOutSize_ = permuteOutFlag_ ? permuteOutSize_ : permuteOutSize_ * 2;
     // permutscaleout size
     uint64_t hSize = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR);
     permuteScaleOutSize_ =  Ops::Base::CeilAlign((a_ * hSize * 2 * GetSizeByDataType(gmmWeightDataType_)),
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    // 如果单卡专家数大于等于32时，需要额外申请scale重排空间
-    if (e_ >= SCALE_BATCH_THRESHOLD) {
-        permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
-    }
+    // scale重排空间
+    permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
 }
 
-ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB)
+ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K,
+    bool transB, uint32_t expertNum)
 {
     OP_LOGD(context_->GetNodeName(), "start SetInputParams.");
     GetPlatformInfo();
@@ -516,13 +515,13 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.transB = transB;
     inputParams_.hasBias = 0;
     inputParams_.isSingleX = 0;
-    inputParams_.isSingleW = 0;
+    inputParams_.isSingleW = 1;
     inputParams_.isSingleY = 0;
 
     inputParams_.mSize = M;
     inputParams_.kSize = K;
     inputParams_.nSize = N;
-    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.groupNum = expertNum;
     inputParams_.aQuantMode = static_cast<Mc2GroupedMatmulTiling::QuantMode>(1U << QUANT_MODE_MAP[MX_MODE]);
     inputParams_.bQuantMode = static_cast<Mc2GroupedMatmulTiling::QuantMode>(1U << QUANT_MODE_MAP[MX_MODE]);
     // 是否做切分
@@ -535,7 +534,9 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
     inputParams_.scaleDtype = ge::DT_FLOAT8_E8M0;
     inputParams_.perTokenScaleDtype = ge::DT_FLOAT8_E8M0;
 
-    mList_[0] = static_cast<int32_t>(M);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        mList_[i] = static_cast<int32_t>(M);
+    }
     kList_[0] = static_cast<int32_t>(K);
     nList_[0] = static_cast<int32_t>(N);
     SetKernelType();

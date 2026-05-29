@@ -75,7 +75,7 @@ protected:
     virtual ge::graphStatus CheckScaleFormatAndDtype() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus CheckQuantMode() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus CheckScaleShape() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
+    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) {return ge::GRAPH_SUCCESS;};
     virtual void GetPermuteOutSize() {};
     ge::graphStatus CheckInputNotNull() const;
     ge::graphStatus SetHcclTiling() const;
