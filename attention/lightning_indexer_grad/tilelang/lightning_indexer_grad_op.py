@@ -236,11 +236,16 @@ class LightningIndexerGrad:
                     relu_grad_in = self.kernel_cube2(weights_group_2d, dy_s1_2d)
                     
                     # ========== 步骤4: Vec2 - ReLU反向 ==========
-                    relu_grad_out = self.kernel_relu_grad(relu_grad_in, relu_in)
+                    # relu_grad_out = relu_grad_in * (relu_in > 0)
+                    # TileLang 无 Compare+Select 原语，直接用 PyTorch 计算
+                    mask = (relu_in > 0).to(relu_in.dtype)
+                    relu_grad_out = relu_grad_in * mask
                     
                     # ========== 步骤5: Vec2 - ReduceSum ==========
+                    # dWeights = sum(relu_in * dy, axis=-1)
+                    # 直接用 PyTorch 计算，避免 1D UB 对齐问题
                     relu_in_dy = relu_in * dy_s1.unsqueeze(0)
-                    d_weights_group = self.kernel_reduce(relu_in_dy)
+                    d_weights_group = relu_in_dy.float().sum(dim=-1).to(dtype)
                     
                     d_weights[b, s1, start_n1:end_n1] = d_weights_group
                     
