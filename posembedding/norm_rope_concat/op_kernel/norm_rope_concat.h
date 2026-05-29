@@ -648,7 +648,8 @@ __aicore__ inline void NormRopeConcat<normType, addedNormType, ropeType, concatO
             for (uint32_t b = 0; b < batch_; ++b) {
                 uint64_t inOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_ * headDim_;
                 uint64_t normOffset = static_cast<uint64_t>(b * xSeq + s) * headNum_;
-                uint64_t ropeOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ + static_cast<uint64_t>(outputSeq + s) * headDim_;
+                uint64_t ropeOffset = static_cast<uint64_t>(b) * headNum_ * totalSeq * headDim_ + 
+                                      static_cast<uint64_t>(outputSeq + s) * headDim_;
                 for (uint32_t n = 0; n < splitHeadNum_ - 1; ++n) {
                     LocalTensor<float> buf = buf_.Get<float>();
                     normOp.template Process<actualNormType>(buf, inOffset, normOffset, avgHeads_);
