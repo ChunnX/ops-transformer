@@ -737,7 +737,7 @@ public:
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
-                    DataCopy(vec2ResUb, 
+                    DataCopy(vec2ResUb,
                              this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
                              vec2CalcSize);
                 } else {
@@ -785,7 +785,7 @@ public:
                 SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
                 if constexpr (useDn) {
-                    DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset], 
+                    DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
                              vec2ResUb,
                              vec2CalcSize);
                 } else {
