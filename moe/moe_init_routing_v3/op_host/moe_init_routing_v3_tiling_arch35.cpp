@@ -904,7 +904,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScaleDtype()
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", std::to_string(scaleDtype_), "DT_FLOAT"),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
+                    std::to_string(scaleDtype_), "DT_FLOAT"),
                     return ge::GRAPH_FAILED);
     }
 
