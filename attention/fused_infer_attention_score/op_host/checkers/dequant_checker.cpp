@@ -1,4 +1,538 @@
- Do not include duplicate code but instead replace the function definition with the new version. Ensure to preserve any changes related to overall code quality enhancements, such as including necessary headers and handling error cases properly.
+/**
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+  */
+
+/*!
+ * \file dequant_checker.cpp
+ * \brief
+ */
+
+#include <map>
+#include <numeric>
+#include <graph/utils/type_utils.h>
+#include "log/log.h"
+#include "log/error_code.h"
+#include "register/op_def_registry.h"
+#include "../fused_infer_attention_score_tiling_constants.h"
+#include "dequant_checker.h"
+
+namespace optiling {
+using std::map;
+using std::pair;
+using std::string;
+using namespace ge;
+using namespace AscendC;
+using namespace arch35FIA;
+using namespace Ops::Base;
+
+// check Q, KV, OUT 类型 全量化
+ge::graphStatus DequantChecker::CheckDataTypeSupportFullquant(const FiaTilingInfo &fiaInfo)
+{
+    // {Q, KV, attenOut}
+    const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> fullQuantDtypeSupported = {
+        {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16},
+        {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16},
+        {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_BF16},
+        {ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_FLOAT16},
+        {ge::DT_HIFLOAT8, ge::DT_HIFLOAT8, ge::DT_BF16}};
+
+    std::tuple<ge::DataType, ge::DataType, ge::DataType> inOutDtypeTuple = {fiaInfo.inputQType, fiaInfo.inputKvType,
+                                                                            fiaInfo.outputType};
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(inOutDtypeTuple, fullQuantDtypeSupported),
+                OP_LOGE(fiaInfo.opName,
+                        "In fullquant scenario, query datatype(%s), key/value datatype(%s), "
+                        "attentionOut datatype(%s) is not currently supported.",
+                        DataTypeToSerialString(fiaInfo.inputQType).c_str(),
+                        DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
+                        DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.inputKvType != fiaInfo.opParamInfo.value.desc->GetDataType(),
+                OP_LOGE(fiaInfo.opName, "In fullquant scenario, the datatype of value(%s) should be equal to key(%s).",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// MLA dequantscale dtype:fp32
+ge::graphStatus DequantChecker::CheckDequantScaleDtypeMLAFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableIFAMLAFullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
+        fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr ||
+        fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
+                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
+                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(fiaInfo.opName,
+                        "In MLA fullquant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
+                        "and valueAntiquantScale(%s) must be FLOAT32.",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// GQA perblock dequantscale dtype:fp32
+ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePerblockQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
+        fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr ||
+        fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
+                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
+                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(fiaInfo.opName,
+                        "In per-block quant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
+                        "and valueAntiquantScale(%s) must be float32.",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fiaInfo.opParamInfo.quantScale1.tensor != nullptr &&
+                    fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(fiaInfo.opName, "In per-block quant scenario, datatype of quantScale1(%s) must be float32.",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPertensor(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePertensorQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::CompileTimeTensorDesc *quantScale1Desc = fiaInfo.opParamInfo.quantScale1.desc;
+    const gert::CompileTimeTensorDesc *deqScale1Desc = fiaInfo.opParamInfo.deqScale1.desc;
+    const gert::CompileTimeTensorDesc *deqScale2Desc = fiaInfo.opParamInfo.deqScale2.desc;
+    if (quantScale1Desc == nullptr || deqScale1Desc == nullptr || deqScale2Desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(quantScale1Desc, QUANT_SCALE1_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale1Desc, DEQUANT_SCALE1_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale2Desc, DEQUANT_SCALE2_NAME)) {
+        OP_LOGE(fiaInfo.opName,
+                "In per-tensor quant scenario, the datatype of "
+                "%s(%s), %s(%s), or %s(%s) is not supported.",
+                QUANT_SCALE1_NAME.c_str(), DataTypeToSerialString(quantScale1Desc->GetDataType()).c_str(),
+                DEQUANT_SCALE1_NAME.c_str(), DataTypeToSerialString(deqScale1Desc->GetDataType()).c_str(),
+                DEQUANT_SCALE2_NAME.c_str(), DataTypeToSerialString(deqScale2Desc->GetDataType()).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// MXFP8 dequantscale dtype:fp8_e8m0
+ge::graphStatus DequantChecker::CheckDequantScaleDtypeMXFP8Fullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableMxfp8FullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
+        fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr ||
+        fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
+                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
+                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                OP_LOGE(fiaInfo.opName,
+                        "In MXFP8 fullquant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
+                        "and valueAntiquantScale(%s) must be FLOAT8_E8M0.",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
+                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fiaInfo.opParamInfo.quantScale1.tensor != nullptr &&
+                    fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
+                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, datatype of quantScale1(%s) must be float32.",
+                        DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+
+ge::graphStatus DequantChecker::CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMLAFullquant(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPerblock(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPertensor(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMXFP8Fullquant(fiaInfo)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// MLA全量化 Q: per-token-head (3), KV: per-tensor (0)
+ge::graphStatus DequantChecker::CheckDequantModeMLAFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableIFAMLAFullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(*fiaInfo.opParamInfo.queryQuantMode != PER_TOKEN_HEAD_MODE,
+                OP_LOGE(fiaInfo.opName,
+                        "In MLA fullquant scenario, queryQuantMode(%d) only support per-token-head(%u).",
+                        *fiaInfo.opParamInfo.queryQuantMode, PER_TOKEN_HEAD_MODE),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(*fiaInfo.opParamInfo.keyAntiquantMode != PER_CHANNEL_MODE,
+                OP_LOGE(fiaInfo.opName, "In MLA fullquant scenario, keyAntiquantMode(%d) only support per-tensor(%u).",
+                        *fiaInfo.opParamInfo.keyAntiquantMode, PER_CHANNEL_MODE),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(*fiaInfo.opParamInfo.valueAntiquantMode != PER_CHANNEL_MODE,
+                OP_LOGE(fiaInfo.opName,
+                        "In MLA fullquant scenario, valueAntiquantMode(%d) only support per-tensor(%u).",
+                        *fiaInfo.opParamInfo.valueAntiquantMode, PER_CHANNEL_MODE),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// per-block qkv antiquantMode(7)
+ge::graphStatus DequantChecker::CheckDequantModeGQAPerblock(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePerblockQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF((*fiaInfo.opParamInfo.keyAntiquantMode != PER_BLOCK_MODE ||
+                 *fiaInfo.opParamInfo.valueAntiquantMode != PER_BLOCK_MODE ||
+                 *fiaInfo.opParamInfo.queryQuantMode != PER_BLOCK_MODE),
+                OP_LOGE(fiaInfo.opName,
+                        "In per-block quant scenario, queryQuantMode(%u)/"
+                        "keyAntiquantMode(%u)/valueAntiquantMode(%u) only support per-block(%u).",
+                        *fiaInfo.opParamInfo.keyAntiquantMode, *fiaInfo.opParamInfo.valueAntiquantMode,
+                        *fiaInfo.opParamInfo.queryQuantMode, PER_BLOCK_MODE),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// per-tensor qkv antiquantMode(0)
+ge::graphStatus DequantChecker::CheckDequantModeGQAPertensor(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePertensorQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF((*fiaInfo.opParamInfo.keyAntiquantMode != PER_CHANNEL_MODE ||
+                 *fiaInfo.opParamInfo.valueAntiquantMode != PER_CHANNEL_MODE ||
+                 *fiaInfo.opParamInfo.queryQuantMode != PER_CHANNEL_MODE),
+                OP_LOGE(fiaInfo.opName,
+                        "In per-tensor quant scenario, queryQuantMode(%u)/"
+                        "keyAntiquantMode(%u)/valueAntiquantMode(%u) only support per-tensor(%u).",
+                        *fiaInfo.opParamInfo.keyAntiquantMode, *fiaInfo.opParamInfo.valueAntiquantMode,
+                        *fiaInfo.opParamInfo.queryQuantMode, PER_CHANNEL_MODE),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// mxfp9 qk:per-token-group v:per-channel-group
+ge::graphStatus DequantChecker::CheckDequantModeMXFP8Fullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableMxfp8FullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(*fiaInfo.opParamInfo.queryQuantMode != PER_TOKEN_GROUP_MODE,
+                OP_LOGE(fiaInfo.opName,
+                        "In MXFP8 fullquant scenario, queryQuantMode(%d) only support per-token-group-head(%u).",
+                        *fiaInfo.opParamInfo.queryQuantMode, PER_TOKEN_GROUP_MODE),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(*fiaInfo.opParamInfo.keyAntiquantMode != PER_TOKEN_GROUP_MODE,
+                OP_LOGE(fiaInfo.opName,
+                        "In MXFP8 fullquant scenario, keyAntiquantMode(%d) only support per-token-group-head(%u).",
+                        *fiaInfo.opParamInfo.keyAntiquantMode, PER_TOKEN_GROUP_MODE),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(*fiaInfo.opParamInfo.valueAntiquantMode != PER_CHANNEL_GROUP_MODE,
+                OP_LOGE(fiaInfo.opName,
+                        "In MXFP8 fullquant scenario, valueAntiquantMode(%d) only support per-tensor(%u).",
+                        *fiaInfo.opParamInfo.valueAntiquantMode, PER_CHANNEL_GROUP_MODE),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// check dequant scale Mode
+ge::graphStatus DequantChecker::CheckDequantModeFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (ge::GRAPH_SUCCESS != CheckDequantModeGQAPertensor(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantModeGQAPerblock(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantModeMLAFullquant(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckDequantModeMXFP8Fullquant(fiaInfo)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckTensorExistFullquant(const FiaTilingInfo &fiaInfo, const gert::Tensor *tensor,
+                                                          const std::string &quantModeName,
+                                                          const std::string &inputName)
+{
+    OP_CHECK_IF(
+        tensor == nullptr,
+        OP_LOGE(fiaInfo.opName, "In %s scenario, %s should not be null.", quantModeName.c_str(), inputName.c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckTensorNotExistFullquant(const FiaTilingInfo &fiaInfo, const gert::Tensor *tensor,
+                                                             const std::string &quantModeName,
+                                                             const std::string &inputName)
+{
+    OP_CHECK_IF(tensor != nullptr,
+                OP_LOGE(fiaInfo.opName, "In %s scenario, %s should be null.", quantModeName.c_str(), inputName.c_str()),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+ge::graphStatus DequantChecker::CheckExistenceNoquant(const FiaTilingInfo &fiaInfo)
+{
+    auto deqScale1 = fiaInfo.opParamInfo.deqScale1.tensor;
+    auto quantScale1 = fiaInfo.opParamInfo.quantScale1.tensor;
+    auto deqScale2 = fiaInfo.opParamInfo.deqScale2.tensor;
+    auto dequantScaleQuery = fiaInfo.opParamInfo.dequantScaleQuery.tensor;
+    auto antiquantScale = fiaInfo.opParamInfo.antiquantScale.tensor;
+    auto antiquantOffset = fiaInfo.opParamInfo.antiquantOffset.tensor;
+    auto keyAntiquantScale = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    auto keyAntiquantOffset = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
+    auto valueAntiquantScale = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
+    auto valueAntiquantOffset = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
+    bool checkExistenece = deqScale1 == nullptr && quantScale1 == nullptr && deqScale2 == nullptr &&
+                           dequantScaleQuery == nullptr && antiquantScale == nullptr && antiquantOffset == nullptr &&
+                           keyAntiquantScale == nullptr && keyAntiquantOffset == nullptr &&
+                           valueAntiquantScale == nullptr && valueAntiquantOffset == nullptr;
+    if (checkExistenece) {
+        return ge::GRAPH_SUCCESS;
+    } else {
+        OP_LOGE(fiaInfo.opName, "In gqa no quant scenario, quant related param cannot exist.");
+        return ge::GRAPH_FAILED;
+    }
+}
+ge::graphStatus DequantChecker::CheckExistencePertensorFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePertensorQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    string quantModeName = "per-tensor quant";
+    const gert::Tensor *quantScale1Tensor = fiaInfo.opParamInfo.quantScale1.tensor;
+    const gert::Tensor *deqScale1Tensor = fiaInfo.opParamInfo.deqScale1.tensor;
+    const gert::Tensor *deqScale2Tensor = fiaInfo.opParamInfo.deqScale2.tensor;
+    // Q/K/V antiquantScale
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, quantScale1Tensor, quantModeName, "quantScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale1Tensor, quantModeName, "deqScale1") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, deqScale2Tensor, quantModeName, "deqScale2")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // shapesize != 0
+    OP_CHECK_IF((quantScale1Tensor->GetStorageShape().GetShapeSize() == 0 ||
+                 deqScale1Tensor->GetStorageShape().GetShapeSize() == 0 ||
+                 deqScale2Tensor->GetStorageShape().GetShapeSize() == 0),
+                OP_LOGE(fiaInfo.opName,
+                        "In %s scenario, deqScale1, quantScale1 or deqScale2 should not be empty tensor.",
+                        quantModeName.c_str()),
+                return ge::GRAPH_FAILED);
+
+    // 其他量化方式参数不能存在
+    if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
+                                                          quantModeName, "antiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
+                                                          quantModeName, "keyAntiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
+                                                          quantModeName, "valueAntiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
+                                                          quantModeName, "antiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
+                                                          quantModeName, "keyAntiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
+                                                          quantModeName, "valueAntiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
+                                                          quantModeName, "dequantScaleQuery") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
+                                                          quantModeName, "keyRopeAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckExistenceMLAFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableIFAMLAFullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    string quantModeName = "MLA fullquant";
+    // Q/K/V antiquantScale
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
+                                                       quantModeName, "dequantScaleQuery") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
+                                                       quantModeName, "keyAntiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
+                                                       quantModeName, "valueAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 不支持offset
+    if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
+                                                          quantModeName, "antiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
+                                                          quantModeName, "keyAntiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
+                                                          quantModeName, "valueAntiquantOffset")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 其他量化方式参数不能存在
+    if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantScale1.tensor,
+                                                          quantModeName, "quantScale1") ||
+        ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, quantModeName, "deqScale1") ||
+        ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName, "deqScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
+                                                          quantModeName, "antiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
+                                                          quantModeName, "keyRopeAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckExistencePerblockFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePerblockQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    string quantModeName = "per-block quant";
+    // Q/K/V antiquantScale
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
+                                                       quantModeName, "dequantScaleQuery") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
+                                                       quantModeName, "keyAntiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
+                                                       quantModeName, "valueAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 不支持offset
+    if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
+                                                          quantModeName, "antiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
+                                                          quantModeName, "keyAntiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
+                                                          quantModeName, "valueAntiquantOffset")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 其他量化方式参数不能存在
+    if (ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, quantModeName, "deqScale1") ||
+        ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName, "deqScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
+                                                          quantModeName, "antiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
+                                                          quantModeName, "keyRopeAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+// mxfp8
+ge::graphStatus DequantChecker::CheckExistenceMXFP8Fullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enableMxfp8FullQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+    string quantModeName = "mxfp8 quant";
+    // Q/K/V antiquantScale
+    if (ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.dequantScaleQuery.tensor,
+                                                       quantModeName, "dequantScaleQuery") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantScale.tensor,
+                                                       quantModeName, "keyAntiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantScale.tensor,
+                                                       quantModeName, "valueAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 不支持offset
+    if (ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantOffset.tensor,
+                                                          quantModeName, "antiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyAntiquantOffset.tensor,
+                                                          quantModeName, "keyAntiquantOffset") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.valueAntiquantOffset.tensor,
+                                                          quantModeName, "valueAntiquantOffset")) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 其他量化方式参数不能存在
+    if (ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale1.tensor, quantModeName, "deqScale1") ||
+        ge::GRAPH_SUCCESS !=
+            CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName, "deqScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantScale2.tensor,
+                                                          quantModeName, "quantScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantOffset2.tensor,
+                                                          quantModeName, "quantOffset2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
+                                                          quantModeName, "antiquantScale") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
+                                                          quantModeName, "keyRopeAntiquantScale")) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// GQA per-tensor
+ge::graphStatus DequantChecker::CheckFeaturePertensorFullquant(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePertensorQuant_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // 不支持后量化
+    OP_CHECK_IF(fiaInfo.isOutQuantEnable,
+                OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, postquant is not supported."),
+                return ge::GRAPH_FAILED);
+
+    // 不支持 rope
+    OP_CHECK_IF(fiaInfo.mlaMode != MlaMode::NO_MLA,
+                OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, rope is not supported."),
+                return ge::GRAPH_FAILED);
+
+    // 不支持alibipse
+    OP_CHECK_IF(fiaInfo.enableAlibiPse,
+                OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, pseType = 2/3 is not supported."),
+                return ge::GRAPH_FAILED);
+
+    // 不支持PA_NZ
+    const uint32_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF(keyDim == DIM_NUM_5, OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, PA_NZ is not supported."),
+                return ge::GRAPH_FAILED);
+
+    // 不支持QS=1
+    OP_CHECK_IF(fiaInfo.s1Size == 1,
+                OP_LOGE(fiaInfo.opName, "The q_s should not be equal to 1 in per-tensor quant scenario."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

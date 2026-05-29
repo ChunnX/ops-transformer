@@ -323,8 +323,7 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
              maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
              maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize)) {
             std::string shapeStr = ToString(maskShape->GetStorageShape());
-            std::string reasonMsg =
-                "The shape of atten_mask should be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
+            std::string reasonMsg = "The shape of atten_mask should be [B or 1, 1, >=Q_S, >=(KV_S + systemPrefixLen)]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -480,8 +479,9 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
             const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
             std::string shapeStr = ToString(maskShape->GetStorageShape());
             std::string reasonMsg = "The shape of atten_mask must be [B(" + std::to_string(fiaInfo.bSize) +
-                ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size)  +"), >=KV_S(" + std::to_string(fiaInfo.s2Size) +
-                ") + systemPrefixLen(" + std::to_string(fiaInfo.systemPrefixLen) + ")]"
+                                    ") or 1, >=Q_S(" + std::to_string(fiaInfo.s1Size) + "), >=KV_S(" +
+                                    std::to_string(fiaInfo.s2Size) + ") + systemPrefixLen(" +
+                                    std::to_string(fiaInfo.systemPrefixLen) + ")]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -492,7 +492,8 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
         std::string shapeStr = ToString(maskShape->GetStorageShape());
         std::string reasonMsg = "The shape of atten_mask must be [2048, 2048], [1, 2048, 2048] or [1, 1, 2048, "
-                                "2048] when the sparse_mode is " + std::to_string(fiaInfo.sparseMode);
+                                "2048] when the sparse_mode is " +
+                                std::to_string(fiaInfo.sparseMode);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask", shapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
