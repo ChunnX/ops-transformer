@@ -393,6 +393,12 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckShapeForPerGroupQuantParam(const
     return ge::GRAPH_SUCCESS;
 }
 
+bool GroupedMatmulQuantChecker::IsScaleNz(const gert::InferShapeContext *context) const
+{
+    const auto scaleDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_SCALE, 0);
+    return scaleDesc != nullptr && scaleDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ;
+}
+
 ge::graphStatus GroupedMatmulQuantChecker::CheckPertokenShapeInNormalQuantMode(
     const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs, const gert::Shape *perTokenScaleShape) const
 {
@@ -454,7 +460,8 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckShapeForQuantParam(const gert::I
         return CheckShapeForPerGroupQuantParam(context, gmmAttrs);
     }
     // mx在tiling中校验异常场景
-    if (scaleShape->GetDimNum() == MXFP_TYPEM_SCALE_DIM_NUM || scaleShape->GetDimNum() == MXFP_TYPEK_SCALE_DIM_NUM) {
+    if (scaleShape->GetDimNum() == MXFP_TYPEM_SCALE_DIM_NUM || scaleShape->GetDimNum() == MXFP_TYPEK_SCALE_DIM_NUM ||
+        (IsScaleNz(context) && scaleShape->GetDimNum() >= MXFP_TYPEM_SCALE_DIM_NUM)) {
         return ge::GRAPH_SUCCESS;
     }
 

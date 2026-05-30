@@ -1839,6 +1839,23 @@ static aclnnStatus DataContiguous(const aclTensorList *&tensors, aclOpExecutor *
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus DataContiguousSkipPrivateFormat(const aclTensorList *&tensors, aclOpExecutor *executor) {
+    std::vector<const aclTensor *> tensorsVec;
+    const aclTensor *contiguousTensor = nullptr;
+    for (size_t i = 0; i < tensors->Size(); ++i) {
+        const aclTensor *tensor = (*tensors)[i];
+        if (op::IsPrivateFormat(tensor->GetStorageFormat())) {
+            tensorsVec.push_back(tensor);
+            continue;
+        }
+        contiguousTensor = l0op::Contiguous(tensor, executor);
+        CHECK_RET(contiguousTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        tensorsVec.push_back(contiguousTensor);
+    }
+    tensors = executor->AllocTensorList(tensorsVec.data(), tensorsVec.size());
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus DataContiguousAndTransFormat(const aclTensor *tensor, const aclTensor *&reformatedTensor,
                                                 const op::Format requiredFormat, aclOpExecutor *executor) {
   CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -2095,8 +2112,13 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
-            params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            bool isScaleNz = static_cast<op::Format>(
+                                  ge::GetPrimaryFormat((*params.scaleOptional)[0]->GetStorageFormat())) ==
+                              op::Format::FORMAT_FRACTAL_NZ;
+            if (!isScaleNz) {
+                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr);
+                params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
+            }
         } else if (isPerTileQuantMode) {
             gmm::CreateContiguousTensorList(params.scaleOptional, scaleTensorList, executorPtr);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
@@ -2164,7 +2186,8 @@ static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpE
   }
   CHECK_COND(DataContiguous(params.biasOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "Contiguous biasOptional failed.");
-  CHECK_COND(DataContiguous(params.scaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+  CHECK_COND(DataContiguousSkipPrivateFormat(params.scaleOptional, executorPtr) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID,
              "Contiguous scaleOptional failed.");
   CHECK_COND(DataContiguous(params.offsetOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "Contiguous offsetOptional failed.");
