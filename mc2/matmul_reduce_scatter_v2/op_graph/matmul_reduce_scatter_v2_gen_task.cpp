@@ -30,12 +30,12 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             return ge::GRAPH_FAILED;
         }
         if (comm_mode == ge::AscendString("")) {
-            int64_t world_size = 0;
-            if (context->GetIntAttrVal("world_size", world_size) != ge::GRAPH_SUCCESS) {
+            int64_t rank_size = 0;
+            if (context->GetIntAttrVal("rank_size", rank_size) != ge::GRAPH_SUCCESS) {
                 OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get rank_size");
                 return ge::GRAPH_FAILED;
             }
-            comm_mode = (world_size <= 8) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
+            comm_mode = (rank_size <= 8) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
         }
         if (comm_mode == ge::AscendString("ai_cpu")) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
@@ -61,12 +61,12 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
             return ge::GRAPH_FAILED;
         }
         if (comm_mode == ge::AscendString("")) {
-            int64_t world_size = 0;
-            if (context->GetIntAttrVal("world_size", world_size) != ge::GRAPH_SUCCESS) {
+            int64_t rank_size = 0;
+            if (context->GetIntAttrVal("rank_size", rank_size) != ge::GRAPH_SUCCESS) {
                 OPS_LOG_E(context->GetNodeName(), "GetStrAttrVal failed to get rank_size");
                 return ge::GRAPH_FAILED;
             }
-            comm_mode = (world_size <= 8) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
+            comm_mode = (rank_size <= 8) ? ge::AscendString("ccu") : ge::AscendString("ai_cpu");
         }
         if (comm_mode == ge::AscendString("ai_cpu")) {
             OPS_LOG_D(context->GetNodeName(), "Do A5 AiCPU GenTaskFunc");
