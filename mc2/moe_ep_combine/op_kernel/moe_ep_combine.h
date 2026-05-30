@@ -26,129 +26,223 @@ using namespace AscendC;
 static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 
-// ─── Combine 两个模板变体 ────────────────────────────────────────────
-// C-A (HAS_TOPK_WEIGHTS=0): 纯 sum, 用于 forward (用户已在 FFN 后乘过权重)
-//   combined_x[t] = Σ_k Cast(stash[t,k], fp32) → Cast→bf16
-// C-B (HAS_TOPK_WEIGHTS=1): 加权归约, 用于 dispatch backward
-//   combined_x[t] = Σ_k stash[t,k] × weight[t,k]
-//   额外输出 combined_topk_weights[t,k]
-
 template <uint32_t HAS_TOPK_WEIGHTS>
 class KernelMoeEpCombine {
 public:
     __aicore__ inline KernelMoeEpCombine() {};
 
-    // ─── Init ──────────────────────────────────────────────────────
-    // Pseudocode:
-    //   tpipe_ = pipe; td_ = tilingData; aivId_ = GetBlockIdx()
-    //   A = ep × nmt (上界)
-    //   绑定 GM tensor: xGm_[A*hidden], dstSlotIdxGm_[numTokens*topK],
-    //                    recvSrcMetadataGm_[A*3], numRecvPerRankGm_[ep],
-    //                    combinedXGm_[numTokens*hidden]
-    //   HAS_TOPK_WEIGHTS==1:
-    //     topkWeightsGm_[numTokens*topK], combinedTopkWeightsGm_[numTokens*topK]
-    //   winContext_ = reinterpret_cast<HcclOpParam*>(workspace)
-    //   分配 UB 缓冲:
-    //     ubX_[2]:       ALIGN_UP(hidden×2, 32) × 2 — 双缓冲 (Window读 / stash写)
-    //     ubAccFp32_:    hidden × 4 — FP32 累加器
-    //     ubTmpFp32_:    hidden × 4 — FP32 临时
-    //     ubWeighted_:   hidden × 4 — 仅 C-B, 权重×activation 结果
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
         GM_ADDR numRecvPerRank, GM_ADDR topkWeights,
         GM_ADDR bias0, GM_ADDR bias1,
         GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional,
         GM_ADDR workspace, GM_ADDR tilingGM,
-        TPipe* pipe, const MoeEpCombineInfo* tilingData);
+        TPipe* pipe, const MoeEpCombineInfo* tilingData)
+    {
+        tpipe_ = pipe;
+        td_ = tilingData;
+        aivId_ = GetBlockIdx();
+        workspace_ = workspace;
 
-    // ─── Process ──────────────────────────────────────────────────
-    // Pseudocode:
-    //   1. SendPhaseExpertToToken()  ← 反向路由 RDMA 写回原始 rank
-    //   2. HcclBarrier()             ← 所有 rank 发送完成
-    //   3. RecvPhaseStashing()       ← Window → workspace stash
-    //   4. RecvPhaseReduce()         ← FP32 累加 → combined_x
-    __aicore__ inline void Process();
+        uint32_t A = td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank;
+
+        xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)x, A * td_->cfg.hidden);
+        dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx,
+                                       td_->cfg.numTokens * td_->cfg.topK);
+        recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata, A * 3);
+        numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank,
+                                           td_->cfg.epWorldSize);
+        combinedXGm_.SetGlobalBuffer((__gm__ bfloat16_t*)combinedX,
+                                     td_->cfg.numTokens * td_->cfg.hidden);
+
+        if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            topkWeightsGm_.SetGlobalBuffer((__gm__ float*)topkWeights,
+                                            td_->cfg.numTokens * td_->cfg.topK);
+            combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)combinedTopkWeightsOptional,
+                                                    td_->cfg.numTokens * td_->cfg.topK);
+        }
+
+        winContext_ = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(workspace);
+
+        uint32_t ubXBytes      = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
+        uint32_t ubAccBytes    = td_->cfg.hidden * sizeof(float);
+        uint32_t ubTmpBytes    = td_->cfg.hidden * sizeof(float);
+        uint32_t ubWeightBytes = td_->cfg.hidden * sizeof(float);
+
+        tpipe_->InitBuffer(ubXBuf_[0],      ubXBytes);
+        tpipe_->InitBuffer(ubXBuf_[1],      ubXBytes);
+        tpipe_->InitBuffer(ubAccFp32Buf_,   ubAccBytes);
+        tpipe_->InitBuffer(ubTmpFp32Buf_,   ubTmpBytes);
+        if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            tpipe_->InitBuffer(ubWeightedBuf_, ubWeightBytes);
+        }
+
+        ubX_[0]      = ubXBuf_[0].Get<bfloat16_t>();
+        ubX_[1]      = ubXBuf_[1].Get<bfloat16_t>();
+        ubAccFp32_   = ubAccFp32Buf_.Get<float>();
+        ubTmpFp32_   = ubTmpFp32Buf_.Get<float>();
+        if constexpr (HAS_TOPK_WEIGHTS == 1) {
+            ubWeighted_ = ubWeightedBuf_.Get<float>();
+        }
+    }
+
+    __aicore__ inline void Process()
+    {
+        SendPhaseExpertToToken();
+        HcclBarrier();
+
+        RecvPhaseStashing();
+
+        RecvPhaseReduce();
+    }
 
 private:
-    // ─── SendPhaseExpertToToken ──────────────────────────────────
-    // Pseudocode:
-    //   反向路由: 按 recv_src_metadata[a] 把 x[a] 写回原始 rank 的 Window slot
-    //   my_rank = GetRankId(winContext_)
-    //   A = ep × nmt
-    //   分核: 每 AIV 处理 [aStart, aEnd) 行
-    //   for a in [aStart, aEnd):
-    //     src_token_global = recvSrcMetadata[a*3+0]
-    //     src_rank         = recvSrcMetadata[a*3+1]
-    //     src_slot         = recvSrcMetadata[a*3+2]
-    //     if src_rank < 0: continue (上界空行跳过)
-    //     dstWinBase = GetBaseWindAddrByRankId(winContext_, src_rank, my_rank)
-    //     slotAddr = dstWinBase + (my_rank * nmt + src_slot) * perSlotBytes
-    //     读 x[a] → ubX_[0]
-    //     写 token data 到目标 Window: DataCopyPad(slotAddr, ubX_[0], hidden)
-    //     PipeBarrier<PIPE_ALL>
-    //     C-B: DataCacheCleanAndInvalid flush metadata 区域
-    __aicore__ inline void SendPhaseExpertToToken();
+    __aicore__ inline void SendPhaseExpertToToken()
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t A = td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank;
 
-    // ─── RecvPhaseStashing ──────────────────────────────────────
-    // Pseudocode:
-    //   从本地 Window 收集到达的 expert 输出, 按 (t,k) stash 到 workspace
-    //   my_rank = GetRankId(winContext_)
-    //   localWinBase = GetBaseWindAddrByRankId(winContext_, my_rank, my_rank)
-    //   stashBase = workspace + sizeof(HcclOpParam)
-    //   分核: 每 AIV 处理 [tStart, tEnd) tokens
-    //   for t in [tStart, tEnd):
-    //     for k in [0, topK):
-    //       slot = dstSlotIdxGm_[t*topK+k]; if slot<0: continue
-    //       从 Window 读 slot 数据 → ubX_[k%2]
-    //       stashAddr = stashBase + ((t-tStart)*topK+k) * hidden * sizeof(bf16)
-    //       写 stash[t-tStart][k] = ubX_[k%2]
-    __aicore__ inline void RecvPhaseStashing();
+        uint32_t aStart = aivId_ * A / td_->aivNum;
+        uint32_t aEnd   = (aivId_ + 1) * A / td_->aivNum;
 
-    // ─── RecvPhaseReduce ────────────────────────────────────────
-    // Pseudocode:
-    //   FP32 累加: combined_x[t] = Σ_k Cast(stash[t,k], fp32) → Cast→bf16
-    //   C-B: 额外 combined_topk_weights[t,k] 归约
-    //   分核: 每 AIV 处理 [tStart, tEnd) tokens
-    //   stashBase = workspace + sizeof(HcclOpParam)
-    //   for t in [tStart, tEnd):
-    //     Init(ubAccFp32_, 0, hidden)  ← FP32 累加器清零
-    //     for k in [0, topK):
-    //       slot = dstSlotIdxGm_[t*topK+k]; if slot<0: continue
-    //       读 stash[t-tStart][k] → ubX_[0] (bf16)
-    //       Cast(ubTmpFp32_, ubX_[0], CAST_NONE)  ← bf16→fp32
-    //       C-A: Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_)  ← 纯Σ累加
-    //       C-B: Muls(ubWeighted_, ubTmpFp32_, w, hidden) ← 乘权重
-    //            Add(ubAccFp32_, ubAccFp32_, ubWeighted_)  ← 加权累加
-    //            combinedTopkWeightsGm_[t*topK+k] = w
-    //     Cast(combinedXGm_[t*hidden], ubAccFp32_, CAST_RINT)  ← fp32→bf16
-    __aicore__ inline void RecvPhaseReduce();
+        for (uint32_t a = aStart; a < aEnd; ++a) {
+            int32_t src_token_global = recvSrcMetadataGm_.GetValue(a * 3 + 0);
+            int32_t src_rank         = recvSrcMetadataGm_.GetValue(a * 3 + 1);
+            int32_t src_slot         = recvSrcMetadataGm_.GetValue(a * 3 + 2);
 
-    // ─── 成员变量 ────────────────────────────────────────────────
+            if (src_rank < 0) continue;
+
+            GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(
+                winContext_, src_rank, my_rank);
+            GM_ADDR slotAddr = dstWinBase
+                + (my_rank * td_->cfg.numMaxTokensPerRank + src_slot)
+                * td_->cfg.perSlotBytes;
+
+            DataCopyPad(ubX_[0], xGm_[a * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+
+            DataCopyPad(
+                reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                    *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                ubX_[0], {td_->cfg.hidden, 0, 0, 0, false});
+            PipeBarrier<PIPE_ALL>();
+
+            if constexpr (HAS_TOPK_WEIGHTS == 1) {
+                cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(slotAddr),
+                                  td_->cfg.hidden * sizeof(bfloat16_t));
+            } else {
+                cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(slotAddr),
+                                  td_->cfg.hidden * sizeof(bfloat16_t));
+            }
+        }
+    }
+
+    __aicore__ inline void RecvPhaseStashing()
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+
+        uint32_t tStart = aivId_ * td_->cfg.numTokens / td_->aivNum;
+        uint32_t tEnd   = (aivId_ + 1) * td_->cfg.numTokens / td_->aivNum;
+
+        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+        GM_ADDR stashBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+                int32_t slot = dstSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
+                if (slot < 0) continue;
+
+                uint32_t numValidRanks = 0;
+                GM_ADDR slotAddr = nullptr;
+
+                for (uint32_t src_r = 0; src_r < td_->cfg.epWorldSize; ++src_r) {
+                    int32_t cnt = numRecvPerRankGm_.GetValue(src_r);
+                    if (slot < cnt) {
+                        slotAddr = localWinBase
+                            + src_r * td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes
+                            + slot * td_->cfg.perSlotBytes;
+                        break;
+                    }
+                }
+
+                if (slotAddr == nullptr) continue;
+
+                DataCopyPad(ubX_[k % 2],
+                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                        *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                    {td_->cfg.hidden, 0, 0, 0, false});
+
+                GM_ADDR stashAddr = stashBase
+                    + ((t - tStart) * td_->cfg.topK + k) * td_->cfg.hidden * sizeof(bfloat16_t);
+                DataCopyPad(
+                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                        *reinterpret_cast<__gm__ bfloat16_t*>(stashAddr)),
+                    ubX_[k % 2], {td_->cfg.hidden, 0, 0, 0, false});
+            }
+        }
+
+        SyncAll<true>();
+    }
+
+    __aicore__ inline void RecvPhaseReduce()
+    {
+        uint32_t tStart = aivId_ * td_->cfg.numTokens / td_->aivNum;
+        uint32_t tEnd   = (aivId_ + 1) * td_->cfg.numTokens / td_->aivNum;
+
+        GM_ADDR stashBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            Init(ubAccFp32_, (float)0, td_->cfg.hidden);
+
+            for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+                int32_t slot = dstSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
+                if (slot < 0) continue;
+
+                GM_ADDR stashAddr = stashBase
+                    + ((t - tStart) * td_->cfg.topK + k) * td_->cfg.hidden * sizeof(bfloat16_t);
+                DataCopyPad(ubX_[0],
+                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                        *reinterpret_cast<__gm__ bfloat16_t*>(stashAddr)),
+                    {td_->cfg.hidden, 0, 0, 0, false});
+
+                Cast(ubTmpFp32_, ubX_[0], RoundMode::CAST_NONE, td_->cfg.hidden);
+
+                if constexpr (HAS_TOPK_WEIGHTS == 0) {
+                    Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, td_->cfg.hidden);
+                } else {
+                    float w = topkWeightsGm_.GetValue(t * td_->cfg.topK + k);
+                    Muls(ubWeighted_, ubTmpFp32_, w, td_->cfg.hidden);
+                    Add(ubAccFp32_, ubAccFp32_, ubWeighted_, td_->cfg.hidden);
+                    combinedTopkWeightsGm_.SetValue(t * td_->cfg.topK + k, w);
+                }
+            }
+
+            Cast(combinedXGm_[t * td_->cfg.hidden], ubAccFp32_,
+                 RoundMode::CAST_RINT, td_->cfg.hidden);
+        }
+    }
+
     TPipe* tpipe_{nullptr};
     const MoeEpCombineInfo* td_{nullptr};
     __gm__ Mc2Kernel::HcclOpParam* winContext_{nullptr};
 
-    // GM tensor: 输入
     GlobalTensor<bfloat16_t> xGm_;
     GlobalTensor<int32_t> dstSlotIdxGm_;
     GlobalTensor<int32_t> recvSrcMetadataGm_;
     GlobalTensor<int32_t> numRecvPerRankGm_;
     GlobalTensor<float> topkWeightsGm_;
 
-    // GM tensor: 输出
     GlobalTensor<bfloat16_t> combinedXGm_;
     GlobalTensor<float> combinedTopkWeightsGm_;
 
-    // UB buffer
     LocalTensor<bfloat16_t> ubX_[2];
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
-    LocalTensor<float> ubWeighted_;             // 仅 C-B
+    LocalTensor<float> ubWeighted_;
 
     TBuf<QuePosition::VECIN> ubXBuf_[2];
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
-    TBuf<QuePosition::VECIN> ubWeightedBuf_;     // 仅 C-B
+    TBuf<QuePosition::VECIN> ubWeightedBuf_;
 
     GM_ADDR workspace_{nullptr};
     uint32_t aivId_{0};
