@@ -32,6 +32,7 @@ def _candidate_roots():
     value = os.environ.get("BSA_CUSTOM_OPS_PATH")
     if value:
         roots.extend(Path(part) for part in value.split(":") if part)
+    roots.append(Path(__file__).resolve().parents[2] / "torch_ops_extension")
     deduped = []
     seen = set()
     for root in roots:

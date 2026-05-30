@@ -441,7 +441,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "sparse_seq_len": sparse_seq_len,
             "block_table": block_table,
             "atten_mask": atten_mask,
-            "metadata": None,
+            "metadata": torch.zeros((1,), dtype=torch.int32),
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_kv": max_seqlen_kv,
             "softmax_scale": case["softmax_scale"],

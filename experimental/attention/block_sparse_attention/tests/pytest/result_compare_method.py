@@ -115,6 +115,18 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
             break
     print_log(
         '---------------------------------------------------------------------------------------')
+def cal_cosine_similarity(real_data, expect_data):
+    """Compute cosine similarity between two flattened arrays."""
+    real_fp32 = real_data.astype(np.float32)
+    expect_fp32 = expect_data.astype(np.float32)
+    dot_product = np.dot(real_fp32, expect_fp32)
+    norm_real = np.linalg.norm(real_fp32)
+    norm_expect = np.linalg.norm(expect_fp32)
+    if norm_real == 0.0 or norm_expect == 0.0:
+        return 0.0
+    return float(dot_product / (norm_real * norm_expect))
+
+
 def check_result(expect, npu_result):
     if isinstance(expect, dict):
         result = "Pass"
@@ -235,6 +247,7 @@ def check_result(expect, npu_result):
                         float(split_count) * 100.0
 
     display_output_np_isclose(real_data, data_compe, start, end)
+    cos_sim = cal_cosine_similarity(real_data, data_compe)
     pct_thd = (1 - pct_thd) * 100.0
     result = "Pass" if (fulfill_percent >= pct_thd) else "Failed"
     if len(err_diff) > 0:
@@ -242,12 +255,13 @@ def check_result(expect, npu_result):
         if max_error >= max_diff_hd:
             result = "Failed"
     print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+        '---------------------------------------------------------------------------------------------------------')
+    print_log('Rtol   \t Atol   \t CosineSim \t PctThd   \t PctRlt   \t MaxRelErr \t Result')
     print_log(
-        '---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-                (rtol, atol, pct_thd, fulfill_percent, result))
+        '---------------------------------------------------------------------------------------------------------')
+    max_rel_err = max_error if len(err_diff) > 0 else 0.0
+    print_log('%.4f    \t %.6f  \t %.8f  \t %.2f%%   \t %.6f%%   \t %.6f   \t %s' %
+                (rtol, atol, cos_sim, pct_thd, fulfill_percent, max_rel_err, result))
     if len(err_diff) > 0:
         print_log('Max-RelativeError is: %s. Threshold is: %s.' %
                     (max_error, max_diff_hd))

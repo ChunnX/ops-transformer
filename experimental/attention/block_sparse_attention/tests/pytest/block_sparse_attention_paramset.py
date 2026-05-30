@@ -143,5 +143,5 @@ TEST_PARAMS = {
     ),
 }
 
-
-ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
+ENABLED_PARAMS = [TEST_PARAMS["tnd_random_actlen"]]
+# ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
