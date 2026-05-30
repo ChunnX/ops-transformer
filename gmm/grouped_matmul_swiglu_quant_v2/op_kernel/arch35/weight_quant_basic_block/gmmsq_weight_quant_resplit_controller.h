@@ -86,6 +86,7 @@ private:
     static constexpr uint64_t KB_L1_SIZE = 256;
     static constexpr uint64_t N_L1 = 256;
     static constexpr uint64_t L1K_DYNAMIC_CONFIG_M_THRESHOLD = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+    static constexpr uint64_t A_L1_BUFFER_KB_UNITS = 128;
 };
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -138,6 +139,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
             ctrlParam.basicBlockLimit = startBasicBlockId;
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
+                // SwiGLU splits N axis into swish/gate halves, so each core processes N_L1/2 per half
                 SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2), N_L1 / 2);
                 ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize / 2, N_L1 / 2);
             }
@@ -198,7 +200,7 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(BasicBlockOffsetParam offse
 
         uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
         uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
-        uint64_t aL1Size = 128 * GetKBUnit<xType>();
+        uint64_t aL1Size = A_L1_BUFFER_KB_UNITS * GetKBUnit<xType>();
         uint64_t maxKaDepth = aL1Size / (mL1Align * offsetParam[ctrlParam.processId].kbL1Size);
         if (kaDepth > maxKaDepth) {
             kaDepth = maxKaDepth;
@@ -218,11 +220,8 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t 
     weightGm_ += (nSize * kSize) >> 1;
     uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
     weightScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
-
     xScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
-
     yGm_ += mSize * (nSize / 2);
-
     yScaleGm_ +=
         mSize * CeilDivide(CeilAlign(nSize / 2, static_cast<uint64_t>(64)), static_cast<uint64_t>(tiling_->groupSize));
 }
