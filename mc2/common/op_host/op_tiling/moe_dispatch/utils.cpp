@@ -18,19 +18,19 @@
 
 namespace moe_dispatch_utils {
 
-ge::graphStatus CheckTensorRules(
-    gert::TilingContext* ctx, const TensorCheckRule* rules, uint32_t count) {
+ge::graphStatus CheckTensorRules(gert::TilingContext *ctx, const TensorCheckRule *rules, uint32_t count)
+{
     if (ctx == nullptr || rules == nullptr) {
         OPS_LOG_E("CheckTensorRules", "invalid params: ctx or rules is nullptr.");
         return ge::GRAPH_FAILED;
     }
 
     for (uint32_t i = 0U; i < count; ++i) {
-        const TensorCheckRule& rule = rules[i];
+        const TensorCheckRule &rule = rules[i];
 
         // 获取 tensor desc
-        const gert::CompileTimeTensorDesc* desc = nullptr;
-        const gert::StorageShape* shape = nullptr;
+        const gert::CompileTimeTensorDesc *desc = nullptr;
+        const gert::StorageShape *shape = nullptr;
 
         if (rule.type == moe_dispatch_defs::TensorType::INPUT ||
             rule.type == moe_dispatch_defs::TensorType::OPTIONAL_INPUT) {
@@ -49,8 +49,7 @@ ge::graphStatus CheckTensorRules(
 
         // 检查维度
         if (CheckTensorDimNum(shape, rule.expectedDim) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_E("CheckTensorRules", "tensor %s dim check failed, expected %u.",
-                      rule.name, rule.expectedDim);
+            OPS_LOG_E("CheckTensorRules", "tensor %s dim check failed, expected %u.", rule.name, rule.expectedDim);
             return ge::GRAPH_FAILED;
         }
 
@@ -66,23 +65,23 @@ ge::graphStatus CheckTensorRules(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckOneTensorRule(
-    gert::TilingContext* ctx, const TensorCheckRule& rule) {
+ge::graphStatus CheckOneTensorRule(gert::TilingContext *ctx, const TensorCheckRule &rule)
+{
     return CheckTensorRules(ctx, &rule, 1U);
 }
 
-ge::graphStatus CheckAttrRules(
-    gert::TilingContext* ctx, const AttrCheckRule* rules, uint32_t count) {
+ge::graphStatus CheckAttrRules(gert::TilingContext *ctx, const AttrCheckRule *rules, uint32_t count)
+{
     if (ctx == nullptr || rules == nullptr) {
         OPS_LOG_E("CheckAttrRules", "invalid params: ctx or rules is nullptr.");
         return ge::GRAPH_FAILED;
     }
 
     for (uint32_t i = 0U; i < count; ++i) {
-        const AttrCheckRule& rule = rules[i];
+        const AttrCheckRule &rule = rules[i];
 
         // 获取属性值
-        const int64_t* attrPtr = ctx->GetAttrs()->GetAttrPointer<int64_t>(rule.attrIndex);
+        const int64_t *attrPtr = ctx->GetAttrs()->GetAttrPointer<int64_t>(rule.attrIndex);
 
         // 检查必选属性
         if (rule.required && attrPtr == nullptr) {
@@ -98,10 +97,9 @@ ge::graphStatus CheckAttrRules(
         int64_t attrValue = *attrPtr;
 
         // 检查范围
-        if (attrValue < static_cast<int64_t>(rule.minVal) ||
-            attrValue > static_cast<int64_t>(rule.maxVal)) {
-            OPS_LOG_E("CheckAttrRules", "attr %s value %ld out of range [%u, %u].",
-                      rule.attrName, attrValue, rule.minVal, rule.maxVal);
+        if (attrValue < static_cast<int64_t>(rule.minVal) || attrValue > static_cast<int64_t>(rule.maxVal)) {
+            OPS_LOG_E("CheckAttrRules", "attr %s value %ld out of range [%u, %u].", rule.attrName, attrValue,
+                      rule.minVal, rule.maxVal);
             return ge::GRAPH_FAILED;
         }
     }
@@ -109,18 +107,19 @@ ge::graphStatus CheckAttrRules(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTensorFormatRules(
-    gert::TilingContext* ctx, const TensorFormatRule* rules, uint32_t count, const char* nodeName) {
+ge::graphStatus CheckTensorFormatRules(gert::TilingContext *ctx, const TensorFormatRule *rules, uint32_t count,
+                                       const char *nodeName)
+{
     if (ctx == nullptr || rules == nullptr) {
         OPS_LOG_E("CheckTensorFormatRules", "invalid params: ctx or rules is nullptr.");
         return ge::GRAPH_FAILED;
     }
 
     for (uint32_t i = 0U; i < count; ++i) {
-        const TensorFormatRule& rule = rules[i];
+        const TensorFormatRule &rule = rules[i];
 
         // 获取 tensor desc
-        const gert::CompileTimeTensorDesc* desc = nullptr;
+        const gert::CompileTimeTensorDesc *desc = nullptr;
         if (rule.type == moe_dispatch_defs::TensorType::INPUT ||
             rule.type == moe_dispatch_defs::TensorType::OPTIONAL_INPUT) {
             desc = ctx->GetInputDesc(rule.index);
@@ -142,8 +141,8 @@ ge::graphStatus CheckTensorFormatRules(
 
         // 检查 format
         if (format != rule.expectedFormat) {
-            OPS_LOG_E(nodeName, "tensor %s format is invalid, expected %d, got %d.",
-                      rule.name, static_cast<int32_t>(rule.expectedFormat), static_cast<int32_t>(format));
+            OPS_LOG_E(nodeName, "tensor %s format is invalid, expected %d, got %d.", rule.name,
+                      static_cast<int32_t>(rule.expectedFormat), static_cast<int32_t>(format));
             return ge::GRAPH_FAILED;
         }
     }

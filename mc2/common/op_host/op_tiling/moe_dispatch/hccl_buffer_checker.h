@@ -25,9 +25,9 @@ namespace hccl_buffer_check {
 
 // ========== 计算最小 buffer 需求 ==========
 
-inline uint64_t CalcMinBuffSize(
-    uint32_t localExpertNum, uint32_t maxBs, uint32_t epWorldSize,
-    uint32_t k, uint32_t sharedExpertNum, uint32_t h, uint32_t quantMode) {
+inline uint64_t CalcMinBuffSize(uint32_t localExpertNum, uint32_t maxBs, uint32_t epWorldSize, uint32_t k,
+                                uint32_t sharedExpertNum, uint32_t h, uint32_t quantMode)
+{
     // 基础 buffer 计算公式（由具体算子决定）
     // 这里提供通用计算框架，具体公式在算子主流程中实现
 
@@ -45,9 +45,9 @@ inline uint64_t CalcMinBuffSize(
 
 // ========== 从 HCCL group 获取实际大小 ==========
 
-inline ge::graphStatus CheckBuffSizeFromContext(
-    gert::TilingContext* ctx, uint32_t groupIndex, uint64_t minRequired, const char* nodeName) {
-
+inline ge::graphStatus CheckBuffSizeFromContext(gert::TilingContext *ctx, uint32_t groupIndex, uint64_t minRequired,
+                                                const char *nodeName)
+{
     if (ctx == nullptr) {
         OPS_LOG_E(nodeName, "TilingContext is null when checking HCCL buffer size.");
         return ge::GRAPH_FAILED;
@@ -61,8 +61,7 @@ inline ge::graphStatus CheckBuffSizeFromContext(
     // actualSize = ctx->GetHcclBuffSize(groupIndex);
 
     if (actualSize < minRequired) {
-        OPS_LOG_E(nodeName, "HCCL buffer size %lu is less than required minimum %lu.",
-            actualSize, minRequired);
+        OPS_LOG_E(nodeName, "HCCL buffer size %lu is less than required minimum %lu.", actualSize, minRequired);
         return ge::GRAPH_FAILED;
     }
 
@@ -71,12 +70,10 @@ inline ge::graphStatus CheckBuffSizeFromContext(
 
 // ========== 从属性获取 buffer 大小 ==========
 
-inline ge::graphStatus CheckBuffSizeFromAttr(
-    uint64_t cclBufferSize, uint64_t minRequired, const char* nodeName) {
-
+inline ge::graphStatus CheckBuffSizeFromAttr(uint64_t cclBufferSize, uint64_t minRequired, const char *nodeName)
+{
     if (cclBufferSize < minRequired) {
-        OPS_LOG_E(nodeName, "CCL buffer size %lu is less than required minimum %lu.",
-            cclBufferSize, minRequired);
+        OPS_LOG_E(nodeName, "CCL buffer size %lu is less than required minimum %lu.", cclBufferSize, minRequired);
         return ge::GRAPH_FAILED;
     }
 
@@ -85,8 +82,8 @@ inline ge::graphStatus CheckBuffSizeFromAttr(
 
 // ========== Win Size 校验（dispatch_v2 特有）==========
 
-inline uint64_t CalcWinSize(
-    uint64_t hcclBufferSize, uint32_t aivNum, bool isCcu) {
+inline uint64_t CalcWinSize(uint64_t hcclBufferSize, uint32_t aivNum, bool isCcu)
+{
     // MTE 模式: winSize = hcclBufferSize - 1MB (状态区)
     // CCU 模式: winSize = hcclBufferSize * 2
 
@@ -94,7 +91,7 @@ inline uint64_t CalcWinSize(
         return hcclBufferSize * 2UL;
     }
 
-    uint64_t stateZoneSize = 1024UL * 1024UL;  // 1MB
+    uint64_t stateZoneSize = 1024UL * 1024UL; // 1MB
     if (hcclBufferSize <= stateZoneSize) {
         return 0UL;
     }
@@ -104,8 +101,8 @@ inline uint64_t CalcWinSize(
 
 // ========== 工作空间大小计算 ==========
 
-inline uint64_t CalcWorkspaceSize(
-    uint32_t aivNum, uint32_t quantMode, uint32_t sharedExpertNum) {
+inline uint64_t CalcWorkspaceSize(uint32_t aivNum, uint32_t quantMode, uint32_t sharedExpertNum)
+{
     // 基础工作空间: 16MB
     uint64_t baseWorkspace = moe_dispatch_defs::SYSTEM_NEED_WORKSPACE;
 

@@ -29,20 +29,20 @@ public:
     // v2-A5: DT_FLOAT8_E8M0
     // teardown: DT_FLOAT
     explicit MxQuantChecker(ge::DataType dynScalesDtype = ge::DT_FLOAT)
-        : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::MX_QUANT),
-          dynScalesDtype_(dynScalesDtype) {}
+        : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::MX_QUANT), dynScalesDtype_(dynScalesDtype)
+    {
+    }
 
     // scales 存在性判断 - MX quant 禁止 scales 输入
-    bool ShouldHaveScales(ge::DataType xDtype) const override {
+    bool ShouldHaveScales(ge::DataType xDtype) const override
+    {
         return false;
     }
 
     // scales 校验 - MX quant 不允许 scales
-    ge::graphStatus CheckScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const override {
+    ge::graphStatus CheckScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                uint32_t h) const override
+    {
         // MX quant 不允许 scales
         if (info.dtype != ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
@@ -51,11 +51,9 @@ public:
     }
 
     // dynamicScales 校验
-    ge::graphStatus CheckDynamicScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const override {
+    ge::graphStatus CheckDynamicScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                       uint32_t h) const override
+    {
         // MX 必须有 dynamicScales
         if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
@@ -70,29 +68,32 @@ public:
     }
 
     // dynamicScales 维度数 - 2D
-    uint32_t GetDynamicScalesDimNum() const override {
+    uint32_t GetDynamicScalesDimNum() const override
+    {
         return moe_dispatch_defs::DYNAMIC_SCALE_TWO_DIM_NUM;
     }
 
     // dynamicScales dtype - 返回构造参数
-    ge::DataType GetDynamicScalesDtype() const override {
+    ge::DataType GetDynamicScalesDtype() const override
+    {
         return dynScalesDtype_;
     }
 
     // dynamicScales dim1 计算
     // MX: CeilAlign(CeilDiv(h, 32), 2) = AlignUp(CeilDiv(h, 32), 2)
-    uint32_t CalcDynamicScalesDim1(uint32_t h) const override {
+    uint32_t CalcDynamicScalesDim1(uint32_t h) const override
+    {
         uint32_t rawDim1 = moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::MX_BLOCK_SIZE);
         return moe_dispatch_utils::AlignUp(rawDim1, moe_dispatch_defs::EVEN_ALIGN);
     }
 
     // tokenMsgSize 计算
     // MX: AlignUp(AlignUp(h, 256) + CeilAlign(CeilDiv(h, 32), 2), 512)
-    uint32_t CalcTokenMsgSize(uint32_t h) const override {
+    uint32_t CalcTokenMsgSize(uint32_t h) const override
+    {
         uint32_t alignedH = moe_dispatch_utils::AlignUp(h, moe_dispatch_defs::ALIGN_256);
         uint32_t scalesDim1 = moe_dispatch_utils::AlignUp(
-            moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::MX_BLOCK_SIZE),
-            moe_dispatch_defs::EVEN_ALIGN);
+            moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::MX_BLOCK_SIZE), moe_dispatch_defs::EVEN_ALIGN);
         uint32_t totalSize = alignedH + scalesDim1;
         return moe_dispatch_utils::AlignUp(totalSize, moe_dispatch_defs::ALIGN_512);
     }

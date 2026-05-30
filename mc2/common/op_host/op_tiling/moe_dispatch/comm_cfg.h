@@ -26,34 +26,21 @@ namespace moe_dispatch_comm_cfg {
 // ========== EP AllToAll 配置 ==========
 
 // 版本1：简化接口（dispatch_v2 使用，不需要 URMA 参数）
-void SetEpAllToAllCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupEp,
-    bool isLayered);
+void SetEpAllToAllCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                      const std::string &groupEp, bool isLayered);
 
 // 版本2：完整接口（teardown/setup 使用，支持 URMA）
-void SetEpAllToAllCfgWithUrma(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupEp,
-    bool isLayered,
-    bool isUrma);
+void SetEpAllToAllCfgWithUrma(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                              const std::string &groupEp, bool isLayered, bool isUrma);
 
 // ========== TP AllGather 配置 ==========
 // 仅 dispatch_v2 TP=2 场景
-void SetTpAllGatherCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupTp);
+void SetTpAllGatherCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                       const std::string &groupTp);
 
 // ========== CCU 配置 ==========
-void SetCcuCommCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling1,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling2,
-    const std::string& groupEp,
-    const std::string& groupTp);
+void SetCcuCommCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling1,
+                   AscendC::tiling::Mc2CcTiling &mc2CcTiling2, const std::string &groupEp, const std::string &groupTp);
 
 // ========== BatchWrite 配置 ==========
 // 注：当前未接入，声明与实现均暂用 #if 0 保留

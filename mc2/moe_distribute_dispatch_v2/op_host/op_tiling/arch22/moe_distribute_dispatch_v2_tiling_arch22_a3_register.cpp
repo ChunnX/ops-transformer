@@ -27,7 +27,7 @@ static ge::graphStatus TilingParseForMoeDistributeDispatchV2(gert::TilingParseCo
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext* context)
+static ge::graphStatus MoeDistributeDispatchV2TilingFuncImpl(gert::TilingContext *context)
 {
     MoeDistributeDispatchV2TilingFuncA3 impl;
     return impl.MoeDistributeDispatchV2TilingFunc(context);

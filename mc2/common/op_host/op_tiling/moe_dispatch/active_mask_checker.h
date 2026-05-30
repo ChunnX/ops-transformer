@@ -24,8 +24,8 @@ namespace active_mask_check {
 
 // ========== 互斥/约束规则校验 ==========
 
-inline ge::graphStatus CheckCompatibility(
-    const char* nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs) {
+inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, bool isExpertMask, uint32_t globalBs)
+{
     // 2D mask (isExpertMask=true) 与 layered 互斥
     if (isLayered && isExpertMask) {
         OPS_LOG_E(nodeName, "Cannot support 2D xActiveMask when comm_alg is hierarchy.");
@@ -40,10 +40,10 @@ inline ge::graphStatus CheckCompatibility(
 
 // ========== shape 值校验 ==========
 
-inline ge::graphStatus CheckShape(
-    gert::TilingContext* ctx, uint32_t inputIndex,
-    uint32_t bs, uint32_t k, const char* nodeName) {
-    const gert::StorageShape* shape = ctx->GetOptionalInputShape(inputIndex);
+inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex, uint32_t bs, uint32_t k,
+                                  const char *nodeName)
+{
+    const gert::StorageShape *shape = ctx->GetOptionalInputShape(inputIndex);
     if (shape == nullptr) {
         OPS_LOG_E(nodeName, "xActiveMask shape is null.");
         return ge::GRAPH_FAILED;
@@ -54,8 +54,7 @@ inline ge::graphStatus CheckShape(
 
     // dim0 必须等于 bs
     if (dim0 != static_cast<int64_t>(bs)) {
-        OPS_LOG_E(nodeName, "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %u.",
-            dim0, bs);
+        OPS_LOG_E(nodeName, "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %u.", dim0, bs);
         return ge::GRAPH_FAILED;
     }
 
@@ -63,8 +62,7 @@ inline ge::graphStatus CheckShape(
     if (dimNum == moe_dispatch_defs::TWO_DIMS) {
         int64_t dim1 = shape->GetStorageShape().GetDim(1);
         if (dim1 != static_cast<int64_t>(k)) {
-            OPS_LOG_E(nodeName, "The input of xActiveMask dim1 = %ld is not equal to expertId dim1 = %u.",
-                dim1, k);
+            OPS_LOG_E(nodeName, "The input of xActiveMask dim1 = %ld is not equal to expertId dim1 = %u.", dim1, k);
             return ge::GRAPH_FAILED;
         }
     }
@@ -74,8 +72,8 @@ inline ge::graphStatus CheckShape(
 
 // ========== dtype 校验 ==========
 
-inline ge::graphStatus CheckDtype(
-    const gert::CompileTimeTensorDesc* desc, const char* nodeName) {
+inline ge::graphStatus CheckDtype(const gert::CompileTimeTensorDesc *desc, const char *nodeName)
+{
     if (desc == nullptr) {
         OPS_LOG_E(nodeName, "xActiveMask desc is null.");
         return ge::GRAPH_FAILED;
@@ -85,7 +83,7 @@ inline ge::graphStatus CheckDtype(
     ge::DataType dtype = desc->GetDataType();
     if (dtype != ge::DT_UINT8 && dtype != ge::DT_INT8 && dtype != ge::DT_BOOL) {
         OPS_LOG_E(nodeName, "xActiveMask dtype should be uint8, int8 or bool, but got %s.",
-            Ops::Base::ToString(dtype).c_str());
+                  Ops::Base::ToString(dtype).c_str());
         return ge::GRAPH_FAILED;
     }
 

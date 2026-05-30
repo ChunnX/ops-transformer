@@ -22,11 +22,11 @@
 
 namespace optiling {
 
-ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext* context, uint32_t opVersion);
+ge::graphStatus MoeDistributeDispatchTilingImpl(gert::TilingContext *context, uint32_t opVersion);
 
 class MoeDistributeDispatchTilingA5 : public MoeTilingBase {
 public:
-    explicit MoeDistributeDispatchTilingA5(gert::TilingContext *context) : MoeTilingBase (context) {};
+    explicit MoeDistributeDispatchTilingA5(gert::TilingContext *context) : MoeTilingBase(context){};
 
 protected:
     ge::graphStatus DoOpTiling() override;
@@ -36,15 +36,15 @@ protected:
 
 class MoeDistributeDispatchV2TilingFuncA5 {
 public:
-    ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context);
-    ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context);
-    bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
+    ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context);
+    ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context);
+    bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, DispatchV2TilingCtx &tc,
+                             DispatchV2Config &config);
     uint64_t CalTilingKey(const DispatchV2TilingCtx &tc);
     ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName,
-        DispatchV2TilingCtx &tc, DispatchV2Config &config);
-    ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName);
-    ge::graphStatus CheckQuantModePtr(const int64_t* quantModePtr, const char *nodeName);
+                                              DispatchV2TilingCtx &tc, DispatchV2Config &config);
+    ge::graphStatus CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName);
+    ge::graphStatus CheckQuantModePtr(const int64_t *quantModePtr, const char *nodeName);
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
 };
 } // namespace optiling

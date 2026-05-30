@@ -30,7 +30,7 @@ struct Mc2CcTilingInner {
     uint8_t stepSize;
     uint8_t version;
     char reserved[8];
-    uint8_t protocal;      // 注意：拼写保持与框架一致
+    uint8_t protocal; // 注意：拼写保持与框架一致
     uint8_t communicationEngine;
     uint8_t srcDataType;
     uint8_t dstDataType;
@@ -41,12 +41,9 @@ struct Mc2CcTilingInner {
 };
 
 // ========== 版本1：简化接口（dispatch_v2 使用）==========
-void SetEpAllToAllCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupEp,
-    bool isLayered) {
-
+void SetEpAllToAllCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                      const std::string &groupEp, bool isLayered)
+{
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
 
     // 根据 layered 模式选择算法配置
@@ -64,13 +61,9 @@ void SetEpAllToAllCfg(
 }
 
 // ========== 版本2：完整接口（teardown/setup 使用，支持 URMA）==========
-void SetEpAllToAllCfgWithUrma(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupEp,
-    bool isLayered,
-    bool isUrma) {
-
+void SetEpAllToAllCfgWithUrma(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                              const std::string &groupEp, bool isLayered, bool isUrma)
+{
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
 
     // 根据 layered 模式选择算法配置
@@ -88,7 +81,7 @@ void SetEpAllToAllCfgWithUrma(
 
     // 设置 URMA 标志
     if (isUrma) {
-        auto* inner = reinterpret_cast<Mc2CcTilingInner*>(&mc2CcTiling);
+        auto *inner = reinterpret_cast<Mc2CcTilingInner *>(&mc2CcTiling);
         if (inner != nullptr) {
             inner->protocal = static_cast<uint8_t>(moe_dispatch_defs::URMA_COMM);
         }
@@ -96,11 +89,9 @@ void SetEpAllToAllCfgWithUrma(
 }
 
 // ========== TP AllGather 配置 ==========
-void SetTpAllGatherCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling,
-    const std::string& groupTp) {
-
+void SetTpAllGatherCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling,
+                       const std::string &groupTp)
+{
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_GATHER;
     std::string algConfigStr = "AllGather=level0:ring";
 
@@ -111,13 +102,9 @@ void SetTpAllGatherCfg(
 }
 
 // ========== CCU 配置 ==========
-void SetCcuCommCfg(
-    AscendC::tiling::Mc2InitTiling& mc2InitTiling,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling1,
-    AscendC::tiling::Mc2CcTiling& mc2CcTiling2,
-    const std::string& groupEp,
-    const std::string& groupTp) {
-
+void SetCcuCommCfg(AscendC::tiling::Mc2InitTiling &mc2InitTiling, AscendC::tiling::Mc2CcTiling &mc2CcTiling1,
+                   AscendC::tiling::Mc2CcTiling &mc2CcTiling2, const std::string &groupEp, const std::string &groupTp)
+{
     uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_HALFALLTOALLV);
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
 
