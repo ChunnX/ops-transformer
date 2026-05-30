@@ -13,9 +13,9 @@
 
 ## 功能说明
 
-算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
+ - 算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
 
-    相较于MoeDistributeCombineV2算子，该算子变更如下：
+    相较于DistributeBarrier算子，该算子变更如下：
     - 新增`context`入参，存入通信域相关信息；
     详细说明请参考以下参数说明。
 ## 参数说明

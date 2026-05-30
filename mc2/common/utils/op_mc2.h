@@ -183,6 +183,75 @@ enum class MC2MoeInputIdx : size_t {
     K_BIAS,
 };
 
+enum class MoeDistributeDispatchInputIdx : size_t {
+    K_X,
+    K_EXPERT_IDS,
+    K_SCALES,
+    K_X_ACTIVE_MASK,
+    K_EXPERT_SCALES
+};
+
+enum class MoeDistributeDispatchOutputIdx : size_t {
+    K_EXPAND_X,
+    K_DYNAMIC_SCALES,
+    K_EXPAND_IDX,
+    K_EXPERT_TOKEN_NUMS,
+    K_EP_RECV_COUNTS,
+    K_TP_RECV_COUNTS,
+    K_EXPAND_SCALES
+};
+
+enum class MoeDistributeDispatchAttrIdx : size_t {
+    K_GROUP_EP,
+    K_EP_WORLD_SIZE,
+    K_EP_RANK_ID,
+    K_MOE_EXPERT_NUM,
+    K_GROUP_TP,
+    K_TP_WORLD_SIZE,
+    K_TP_RANK_ID,
+    K_EXPERT_SHARD_TYPE,
+    K_SHARED_EXPERT_NUM,
+    K_SHARED_EXPERT_RANK_NUM,
+    K_QUANT_MODE,
+    K_GLOBAL_BS,
+    K_EXPERT_TOKEN_NUMS_TYPE
+};
+
+enum class MoeDistributeCombineInputIdx : size_t {
+    K_EXPAND_X,
+    K_EXPERT_IDS,
+    K_EXPAND_IDX,
+    K_EP_SEND_COUNTS,
+    K_EXPERT_SCALES,
+    K_TP_SEND_COUNTS,
+    K_X_ACTIVE_MASK,
+    K_ACTIVATION_SCALE,
+    K_WEIGHT_SCALE,
+    K_GROUP_LIST,
+    K_EXPAND_SCALES
+};
+
+enum class MoeDistributeCombineOutputIdx : size_t {
+    K_Y
+};
+
+enum class MoeDistributeCombineAttrIdx : size_t {
+    K_GROUP_EP,
+    K_EP_WORLD_SIZE,
+    K_EP_RANK_ID,
+    K_MOE_EXPERT_NUM,
+    K_GROUP_TP,
+    K_TP_WORLD_SIZE,
+    K_TP_RANK_ID,
+    K_EXPERT_SHARD_TYPE,
+    K_SHARED_EXPERT_NUM,
+    K_SHARED_EXPERT_RANK_NUM,
+    K_GLOBAL_BS,
+    K_OUT_DTYPE,
+    K_COMM_QUANT_MODE,
+    K_GROUP_LIST_TYPE
+};
+
 enum class AlltoAllAllGatherBmmAttrIdx : size_t {
     K_GROUP_EP,
     K_GROUP_TP,

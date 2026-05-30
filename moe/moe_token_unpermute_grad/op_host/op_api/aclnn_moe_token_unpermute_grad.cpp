@@ -27,6 +27,63 @@
 
 using namespace op;
 
+namespace MoeTokenUnpermuteGradCheck {
+
+static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_X = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
+
+static inline bool CheckNotNull(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
+                                const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+{
+    OP_CHECK_NULL(unpermutedTokensGrad, return false);
+    OP_CHECK_NULL(sortedIndices, return false);
+    OP_CHECK_NULL(permutedTokensGradOut, return false);
+    OP_CHECK_NULL(probsGradOut, return false);
+    return true;
+}
+
+static inline bool CheckDtypeValid(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
+                                   const aclTensor *permuteTokens, const aclTensor *probsOptional,
+                                   const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+{
+    if (unpermutedTokensGrad != nullptr && unpermutedTokensGrad->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(unpermutedTokensGrad, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (sortedIndices != nullptr && sortedIndices->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(sortedIndices, MOE_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
+    }
+    if (permuteTokens != nullptr && permuteTokens->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(permuteTokens, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(unpermutedTokensGrad, permuteTokens, return false);
+    }
+    if (probsOptional != nullptr && probsOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(probsOptional, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (permutedTokensGradOut != nullptr && permutedTokensGradOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokensGradOut, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(unpermutedTokensGrad, permutedTokensGradOut, return false);
+    }
+    if (probsGradOut != nullptr && probsGradOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(probsGradOut, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
+                               const aclTensor *permuteTokens, const aclTensor *probsOptional,
+                               const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+{
+    CHECK_RET(CheckNotNull(unpermutedTokensGrad, sortedIndices, permutedTokensGradOut, probsGradOut),
+              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckDtypeValid(unpermutedTokensGrad, sortedIndices, permuteTokens, probsOptional, permutedTokensGradOut,
+                              probsGradOut),
+              ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace MoeTokenUnpermuteGradCheck
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,16 +107,13 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
-    // 参数检查
-    OP_CHECK_NULL(permuteTokens, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(unpermutedTokensGrad, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(permutedTokensGradOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(probsGradOut, return ACLNN_ERR_PARAM_NULLPTR);
-
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclnnStatus ret = MoeTokenUnpermuteGradCheck::CheckParams(unpermutedTokensGrad, sortedIndices, permuteTokens,
+                                                              probsOptional, permutedTokensGradOut, probsGradOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto unpermutedTokensGradContiguous = l0op::Contiguous(unpermutedTokensGrad, uniqueExecutor.get());
@@ -69,7 +123,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
 
     const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokens, uniqueExecutor.get());
     CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());

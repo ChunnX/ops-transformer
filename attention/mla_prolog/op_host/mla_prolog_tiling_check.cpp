@@ -187,6 +187,46 @@ ge::graphStatus MlaPrologTilingCheck::CheckAttrs() const
 
 ge::graphStatus MlaPrologTilingCheck::CheckDims() const
 {
+    OP_CHECK_IF(baseShapeInfo_.bSize > MAX_B_SIZE,
+        OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
+            MAX_B_SIZE, baseShapeInfo_.bSize),
+        return ge::GRAPH_FAILED);
+    const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
+    OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
+        OP_LOGE(context_.opName, "He allows only %s, got %u.",
+            ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
+        return ge::GRAPH_FAILED);
+    const std::set<uint32_t> supportedNSize {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
+    OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
+        OP_LOGE(context_.opName, "N allows only %s, but got %u.",
+            ConvertContainerToString(supportedNSize).c_str(), baseShapeInfo_.nSize),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(baseShapeInfo_.hckvSize != HCKV_SIZE,
+        OP_LOGE(context_.opName, "Hckv allows only %u, got %u.",
+            HCKV_SIZE, baseShapeInfo_.hckvSize),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
+        OP_LOGE(context_.opName, "Dr allows only %u, got %u.",
+            DR_SIZE, baseShapeInfo_.drSize),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(baseShapeInfo_.nkvSize != NKV_SIZE,
+        OP_LOGE(context_.opName, "Nkv allows only %u, got %u.",
+            NKV_SIZE, baseShapeInfo_.nkvSize),
+        return ge::GRAPH_FAILED);
+    if (scenarioInfo_.cacheMode_ != CACHE_MODE::BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::TND) {
+        OP_CHECK_IF(baseShapeInfo_.blockSize < MIN_BLOCK_SIZE || baseShapeInfo_.blockSize > MAX_BLOCK_SIZE || baseShapeInfo_.blockSize % ALIGN_BLOCK_SIZE != 0,
+            OP_LOGE(context_.opName, "BlockSize must be within [%u, %u] and a multiple of %u, got %u.",
+                MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
+            return ge::GRAPH_FAILED);
+    }
+    CheckHcqSize();
+    CheckDSize();
+    CheckDtileSize();
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTilingCheck::CheckQuantMode() const
+{
     if (GetCurNpuArch() == NpuArch::DAV_3510) {
         const std::set<uint32_t> supportedQuantModes {
             static_cast<uint32_t>(QUANT_MODE::NO_QUANT),
@@ -206,20 +246,17 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
             static_cast<uint32_t>(QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE),
             static_cast<uint32_t>(QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE)
         };
-        OP_CHECK_IF(supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
+        OP_CHECK_IF(
+            supportedQuantModes.find(static_cast<uint32_t>(scenarioInfo_.quantMode_)) == supportedQuantModes.end(),
             OP_LOGE(context_.opName, "QUANT_MODE allows only %s, got %u.",
                 ConvertContainerToString(supportedQuantModes).c_str(), static_cast<uint32_t>(scenarioInfo_.quantMode_)),
             return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(baseShapeInfo_.bSize > MAX_B_SIZE,
-        OP_LOGE(context_.opName, "B should not be greater than %u, got %u.",
-            MAX_B_SIZE, baseShapeInfo_.bSize),
-        return ge::GRAPH_FAILED);
-    const std::set<uint32_t> supportedHeSize {1024U, 2048U, 3072U, 4096U, 5120U, 6144U, 7168U, 7680U, 8192U};
-    OP_CHECK_IF(supportedHeSize.find(baseShapeInfo_.heSize) == supportedHeSize.end(),
-        OP_LOGE(context_.opName, "He allows only %s, got %u.",
-            ConvertContainerToString(supportedHeSize).c_str(), baseShapeInfo_.heSize),
-        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTilingCheck::CheckHcqSize() const
+{
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedHcqSize {1536U, 2048U};
         OP_CHECK_IF(supportedHcqSize.find(baseShapeInfo_.hcqSize) == supportedHcqSize.end(),
@@ -232,15 +269,11 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 HCQ_SIZE, baseShapeInfo_.hcqSize),
             return ge::GRAPH_FAILED);
     }
-    const std::set<uint32_t> supportedNSize {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-    OP_CHECK_IF((supportedNSize.find(baseShapeInfo_.nSize) == supportedNSize.end()),
-        OP_LOGE(context_.opName, "N allows only %s, but got %u.",
-            ConvertContainerToString(supportedNSize).c_str(), baseShapeInfo_.nSize),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.hckvSize != HCKV_SIZE,
-        OP_LOGE(context_.opName, "Hckv allows only %u, got %u.",
-            HCKV_SIZE, baseShapeInfo_.hckvSize),
-        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTilingCheck::CheckDSize() const
+{
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         const std::set<uint32_t> supportedDSize {128U, 192U};
         OP_CHECK_IF(supportedDSize.find(baseShapeInfo_.dSize) == supportedDSize.end(),
@@ -253,34 +286,29 @@ ge::graphStatus MlaPrologTilingCheck::CheckDims() const
                 D_SIZE, baseShapeInfo_.dSize),
             return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(baseShapeInfo_.drSize != DR_SIZE,
-        OP_LOGE(context_.opName, "Dr allows only %u, got %u.",
-            DR_SIZE, baseShapeInfo_.drSize),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(baseShapeInfo_.nkvSize != NKV_SIZE,
-        OP_LOGE(context_.opName, "Nkv allows only %u, got %u.",
-            NKV_SIZE, baseShapeInfo_.nkvSize),
-        return ge::GRAPH_FAILED);
-    if (scenarioInfo_.cacheMode_ != CACHE_MODE::BSND && scenarioInfo_.cacheMode_ != CACHE_MODE::TND) {
-        OP_CHECK_IF(baseShapeInfo_.blockSize < MIN_BLOCK_SIZE || baseShapeInfo_.blockSize > MAX_BLOCK_SIZE || baseShapeInfo_.blockSize % ALIGN_BLOCK_SIZE != 0,
-            OP_LOGE(context_.opName, "BlockSize must be within [%u, %u] and a multiple of %u, got %u.",
-                MIN_BLOCK_SIZE, MAX_BLOCK_SIZE, ALIGN_BLOCK_SIZE, baseShapeInfo_.blockSize),
-            return ge::GRAPH_FAILED);
-    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
+{
     if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         uint32_t supportedDtileSize = baseShapeInfo_.hckvSize;
         if (*(context_.ckvkrRepoMode) == static_cast<int>(CKVKR_REPO_MODE::COMBINE)) {
-            supportedDtileSize += baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize +=
+                baseShapeInfo_.drSize * (DTYPE_TO_SIZE.at(ge::DT_BF16) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (*(context_.quantScaleRepoMode) == static_cast<int>(QUANT_SCALE_REPO_MODE::COMBINE)) {
-            supportedDtileSize += baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) * (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
+            supportedDtileSize +=
+                baseShapeInfo_.hckvSize / static_cast<uint32_t>(*(context_.tileSize)) *
+                    (DTYPE_TO_SIZE.at(ge::DT_FLOAT) / DTYPE_TO_SIZE.at(ge::DT_INT8));
         }
         if (baseShapeInfo_.dtileSize != supportedDtileSize) {
             if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 OP_LOGE(context_.opName, "When kvQuantMode is PER_TILE, dtileSize allows only %u, got %u.",
                     supportedDtileSize, baseShapeInfo_.dtileSize);
             } else {
-                OP_LOGE(context_.opName, "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
+                OP_LOGE(context_.opName,
+                    "When kvQuantMode is in {NO_QUANT, PER_TENSOR, PER_CHANNEL}, dtileSize allows only %u, got %u.",
                     supportedDtileSize, baseShapeInfo_.dtileSize);
             }
             return ge::GRAPH_FAILED;

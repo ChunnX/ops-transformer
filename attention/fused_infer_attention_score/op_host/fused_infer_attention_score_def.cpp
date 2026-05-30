@@ -569,7 +569,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
         this->AICore().AddConfig("ascend910b", aicore_config); // use 910B
         this->AICore().AddConfig("ascend910_93", aicore_config);
-        this->AICore().AddConfig("mc62cm12a", aicore_config);
+        this->AICore().AddConfig("mc62", aicore_config);
 
         OpAICoreConfig aicore_config_95;
         aicore_config_95.Input("query")

@@ -86,7 +86,17 @@
     <td>AI Core</td>
     <td>训练场景下计算注意力的反向输出，即FlashAttentionScore的反向计算。</td>
   </tr>
-    <tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。</td>
+  </tr>
+  <tr>
     <td>attention</td>
     <td><a href="../../attention/fused_floyd_attention/README.md">fused_floyd_attention</a></td>
     <td>✓</td>
@@ -138,6 +148,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/inplace_fused_causal_conv1d/README.md">inplace_fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/kv_quant_sparse_flash_attention/README.md">kv_quant_sparse_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -155,6 +175,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/lightning_indexer_grad/README.md">lightning_indexer_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>lightning_indexer的反向梯度计算算子。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -225,16 +255,6 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>AI Core</td>
-    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -606,6 +626,16 @@
     <td>AI Core</td>
     <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
   </tr>
+   <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/distribute_barrier_extend/README.md">distribute_barrier_extend</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。</td>
+ 	</tr>
   <tr>
     <td>mc2</td>
     <td><a href="../../mc2/grouped_mat_mul_all_reduce/README.md">grouped_mat_mul_all_reduce</a></td>
@@ -805,6 +835,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+  </tr>
+  <tr>
+    <td>moe</td>
+    <td><a href="../../moe/moe_gating_top_k_backward/README.md">moe_gating_top_k_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>MoeGatingTopK的反向算子。</td>
   </tr>
   <tr>
     <td>moe</td>
