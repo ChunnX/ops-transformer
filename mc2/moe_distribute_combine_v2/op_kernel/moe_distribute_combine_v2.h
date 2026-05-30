@@ -47,8 +47,8 @@ using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
 // 复用 dispatch v2 中定义的 context holder（v2 走 HcclOpParam，v3 走 Mc2MoeContext）
-using V2HcclContextHolder = MoeDistributeDispatchV2Impl::V2HcclContextHolder;
-using V3Mc2MoeContextHolder = MoeDistributeDispatchV2Impl::V3Mc2MoeContextHolder;
+using HcclContextHolderV2 = MoeDistributeDispatchV2Impl::HcclContextHolderV2;
+using Mc2MoeContextHolderV3 = MoeDistributeDispatchV2Impl::Mc2MoeContextHolderV3;
 #define CombineMC2TypeClass typename ContextHolder, typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter, \
     uint8_t QuantMode, bool HasAddRmsNorm
 #define CombineMC2TypeFunc ContextHolder, ExpandXType, XType, ExpandIdxType, IsNeedReduceScatter, QuantMode, HasAddRmsNorm
@@ -109,13 +109,23 @@ private:
     {
         uint32_t curRankId = (domain == EP_DOMAIN) ? epRankIdOriginal_ : tpRankId_;
         uint64_t winDataSizeOffset = (domain == EP_DOMAIN) ? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        return ctx_.GetWindAddrByRankId(domain, rankId, curRankId) + winDataSizeOffset;
+        if (domain == EP_DOMAIN) {
+            return ctx_.GetWindAddrByRankId(rankId, curRankId) + winDataSizeOffset;
+        }
+        // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindAddrByRankId(tpCtx, rankId, curRankId) + winDataSizeOffset;
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(const int32_t rankId, const uint8_t domain)
     {
         uint32_t curRankId = (domain == EP_DOMAIN) ? epRankIdOriginal_ : tpRankId_;
-        return ctx_.GetWindStateAddrByRankId(domain, rankId, curRankId) + winStatusOffset_;
+        if (domain == EP_DOMAIN) {
+            return ctx_.GetWindStateAddrByRankId(rankId, curRankId) + winStatusOffset_;
+        }
+        // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindStateAddrByRankId(tpCtx, rankId, curRankId) + winStatusOffset_;
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
@@ -416,8 +426,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
 {
     InitTilingAttrs(tilingData);
     statusDataSpaceGm_ = ctx_.GetStatusDataSpaceGm();
-    uint32_t epRankIdHccl = ctx_.GetEpRankId(epRankIdOriginal_);
-    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize(tilingData->moeDistributeCombineV2Info.epWorldSize);
+    uint32_t epRankIdHccl = ctx_.GetEpRankId();
+    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize();
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
         OOMCheckAddrRange<XType>((__gm__ XType*)(GetWinAddrByRankId(tempEpRankId, EP_DOMAIN)), totalWinSizeEp_);
@@ -471,7 +481,9 @@ template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::TpGroupInit(GM_ADDR tpSendCount, GM_ADDR XOut,
     const MoeDistributeCombineV2TilingData *tilingData)
 {
-    ctx_.InitTpAndCheck(totalWinSizeTp_, tpipe_, XOut);
+    // TP 域已下线，本分支随 IsNeedReduceScatter 一并待删
+    auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+    CheckWindowSize(totalWinSizeTp_, Mc2Kernel::GetWinSize(tpCtx), tpipe_, XOut);
     tpSendCountGM_.SetGlobalBuffer((__gm__ int32_t*)tpSendCount);
     tpWorldSize_ = tilingData->moeDistributeCombineV2Info.tpWorldSize;
     tpRankId_ = tilingData->moeDistributeCombineV2Info.tpRankId;
@@ -502,8 +514,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::Init(
     InitInputAndOutput(
         residualX, gamma, expandX, expertIds, expandIdx, epSendCount, expertScales, xActiveMask, sharedExpertX, elasticInfo, oriX, constExpertAlpha1,
         constExpertAlpha2, constExpertV, performanceInfo, yOut, rstdOut, XOut);
-    ctx_.Set(mc2Context);
-    ctx_.InitEpAndCheck(totalWinSizeEp_, tpipe_, XOut);
+    ctx_.Set(mc2Context, tilingData->moeDistributeCombineV2Info.epWorldSize);
+    ctx_.InitEpAndCheck(tilingData->moeDistributeCombineV2Info.totalWinSizeEp, tpipe_, XOut);
     InitAttrs(mc2Context, tilingData);
 
     if constexpr (QuantMode > UNQUANT) {
