@@ -130,8 +130,8 @@ public:
     }
     int64_t GetShapeBlockSize() const
     {
-        // For PA_Nz: Bs axis stores BlockSize/16, D0=16, so BlockSize = Bs * D0
-        if (layout_ == FaLayout::PA_Nz) {
+        // For PA_NZ: Bs axis stores BlockSize/16, D0=16, so BlockSize = Bs * D0
+        if (layout_ == FaLayout::PA_NZ) {
             return GetAxisNum(FaAxis::Bs) * GetAxisNum(FaAxis::D0);
         }
         return GetAxisNum(FaAxis::Bs);

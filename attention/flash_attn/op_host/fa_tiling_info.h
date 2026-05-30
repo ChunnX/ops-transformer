@@ -113,7 +113,7 @@ enum class FaLayout : uint32_t {
     TND = 2,
     PA_BBND = 3,
     PA_BNBD = 4,
-    PA_Nz = 5,
+    PA_NZ = 5,
     LSE_BNS = 6,
     LSE_NT = 7
 };
@@ -123,7 +123,7 @@ const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"TND", FaLayout::TND},
                                                    {"PA_BBND", FaLayout::PA_BBND},
                                                    {"PA_BNBD", FaLayout::PA_BNBD},
-                                                   {"PA_Nz", FaLayout::PA_Nz}};
+                                                   {"PA_NZ", FaLayout::PA_NZ}};
 
 enum class FaAxis : uint32_t {
     B = 0,
