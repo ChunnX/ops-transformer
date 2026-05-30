@@ -72,7 +72,8 @@ public:
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hc_fn, GM_ADDR pre, GM_ADDR grad_y, GM_ADDR grad_post,
                                 GM_ADDR grad_comb, GM_ADDR hc_scale, GM_ADDR hc_base, GM_ADDR h_hat2, GM_ADDR rsqrt,
-                                GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_hc_fn,
+                                GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR min, GM_ADDR max, GM_ADDR reduce_out,
+                                GM_ADDR grad_x, GM_ADDR grad_hc_fn,
                                 GM_ADDR grad_hc_scale, GM_ADDR grad_hc_base, GM_ADDR workspace,
                                 const MhcPreClampSinkhornBackwardTilingData *tilingData, TPipe *pipe)
     {
@@ -80,8 +81,8 @@ public:
         blkIdx_ = GetBlockIdx();
 
         InitTiling(tilingData);
-        InitGM(x, hc_fn, pre, grad_y, grad_post, grad_comb, hc_scale, hc_base, h_hat2, rsqrt, sum_out, norm_out, grad_x,
-               grad_hc_fn, grad_hc_scale, grad_hc_base, workspace);
+        InitGM(x, hc_fn, pre, grad_y, grad_post, grad_comb, hc_scale, hc_base, h_hat2, rsqrt, sum_out, norm_out, min, max,
+               reduce_out, grad_x, grad_hc_fn, grad_hc_scale, grad_hc_base, workspace);
         InitGradPreStageBuffer();
     }
     __aicore__ inline void Process();
@@ -146,6 +147,7 @@ protected:
     GlobalTensor<T> gradWeightWSGlobal_;
     GlobalTensor<T> xWorkspaceGlobal_;
     GlobalTensor<T> gradXCubeGlobal_;
+    GlobalTensor<T> reduceOutGlobal_;
 
 private:
     __aicore__ inline void InitTiling(const MhcPreClampSinkhornBackwardTilingData *tilingData)
@@ -186,7 +188,8 @@ private:
 
     __aicore__ inline void InitGM(GM_ADDR x, GM_ADDR hc_fn, GM_ADDR pre, GM_ADDR grad_y, GM_ADDR grad_post,
                                   GM_ADDR grad_comb, GM_ADDR hc_scale, GM_ADDR hc_base, GM_ADDR h_hat2, GM_ADDR rsqrt,
-                                  GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_hc_fn,
+                                  GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR min, GM_ADDR max, GM_ADDR reduce_out,
+                                  GM_ADDR grad_x, GM_ADDR grad_hc_fn,
                                   GM_ADDR grad_hc_scale, GM_ADDR grad_hc_base, GM_ADDR workspace)
     {
         // cube 和 vector 共用
@@ -206,6 +209,7 @@ private:
 
         weightGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(hc_fn));      // fp32
         gradXGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE_X *>(grad_x)); // fp32
+        reduceOutGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(reduce_out)); // fp32
 
         if ASCEND_IS_AIV {
             preGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(pre));           // fp32
