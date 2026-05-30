@@ -38,13 +38,13 @@ template <typename xType, typename wType, typename yType, class mmType>
 class MatmulAllReduceWeightQuant : public MatmulAllReduceBase<xType, yType, Mc2CoreType::ON_CUBE_AND_VECTOR> {
 public:
     __aicore__ inline MatmulAllReduceWeightQuant(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
-                                                 MC2TilingHeader *tilingData, TPipe *tPipe)
-        : MatmulAllReduceBase<xType, yType, Mc2CoreType::ON_CUBE_AND_VECTOR>(addrs, quantAddrs, arnAddrs, tilingData,
+                                                 MC2TilingHeader *tilDat, TPipe *tPipe)
+        : MatmulAllReduceBase<xType, yType, Mc2CoreType::ON_CUBE_AND_VECTOR>(addrs, quantAddrs, arnAddrs, tilDat,
                                                                              tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceTilingData *)tilingData;
-        this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
-        this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
+        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceTilingData *)tilDat;
+        this->tileInf9_.mmTil9 = &mc2TilingData_->tilematmulTiling.matmulTiling;
+        this->tailInf9_.mmTil9 = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
 
     __aicore__ inline void Process()
@@ -52,20 +52,20 @@ public:
 #if (ORIG_DTYPE_X1 == DT_BF16)
         this->PreProcForBiasOnVector();
 #endif
-        InnerProcess(false, this->paramInTiling_->tileCnt, this->tileInfo_);
-        if (this->tailFlag_) {
-            InnerProcess(true, this->paramInTiling_->tailCnt, this->tailInfo_);
+        InnerProcess(false, this->paramCfg7_->tileLoopCnt, this->tileInf9_);
+        if (this->tailFl7_) {
+            InnerProcess(true, this->paramCfg7_->tailCnt, this->tailInf9_);
         }
 
         this->HcclFinalize();
     }
 
 protected:
-    __aicore__ inline void InnerProcess(bool tailFlag, uint32_t tileCnt, const MC2TileInfo &tileInfo)
+    __aicore__ inline void InnerProcess(bool tailFlag, uint32_t tileLoopCnt, const MC2TileInfo &tileInfo)
     {
         const Mc2WeightQuantBatchMatmulV2TilingData *tiling =
             (tailFlag ? &mc2TilingData_->tailmatmulTiling : &mc2TilingData_->tilematmulTiling);
-        for (uint32_t i = 0U; i < tileCnt; ++i) {
+        for (uint32_t i = 0U; i < tileLoopCnt; ++i) {
             if (this->addFlag_ || i == 0U) {
                 this->tPipe_->Reset();
                 mmOp_.Init(this->addrs_->aGM, this->addrs_->bGM, this->quantAddrs_->antiquantScaleGM,
@@ -77,7 +77,7 @@ protected:
                                        this->addrs_->cGM, this->addrs_->workspaceGM);
             }
             mmOp_.Process();
-            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset);
+            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aPtrOffset, tileInfo.cPtrOffset);
         }
     }
 
@@ -88,13 +88,13 @@ private:
 
 #define INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag)                                         \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);            \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilDat, tilingGM);            \
         using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false,           \
                                                      bTransFlag, quantType, offsetFlag, Mc2QuantType::NONE>;           \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
         QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr};                             \
         MatmulAllReduceWeightQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType> op(&addrs, &quantAddrs, nullptr,               \
-                                                                           (MC2TilingHeader *)&tilingData, &tPipe);    \
+                                                                           (MC2TilingHeader *)&tilDat, &tPipe);    \
         op.Init();                                                                                                     \
         op.Process();                                                                                                  \
     } while (0)

@@ -45,7 +45,7 @@ protected:
     CutResult GetTilingResult() override;
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
+                                     Mc2MatMulV3TilingData &tilDat);
     inline Mc2MatMulV3TilingData &MutableMC2MmV3TileTilingData() const
     {
         return matmulReduceScatterV2TilingData_->mC2Mmv3TileTilingData;

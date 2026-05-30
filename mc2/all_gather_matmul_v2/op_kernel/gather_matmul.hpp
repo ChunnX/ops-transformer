@@ -61,7 +61,7 @@ public:
     /// Parameters structure
     struct Params {
         // Data members
-        GemmCoord problemShape;
+        GemmCrd problemShape;
         GM_ADDR ptrA;
         LayoutA layoutA;
         GM_ADDR ptrB;
@@ -88,7 +88,7 @@ public:
         }
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+        Params(GemmCrd const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_,
                LayoutA layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_,
                int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_,
@@ -134,28 +134,28 @@ public:
         calCount = (mLoops + params.pValue - 1) / params.pValue;
     }
 
-    inline __aicore__ GemmCoord GetBlockIdCoord(int32_t loopOffset, int32_t mLoop, int32_t nLoop, int32_t swizzlDirect,
+    inline __aicore__ GemmCrd GetBlockIdCoord(int32_t loopOffset, int32_t mLoop, int32_t nLoop, int32_t swizzlDirect,
                                                 int32_t swizzlCount)
     {
         uint32_t kIdx = 0;
         int64_t mIdx, nIdx;
         GetBlockIdx(loopOffset, mLoop, nLoop, swizzlDirect, swizzlCount, mIdx, nIdx);
-        return GemmCoord{static_cast<uint32_t>(mIdx), static_cast<uint32_t>(nIdx), kIdx}; // idx在uint32_t范围内
+        return GemmCrd{static_cast<uint32_t>(mIdx), static_cast<uint32_t>(nIdx), kIdx}; // idx在uint32_t范围内
     }
 
-    inline __aicore__ GemmCoord GetBlockLocCoord(GemmCoord blockIdxCoord)
+    inline __aicore__ GemmCrd GetBlkLocCrd(GemmCrd blockIdxCoord)
     {
-        return GemmCoord{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N,
+        return GemmCrd{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N,
                          blockIdxCoord.k() * L1TileShape::K};
     }
 
-    inline __aicore__ GemmCoord GetBlockSizeCoord(GemmCoord blockIdxCoord, GemmCoord blockLocCoord, int32_t mLoop,
+    inline __aicore__ GemmCrd GetBlkSzCrd(GemmCrd blockIdxCoord, GemmCrd blockLocCoord, int32_t mLoop,
                                                   int32_t mSize, int32_t nLoop, int32_t nSize, int32_t kSize)
     {
         uint32_t mActual = (blockIdxCoord.m() == (mLoop - 1)) ? (mSize - blockLocCoord.m()) : L1TileShape::M;
         uint32_t nActual = (blockIdxCoord.n() == (nLoop - 1)) ? (nSize - blockLocCoord.n()) : L1TileShape::N;
         uint32_t kActual = kSize;
-        return GemmCoord{mActual, nActual, kActual};
+        return GemmCrd{mActual, nActual, kActual};
     }
 
     CATLASS_DEVICE
@@ -169,9 +169,9 @@ public:
             if (loopIdx % coreNum != coreIdx) {
                 continue;
             }
-            GemmCoord blockIdxCoord = GetBlockIdCoord(loopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
-            GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-            GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(),
+            GemmCrd blockIdxCoord = GetBlockIdCoord(loopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
+            GemmCrd blockLocCoord = GetBlkLocCrd(blockIdxCoord);
+            GemmCrd blockSizeCoord = GetBlkSzCrd(blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(),
                                                          nLoops, params.problemShape.n(), params.problemShape.k());
 
             MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
@@ -183,17 +183,17 @@ public:
 
             bool isFirstBlock = (loopIdx < coreNum);
             bool hasNextBlock = false;
-            GemmCoord nextBlockIdCoord;
-            GemmCoord nextBlockLocCoord;
-            GemmCoord nextBlockSizeCoord;
+            GemmCrd nextBlockIdCoord;
+            GemmCrd nextBlockLocCoord;
+            GemmCrd nextBlockSizeCoord;
             int32_t nextLoopIdx = loopIdx + coreNum;
             if (nextLoopIdx < coreLoops) {
                 hasNextBlock = true;
                 nextBlockIdCoord =
                     GetBlockIdCoord(nextLoopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
-                nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+                nextBlockLocCoord = GetBlkLocCrd(nextBlockIdCoord);
                 nextBlockSizeCoord =
-                    GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoops, params.problemShape.m(), nLoops,
+                    GetBlkSzCrd(nextBlockIdCoord, nextBlockLocCoord, mLoops, params.problemShape.m(), nLoops,
                                       params.problemShape.n(), params.problemShape.k());
             }
             MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
@@ -217,9 +217,9 @@ public:
             if (loopIdx % coreNum != coreIdx) {
                 continue;
             }
-            GemmCoord blockIdxCoord = GetBlockIdCoord(loopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
-            GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-            GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(),
+            GemmCrd blockIdxCoord = GetBlockIdCoord(loopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
+            GemmCrd blockLocCoord = GetBlkLocCrd(blockIdxCoord);
+            GemmCrd blockSizeCoord = GetBlkSzCrd(blockIdxCoord, blockLocCoord, mLoops, params.problemShape.m(),
                                                          nLoops, params.problemShape.n(), params.problemShape.k());
 
             MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
@@ -231,17 +231,17 @@ public:
 
             bool isFirstBlock = (loopIdx < coreNum);
             bool hasNextBlock = false;
-            GemmCoord nextBlockIdCoord;
-            GemmCoord nextBlockLocCoord;
-            GemmCoord nextBlockSizeCoord;
+            GemmCrd nextBlockIdCoord;
+            GemmCrd nextBlockLocCoord;
+            GemmCrd nextBlockSizeCoord;
             int32_t nextLoopIdx = loopIdx + coreNum;
             if (nextLoopIdx < coreLoops) {
                 hasNextBlock = true;
                 nextBlockIdCoord =
                     GetBlockIdCoord(nextLoopIdx, mLoops, nLoops, params.swizzlDirect, params.swizzlCount);
-                nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+                nextBlockLocCoord = GetBlkLocCrd(nextBlockIdCoord);
                 nextBlockSizeCoord =
-                    GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoops, params.problemShape.m(), nLoops,
+                    GetBlkSzCrd(nextBlockIdCoord, nextBlockLocCoord, mLoops, params.problemShape.m(), nLoops,
                                       params.problemShape.n(), params.problemShape.k());
             }
             MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
@@ -285,10 +285,10 @@ public:
                 }
                 int32_t loopOffsetInBlock = loopOffset / otherRankNum;
                 int32_t dstBlockIdx = loopOffset % otherRankNum;
-                GemmCoord blockIdxCoord =
+                GemmCrd blockIdxCoord =
                     GetBlockIdCoord(loopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, actualPValue, blockM, nLoops,
+                GemmCrd blockLocCoord = GetBlkLocCrd(blockIdxCoord);
+                GemmCrd blockSizeCoord = GetBlkSzCrd(blockIdxCoord, blockLocCoord, actualPValue, blockM, nLoops,
                                                              params.problemShape.n(), params.problemShape.k());
                 MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
                 MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
@@ -305,9 +305,9 @@ public:
 
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
-                GemmCoord nextBlockIdCoord;
-                GemmCoord nextBlockLocCoord;
-                GemmCoord nextBlockSizeCoord;
+                GemmCrd nextBlockIdCoord;
+                GemmCrd nextBlockLocCoord;
+                GemmCrd nextBlockSizeCoord;
                 int32_t nextLoopOffset = loopOffset + coreNum;
                 int32_t nextLoopOffsetInBlock = nextLoopOffset / otherRankNum;
                 int32_t nextDstBlockIdx = nextLoopOffset % otherRankNum;
@@ -315,8 +315,8 @@ public:
                     hasNextBlock = true;
                     nextBlockIdCoord = GetBlockIdCoord(nextLoopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect,
                                                        params.swizzlCount);
-                    nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                    nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockM,
+                    nextBlockLocCoord = GetBlkLocCrd(nextBlockIdCoord);
+                    nextBlockSizeCoord = GetBlkSzCrd(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockM,
                                                            nLoops, params.problemShape.n(), params.problemShape.k());
                 }
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
@@ -371,10 +371,10 @@ public:
                 }
                 int32_t loopOffsetInBlock = loopOffset / otherRankNum;
                 int32_t dstBlockIdx = loopOffset % otherRankNum;
-                GemmCoord blockIdxCoord =
+                GemmCrd blockIdxCoord =
                     GetBlockIdCoord(loopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect, params.swizzlCount);
-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, actualPValue, blockM, nLoops,
+                GemmCrd blockLocCoord = GetBlkLocCrd(blockIdxCoord);
+                GemmCrd blockSizeCoord = GetBlkSzCrd(blockIdxCoord, blockLocCoord, actualPValue, blockM, nLoops,
                                                              params.problemShape.n(), params.problemShape.k());
                 MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
                 MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
@@ -395,9 +395,9 @@ public:
 
                 bool isFirstBlock = (loopOffset < coreNum);
                 bool hasNextBlock = false;
-                GemmCoord nextBlockIdCoord;
-                GemmCoord nextBlockLocCoord;
-                GemmCoord nextBlockSizeCoord;
+                GemmCrd nextBlockIdCoord;
+                GemmCrd nextBlockLocCoord;
+                GemmCrd nextBlockSizeCoord;
                 int32_t nextLoopOffset = loopOffset + coreNum;
                 int32_t nextLoopOffsetInBlock = nextLoopOffset / otherRankNum;
                 int32_t nextDstBlockIdx = nextLoopOffset % otherRankNum;
@@ -405,8 +405,8 @@ public:
                     hasNextBlock = true;
                     nextBlockIdCoord = GetBlockIdCoord(nextLoopOffsetInBlock, actualPValue, nLoops, params.swizzlDirect,
                                                        params.swizzlCount);
-                    nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                    nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockM,
+                    nextBlockLocCoord = GetBlkLocCrd(nextBlockIdCoord);
+                    nextBlockSizeCoord = GetBlkSzCrd(nextBlockIdCoord, nextBlockLocCoord, actualPValue, blockM,
                                                            nLoops, params.problemShape.n(), params.problemShape.k());
                 }
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};

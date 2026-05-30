@@ -636,35 +636,35 @@ void CalTilingParam(CoCTiling &cocTilingData,
     }
 }
 
-void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilingData, MatmulReduceScatterV2AivModeInfo &info)
+void ReduceScatterV2DecodeTilingData(int32_t code, CoCTiling &tilDat, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t m = static_cast<int32_t>(info.M);
     int32_t k = static_cast<int32_t>(info.K);
     int32_t n = static_cast<int32_t>(info.N);
     uint32_t bitCode = static_cast<uint32_t>(code);
-    tilingData.commDataSplit = bitCode & COMMDATASPLIT_MASK;
+    tilDat.commDataSplit = bitCode & COMMDATASPLIT_MASK;
     bitCode >>= COMMDATASPLIT_BNUM;
-    tilingData.commNpuSplit = bitCode & COMMNPUSPLIT_MASK;
+    tilDat.commNpuSplit = bitCode & COMMNPUSPLIT_MASK;
     bitCode >>= COMMNPUSPLIT_BNUM;
-    tilingData.commDirect = bitCode & COMMDIRECT_MASK;
+    tilDat.commDirect = bitCode & COMMDIRECT_MASK;
     bitCode >>= COMMDIRECT_BNUM;
-    tilingData.ubMoveNum = (bitCode & UBMOVENUM_MASK) * HALF_KBYTE;
+    tilDat.ubMoveNum = (bitCode & UBMOVENUM_MASK) * HALF_KBYTE;
     bitCode >>= UBMOVENUM_BNUM;
-    tilingData.pValue = bitCode & PVALUE_MASK;
+    tilDat.pValue = bitCode & PVALUE_MASK;
     bitCode >>= PVALUE_BNUM;
-    tilingData.swizzlCount = bitCode & SWIZZLCOUNT_MASK;
+    tilDat.swizzlCount = bitCode & SWIZZLCOUNT_MASK;
     bitCode >>= SWIZZLCOUNT_BNUM;
-    tilingData.swizzlDirect = bitCode & SWIZZLDIRECT_MASK;
+    tilDat.swizzlDirect = bitCode & SWIZZLDIRECT_MASK;
     bitCode >>= SWIZZLDIRECT_BNUM;
-    tilingData.m0 = (bitCode & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
-    tilingData.k0 = DEFAULT_COL;
-    tilingData.n0 = tilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
-    tilingData.mLoop = CeilDev(m, tilingData.m0);
-    tilingData.nLoop = CeilDev(n, tilingData.n0);
-    tilingData.kLoop = CeilDev(k, tilingData.k0);
+    tilDat.m0 = (bitCode & M0_MASK) * DEFAULT_ROW + DEFAULT_ROW;
+    tilDat.k0 = DEFAULT_COL;
+    tilDat.n0 = tilDat.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
+    tilDat.mLoop = CeilDev(m, tilDat.m0);
+    tilDat.nLoop = CeilDev(n, tilDat.n0);
+    tilDat.kLoop = CeilDev(k, tilDat.k0);
 }
 
-void MatmulReduceScatterA2FourRankINT8Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
+void MatmulReduceScatterA2FourRankINT8Tiling(CoCTiling &cocTilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_FOUR_RANK_INT8_CODE_DEFAULT;
     std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
@@ -677,7 +677,7 @@ void MatmulReduceScatterA2FourRankINT8Tiling(CoCTiling &cocTilingData, MatmulRed
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
 }
 
-void MatmulReduceScatterA2FourRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
+void MatmulReduceScatterA2FourRankFP16Tiling(CoCTiling &cocTilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_FOUR_RANK_FP16_CODE_DEFAULT;
     std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
@@ -690,7 +690,7 @@ void MatmulReduceScatterA2FourRankFP16Tiling(CoCTiling &cocTilingData, MatmulRed
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
 }
 
-void MatmulReduceScatterA2EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
+void MatmulReduceScatterA2EightRankINT8Tiling(CoCTiling &cocTilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_EIGHT_RANK_INT8_CODE_DEFAULT;
     std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
@@ -703,7 +703,7 @@ void MatmulReduceScatterA2EightRankINT8Tiling(CoCTiling &cocTilingData, MatmulRe
     cocTilingData.lenPerLoop = cocTilingData.ubMoveNum;
 }
 
-void MatmulReduceScatterA2EightRankFP16Tiling(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info)
+void MatmulReduceScatterA2EightRankFP16Tiling(CoCTiling &cocTilingData, const MatmulReduceScatterV2AivModeInfo &info)
 {
     int32_t code = MATMUL_REDUCESCATTER_A2_EIGHT_RANK_FP16_CODE_DEFAULT;
     std::map<int *, MatmulReduceScatterV2AivModeTilingValue> TilingParamMap;
@@ -875,7 +875,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
         coreNum == 0,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
         return ge::GRAPH_FAILED);
-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
+    int32_t count_m_tile = (cocTilingData.swizzlDirect != 0) ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
 
@@ -1015,14 +1015,14 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     auto ret = context->SetScheduleMode(batch_mode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
 
-    // 1. tilingData
-    MatmulReduceScatterV2AivModeTilingData *tilingData =
+    // 1. tilDat
+    MatmulReduceScatterV2AivModeTilingData *tilDat =
         context->GetTilingData<MatmulReduceScatterV2AivModeTilingData>();
     OP_TILING_CHECK(
-        tilingData == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MatmulReduceScatterV2 aivMode tilingData is nullptr."),
+        tilDat == nullptr,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MatmulReduceScatterV2 aivMode tilDat is nullptr."),
         return ge::GRAPH_FAILED);
-    MatmulReduceScatterV2AivModeInfo &info = tilingData->matmulReduceScatterV2AivModeInfo;
+    MatmulReduceScatterV2AivModeInfo &info = tilDat->matmulReduceScatterV2AivModeInfo;
     OP_TILING_CHECK(MatmulReduceScatterV2CheckAttrAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
                                                    "MatmulReduceScatterV2 aivMode CheckAttrAndSetTiling Failed"),
@@ -1094,22 +1094,22 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
 
     // Tiling
     if (GetAlgorithmPolicy(info.M, info.N, info.is910C, info.quantFlag) == AlgorithmStrategy::SMALL_M_OPTIMIZED) {
-        SetTilingData_SmallM(tilingData->cocTiling, info, rankSize);
+        SetTilingData_SmallM(tilDat->cocTiling, info, rankSize);
         OP_TILING_CHECK(
-            checkAndResetTilingData_SmallM(tilingData->cocTiling, info, context, rankSize) != ge::GRAPH_SUCCESS,
+            checkAndResetTilingData_SmallM(tilDat->cocTiling, info, context, rankSize) != ge::GRAPH_SUCCESS,
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
                                            "MatmulReduceScatterV2 aivMode checkAndResetTilingData_SmallM Failed"),
             return ge::GRAPH_FAILED);
     } else {
-        SetTilingData(tilingData->cocTiling, info, rankSize);
+        SetTilingData(tilDat->cocTiling, info, rankSize);
     }
 
     uint32_t elementSize = D_TYPE_SIZE_MAP.at(aType);
     uint64_t userWorkSpaceSize = 0;
-    GetUsrWorkSpaceSize(elementSize, numBlocks, userWorkSpaceSize, info, tilingData->cocTiling);
+    GetUsrWorkSpaceSize(elementSize, numBlocks, userWorkSpaceSize, info, tilDat->cocTiling);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkSpaceSize;
 
-    PrintTilingDataInfo(info, tilingData->cocTiling);
+    PrintTilingDataInfo(info, tilDat->cocTiling);
 
     // 5. communication
     if (info.is910C) {
@@ -1117,11 +1117,11 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         std::string algConfig = "ReduceScatter=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
         OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+            mc2CcTilingConfig.GetTiling(tilDat->mc2InitTiling) != 0,
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+            mc2CcTilingConfig.GetTiling(tilDat->mc2CcTiling) != 0,
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
             return ge::GRAPH_FAILED);
     } else {
@@ -1129,11 +1129,11 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         std::string algConfig = "MultiPut=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
         OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+            mc2CcTilingConfig.GetTiling(tilDat->mc2InitTiling) != 0,
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+            mc2CcTilingConfig.GetTiling(tilDat->mc2CcTiling) != 0,
             VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
             return ge::GRAPH_FAILED);
     }

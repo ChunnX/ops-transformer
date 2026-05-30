@@ -53,7 +53,7 @@ enum class NnopbaseHcclServerType : uint32_t {
 
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
-extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId7);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -404,7 +404,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
                                                      aclTensor* gatherOut, aclTensor* amaxOut, uint64_t* workspaceSize,
                                                      aclOpExecutor** executor)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp7 = NnopbaseMsprofSysTime();
     auto retParam = CheckParams(x1, x2, bias, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
@@ -450,8 +450,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const 
                     rankSize, blockSize, groupSize, isGatherOut, isAMaxOut, outDtype, const_cast<char *>(commMode),
                     output, gatherOut, amaxOut, workspaceSize, executor);
     OP_LOGD("AllGatherMatmulV2, aclnnInnerGetWorkspaceSize ret = %d.", ret);
-    static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    static NnopbaseDfxId dfxId7 = {0x60000, __func__, false};
+    NnopbaseReportApiInfo(tsStamp7, dfxId7);
     return ret;
 }
 

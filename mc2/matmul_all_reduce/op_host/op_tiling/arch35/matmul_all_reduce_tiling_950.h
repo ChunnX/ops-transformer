@@ -37,7 +37,7 @@ public:
 
 protected:
     ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
+                                     Mc2MatMulV3TilingData &tilDat);
     bool IsCapable() override;
 
     ge::graphStatus DoOpTiling() override;

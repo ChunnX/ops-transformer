@@ -25,7 +25,7 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
     public:
         QuantTilingTransferHelper(
             QuantMatmulAllReduceTiling310General& quantMatmulAllReduceTiling, Mc2QuantBatchMatmulV3TilingData& data)
-            : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data),
+            : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.tilCtx_, &data),
               tilingProcesser_(quantMatmulAllReduceTiling)
         {}
 
@@ -35,14 +35,14 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             OP_TILING_CHECK(
                 !transposeMatch,
                 VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
+                    tilingProcesser_.opLogName_, "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !kAligned,
                 VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is %d",
+                    tilingProcesser_.opLogName_, "310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is %d",
                     static_cast<int32_t>(tilingProcesser_.args_.kValue)),
                 return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
@@ -50,20 +50,20 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             OP_TILING_CHECK(
                 !nAligned,
                 VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_, "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %d",
+                    tilingProcesser_.opLogName_, "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %d",
                     static_cast<int32_t>(tilingProcesser_.args_.nValue)),
                 return ge::GRAPH_FAILED);
-            auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
+            auto weightTensor = tilCtx_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
             OP_TILING_CHECK(
                 weightTensor == nullptr,
-                VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
+                VECTOR_INNER_ERR_REPORT_TILING(tilCtx_->GetNodeName(), "weight tensor is invalid"),
                 return ge::GRAPH_FAILED);
             auto format = weightTensor->GetStorageFormat();
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(
                 !isWeightNZ,
                 VECTOR_INNER_ERR_REPORT_TILING(
-                    tilingProcesser_.opName_,
+                    tilingProcesser_.opLogName_,
                     "310P QuantMatmulAllReduce weight format should be FRACTAL_NZ, code:%d, but input format is %d",
                     static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ), static_cast<int32_t>(format)),
                 return ge::GRAPH_FAILED);
@@ -72,12 +72,12 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
 
         ge::graphStatus GetShapeAttrsInfo() override
         {
-            OP_LOGI(tilingProcesser_.opName_, "Start assemble input params for matmul tiling");
+            OP_LOGI(tilingProcesser_.opLogName_, "Start assemble input params for matmul tiling");
             if (CheckInputInfo() == ge::GRAPH_FAILED) {
                 return ge::GRAPH_FAILED;
             }
             auto&& tilingArgs = tilingProcesser_.args_;
-            inputParams_.opName = tilingProcesser_.opName_;
+            inputParams_.opName = tilingProcesser_.opLogName_;
             inputParams_.transA = tilingArgs.isATrans;
             inputParams_.transB = tilingArgs.isBTrans;
             inputParams_.hasBias = tilingArgs.isBias;
@@ -104,21 +104,21 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
         void PrintTilingInputParam(Mc2QuantBatchMatmulInfo& info)
         {
             OP_LOGD(
-                tilingProcesser_.opName_, " transA %d transB %d, hasBias %d, mSize %ld, kSize %ld, nSize %ld ",
+                tilingProcesser_.opLogName_, " transA %d transB %d, hasBias %d, mSize %ld, kSize %ld, nSize %ld ",
                 info.transA, info.transB, info.hasBias, info.mSize, info.kSize, info.nSize);
             OP_LOGD(
-                tilingProcesser_.opName_, " aDtype %d bDtype %d cDtype %d biasDtype %d isPerTensor %d ", info.aDtype,
+                tilingProcesser_.opLogName_, " aDtype %d bDtype %d cDtype %d biasDtype %d isPerTensor %d ", info.aDtype,
                 info.bDtype, info.cDtype, info.biasDtype, info.isPerTensor);
             OP_LOGD(
-                tilingProcesser_.opName_, " outDtype %ld libApiWorkSpaceSize %u bf16ExtreWorkSpaceSize %lu ",
+                tilingProcesser_.opLogName_, " outDtype %ld libApiWorkSpaceSize %u bf16ExtreWorkSpaceSize %lu ",
                 info.outDtype, info.libApiWorkSpaceSize, info.bf16ExtreWorkSpaceSize);
         }
 
         ge::graphStatus PostTiling() override
         {
             PrintTilingData();
-            tilingProcesser_.myWorkSpaceSize_ = std::max(tilingProcesser_.myWorkSpaceSize_, workspaceSize_);
-            OP_LOGI(tilingProcesser_.opName_, " set mm workspace size %lu to mc2", tilingProcesser_.myWorkSpaceSize_);
+            tilingProcesser_.calcWorkspaceSz_ = std::max(tilingProcesser_.calcWorkspaceSz_, workspaceSize_);
+            OP_LOGI(tilingProcesser_.opLogName_, " set mm workspace size %lu to mc2", tilingProcesser_.calcWorkspaceSz_);
             return ge::GRAPH_SUCCESS;
         }
 
@@ -157,7 +157,7 @@ protected:
 
 private:
     Mc2Tiling::QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData_{};
-    uint64_t myWorkSpaceSize_{0U};
+    uint64_t calcWorkspaceSz_{0U};
 };
 } // namespace optiling
 #endif // QUANT_MATMUL_ALL_REDUCE_TILING_310_GENERAL_H

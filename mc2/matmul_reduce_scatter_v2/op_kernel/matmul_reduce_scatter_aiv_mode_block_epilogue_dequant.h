@@ -48,6 +48,7 @@ class BlockEpilogue <
     PerTokenScaleType_,
     BiasType_,
     DType_,
+// block epilogue marker
     TileRowBroadcastMul_,
     TileRowBroadcastAdd_,
     TileBroadcastOneBlk_,
@@ -119,43 +120,43 @@ public:
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource)
     {
-        size_t ubOffset = 0;
-        int32_t eventVMTE2 = 0;
-        int32_t eventMTE2V = 0;
+        size_t ubOff_ = 0;
+        int32_t evtVMTE2_ = 0;
+        int32_t evtMTE2V_ = 0;
         int32_t eventMTE3V = 0;
         int32_t eventVMTE3 = 0;
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
-            ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
-            ubOffset += TileShape::COUNT * sizeof(ElementC);
-            ubScaleList[i] = resource.ubBuf.template GetBufferByByte<ElementScale>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(ElementScale);
-            ubPerTokenScaleList[i] = resource.ubBuf.template GetBufferByByte<ElementPerTokenScale>(ubOffset);
-            ubOffset += TileShape::ROW * sizeof(ElementPerTokenScale);
-            ubBiasList[i] = resource.ubBuf.template GetBufferByByte<ElementBias>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(ElementBias);
-            ubDList[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
-            ubOffset += TileShape::COUNT * sizeof(ElementD);
+            ubC_[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOff_);
+            ubOff_ += TileShape::COUNT * sizeof(ElementC);
+            ubScaleBuf_[i] = resource.ubBuf.template GetBufferByByte<ElementScale>(ubOff_);
+            ubOff_ += TileShape::COLUMN * sizeof(ElementScale);
+            ubPerTokenBuf_[i] = resource.ubBuf.template GetBufferByByte<ElementPerTokenScale>(ubOff_);
+            ubOff_ += TileShape::ROW * sizeof(ElementPerTokenScale);
+            ubBias_[i] = resource.ubBuf.template GetBufferByByte<ElementBias>(ubOff_);
+            ubOff_ += TileShape::COLUMN * sizeof(ElementBias);
+            ubD_[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOff_);
+            ubOff_ += TileShape::COUNT * sizeof(ElementD);
 
-            eventUbCVMTE2List[i] = eventVMTE2++;
-            eventUbBiasVMTE2List[i] = eventVMTE2++;
-            eventUbCMTE2VList[i] = eventMTE2V++;
-            eventUbBiasMTE2VList[i] = eventMTE2V++;
-            eventUbScaleMTE2VList[i] = eventMTE2V++;
-            eventUbPerTokenScaleMTE2VList[i] = eventMTE2V++;
+            evtCVMTE2_[i] = evtVMTE2_++;
+            eventUbBiasVMTE2List[i] = evtVMTE2_++;
+            evtCMTE2V_[i] = evtMTE2V_++;
+            eventUbBiasMTE2VList[i] = evtMTE2V_++;
+            evtScaleMTE2V_[i] = evtMTE2V_++;
+            evtPerTokenMTE2V_[i] = evtMTE2V_++;
             eventUbDMTE3VList[i] = eventMTE3V++;
             eventUbDVMTE3List[i] = eventVMTE3++;
         }
-        ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::COUNT * sizeof(float);
+        ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOff_);
+        ubOff_ += TileShape::COUNT * sizeof(float);
         if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
             AscendC::IsSameType<ElementBias, half>::value) {
-            ubBiasFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(float);
+            ubBiasFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOff_);
+            ubOff_ += TileShape::COLUMN * sizeof(float);
         }
-        ubMul = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::COUNT * sizeof(float);
-        ubPerTokenScaleBrcb = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::ROW * BYTE_PER_BLK;
+        ubMul = resource.ubBuf.template GetBufferByByte<float>(ubOff_);
+        ubOff_ += TileShape::COUNT * sizeof(float);
+        ubPerTokenScaleBrcb = resource.ubBuf.template GetBufferByByte<float>(ubOff_);
+        ubOff_ += TileShape::ROW * BYTE_PER_BLK;
         ubPerTokenMul = ubMul;
         ubBiasAdd = ubMul;
     }
@@ -164,7 +165,7 @@ public:
     void WaitFlag()
     {
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[i]);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
@@ -174,7 +175,7 @@ public:
     void InitFlag()
     {
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[i]);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
@@ -212,44 +213,44 @@ public:
             auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
             auto tileOffset = tileCoord * tileShape;
 
-            auto gmTileC = gmC[layoutC.GetOffset(tileOffset)];
-            auto layoutGmTileC = layoutC.GetTileLayout(actualTileShape);
+            auto gmTileCMain = gmC[layoutC.GetOffset(tileOffset)];
+            auto layoutGmTileCMain = layoutC.GetTileLayout(actualTileShape);
 
-            auto &ubC = ubCList[ubListId];
+            auto &ubC = ubC_[ubListId];
             LayoutC layoutUbC{actualTileShape, ubTileStride};
 
             // 把 C 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmTileC);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
+            copyGmToUbC(ubC, gmTileCMain, layoutUbC, layoutGmTileCMain);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
 
-            auto scaleTileOffset = tileOffset.template GetCoordByAxis<1>();
-            auto scaleTileShape = actualTileShape.template GetCoordByAxis<1>();
+            auto scaleTileOff = tileOffset.template GetCoordByAxis<1>();
+            auto scaleTileShp = actualTileShape.template GetCoordByAxis<1>();
 
-            auto gmTileScale = gmScale[layoutScale.GetOffset(scaleTileOffset)];
-            auto layoutGmTileScale = layoutScale.GetTileLayout(scaleTileShape);
+            auto gmTileScaleMain = gmScale[layoutScale.GetOffset(scaleTileOff)];
+            auto layoutGmTileScaleMain = layoutScale.GetTileLayout(scaleTileShp);
 
-            auto &ubScale = ubScaleList[ubListId];
-            auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShape);
+            auto &ubScale = ubScaleBuf_[ubListId];
+            auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShp);
 
             // 把 scale 从GM拷贝到UB
-            copyGmToUbScale(ubScale, gmTileScale, layoutUbScale, layoutGmTileScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+            copyGmToUbScale(ubScale, gmTileScaleMain, layoutUbScale, layoutGmTileScaleMain);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V_[ubListId]);
 
-            auto perTokenScaleTileOffset = tileOffset.template GetCoordByAxis<0>();
-            auto perTokenScaleTileShape = actualTileShape.template GetCoordByAxis<0>();
+            auto ptsTileOffset = tileOffset.template GetCoordByAxis<0>();
+            auto ptsTileShape = actualTileShape.template GetCoordByAxis<0>();
 
-            auto gmTilePerTokenScale = gmPerTokenScale[layoutPerTokenScale.GetOffset(perTokenScaleTileOffset)];
-            auto layoutGmTilePerTokenScale = layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
+            auto gmTilePTS = gmPerTokenScale[layoutPerTokenScale.GetOffset(ptsTileOffset)];
+            auto layoutGmTilePTS = layoutPerTokenScale.GetTileLayout(ptsTileShape);
 
-            auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
+            auto &ubPerTokenScale = ubPerTokenBuf_[ubListId];
             auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenScaleTileShape);
+                ptsTileShape);
 
             // 把 perTokenScale 从GM拷贝到UB
-            copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale,
-                layoutGmTilePerTokenScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePTS, layoutUbPerTokenScale,
+                layoutGmTilePTS);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V_[ubListId]);
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
                 auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
@@ -258,7 +259,7 @@ public:
                 auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
                 auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
 
-                auto &ubBias = ubBiasList[ubListId];
+                auto &ubBias = ubBias_[ubListId];
                 auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
 
                 // 把bias 从GM拷贝到UB
@@ -273,12 +274,12 @@ public:
                 }
             }
             // 在UB上把C cast到FP32
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V_[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V_[ubListId]);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
 
             // 在UB上做广播乘法
@@ -289,7 +290,7 @@ public:
             tileOneBlkColumnBroadcastMul(ubPerTokenMul, ubMul, ubPerTokenScaleBrcb);
             AscendC::PipeBarrier<PIPE_V>();
             // 选择要cast的源tensor：如果有bias，使用ubBiasAdd；否则直接使用ubPerTokenMul
-            AscendC::LocalTensor<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubPerTokenMul;
+            AscendC::LocalTensor_<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubPerTokenMul;
 
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
@@ -297,7 +298,7 @@ public:
                     AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
                 } else {
-                    auto &ubBias = ubBiasList[ubListId];
+                    auto &ubBias = ubBias_[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
@@ -305,7 +306,7 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
             }
 
-            auto &ubD = ubDList[ubListId];
+            auto &ubD = ubD_[ubListId];
             LayoutD layoutUbD{actualTileShape, ubTileStride};
 
             // 将乘法结果从UB cast到D
@@ -313,12 +314,12 @@ public:
             AscendC::Cast(ubD, castSrc, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
 
-            auto gmTileD = gmD[layoutD.GetOffset(tileOffset)];
-            auto layoutGmTileD = layoutD.GetTileLayout(actualTileShape);
+            auto gmTileDMain = gmD[layoutD.GetOffset(tileOffset)];
+            auto layoutGmTileDMain = layoutD.GetTileLayout(actualTileShape);
 
             // 把乘法结果从UB拷贝到GM
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-            copyUbToGmD(gmTileD, ubD, layoutGmTileD, layoutUbD);
+            copyUbToGmD(gmTileDMain, ubD, layoutGmTileDMain, layoutUbD);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
 
             ubListId = (ubListId + 1) % UB_STAGES;
@@ -333,7 +334,7 @@ public:
                      LayoutD layoutD, GemmCoord problemShape)
     {
         // Calculate the offset of the current block
-        MatrixCoord actualBlockShape = problemShape.GetCoordMN();
+        MatrixCoord blockCoordMN = problemShape.GetCoordMN();
 
         gmScale.SetGlobalBuffer(ptrScale);
         gmC.SetGlobalBuffer(ptrC);
@@ -343,94 +344,94 @@ public:
         }
         auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
         auto tileShape = TileShape::ToCoord();
-        EpilogueTileSwizzle epilogueTileSwizzle(actualBlockShape, tileShape);
-        uint32_t tileLoops = epilogueTileSwizzle.GetLoops();
-        uint32_t subblockIdx = AscendC::GetSubBlockIdx();
-        uint32_t subblockNum = AscendC::GetSubBlockNum();
+        EpilogueTileSwizzle epilogueSwizzle(blockCoordMN, tileShape);
+        uint32_t loopCount = epilogueSwizzle.GetLoops();
+        uint32_t subBlkIdx = AscendC::GetSubBlockIdx();
+        uint32_t subBlkNum = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
-            auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
-            auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
+        for (uint32_t iterIdx = subBlkIdx; iterIdx < loopCount; iterIdx += subBlkNum) {
+            auto tileCoord = epilogueSwizzle.GetTileCoord(iterIdx);
+            auto actualTileShape = epilogueSwizzle.GetActualTileShape(tileCoord);
             auto tileOffset = tileCoord * tileShape;
 
-            auto gmTileC = gmC[layoutC.GetOffset(tileOffset)];
-            auto layoutGmTileC = layoutC.GetTileLayout(actualTileShape);
+            auto gmBlkC = gmC[layoutC.GetOffset(tileOffset)];
+            auto layoutGmBlkC = layoutC.GetTileLayout(actualTileShape);
 
-            auto &ubC = ubCList[ubListId];
+            auto &ubC_2 = ubC_2__2[ubListId];
             LayoutC layoutUbC{actualTileShape, ubTileStride};
 
             // 把 C 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmTileC);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
+            copyGmToUbC(ubC_2, gmBlkC, layoutUbC, layoutGmBlkC);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
 
-            auto scaleTileOffset = tileOffset.template GetCoordByAxis<1>();
-            auto scaleTileShape = actualTileShape.template GetCoordByAxis<1>();
+            auto scaleBlkOffset = tileOffset.template GetCoordByAxis<1>();
+            auto scaleBlkShape = actualTileShape.template GetCoordByAxis<1>();
 
-            auto gmTileScale = gmScale[layoutScale.GetOffset(scaleTileOffset)];
-            auto layoutGmTileScale = layoutScale.GetTileLayout(scaleTileShape);
+            auto gmBlkScale = gmScale[layoutScale.GetOffset(scaleBlkOffset)];
+            auto layoutGmBlkScale = layoutScale.GetTileLayout(scaleBlkShape);
 
-            auto &ubScale = ubScaleList[ubListId];
-            auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShape);
+            auto &ubS_2cale = ubS_2caleBuf_[ubListId];
+            auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleBlkShape);
 
             // 把 scale 从GM拷贝到UB
-            copyGmToUbScale(ubScale, gmTileScale, layoutUbScale, layoutGmTileScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+            copyGmToUbScale(ubS_2cale, gmBlkScale, layoutUbScale, layoutGmBlkScale);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V_[ubListId]);
 
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
+                auto biasBlkOffset = tileOffset.template GetCoordByAxis<1>();
+                auto biasBlkShape = actualTileShape.template GetCoordByAxis<1>();
 
-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
+                auto gmBlkBias = gmBias[layoutBias.GetOffset(biasBlkOffset)];
+                auto layoutGmBlkBias = layoutBias.GetTileLayout(biasBlkShape);
 
-                auto &ubBias = ubBiasList[ubListId];
-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
+                auto &ubBias_2 = ubBias_2_[ubListId];
+                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasBlkShape);
 
                 // 把bias 从GM拷贝到UB
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
+                copyGmToUbBias(ubBias_2, gmBlkBias, layoutUbBias, layoutGmBlkBias);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                    AscendC::Cast(ubBias_2Fp32, ubBias_2, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
             // 在UB上把C cast到FP32
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
-            AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
+            AscendC::Cast(ubC_2Fp32, ubC_2, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V_[ubListId]);
 
             // 在UB上做广播乘法
             AscendC::PipeBarrier<PIPE_V>();
-            tileRowBroadcastMul(ubMul, ubCFp32, ubScale);
+            tileRowBroadcastMul(ubMul, ubC_2Fp32, ubS_2cale);
             AscendC::PipeBarrier<PIPE_V>();
 
-            // 选择要cast的源tensor：如果有bias，使用ubBiasAdd；否则直接使用ubMul
-            AscendC::LocalTensor<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubMul;
+            // 选择要cast的源tensor：如果有bias，使用ubBias_2Add；否则直接使用ubMul
+            AscendC::LocalTensor_<float> &castSrc = ptrBias != nullptr ? ubBias_2Add : ubMul;
 
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
-                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBiasFp32);
+                    tileRowBroadcastAdd(ubBias_2Add, ubMul, ubBias_2Fp32);
                 } else {
-                    auto &ubBias = ubBiasList[ubListId];
+                    auto &ubBias_2 = ubBias_2_[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBias);
+                    tileRowBroadcastAdd(ubBias_2Add, ubMul, ubBias_2);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            auto &ubD = ubDList[ubListId];
+            auto &ubD = ubD_[ubListId];
             LayoutD layoutUbD{actualTileShape, ubTileStride};
 
             // 将乘法结果从UB cast到D
@@ -438,12 +439,12 @@ public:
             AscendC::Cast(ubD, castSrc, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
 
-            auto gmTileD = gmD[layoutD.GetOffset(tileOffset)];
-            auto layoutGmTileD = layoutD.GetTileLayout(actualTileShape);
+            auto gmBlkD = gmD[layoutD.GetOffset(tileOffset)];
+            auto layoutGmBlkD = layoutD.GetTileLayout(actualTileShape);
 
             // 把乘法结果从UB拷贝到GM
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-            copyUbToGmD(gmTileD, ubD, layoutGmTileD, layoutUbD);
+            copyUbToGmD(gmBlkD, ubD, layoutGmBlkD, layoutUbD);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
 
             ubListId = (ubListId + 1) % UB_STAGES;
@@ -459,7 +460,7 @@ public:
                      GemmCoord problemShape)
     {
         // Calculate the offset of the current block
-        MatrixCoord actualBlockShape = problemShape.GetCoordMN();
+        MatrixCoord coordMN = problemShape.GetCoordMN();
 
         AscendC::GlobalTensor<ElementD> gmIn;
         AscendC::GlobalTensor<ElementD> gmOut;
@@ -469,97 +470,97 @@ public:
 
         auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
         auto tileShape = TileShape::ToCoord();
-        EpilogueTileSwizzle epilogueTileSwizzle(actualBlockShape, tileShape);
-        uint32_t tileLoops = epilogueTileSwizzle.GetLoops();
-        uint32_t subblockIdx = AscendC::GetSubBlockIdx();
-        uint32_t subblockNum = AscendC::GetSubBlockNum();
+        EpilogueTileSwizzle tileSwizzle(coordMN, tileShape);
+        uint32_t numLoops = tileSwizzle.GetLoops();
+        uint32_t sblkIdx = AscendC::GetSubBlockIdx();
+        uint32_t sblkNum = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
-            auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
-            auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
+        for (uint32_t stepIdx = sblkIdx; stepIdx < numLoops; stepIdx += sblkNum) {
+            auto tileCoord = tileSwizzle.GetTileCoord(stepIdx);
+            auto actualTileShape = tileSwizzle.GetActualTileShape(tileCoord);
             auto tileOffset = tileCoord * tileShape;
 
-            auto gmTileIn = gmIn[layoutIn.GetOffset(tileOffset)];
-            auto gmTileOut = gmOut[layoutOut.GetOffset(tileOffset)];
-            auto layoutGmTileIn = layoutIn.GetTileLayout(actualTileShape);
-            auto layoutGmTileOut = layoutOut.GetTileLayout(actualTileShape);
+            auto gmBlkIn = gmIn[layoutIn.GetOffset(tileOffset)];
+            auto gmBlkOut = gmOut[layoutOut.GetOffset(tileOffset)];
+            auto layoutGmBlkIn = layoutIn.GetTileLayout(actualTileShape);
+            auto layoutGmBlkOut = layoutOut.GetTileLayout(actualTileShape);
 
-            auto &ubIn = ubDList[ubListId];
+            auto &ubIn = ubD_[ubListId];
             LayoutD layoutUbIn{actualTileShape, ubTileStride};
 
             // 把 D 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
-            copyGmToUbD(ubIn, gmTileIn, layoutUbIn, layoutGmTileIn);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
+            copyGmToUbD(ubIn, gmBlkIn, layoutUbIn, layoutGmBlkIn);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
 
-            auto perTokenScaleTileOffset = tileOffset.template GetCoordByAxis<0>();
-            auto perTokenScaleTileShape = actualTileShape.template GetCoordByAxis<0>();
+            auto ptsBlkOffset = tileOffset.template GetCoordByAxis<0>();
+            auto ptsBlkShape = actualTileShape.template GetCoordByAxis<0>();
 
-            auto gmTilePerTokenScale = gmPerTokenScale[layoutPerTokenScale.GetOffset(perTokenScaleTileOffset)];
-            auto layoutGmTilePerTokenScale = layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
+            auto gmBlkPTS = gmPerTokenScale[layoutPerTokenScale.GetOffset(ptsBlkOffset)];
+            auto layoutGmBlkPTS = layoutPerTokenScale.GetTileLayout(ptsBlkShape);
 
-            auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
+            auto &ubPerTokenScale = ubPerTokenBuf_[ubListId];
             auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenScaleTileShape);
+                ptsBlkShape);
 
             // 把 perTokenScale 从GM拷贝到UB
-            copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale,
-                layoutGmTilePerTokenScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            copyGmToUbPerTokenScale(ubPerTokenScale, gmBlkPTS, layoutUbPerTokenScale,
+                layoutGmBlkPTS);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V_[ubListId]);
 
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
+                auto biasBlkOffset = tileOffset.template GetCoordByAxis<1>();
+                auto biasBlkShape = actualTileShape.template GetCoordByAxis<1>();
 
-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
+                auto gmBlkBias = gmBias[layoutBias.GetOffset(biasBlkOffset)];
+                auto layoutGmBlkBias = layoutBias.GetTileLayout(biasBlkShape);
 
-                auto &ubBias = ubBiasList[ubListId];
-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
+                auto &ubBias_3 = ubBias_3_[ubListId];
+                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasBlkShape);
 
                 // 把bias 从GM拷贝到UB
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
+                copyGmToUbBias(ubBias_3, gmBlkBias, layoutUbBias, layoutGmBlkBias);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                    AscendC::Cast(ubBias_3Fp32, ubBias_3, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
 
             // 在UB上把D cast到FP32
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
-            AscendC::Cast(ubCFp32, ubIn, AscendC::RoundMode::CAST_NONE, TileShape::COUNT);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V_[ubListId]);
+            AscendC::Cast(ubC_3Fp32, ubIn, AscendC::RoundMode::CAST_NONE, TileShape::COUNT);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2_[ubListId]);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V_[ubListId]);
 
             // 在UB上做广播乘法
             AscendC::PipeBarrier<PIPE_V>();
             tileBroadcastOneBlk(ubPerTokenScaleBrcb, ubPerTokenScale);
             AscendC::PipeBarrier<PIPE_V>();
-            tileOneBlkColumnBroadcastMul(ubPerTokenMul, ubCFp32, ubPerTokenScaleBrcb);
+            tileOneBlkColumnBroadcastMul(ubPerTokenMul, ubC_3Fp32, ubPerTokenScaleBrcb);
             AscendC::PipeBarrier<PIPE_V>();
 
-            // 选择要cast的源tensor：如果有bias，使用ubBiasAdd；否则直接使用ubPerTokenMul
-            AscendC::LocalTensor<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubPerTokenMul;
+            // 选择要cast的源tensor：如果有bias，使用ubBias_3Add；否则直接使用ubPerTokenMul
+            AscendC::LocalTensor_<float> &castSrc = ptrBias != nullptr ? ubBias_3Add : ubPerTokenMul;
 
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
+                    tileRowBroadcastAdd(ubBias_3Add, ubPerTokenMul, ubBias_3Fp32);
                     AscendC::PipeBarrier<PIPE_V>();
                 } else {
-                    auto &ubBias = ubBiasList[ubListId];
+                    auto &ubBias_3 = ubBias_3_[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
+                    tileRowBroadcastAdd(ubBias_3Add, ubPerTokenMul, ubBias_3);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
@@ -570,7 +571,7 @@ public:
 
             // 把乘法结果从UB拷贝到GM
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-            copyUbToGmD(gmTileOut, ubIn, layoutGmTileOut, layoutUbIn);
+            copyUbToGmD(gmBlkOut, ubIn, layoutGmBlkOut, layoutUbIn);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
 
             ubListId = (ubListId + 1) % UB_STAGES;
@@ -579,16 +580,16 @@ public:
     }
 
 private:
-    AscendC::LocalTensor<ElementC> ubCList[UB_STAGES];
-    AscendC::LocalTensor<ElementScale> ubScaleList[UB_STAGES];
-    AscendC::LocalTensor<ElementPerTokenScale> ubPerTokenScaleList[UB_STAGES];
-    AscendC::LocalTensor<ElementBias> ubBiasList[UB_STAGES];
-    AscendC::LocalTensor<ElementD> ubDList[UB_STAGES];
+    AscendC::LocalTensor_<ElementC> ubC_3__3[UB_STAGES];
+    AscendC::LocalTensor_<ElementScale> ubS_3caleBuf_[UB_STAGES];
+    AscendC::LocalTensor_<ElementPerTokenScale> ubPerTokenBuf_[UB_STAGES];
+    AscendC::LocalTensor_<ElementBias> ubBias_3_[UB_STAGES];
+    AscendC::LocalTensor_<ElementD> ubD_[UB_STAGES];
 
-    int32_t eventUbCVMTE2List[UB_STAGES];
-    int32_t eventUbCMTE2VList[UB_STAGES];
-    int32_t eventUbScaleMTE2VList[UB_STAGES];
-    int32_t eventUbPerTokenScaleMTE2VList[UB_STAGES];
+    int32_t evtCVMTE2_[UB_STAGES];
+    int32_t evtCMTE2V_[UB_STAGES];
+    int32_t evtScaleMTE2V_[UB_STAGES];
+    int32_t evtPerTokenMTE2V_[UB_STAGES];
     int32_t eventUbBiasVMTE2List[UB_STAGES];
     int32_t eventUbBiasMTE2VList[UB_STAGES];
     int32_t eventUbDMTE3VList[UB_STAGES];
@@ -596,12 +597,12 @@ private:
 
     uint32_t ubListId{0};
 
-    AscendC::LocalTensor<float> ubCFp32;
-    AscendC::LocalTensor<float> ubBiasFp32;
-    AscendC::LocalTensor<float> ubMul;
-    AscendC::LocalTensor<float> ubPerTokenScaleBrcb;
-    AscendC::LocalTensor<float> ubPerTokenMul;
-    AscendC::LocalTensor<float> ubBiasAdd;
+    AscendC::LocalTensor_<float> ubC_3Fp32;
+    AscendC::LocalTensor_<float> ubBias_3Fp32;
+    AscendC::LocalTensor_<float> ubMul;
+    AscendC::LocalTensor_<float> ubPerTokenScaleBrcb;
+    AscendC::LocalTensor_<float> ubPerTokenMul;
+    AscendC::LocalTensor_<float> ubBias_3Add;
 
     TileRowBroadcastMul tileRowBroadcastMul;
     TileRowBroadcastAdd tileRowBroadcastAdd;

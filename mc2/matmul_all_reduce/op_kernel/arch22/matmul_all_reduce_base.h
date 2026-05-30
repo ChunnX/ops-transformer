@@ -33,7 +33,7 @@ template <typename xType, typename yType, Mc2CoreType coreType>
 class MatmulAllReduceBase {
 public:
     __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
-                                          MC2TilingHeader *tilingData, TPipe *tPipe)
+                                          MC2TilingHeader *tilDat, TPipe *tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tPipe_(tPipe)
     {
         if constexpr (coreType == Mc2CoreType::ON_CUBE) {
@@ -41,8 +41,8 @@ public:
         } else {
             notifyFlag_ = (g_coreType == AscendC::AIV && GetBlockIdx() == 0);
         }
-        msgInTiling_ = &tilingData->msg;
-        paramInTiling_ = &tilingData->param;
+        msgInTiling_ = &tilDat->msg;
+        paramInTiling_ = &tilDat->param;
     }
 
     __aicore__ inline void Init()
@@ -60,24 +60,24 @@ public:
         addFlag_ = (paramInTiling_->isAdd != 0U);
         tailFlag_ = (paramInTiling_->tailCnt != 0U);
 
-        tileInfo_.aOffset = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->Ka;
-        tileInfo_.aAddrOffset = tileInfo_.aOffset * sizeof(xType);
-        tileInfo_.cOffset = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->N;
-        tileInfo_.cAddrOffset = tileInfo_.cOffset * sizeof(yType);
+        tileInfo_.aOff = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->Ka;
+        tileInfo_.aPtrOffset = tileInfo_.aOff * sizeof(xType);
+        tileInfo_.cOff = (uint64_t)tileInfo_.mmTiling->M * (uint64_t)tileInfo_.mmTiling->N;
+        tileInfo_.cPtrOffset = tileInfo_.cOff * sizeof(yType);
         if (tailFlag_) {
-            tailInfo_.aOffset = (uint64_t)tailInfo_.mmTiling->M * (uint64_t)tailInfo_.mmTiling->Ka;
-            tailInfo_.aAddrOffset = tailInfo_.aOffset * sizeof(xType);
-            tailInfo_.cOffset = (uint64_t)tailInfo_.mmTiling->M * (uint64_t)tailInfo_.mmTiling->N;
-            tailInfo_.cAddrOffset = tailInfo_.cOffset * sizeof(yType);
+            tailInfo_.aOff = (uint64_t)tailInfo_.mmTiling->M * (uint64_t)tailInfo_.mmTiling->Ka;
+            tailInfo_.aPtrOffset = tailInfo_.aOff * sizeof(xType);
+            tailInfo_.cOff = (uint64_t)tailInfo_.mmTiling->M * (uint64_t)tailInfo_.mmTiling->N;
+            tailInfo_.cPtrOffset = tailInfo_.cOff * sizeof(yType);
         }
 
         if (notifyFlag_) {
-            tileInfo_.hcclHandleId = hccl_.AllReduce(addrs_->cGM, addrs_->outputGM, tileInfo_.cOffset, HCCL_DATA_TYPE,
-                                                     AscendC::HCCL_REDUCE_SUM, paramInTiling_->tileCnt);
+            tileInfo_.hcclHandleId = hccl_.AllReduce(addrs_->cGM, addrs_->outputGM, tileInfo_.cOff, HCCL_DATA_TYPE,
+                                                     AscendC::HCCL_REDUCE_SUM, paramInTiling_->tileLoopCnt);
             if (tailFlag_) {
-                const uint64_t offset = tileInfo_.cAddrOffset * paramInTiling_->tileCnt;
+                const uint64_t offset = tileInfo_.cPtrOffset * paramInTiling_->tileLoopCnt;
                 tailInfo_.hcclHandleId =
-                    hccl_.AllReduce(addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOffset, HCCL_DATA_TYPE,
+                    hccl_.AllReduce(addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOff, HCCL_DATA_TYPE,
                                     AscendC::HCCL_REDUCE_SUM, paramInTiling_->tailCnt);
             }
         }
@@ -100,17 +100,17 @@ protected:
     }
 #endif
 
-    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOffset, uint64_t cOffset)
+    __aicore__ inline void PostProcEachTurn(AscendC::HcclHandle handleId, uint64_t aOff, uint64_t cOff)
     {
         if (addFlag_ && addrs_->cGM != addrs_->addGM) {
             Mc2SyncAll<coreType>();
-            Matmul_All_Reduce_Add_X3<yType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(yType),
+            Matmul_All_Reduce_Add_X3<yType>(addrs_->cGM, addrs_->addGM, cOff / sizeof(yType),
                                             paramInTiling_->addX3UbCnt, tPipe_);
-            addrs_->addGM += cOffset;
+            addrs_->addGM += cOff;
         }
 
-        addrs_->aGM += aOffset;
-        addrs_->cGM += cOffset;
+        addrs_->aGM += aOff;
+        addrs_->cGM += cOff;
 
         Mc2SyncAll<coreType>();
         if (notifyFlag_) {

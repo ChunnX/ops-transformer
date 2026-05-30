@@ -86,18 +86,18 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
                 return;
             }
             std::stringstream ss;
-            ss << " cubeNumBlocksN: " << static_cast<uint32_t>(tilingData_->cubeBlockDimN)
-               << " cubeNumBlocksM: " << static_cast<uint32_t>(tilingData_->cubeBlockDimM)
-               << " AL1Pingpong: " << static_cast<uint32_t>(tilingData_->AL1Pingpong)
-               << " BL1Pingpong: " << static_cast<uint32_t>(tilingData_->BL1Pingpong)
-               << " kAlign: " << tilingData_->kAlign << " nAlign: " << tilingData_->nAlign
-               << " mSize: " << tilingData_->mSize << " kSize: " << tilingData_->kSize
-               << " nSize: " << tilingData_->nSize << " groupSize: " << tilingData_->groupSize
-               << " mAubSize: " << tilingData_->mAubSize << " kAubSize: " << tilingData_->kAubSize
-               << " nBubSize: " << tilingData_->nBubSize << " kBubSize: " << tilingData_->kBubSize
-               << " mCubSize: " << tilingData_->mCubSize << " nCubSize: " << tilingData_->nCubSize
-               << " mAL1Size: " << tilingData_->mAL1Size << " kAL1Size: " << tilingData_->kAL1Size
-               << " nBL1Size: " << tilingData_->nBL1Size << " kBL1Size: " << tilingData_->kBL1Size;
+            ss << " cubeNumBlocksN: " << static_cast<uint32_t>(tilDat_->cubeBlockDimN)
+               << " cubeNumBlocksM: " << static_cast<uint32_t>(tilDat_->cubeBlockDimM)
+               << " AL1Pingpong: " << static_cast<uint32_t>(tilDat_->AL1Pingpong)
+               << " BL1Pingpong: " << static_cast<uint32_t>(tilDat_->BL1Pingpong)
+               << " kAlign: " << tilDat_->kAlign << " nAlign: " << tilDat_->nAlign
+               << " mSize: " << tilDat_->mSize << " kSize: " << tilDat_->kSize
+               << " nSize: " << tilDat_->nSize << " groupSize: " << tilDat_->groupSize
+               << " mAubSize: " << tilDat_->mAubSize << " kAubSize: " << tilDat_->kAubSize
+               << " nBubSize: " << tilDat_->nBubSize << " kBubSize: " << tilDat_->kBubSize
+               << " mCubSize: " << tilDat_->mCubSize << " nCubSize: " << tilDat_->nCubSize
+               << " mAL1Size: " << tilDat_->mAL1Size << " kAL1Size: " << tilDat_->kAL1Size
+               << " nBL1Size: " << tilDat_->nBL1Size << " kBL1Size: " << tilDat_->kBL1Size;
 
             int32_t logLevel = debugLevel ? DLOG_DEBUG : DLOG_ERROR;
             OPS_LOG_FULL(logLevel, inputParams_.opName, "tiling data: %s", ss.str().c_str());
@@ -107,7 +107,7 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
         void PrintMatMulTiling([[maybe_unused]] int32_t logLevel)
         {
             std::stringstream ss;
-            auto& matmulTiling = tilingData_->matmulTiling;
+            auto& matmulTiling = tilDat_->matmulTiling;
             ss << "usedCoreNum " << matmulTiling.usedCoreNum << " M " << matmulTiling.M << " N "
                << matmulTiling.N << " Ka " << matmulTiling.Ka << " Kb " << matmulTiling.Kb
                << " singleCoreM " << matmulTiling.singleCoreM << " singleCoreN " << matmulTiling.singleCoreN

@@ -34,20 +34,20 @@ class MatmulAllReduce910General : public MatmulAllReduceBase<XType, YType, CoreT
 {
 public:
     __aicore__ inline MatmulAllReduce910General(
-        MC2GmAddrs* addrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+        MC2GmAddrs* addrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilDat, TPipe* tPipe)
         : MatmulAllReduceBase<
-            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, nullptr, arnAddrs, tilingData, tPipe)
+            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, nullptr, arnAddrs, tilDat, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::MatmulAllReduce910TilingDataA5*)tilingData;
-        this->tileInfo_.mmTiling = &mc2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
-        this->tailInfo_.mmTiling = &mc2TilingData_->mC2Mmv3TailTilingData.tCubeTiling;
+        mc2TilingData_ = (Mc2Tiling::MatmulAllReduce910TilingDataA5*)tilDat;
+        this->tileInf14_.mmTil14 = &mc2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
+        this->tailInf14_.mmTil14 = &mc2TilingData_->mC2Mmv3TailTilingData.tCubeTiling;
     }
 
     __aicore__ inline void Process()
     {
-        InnerProcess(false, this->paramInTiling_->tileCnt, this->tileInfo_);
-        if (this->tailFlag_) {
-            InnerProcess(true, this->paramInTiling_->tailCnt, this->tailInfo_);
+        InnerProcess(false, this->paramCfg13_->tileLoopCnt, this->tileInf14_);
+        if (this->tailFl12_) {
+            InnerProcess(true, this->paramCfg13_->tailCnt, this->tailInf14_);
         }
         if constexpr(basedA2aRsAg) {
             this->ReduceSumAndAllGather();
@@ -71,8 +71,8 @@ protected:
                 mmOp.Process();
                 mmOp.End();
             }
-            const uint64_t index = tailFlag ? i + this->paramInTiling_->tileCnt : i;
-            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset, index);
+            const uint64_t index = tailFlag ? i + this->paramCfg13_->tileLoopCnt : i;
+            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aPtrOffset, tileInfo.cPtrOffset, index);
         }
         if constexpr(basedA2aRsAg) {
             this->WaitAlltoAllEachTurn(tailFlag, turnCnt);
@@ -93,15 +93,15 @@ private:
             opTemplateClass<AType, BType, CType, BiasType, Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD>; \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                     \
         MatmulAllReduce910General<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg, commMode> op(     \
-            &addrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                                             \
+            &addrs, nullptr, (MC2TilingHeader*)&tilDat, &tPipe);                                             \
         op.Init();                                                                                               \
         op.Process();                                                                                            \
     } while (0)
 
 #define INVOKE_MC2_910_OP_IMPL(opTemplateClass, coreType, basedA2aRsAg, commMode)                       \
     do {                                                                                                \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingDataA5, tilingData, tilingGM);   \
-        if (tilingData.param.isTransposeB != 0U) {                                                      \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingDataA5, tilDat, tilingGM);   \
+        if (tilDat.param.isTransposeB != 0U) {                                                      \
             INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, true, coreType, basedA2aRsAg, commMode);     \
         } else {                                                                                        \
             INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, false, coreType, basedA2aRsAg, commMode);    \

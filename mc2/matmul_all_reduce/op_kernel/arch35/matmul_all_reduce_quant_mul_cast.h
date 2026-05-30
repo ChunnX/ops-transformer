@@ -36,25 +36,25 @@ class MatmulAllReduceQuantMulCast
 public:
     __aicore__ inline MatmulAllReduceQuantMulCast()
     {}
-    __aicore__ inline void Init(TPipe* tPipe, uint32_t quantUbSize)
+    __aicore__ inline void Init(TPipe* tPipe3, uint32_t quantUbSize)
     {
-        pipe_ = tPipe;
-        uint32_t scaleUbSize = quantUbSize;
+        pipe_ = tPipe3;
+        uint32_t scaleBufSz = quantUbSize;
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            scaleUbSize = this->alginN_;
+            scaleBufSz = this->alginN_;
         }
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            pipe_->InitBuffer(queueScale1_, 1, scaleUbSize * sizeof(T));
-            pipe_->InitBuffer(queueScale2_, 1, scaleUbSize * sizeof(T));
+            pipe_->InitBuffer(queueScale1_, 1, scaleBufSz * sizeof(T));
+            pipe_->InitBuffer(queueScale2_, 1, scaleBufSz * sizeof(T));
         } else {
-            pipe_->InitBuffer(queueScale1_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleUbSize * sizeof(T));
-            pipe_->InitBuffer(queueScale2_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleUbSize * sizeof(T));
+            pipe_->InitBuffer(queueScale1_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleBufSz * sizeof(T));
+            pipe_->InitBuffer(queueScale2_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleBufSz * sizeof(T));
         }
         pipe_->InitBuffer(queueX_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(float)); // 开doubleBuffer
         pipe_->InitBuffer(queueZ_, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(int8_t));
         pipe_->InitBuffer(tBufFP16_, quantUbSize * sizeof(half));
         pipe_->InitBuffer(tBufFP32_, quantUbSize * sizeof(float));
-        pipe_->InitBuffer(tBufScaleDivFP32_, scaleUbSize * sizeof(float));
+        pipe_->InitBuffer(tBufScaleDivFP32_, scaleBufSz * sizeof(float));
     }
 
     __aicore__ inline void MulCastSplitM(
@@ -219,7 +219,7 @@ public:
         LocalTensor<half> zFp16Local = tBufFP16_.Get<half>();
         LocalTensor<int8_t> zInt8Local = queueZ_.AllocTensor<int8_t>();
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 切M
-            for (uint32_t i = 0; i < curBlockCntM; i++) {
+            for (uint32_t idx = 0; idx < curBlockCntM; i++) {
                 Mul(reduceScatterOutLocal[i * this->alginN_], reduceScatterOutLocal[i * this->alginN_], scaleFp32Local_,
                     this->N_);
             }
@@ -246,14 +246,14 @@ public:
         GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
         typename HcclTypeSelector<commMode>::type& hccl, uint32_t aivCoreNum, uint32_t& tileBlockCnt,
         uint32_t& tailBlockCnt, uint32_t& aivLoopNum, int64_t& blockAddrOffset, uint32_t& tailCalCntM,
-        uint32_t& tileCalCntM, uint32_t& needAivCoreNum, uint32_t& blockNumPerRow, int32_t& nowQuantUbSize)
+        uint32_t& tileCalCntM, uint32_t& needAivCoreNum, uint32_t& blockNumPerRow, int32_t& curQuantUbSz2)
     {
         int32_t nowAlginN = Ceil(N * sizeof(float), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
-        nowQuantUbSize =
+        curQuantUbSz2 =
             (TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 - static_cast<int32_t>(nowAlginN) * static_cast<int32_t>(sizeof(T)) *
                                                       static_cast<int32_t>(SCALE_BUFF_CNT_MATMUL_ALLREDUCE_INT8)) /
             (BUF_CNT_SPLIT_M_MATMUL_ALLREDUCE_INT8 * static_cast<int32_t>(sizeof(T)));
-        nowQuantUbSize = (nowQuantUbSize / nowAlginN) * nowAlginN;
+        curQuantUbSz2 = (curQuantUbSz2 / nowAlginN) * nowAlginN;
         this->M_ = M;
         this->N_ = N;
         this->alginN_ = static_cast<uint32_t>(nowAlginN);
@@ -264,17 +264,17 @@ public:
         this->outputGM_ = outputGM;
         this->rankCnt_ = hccl.GetRankDim();
         this->tileRankM_ = M / hccl.GetRankDim();
-        if (nowQuantUbSize > this->tileRankM_ * nowAlginN) {
-            nowQuantUbSize = this->tileRankM_ * nowAlginN;
+        if (curQuantUbSz2 > this->tileRankM_ * nowAlginN) {
+            curQuantUbSz2 = this->tileRankM_ * nowAlginN;
         }
 
-        if (nowQuantUbSize >= nowAlginN) { // 分核切M， 不切N
+        if (curQuantUbSz2 >= nowAlginN) { // 分核切M， 不切N
             this->splitMode_ = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-            this->MulCastSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
+            this->MulCastSplitM(curQuantUbSz2, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode_ = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
             this->template MulCastSplitMAndN<commMode>(
-                hccl, nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt, aivLoopNum, blockNumPerRow);
+                hccl, curQuantUbSz2, needAivCoreNum, tileBlockCnt, tailBlockCnt, aivLoopNum, blockNumPerRow);
         }
     }
 
@@ -310,7 +310,7 @@ public:
 template <class T, int commMode>
 __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
     GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
-    TPipe* tPipe, typename HcclTypeSelector<commMode>::type& hccl)
+    TPipe* tPipe3, typename HcclTypeSelector<commMode>::type& hccl)
 {
     uint32_t aivCoreNum = GetBlockNum() * GetTaskRation();
     if ((g_coreType == AIC) || (GetBlockIdx() >= aivCoreNum)) {
@@ -324,18 +324,18 @@ __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
     uint32_t tileCalCntM = 0;
     uint32_t needAivCoreNum = 0;
     uint32_t blockNumPerRow = 1;
-    int32_t nowQuantUbSize = 0;
+    int32_t curQuantUbSz2 = 0;
 
-    tPipe->Reset();
+    tPipe3->Reset();
     MatmulAllReduceQuantMulCast<T> op;
     op.template SetParams<commMode>(
         inputGM, quantScale1GM, quantScale2GM, outputGM, M, N, hccl, aivCoreNum, tileBlockCnt, tailBlockCnt, aivLoopNum,
-        blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreNum, blockNumPerRow, nowQuantUbSize);
+        blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreNum, blockNumPerRow, curQuantUbSz2);
 
     if (aivLoopNum == 0) {
         return;
     }
-    op.Init(tPipe, nowQuantUbSize);                               // 按照最大开
+    op.Init(tPipe3, curQuantUbSz2);                               // 按照最大开
     for (uint32_t loopIdx = 0; loopIdx < aivLoopNum; loopIdx++) { // 一轮外层循环对应着一次核间并行
         int64_t blockAddrOffsetSplitM = 0;
         uint32_t blockCntM = tileCalCntM;

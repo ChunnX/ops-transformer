@@ -126,7 +126,7 @@ class MatmulAllReduceTilingBase : public Ops::Transformer::OpTiling::TilingBaseC
 {
 public:
     explicit MatmulAllReduceTilingBase(gert::TilingContext* context)
-        : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilDat_(tilDatSelf_)
     {
         Reset();
         // tilingdata作为类的成员随构造函数实例化，使用引用来统一数据访问接口，同时用实体对象来管理数据的生命周期
@@ -137,13 +137,13 @@ public:
                         VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
+        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilDat_(tilDatSelf_)
     {
         Reset();
     }
     MatmulAllReduceTilingBase(gert::TilingContext* context,
-        MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduceTilingData* tilingData)
-        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(*tilingData)
+        MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduceTilingData* tilDat)
+        : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilDat_(*tilDat)
     {
         Reset();
     }
@@ -164,19 +164,19 @@ protected:
     ge::graphStatus PostTiling() override;
     virtual Mc2Tiling::RCSTiling& MutableRCSTilingData()
     {
-        return tilingData_.param;
+        return tilDat_.param;
     }
     virtual Mc2Tiling::Mc2Msg& MutableMc2MsgData()
     {
-        return tilingData_.msg;
+        return tilDat_.msg;
     }
     virtual AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData()
     {
-        return tilingData_.matmulTiling;
+        return tilDat_.matmulTiling;
     }
     virtual AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData()
     {
-        return tilingData_.tailTiling;
+        return tilDat_.tailTiling;
     }
     ge::graphStatus AnalyzeShapeAttr();
     void PrintTilingData();
@@ -270,8 +270,8 @@ protected:
     AllReduceScenario scenario_{AllReduceScenario::INVALID};
     MMRCtxInfo mmrCtxInfoSelf_{};
     MMRCtxInfo& mmrCtxInfo_;
-    Mc2Tiling::MatmulAllReduceTilingData tilingDataSelf_{};
-    Mc2Tiling::MatmulAllReduceTilingData& tilingData_;
+    Mc2Tiling::MatmulAllReduceTilingData tilDatSelf_{};
+    Mc2Tiling::MatmulAllReduceTilingData& tilDat_;
 };
 } // namespace optiling
 #endif // MC2_MM_ALLREDUCE_TILING_ARCH35_H

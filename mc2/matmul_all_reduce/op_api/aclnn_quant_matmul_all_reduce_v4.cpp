@@ -27,7 +27,7 @@ extern "C" {
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *exec2, NnopbaseHcclServerType sType);
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {
@@ -266,10 +266,10 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, const aclTensor* commQuantScale1Optional,
     const aclTensor* commQuantScale2Optional, const char* group, const char* reduceOp, int64_t commTurn,
-    int64_t streamMode, int64_t groupSize, int64_t commQuantMode, const aclTensor* output, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    int64_t streamMode, int64_t groupSize, int64_t commQuantMode, const aclTensor* output, uint64_t* workspace,
+    aclOpExecutor** exec2)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp2 = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = CheckParams(
         x1, x2, biasOptional, x2Scale, x1ScaleOptional, x3Optional, commQuantScale1Optional, commQuantScale2Optional,
@@ -300,30 +300,30 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
         x1, transX2, biasOptional, x3Optional, scale, offset, transX2Scale, x1ScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, antiquantGroupSize, groupSize,
-        yDtype, commQuantMode, output, workspaceSize, executor);
+        yDtype, commQuantMode, output, workspace, exec2);
 
     OP_LOGI(
         "Group=%s, reduce op=%s, transposeX1=%u, transposeX2=%u, ret=%d.", group, reduceOp, transposeX1, transposeX2, ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp2, dfxId);
     return ret;
 }
 
 aclnnStatus aclnnQuantMatmulAllReduceV4(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+    void* workspace, uint64_t workspace, aclOpExecutor* exec2, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp2 = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            uint8_t commMode2 = Mc2Comm::GetCommModeFromEnv();
+            if (commMode2 == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(exec2, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                NnopbaseSetHcclServerType(exec2, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspace, exec2, stream);
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV4 ret=%d.", ret);
 
     if (ret != 0) {
@@ -332,7 +332,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV4(
     }
 
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp2, dfxId);
     return ACLNN_SUCCESS;
 }
 

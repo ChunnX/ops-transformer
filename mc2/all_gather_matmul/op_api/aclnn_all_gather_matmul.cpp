@@ -43,7 +43,7 @@ typedef struct {
 } NnopbaseDfxId;
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
-extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId6);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 
 // check nullptr
@@ -177,7 +177,7 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
                                                  int64_t streamMode, const aclTensor *output,
                                                  const aclTensor *gatherOut,
                                                  uint64_t *workspaceSize, aclOpExecutor **executor) {
-  uint64_t timeStamp = NnopbaseMsprofSysTime();
+  uint64_t tsStamp = NnopbaseMsprofSysTime();
   auto retParam = CheckParams(x1, x2, bias, streamMode, output);
   CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
   // 处理空tensor 如果x1不为空 x2为空 需要进行gatherOut
@@ -201,17 +201,17 @@ aclnnStatus aclnnAllGatherMatmulGetWorkspaceSize(const aclTensor *x1, const aclT
   }
   bool isGatherOut = IsGatherOut(gatherOut);
   if (IsAscend910A5()) {
-    const char *commMode = "ccu";
+    const char *commType = "ccu";
     return aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, gatherIndex,
-                                                  commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
+                                                  commTurn, streamMode, 0, commType, const_cast<aclTensor *>(output),
                                                   const_cast<aclTensor *>(gatherOut), nullptr, workspaceSize, executor);
   }
     aclnnStatus ret = aclnnInnerAllGatherMatmulGetWorkspaceSize(x1, x2, bias, const_cast<char *>(group),
         transposeX1, transposeX2, gatherIndex, commTurn, rankSize, isGatherOut, output, gatherOut, workspaceSize,
         executor);
   OP_LOGD("AllGatherMatmul, aclnnInnerGetWorkspaceSize ret = %d.", ret);
-  static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-  NnopbaseReportApiInfo(timeStamp, dfxId);
+  static NnopbaseDfxId dfxId6 = {0x60000, __func__, false};
+  NnopbaseReportApiInfo(tsStamp, dfxId6);
   return ret;
 }
 
@@ -224,15 +224,15 @@ aclnnStatus aclnnAllGatherMatmul(void *workspace, uint64_t workspaceSize, aclOpE
     OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
     return ACLNN_SUCCESS;
   }
-  uint64_t timeStamp = NnopbaseMsprofSysTime();
+  uint64_t tsStamp = NnopbaseMsprofSysTime();
   auto ret = aclnnInnerAllGatherMatmul(workspace, workspaceSize, executor, stream);
   if (ret != 0) {
     OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
     return ACLNN_ERR_INNER;
   }
 
-  static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-  NnopbaseReportApiInfo(timeStamp, dfxId);
+  static NnopbaseDfxId dfxId6 = {0x60000, __func__, false};
+  NnopbaseReportApiInfo(tsStamp, dfxId6);
   return ACLNN_SUCCESS;
 }
 

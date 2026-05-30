@@ -337,7 +337,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
                                                        const aclTensor* quantScale, int64_t blockSize,
                                                        const char* group, const char* reduceOp, int64_t commTurn,
                                                        int64_t streamMode, int64_t groupSize, const char* commMode, aclTensor* output,
-                                                       aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                       aclTensor* amaxOutOptional, uint64_t* workspace,
                                                        aclOpExecutor** executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
@@ -350,8 +350,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         // 固定写法，创建OpExecutor
         auto uniqueExecutor = CREATE_EXECUTOR();
         CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-        if (workspaceSize != nullptr) {
-            *workspaceSize = 0;
+        if (workspace != nullptr) {
+            *workspace = 0;
         }
         uniqueExecutor.ReleaseTo(executor);
         if ((executor != nullptr) && (*executor != nullptr)) {
@@ -392,7 +392,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
         x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
-        const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+        const_cast<char*>(commMode), output, amaxOutOptional, workspace, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
         SetNnopbaseHcclServerTypeByArch(*executor);
     }
@@ -426,7 +426,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
                                                        const aclTensor* quantScale, int64_t blockSize,
                                                        const char* group, const char* reduceOp, int64_t commTurn,
                                                        int64_t streamMode, int64_t groupSize, const char* commMode, aclTensor* output,
-                                                       aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                       aclTensor* amaxOutOptional, uint64_t* workspace,
                                                        aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeAivMode start");
@@ -450,7 +450,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     }
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
         const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
-        groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+        groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspace, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
         SetNnopbaseHcclServerTypeByArch(*executor);
     }
@@ -463,31 +463,31 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
                                                        const aclTensor* quantScale, int64_t blockSize,
                                                        const char* group, const char* reduceOp, int64_t commTurn,
                                                        int64_t streamMode, int64_t groupSize, const char* commMode, aclTensor* output,
-                                                       aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                       aclTensor* amaxOutOptional, uint64_t* workspace,
                                                        aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
-                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspace, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
-                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspace, executor);
     }
     return ret;
 }
 
-aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspace, aclOpExecutor* executor,
                                        aclrtStream stream)
 {
-    if ((workspace == nullptr) || (workspaceSize == 0UL)) {
-        OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
+    if ((workspace == nullptr) || (workspace == 0UL)) {
+        OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspace);
         return ACLNN_SUCCESS;
     }
 
     SetNnopbaseHcclServerTypeByArch(executor);
 
-    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspace, executor, stream);
     if (ret != 0) {
         OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
         return ACLNN_ERR_INNER;

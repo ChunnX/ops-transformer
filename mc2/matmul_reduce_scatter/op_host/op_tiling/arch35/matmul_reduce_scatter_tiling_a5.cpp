@@ -63,7 +63,7 @@ namespace optiling {
     }
 
     struct MatmulReduceScatterCompileInfo {};
-    static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
+    static ge::graphStatus TilingParseForMatmulReduceScatter(const gert::TilingParseContext *context)
     {
         (void)context;
         return ge::GRAPH_SUCCESS;

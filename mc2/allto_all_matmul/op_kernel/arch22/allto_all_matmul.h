@@ -210,19 +210,19 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
         LayoutC layoutC{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
         LayoutBias layoutBias{static_cast<uint32_t>(n)};
 
-        using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
+        using ComputePolicy = std::conditional_t<aicCalBias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
                                                   Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
 
-        using AType_ = Gemm::GemmType<ElementA, LayoutA>;
-        using BType_ = Gemm::GemmType<ElementB, LayoutB>;
-        using CType_ = Gemm::GemmType<ElementC, LayoutC>;
-        using BiasType_ = std::conditional_t<aicCalBias, Gemm::GemmType<ElementBias, LayoutBias>, void>;
+        using GemmTypeA_ = Gemm::GemmType<ElementA, LayoutA>;
+        using GemmTypeB_ = Gemm::GemmType<ElementB, LayoutB>;
+        using GemmTypeC_ = Gemm::GemmType<ElementC, LayoutC>;
+        using BiasGemmType_ = std::conditional_t<aicCalBias, Gemm::GemmType<ElementBias, LayoutBias>, void>;
 
-        struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
-            using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_>;
-            using ElementA = typename Base::ElementA;
-            using ElementB = typename Base::ElementB;
-            using ElementAccumulator = typename Base::ElementAccumulator;
+        struct TileCpyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, GemmTypeA_, GemmTypeB_, GemmTypeC_, BiasGemmType_> {
+            using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, GemmTypeA_, GemmTypeB_, GemmTypeC_, BiasGemmType_>;
+            using ElA = typename Base::ElementA;
+            using ElB = typename Base::ElementB;
+            using ElAcc = typename Base::ElementAccumulator;
 
             using CopyGmToL1A = typename Base::CopyGmToL1A;
             using CopyGmToL1B = typename Base::CopyGmToL1B;
@@ -236,7 +236,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
             using CopyL1ToBT = typename Base::CopyL1ToBT;
         };
 
-        using TileCopy = TileCopyOpt;
+        using TileCopy = TileCpyOpt;
         GemmCoord processSize{static_cast<uint32_t>(realM), static_cast<uint32_t>(n), static_cast<uint32_t>(realK)};
         using BlockScheduler30 = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
 
@@ -258,10 +258,10 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
         if (m0 == 128) {
             using L1TileShape = GemmShape<128, 256, L1TileShapeK>;
             using L0TileShape = GemmShape<128, 256, L0TileShapeK>;
-            using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                        CType_, BiasType_, TileCopy>;
+            using BlockMMOpt = Gemm::Block::BlockMmad<ComputePolicy, L1TileShape, L0TileShape, GemmTypeA_, GemmTypeB_,
+                                                        GemmTypeC_, BiasGemmType_, TileCopy>;
             using MatmulKernel =
-                Gemm::Kernel::AlltoAllMatmulKernel<void, void, BlockMmadOpt, void, BlockScheduler30, aicCalBias>;
+                Gemm::Kernel::AlltoAllMatmulKernel<void, void, BlockMMOpt, void, BlockScheduler30, aicCalBias>;
             MatmulKernel matmul_op;
             typename MatmulKernel::Params params{processSize,
                                                  reinterpret_cast<GM_ADDR>(srcGM),
@@ -280,10 +280,10 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::CatlassMatmul()
         } else {
             using L1TileShape = GemmShape<256, 128, L1TileShapeK>;
             using L0TileShape = GemmShape<256, 128, L0TileShapeK>;
-            using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                        CType_, BiasType_, TileCopy>;
+            using BlockMMOpt = Gemm::Block::BlockMmad<ComputePolicy, L1TileShape, L0TileShape, GemmTypeA_, GemmTypeB_,
+                                                        GemmTypeC_, BiasGemmType_, TileCopy>;
             using MatmulKernel =
-                Gemm::Kernel::AlltoAllMatmulKernel<void, void, BlockMmadOpt, void, BlockScheduler30, aicCalBias>;
+                Gemm::Kernel::AlltoAllMatmulKernel<void, void, BlockMMOpt, void, BlockScheduler30, aicCalBias>;
             MatmulKernel matmul_op;
             typename MatmulKernel::Params params{processSize,
                                                  reinterpret_cast<GM_ADDR>(srcGM),
@@ -673,10 +673,10 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
     uint32_t realK = k * rankSize;
     LayoutD layoutD{static_cast<uint32_t>(realM), static_cast<uint32_t>(n)};
 
-    using CType_ = Gemm::GemmType<ElementC, layout::RowMajor>;
+    using GemmTypeC_ = Gemm::GemmType<ElementC, layout::RowMajor>;
 
     constexpr uint32_t ubStages = 2;
-    using EpilogueDispatchPolicy = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
+    using EpilogueComputePolicy = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
     using ScaleGType = Gemm::GemmType<ScaleType, layout::VectorLayout>;
     using PerTokenScaleGType = Gemm::GemmType<float, layout::VectorLayout>; // 全量化时，也限定为float
     using BiasGType = Gemm::GemmType<BiasType, layout::VectorLayout>;
@@ -694,8 +694,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
     using OneBlkColumnBroadcastMulType = Gemm::GemmType<float, layout::RowMajor>;
 
     struct TileCopyDequant
-        : public Catlass::Epilogue::Tile::TileCopy<ArchTag, CType_, ScaleGType, PerTokenScaleGType, DType> {
-        using Base = Catlass::Epilogue::Tile::TileCopy<ArchTag, CType_, ScaleGType, PerTokenScaleGType, DType>;
+        : public Catlass::Epilogue::Tile::TileCopy<ArchTag, GemmTypeC_, ScaleGType, PerTokenScaleGType, DType> {
+        using Base = Catlass::Epilogue::Tile::TileCopy<ArchTag, GemmTypeC_, ScaleGType, PerTokenScaleGType, DType>;
         using ElementC = typename Base::ElementC;
         using ElementScale = typename Base::ElementX;
         using ElementPerTokenScale = typename Base::ElementY;
@@ -751,7 +751,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
         using TileOneBlkColumnBroadcastMul =
             Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
         using QuantBlockEpilogue =
-            Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleGType, PerTokenScaleGType, BiasGType,
+            Epilogue::Block::BlockEpilogue<EpilogueComputePolicy, GemmTypeC_, ScaleGType, PerTokenScaleGType, BiasGType,
                                            DType, TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
                                            TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
         QuantBlockEpilogue blockEpilogue(resource);
@@ -777,7 +777,7 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Dequant()
         using TileOneBlkColumnBroadcastMul =
             Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
         using QuantBlockEpilogue =
-            Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleGType, PerTokenScaleGType, BiasGType,
+            Epilogue::Block::BlockEpilogue<EpilogueComputePolicy, GemmTypeC_, ScaleGType, PerTokenScaleGType, BiasGType,
                                            DType, TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
                                            TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
         QuantBlockEpilogue blockEpilogue(resource);

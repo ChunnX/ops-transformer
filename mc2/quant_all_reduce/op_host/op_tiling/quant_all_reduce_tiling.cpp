@@ -23,29 +23,29 @@ using namespace AscendC;
 using namespace ge;
 
 /**
- * @brief 打印tilingData
+ * @brief 打印tilDat
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
- * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
+ * @param tilDat: 框架根据context的opName匹配tiling模板，计算产生的tilDat
  * @return
  */
-static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
+static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllReduceTilingData &tilDat)
 {
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "bs is %lu in quant_all_reduce.", tilingData.quantAllReduceTilingInfo.bs);
-    OP_LOGD(nodeName, "hiddenSize is %u in quant_all_reduce.", tilingData.quantAllReduceTilingInfo.hiddenSize);
+    OP_LOGD(nodeName, "bs is %lu in quant_all_reduce.", tilDat.quantAllReduceTilingInfo.bs);
+    OP_LOGD(nodeName, "hiddenSize is %u in quant_all_reduce.", tilDat.quantAllReduceTilingInfo.hiddenSize);
     OP_LOGD(nodeName, "scaleHiddenSize is %lu in quant_all_reduce.",
-            tilingData.quantAllReduceTilingInfo.scaleHiddenSize);
-    OP_LOGD(nodeName, "aivNum is %u in quant_all_reduce.", tilingData.quantAllReduceTilingInfo.aivNum);
+            tilDat.quantAllReduceTilingInfo.scaleHiddenSize);
+    OP_LOGD(nodeName, "aivNum is %u in quant_all_reduce.", tilDat.quantAllReduceTilingInfo.aivNum);
 }
 
 /**
  * @brief 设置hcomm参数
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
- * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
+ * @param tilDat: 框架根据context的opName匹配tiling模板，计算产生的tilDat
  * @param runInfo: 封装的doTiling所需要的参数
  * @return
  */
-static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllReduceTilingData *tilingData,
+static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllReduceTilingData *tilDat,
                         const TilingRunInfo &runInfo)
 {
     const char *nodeName = context->GetNodeName();
@@ -54,27 +54,27 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantAllR
                                                  "AlltoAll=level0:fullmesh;level1:pairwise");
     // MTE方式必须适配，且要在getTiling之前
     mc2CcTilingConfig.SetCommEngine(AIV_TYPE);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilDat->mc2InitTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilDat->mc2CcTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 /**
- * @brief 设置tilingData
+ * @brief 设置tilDat
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
- * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
+ * @param tilDat: 框架根据context的opName匹配tiling模板，计算产生的tilDat
  * @return
  */
-static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
+static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData &tilDat)
 {
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    // set tilingData
+    // set tilDat
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum));
-    tilingData.quantAllReduceTilingInfo.aivNum = aivNum;
+    tilDat.quantAllReduceTilingInfo.aivNum = aivNum;
     uint64_t xValueBS = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
     uint64_t scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_ONE);
@@ -84,26 +84,26 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
         xValueH = context->GetInputShape(X_INDEX)->GetStorageShape().GetDim(DIM_TWO);
         scalesValueH = context->GetInputShape(SCALES_INDEX)->GetStorageShape().GetDim(DIM_TWO);
     }
-    tilingData.quantAllReduceTilingInfo.bs = xValueBS;
-    tilingData.quantAllReduceTilingInfo.hiddenSize = xValueH;
-    tilingData.quantAllReduceTilingInfo.scaleHiddenSize = scalesValueH;
-    tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    tilDat.quantAllReduceTilingInfo.bs = xValueBS;
+    tilDat.quantAllReduceTilingInfo.hiddenSize = xValueH;
+    tilDat.quantAllReduceTilingInfo.scaleHiddenSize = scalesValueH;
+    tilDat.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
-// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
-static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilDat
+static void SetXPerBlock(QuantAllReduceTilingData &tilDat)
 {
     constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
     constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
     constexpr uint32_t ALIGN_BLOCK = 1024U;
-    uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;
-    uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
+    uint64_t xNums = tilDat.quantAllReduceTilingInfo.bs * tilDat.quantAllReduceTilingInfo.hiddenSize;
+    uint64_t aivNum = tilDat.quantAllReduceTilingInfo.aivNum;
     uint64_t perCoreElem = (xNums + aivNum - 1U) / aivNum;
     uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
     xPerBlock = std::max<uint64_t>(xPerBlock, MIN_BLOCK);
     xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
-    tilingData.quantAllReduceTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
-    tilingData.quantAllReduceTilingInfo.alignBlock = ALIGN_BLOCK;
+    tilDat.quantAllReduceTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
+    tilDat.quantAllReduceTilingInfo.alignBlock = ALIGN_BLOCK;
 }
 
 /**
@@ -133,8 +133,8 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("quant_all_reduce", "failed to get nodeName in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
 
-    QuantAllReduceTilingData *tilingData = context->GetTilingData<QuantAllReduceTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in quant_all_reduce."),
+    QuantAllReduceTilingData *tilDat = context->GetTilingData<QuantAllReduceTilingData>();
+    OP_TILING_CHECK(tilDat == nullptr, OP_LOGE(nodeName, "tilDat is nullptr in quant_all_reduce."),
                     return ge::GRAPH_FAILED);
 
     TilingRunInfo runInfo = {};
@@ -143,12 +143,12 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(QuantReduceScatterUtilTiling::CheckTilingFunc(context, runInfo, OpType::OP_QUANT_ALL_REDUCE) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetHcommCfg(context, tilDat, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    SetTilingData(context, *tilingData);
-    SetXPerBlock(*tilingData);
+    SetTilingData(context, *tilDat);
+    SetXPerBlock(*tilDat);
     SetTilingKey(context);
-    PrintTilingDataInfo(context, *tilingData);
+    PrintTilingDataInfo(context, *tilDat);
     return ge::GRAPH_SUCCESS;
 }
 

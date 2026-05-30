@@ -140,14 +140,14 @@ class CommBase {
 public:
     __aicore__ explicit CommBase(){};
 
-    __aicore__ inline void SetArgs(MatmulReduceScatterV2AivModeTilingData tilingData)
+    __aicore__ inline void SetArgs(MatmulReduceScatterV2AivModeTilingData tilDat)
     {
         block_id = AscendC::GetBlockIdx();
         core_num = AscendC::GetBlockNum();
         aiv_idx = GetSubBlockIdx();
         core_idx = block_id / GetTaskRation();
 
-        SetTiling(tilingData);
+        SetTiling(tilDat);
         if (is910C) {
             __gm__ HcclOpResParam *winContext_{nullptr};
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
@@ -188,30 +188,30 @@ public:
         }
     }
 
-    __aicore__ inline void SetTiling(MatmulReduceScatterV2AivModeTilingData &tilingData)
+    __aicore__ inline void SetTiling(MatmulReduceScatterV2AivModeTilingData &tilDat)
     {
-        m0 = tilingData.cocTiling.m0;
-        k0 = tilingData.cocTiling.k0;
-        n0 = tilingData.cocTiling.n0;
-        swizzl_count = tilingData.cocTiling.swizzlCount;
-        swizzl_direct = tilingData.cocTiling.swizzlDirect;
-        p_value = tilingData.cocTiling.pValue;
-        max_ub_single_dma_size = tilingData.cocTiling.ubMoveNum;
-        comm_npu_split = tilingData.cocTiling.commNpuSplit;
-        comm_data_split = tilingData.cocTiling.commDataSplit;
-        len_per_loop = tilingData.cocTiling.lenPerLoop;
+        m0 = tilDat.cocTiling.m0;
+        k0 = tilDat.cocTiling.k0;
+        n0 = tilDat.cocTiling.n0;
+        swizzl_count = tilDat.cocTiling.swizzlCount;
+        swizzl_direct = tilDat.cocTiling.swizzlDirect;
+        p_value = tilDat.cocTiling.pValue;
+        max_ub_single_dma_size = tilDat.cocTiling.ubMoveNum;
+        comm_npu_split = tilDat.cocTiling.commNpuSplit;
+        comm_data_split = tilDat.cocTiling.commDataSplit;
+        len_per_loop = tilDat.cocTiling.lenPerLoop;
 
-        m = tilingData.matmulReduceScatterV2AivModeInfo.M;
-        k = tilingData.matmulReduceScatterV2AivModeInfo.K;
-        n = tilingData.matmulReduceScatterV2AivModeInfo.N;
-        aAlignSize = tilingData.matmulReduceScatterV2AivModeInfo.aAlignSize;
-        bAlignSize = tilingData.matmulReduceScatterV2AivModeInfo.bAlignSize;
-        dequantSize = tilingData.matmulReduceScatterV2AivModeInfo.dequantSize;
-        hasAAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasAAlign;
-        hasBAlign = tilingData.matmulReduceScatterV2AivModeInfo.hasBAlign;
-        dequant_type = tilingData.matmulReduceScatterV2AivModeInfo.dequant_type;
-        is910C = tilingData.matmulReduceScatterV2AivModeInfo.is910C;
-        isX2ScaleTypeInt64 = tilingData.matmulReduceScatterV2AivModeInfo.isX2ScaleTypeInt64;
+        m = tilDat.matmulReduceScatterV2AivModeInfo.M;
+        k = tilDat.matmulReduceScatterV2AivModeInfo.K;
+        n = tilDat.matmulReduceScatterV2AivModeInfo.N;
+        aAlignSize = tilDat.matmulReduceScatterV2AivModeInfo.aAlignSize;
+        bAlignSize = tilDat.matmulReduceScatterV2AivModeInfo.bAlignSize;
+        dequantSize = tilDat.matmulReduceScatterV2AivModeInfo.dequantSize;
+        hasAAlign = tilDat.matmulReduceScatterV2AivModeInfo.hasAAlign;
+        hasBAlign = tilDat.matmulReduceScatterV2AivModeInfo.hasBAlign;
+        dequant_type = tilDat.matmulReduceScatterV2AivModeInfo.dequant_type;
+        is910C = tilDat.matmulReduceScatterV2AivModeInfo.is910C;
+        isX2ScaleTypeInt64 = tilDat.matmulReduceScatterV2AivModeInfo.isX2ScaleTypeInt64;
     }
 
     __aicore__ inline void AlignJudge(bool trans_a, bool trans_b, int32_t m, int32_t k, int32_t n, int32_t m_align,

@@ -35,26 +35,26 @@ public:
     __aicore__ inline MatmulAllReduceReduceSum()
     {
     }
-    __aicore__ inline void Init(TPipe *tPipe, uint32_t quantUbSize)
+    __aicore__ inline void Init(TPipe *tPipe5, uint32_t quantUbSize)
     {
-        pipe = tPipe;
-        uint32_t scaleUbSize = quantUbSize;
+        pipe = tPipe5;
+        uint32_t scaleBufSz = quantUbSize;
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            scaleUbSize = this->alginN;
+            scaleBufSz = this->alginN;
         }
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            pipe->InitBuffer(queueScale1, 1, scaleUbSize * sizeof(T));
-            pipe->InitBuffer(queueScale2, 1, scaleUbSize * sizeof(T));
+            pipe->InitBuffer(queueScale1, 1, scaleBufSz * sizeof(T));
+            pipe->InitBuffer(queueScale2, 1, scaleBufSz * sizeof(T));
         } else {
-            pipe->InitBuffer(queueScale1, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleUbSize * sizeof(T));
-            pipe->InitBuffer(queueScale2, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleUbSize * sizeof(T));
+            pipe->InitBuffer(queueScale1, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleBufSz * sizeof(T));
+            pipe->InitBuffer(queueScale2, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, scaleBufSz * sizeof(T));
         }
         pipe->InitBuffer(queueX, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(int8_t)); // 开doubleBuffer
         pipe->InitBuffer(queueZ, DOUBLE_BUFFER_MATMUL_ALLREDUCE_INT8, quantUbSize * sizeof(int8_t));
         pipe->InitBuffer(tBufFP16, quantUbSize * sizeof(half));
         pipe->InitBuffer(tBufFP32_1, quantUbSize * sizeof(float));
         pipe->InitBuffer(tBufFP32_2, quantUbSize * sizeof(float));
-        pipe->InitBuffer(tBufScaleDivFP32, scaleUbSize * sizeof(float));
+        pipe->InitBuffer(tBufScaleDivFP32, scaleBufSz * sizeof(float));
     }
 
     __aicore__ inline void MatmulAllReduceReduceSumSplitM(const uint32_t quantUbSize, int64_t &blockAddrOffset,
@@ -62,12 +62,12 @@ public:
                                                           uint32_t &aivLoopNum)
     {
         uint32_t vectorIndex = GetBlockIdx();
-        uint32_t singleAivM = this->tileRankM / this->aivCoreNum;
-        uint32_t aivAddOneIndex = this->aivCoreNum + 1;
-        if (this->tileRankM % this->aivCoreNum != 0) {
-            aivAddOneIndex = this->aivCoreNum - (this->tileRankM % this->aivCoreNum);
+        uint32_t singleAivM = this->tileRankM / this->aivCoreCnt;
+        uint32_t aivAddOneIndex = this->aivCoreCnt + 1;
+        if (this->tileRankM % this->aivCoreCnt != 0) {
+            aivAddOneIndex = this->aivCoreCnt - (this->tileRankM % this->aivCoreCnt);
         }
-        uint32_t usedAivCoreIndex = aivCoreNum - aivAddOneIndex;
+        uint32_t usedAivCoreIndex = aivCoreCnt - aivAddOneIndex;
 
         if (singleAivM == 0) { // M小于核数，singleAivM为0，核计算行数更新及偏移计算
             if (vectorIndex < usedAivCoreIndex) {
@@ -78,7 +78,7 @@ public:
                 return;
             }
         } else { // M大于核数，singleAivM>0，核计算行数更新及偏移计算
-            if ((aivAddOneIndex < this->aivCoreNum + 1) && (vectorIndex >= aivAddOneIndex)) {
+            if ((aivAddOneIndex < this->aivCoreCnt + 1) && (vectorIndex >= aivAddOneIndex)) {
                 singleAivM += 1;
                 blockAddrOffset = static_cast<int64_t>(aivAddOneIndex) * static_cast<int64_t>(singleAivM - 1) *
                                       static_cast<int64_t>(this->N) +
@@ -98,7 +98,7 @@ public:
         }
     }
 
-    __aicore__ inline void MatmulAllReduceReduceSumSplitMAndN(int32_t &quantUbSize, uint32_t &needAivCoreNum,
+    __aicore__ inline void MatmulAllReduceReduceSumSplitMAndN(int32_t &quantUbSize, uint32_t &needAivCoreCnt,
                                                               uint32_t &tileBlockCnt, uint32_t &tailBlockCnt,
                                                               uint32_t &aivLoopNum, uint32_t &blockNumPerRow)
     {
@@ -117,16 +117,16 @@ public:
             }
         }
         uint32_t rankM = this->M / this->hccl_.GetRankDim();
-        needAivCoreNum = blockNumPerRow * rankM;
+        needAivCoreCnt = blockNumPerRow * rankM;
 
-        aivLoopNum = needAivCoreNum / this->aivCoreNum;
-        if ((needAivCoreNum % this->aivCoreNum) != 0) {
+        aivLoopNum = needAivCoreCnt / this->aivCoreCnt;
+        if ((needAivCoreCnt % this->aivCoreCnt) != 0) {
             aivLoopNum += 1;
         }
     }
 
-    __aicore__ inline void InitInner(uint32_t loopIdx, int64_t blockAddrOffsetSplitM, int64_t blockAddrOffsetSplitMN,
-                                     int64_t scaleAddrOffsetSplitMN, uint32_t blockCntSpiltMN)
+    __aicore__ inline void InitInner(uint32_t loopIdx, int64_t blockAddrOffsetSplitM, int64_t blkAddrOffSpMN,
+                                     int64_t sclAddrOffSpMN, uint32_t blkCntSpMN)
     {
         uint64_t curScaleCnt = 0;
         int64_t curBlockAddrOffset = 0;
@@ -136,9 +136,9 @@ public:
             curBlockAddrOffset = blockAddrOffsetSplitM;
             curScaleCnt = this->N;
         } else {
-            curBlockAddrOffset = blockAddrOffsetSplitMN;
-            curScaleCnt = blockCntSpiltMN;
-            curScaleAddrOffset = scaleAddrOffsetSplitMN;
+            curBlockAddrOffset = blkAddrOffSpMN;
+            curScaleCnt = blkCntSpMN;
+            curScaleAddrOffset = sclAddrOffSpMN;
         }
         tempBufferGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(this->tempBufferGM) + curBlockAddrOffset,
                                       this->M * this->N - curBlockAddrOffset);
@@ -174,9 +174,9 @@ public:
     }
 
     __aicore__ inline void Process(uint32_t loopIdx, uint32_t aivLoopNum, uint32_t curBlockCntM,
-                                   uint32_t blockCntSpiltMN)
+                                   uint32_t blkCntSpMN)
     {
-        uint32_t calcCnt = blockCntSpiltMN;
+        uint32_t calcCnt = blkCntSpMN;
         uint16_t copyBlockCnt = 1;
         uint32_t copyBlockLen = calcCnt;
         uint16_t copyInUbStride = 0;
@@ -240,7 +240,7 @@ public:
         LocalTensor<half> zFp16Local = tBufFP16.Get<half>();
         LocalTensor<int8_t> zInt8Local = queueZ.AllocTensor<int8_t>();
         if (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // 切M
-            for (uint32_t i = 0; i < curBlockCntM; i++) {
+            for (uint32_t idx = 0; idx < curBlockCntM; i++) {
                 Mul(xFp32Local[i * this->alginN], xFp32Local[i * this->alginN], scaleFp32Local, this->N);
             }
             PipeBarrier<PIPE_V>();
@@ -267,37 +267,37 @@ public:
     }
 
     __aicore__ inline void SetParams(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, uint32_t M,
-                                     uint32_t N, Hccl<HCCL_SERVER_TYPE_AICPU> &hccl_, uint32_t aivCoreNum,
+                                     uint32_t N, Hccl<HCCL_SERVER_TYPE_AICPU> &hccl_, uint32_t aivCoreCnt,
                                      uint32_t &tileBlockCnt, uint32_t &tailBlockCnt, uint32_t &aivLoopNum,
                                      int64_t &blockAddrOffset, uint32_t &tailCalCntM, uint32_t &tileCalCntM,
-                                     uint32_t &needAivCoreNum, uint32_t &blockNumPerRow, int32_t &nowQuantUbSize)
+                                     uint32_t &needAivCoreCnt, uint32_t &blockNumPerRow, int32_t &curQuantUbSz4)
     {
         int32_t nowAlginN = Ceil(N * sizeof(int8_t), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
-        nowQuantUbSize =
+        curQuantUbSz4 =
             (TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 - static_cast<int32_t>(nowAlginN) * static_cast<int32_t>(sizeof(T)) *
                                                       static_cast<int32_t>(SCALE_BUFF_CNT_MATMUL_ALLREDUCE_INT8)) /
             (BUF_CNT_SPLIT_M_MATMUL_ALLREDUCE_INT8 * static_cast<int32_t>(sizeof(T)));
-        nowQuantUbSize = (nowQuantUbSize / nowAlginN) * nowAlginN;
+        curQuantUbSz4 = (curQuantUbSz4 / nowAlginN) * nowAlginN;
         this->M = M;
         this->N = N;
         this->alginN = static_cast<uint32_t>(nowAlginN);
-        this->aivCoreNum = aivCoreNum;
+        this->aivCoreCnt = aivCoreCnt;
         this->tempBufferGM = tempBufferGM;
         this->quantScale1GM = quantScale1GM;
         this->quantScale2GM = quantScale2GM;
         this->hccl_ = hccl_;
         this->rankCnt = hccl_.GetRankDim();
         this->tileRankM = M / hccl_.GetRankDim();
-        if (nowQuantUbSize > this->tileRankM * nowAlginN) {
-            nowQuantUbSize = this->tileRankM * nowAlginN;
+        if (curQuantUbSz4 > this->tileRankM * nowAlginN) {
+            curQuantUbSz4 = this->tileRankM * nowAlginN;
         }
 
-        if (nowQuantUbSize >= nowAlginN) { // 分核切M， 不切N
+        if (curQuantUbSz4 >= nowAlginN) { // 分核切M， 不切N
             this->splitMode = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceReduceSumSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
+            this->MatmulAllReduceReduceSumSplitM(curQuantUbSz4, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceReduceSumSplitMAndN(nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt,
+            this->MatmulAllReduceReduceSumSplitMAndN(curQuantUbSz4, needAivCoreCnt, tileBlockCnt, tailBlockCnt,
                                                      aivLoopNum, blockNumPerRow);
         }
     }
@@ -317,7 +317,7 @@ public:
     LocalTensor<float> scaleFp32Local;
     uint32_t tileRankM;
     uint32_t rankCnt;
-    uint32_t aivCoreNum;
+    uint32_t aivCoreCnt;
     uint32_t N;
     uint32_t M;
     uint32_t alginN;
@@ -333,11 +333,11 @@ public:
 
 template <class T>
 __aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM,
-                                                    uint32_t M, uint32_t N, TPipe *tPipe,
+                                                    uint32_t M, uint32_t N, TPipe *tPipe5,
                                                     Hccl<HCCL_SERVER_TYPE_AICPU> &hccl_)
 {
-    uint32_t aivCoreNum = GetBlockNum() * GetTaskRation();
-    if ((g_coreType == AIC) || (GetBlockIdx() >= aivCoreNum)) {
+    uint32_t aivCoreCnt = GetBlockNum() * GetTaskRation();
+    if ((g_coreType == AIC) || (GetBlockIdx() >= aivCoreCnt)) {
         return;
     }
     uint32_t tileBlockCnt = 0;
@@ -346,26 +346,26 @@ __aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADD
     int64_t blockAddrOffset = 0;
     uint32_t tailCalCntM = 0;
     uint32_t tileCalCntM = 0;
-    uint32_t needAivCoreNum = 0;
+    uint32_t needAivCoreCnt = 0;
     uint32_t blockNumPerRow = 1;
-    int32_t nowQuantUbSize = 0;
+    int32_t curQuantUbSz4 = 0;
 
-    tPipe->Reset();
+    tPipe5->Reset();
     MatmulAllReduceReduceSum<T> op;
-    op.SetParams(tempBufferGM, quantScale1GM, quantScale2GM, M, N, hccl_, aivCoreNum, tileBlockCnt, tailBlockCnt,
-                 aivLoopNum, blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreNum, blockNumPerRow, nowQuantUbSize);
+    op.SetParams(tempBufferGM, quantScale1GM, quantScale2GM, M, N, hccl_, aivCoreCnt, tileBlockCnt, tailBlockCnt,
+                 aivLoopNum, blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreCnt, blockNumPerRow, curQuantUbSz4);
 
     if (aivLoopNum == 0) {
         return;
     }
-    op.Init(tPipe, nowQuantUbSize);                               // 按照最大开
+    op.Init(tPipe5, curQuantUbSz4);                               // 按照最大开
     for (uint32_t loopIdx = 0; loopIdx < aivLoopNum; loopIdx++) { // 一轮外层循环对应着一次核间并行
         int64_t blockAddrOffsetSplitM = 0;
         uint32_t blockCntM = tileCalCntM;
-        uint32_t blockCntSpiltMN = tileBlockCnt;
-        int64_t blockAddrOffsetSplitMN = 0;
-        int64_t scaleAddrOffsetSplitMN = 0;
-        uint32_t globalBlockIdx = 0;
+        uint32_t blkCntSpMN = tileBlockCnt;
+        int64_t blkAddrOffSpMN = 0;
+        int64_t sclAddrOffSpMN = 0;
+        uint32_t globBlkIdx = 0;
         if (op.splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
             if ((tailCalCntM != 0) && (loopIdx == aivLoopNum - 1)) {
                 blockCntM = tailCalCntM;
@@ -374,21 +374,21 @@ __aicore__ inline void MatmulAllReduceReduceSumInt8(GM_ADDR tempBufferGM, GM_ADD
                                     static_cast<int64_t>(loopIdx) * static_cast<int64_t>(tileCalCntM) *
                                         static_cast<int64_t>(N); // 取到当前核的偏移，再+当前块的地址偏移
         } else {
-            globalBlockIdx = loopIdx * aivCoreNum + GetBlockIdx();
-            if (globalBlockIdx > (needAivCoreNum - 1)) {
+            globBlkIdx = loopIdx * aivCoreCnt + GetBlockIdx();
+            if (globBlkIdx > (needAivCoreCnt - 1)) {
                 return;
             }
-            if ((tailBlockCnt != 0) && (globalBlockIdx % blockNumPerRow == blockNumPerRow - 1)) {
-                blockCntSpiltMN = tailBlockCnt;
+            if ((tailBlockCnt != 0) && (globBlkIdx % blockNumPerRow == blockNumPerRow - 1)) {
+                blkCntSpMN = tailBlockCnt;
             }
-            blockAddrOffsetSplitMN =
-                static_cast<int64_t>(globalBlockIdx / blockNumPerRow) * static_cast<int64_t>(N) +
-                static_cast<int64_t>(globalBlockIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
-            scaleAddrOffsetSplitMN =
-                static_cast<int64_t>(globalBlockIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
+            blkAddrOffSpMN =
+                static_cast<int64_t>(globBlkIdx / blockNumPerRow) * static_cast<int64_t>(N) +
+                static_cast<int64_t>(globBlkIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
+            sclAddrOffSpMN =
+                static_cast<int64_t>(globBlkIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
         }
-        op.InitInner(loopIdx, blockAddrOffsetSplitM, blockAddrOffsetSplitMN, scaleAddrOffsetSplitMN, blockCntSpiltMN);
-        op.Process(loopIdx, aivLoopNum, blockCntM, blockCntSpiltMN);
+        op.InitInner(loopIdx, blockAddrOffsetSplitM, blkAddrOffSpMN, sclAddrOffSpMN, blkCntSpMN);
+        op.Process(loopIdx, aivLoopNum, blockCntM, blkCntSpMN);
     }
 }
 } // namespace MatmulAllReduceReduceSumImpl

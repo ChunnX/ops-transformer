@@ -46,17 +46,17 @@ template <
 class MatmulReduceScatterAivMode : public CommBase {
 public:
     using BlockMmad = BlockMmad_;
-    using DispatchPolicy = typename BlockMmad::DispatchPolicy;
-    using ArchTag = typename BlockMmad::ArchTag;
+    using ComputePolicy = typename BlockMmad::ComputePolicy;
+    using PlatformTag = typename BlockMmad::PlatformTag;
     using ElementA = typename BlockMmad::ElementA;
     using ElementB = typename BlockMmad::ElementB;
     using ElementScale = uint64_t;
-    using ElementAInt8 = int8_t;
-    using ElementBInt8 = int8_t;
-    using ElementCHalf = half;
-    using LayoutWA = typename BlockMmad::LayoutA;
-    using LayoutWB = typename BlockMmad::LayoutB;
-    using LayoutScale = typename layout::VectorLayout;
+    using ElemAInt8 = int8_t;
+    using ElemBInt8 = int8_t;
+    using ElemCHalf = half;
+    using LayWA = typename BlockMmad::LayoutA;
+    using LayWB = typename BlockMmad::LayoutB;
+    using LayScale = typename layout::VectorLayout;
     template<bool condition, class mmad>
     struct BiasTypeHelper {
         using type = typename mmad::ElementBias;
@@ -76,16 +76,16 @@ public:
         using type = void;
     };
     using ElementBias = typename BiasTypeHelper<HasBias, BlockMmad>::type;
-    using LayoutA = std::conditional_t<std::is_void_v<PrologueA>, LayoutWA, typename LayoutHelper<PrologueA>::type>;
-    using LayoutB = std::conditional_t<std::is_void_v<PrologueB>, LayoutWB, typename LayoutHelper<PrologueB>::type>;
+    using LayoutA = std::conditional_t<std::is_void_v<PrologueA>, LayWA, typename LayoutHelper<PrologueA>::type>;
+    using LayoutB = std::conditional_t<std::is_void_v<PrologueB>, LayWB, typename LayoutHelper<PrologueB>::type>;
 
-    using L1TileShape = typename BlockMmad::L1TileShape;
-    using L0TileShape = typename BlockMmad::L0TileShape;
-    using ElementC = typename BlockMmad::ElementC;
+    using L1Tile = typename BlockMmad::L1Tile;
+    using L0Tile = typename BlockMmad::L0Tile;
+    using ElmtC = typename BlockMmad::ElmtC;
     using LayoutC = typename BlockMmad::LayoutC;
 
-    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape,
-        L0TileShape, LayoutA, LayoutB, LayoutC>;
+    using FixpipeBlockMM = Gemm::Block::FixpipeBlockMM<Gemm::MmadAtlasA2Preload<false, false>, L1Tile,
+        L0Tile, LayoutA, LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {
@@ -99,7 +99,7 @@ public:
         GM_ADDR ptrC;
         LayoutC layoutC;
         GM_ADDR ptrScale;
-        LayoutScale layoutScale;
+        LayScale layoutScale;
         GM_ADDR ptrPeerMem;
         LayoutC layoutPeerMem;
         GM_ADDR ptrWorkSpace;
@@ -120,7 +120,7 @@ public:
         CATLASS_HOST_DEVICE
         Params(GemmCoord const &problemShape_,
                GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrBias_, GM_ADDR ptrC_,
-               LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_,
+               LayoutC layoutC_, GM_ADDR ptrScale_, LayScale layoutScale_, GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_,
                GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_, int32_t swizzlDirect_, DequantType dequantType_,
                int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
@@ -139,16 +139,16 @@ public:
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
 
-    inline __aicore__ void InitArgs(Params const &params)
+    inline __aicore__ void InitParams(Params const &params)
     {
         coreIdx = AscendC::GetBlockIdx();
         coreNum = AscendC::GetBlockNum();
         finalM = params.problemShape.m() / params.rankSize;
-        mLoopPerRank = (finalM + L1TileShape::M - 1) / L1TileShape::M;
+        mLoopPerRank = (finalM + L1Tile::M - 1) / L1Tile::M;
         mLoops = mLoopPerRank * params.rankSize;
-        nLoops = (params.problemShape.n() + L1TileShape::N - 1) / L1TileShape::N;
+        nLoops = (params.problemShape.n() + L1Tile::N - 1) / L1Tile::N;
         coreLoops = mLoops * nLoops;
-        kAlign = Block512B<ElementA>::AlignUp(params.problemShape.k());
+        kAlignment = Block512B<ElementA>::AlignUp(params.problemShape.k());
         loopNumPerComm = params.pValue * coreNum;
         calCount = (coreLoops + loopNumPerComm - 1) / loopNumPerComm;
     }
@@ -156,16 +156,16 @@ public:
     inline __aicore__ GemmCoord GetBlockSizeCoord(GemmCoord blockIdxCoord, GemmCoord blockLocCoord, int32_t mLoop,
                                                   int32_t mSize, int32_t nLoop, int32_t nSize, int32_t kSize)
     {
-        uint32_t mActual = (blockIdxCoord.m() == (mLoop - 1)) ? (mSize - blockLocCoord.m()) : L1TileShape::M;
-        uint32_t nActual = (blockIdxCoord.n() == (nLoop - 1)) ? (nSize - blockLocCoord.n()) : L1TileShape::N;
+        uint32_t mActual = (blockIdxCoord.m() == (mLoop - 1)) ? (mSize - blockLocCoord.m()) : L1Tile::M;
+        uint32_t nActual = (blockIdxCoord.n() == (nLoop - 1)) ? (nSize - blockLocCoord.n()) : L1Tile::N;
         uint32_t kActual = kSize;
         return GemmCoord{mActual, nActual, kActual};
     }
 
     inline __aicore__ GemmCoord GetBlockLocCoord(GemmCoord blockIdxCoord)
     {
-        return GemmCoord{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N,
-                         blockIdxCoord.k() * L1TileShape::K};
+        return GemmCoord{blockIdxCoord.m() * L1Tile::M, blockIdxCoord.n() * L1Tile::N,
+                         blockIdxCoord.k() * L1Tile::K};
     }
 
     inline __aicore__ GemmCoord GetBlockIdCoord(int32_t loopOffset, int32_t mLoop, int32_t nLoop, int32_t swizzlDirect,
@@ -179,19 +179,19 @@ public:
 
     inline __aicore__ void FixpipeMatmul(Params const &params)
     {
-        AscendC::GlobalTensor<ElementAInt8> gmAInt8;
-        AscendC::GlobalTensor<ElementBInt8> gmBInt8;
+        AscendC::GlobalTensor<ElemAInt8> gmAI8;
+        AscendC::GlobalTensor<ElemBInt8> gmBI8;
         AscendC::GlobalTensor<ElementScale> gmScale;
-        AscendC::GlobalTensor<ElementCHalf> gmCHalf;
-        AscendC::GlobalTensor<ElementCHalf> gmPeerMemHalf;
-        gmAInt8.SetGlobalBuffer((__gm__ ElementAInt8 *)params.ptrA);
-        gmBInt8.SetGlobalBuffer((__gm__ ElementBInt8 *)params.ptrB);
-        gmCHalf.SetGlobalBuffer((__gm__ ElementCHalf *)params.ptrC);
-        gmPeerMemHalf.SetGlobalBuffer((__gm__ ElementCHalf *)params.ptrPeerMem);
+        AscendC::GlobalTensor<ElemCHalf> gmCHalf;
+        AscendC::GlobalTensor<ElemCHalf> gmPeerMemHalf;
+        gmAI8.SetGlobalBuffer((__gm__ ElemAInt8 *)params.ptrA);
+        gmBI8.SetGlobalBuffer((__gm__ ElemBInt8 *)params.ptrB);
+        gmCHalf.SetGlobalBuffer((__gm__ ElemCHalf *)params.ptrC);
+        gmPeerMemHalf.SetGlobalBuffer((__gm__ ElemCHalf *)params.ptrPeerMem);
         gmScale.SetGlobalBuffer((__gm__ ElementScale *)params.ptrScale);
 
-        FixpipeBlockMmad fixpipeBlockMmad(resource);
-        int32_t blockSize = L1TileShape::M * L1TileShape::N;
+        FixpipeBlockMM fixpipeBlockMmad(resource);
+        int32_t blockSize = L1Tile::M * L1Tile::N;
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             if (calIdx >= MAX_BLOCK_COUNT) {
@@ -203,7 +203,7 @@ public:
                     break;
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
-                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlignment;
                 int32_t inRankIdx = loopIdx / params.rankSize;
                 GemmCoord blockIdxCoord = GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops,
                     params.swizzlDirect, params.swizzlCount);
@@ -218,7 +218,7 @@ public:
                 int64_t gmOffsetC;
                 int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 LayoutC layoutGmDst;
-                AscendC::GlobalTensor<ElementCHalf> gmDstHalf;
+                AscendC::GlobalTensor<ElemCHalf> gmDstHalf;
                 if (dstRankIdx == params.rankIdx && params.dequantType == DequantType::PER_CHANNEL) {
                     layoutGmDst = params.layoutC;
                     gmDstHalf = gmCHalf;
@@ -247,7 +247,7 @@ public:
                     nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
                         finalM, nLoops, params.problemShape.n(), params.problemShape.k());
                 }
-                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlignment;
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                 int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
@@ -255,11 +255,11 @@ public:
 
                 int64_t gmOffsetScale = blockLocCoord.n();
                 fixpipeBlockMmad(	
-                    gmAInt8[gmOffsetA], params.layoutA,	
-                    gmBInt8[gmOffsetB], params.layoutB,	
+                    gmAI8[gmOffsetA], params.layoutA,	
+                    gmBI8[gmOffsetB], params.layoutB,	
                     gmDstHalf[gmOffsetC], layoutGmDst,	
                     gmScale[gmOffsetScale], params.layoutScale,
-                    gmAInt8[gmOffsetNextA], gmBInt8[gmOffsetNextB],
+                    gmAI8[gmOffsetNextA], gmBI8[gmOffsetNextB],
                     blockSizeCoord, nextBlockSizeCoord, isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
@@ -270,21 +270,21 @@ public:
     {
         AscendC::GlobalTensor<ElementA> gmA;
         AscendC::GlobalTensor<ElementB> gmB;
-        AscendC::GlobalTensor<ElementC> gmC;
+        AscendC::GlobalTensor<ElmtC> gmC;
         AscendC::GlobalTensor<ElementBias> gmBias;
-        AscendC::GlobalTensor<ElementC> gmPeerMem;
-        AscendC::GlobalTensor<ElementC> gmWorkSpace;
+        AscendC::GlobalTensor<ElmtC> gmPeerMem;
+        AscendC::GlobalTensor<ElmtC> gmWorkSpace;
         gmA.SetGlobalBuffer((__gm__ ElementA *)params.ptrA);
         gmB.SetGlobalBuffer((__gm__ ElementB *)params.ptrB);
-        gmC.SetGlobalBuffer((__gm__ ElementC *)params.ptrC);
+        gmC.SetGlobalBuffer((__gm__ ElmtC *)params.ptrC);
         if constexpr (HasBias) {
             gmBias.SetGlobalBuffer((__gm__ ElementBias *)params.ptrBias);
         }
-        gmPeerMem.SetGlobalBuffer((__gm__ ElementC *)params.ptrPeerMem);
-        gmWorkSpace.SetGlobalBuffer((__gm__ ElementC *)params.ptrWorkSpace);
+        gmPeerMem.SetGlobalBuffer((__gm__ ElmtC *)params.ptrPeerMem);
+        gmWorkSpace.SetGlobalBuffer((__gm__ ElmtC *)params.ptrWorkSpace);
 
         BlockMmad blockMmad(resource);
-        int32_t blockSize = L1TileShape::M * L1TileShape::N;
+        int32_t blockSize = L1Tile::M * L1Tile::N;
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             if (calIdx >= MAX_BLOCK_COUNT) {
@@ -297,7 +297,7 @@ public:
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
                 int32_t inRankIdx = loopIdx / params.rankSize;
-                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlignment;
                 GemmCoord blockIdxCoord =
                     GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
@@ -311,8 +311,8 @@ public:
                 int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 int64_t gmOffsetC;
                 LayoutC layoutGmDst;
-                AscendC::GlobalTensor<ElementC> gmDst;
-                if (std::is_same<ElementC, int32_t>::value) {
+                AscendC::GlobalTensor<ElmtC> gmDst;
+                if (std::is_same<ElmtC, int32_t>::value) {
                     gmDst = gmWorkSpace;
                     layoutGmDst = params.layoutPeerMem;
                     gmOffsetC = (flagIdx * loopNumPerComm + dstRankIdx * (loopNumPerComm / params.rankSize) +
@@ -352,7 +352,7 @@ public:
                         nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
                             finalM, nLoops, params.problemShape.n(), params.problemShape.k());
                     }
-                    int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                    int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlignment;
                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                     int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
@@ -372,9 +372,9 @@ public:
     template <>
     CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
     {
-        Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPadding);
+        Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPad);
 
-        InitArgs(params);
+        InitParams(params);
 
         if (params.needFixpipe) {
             FixpipeMatmul(params);
@@ -391,12 +391,12 @@ private:
     int32_t coreLoops;
     int32_t calCount;
     int32_t finalM;
-    int32_t kAlign;
+    int32_t kAlignment;
     int32_t mLoopPerRank;
     int32_t loopNumPerComm;
     static constexpr Arch::FlagID FLAG_AIV_FINISH_STORE = AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID;
-    Arch::CrossCoreFlag flagAivFinishPadding{FLAG_AIV_FINISH_STORE};
-    Arch::Resource<ArchTag> resource;
+    Arch::CrossCoreFlag flagAivFinishPad{FLAG_AIV_FINISH_STORE};
+    Arch::Resource<PlatformTag> resource;
 };
 } // namespace Catlass::Gemm::Kernel
 

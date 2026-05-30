@@ -31,9 +31,9 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 
 aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const char* group, const char* reduceOp,
-    int64_t commTurn, int64_t streamMode, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor)
+    int64_t commTurn, int64_t streamMode, const aclTensor* output, uint64_t* workspace, aclOpExecutor** executor)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = MatmulAllReduceCheckParams(x1, x2, nullptr, bias, reduceOp, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -57,7 +57,7 @@ aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
         const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspace, executor);
     OP_LOGD("MatmulAllReduce, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -77,32 +77,32 @@ aclnnStatus aclnnMatmulAllReduceGetWorkspaceSize(
     }
     OP_LOGD("MatmulAllReduce, end ret %d", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp, dfxId);
     return ret;
 }
 
 aclnnStatus aclnnMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+    void* workspace, uint64_t workspace, aclOpExecutor* executor, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+            uint8_t commType = Mc2Comm::GetCommModeFromEnv();
+            if (commType == Mc2Comm::COMM_MODE_AICPU) {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspace, executor, stream);
     OP_LOGD("MatmulAllReduce, aclnnMatmulAllReduce ret %d", ret);
     if (ret != 0) {
         OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduce, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp, dfxId);
     return ACLNN_SUCCESS;
 }
 

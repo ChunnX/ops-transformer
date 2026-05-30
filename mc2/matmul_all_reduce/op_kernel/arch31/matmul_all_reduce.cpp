@@ -31,14 +31,14 @@
 #include "matmul_all_reduce_quant_bmm.h"
 // 310p归一化weightNZ非量化
 #elif (ORIG_DTYPE_X1 != DT_INT8 && ORIG_DTYPE_X2 != DT_INT8 && FORMAT_X2 != FORMAT_ND)
-#include "../arch22/unquant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilingData
+#include "../arch22/unquant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilDat
 #include "matmul_all_reduce_unquant_310.h"
 // 310p weightNZ伪量化
 #elif (ORIG_DTYPE_X1 != DT_INT8 && (ORIG_DTYPE_X2 == DT_INT8) && FORMAT_X2 != FORMAT_ND)
-#include "../arch22/weight_quant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilingData
+#include "../arch22/weight_quant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilDat
 #include "matmul_all_reduce_weight_quant_310.h"
 #else
-#include "../arch22/quant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilingData
+#include "../arch22/quant_matmul_all_reduce_tiling_data.h" // 300I DUO复用A2 tilDat
 #include "matmul_all_reduce_310_general.h"
 #endif // ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8
 
@@ -47,9 +47,9 @@
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(Mc2Tiling::QuantMatmulAllReduceTilingData, msg, msg, tilingGM);                         \
         if (msg.debugMode != static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {                                  \
-            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);              \
+            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilDat, tilingGM);              \
             templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, int8_t, __VA_ARGS__> matmul;     \
-            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilingData;                 \
+            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilDat;                 \
             const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
             const AscendC::tiling::TCubeTiling *mmTilingTile = &(qBmmV3TilingData->matmulTiling);                      \
             const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingDataTail =                                              \
@@ -57,7 +57,7 @@
             const AscendC::tiling::TCubeTiling *mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                  \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);         \
             matmul.Init(aGM, bGM, biasGM, addGM, dequantGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,         \
-                        &tilingData, &tPipe);                                                                          \
+                        &tilDat, &tPipe);                                                                          \
             matmul.Process(opTile, opTail);                                                                            \
             tPipe.Destroy();                                                                                           \
         }                                                                                                              \
@@ -67,9 +67,9 @@
 #if ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_FLOAT16))
 #define INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(templateClass, ...)                                               \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);                  \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilDat, tilingGM);                  \
         templateClass<DTYPE_X1, DTYPE_X2, int32_t, DTYPE_Y, int8_t, __VA_ARGS__> op;                                   \
-        op.Init(aGM, bGM, dequantGM, biasGM, addGM, cGM, workspaceGM, &tilingData, &tPipe);                            \
+        op.Init(aGM, bGM, dequantGM, biasGM, addGM, cGM, workspaceGM, &tilDat, &tPipe);                            \
         op.InitScale(commQuantScale1GM, commQuantScale2GM);                                                            \
         op.Process();                                                                                                  \
     } while (0)
@@ -80,9 +80,9 @@
     do {                                                                                                               \
         GET_TILING_DATA_MEMBER(Mc2Tiling::QuantMatmulAllReduceTilingData, msg, msg, tilingGM);                         \
         if (msg.debugMode != static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {                                  \
-            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);              \
+            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilDat, tilingGM);              \
             templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, scaleType, DTYPE_Y, int8_t, __VA_ARGS__> matmul;   \
-            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilingData;                 \
+            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilDat;                 \
             const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
             const AscendC::tiling::TCubeTiling *mmTilingTile = &(qBmmV3TilingData->matmulTiling);                      \
             const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingDataTail =                                              \
@@ -90,7 +90,7 @@
             const AscendC::tiling::TCubeTiling *mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                  \
             REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);         \
             matmul.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM,     \
-                        userWS, &tilingData, &tPipe);                                                                  \
+                        userWS, &tilDat, &tPipe);                                                                  \
             matmul.Process(opTile, opTail);                                                                            \
             tPipe.Destroy();                                                                                           \
         }                                                                                                              \
@@ -179,8 +179,8 @@ __global__ __aicore__ void matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
                          HAS_ANTIQUANT_OFFSET == 1) { // 80121
         INVOKE_WEIGHT_QUANT_BMM_OP_IMPL_310(MatmulAllReduceWeightQuant310, true, true, Mc2QuantType::PER_CHANNEL, true);
     } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && FORMAT_B == FORMAT_B_NZ) { // 空kernel
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData, tilingData, tilingGM);
-        WeightQuantEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData, tilDat, tilingGM);
+        WeightQuantEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilDat, &hcclServer);
     }
 #elif (ORIG_DTYPE_X1 != DT_INT8 && ORIG_DTYPE_X2 != DT_INT8 && FORMAT_X2 != FORMAT_ND) // 310p归一化weightNZ非量化
     if constexpr (MIXND2NZ == MAT_MUL_V3_MIXND2NZ_TRUE) {
@@ -189,8 +189,8 @@ __global__ __aicore__ void matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
         INVOKE_UNQUANT_BMM_OP_IMPL_310(MatmulAllReduceUnquant310);
     } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && FORMAT_B == FORMAT_B_NZ) {
         // k==0 伪量化NZ
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::UnQuantMatmulAllReduceTilingData, tilingData, tilingGM);
-        MatMulEmptyTensorKernelUnquantNz(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::UnQuantMatmulAllReduceTilingData, tilDat, tilingGM);
+        MatMulEmptyTensorKernelUnquantNz(biasGM, cGM, workspaceGM, &tilDat, &hcclServer);
     }
 #else  // 310p weightND(非归一化 非量化 伪量化)
     // L2cache, transB, isWeightQuant, AntiQuantType, hasAntiQuantOffset, 310Version
@@ -359,8 +359,8 @@ __global__ __aicore__ void matmul_all_reduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR b
     } else if constexpr (EMPTY_INPUT == MATMUL_ALLREDUCE_EMPTY_INPUT_T && MM_TYPE == MATMUL_ALLREDUCE_MM_TYPE_FP_MM &&
                          FORMAT_B == FORMAT_B_ND) {
         // k==0 伪量化ND
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduceTilingData, tilingData, tilingGM);
-        MatMulEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilingData, &hcclServer);
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduceTilingData, tilDat, tilingGM);
+        MatMulEmptyTensorKernel(biasGM, cGM, workspaceGM, &tilDat, &hcclServer);
     }
 #endif // ORIG_DTYPE_X1 == DT_INT8
 }

@@ -502,9 +502,9 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 
     uint64_t mmOutInt32Len = 0;
     if (isUbQuant_) {
-        uint32_t maxM = std::max(tilingData_.matmulTiling.M, tilingData_.tailTiling.M);
+        uint32_t maxM = std::max(tilDat_.matmulTiling.M, tilDat_.tailTiling.M);
         mmOutInt32Len = static_cast<uint64_t>(maxM) * \
-                        static_cast<uint64_t>(tilingData_.matmulTiling.N) * \
+                        static_cast<uint64_t>(tilDat_.matmulTiling.N) * \
                         sizeof(int32_t);
     }
     uint32_t softSyncSize = mc2tiling::AC_MAX_AIV * 32; // aiv_cnt * 32bytes
@@ -517,16 +517,16 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
 
 ge::graphStatus MatmulAllReduceTilingBase::PostTiling()
 {
-    size_t tilingDataSize = sizeof(MatmulAllReduceTilingData);
-    OP_LOGD(opName_, "Final tiling data size: %zu.", tilingDataSize);
+    size_t tilDatSize = sizeof(MatmulAllReduceTilingData);
+    OP_LOGD(opName_, "Final tiling data size: %zu.", tilDatSize);
     OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "Tiling data size[%zu] not aligned to 8.", tilingDataSize),
+        tilDatSize % sizeof(uint64_t) != 0,
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "Tiling data size[%zu] not aligned to 8.", tilDatSize),
         return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+    context_->GetRawTilingData()->SetDataSize(tilDatSize);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+        reinterpret_cast<void *>(&tilDat_), tilDatSize);
     if (ret != EOK){
         OP_LOGE(context_->GetNodeName(), "Memcpy_s failed, ret=%d.", ret);
         return ge::GRAPH_FAILED;

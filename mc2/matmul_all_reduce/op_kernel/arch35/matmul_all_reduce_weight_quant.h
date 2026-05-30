@@ -36,19 +36,19 @@ class MatmulAllReduceWeightQuantRegBase : public MatmulAllReduceBase<
 {
 public:
     __aicore__ inline MatmulAllReduceWeightQuantRegBase(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilDat, TPipe* tPipe)
         : MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>(
-              addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+              addrs, quantAddrs, arnAddrs, tilDat, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData*)tilingData;
-        this->tileInfo_.mmTiling = &mc2TilingData_->tileRegBaseMmTiling.matmulTiling;
-        this->tailInfo_.mmTiling = &mc2TilingData_->tailRegBaseMmTiling.matmulTiling;
+        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData*)tilDat;
+        this->tileInf15_.mmTil15 = &mc2TilingData_->tileRegBaseMmTiling.matmulTiling;
+        this->tailInf15_.mmTil15 = &mc2TilingData_->tailRegBaseMmTiling.matmulTiling;
     }
     __aicore__ inline void Process()
     {
-        InnerProcess(false, this->paramInTiling_->tileCnt, this->tileInfo_);
-        if (this->tailFlag_) {
-            InnerProcess(true, this->paramInTiling_->tailCnt, this->tailInfo_);
+        InnerProcess(false, this->paramCfg14_->tileCnt, this->tileInf15_);
+        if (this->tailFl13_) {
+            InnerProcess(true, this->paramCfg14_->tailCnt, this->tailInf15_);
         }
         if constexpr(basedA2aRsAg) {
             this->ReduceSumAndAllGather();
@@ -69,7 +69,7 @@ protected:
                 this->quantAddrs_->antiquantOffsetGM, nullptr, nullptr, this->addrs_->biasGM, this->addrs_->cGM,
                 this->addrs_->workspaceGM, tiling, this->tPipe_);
             mmOp.Process();
-            const uint64_t index = tailFlag ? idx + this->paramInTiling_->tileCnt : idx;
+            const uint64_t index = tailFlag ? idx + this->paramCfg14_->tileCnt : idx;
             this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset, index);
         }
         if constexpr(basedA2aRsAg) {
@@ -83,13 +83,13 @@ private:
 
 #define INVOKE_MC2_WEIGHT_QUANT_KERNEL(bTransFlag, quantType, offsetFlag, weightNz, basedA2aRsAg, commMode)        \
     do {                                                                                                  \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData, tilingData, tilingGM);        \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceA5TilingData, tilDat, tilingGM);        \
         using OpType = Mc2WeightQuantBatchMatmulV2::Arch35::Mc2WeightQuantBatchMatmulV2RegBaseKernel<           \
             DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, false, bTransFlag, offsetFlag, quantType, weightNz>; \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                              \
         QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr};                \
         MatmulAllReduceWeightQuantRegBase<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, basedA2aRsAg, commMode> op(         \
-            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                         \
+            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilDat, &tPipe);                         \
         op.Init();                                                                                        \
         op.Process();                                                                                     \
     } while (0)
