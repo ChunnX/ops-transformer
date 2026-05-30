@@ -33,6 +33,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
 {
     PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, ...);
 
+    fa_base_matmul::idCounterNum = 0;
     constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
                       UbOutCondition<INPUT_T>(false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,

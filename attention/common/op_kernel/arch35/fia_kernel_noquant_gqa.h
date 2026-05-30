@@ -85,7 +85,7 @@ public:
     ConstInfoX constInfo;
 
     const NoQuantTilingArch35 *__restrict tilingData;
-    TPipe *pipe;
+    TPipe *pipe = nullptr;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
     VecFdBlockType vecFdBlock;
@@ -99,11 +99,11 @@ public:
     // schduler params
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    uint32_t curS2Start;
+    uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
+    uint32_t prevBIdx = 0;
+    uint32_t prevBN2Idx = 0;
+    uint32_t prevGS1Idx = 0;
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
@@ -312,6 +312,7 @@ public:
             constInfo.totalSize = fiaS1OuterSplitCoreParams.totalSize;
         } else {
             // 任务起始位置
+            constInfo.enableS1OutSplit = false;
             constInfo.bN2Start = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_START_INDEX));
             constInfo.gS1OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_M_START_INDEX));
             constInfo.s2OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_S2_START_INDEX));
