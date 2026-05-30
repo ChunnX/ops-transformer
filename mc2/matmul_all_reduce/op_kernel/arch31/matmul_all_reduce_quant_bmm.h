@@ -42,15 +42,15 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        Mc2Tiling::QuantMatmulAllReduceTilingData* tilDat, TPipe* tPipe, HcclServer* hcclSrv);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InnerProcess(uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t shift);
+    __aicore__ inline void InnerProcess(uint32_t tileLoopCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t turnShift);
 
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
-    HcclServer* hcclServer_;
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilDat_;
+    HcclServer* hcclSrv_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
     GM_ADDR aGM_;
@@ -58,29 +58,29 @@ private:
     GM_ADDR biasGM_;
     GM_ADDR dequantGM_;
     GM_ADDR workspaceGM_;
-    TBuf<TPosition::VECCALC> tmpBuf_;
+    TBuf<TPosition::VECCALC> tempBuf2_;
 };
 
 template <typename aType, typename bType, typename biasType, typename cType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    Mc2Tiling::QuantMatmulAllReduceTilingData* tilDat, TPipe* tPipe, HcclServer* hcclSrv)
 {
-    GetTPipePtr()->InitBuffer(tmpBuf_, TOTAL_UB_SIZE);
-    auto&& cfg = tilingData->param;
+    GetTPipePtr()->InitBuffer(tempBuf2_, TOTAL_UB_SIZE);
+    auto&& cfg = tilDat->param;
 
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
-    __gm__ uint8_t* workspaceMsg = (__gm__ uint8_t*)(context->WorkSpace + (tilingData->msg).notifyOff);
-    hcclServer->Init(workspaceMsg, (tilingData->msg).debugMode, tmpBuf_);
+    __gm__ uint8_t* wsMsg2 = (__gm__ uint8_t*)(context->WorkSpace + (tilDat->msg).notifyOff);
+    hcclSrv->Init(wsMsg2, (tilDat->msg).debugMode, tempBuf2_);
 
     workspaceGM += cfg.nd2NzWorkLen;
     workspaceGM += cfg.biasLen;
-    GM_ADDR softSyncAddr = workspaceGM;
-    hcclServer->InitSoftSync(softSyncAddr, GetBlockNum(), tmpBuf_);
+    GM_ADDR syncPtr2 = workspaceGM;
+    hcclSrv->InitSoftSync(syncPtr2, GetBlockNum(), tempBuf2_);
     workspaceGM += AC_MAX_AIV * DEFAULT_BLK_NUM;
 
-    tilingData_ = tilingData;
-    hcclServer_ = hcclServer;
+    tilDat_ = tilDat;
+    hcclSrv_ = hcclSrv;
     tPipe_ = tPipe;
     aGM_ = aGM;
     bGM_ = bGM;
@@ -93,49 +93,49 @@ __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aT
 template <typename aType, typename bType, typename biasType, typename cType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aTrans, bTrans>::Process()
 {
-    auto&& cfg = tilingData_->param;
+    auto&& cfg = tilDat_->param;
     if (g_coreType == AIV) {
         return;
     }
 
-    InnerProcess(cfg.tileCnt, tilingData_->tilematmulTiling, 0);
+    InnerProcess(cfg.tileLoopCnt, tilDat_->tilematmulTiling, 0);
     if (cfg.tailM != 0U) {
-        InnerProcess(cfg.tailCnt, tilingData_->tailmatmulTiling, cfg.tileCnt);
+        InnerProcess(cfg.tailCnt, tilDat_->tailmatmulTiling, cfg.tileLoopCnt);
     }
 
     if (GetBlockIdx() == 0 && (g_coreType == AIC || g_coreType == MIX)) {
-        hcclServer_->TurnWait(cfg.tileCnt + cfg.tailCnt);
+        hcclSrv_->TurnWait(cfg.tileLoopCnt + cfg.tailCnt);
     }
 }
 
 template <typename aType, typename bType, typename biasType, typename cType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aTrans, bTrans>::InnerProcess(
-    uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t shift)
+    uint32_t tileLoopCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t turnShift)
 {
-    const uint64_t aOffset = CalcShapeOffset(sizeof(aType), quant_tiling.matmulTiling.M, quant_tiling.matmulTiling.Ka);
-    const uint64_t cOffset = CalcShapeOffset(sizeof(cType), quant_tiling.matmulTiling.M, quant_tiling.matmulTiling.N);
+    const uint64_t aOff = CalcShapeOffset(sizeof(aType), quant_tiling.matmulTiling.M, quant_tiling.matmulTiling.Ka);
+    const uint64_t cOff = CalcShapeOffset(sizeof(cType), quant_tiling.matmulTiling.M, quant_tiling.matmulTiling.N);
     BmmDequant<aType, bType, FORMAT_X1, FORMAT_X2, biasType, uint64_t, cType, aTrans, bTrans> op;
-    for (uint32_t i = 0; i < tileCnt; i++) {
+    for (uint32_t idx = 0; idx < tileLoopCnt; i++) {
         if (i == 0) {
             tPipe_->Reset();
-            op.InitTbuf(tmpBuf_);
+            op.InitTbuf(tempBuf2_);
             op.Init(aGM_, bGM_, biasGM_, dequantGM_, cGM_, workspaceGM_, &quant_tiling, tPipe_);
         } else {
             op.UpdateGlobalAddr(aGM_, bGM_, biasGM_, dequantGM_, cGM_, workspaceGM_);
         }
 
         op.Process();
-        hcclServer_->TurnNotifyRun(block_idx, GetBlockNum(), i + 1 + shift);
-        aGM_ += aOffset;
-        cGM_ += cOffset;
+        hcclSrv_->TurnNotifyRun(block_idx, GetBlockNum(), i + 1 + turnShift);
+        aGM_ += aOff;
+        cGM_ += cOff;
     }
 }
 
 #define INVOKE_QUANT_BMM_OP_IMPL(templateClass, ...)                                              \
     do {                                                                                          \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilDat, tilingGM);        \
         templateClass<DTYPE_X1, DTYPE_X2, int32_t, DTYPE_Y, __VA_ARGS__> op;                      \
-        op.Init(aGM, bGM, dequantGM, biasGM, cGM, workspaceGM, &tilingData, &tPipe, &hcclServer); \
+        op.Init(aGM, bGM, dequantGM, biasGM, cGM, workspaceGM, &tilDat, &tPipe, &hcclSrv); \
         op.Process();                                                                             \
     } while (0)
 } // namespace MatmulAllReduceImpl

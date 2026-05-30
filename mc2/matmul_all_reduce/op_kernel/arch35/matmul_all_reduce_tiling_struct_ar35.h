@@ -25,7 +25,7 @@
 #include "../arch22/weight_quant_matmul_all_reduce_tiling_data.h"
 namespace Mc2Tiling {
 
-// 确保tilingData按8byte对齐
+// 确保tilDat按8byte对齐
 constexpr uint32_t STRUCT_ALIGNAS_EIGHT = 8;
 
 #pragma pack(push, 8)

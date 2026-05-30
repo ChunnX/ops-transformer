@@ -81,10 +81,10 @@ public:
     {}
     __aicore__ inline void Init(
         AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
-        const LocalTensor<uint8_t>& mmFormatUb);
+        const LocalTensor<uint8_t>& mmFmtUb13);
     __aicore__ inline void InitGlobalBTensor(
         GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale, GM_ADDR antiquantOffset);
-    __aicore__ inline void InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSize);
+    __aicore__ inline void InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSz6);
     __aicore__ inline void InitDequantScale(GM_ADDR dequantGM);
     __aicore__ inline void InitDequantScale(uint64_t dequantGM);
     __aicore__ inline void Compute(uint32_t index = 0, uint8_t enAtomic = 0);
@@ -102,7 +102,7 @@ public:
     typename AllReduceMMType<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, hasAntiQuantOffset, antiQuantType>::PARAMS mm;
     GlobalTensor<A_T> aGlobal;
     GlobalTensor<B_T> bGlobal;
-    GlobalTensor<C_T> cGlobal;
+    GlobalTensor<C_T> cGl6;
     GlobalTensor<uint64_t> dequantGlobal;
     GlobalTensor<BiasT> biasGlobal;
     uint64_t dequantScalar;
@@ -128,11 +128,11 @@ template <
     AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void MatmulCompute<
     A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-    hasAntiQuantOffset>::InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSize)
+    hasAntiQuantOffset>::InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSz6)
 {
     // MC2的计算流中默认B矩阵不变，GM地址无需偏移
     aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T*>(aGM), aSize);
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(cGM), cSize);
+    cGl6.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(cGM), cSz6);
 }
 
 template <
@@ -165,7 +165,7 @@ template <
 __aicore__ inline void
 MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::Init(
     AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
-    const LocalTensor<uint8_t>& mmFormatUb)
+    const LocalTensor<uint8_t>& mmFmtUb13)
 {
     // MatmulImpl初始化
     mm.SetSubBlockIdx(0);
@@ -178,7 +178,7 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
     SetOrgShapeAlign();
 #if __CCE_AICORE__ == 220
 #else
-    mm.SetLocalWorkspace(mmFormatUb);
+    mm.SetLocalWorkspace(mmFmtUb13);
 #endif
 }
 
@@ -248,7 +248,7 @@ __aicore__ inline void MatmulCompute<
 {
     // 每次block循环开始前需要计算初始blockIndex
     block.UpdateBlockCnt(index);
-    for (uint32_t i = 0; i < block.blockCnt; i++) {
+    for (uint32_t idx = 0; idx < block.blockCnt; i++) {
         if (block.blockIndex < block.totalBlockCnt) {
             block.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>();
             SetSingleCoreShape();
@@ -263,7 +263,7 @@ __aicore__ inline void MatmulCompute<
                 mm.SetBias(biasGlobal[block.offset.offsetBias]);
             }
             mm.Iterate();
-            mm.GetTensorC(cGlobal[block.offset.offsetC], enAtomic);
+            mm.GetTensorC(cGl6[block.offset.offsetC], enAtomic);
 #if __CCE_AICORE__ == 220
 #else
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
@@ -297,7 +297,7 @@ MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQu
                 mm.SetBias(biasGlobal[block.offset.offsetBias]);
             }
             mm.Iterate();
-            mm.GetTensorC(cGlobal[block.offset.offsetC], enAtomic);
+            mm.GetTensorC(cGl6[block.offset.offsetC], enAtomic);
             SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
             WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID7);
         }

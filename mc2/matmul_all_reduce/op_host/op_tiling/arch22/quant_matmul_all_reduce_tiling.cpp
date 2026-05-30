@@ -84,16 +84,16 @@ ge::graphStatus QuantMatmulAllReduceTiling::GetWorkspaceSize()
 }
 ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
 {
-    size_t tilingDataSize = sizeof(QuantMatmulAllReduceTilingData);
-    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
+    size_t tilDatSize = sizeof(QuantMatmulAllReduceTilingData);
+    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilDatSize,
             context_->GetRawTilingData()->GetCapacity());
-    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+    OP_TILING_CHECK(tilDatSize % sizeof(uint64_t) != 0,
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "tiling data size[%zu] not aligned to 8", tilDatSize),
                     return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+    context_->GetRawTilingData()->SetDataSize(tilDatSize);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilingDataSize);
+                           reinterpret_cast<void *>(&quantMatmulAllReduceTilingData_), tilDatSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -179,9 +179,9 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
 
 ge::graphStatus QuantMatmulAllReduceTiling::CheckDequantScaleType()
 {
-    auto dequantScaleType = mmrCtxInfo_.dequant_scale->GetDataType();
-    auto yType = mmrCtxInfo_.y->GetDataType();
-    auto pertokenScaleShape = mmrCtxInfo_.pertoken_scale_shape;
+    auto dequantScaleType = mmrCtx7_.dequant_scale->GetDataType();
+    auto yType = mmrCtx7_.y->GetDataType();
+    auto pertokenScaleShape = mmrCtx7_.pertoken_scale_shape;
     OP_LOGD(opName_, "dequantScaleType %d, yType %d.", dequantScaleType, yType);
     // 1. y = bf16 时，dequantScale = bf16
     // 2. y = fp16 且 protoken 不存在时， dequantScale = int64、uint64
@@ -213,7 +213,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
 {
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
     // x2 shape 为 2 维
-    size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
+    size_t x2DimNum = mmrCtx7_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO && x2DimNum != DIM_NUM_FOUR,
                     VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
                                                    "In the dequant scenario, Expect x2 dim to be 2 or 4,"
@@ -221,15 +221,15 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
                                                    x2DimNum),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
-    auto x1Type = mmrCtxInfo_.x1->GetDataType();
-    auto x2Type = mmrCtxInfo_.x2->GetDataType();
+    auto x1Type = mmrCtx7_.x1->GetDataType();
+    auto x2Type = mmrCtx7_.x2->GetDataType();
     OP_TILING_CHECK(x1Type != x2Type,
                     VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
                                                    "In the dequant scenario, type of x1 and x2 should be same"),
                     return ge::GRAPH_FAILED);
     // bias数据类型为int32
-    if (mmrCtxInfo_.bias_shape != nullptr) {
-        auto biasType = mmrCtxInfo_.bias->GetDataType();
+    if (mmrCtx7_.bias_shape != nullptr) {
+        auto biasType = mmrCtx7_.bias->GetDataType();
         OP_TILING_CHECK(biasType != ge::DT_INT32,
                         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
                                                        "In the dequant scenario, type of bias should be int32"),
@@ -238,10 +238,10 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
     // dequantScale数据类型范围
     GE_ASSERT_GRAPH_SUCCESS(CheckDequantScaleType());
     // comm_quant_scale不为空时校验数据类型
-    if ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) && (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)) {
-        auto commQuantScaleType1 = mmrCtxInfo_.comm_quant_scale_1->GetDataType();
-        auto commQuantScaleType2 = mmrCtxInfo_.comm_quant_scale_2->GetDataType();
-        auto cType = mmrCtxInfo_.y->GetDataType();
+    if ((mmrCtx7_.comm_quant_scale_1_shape != nullptr) && (mmrCtx7_.comm_quant_scale_2_shape != nullptr)) {
+        auto commQuantScaleType1 = mmrCtx7_.comm_quant_scale_1->GetDataType();
+        auto commQuantScaleType2 = mmrCtx7_.comm_quant_scale_2->GetDataType();
+        auto cType = mmrCtx7_.y->GetDataType();
         OP_TILING_CHECK((commQuantScaleType1 != cType || commQuantScaleType2 != cType),
                         VECTOR_INNER_ERR_REPORT_TILING(
                             context_->GetNodeName(),
@@ -287,17 +287,17 @@ QuantMatmulAllReduceTiling::QuantMatmulAllReduceTiling(gert::TilingContext *cont
 const gert::Shape &QuantTilingTransferHelper::GetScaleShape(const size_t index)
 {
     (void)index;
-    if (tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr) {
+    if (tilingProcesser_.mmrCtx7_.dequant_scale_shape == nullptr) {
         OP_LOGE(inputParams_.opName, "Op is quant, but has no quant shape");
         return defaultShape;
     }
-    return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();
+    return tilingProcesser_.mmrCtx7_.dequant_scale_shape->GetStorageShape();
 }
 
 const gert::StorageShape *QuantTilingTransferHelper::GetPertokenShape(const size_t index)
 {
     (void)index;
-    if (tilingProcesser_.mmrCtxInfo_.pertoken_scale_shape != nullptr) {
+    if (tilingProcesser_.mmrCtx7_.pertoken_scale_shape != nullptr) {
         return &defaultStorageShape;
     }
     return nullptr;
@@ -306,7 +306,7 @@ const gert::StorageShape *QuantTilingTransferHelper::GetPertokenShape(const size
 const gert::StorageShape *QuantTilingTransferHelper::GetBiasShape(const size_t index)
 {
     (void)index;
-    return tilingProcesser_.mmrCtxInfo_.bias_shape;
+    return tilingProcesser_.mmrCtx7_.bias_shape;
 }
 ge::graphStatus QuantTilingTransferHelper::GetShapeAttrsInfo()
 {
@@ -322,7 +322,7 @@ ge::graphStatus QuantTilingTransferHelper::GetShapeAttrsInfo()
     inputParams_.cDtype = tilingArgs.geCType;
     inputParams_.outDtype = static_cast<int64_t>(tilingArgs.geCType);
     inputParams_.biasDtype = tilingArgs.isBias ? tilingArgs.geBiasType : ge::DT_INT32;
-    inputParams_.scaleDtype = tilingProcesser_.mmrCtxInfo_.dequant_scale->GetDataType();
+    inputParams_.scaleDtype = tilingProcesser_.mmrCtx7_.dequant_scale->GetDataType();
     // optiling::PlatformInfo::GetInstance().intrinsic_fix_pipe_l0c2out = tilingProcesser_.supportL0c2Out_;
     GE_ASSERT_TRUE(AnalyzeInputs());
     inputParams_.isPerTensor = (tilingProcesser_.quantType_ == Mc2QuantType::PER_TENSOR);
@@ -376,22 +376,22 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(QuantMatmulAllReduceTiling 
 
 CutResult QuantMatmulAllReduceTiling::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    CutResult mCutRdc6;
+    SocVersion inSocVer6 = SocVersion::SOC910_B;
+    SetMCutSocVersion(inSocVer6);
+    const gert::StorageShape *commQuantScaleShape1 = mmrCtx7_.comm_quant_scale_1_shape;
+    const gert::StorageShape *commQuantScaleShape2 = mmrCtx7_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantRdcTilHccl6(args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer6);
+        quantRdcTilHccl6.GetTiling();
+        mCutRdc6 = quantRdcTilHccl6.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce rdcTilHccl6(args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer6, isPerBlock_);
+        rdcTilHccl6.GetTiling();
+        mCutRdc6 = rdcTilHccl6.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutRdc6;
 }
 
 

@@ -33,11 +33,11 @@ __global__ __aicore__ void quant_reduce_scatter(GM_ADDR x, GM_ADDR scales, GM_AD
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantReduceScatterTilingData);
-    GET_TILING_DATA_WITH_STRUCT(QuantReduceScatterTilingData, tilingData, tilingGM);
+    GET_TILING_DATA_WITH_STRUCT(QuantReduceScatterTilingData, tilDat, tilingGM);
     TPipe pipe;
     if constexpr (quantReduceScatterCommMode == MTE_COMM) {
         QuantReduceScatterMte<DTYPE_X, DTYPE_SCALES, DTYPE_OUT_PUT> op;
-        op.Init(x, scales, output, &pipe, &tilingData);
+        op.Init(x, scales, output, &pipe, &tilDat);
         op.Process();
     }
 }

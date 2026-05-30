@@ -38,9 +38,9 @@ public:
 
         mmOutGm_.SetGlobalBuffer((__gm__ T*)mmOutput + blockAddr, this->blockCnt_);
         addGm_.SetGlobalBuffer((__gm__ T*)add + blockAddr, this->blockCnt_);
-        pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt * sizeof(T));
+        pipe_->InitBuffer(inQueueXmm_, DOUBLE_BUFFER, tileCnt * sizeof(T));
         pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt * sizeof(T));
-        pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt * sizeof(T));
+        pipe_->InitBuffer(outQueueZmm_, DOUBLE_BUFFER, tileCnt * sizeof(T));
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #else
         if (std::is_same<T, bfloat16_t>::value) {
@@ -59,19 +59,19 @@ public:
         DataCopyParams copyParams = {1, static_cast<uint16_t>(calcCnt * sizeof(T)), 0, 0};
         DataCopyPadParams padParams = {false, 0, 0, 0};
 
-        LocalTensor<T> mmOutLocal = inQueueX_.AllocTensor<T>();
-        DataCopyPad(mmOutLocal, mmOutGm_[progress * this->tileCnt_], copyParams, padParams);
-        inQueueX_.EnQue(mmOutLocal);
+        LocalTensor<T> mmOutLocal_ = inQueueXmm_.AllocTensor<T>();
+        DataCopyPad(mmOutLocal_, mmOutGm_[progress * this->tileCnt_], copyParams, padParams);
+        inQueueXmm_.EnQue(mmOutLocal_);
 
         LocalTensor<T> addLocal = inQueueY_.AllocTensor<T>();
         DataCopyPad(addLocal, addGm_[progress * this->tileCnt_], copyParams, padParams);
         inQueueY_.EnQue(addLocal);
 
-        LocalTensor<T> xLocal = inQueueX_.DeQue<T>();
+        LocalTensor<T> xLocal = inQueueXmm_.DeQue<T>();
         LocalTensor<T> yLocal = inQueueY_.DeQue<T>();
-        LocalTensor<T> zLocal = outQueueZ_.AllocTensor<T>();
+        LocalTensor<T> zLocal_ = outQueueZmm_.AllocTensor<T>();
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        Add(zLocal, xLocal, yLocal, calcCnt);
+        Add(zLocal_, xLocal, yLocal, calcCnt);
         PipeBarrier<PIPE_V>();
 #else
         if (std::is_same<T, bfloat16_t>::value) {
@@ -82,26 +82,26 @@ public:
             PipeBarrier<PIPE_V>();
             Add(outFp32LocalTmp, outFp32LocalTmp, addFp32LocalTmp, calcCnt);
             PipeBarrier<PIPE_V>();
-            Cast(zLocal, outFp32LocalTmp, RoundMode::CAST_RINT, calcCnt);
+            Cast(zLocal_, outFp32LocalTmp, RoundMode::CAST_RINT, calcCnt);
             PipeBarrier<PIPE_V>();
         } else if (std::is_same<T, half>::value) {
-            Add(zLocal, xLocal, yLocal, calcCnt);
+            Add(zLocal_, xLocal, yLocal, calcCnt);
             PipeBarrier<PIPE_V>();
         }
 #endif
-        outQueueZ_.EnQue<T>(zLocal);
-        inQueueX_.FreeTensor(mmOutLocal);
+        outQueueZmm_.EnQue<T>(zLocal_);
+        inQueueXmm_.FreeTensor(mmOutLocal_);
         inQueueY_.FreeTensor(addLocal);
 
-        LocalTensor<T> outLocal = outQueueZ_.DeQue<T>();
+        LocalTensor<T> outLocal = outQueueZmm_.DeQue<T>();
         DataCopyPad(mmOutGm_[progress * this->tileCnt_], outLocal, copyParams);
-        outQueueZ_.FreeTensor(zLocal);
+        outQueueZmm_.FreeTensor(zLocal_);
     }
 
     TPipe* pipe_;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueX_;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueXmm_;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueY_;
-    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> outQueueZ_;
+    TQue<QuePosition::VECOUT, DOUBLE_BUFFER> outQueueZmm_;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #else
     TBuf<TPosition::VECCALC> tempQueOutFp32_;

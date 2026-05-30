@@ -34,7 +34,7 @@ class MatmulReduceScatterFP16BF16 {
 public:
     __aicore__ inline MatmulReduceScatterFP16BF16() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
-                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData,
+                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilDat,
                                 TPipe* tpipe);
     __aicore__ inline void Process();
 
@@ -47,7 +47,7 @@ private:
     __aicore__ inline void PostProcess();    // 计算后处理，等待通信结束，并终止hcclserver
 
 private:
-    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
+    Mc2Tiling::MatmulReduceScatterV2TilingData* tilDat_;
     TPipe* tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
@@ -65,17 +65,17 @@ private:
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
-    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, TPipe* tPipe) {
-    tilingData_ = tilingData;
-    auto&& cfg = tilingData_->param;
-    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    Mc2Tiling::MatmulReduceScatterV2TilingData* tilDat, TPipe* tPipe) {
+    tilDat_ = tilDat;
+    auto&& cfg = tilDat_->param;
+    const void* hcclInitTilingV2 = &(tilDat_->mc2InitTiling);
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
-    dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
-    debugMode_ = tilingData_->debugMode;
+    dataType_ = static_cast<AscendC::HcclDataType>(tilDat_->dataType);
+    debugMode_ = tilDat_->debugMode;
     aGM_ = aGM;
     bGM_ = bGM;
     cGM_ = cGM;
@@ -89,7 +89,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::PostProcess()
 {
-    auto&& cfg = tilingData_->param;
+    auto&& cfg = tilDat_->param;
     // 等待reducescatter执行完成
     if ((GetBlockIdx() == 0) && (g_coreType == AIC)) {
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
@@ -110,19 +110,19 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::InnerProcess()
 {
-    auto&& tiling = tilingData_->mC2Mmv3TileTilingData.tCubeTiling;
-    auto&& cfg = tilingData_->param;
+    auto&& tiling = tilDat_->mC2Mmv3TileTilingData.tCubeTiling;
+    auto&& cfg = tilDat_->param;
 
     // fullmesh算法
     // 计算主块
-    Compute(cGM_, tilingData_->mC2Mmv3TileTilingData, cfg.tileCnt, gmToFloat_, cfg.tailM ? false : true, false);
+    Compute(cGM_, tilDat_->mC2Mmv3TileTilingData, cfg.tileCnt, gmToFloat_, cfg.tailM ? false : true, false);
     // 计算尾块
     if (cfg.tailM) {
         uint64_t tileSize = static_cast<uint64_t>(tiling.M) * static_cast<uint64_t>(tiling.N) / cfg.rankDim;
         uint64_t tileOffset = tileSize * static_cast<uint64_t>(cfg.tileCnt) * sizeof(C_DTYPE);
         auto cGMTail = cGM_ + tileOffset;
         auto gmToFloatTail = gmToFloat_ + tileOffset;
-        Compute(cGMTail, tilingData_->mC2Mmv3TailTilingData, cfg.tailCnt, gmToFloatTail, true, true);
+        Compute(cGMTail, tilDat_->mC2Mmv3TailTilingData, cfg.tailCnt, gmToFloatTail, true, true);
     }
 }
 
@@ -154,7 +154,7 @@ MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMu
     bool isLast, bool isTail)
 {
     using cDataType = typename CType::T;
-    auto&& cfg = tilingData_->param;
+    auto&& cfg = tilDat_->param;
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;

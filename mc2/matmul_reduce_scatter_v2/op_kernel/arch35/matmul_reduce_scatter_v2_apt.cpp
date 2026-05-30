@@ -38,19 +38,19 @@ using namespace MatmulReduceScatterV2Impl;
         using CType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;                                     \
         REGISTER_TILING_DEFAULT(Mc2Tiling::MatmulReduceScatterV2TilingData);                                           \
         templateClass<AType, BType, BiasType, CType, TPL_COMM_MODE> op;                                               \
-        op.Init(aGM, bGM, biasGM, cGM, (GM_ADDR)context, workspaceGM, &tilingData, &pipe);                            \
+        op.Init(aGM, bGM, biasGM, cGM, (GM_ADDR)context, workspaceGM, &tilDat, &pipe);                            \
         op.Process();                                                                                                  \
     } while (0)
 
 #define INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                              \
     do {                                                                                                             \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                               \
-        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                \
+        if (tilDat.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                \
             using mmClass = MatMulASWKernel<DTYPE_X1, DTYPE_X2, float, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND,          \
                                             CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>;                            \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, float,                                                        \
                           mmClass, false, __VA_ARGS__, TPL_COMM_MODE> op;                                            \
-            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilingData,         \
+            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilDat,         \
                     &pipe);                                                                                          \
             op.Process();                                                                                            \
         }                                                                                                            \
@@ -59,11 +59,11 @@ using namespace MatmulReduceScatterV2Impl;
 #define INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                              \
     do {                                                                                                             \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                               \
-        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                \
+        if (tilDat.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                \
             using mmClass = MatMulASWKernel<DTYPE_X1, DTYPE_X2, fp8_e8m0_t, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND,     \
                                             CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>;                            \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, fp8_e8m0_t, mmClass, false, __VA_ARGS__, TPL_COMM_MODE> op;   \
-            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilingData,         \
+            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilDat,         \
                     &pipe);                                                                                          \
             op.Process();                                                                                            \
         }                                                                                                            \
@@ -72,12 +72,12 @@ using namespace MatmulReduceScatterV2Impl;
 #define INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(templateClass, ...)                                      \
     do {                                                                                                              \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData);                                \
-        if (tilingData.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                 \
+        if (tilDat.debugMode != static_cast<uint8_t>(MC2_DEBUG_ONLY_AICPU)) {                                 \
             using mmClass =                                                                                           \
                 Mc2QuantBatchMatmulV3::MatMulPerBlockASWNonContiguous<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y,        \
                                                          CubeFormat::ND, CubeFormat::ND, CubeFormat::ND, __VA_ARGS__>; \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, float, mmClass, true, __VA_ARGS__, TPL_COMM_MODE> op;          \
-            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilingData,          \
+            op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, (GM_ADDR)context, workspaceGM, &tilDat,          \
                     &pipe);                                                                                            \
             op.Process();                                                                                             \
         }                                                                                                             \
@@ -94,7 +94,7 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     auto context = GetHcclContext<0>();
-    GET_TILING_DATA(tilingData, tilingGM);
+    GET_TILING_DATA(tilDat, tilingGM);
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
     // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>;

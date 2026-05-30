@@ -36,22 +36,22 @@ class MatmulAllReduceQuantPerBlock : public MatmulAllReduceBase<XType, YType, Co
 {
 public:
     __aicore__ inline MatmulAllReduceQuantPerBlock(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilDat, TPipe* tPipe)
         : MatmulAllReduceBase<
-            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, quantAddrs, arnAddrs, tilDat, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingDataA5*)tilingData;
-        this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
-        this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
+        mc2CfgData_ = (Mc2Tiling::QuantMatmulAllReduceTilingDataA5*)tilDat;
+        this->tileInf6_.mmTil6 = &mc2CfgData_->tilematmulTiling.matmulTiling;
+        this->tailInf6_.mmTil6 = &mc2CfgData_->tailmatmulTiling.matmulTiling;
     }
 
     __aicore__ inline void Process()
     {
         MmType opTile;
-        InnerProcess(opTile, false, this->paramInTiling_->tileCnt, this->tileInfo_);
-        if (this->tailFlag_) {
+        InnerProcess(opTile, false, this->paramCfg4_->tileCnt, this->tileInf6_);
+        if (this->tailFl4_) {
             MmType opTail;
-            InnerProcess(opTail, true, this->paramInTiling_->tailCnt, this->tailInfo_);
+            InnerProcess(opTail, true, this->paramCfg4_->tailCnt, this->tailInf6_);
         }
         if constexpr(basedA2aRsAg) {
             this->ReduceSumAndAllGather();
@@ -63,7 +63,7 @@ protected:
     __aicore__ inline void InnerProcess(MmType& mmOp, bool tailFlag, uint32_t turnCnt, const MC2TileInfo& tileInfo)
     {
         const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tiling =
-            (tailFlag ? &mc2TilingData_->tailmatmulTiling : &mc2TilingData_->tilematmulTiling);
+            (tailFlag ? &mc2CfgData_->tailmatmulTiling : &mc2CfgData_->tilematmulTiling);
         // CeilDiv
         const uint64_t mOfscale = (tiling->matmulTiling.M + 128 - 1) / 128;
         const uint64_t kOfScale = (tiling->matmulTiling.Ka + 128 - 1) / 128;
@@ -78,7 +78,7 @@ protected:
                 this->quantAddrs_->pertokenGM, this->addrs_->cGM, this->addrs_->workspaceGM, tiling, this->tPipe_);
 
             mmOp.Process();
-            const uint64_t index = tailFlag ? i + this->paramInTiling_->tileCnt : i;
+            const uint64_t index = tailFlag ? i + this->paramCfg4_->tileCnt : i;
             this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset, index);
             this->quantAddrs_->pertokenGM += x1ScaleOffset;
         }
@@ -87,19 +87,19 @@ protected:
         }
     }
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingDataA5* mc2TilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingDataA5* mc2CfgData_;
 };
 
 #define INVOKE_MC2_QUANT_PERBLOCK_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, commMode, ...)              \
     do {                                                                                                         \
         REGISTER_TILING_DEFAULT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5);                     \
-        GET_TILING_DATA(tilingData, tilingGM);                                                          \
+        GET_TILING_DATA(tilDat, tilingGM);                                                          \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                     \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                            \
         using OpType =                                                                                           \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, __VA_ARGS__>; \
         MatmulAllReduceQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg, commMode> op(  \
-            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                                \
+            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilDat, &tPipe);                                \
         op.Init();                                                                                               \
         op.Process();                                                                                            \
     } while (0)

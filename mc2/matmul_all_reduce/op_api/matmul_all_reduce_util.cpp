@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
-#include "opdev/op_executor.h"
+#include "opdev/op_execHcclEngine.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/op_api/mc2_aclnn_util.h"
@@ -24,25 +24,25 @@ using namespace op;
 extern "C" {
 #endif
 
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* execHcclEngine, const size_t irIndex);
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *execHcclEngine, NnopbaseHcclServerType sType);
 
 // 根据API定义，需要列出所能支持的所有dtype
-const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
 
-const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_310P = {op::DataType::DT_FLOAT16};
+const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_310P = {op::DataType::DT_FLOAT16};
 
 // quant
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_BIAS = {op::DataType::DT_INT32};
+static const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_BIAS = {op::DataType::DT_INT32};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_QUANT = {op::DataType::DT_INT8};
+static const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_QUANT = {op::DataType::DT_INT8};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT = {
+static const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_DEQUANT = {
     op::DataType::DT_UINT64, op::DataType::DT_INT64, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
 
-static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT_310P = {
+static const std::initializer_list<op::DataType> DTYPE_SUPPORTED_LIST_DEQUANT_310P = {
     op::DataType::DT_UINT64, op::DataType::DT_INT64};
 
 bool MatmulAllReduceCheckFormat(const aclTensor* x2)
@@ -97,7 +97,7 @@ aclnnStatus MatmulAllReduceCheckParams(
     const static bool is310P = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
 
     // 1. 检查参数是否为空指针
-    CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(MatmulMARCheckNonNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(MatmulAllReduceCheckDtypeValid(x1, x2, x3, bias, output, is310P), ACLNN_ERR_PARAM_INVALID);
@@ -127,7 +127,7 @@ aclnnStatus MatmulAllReduceCheckParams(
 }
 
 // 检查入参是否为nullptr
-bool MatmulAllReduceCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
+bool MatmulMARCheckNonNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
@@ -139,19 +139,19 @@ bool MatmulAllReduceCheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const aclTensor* output,
     bool is310P)
 {
-    const auto& dtypeSupportList = is310P ? DTYPE_SUPPORT_LIST_310P : DTYPE_SUPPORT_LIST;
+    const auto& dtypeSupportedList = is310P ? DTYPE_SUPPORTED_LIST_310P : DTYPE_SUPPORTED_LIST;
     // 检查x1、x2、bias、output的数据类型是否在算子的支持列表内
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, dtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, dtypeSupportList, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, dtypeSupportList, return false);
+    chkDType(x1, dtypeSupportedList, return false);
+    chkDType(x2, dtypeSupportedList, return false);
+    chkDType(output, dtypeSupportedList, return false);
     // 检查bias的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, dtypeSupportList, return false);
+        chkDType(bias, dtypeSupportedList, return false);
     }
 
     if (x3 != nullptr) {
         // 检查x3的数据类型是否在算子的支持列表内
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, dtypeSupportList, return false);
+        chkDType(x3, dtypeSupportedList, return false);
         // 检查x1和x3的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x1, x3, return false);
     }
@@ -229,7 +229,7 @@ aclnnStatus QuantMatmulAllReduceCheckParams(
     const aclTensor* output)
 {
     // 1. 检查参数是否为空指针
-    CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(MatmulMARCheckNonNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
@@ -257,26 +257,26 @@ bool QuantMatmulAllReduceCheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
-                                          DTYPE_SUPPORT_LIST_DEQUANT_310P :
-                                          DTYPE_SUPPORT_LIST_DEQUANT;
+    const auto& dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+                                          DTYPE_SUPPORTED_LIST_DEQUANT_310P :
+                                          DTYPE_SUPPORTED_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
-                                      DTYPE_SUPPORT_LIST_310P :
-                                      DTYPE_SUPPORT_LIST;
+    const auto& outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+                                      DTYPE_SUPPORTED_LIST_310P :
+                                      DTYPE_SUPPORTED_LIST;
 
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     // 对于量化来说，x1,x2只为INT8
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeSupport, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeSupport, return false);
+    chkDType(x1, DTYPE_SUPPORTED_LIST_QUANT, return false);
+    chkDType(x2, DTYPE_SUPPORTED_LIST_QUANT, return false);
+    chkDType(dequantScale, dequantDtypeList, return false);
+    chkDType(output, outDtypeList, return false);
     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
     if (bias != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+        chkDType(bias, DTYPE_SUPPORTED_LIST_BIAS, return false);
     }
     if (x3 != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeSupport, return false);
+        chkDType(x3, outDtypeList, return false);
         // 检查x3和output的数据类型是否相同
         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
     }
@@ -288,7 +288,7 @@ bool QuantMatmulAllReduceCheckDtypeValid(
     }
     // pertokenScale必须为float32
     if (pertokenScale != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(pertokenScale, DTYPE_SUPPORT_LIST_PERTOKEN, return false);
+        chkDType(pertokenScale, DTYPE_SUPPORTED_LIST_PERTOKEN, return false);
         // FP16场景，dequantScale的dtype与pertokenScale一致，为float32
         if (output->GetDataType() == op::DataType::DT_FLOAT16) {
             OP_CHECK_DTYPE_NOT_SAME(dequantScale, pertokenScale, return false);
@@ -306,10 +306,10 @@ bool MatmulAllReduceIsWeightNZFormat(const aclTensor* x2)
     }
     if (format == aclFormat::ACL_FORMAT_FRACTAL_NZ) {
         OP_LOGD("MatmulAllReduce, Recieved weight format is ACL_FORMAT_FRACTAL_NZ");
-        uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);
+        uint64_t storageDimsCnt = x2->GetStorageShape().GetDimNum();
+        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsCnt);
         const uint64_t transdataNzDim = 4U;
-        if (storageDimsNum == transdataNzDim) {
+        if (storageDimsCnt == transdataNzDim) {
             return true;
         }
     }
@@ -321,10 +321,10 @@ bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor* x2)
     auto format = ge::GetPrimaryFormat(x2->GetStorageFormat());
     OP_LOGD("MatmulAllReduce, Recieved weight format is %d", format);
     if (format == Format::FORMAT_FRACTAL_NZ) {
-        uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);
+        uint64_t storageDimsCnt = x2->GetStorageShape().GetDimNum();
+        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsCnt);
         const uint64_t transdataNzDim = 4U;
-        if (storageDimsNum == transdataNzDim) {
+        if (storageDimsCnt == transdataNzDim) {
             return true;
         }
     }
@@ -451,9 +451,9 @@ bool QuantMatmulAllReduceCheckShape(
 
 const aclTensor* QuantMatmulAllReduceTransTensor(const aclTensor* x2)
 {
-    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDims(storageDimsNum);
-    for (uint64_t i = 0; i < storageDimsNum; i++) {
+    uint64_t storageDimsCnt = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDims(storageDimsCnt);
+    for (uint64_t i = 0; i < storageDimsCnt; i++) {
         storageDims[i] = x2->GetStorageShape().GetDim(i);
     }
 
@@ -469,34 +469,34 @@ const aclTensor* QuantMatmulAllReduceTransTensor(const aclTensor* x2)
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(viewDimsNum);
+    std::vector<int64_t> strideSz(viewDimsNum);
     auto transStride = x2->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    strideSz = std::vector<int64_t>(transStride.begin(), transStride.end());
     // transpose the two dimensions
-    stride[0] = transStride[1];
-    stride[1] = transStride[0];
+    strideSz[0] = transStride[1];
+    strideSz[1] = transStride[0];
 
     auto offset = x2->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_ND;
 
     return aclCreateTensor(
-        viewDims.data(), viewDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
+        viewDims.data(), viewDimsNum, dataType, strideSz.data(), offset, format, storageDims.data(), storageDimsCnt,
         x2->GetTensor()->GetAddr());
 }
 
 aclTensor* QuantMatmulAllReduceCopyTensor(const aclTensor* x2)
 {
-    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDims(storageDimsNum);
-    for (size_t i = 0; i < storageDimsNum; i++) {
+    uint64_t storageDimsCnt = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDims(storageDimsCnt);
+    for (size_t i = 0; i < storageDimsCnt; i++) {
         storageDims[i] = x2->GetStorageShape().GetDim(i);
     }
-    OP_LOGD("MatmulAllReduce, CopyTensor storageDimsNum is %lu.", storageDimsNum);
+    OP_LOGD("MatmulAllReduce, CopyTensor storageDimsCnt is %lu.", storageDimsCnt);
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(storageDimsNum, 1);
-    for (int64_t i = static_cast<int64_t>(storageDimsNum - DIM_LEN_TWO); i >= 0; i--) {
-        stride[i] = storageDims[i + 1] * stride[i + 1];
+    std::vector<int64_t> strideSz(storageDimsCnt, 1);
+    for (int64_t i = static_cast<int64_t>(storageDimsCnt - DIM_LEN_TWO); i >= 0; i--) {
+        strideSz[i] = storageDims[i + 1] * strideSz[i + 1];
     }
     auto offset = x2->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
@@ -508,7 +508,7 @@ aclTensor* QuantMatmulAllReduceCopyTensor(const aclTensor* x2)
         format = aclFormat::ACL_FORMAT_FRACTAL_NZ;
     }
     return aclCreateTensor(
-        storageDims.data(), storageDimsNum, dataType, stride.data(), offset, format, storageDims.data(), storageDimsNum,
+        storageDims.data(), storageDimsCnt, dataType, strideSz.data(), offset, format, storageDims.data(), storageDimsCnt,
         x2->GetTensor()->GetAddr());
 }
 
@@ -516,7 +516,7 @@ aclTensor* QuantMatmulAllReduceCopyTensor(const aclTensor* x2)
 aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* dequant, const aclTensor* pertokenScaleOptional, const char* group, const char* reduceOp,
-    int64_t commTurn, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor)
+    int64_t commTurn, const aclTensor* output, uint64_t* outputSize, aclOpExecutor** execHcclEngine)
 {
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
@@ -537,11 +537,11 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            uint8_t commType = Mc2Comm::GetCommModeFromEnv();
+            if (commType == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(execHcclEngine, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                NnopbaseSetHcclServerType(execHcclEngine, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
@@ -550,7 +550,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
         commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
-        output, workspaceSize, executor);
+        output, outputSize, execHcclEngine);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
 #ifdef MC2_UT
@@ -558,13 +558,13 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
 #endif
     if (ret == 0) {
         if (NnopbaseDisableOptionalInput != nullptr) {
-            NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
+            NnopbaseDisableOptionalInput(*execHcclEngine, 4U); // 4 is input irIndex
+            NnopbaseDisableOptionalInput(*execHcclEngine, 5U); // 5 is input irIndex
             if (pertokenScaleOptional == nullptr) {
-                NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
+                NnopbaseDisableOptionalInput(*execHcclEngine, 7U); // 7 is input irIndex
             }
-            NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 9U); // 9 is input irIndex
+            NnopbaseDisableOptionalInput(*execHcclEngine, 8U); // 8 is input irIndex
+            NnopbaseDisableOptionalInput(*execHcclEngine, 9U); // 9 is input irIndex
         }
     }
     return ret;

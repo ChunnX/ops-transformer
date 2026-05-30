@@ -58,12 +58,12 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
 
 ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType)
 {
-    uint32_t opType1 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLTOALL);
-    uint32_t opType2 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLGATHER);
+    uint32_t opTp3 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLTOALL);
+    uint32_t opTp4 = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLGATHER);
     uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
-    const std::string algConfig1 = "AlltoAll=level0:fullmesh";
-    const std::string algConfig2 = "AllGather=level0:fullmesh";
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
+    const std::string algCfg4 = "AlltoAll=level0:fullmesh";
+    const std::string algCfg5 = "AllGather=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opTp3, algCfg4, reduceType, dataType, dataType);
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
@@ -77,8 +77,8 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* groupNam
         OP_LOGE(opName_, "Get mc2CcTiling from MatmulAllReduce910TilingDataA5 failed."),
         return ge::GRAPH_FAILED);
     mc2CcTilingConfig.SetGroupName(groupName);
-    mc2CcTilingConfig.SetOpType(opType2);
-    mc2CcTilingConfig.SetAlgConfig(algConfig2);
+    mc2CcTilingConfig.SetOpType(opTp4);
+    mc2CcTilingConfig.SetAlgConfig(algCfg5);
     mc2CcTilingConfig.SetReduceType(reduceType, dataType, dataType);
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(matmulAllReduce910TilingData_.mc2CcTilingComm),
@@ -279,10 +279,10 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
 }
 
 ge::graphStatus MatmulAllReduceTilingA5::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
-    Mc2MMRegisterCfg& registerCfg, Mc2MatMulV3TilingData& tilingData)
+    Mc2MMRegisterCfg& registerCfg, Mc2MatMulV3TilingData& tilDat)
 {
     tilingCfg.SetRankDim(args_.rankDim);
-    tilingCfg.SetMatMulV3TilingData(tilingData);
+    tilingCfg.SetMatMulV3TilingData(tilDat);
     if (Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_, tilingCfg, registerCfg) != ge::GRAPH_SUCCESS) {
         OP_LOGE(opName_, "Failed to do MatmulV3Tiling.");
         return ge::GRAPH_FAILED;
@@ -320,7 +320,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
 ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
 {
     // x2 shape 为 2 维
-    size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
+    size_t x2DimNum = mmrCtx9_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
         x2DimNum != DIM_NUM_TWO,
         VECTOR_INNER_ERR_REPORT_TILING(
@@ -329,7 +329,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
             "but got x2 dim=%lu.",
             x2DimNum),
         return ge::GRAPH_FAILED);
-    auto x1Type = mmrCtxInfo_.x1->GetDataType();
+    auto x1Type = mmrCtx9_.x1->GetDataType();
     //  x1 为fp16 或者bf16
     OP_TILING_CHECK(
         !((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
@@ -340,7 +340,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
             x1Type),
         return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
-    auto x2Type = mmrCtxInfo_.x2->GetDataType();
+    auto x2Type = mmrCtx9_.x2->GetDataType();
     OP_TILING_CHECK(
         x1Type != x2Type,
         VECTOR_INNER_ERR_REPORT_TILING(
@@ -350,8 +350,8 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
             x1Type, x2Type),
         return ge::GRAPH_FAILED);
     // x1,bias数据类型相同
-    if (mmrCtxInfo_.bias_shape != nullptr) {
-        auto biasType = mmrCtxInfo_.bias->GetDataType();
+    if (mmrCtx9_.bias_shape != nullptr) {
+        auto biasType = mmrCtx9_.bias->GetDataType();
         OP_TILING_CHECK(
             x1Type != biasType,
             VECTOR_INNER_ERR_REPORT_TILING(
@@ -370,9 +370,9 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
     OP_TILING_CHECK(
         CheckX1X2() != ge::GRAPH_SUCCESS,
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Check input_X failed."), return ge::GRAPH_FAILED);
-    auto outputDimNum = mmrCtxInfo_.y_shape->GetStorageShape().GetDimNum();
-    if (mmrCtxInfo_.x3_shape != nullptr) {
-        auto x3DimNum = mmrCtxInfo_.x3_shape->GetStorageShape().GetDimNum();
+    auto outputDimNum = mmrCtx9_.y_shape->GetStorageShape().GetDimNum();
+    if (mmrCtx9_.x3_shape != nullptr) {
+        auto x3DimNum = mmrCtx9_.x3_shape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             outputDimNum != x3DimNum,
             VECTOR_INNER_ERR_REPORT_TILING(
@@ -382,8 +382,8 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
                 outputDimNum, x3DimNum),
             return ge::GRAPH_FAILED);
         for (size_t i = 0U; i < outputDimNum; i++) {
-            auto outputDimValue = mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i);
-            auto x3DimValue = mmrCtxInfo_.x3_shape->GetStorageShape().GetDim(i);
+            auto outputDimValue = mmrCtx9_.y_shape->GetStorageShape().GetDim(i);
+            auto x3DimValue = mmrCtx9_.x3_shape->GetStorageShape().GetDim(i);
             OP_TILING_CHECK(
                 outputDimValue != x3DimValue,
                 VECTOR_INNER_ERR_REPORT_TILING(
@@ -412,8 +412,8 @@ CutResult MatmulAllReduceTilingA5::GetTilingResult()
     CutResult mCutAllreduce;
     SocVersion inputSocVersion = SocVersion::SOC910_B;
     SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtx9_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtx9_.comm_quant_scale_2_shape;
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,

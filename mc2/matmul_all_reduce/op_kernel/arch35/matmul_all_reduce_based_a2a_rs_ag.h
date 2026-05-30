@@ -26,17 +26,17 @@ class MatmulAllReduceBase<XType, YType, CoreType, true, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceBase(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilingData_(tilingData), tPipe_(tPipe)
+        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilDat, TPipe* tPipe)
+        : addrs_(addrs), quantAddrs_(quantAddrs), arnAddrs_(arnAddrs), tilDat_(tilDat), tPipe_(tPipe)
     {
-        paramInTiling_ = &tilingData->param;
+        paramInTiling_ = &tilDat->param;
         rankNum_ = paramInTiling_->rankDim;
     }
 
     __aicore__ inline void Init()
     {
         notifyFlag_ = (g_coreType == AscendC::AIV && GetBlockIdx() == 0);
-        hccl_.InitV2(GetHcclContext<0>(), tilingData_);
+        hccl_.InitV2(GetHcclContext<0>(), tilDat_);
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTilingComm));
 
@@ -286,7 +286,7 @@ protected:
     ArnGmAddrs* arnAddrs_;
     Mc2Tiling::RCSTiling* paramInTiling_;
     Mc2Tiling::Mc2Msg* msgInTiling_;
-    MC2TilingHeader* tilingData_;
+    MC2TilingHeader* tilDat_;
     MC2TileInfo tileInfo_, tailInfo_;
     TPipe* tPipe_;
     typename HcclTypeSelector<commMode>::type hccl_;

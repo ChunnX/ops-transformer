@@ -26,15 +26,15 @@ extern "C" {
 #endif
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
-extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
+extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId5);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 aclnnStatus aclnnQuantMatmulAllReduceGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3, const aclTensor* dequantScale,
     const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+    uint64_t* workspace, aclOpExecutor** executor)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp5 = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam =
         QuantMatmulAllReduceCheckParams(x1, x2, bias, dequantScale, nullptr, x3, reduceOp, streamMode, output);
@@ -50,17 +50,17 @@ aclnnStatus aclnnQuantMatmulAllReduceGetWorkspaceSize(
     }
 
     aclnnStatus ret = InnerQuantMatmulAllReduceGetWorkspaceSize(
-        x1, x2, bias, x3, dequant, nullptr, group, reduceOp, commTurn, output, workspaceSize, executor);
+        x1, x2, bias, x3, dequant, nullptr, group, reduceOp, commTurn, output, workspace, executor);
     OP_LOGD("QuantMatmulAllReduce, end ret %d", ret);
-    static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    static NnopbaseDfxId dfxId5 = {0x60000, __func__, false};
+    NnopbaseReportApiInfo(tsStamp5, dfxId5);
     return ret;
 }
 
 aclnnStatus aclnnQuantMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+    void* workspace, uint64_t workspace, aclOpExecutor* executor, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp5 = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
@@ -71,13 +71,13 @@ aclnnStatus aclnnQuantMatmulAllReduce(
             }
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspace, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
         OP_LOGE(ACLNN_ERR_INNER, "QuantMatmulAllReduceLaunchTask fail, ret: %d.", ret);
         return ACLNN_ERR_INNER;
     });
-    static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    static NnopbaseDfxId dfxId5 = {0x60000, __func__, false};
+    NnopbaseReportApiInfo(tsStamp5, dfxId5);
     return ACLNN_SUCCESS;
 }
 

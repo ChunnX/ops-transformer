@@ -380,12 +380,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::CheckInput()
 
 ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
 {
-    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    const uint32_t opType = isA2APath_ 
+    const uint32_t rdcType2 = HcclReduceOp::HCCL_REDUCE_SUM;
+    const uint32_t opType = isA2A2_ 
         ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
         : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
 
-    const std::string rsConfig = isA2APath_ 
+    const std::string rsConfig = isA2A2_ 
         ? "AlltoAll=level0:fullmesh" 
         : "ReduceScatter=level0:fullmesh";
 
@@ -394,7 +394,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
-        group, opType, rsConfig, reduceType, dataType, dataType
+        group, opType, rsConfig, rdcType2, dataType, dataType
     );
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
@@ -494,7 +494,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     }
 
     bool isPerBlock = quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE;
-    uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
+    uint8_t commAlg = isA2A2_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(   \
         isPerBlock, args_.isATrans, args_.isBTrans, INPUT_TYPE_IS_FP8, outputType, scaleType, commAlg, \
         Mc2Comm::GetCommModeFromEnv());
@@ -506,7 +506,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
 ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 {
     // A2A 路径需要 3 倍 cToFloatLen (senBuf + recvBuf + matmul)，否则只需 1 倍
-    uint32_t factor = isA2APath_ ? 3 : 1;
+    uint32_t factor = isA2A2_ ? 3 : 1;
     myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingDataA5().cToFloatLen * factor;
 
     OP_LOGI(opName_, "set max workspace size %lu to context", myWorkSpaceSize_);
@@ -519,15 +519,15 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-void PrintTCubeTilingParams(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams &tiling)
+void PrintTCubeTilingParms(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams &tiling)
 {
-    OP_LOGD(opName, "tiling.batchA %d", tiling.batchA);
-    OP_LOGD(opName, "tiling.batchB %d", tiling.batchB);
-    OP_LOGD(opName, "tiling.batchC %d", tiling.batchC);
-    OP_LOGD(opName, "tiling.batchA1 %d", tiling.batchA1);
-    OP_LOGD(opName, "tiling.batchA2 %d", tiling.batchA2);
-    OP_LOGD(opName, "tiling.batchA3 %d", tiling.batchA3);
-    OP_LOGD(opName, "tiling.batchA4 %d", tiling.batchA4);
+    OP_LOGD(opName, "qtiling.batchA %d", tiling.batchA);
+    OP_LOGD(opName, "qtiling.batchB %d", tiling.batchB);
+    OP_LOGD(opName, "qtiling.batchC %d", tiling.batchC);
+    OP_LOGD(opName, "qtiling.batchA1 %d", tiling.batchA1);
+    OP_LOGD(opName, "qtiling.batchA2 %d", tiling.batchA2);
+    OP_LOGD(opName, "qtiling.batchA3 %d", tiling.batchA3);
+    OP_LOGD(opName, "qtiling.batchA4 %d", tiling.batchA4);
     OP_LOGD(opName, "tiling.batchB1 %d", tiling.batchB1);
     OP_LOGD(opName, "tiling.batchB2 %d", tiling.batchB2);
     OP_LOGD(opName, "tiling.batchB3 %d", tiling.batchB3);
@@ -588,13 +588,13 @@ ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
     if (MutableRCSTilingDataA5().rankID == 0) {
         PrintRCSTilingData(context_->GetNodeName(), MutableRCSTilingDataA5());
         PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTileTilingData());
-        PrintTCubeTilingParams(context_->GetNodeName(), MutableTCubeTilingParam());
+        PrintTCubeTilingParms(context_->GetNodeName(), MutableTCubeTilingParam());
         PrintTCubeTilingWindowParam(context_->GetNodeName(), MutableTCubeTilingSlidingWindow());
         PrintTCubeTilingL2cache(context_->GetNodeName(), MutableTCubeTilingL2cache());
         if (MutableRCSTilingDataA5().tailM > 0) {
             OP_LOGD(opName_, "tail exist");
             PrintTCubeTilingData(context_->GetNodeName(), MutableTCubeTailTilingData());
-            PrintTCubeTilingParams(context_->GetNodeName(), MutableTailTCubeTilingParam());
+            PrintTCubeTilingParms(context_->GetNodeName(), MutableTailTCubeTilingParam());
             PrintTCubeTilingWindowParam(context_->GetNodeName(), MutableTailTCubeTilingSlidingWindow());
             PrintTCubeTilingL2cache(context_->GetNodeName(), MutableTailTCubeTilingL2cache());
             }

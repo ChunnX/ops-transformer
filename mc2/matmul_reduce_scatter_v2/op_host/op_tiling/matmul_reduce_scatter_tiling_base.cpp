@@ -565,7 +565,7 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &r
 // tiling
 
 void MatmulReduceScatterTilingBase::SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, 
-                                                    ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
+                                                    ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling, 
                                                     uint32_t& debugMode, uint32_t& dataType)
 {
     auto debugMode_ = mc2tiling::Mc2TilingUtils::GetDebugMode();

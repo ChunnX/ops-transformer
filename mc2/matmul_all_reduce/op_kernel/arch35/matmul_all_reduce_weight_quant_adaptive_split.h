@@ -36,19 +36,19 @@ class MatmulAllReduceWeightQuantAdaptiveSplit
 {
 public:
     __aicore__ inline MatmulAllReduceWeightQuantAdaptiveSplit(
-        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
+        MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilDat, TPipe* tPipe)
         : MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>(
-              addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+              addrs, quantAddrs, arnAddrs, tilDat, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData*)tilingData;
-        this->tailInfo_.mmTiling = &mc2TilingData_->tailMmASTiling.matmulTiling;
-        this->tileInfo_.mmTiling = &mc2TilingData_->tileMmASTiling.matmulTiling;
+        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData*)tilDat;
+        this->tailInf10_.mmTil10 = &mc2TilingData_->tailMmASTiling.matmulTiling;
+        this->tileInf10_.mmTil10 = &mc2TilingData_->tileMmASTiling.matmulTiling;
     }
     __aicore__ inline void Process()
     {
-        InnerProcess(false, this->paramInTiling_->tileCnt, this->tileInfo_);
-        if (this->tailFlag_) {
-            InnerProcess(true, this->paramInTiling_->tailCnt, this->tailInfo_);
+        InnerProcess(false, this->paramCfg8_->tileLoopCnt, this->tileInf10_);
+        if (this->tailFl8_) {
+            InnerProcess(true, this->paramCfg8_->tailCnt, this->tailInf10_);
         }
         if constexpr(basedA2aRsAg) {
             this->ReduceSumAndAllGather();
@@ -61,7 +61,7 @@ protected:
     {
         const Mc2WeightQuantBatchMatmulV2ASTilingData* tiling =
             (tailFlag) ? &mc2TilingData_->tailMmASTiling : &mc2TilingData_->tileMmASTiling;
-        for (uint32_t i = 0; i < turnCnt; ++i) {
+        for (uint32_t idx = 0; idx < turnCnt; ++i) {
             MmType mmOp;
             this->tPipe_->Reset();
             mmOp.Init(
@@ -69,8 +69,8 @@ protected:
                 this->quantAddrs_->antiquantOffsetGM, nullptr, nullptr, this->addrs_->biasGM, this->addrs_->cGM,
                 this->addrs_->workspaceGM, tiling, this->tPipe_);
             mmOp.Process();
-            const uint64_t index = tailFlag ? i + this->paramInTiling_->tileCnt : i;
-            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aAddrOffset, tileInfo.cAddrOffset, index);
+            const uint64_t index = tailFlag ? i + this->paramCfg8_->tileLoopCnt : i;
+            this->PostProcEachTurn(tileInfo.hcclHandleId, tileInfo.aPtrOffset, tileInfo.cPtrOffset, index);
         }
         if constexpr(basedA2aRsAg) {
             this->WaitAlltoAllEachTurn(tailFlag, turnCnt);
@@ -84,7 +84,7 @@ private:
 #define INVOKE_MC2_WEIGHT_QUANT_ADAPTIVE_SPLIT_KERNEL(                                                                 \
     bTransFlag, offsetFlag, quantType, biasType, vecAntiQuantConfig, basedA2aRsAg, commMode)                           \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData, tilingData, tilingGM);       \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData, tilDat, tilingGM);       \
         static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::WqmmConfig wqmmCfg = {                                      \
             false, bTransFlag, quantType, offsetFlag, Mc2QuantType::NONE, CubeFormat::ND};                                \
         using OpType = Mc2WeightQuantBatchMatmulV2::Arch35::WeightQuantBatchMatmulV2BasicBlockController<                 \
@@ -93,7 +93,7 @@ private:
         \ 
         QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr};                             \
         MatmulAllReduceWeightQuantAdaptiveSplit<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, basedA2aRsAg, commMode> op(       \
-            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                                      \
+            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilDat, &tPipe);                                      \
         op.Init();                                                                                                     \
         op.Process();                                                                                                  \
     } while (0)

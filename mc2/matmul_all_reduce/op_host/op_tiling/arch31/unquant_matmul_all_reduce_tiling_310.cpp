@@ -43,7 +43,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
 {
     DoRCSTiling();
     DoSplitMTiling();
-    if (isKZero_) {
+    if (isKZeroFl_) {
         MutableTCubeTileTilingData().M = args_.orgMValue;
         MutableTCubeTileTilingData().isBias = args_.isBias;
         MutableTCubeTileTilingData().usedCoreNum = 1;
@@ -57,11 +57,11 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
 
 uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
 {
-    if (isKZero_) {
-        const uint64_t emptyTensorKey = GET_TPL_TILING_KEY(
+    if (isKZeroFl_) {
+        const uint64_t emptyKey = GET_TPL_TILING_KEY(
             static_cast<uint64_t>(ASCEND_310P),
             static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_FP_MM),
-            static_cast<uint64_t>(isKZero_),
+            static_cast<uint64_t>(isKZeroFl_),
             MATMUL_ALLREDUCE_INT8_COMM_F,
             static_cast<uint64_t>(SET_NOT_USE_PARAM),
             static_cast<uint64_t>(SET_NOT_USE_PARAM),
@@ -74,8 +74,8 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
             static_cast<uint64_t>(SET_NOT_USE_PARAM),
             static_cast<uint64_t>(FORMAT_B_NZ));
 
-        OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. isKZero_ %lu", emptyTensorKey, isKZero_);
-        return emptyTensorKey;
+        OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. isKZeroFl_ %lu", emptyKey, isKZeroFl_);
+        return emptyKey;
     }
 
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
@@ -101,28 +101,28 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
 ge::graphStatus UnQuantMatmulAllReduceTiling310::GetWorkspaceSize()
 {
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
-    myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
-    OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
-    size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
-    workspaces[0] = myWorkSpaceSize_;
+    calcWorkspaceSz_ = calcWorkspaceSz_ + (workspaceSize_ - libApiWorkSpaceSize_);
+    OP_LOGI(opName_, " set max workspace size %lu to context", calcWorkspaceSz_);
+    size_t* wsPtr = context_->GetWorkspaceSizes(1); // set workspace
+    wsPtr[0] = calcWorkspaceSz_;
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
 {
-    size_t tilingDataSize = sizeof(UnQuantMatmulAllReduceTilingData);
+    size_t tilDataSz = sizeof(UnQuantMatmulAllReduceTilingData);
     OP_LOGD(
         opName_, "final tiling data size: %zu and context capacity size: %zu ",
-        tilingDataSize, context_->GetRawTilingData()->GetCapacity());
+        tilDataSz, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
+        tilDataSz % sizeof(uint64_t) != 0,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+            opName_, "tiling data size[%zu] not aligned to 8", tilDataSz),
         return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+    context_->GetRawTilingData()->SetDataSize(tilDataSz);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&unquantMatmulAllReduceTilingData_), tilingDataSize);
+        reinterpret_cast<void *>(&unquantMARData_), tilDataSz);
     if (ret != EOK){
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -149,28 +149,28 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
 
 Mc2Tiling::Mc2Msg& UnQuantMatmulAllReduceTiling310::MutableMc2MsgData()
 {
-    return unquantMatmulAllReduceTilingData_.msg;
+    return unquantMARData_.msg;
 }
 
 Mc2Tiling::RCSTiling& UnQuantMatmulAllReduceTiling310::MutableRCSTilingData()
 {
-    return unquantMatmulAllReduceTilingData_.param;
+    return unquantMARData_.param;
 }
 
 AscendC::tiling::TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTileTilingData()
 {
-    return unquantMatmulAllReduceTilingData_.tilematmulTiling.matmulTiling;
+    return unquantMARData_.tilematmulTiling.matmulTiling;
 }
 
 AscendC::tiling::TCubeTiling& UnQuantMatmulAllReduceTiling310::MutableTCubeTailTilingData()
 {
-    return unquantMatmulAllReduceTilingData_.tailmatmulTiling.matmulTiling;
+    return unquantMARData_.tailmatmulTiling.matmulTiling;
 }
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 {
     args_.mValue = tileMValue_;
-    UnQuantTilingTransferHelper mmTile(*this, unquantMatmulAllReduceTilingData_.tilematmulTiling);
+    UnQuantTilingTransferHelper mmTile(*this, unquantMARData_.tilematmulTiling);
     if (args_.enableSplitK) {
         auto res = mmTile.DoTiling();
         matmulTPLParam_ = mmTile.GetMatmulTPLParam();
@@ -183,7 +183,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
             return ge::GRAPH_SUCCESS;
         }
         args_.mValue = tailMValue_;
-        UnQuantTilingTransferHelper mmTail(*this, unquantMatmulAllReduceTilingData_.tailmatmulTiling);
+        UnQuantTilingTransferHelper mmTail(*this, unquantMARData_.tailmatmulTiling);
         auto res = mmTail.DoTiling();
         matmulTPLParam_ = mmTail.GetMatmulTPLParam();
         return res;
@@ -192,23 +192,23 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
 
 CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    CutResult mCutRdc3;
+    SocVersion inSocVer3 = SocVersion::SOC910_B;
+    SetMCutSocVersion(inSocVer3);
+    const gert::StorageShape* commQScaleShp4 = mmrCtx3_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQScaleShp4b = mmrCtx3_.comm_quant_scale_2_shape;
+    if ((commQScaleShp4 != nullptr) && (commQScaleShp4b != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantRdcTilHccl3(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer3);
+        quantRdcTilHccl3.GetTiling();
+        mCutRdc3 = quantRdcTilHccl3.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce rdcTilHccl3(args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer3, isPerBlock_);
+        rdcTilHccl3.GetTiling();
+        mCutRdc3 = rdcTilHccl3.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutRdc3;
 }
 
 //注册Tiling

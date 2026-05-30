@@ -98,51 +98,51 @@ public:
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource)
     {
-        size_t ubOffset = 0;
-        int32_t eventVMTE2 = 0;
-        int32_t eventMTE2V = 0;
+        size_t ubOff = 0;
+        int32_t evtVMTE2 = 0;
+        int32_t evtMTE2V = 0;
         int32_t eventMTE3V = 0;
         int32_t eventVMTE3 = 0;
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
-            ubCList[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
-            ubOffset += TileShape::COUNT * sizeof(ElementC);
-            ubScaleList[i] = resource.ubBuf.template GetBufferByByte<ElementScale>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(ElementScale);
-            ubPerTokenScaleList[i] = resource.ubBuf.template GetBufferByByte<ElementPerTokenScale>(ubOffset);
-            ubOffset += TileShape::ROW * sizeof(ElementPerTokenScale);
-            ubBiasList[i] = resource.ubBuf.template GetBufferByByte<ElementBias>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(ElementBias);
-            ubDList[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
-            ubOffset += TileShape::COUNT * sizeof(ElementD);
+            ubCBuf[i] = resource.ubBuf.template GetBufferByByte<ElementC>(ubOff);
+            ubOff += TileShape::COUNT * sizeof(ElementC);
+            ubScaleBuf[i] = resource.ubBuf.template GetBufferByByte<ElementScale>(ubOff);
+            ubOff += TileShape::COLUMN * sizeof(ElementScale);
+            ubPerTokenBuf[i] = resource.ubBuf.template GetBufferByByte<ElementPerTokenScale>(ubOff);
+            ubOff += TileShape::ROW * sizeof(ElementPerTokenScale);
+            ubBiasBuf[i] = resource.ubBuf.template GetBufferByByte<ElementBias>(ubOff);
+            ubOff += TileShape::COLUMN * sizeof(ElementBias);
+            ubDBuf[i] = resource.ubBuf.template GetBufferByByte<ElementD>(ubOff);
+            ubOff += TileShape::COUNT * sizeof(ElementD);
 
-            eventUbCVMTE2List[i] = eventVMTE2++;
-            eventUbCMTE2VList[i] = eventMTE2V++;
-            eventUbScaleVMTE2List[i] = eventVMTE2++;
-            eventUbScaleMTE2VList[i] = eventMTE2V++;
-            eventUbPerTokenScaleVMTE2List[i] = eventVMTE2++;
-            eventUbPerTokenScaleMTE2VList[i] = eventMTE2V++;
-            eventUbBiasVMTE2List[i] = eventVMTE2++;
-            eventUbBiasMTE2VList[i] = eventMTE2V++;
+            evtCVMTE2[i] = evtVMTE2++;
+            evtCMTE2V[i] = evtMTE2V++;
+            evtScaleVMTE2[i] = evtVMTE2++;
+            evtScaleMTE2V[i] = evtMTE2V++;
+            evtPerTokenVMTE2[i] = evtVMTE2++;
+            evtPerTokenMTE2V[i] = evtMTE2V++;
+            eventUbBiasVMTE2List[i] = evtVMTE2++;
+            eventUbBiasMTE2VList[i] = evtMTE2V++;
             eventUbDMTE3VList[i] = eventMTE3V++;
             eventUbDVMTE3List[i] = eventVMTE3++;
 
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[i]);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[i]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2[i]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtScaleVMTE2[i]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtPerTokenVMTE2[i]);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[i]);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
-        ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::COUNT * sizeof(float);
+        ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOff);
+        ubOff += TileShape::COUNT * sizeof(float);
         if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                       AscendC::IsSameType<ElementBias, half>::value) {
-            ubBiasFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-            ubOffset += TileShape::COLUMN * sizeof(float);
+            ubBiasFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOff);
+            ubOff += TileShape::COLUMN * sizeof(float);
         }
-        ubMul = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::COUNT * sizeof(float);
-        ubPerTokenScaleBrcb = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += TileShape::ROW * BYTE_PER_BLK;
+        ubMul = resource.ubBuf.template GetBufferByByte<float>(ubOff);
+        ubOff += TileShape::COUNT * sizeof(float);
+        ubPerTokenScaleBrcb = resource.ubBuf.template GetBufferByByte<float>(ubOff);
+        ubOff += TileShape::ROW * BYTE_PER_BLK;
         ubPerTokenMul = ubMul;
         ubBiasAdd = ubMul;
     }
@@ -151,9 +151,9 @@ public:
     ~BlockEpilogue()
     {
         for (uint32_t i = 0; i < UB_STAGES; ++i) {
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[i]);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[i]);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtScaleVMTE2[i]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtPerTokenVMTE2[i]);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[i]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[i]);
         }
@@ -205,12 +205,12 @@ public:
             auto gmTileC = gmBlockC[layoutBlockC.GetOffset(tileOffsetInBlock)];
             auto layoutGmTileC = layoutBlockC.GetTileLayout(actualTileShape);
 
-            auto &ubC = ubCList[ubListId];
+            auto &ubC = ubCBuf[ubListId];
             LayoutC layoutUbC{actualTileShape, ubTileStride};
             // 把 C 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2[ubListId]);
             copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmTileC);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V[ubListId]);
 
             auto scaleTileOffset = tileOffset.template GetCoordByAxis<1>();
             auto scaleTileShape = actualTileShape.template GetCoordByAxis<1>();
@@ -218,14 +218,14 @@ public:
             auto gmTileScale = gmScale[params.layoutScale.GetOffset(scaleTileOffset)];
             auto layoutGmTileScale = params.layoutScale.GetTileLayout(scaleTileShape);
 
-            auto &ubScale = ubScaleList[ubListId];
+            auto &ubScale = ubScaleBuf[ubListId];
 
             auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShape);
 
             // 把 scale 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtScaleVMTE2[ubListId]);
             copyGmToUbScale(ubScale, gmTileScale, layoutUbScale, layoutGmTileScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V[ubListId]);
 
             auto perTokenScaleTileOffset = tileOffset.template GetCoordByAxis<0>();
             auto perTokenScaleTileShape = actualTileShape.template GetCoordByAxis<0>();
@@ -233,15 +233,15 @@ public:
             auto gmTilePerTokenScale = gmPerTokenScale[params.layoutPerTokenScale.GetOffset(perTokenScaleTileOffset)];
             auto layoutGmTilePerTokenScale = params.layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
 
-            auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
+            auto &ubPerTokenScale = ubPerTokenBuf[ubListId];
             auto layoutUbPerTokenScale =
                 LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenScaleTileShape);
 
             // 把 perTokenScale 从GM拷贝到UB
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(evtPerTokenVMTE2[ubListId]);
             copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale,
                                     layoutGmTilePerTokenScale);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V[ubListId]);
 
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (params.ptrBias != nullptr) {
@@ -251,7 +251,7 @@ public:
                 auto gmTileBias = gmBias[params.layoutBias.GetOffset(biasTileOffset)];
                 auto layoutGmTileBias = params.layoutBias.GetTileLayout(biasTileShape);
 
-                auto &ubBias = ubBiasList[ubListId];
+                auto &ubBias = ubBiasBuf[ubListId];
                 auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
 
                 // 把bias 从GM拷贝到UB
@@ -268,18 +268,18 @@ public:
             }
 
             // 在UB上把C cast到FP32
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtCMTE2V[ubListId]);
             AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtCVMTE2[ubListId]);
 
             // // 在UB上做广播乘法
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtScaleMTE2V[ubListId]);
             tileRowBroadcastMul(ubMul, ubCFp32, ubScale);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbScaleVMTE2List[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtScaleVMTE2[ubListId]);
 
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(evtPerTokenMTE2V[ubListId]);
             tileBroadcastOneBlk(ubPerTokenScaleBrcb, ubPerTokenScale);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbPerTokenScaleVMTE2List[ubListId]);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(evtPerTokenVMTE2[ubListId]);
 
             AscendC::PipeBarrier<PIPE_V>();
             tileOneBlkColumnBroadcastMul(ubPerTokenMul, ubMul, ubPerTokenScaleBrcb);
@@ -295,14 +295,14 @@ public:
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
                     AscendC::PipeBarrier<PIPE_V>();
                 } else {
-                    auto &ubBias = ubBiasList[ubListId];
+                    auto &ubBias = ubBiasBuf[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
 
-            auto &ubD = ubDList[ubListId];
+            auto &ubD = ubDBuf[ubListId];
             LayoutD layoutUbD{actualTileShape, ubTileStride};
 
             // 将乘法结果从UB cast到D
@@ -325,18 +325,18 @@ public:
 private:
     Params params;
 
-    AscendC::LocalTensor<ElementC> ubCList[UB_STAGES];
-    AscendC::LocalTensor<ElementScale> ubScaleList[UB_STAGES];
-    AscendC::LocalTensor<ElementPerTokenScale> ubPerTokenScaleList[UB_STAGES];
-    AscendC::LocalTensor<ElementBias> ubBiasList[UB_STAGES];
-    AscendC::LocalTensor<ElementD> ubDList[UB_STAGES];
+    AscendC::LocalTensor<ElementC> ubCBuf[UB_STAGES];
+    AscendC::LocalTensor<ElementScale> ubScaleBuf[UB_STAGES];
+    AscendC::LocalTensor<ElementPerTokenScale> ubPerTokenBuf[UB_STAGES];
+    AscendC::LocalTensor<ElementBias> ubBiasBuf[UB_STAGES];
+    AscendC::LocalTensor<ElementD> ubDBuf[UB_STAGES];
 
-    int32_t eventUbCVMTE2List[UB_STAGES];
-    int32_t eventUbCMTE2VList[UB_STAGES];
-    int32_t eventUbScaleVMTE2List[UB_STAGES];
-    int32_t eventUbScaleMTE2VList[UB_STAGES];
-    int32_t eventUbPerTokenScaleVMTE2List[UB_STAGES];
-    int32_t eventUbPerTokenScaleMTE2VList[UB_STAGES];
+    int32_t evtCVMTE2[UB_STAGES];
+    int32_t evtCMTE2V[UB_STAGES];
+    int32_t evtScaleVMTE2[UB_STAGES];
+    int32_t evtScaleMTE2V[UB_STAGES];
+    int32_t evtPerTokenVMTE2[UB_STAGES];
+    int32_t evtPerTokenMTE2V[UB_STAGES];
     int32_t eventUbBiasVMTE2List[UB_STAGES];
     int32_t eventUbBiasMTE2VList[UB_STAGES];
     int32_t eventUbDMTE3VList[UB_STAGES];

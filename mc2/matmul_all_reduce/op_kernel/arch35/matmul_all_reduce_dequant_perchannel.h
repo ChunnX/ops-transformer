@@ -37,9 +37,9 @@ class MatmulAllReduceDequantPerchannel
 public:
     __aicore__ inline MatmulAllReduceDequantPerchannel()
     {}
-    __aicore__ inline void Init(TPipe* tPipe, uint32_t quantUbSize)
+    __aicore__ inline void Init(TPipe* tPipe4, uint32_t quantUbSize)
     {
-        pipe_ = tPipe;
+        pipe_ = tPipe4;
         uint32_t scaleUbSize = quantUbSize;
         if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
             scaleUbSize = dequantAlginN_;
@@ -142,7 +142,7 @@ public:
             Cast(allgatherOutFloatLocalTemp, allgatherOutHalfLocalTemp, RoundMode::CAST_NONE, calcCnt); // fp16->fp32
             PipeBarrier<PIPE_V>();
             if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // BF16 切M
-                for (uint32_t i = 0; i < curBlockCntM; i++) {
+                for (uint32_t idx = 0; idx < curBlockCntM; i++) {
                     Mul(allgatherOutFloatLocalTemp[i * dequantAlginN_], allgatherOutFloatLocalTemp[i * dequantAlginN_],
                         dequantScaleFloatLocalTemp_, dequantN_); // fp32 类型下进行 Mul 运算
                 }
@@ -159,7 +159,7 @@ public:
             Cast(allgatherOutTtypeLocalTemp, xLocal, RoundMode::CAST_NONE, calcCnt); // int8->fp16
             PipeBarrier<PIPE_V>();
             if (this->splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) { // FP16 切 M
-                for (uint32_t i = 0; i < curBlockCntM; i++) {
+                for (uint32_t idx = 0; idx < curBlockCntM; i++) {
                     Mul(zLocal[i * dequantAlginN_], allgatherOutTtypeLocalTemp[i * dequantAlginN_], sLocal_,
                         dequantN_); // fp16 类型下进行 Mul 运算
                 }
@@ -291,7 +291,7 @@ public:
  */
 template <class T>
 __aicore__ inline void MatmulAllReduceDequantPerchannelCommInt8(
-    GM_ADDR allgatherOut, GM_ADDR dequantScale, GM_ADDR dequantedOut, TPipe* tPipe, uint32_t N, uint32_t M)
+    GM_ADDR allgatherOut, GM_ADDR dequantScale, GM_ADDR dequantedOut, TPipe* tPipe4, uint32_t N, uint32_t M)
 {
     uint32_t nowDequantAivCoreNum = GetBlockNum() * GetTaskRation();
     if ((g_coreType == AIC) || (GetBlockIdx() >= nowDequantAivCoreNum)) {
@@ -302,11 +302,11 @@ __aicore__ inline void MatmulAllReduceDequantPerchannelCommInt8(
     uint32_t tailCalCntM = 0;
     uint32_t tileCalCntM = 0;
     uint32_t needAivCoreNum = 0;
-    uint32_t dequantAivLoopNum = 0;
+    uint32_t dequantAivLoopCnt3 = 0;
     uint32_t blockNumPerRow = 1;
     int64_t blockAddrOffset = 0;
 
-    tPipe->Reset();
+    tPipe4->Reset();
     int32_t nowDequantAlginN = Ceil(N * sizeof(int8_t), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
     int32_t nowDequantUbSize = (TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 -
                                 static_cast<int32_t>(nowDequantAlginN) * static_cast<int32_t>(sizeof(T))) /
@@ -331,25 +331,25 @@ __aicore__ inline void MatmulAllReduceDequantPerchannelCommInt8(
     if (nowDequantUbSize >= nowDequantAlginN) { // 分核切M， 不切N
         op.splitMode_ = SPLIT_M_MATMUL_ALLREDUCE_INT8;
         op.MatmulAllReduceDequantPerchannelSplitM(
-            nowDequantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, dequantAivLoopNum);
+            nowDequantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, dequantAivLoopCnt3);
     } else { // N超大，分核策略采取切MN
         op.splitMode_ = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
         op.MatmulAllReduceDequantPerchannelSplitMAndN(
-            nowDequantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt, dequantAivLoopNum, blockNumPerRow);
+            nowDequantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt, dequantAivLoopCnt3, blockNumPerRow);
     }
 
-    if (dequantAivLoopNum == 0) {
+    if (dequantAivLoopCnt3 == 0) {
         return;
     }
-    op.Init(tPipe, nowDequantUbSize);                                    // 按照最大去开
-    for (uint32_t loopIdx = 0; loopIdx < dequantAivLoopNum; loopIdx++) { // 一轮外层循环对应着一次核间并行
+    op.Init(tPipe4, nowDequantUbSize);                                    // 按照最大去开
+    for (uint32_t loopIdx = 0; loopIdx < dequantAivLoopCnt3; loopIdx++) { // 一轮外层循环对应着一次核间并行
         uint32_t blockCntM = tileCalCntM;
         uint32_t blockCntSpiltMN = tileBlockCnt;
         int64_t blockAddrOffsetSplitM = 0;
         int64_t scaleAddrOffsetSplitMN = 0;
         int64_t blockAddrOffsetSplitMN = 0;
         if (op.splitMode_ == SPLIT_M_MATMUL_ALLREDUCE_INT8) {
-            if ((tailCalCntM != 0) && (loopIdx == dequantAivLoopNum - 1)) {
+            if ((tailCalCntM != 0) && (loopIdx == dequantAivLoopCnt3 - 1)) {
                 blockCntM = tailCalCntM;
             }
             blockAddrOffsetSplitM = static_cast<int64_t>(blockAddrOffset) +
@@ -372,7 +372,7 @@ __aicore__ inline void MatmulAllReduceDequantPerchannelCommInt8(
         }
         op.InitInner(
             loopIdx, blockAddrOffsetSplitM, blockCntM, blockAddrOffsetSplitMN, scaleAddrOffsetSplitMN, blockCntSpiltMN);
-        op.Process(loopIdx, dequantAivLoopNum, blockCntM, blockCntSpiltMN);
+        op.Process(loopIdx, dequantAivLoopCnt3, blockCntM, blockCntSpiltMN);
     }
 }
 } // namespace MatmulAllReduceDequantPerchannelImpl

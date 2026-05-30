@@ -28,12 +28,12 @@ extern "C" {
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* exec3, const size_t irIndex);
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *exec3, NnopbaseHcclServerType sType);
 
 static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3, const char* group,
-    const char* reduceOp, int64_t commTurn, const aclTensor* output, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const char* reduceOp, int64_t commTurn, const aclTensor* output, uint64_t* workspace, aclOpExecutor** exec3)
 {
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
@@ -49,7 +49,7 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
         const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspace, exec3);
     OP_LOGD("MatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -58,12 +58,12 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
 #endif
     if (ret == 0) {
         if (NnopbaseDisableOptionalInput != nullptr) {
-            NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 6U); // 6 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 7U); // 7 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 8U); // 8 is input irIndex
-            NnopbaseDisableOptionalInput(*executor, 9U); // 9 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 4U); // 4 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 5U); // 5 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 6U); // 6 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 7U); // 7 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 8U); // 8 is input irIndex
+            NnopbaseDisableOptionalInput(*exec3, 9U); // 9 is input irIndex
         }
     }
     return ret;
@@ -71,43 +71,43 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
 
 aclnnStatus aclnnMatmulAllReduceV2GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3, const char* group,
-    const char* reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor* output, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const char* reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor* output, uint64_t* workspace,
+    aclOpExecutor** exec3)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp3 = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = MatmulAllReduceCheckParams(x1, x2, x3, bias, reduceOp, streamMode, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus ret = InnerMatmulAllReduceV2GetWorkspaceSize(
-        x1, x2, bias, x3, group, reduceOp, commTurn, output, workspaceSize, executor);
+        x1, x2, bias, x3, group, reduceOp, commTurn, output, workspace, exec3);
     OP_LOGD("MatmulAllReduceV2, end ret %d", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp3, dfxId);
     return ret;
 }
 
 aclnnStatus aclnnMatmulAllReduceV2(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+    void* workspace, uint64_t workspace, aclOpExecutor* exec3, const aclrtStream stream)
 {
-    uint64_t timeStamp = NnopbaseMsprofSysTime();
+    uint64_t tsStamp3 = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            uint8_t commMode3 = Mc2Comm::GetCommModeFromEnv();
+            if (commMode3 == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(exec3, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+                NnopbaseSetHcclServerType(exec3, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
         }
     }
-    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspace, exec3, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
         OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceV2, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
-    NnopbaseReportApiInfo(timeStamp, dfxId);
+    NnopbaseReportApiInfo(tsStamp3, dfxId);
     return ACLNN_SUCCESS;
 }
 

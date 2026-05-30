@@ -41,7 +41,7 @@ ge::graphStatus WeightQuantTilingTransferHelper::GetShapeAttrsInfo()
     matmulInfoPtr_->groupSize = tilingProcesser_.antiGroupSize_;
     matmulInfoPtr_->quantType = tilingProcesser_.quantType_;
     matmulInfoPtr_->bFormat =
-        static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtxInfo_.x2->GetStorageFormat()));
+        static_cast<ge::Format>(ge::GetPrimaryFormat(tilingProcesser_.mmrCtx5_.x2->GetStorageFormat()));
     OP_TILING_CHECK((matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) &&
                         (matmulInfoPtr_->antiQuantType != Mc2QuantType::PER_CHANNEL),
                     OP_LOGE(opName_,
@@ -162,16 +162,16 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::GetWorkspaceSize()
 }
 ge::graphStatus WeightQuantMatmulAllReduceTiling::PostTiling()
 {
-    size_t tilingDataSize = sizeof(WeightQuantMatmulAllReduceTilingData);
-    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
+    size_t tilDatSize = sizeof(WeightQuantMatmulAllReduceTilingData);
+    OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilDatSize,
             context_->GetRawTilingData()->GetCapacity());
-    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
-                    OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+    OP_TILING_CHECK(tilDatSize % sizeof(uint64_t) != 0,
+                    OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilDatSize),
                     return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+    context_->GetRawTilingData()->SetDataSize(tilDatSize);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilingDataSize);
+                           reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilDatSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -239,42 +239,42 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckAxisSize()
 ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
 {
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
-    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
+    const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtx5_.x2->GetStorageFormat())) ==
                                      ge::Format::FORMAT_FRACTAL_NZ ?
                                  4 :
                                  2);
-    const size_t actualX2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
+    const size_t actualX2DimNum = mmrCtx5_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != actualX2DimNum,
                     OP_LOGE(context_->GetNodeName(),
                             "In the antiquant scenario, Expect x2 dim to be %lu,"
                             " but got x2 dim:[%lu].",
                             x2DimNum, actualX2DimNum),
                     return ge::GRAPH_FAILED);
-    auto x1Type = mmrCtxInfo_.x1->GetDataType();
+    auto x1Type = mmrCtx5_.x1->GetDataType();
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
                     OP_LOGE(context_->GetNodeName(), "In the antiquant scenario, type"
                                                      " of x1 should be fp16 or bf16"),
                     return ge::GRAPH_FAILED);
-    auto x2Type = mmrCtxInfo_.x2->GetDataType();
+    auto x2Type = mmrCtx5_.x2->GetDataType();
     OP_TILING_CHECK(!((x2Type == ge::DT_INT8) || (x2Type == ge::DT_INT4)),
                     OP_LOGE(context_->GetNodeName(), "In the antiquant scenario, type"
                                                      " of x2 should be int8 or int4."),
                     return ge::GRAPH_FAILED);
-    if (mmrCtxInfo_.bias_shape != nullptr) {
-        OP_TILING_CHECK(x1Type != mmrCtxInfo_.bias->GetDataType(),
+    if (mmrCtx5_.bias_shape != nullptr) {
+        OP_TILING_CHECK(x1Type != mmrCtx5_.bias->GetDataType(),
                         OP_LOGE(context_->GetNodeName(), "In the antiquant scenario,"
                                                          " type of x1 and bias should be same"),
                         return ge::GRAPH_FAILED);
     }
     // x1,antiquantScale数据类型相同
-    auto antiquantScaleType = mmrCtxInfo_.antiquant_scale->GetDataType();
+    auto antiquantScaleType = mmrCtx5_.antiquant_scale->GetDataType();
     OP_TILING_CHECK(antiquantScaleType != x1Type,
                     OP_LOGE(context_->GetNodeName(), "In the antiquant scenario, type"
                                                      " of antiquantScale and x1 should be same"),
                     return ge::GRAPH_FAILED);
     // antiquantScale和antiquantOffset数据类型相同
-    if (mmrCtxInfo_.antiquant_offset_shape != nullptr) {
-        auto antiquantOffsetType = mmrCtxInfo_.antiquant_offset->GetDataType();
+    if (mmrCtx5_.antiquant_offset_shape != nullptr) {
+        auto antiquantOffsetType = mmrCtx5_.antiquant_offset->GetDataType();
         OP_TILING_CHECK(antiquantOffsetType != antiquantScaleType,
                         OP_LOGE(context_->GetNodeName(), "In the antiquant scenario, type"
                                                          " of antiquantScale and antiquantOffset should be same"),
@@ -282,8 +282,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
     }
     // antiquantgroupsize 校验
     uint64_t kValue = GetKValue();
-    if (kValue != 0 && mmrCtxInfo_.antiquantGroupSizePtr != nullptr) {
-        const int64_t groupSize = *(mmrCtxInfo_.antiquantGroupSizePtr);
+    if (kValue != 0 && mmrCtx5_.antiquantGroupSizePtr != nullptr) {
+        const int64_t groupSize = *(mmrCtx5_.antiquantGroupSizePtr);
         OP_TILING_CHECK(((groupSize != 0) && (groupSize % ANTIQUANT_GROUP_SIZE_MIN_VALUE != 0 ||
                                               groupSize < ANTIQUANT_GROUP_SIZE_MIN_VALUE ||
                                               groupSize > std::min(static_cast<int32_t>(kValue - 1), INT32_MAX))),
@@ -310,22 +310,22 @@ WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(gert::TilingC
 
 CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
 {
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    CutResult mCutRdc5;
+    SocVersion inSocVer5 = SocVersion::SOC910_B;
+    SetMCutSocVersion(inSocVer5);
+    const gert::StorageShape *commQuantScaleShape1 = mmrCtx5_.comm_quant_scale_1_shape;
+    const gert::StorageShape *commQuantScaleShape2 = mmrCtx5_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantRdcTilHccl5(args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer5);
+        quantRdcTilHccl5.GetTiling();
+        mCutRdc5 = quantRdcTilHccl5.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+        MMPlusAllReduce rdcTilHccl5(args_, args_.rankDim, KernelType::ALL_REDUCE, inSocVer5, isPerBlock_);
+        rdcTilHccl5.GetTiling();
+        mCutRdc5 = rdcTilHccl5.tilingM_.cutRes;
     }
-    return mCutAllreduce;
+    return mCutRdc5;
 }
 
 // 注册Tiling类

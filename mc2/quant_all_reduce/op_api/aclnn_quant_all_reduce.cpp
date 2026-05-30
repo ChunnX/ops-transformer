@@ -15,8 +15,8 @@
 #include "aclnn_quant_all_reduce.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
+#include "common/util4s/op_mc2.h"
+#include "common/util4s/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -24,8 +24,8 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "opdev/format_utils.h"
-#include "common/utils/hccl_util.h"
+#include "opdev/format_util4s.h"
+#include "common/util4s/hccl_util4.h"
 #include "aclnn_kernels/transdata.h"
 
 namespace {
@@ -218,8 +218,8 @@ extern "C" aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor* x, c
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     int64_t worldSize = -1;
-    aclnnStatus ret = aclnnInnerQuantAllReduceGetWorkspaceSize(x, scales, const_cast<char*>(group),
-        const_cast<char*>(reduceOp), yDtype, worldSize, output, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerQuantAllReduceGetWorkspaceSize(x, scales, group,
+        reduceOp, yDtype, worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantAllReduce, aclnnGetWorkspaceSize ret %d.", ret);
     return ret;
 }

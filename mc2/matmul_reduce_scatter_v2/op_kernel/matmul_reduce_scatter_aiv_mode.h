@@ -27,6 +27,7 @@
 #include "../common/op_kernel/moe_distribute_base.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
+// aiv_mode specific marker
 #endif
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
@@ -42,6 +43,7 @@
 #include "matmul_reduce_scatter_aiv_mode_dequant.h"
 
 using namespace Catlass;
+// aivmode unique
 using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace matmulReduceScatterV2_util;
@@ -51,9 +53,9 @@ namespace MatmulReduceScatterV2Impl {
 
 // MMA2A : MatmulAllToAll
 #define TemplateMMReduceScatterV2Class                                                                                 \
-    typename AType, typename BType, typename biasType, typename x2ScaleType, typename cType, bool hasBias,             \
+    typename AType, typename BType, typename biasCategory, typename x2ScaleType, typename cType, bool hasBias,             \
     bool weight_nz, bool TA, bool TB
-#define TemplateMMReduceScatterV2Func AType, BType, biasType, x2ScaleType, cType, hasBias, weight_nz, TA, TB
+#define TemplateMMReduceScatterV2Func AType, BType, biasCategory, x2ScaleType, cType, hasBias, weight_nz, TA, TB
 
 template <TemplateMMReduceScatterV2Class, typename Derived>
 class MatmulReduceScatterAivMode : public CommBase {
@@ -67,6 +69,7 @@ protected:
     static constexpr bool quantFlag = (std::is_same<AType, int8_t>::value) && (std::is_same<BType, int8_t>::value);
     __aicore__ inline void Padding();
     __aicore__ inline void StartBeforeFirstStep();
+// aiv_mode break
     __aicore__ inline void EndFirstStep();
 
 private:
@@ -99,9 +102,9 @@ private:
     int32_t pingpong_idx;
     int32_t tile_block_size;
 
-    GM_ADDR gm_a_align;
     GM_ADDR gm_b_align;
-    DequantRunner<biasType, cType> dequant_runner;
+    GM_ADDR gm_a_align;
+    DequantRunner<biasCategory, cType> dequant_runner;
     Arch::Resource<Arch::AtlasA2> resource;
 };
 
@@ -111,27 +114,27 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MatmulReduceScatterV2AivModeTilingData);
-    GET_TILING_DATA(tilingData, tilingGM);
+    GET_TILING_DATA(tData, tilingGM);
 
-    aGM_ = aGM;
-    bGM_ = bGM;
-    cGM_ = cGM;
-    biasGM_ = biasGM;
+    aPtr4_ = aGM;
+    bPtr4_ = bGM;
+    cPtr4_ = cGM;
+    biasPtr4_ = biasGM;
     perChannelScaleGM_ = perChannelScale;
     perTokenScaleGM_ = perTokenScale;
-    CommBase::SetArgs(tilingData);
+    CommBase::SetArgs(tData);
     hasBAlign = weight_nz ? false : hasBAlign;
     gm_a_align = reinterpret_cast<GM_ADDR>(hasAAlign ? workspaceGM : 0);
     gm_b_align = reinterpret_cast<GM_ADDR>(hasBAlign ? workspaceGM + aAlignSize : 0);
     gm_accum = reinterpret_cast<__gm__ int32_t *>(quantFlag ? workspaceGM + aAlignSize + bAlignSize : 0);
-    gm_a_src = reinterpret_cast<__gm__ AType *>(hasAAlign ? gm_a_align : aGM_);
-    gm_b_src = reinterpret_cast<__gm__ BType *>(hasBAlign ? gm_b_align : bGM_);
+    gm_a_src = reinterpret_cast<__gm__ AType *>(hasAAlign ? gm_a_align : aPtr4_);
+    gm_b_src = reinterpret_cast<__gm__ BType *>(hasBAlign ? gm_b_align : bPtr4_);
 
     if constexpr (!std::is_same_v<Derived, void>) {
         m_loop = CeilDev(m, m0);
     }
 
-    m_align = Block512B<AType>::AlignUp(m);
+n_align = Block512B<BType>::AlignUp(n);
     k_align = Block512B<AType>::AlignUp(k);
     n_align = Block512B<AType>::AlignUp(n);
     aligned_a = hasAAlign;
@@ -183,7 +186,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         using ElementA = AType;
         using ElementB = BType;
         using ElementC = typename std::conditional<quantFlag, int32_t, cType>::type;
-        using ElementBias = biasType;
+        using ElementBias = biasCategory;
 
         using LayoutA = typename std::conditional<TA, layout::ColumnMajor, layout::RowMajor>::type;
         using LayoutC = layout::RowMajor;
@@ -196,7 +199,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
         LayoutC layoutPeerMem{static_cast<uint32_t>(peer_mem_m), static_cast<uint32_t>(n0)};
         LayoutScale layoutScale{static_cast<uint32_t>(n)};
         LayoutBias layoutBias{static_cast<uint32_t>(n)};
-        GemmCoord processSize{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
+        GemmCrd processSize{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
 
         constexpr int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;
         constexpr int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;
@@ -211,34 +214,34 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             using BType_ = Gemm::GemmType<ElementB, LayoutNZ>;
             LayoutNZ layoutBNZ = LayoutNZ::template MakeLayout<ElementB>(layout_b_row, layout_b_col);
 
-            struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
+            struct TileCopyOptNz : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
                 using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_>;
                 using ElementA = typename Base::ElementA;
                 using ElementB = typename Base::ElementB;
                 using ElementAccumulator = typename Base::ElementAccumulator;
-                using CopyGmToL1A = typename Base::CopyGmToL1A;
-                using CopyGmToL1B = typename Base::CopyGmToL1B;
+                using NzCopyGmToL1A = typename Base::CopyGmToL1A;
+                using NzCopyGmToL1B = typename Base::CopyGmToL1B;
 
-                using CopyL1ToL0A = typename Base::CopyL1ToL0A;
-                using CopyL1ToL0B = typename Base::CopyL1ToL0B;
+                using NzCopyL1ToL0A = typename Base::CopyL1ToL0A;
+                using NzCopyL1ToL0B = typename Base::CopyL1ToL0B;
 
-                using CopyL0CToGm = typename Base::CopyL0CToGm;
-                using BiasTypeSelector = typename Base::BiasTypeSelector;
-                using CopyGmToL1Bias = typename Base::CopyGmToL1Bias;
-                using CopyL1ToBT = typename Base::CopyL1ToBT;
+                using NzCopyL0CToGm = typename Base::CopyL0CToGm;
+                using NzBiasTypeSelector = typename Base::BiasTypeSelector;
+                using NzCopyGmToL1Bias = typename Base::CopyGmToL1Bias;
+                using NzCopyL1ToBT = typename Base::CopyL1ToBT;
             };
-            using TileCopy = TileCopyOpt;
+            using TileCopy = TileCopyOptNz; // NZ format tile copy
 
             if (m0 == TILE_SHAPE_128) {
                 using L1TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
+                using BlockMmadNz = Gemm::Block::BlockMmad<DispatchPolicy,
                                  L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
-                using MatmulKernel =
-                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                using MatmulKernel_Nz =
+                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadNz, void, void, aicCalBias>;
+                typename MatmulKernel_Nz::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
-                                                     layoutBNZ,     biasGM_, reinterpret_cast<GM_ADDR>(cGM_),
+                                                     layoutBNZ,     biasPtr4_, reinterpret_cast<GM_ADDR>(cPtr4_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                                                      layoutScale,   reinterpret_cast<GM_ADDR>(gm_peer_mem),
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
@@ -246,18 +249,18 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
+                MatmulKernel_Nz matmul_op;
                 matmul_op(params);
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
+                using BlockMmadNz256 = Gemm::Block::BlockMmad<DispatchPolicy,
                                     L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
-                using MatmulKernel =
-                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                using MatmulKernel_Nz =
+                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadNz, void, void, aicCalBias>;
+                typename MatmulKernel_Nz::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
-                                                     layoutBNZ,     biasGM_, reinterpret_cast<GM_ADDR>(cGM_),
+                                                     layoutBNZ,     biasPtr4_, reinterpret_cast<GM_ADDR>(cPtr4_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                                                      layoutScale,   reinterpret_cast<GM_ADDR>(gm_peer_mem),
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
@@ -265,7 +268,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
+                MatmulKernel_Nz matmul_op;
                 matmul_op(params);
             }
         } else {
@@ -274,38 +277,37 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             LayoutB layoutB{layout_b_row, layout_b_col};
             using BType_ = Gemm::GemmType<ElementB, LayoutB>;
 
-            struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
+            struct TileCopyOptNd : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
                 using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_>;
-                using ElementA = typename Base::ElementA;
-                using ElementB = typename Base::ElementB;
-                using ElementAccumulator = typename Base::ElementAccumulator;
+                using NdElementA = typename Base::ElementA;
+                using NdElementB = typename Base::ElementB;
+                using NdElementAccum = typename Base::ElementAccumulator;
 
-                // When matrix A is row-major, if the number of rows in matrix A is less than 16,
-                // using the CopyGmToL1IntervalDataCopy method can improve the transfer efficiency.
-                // The situation is similar for matrix B. If the above conditions are met,
-                // please uncomment the following and comment out the original matrix A transfer method
+                // ND format: When matrix A is row-major and rows < 16,
+                // CopyGmToL1IntervalDataCopy can improve transfer efficiency.
+                // Similar for matrix B. Uncomment if conditions are met.
 
-                using CopyGmToL1A = typename Base::CopyGmToL1A;
-                using CopyGmToL1B = typename Base::CopyGmToL1B;
-                using CopyL1ToL0A = typename Base::CopyL1ToL0A;
-                using CopyL1ToL0B = typename Base::CopyL1ToL0B;
-                using CopyL0CToGm = typename Base::CopyL0CToGm;
-                using BiasTypeSelector = typename Base::BiasTypeSelector;
-                using CopyGmToL1Bias = typename Base::CopyGmToL1Bias;
-                using CopyL1ToBT = typename Base::CopyL1ToBT;
+                using NdCopyGmToL1A = typename Base::CopyGmToL1A;
+                using NdCopyGmToL1B = typename Base::CopyGmToL1B;
+                using NdCopyL1ToL0A = typename Base::CopyL1ToL0A;
+                using NdCopyL1ToL0B = typename Base::CopyL1ToL0B;
+                using NdCopyL0CToGm = typename Base::CopyL0CToGm;
+                using NdBiasTypeSelector = typename Base::BiasTypeSelector;
+                using NdCopyGmToL1Bias = typename Base::CopyGmToL1Bias;
+                using NdCopyL1ToBT = typename Base::CopyL1ToBT;
             };
-            using TileCopy = TileCopyOpt;
+            using TileCopy = TileCopyOptNd; // ND format tile copy
             if (m0 == TILE_SHAPE_128) {
                 using L1TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_128, TILE_SHAPE_256, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
+                using BlockMmadNd128 = Gemm::Block::BlockMmad<DispatchPolicy,
                                         L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
-                using MatmulKernel =
-                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                using MatmulKernel_Nd =
+                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadNd, void, void, aicCalBias>;
+                typename MatmulKernel_Nd::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
-                                                     layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
-                                                     reinterpret_cast<GM_ADDR>(cGM_),
+                                                     layoutB,       reinterpret_cast<GM_ADDR>(biasPtr4_),
+                                                     reinterpret_cast<GM_ADDR>(cPtr4_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                                                      layoutScale,   reinterpret_cast<GM_ADDR>(gm_peer_mem),
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
@@ -313,19 +315,19 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
+                MatmulKernel_Nd matmul_op;
                 matmul_op(params);
             } else {
                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
-                using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy,
+                using BlockMmadNd256 = Gemm::Block::BlockMmad<DispatchPolicy,
                                     L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
-                using MatmulKernel =
-                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                using MatmulKernel_Nd =
+                    Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadNd, void, void, aicCalBias>;
+                typename MatmulKernel_Nd::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
-                                                     layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
-                                                     reinterpret_cast<GM_ADDR>(cGM_),
+                                                     layoutB,       reinterpret_cast<GM_ADDR>(biasPtr4_),
+                                                     reinterpret_cast<GM_ADDR>(cPtr4_),
                                                      layoutC,       reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                                                      layoutScale,   reinterpret_cast<GM_ADDR>(gm_peer_mem),
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
@@ -333,7 +335,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
                                                      swizzl_direct, dequant_type,
                                                      rank,          rank_size,
                                                      need_fixpipe};
-                MatmulKernel matmul_op;
+                MatmulKernel_Nd matmul_op;
                 matmul_op(params);
             }
         }
@@ -372,8 +374,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
     __gm__ int32_t *workspace = needPerChannel ?
         reinterpret_cast<__gm__ int32_t *>(gm_accum) + pingpongSt : nullptr;
     __gm__ cType *peerMem = reinterpret_cast<__gm__ cType *>(buff[rank]) + pingpongSt;
-    __gm__ cType *output = reinterpret_cast<__gm__ cType *>(cGM_);
-    __gm__ biasType *biasptr = reinterpret_cast<__gm__ biasType *>(biasGM_);
+    __gm__ cType *output = reinterpret_cast<__gm__ cType *>(cPtr4_);
+    __gm__ biasCategory *biasptr = reinterpret_cast<__gm__ biasCategory *>(biasPtr4_);
 
     dequant_runner.RunMatmulReduceScatter(DEQUANT_ARGS_CALL());
     SetAndWaitAivSync(flagIdx);
@@ -400,8 +402,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
     uint32_t matrixAKAlign = static_cast<uint32_t>(k_align);
     uint32_t matrixBKAlign = static_cast<uint32_t>(k_align);
     uint32_t matrixBNAlign = static_cast<uint32_t>(n_align);
-    GM_ADDR gmA = reinterpret_cast<GM_ADDR>(aGM_);
-    GM_ADDR gmB = reinterpret_cast<GM_ADDR>(bGM_);
+    GM_ADDR gmA = reinterpret_cast<GM_ADDR>(aPtr4_);
+    GM_ADDR gmB = reinterpret_cast<GM_ADDR>(bPtr4_);
     GM_ADDR gmAAlign = reinterpret_cast<GM_ADDR>(gm_a_align);
     GM_ADDR gmBAlign = reinterpret_cast<GM_ADDR>(gm_b_align);
     PaddingRunner<AType, BType> padding_runner;
@@ -466,7 +468,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             // left_m较大，则该块copy完，下次再copy下一块；
             // left_m较小，则只copy left_m的部分
             int64_t out_buff_offset = batch_idx * m * n / rank_size + (m_idx * m0 + m_offset) * n + n_idx * n0;
-            CopyUbufToGmUnknown(nAlign16, reinterpret_cast<__gm__ cType *>(cGM_) + out_buff_offset,
+            CopyUbufToGmUnknown(nAlign16, reinterpret_cast<__gm__ cType *>(cPtr4_) + out_buff_offset,
                                 ub_buff[ub_buff_offset], actual_move_m, actual_n * sizeof(cType),
                                 (n0 - actual_n) * sizeof(cType) / 32, (n - actual_n) * sizeof(cType));
         }

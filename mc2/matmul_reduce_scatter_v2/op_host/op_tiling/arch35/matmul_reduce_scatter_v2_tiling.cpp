@@ -95,7 +95,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 
 ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
 {
-    const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
+    const uint32_t rdcType3 = HcclReduceOp::HCCL_REDUCE_SUM;
     const uint32_t opType = isA2APath_
         ? static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL)
         : static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
@@ -109,7 +109,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     uint32_t dataType = static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType));
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
-        group, opType, rsConfig, reduceType, dataType, dataType
+        group, opType, rsConfig, rdcType3, dataType, dataType
     );
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
@@ -126,11 +126,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
 }
 
 ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
-    Mc2MMRegisterCfg &registerCfg, Mc2MatMulV3TilingData &tilingData)
+    Mc2MMRegisterCfg &registerCfg, Mc2MatMulV3TilingData &tilDat)
 {
     tilingCfg.SetRankDim(args_.rankDim);
     OP_LOGD(opName_, "execte DoMatmulV3Tiling!");
-    tilingCfg.SetMatMulV3TilingData(tilingData);
+    tilingCfg.SetMatMulV3TilingData(tilDat);
     OP_TILING_CHECK(Mc2MMTilingRegistry::GetInstance().DoTilingImpl(context_,
                                                                     tilingCfg, registerCfg) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "do tiling failed"), return ge::GRAPH_FAILED);
@@ -211,18 +211,18 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+        MMReduceScatterFitBalanceTiling scatterBalTiling(args_,
             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::STANDARD_CARD);
-        return scatterTiling.GetTiling();
+        return scatterBalTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
-        MMReduceScatterFitBalanceTiling scatterTiling(args_,
+        MMReduceScatterFitBalanceTiling scatterBalTiling(args_,
             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
-        return scatterTiling.GetTiling();
+        return scatterBalTiling.GetTiling();
     } else {
         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
-        scatterTiling.GetTiling();
-        return scatterTiling.tilingM_.cutRes;
+        MMPlusReduceScatter scatterBalTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+        scatterBalTiling.GetTiling();
+        return scatterBalTiling.tilingM_.cutRes;
     }
 }
 

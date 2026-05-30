@@ -32,42 +32,42 @@ using namespace AscendC;
 template <typename yType>
 class MatmulAllReduceEmptyTensorKGeneral {
 public:
-    __aicore__ inline MatmulAllReduceEmptyTensorKGeneral(MC2GmAddrs *addrs, MC2TilingHeader *tilingData, TPipe *tPipe)
+    __aicore__ inline MatmulAllReduceEmptyTensorKGeneral(MC2GmAddrs *addrs, MC2TilingHeader *tilDat, TPipe *tPipe)
         : addrs_(addrs), tPipe_(tPipe)
     {
-        param_ = &(tilingData->param);
-        cOffset_ = (uint64_t)param_->rankN * (uint64_t)param_->rankM;
+        param_ = &(tilDat->param);
+        cOff_ = (uint64_t)param_->rankN * (uint64_t)param_->rankM;
 #ifdef MC2_WEIGHT_QUANT
-        biasFlag_ =
-            (((Mc2Tiling::WeightQuantMatmulAllReduceTilingData *)tilingData)->tilematmulTiling.matmulTiling.isBias !=
+        hasBias_ =
+            (((Mc2Tiling::WeightQuantMatmulAllReduceTilingData *)tilDat)->tilematmulTiling.matmulTiling.isBias !=
              0U);
 #else
-        biasFlag_ =
-            (((Mc2Tiling::MatmulAllReduce910TilingData *)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
+        hasBias_ =
+            (((Mc2Tiling::MatmulAllReduce910TilingData *)tilDat)->tilematmulTiling.matmulTiling.isBias != 0U);
 #endif
     }
 
     __aicore__ inline void Init()
     {
         hccl_.Init(GetHcclContext<0>());
-        notifyFlag_ = (GetBlockIdx() == 0);
-        if (notifyFlag_) {
-            hcclHandleId_ =
-                hccl_.AllReduce(addrs_->cGM, addrs_->outputGM, cOffset_, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM, 1U);
+        isNotify_ = (GetBlockIdx() == 0);
+        if (isNotify_) {
+            hcclHdl_ =
+                hccl_.AllReduce(addrs_->cGM, addrs_->outputGM, cOff_, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM, 1U);
         }
     }
 
     __aicore__ inline void Process()
     {
         // InitOutput value to 0. Supports Dtype: half/int32_t/float/uint32_t/
-        uint64_t cSize = cOffset_ * sizeof(yType);
-        cSize /= sizeof(half);
-        GlobalTensor<half> cGlobal;
-        cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(addrs_->cGM), cSize);
-        InitOutput<half>(cGlobal, cSize, static_cast<half>(0.0));
-        if (biasFlag_ || param_->isAdd) {
+        uint64_t cSz7 = cOff_ * sizeof(yType);
+        cSz7 /= sizeof(half);
+        GlobalTensor<half> cGl7;
+        cGl7.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(addrs_->cGM), cSz7);
+        InitOutput<half>(cGl7, cSz7, static_cast<half>(0.0));
+        if (hasBias_ || param_->isAdd) {
             SyncAll();
-            if (biasFlag_) {
+            if (hasBias_) {
                 ProcessBias();
             }
             if (param_->isAdd) {
@@ -76,9 +76,9 @@ public:
         }
 
         SyncAll();
-        if (notifyFlag_) {
-            hccl_.Commit(hcclHandleId_);
-            hccl_.Wait(hcclHandleId_);
+        if (isNotify_) {
+            hccl_.Commit(hcclHdl_);
+            hccl_.Wait(hcclHdl_);
             hccl_.Finalize();
         }
     }
@@ -92,9 +92,9 @@ private:
         tPipe_->InitBuffer(tmpBuf, TOTAL_UB_SIZE);
         // DataCopy from bias to cGM 32B aligned
         // total cGM size
-        uint64_t cSize = cOffset_ * sizeof(yType);
-        GlobalTensor<yType> cGlobalBias;
-        cGlobalBias.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(addrs_->cGM), cSize);
+        uint64_t cSz7 = cOff_ * sizeof(yType);
+        GlobalTensor<yType> cGl7Bias;
+        cGl7Bias.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(addrs_->cGM), cSz7);
         // init ub for datacopy
         LocalTensor<yType> bias = tmpBuf.Get<yType>();
         GlobalTensor<yType> biasGlobal;
@@ -117,7 +117,7 @@ private:
             // offset M*N
             for (uint64_t i = 0; i < param_->rankM; ++i) {
                 uint64_t offsetRankM = i * param_->rankN + offsetRankN;
-                DataCopy(cGlobalBias[offsetRankM], bias, calCount);
+                DataCopy(cGl7Bias[offsetRankM], bias, calCount);
                 SyncAll();
             }
         }
@@ -127,7 +127,7 @@ private:
             SyncAll();
             for (uint64_t i = 0; i < param_->rankM; ++i) {
                 uint64_t offsetDst = i * param_->rankN + biasUbAlignSize;
-                DataCopyPad(cGlobalBias[offsetDst], bias,
+                DataCopyPad(cGl7Bias[offsetDst], bias,
                             {1, static_cast<uint16_t>(biasTailSize * sizeof(yType)), 0, 0});
             }
             SyncAll();
@@ -136,39 +136,39 @@ private:
 
     __aicore__ inline void ProcessAdd()
     {
-        const size_t cOffset = param_->rankN * sizeof(yType);
+        const size_t cOff = param_->rankN * sizeof(yType);
         for (uint64_t i = 0; i < param_->rankM; ++i) {
-            Matmul_All_Reduce_Add_X3<yType>(addrs_->cGM, addrs_->addGM, cOffset / sizeof(yType), param_->addX3UbCnt,
+            Matmul_All_Reduce_Add_X3<yType>(addrs_->cGM, addrs_->addGM, cOff / sizeof(yType), param_->addX3UbCnt,
                                             tPipe_);
-            addrs_->cGM += cOffset;
-            addrs_->addGM += cOffset;
+            addrs_->cGM += cOff;
+            addrs_->addGM += cOff;
             SyncAll();
         }
     }
 
     MC2GmAddrs *addrs_;
     Mc2Tiling::RCSTiling *param_;
-    bool biasFlag_{false};
-    uint64_t cOffset_;
+    bool hasBias_{false};
+    uint64_t cOff_;
     TPipe *tPipe_;
-    bool notifyFlag_{false};
+    bool isNotify_{false};
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-    AscendC::HcclHandle hcclHandleId_;
+    AscendC::HcclHandle hcclHdl_;
 };
 
 #ifdef MC2_WEIGHT_QUANT
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR()                                                                             \
-    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilDat, tilingGM)
 #else
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR()                                                                             \
-    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingData, tilDat, tilingGM)
 #endif
 
 #define INVOKE_MC2_EMPTY_TENSOR_OP_IMPL()                                                                              \
     do {                                                                                                               \
         GET_TILING_DATA_FOR_EMPTY_TENSOR();                                                                            \
         MC2GmAddrs addrs = {nullptr, nullptr, biasGM, addGM, cGM, nullptr, cGM};                                       \
-        MatmulAllReduceEmptyTensorKGeneral<DTYPE_Y> op(&addrs, (MC2TilingHeader *)&tilingData, &tPipe);                \
+        MatmulAllReduceEmptyTensorKGeneral<DTYPE_Y> op(&addrs, (MC2TilingHeader *)&tilDat, &tPipe);                \
         op.Init();                                                                                                     \
         op.Process();                                                                                                  \
     } while (0)

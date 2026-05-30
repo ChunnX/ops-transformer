@@ -78,7 +78,7 @@ protected:
     virtual ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
     inline mc2tiling::TilingArgs GetMc2tilingArgs() { return args_; };
     void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
-                         ::TCubeTiling &tailTiling, uint32_t& debugMode, uint32_t& dataType);
+                         const ::TCubeTiling &tailTiling, uint32_t& debugMode, uint32_t& dataType);
     void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,
                         const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();

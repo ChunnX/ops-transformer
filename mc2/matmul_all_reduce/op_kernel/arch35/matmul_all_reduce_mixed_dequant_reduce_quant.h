@@ -33,7 +33,7 @@ constexpr uint32_t OUT_LOOP_TWO = 2;
 template <class T>
 class MatmulAllReduceMixedDequantReduceQuant {
 public:
-    uint64_t outLoopNum_ = 0;
+    uint64_t outLoopCnt_ = 0;
     uint64_t innerLoopNum_ = 0;
     uint64_t tailUsedCoreNum_ = 0;
     uint64_t procRowTileCnt_ = 0;
@@ -77,12 +77,12 @@ public:
         if (maxProcRows < this->procRows_) {
             this->procRows_ = maxProcRows;
         }
-        this->outLoopNum_ = tileMPerRank / (this->procRows_ * coreNum);
-        uint64_t firstTail = tileMPerRank - this->outLoopNum_ * (this->procRows_ * coreNum);
+        this->outLoopCnt_ = tileMPerRank / (this->procRows_ * coreNum);
+        uint64_t firstTail = tileMPerRank - this->outLoopCnt_ * (this->procRows_ * coreNum);
         if (firstTail != 0) {
             this->procRowsFirstTail_ = firstTail / coreNum;
-            this->outLoopNum_ += (this->procRowsFirstTail_ == 0) ? 0 : 1;
-            this->outLoopNum_ += (this->tailUsedCoreNum_ == 0) ? 0 : 1;
+            this->outLoopCnt_ += (this->procRowsFirstTail_ == 0) ? 0 : 1;
+            this->outLoopCnt_ += (this->tailUsedCoreNum_ == 0) ? 0 : 1;
         }
         this->procRowTileCnt_ = maxProcRows / this->procRows_;
         this->innerLoopNum_ = Ceil(oneLineScaleCnt, this->procRowTileCnt_);
@@ -99,68 +99,68 @@ public:
         if (GetBlockIdx() >= this->coreNum_) {
             return;
         }
-        for (uint64_t i = 0; i < this->outLoopNum_; i++) {
+        for (uint64_t i = 0; i < this->outLoopCnt_; i++) {
             InnerProcess(i, rankNum, tileMPerRank, tileN, totalNandSLen);
         }
     }
 
-    __aicore__ inline void InnerProcess(uint32_t outerIdx, uint32_t rankNum, uint32_t tileMPerRank, uint32_t tileN,
+    __aicore__ inline void InnerProcess(uint32_t outerIdx2, uint32_t rankNum, uint32_t tileMPerRank, uint32_t tileN,
                                         uint32_t totalNandSLen)
     {
-        bool isFirstTail = false;
-        bool isSecondTail = false;
-        uint64_t curRows = this->procRows_;
-        if ((this->tailUsedCoreNum_ != 0) && (outerIdx == (this->outLoopNum_ - 1))) {
-            curRows = 1;
-            isSecondTail = true;
+        bool isFirstTail2 = false;
+        bool isSecondTail2 = false;
+        uint64_t curRows2 = this->procRows_;
+        if ((this->tailUsedCoreNum_ != 0) && (outerIdx2 == (this->outLoopCnt_ - 1))) {
+            curRows2 = 1;
+            isSecondTail2 = true;
             if (GetBlockIdx() >= this->tailUsedCoreNum_) {
                 return;
             }
         }
         if (this->procRowsFirstTail_ != 0) {
-            isFirstTail = ((this->tailUsedCoreNum_ != 0) && (outerIdx == (this->outLoopNum_ - OUT_LOOP_TWO))) ||
-                          ((this->tailUsedCoreNum_ == 0) && (outerIdx == (this->outLoopNum_ - 1)));
-            curRows = isFirstTail ? this->procRowsFirstTail_ : curRows;
+            isFirstTail2 = ((this->tailUsedCoreNum_ != 0) && (outerIdx2 == (this->outLoopCnt_ - OUT_LOOP_TWO))) ||
+                          ((this->tailUsedCoreNum_ == 0) && (outerIdx2 == (this->outLoopCnt_ - 1)));
+            curRows2 = isFirstTail2 ? this->procRowsFirstTail_ : curRows2;
         }
         pipe_->Reset();
-        uint64_t inputBlockLen = curRows * totalNandSLen;
+        uint64_t inputBlockLen = curRows2 * totalNandSLen;
         uint64_t inputBlockSize = inputBlockLen / sizeof(T);
         uint64_t scaleBlockSize = Ceil(inputBlockLen, sizeof(float));
-        uint64_t inputOffset = this->procRows_ * totalNandSLen * outerIdx * this->coreNum_;
-        if ((outerIdx > 0) && (outerIdx == (this->outLoopNum_ - 1)) && (this->procRowsFirstTail_ != 0) &&
+        uint64_t inputOffset = this->procRows_ * totalNandSLen * outerIdx2 * this->coreNum_;
+        if ((outerIdx2 > 0) && (outerIdx2 == (this->outLoopCnt_ - 1)) && (this->procRowsFirstTail_ != 0) &&
             (this->tailUsedCoreNum_ != 0)) {
-            inputOffset = this->procRows_ * totalNandSLen * (outerIdx - 1) * this->coreNum_;
+            inputOffset = this->procRows_ * totalNandSLen * (outerIdx2 - 1) * this->coreNum_;
             inputOffset += this->procRowsFirstTail_ * totalNandSLen * this->coreNum_;
         }
         uint64_t inputGmOffset = inputBlockLen * GetBlockIdx() + inputOffset;
-        InitLocalBuffer(curRows);
+        InitLocalBuffer(curRows2);
         InitOutputGM(inputGmOffset, tileN, inputBlockSize, scaleBlockSize);
         for (uint64_t i = 0; i < this->innerLoopNum_; i++) {
             LocalTensor<float> reduceOut = tempReduceOut_.Get<float>();
-            Duplicate(reduceOut, 0.0f, curRows * this->procRowTileCnt_ * TILELEN);
+            Duplicate(reduceOut, 0.0f, curRows2 * this->procRowTileCnt_ * TILELEN);
             for (uint64_t rank = 0; rank < rankNum; rank++) {
                 uint64_t rankOffset = rank * tileMPerRank * totalNandSLen;
                 InitInputGM(rankOffset, inputGmOffset, tileN, inputBlockSize, scaleBlockSize);
-                ProcessDequantReduce(i, curRows, tileN, totalNandSLen, reduceOut);
+                ProcessDequantReduce(i, curRows2, tileN, totalNandSLen, reduceOut);
             }
-            ProcessQuant(i, curRows, tileN, totalNandSLen, reduceOut);
+            ProcessQuant(i, curRows2, tileN, totalNandSLen, reduceOut);
             PipeBarrier<PIPE_ALL>();
         }
     }
 
-    __aicore__ inline void InitLocalBuffer(uint64_t curRows)
+    __aicore__ inline void InitLocalBuffer(uint64_t curRows2)
     {
-        uint64_t bufDataCnt = curRows * this->procRowTileCnt_ * TILELEN;
+        uint64_t bufDataCnt = curRows2 * this->procRowTileCnt_ * TILELEN;
         pipe_->InitBuffer(inTilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(T));
         pipe_->InitBuffer(outTilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(T));
         pipe_->InitBuffer(inScalesQ_, DOUBLE_BUFFER,
-                          Ceil(curRows * this->procRowTileCnt_ * sizeof(float), UB_DATABLOCK) * UB_DATABLOCK);
+                          Ceil(curRows2 * this->procRowTileCnt_ * sizeof(float), UB_DATABLOCK) * UB_DATABLOCK);
         pipe_->InitBuffer(outScalesQ_, DOUBLE_BUFFER,
-                          Ceil(curRows * this->procRowTileCnt_ * sizeof(float), UB_DATABLOCK) * UB_DATABLOCK);
+                          Ceil(curRows2 * this->procRowTileCnt_ * sizeof(float), UB_DATABLOCK) * UB_DATABLOCK);
         pipe_->InitBuffer(tempWorkTiles_, bufDataCnt * sizeof(float));
         pipe_->InitBuffer(tempReduceOut_, bufDataCnt * sizeof(float));
         pipe_->InitBuffer(tempScaleBuf_, bufDataCnt * sizeof(float));
-        pipe_->InitBuffer(tempMskBuf_, (Ceil(curRows * this->procRowTileCnt_ * sizeof(float), COMPARE_ALIGN_LEN) *
+        pipe_->InitBuffer(tempMskBuf_, (Ceil(curRows2 * this->procRowTileCnt_ * sizeof(float), COMPARE_ALIGN_LEN) *
                                         COMPARE_ALIGN_LEN / sizeof(float)) *
                                            sizeof(int8_t));
     }
@@ -181,7 +181,7 @@ public:
                                        scaleBlockSize);
     }
 
-    __aicore__ inline void ProcessDequantReduce(uint64_t innerIdx, uint64_t curRows, uint32_t tileN,
+    __aicore__ inline void ProcessDequantReduce(uint64_t innerIdx, uint64_t curRows2, uint32_t tileN,
                                                 uint32_t inputNandSLen, LocalTensor<float> reduceOut)
     {
         uint32_t procRowDataCnt = static_cast<uint32_t>(this->procRowTileCnt_ * TILELEN);
@@ -190,15 +190,15 @@ public:
         uint32_t curRowDataCnt = static_cast<uint32_t>(nHasTail ? (tileN - innerIdx * procRowDataCnt) : procRowDataCnt);
         uint32_t curRowDataLen = curRowDataCnt * sizeof(T);
         uint32_t curRowScaleCnt = static_cast<uint32_t>(Ceil(curRowDataCnt, TILELEN));
-        uint32_t padCalCnt = static_cast<uint32_t>(curRows) * curRowScaleCnt * TILELEN;
-        uint32_t curScaleCnt = static_cast<uint32_t>(curRows) * curRowScaleCnt;
-        int64_t gToLNCopyStride = (curRows == 1) ? 0 : (static_cast<int64_t>(inputNandSLen) - curRowDataLen);
+        uint32_t padCalCnt = static_cast<uint32_t>(curRows2) * curRowScaleCnt * TILELEN;
+        uint32_t curScaleCnt = static_cast<uint32_t>(curRows2) * curRowScaleCnt;
+        int64_t gToLNCopyStride = (curRows2 == 1) ? 0 : (static_cast<int64_t>(inputNandSLen) - curRowDataLen);
         int64_t gToLStrideBlkCnt = ((curRowScaleCnt * TILELEN - curRowDataCnt) * sizeof(T)) / UB_DATABLOCK;
         int64_t gToLSCopyStride =
-            (curRows == 1) ? 0 : (static_cast<int64_t>(inputNandSLen) - curRowScaleCnt * sizeof(float));
-        DataCopyExtParams gToLNCopyParams = {static_cast<uint16_t>(curRows), curRowDataLen, gToLNCopyStride,
+            (curRows2 == 1) ? 0 : (static_cast<int64_t>(inputNandSLen) - curRowScaleCnt * sizeof(float));
+        DataCopyExtParams gToLNCopyParams = {static_cast<uint16_t>(curRows2), curRowDataLen, gToLNCopyStride,
                                              gToLStrideBlkCnt, 0};
-        DataCopyExtParams gToLSCopyParams = {static_cast<uint16_t>(curRows),
+        DataCopyExtParams gToLSCopyParams = {static_cast<uint16_t>(curRows2),
                                              static_cast<uint32_t>(curRowScaleCnt * sizeof(float)), gToLSCopyStride, 0,
                                              0};
         DataCopyPadExtParams<T> padParamsFp8 = {false, 0, 0, *(reinterpret_cast<T *>(uint8_t(0)))};
@@ -234,7 +234,7 @@ public:
         Mul(dequantOut, dequantOut, tempScale, padCalCnt);
     }
 
-    __aicore__ inline void ProcessQuant(uint64_t innerIdx, uint64_t curRows, uint32_t tileN, uint32_t outputNandSLen,
+    __aicore__ inline void ProcessQuant(uint64_t innerIdx, uint64_t curRows2, uint32_t tileN, uint32_t outputNandSLen,
                                         LocalTensor<float> reduceOut)
     {
         uint32_t procRowDataCnt = static_cast<uint32_t>(this->procRowTileCnt_ * TILELEN);
@@ -243,16 +243,16 @@ public:
         uint32_t curRowDataCnt = static_cast<uint32_t>(nHasTail ? (tileN - innerIdx * procRowDataCnt) : procRowDataCnt);
         uint32_t curRowDataLen = curRowDataCnt * sizeof(float);
         uint32_t curRowScaleCnt = static_cast<uint32_t>(Ceil(curRowDataCnt, TILELEN));
-        uint32_t padCalCnt = static_cast<uint32_t>(curRows) * curRowScaleCnt * TILELEN;
-        uint32_t curScaleCnt = static_cast<uint32_t>(curRows) * curRowScaleCnt;
-        int64_t lToGNCopyStride = (curRows == 1) ? 0 : static_cast<int64_t>(outputNandSLen) - curRowDataCnt * sizeof(T);
+        uint32_t padCalCnt = static_cast<uint32_t>(curRows2) * curRowScaleCnt * TILELEN;
+        uint32_t curScaleCnt = static_cast<uint32_t>(curRows2) * curRowScaleCnt;
+        int64_t lToGNCopyStride = (curRows2 == 1) ? 0 : static_cast<int64_t>(outputNandSLen) - curRowDataCnt * sizeof(T);
         int64_t lToGStrideBlkCnt = (curRowScaleCnt * TILELEN * sizeof(T) - curRowDataCnt * sizeof(T)) / UB_DATABLOCK;
         int64_t lToGSCopyStride =
-            (curRows == 1) ? 0 : (static_cast<int64_t>(outputNandSLen) - curRowScaleCnt * sizeof(float));
-        DataCopyExtParams lToGNCopyParams = {static_cast<uint16_t>(curRows),
+            (curRows2 == 1) ? 0 : (static_cast<int64_t>(outputNandSLen) - curRowScaleCnt * sizeof(float));
+        DataCopyExtParams lToGNCopyParams = {static_cast<uint16_t>(curRows2),
                                              static_cast<uint32_t>(curRowDataCnt * sizeof(T)), lToGStrideBlkCnt,
                                              lToGNCopyStride, 0};
-        DataCopyExtParams lToGSCopyParams = {static_cast<uint16_t>(curRows),
+        DataCopyExtParams lToGSCopyParams = {static_cast<uint16_t>(curRows2),
                                              static_cast<uint32_t>(curRowScaleCnt * sizeof(float)), 0, lToGSCopyStride,
                                              0};
         LocalTensor<T> curOutTiles = outTilesQ_.AllocTensor<T>();

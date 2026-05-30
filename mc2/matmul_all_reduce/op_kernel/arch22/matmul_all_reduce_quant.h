@@ -36,10 +36,10 @@ template <typename xType, typename wType, typename yType, class mmType, Mc2CoreT
 class MatmulAllReduceQuantBF16 : public MatmulAllReduceBase<xType, yType, coreType> {
 public:
     __aicore__ inline MatmulAllReduceQuantBF16(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
-                                               MC2TilingHeader *tilingData, TPipe *tPipe)
-        : MatmulAllReduceBase<xType, yType, coreType>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+                                               MC2TilingHeader *tilDat, TPipe *tPipe)
+        : MatmulAllReduceBase<xType, yType, coreType>(addrs, quantAddrs, arnAddrs, tilDat, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingData *)tilingData;
+        mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingData *)tilDat;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
@@ -92,21 +92,21 @@ private:
 };
 
 #define REG_MM_OBJ(opTile, opTail)                                                                                     \
-    REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, &(tilingData.tilematmulTiling.matmulTiling), opTail.mm, \
-                      &(tilingData.tailmatmulTiling.matmulTiling))
+    REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, &(tilDat.tilematmulTiling.matmulTiling), opTail.mm, \
+                      &(tilDat.tailmatmulTiling.matmulTiling))
 
 #define REG_NO_MM_OBJ(opTile, opTail)
 
 #define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, regObjCb, pertokenFlag, ...)                             \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);                  \
+        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilDat, tilingGM);                  \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, dequantGM, pertokenGM};                                           \
         using opType = templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, __VA_ARGS__>;                           \
         opType opTile, opTail;                                                                                         \
         regObjCb(opTile, opTail);                                                                                      \
         MatmulAllReduceQuantBF16<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, coreType, pertokenFlag> op(                      \
-            &addrs, &quantAddrs, nullptr, (MC2TilingHeader *)&tilingData, &tPipe);                                     \
+            &addrs, &quantAddrs, nullptr, (MC2TilingHeader *)&tilDat, &tPipe);                                     \
         op.Init();                                                                                                     \
         op.Process(opTile, opTail);                                                                                    \
     } while (0)
