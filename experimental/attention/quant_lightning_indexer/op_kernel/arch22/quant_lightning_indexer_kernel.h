@@ -49,11 +49,11 @@ struct TempLoopInfo {
     uint32_t actS2SizeOrig = 0ULL;
     bool curActSeqLenIsZero = false;
     bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
+    bool isNeedLD = false;     // 该基本块是否需要LD
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
     uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
     uint32_t validS2Len = 0U;
-    bool isNeedLD = false;     // 该基本块是否需要LD
 };
 
 template <typename QLIT>
@@ -346,8 +346,9 @@ __aicore__ void inline QLIPreload<QLIT>::SplitCore()
         }
         // 搬出Topk的初始偏移地址
         ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount +
-                                     ldInfo.n2Idx * constInfo.sparseCount +
-                                     ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;
+                                     static_cast<uint64_t>(ldInfo.n2Idx) * constInfo.sparseCount +
+                                     static_cast<uint64_t>(ldInfo.mIdx) * constInfo.s1BaseSize *
+                                     constInfo.kHeadNum * constInfo.sparseCount;
         }
 }
 
@@ -371,9 +372,11 @@ __aicore__ inline void QLIPreload<QLIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
         } else if (constInfo.outputLayout == LI_LAYOUT::BSND) {
             for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
                 // B,S1,N2,K
-                uint64_t indiceOutOffset = bIdx * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount +
-                                           s1Idx * constInfo.kHeadNum * constInfo.sparseCount +  // B轴、S1轴偏移
-                                           n2Idx * constInfo.sparseCount;                        // N2轴偏移
+                uint64_t indiceOutOffset = static_cast<uint64_t>(bIdx) * constInfo.qSeqSize *
+                                           constInfo.kHeadNum * constInfo.sparseCount +
+                                           static_cast<uint64_t>(s1Idx) * constInfo.kHeadNum *
+                                           constInfo.sparseCount +                             // B轴、S1轴偏移
+                                           static_cast<uint64_t>(n2Idx) * constInfo.sparseCount; // N2轴偏移
                 vectorService.CleanInvalidOutput(indiceOutOffset);
             }
         }
