@@ -1,4 +1,4 @@
-# aclnnQuantLightingIndexerV2Metadata
+# aclnnQuantLightningIndexerV2Metadata
 
 ## 产品支持情况
 
@@ -21,7 +21,7 @@
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
 ## 函数原型
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnQuantLightingIndexerV2Metadata"执行计算
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize"获取workspace大小，在调用"aclnnQuantLightningIndexerV2Metadata"执行计算
 
 ``` cpp
 aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
@@ -55,7 +55,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     aclrtStream        stream)
 ```
 
-## aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize
+## aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
@@ -153,7 +153,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>headDim</td>
       <td>输入</td>
-      <td>表示token数。</td>
+      <td>注意力头的维度。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>quantMode</td>
       <td>输入</td>
-      <td>表示query的量化模式</td>
+      <td>表示量化模式</td>
       <td>1: qk: fp8(e4m3) per-token-head; scale: fp32</br>2: qk: int8 per-token-head; scale: fp16 w: fp16</br>3: qk: mxfp8</br>4: qk: hif8 per-tensor; scale: fp32</br>5: qk: mxfp4</br> 6: qk: hif4</td>
       <td>INT64</td>
       <td>-</td>
@@ -194,7 +194,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>maxSeqlenQ</td>
       <td>输入</td>
       <td>表示Query的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -204,7 +204,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>maxSeqlenK</td>
       <td>输入</td>
       <td>表示Key的最长Sequence Length。</td>
-      <td>支持非负数</br>建议值为0</td>
+      <td>取值范围≥-1，-1表示任意可能长度</br>建议值为-1</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## aclnnQuantLightingIndexerV2Metadata
+## aclnnQuantLightningIndexerV2Metadata
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
@@ -311,7 +311,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
         <tr>
             <td>workspaceSize</td>
             <td>输入</td>
-            <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightingIndexerV2MetadataGetWorkspaceSize获取</td>
+            <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
             <td>executor</td>
@@ -331,7 +331,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnQuantLightingIndexerV2Metadata默认确定性实现
+  - aclnnQuantLightningIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息
