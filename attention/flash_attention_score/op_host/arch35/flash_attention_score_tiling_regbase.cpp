@@ -269,22 +269,22 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(gSize == 0,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                    std::to_string(gSize).c_str(),
-                   "The group size derived from input query and key shapes should be greater than 0"),
+                   "The value of gSize must be greater than 0"),
                return false);
     OP_CHECK_IF(n2Size == 0,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                    std::to_string(n2Size).c_str(),
-                   "The n2 size derived from input query and key shapes should be greater than 0"),
+                   "The value of n2Size must be greater than 0"),
                return false);
     OP_CHECK_IF(dSize <= 0L,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                    std::to_string(dSize).c_str(),
-                   "The head dimension size of input query and key should be greater than 0"),
+                   "The value of dSize must be greater than 0"),
                return false);
     OP_CHECK_IF(dSizeV <= 0L,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
                    std::to_string(dSizeV).c_str(),
-                   "The head dimension size of input value should be greater than 0"),
+                   "The value of dSizeV must be greater than 0"),
                return false);
     OP_CHECK_IF(dSizeV > dSize,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
@@ -294,7 +294,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_CHECK_IF(n1Size % n2Size != 0,
                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "head_num",
                    (std::to_string(n1Size) + " and " + std::to_string(n2Size)).c_str(),
-                   "The value of attr head_num should be a multiple of n2 size derived from input query and key shapes"),
+                   "The value of attr head_num must be a multiple of n2 size derived from input query and key shapes"),
                return false);
     return true;
 }
@@ -355,7 +355,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeTndLayout(const gert::Shape &query
         return false;
     }
     OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "VarLen scene, q is not equal kv."), return false);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "The Value of q must be equal to kv with VarLen scene."), return false);
     bSize = actualSeqQLen;
     accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
     accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
@@ -472,7 +472,7 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
         OP_CHECK_IF(h1 % n1Size != 0,
                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query",
                        std::to_string(h1).c_str(),
-                       "The H dimension size of input query should be a multiple of attr head_num"),
+                       "The value of H dimension size of input query must be a multiple of the value of attr head_num"),
                    return false);
         OP_CHECK_IF(hRope % n1Size != 0,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "hRope(Hidden_Size of QRope)", std::to_string(hRope).c_str(),
@@ -1069,12 +1069,12 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     OP_CHECK_IF(dSize > HEAD_DIM_MAX_VALUE,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                    std::to_string(dSize).c_str(),
-                   "The head dimension size of input query and key should be in range (0, 768]"),
+                   "The value of dSize must be in range (0, 768]"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(dSizeV > HEAD_DIM_MAX_VALUE,
                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
                    std::to_string(dSizeV).c_str(),
-                   "The head dimension size of input value should be in range (0, 768]"),
+                   "The value of dSizeV must be in range (0, 768]"),
                return ge::GRAPH_FAILED);
     CalcDBasicBlock();
     CalcDVBasicBlock();
@@ -1831,8 +1831,8 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::SetQKVStartIdx() {
         }
     }
     // 当kvStartIdx - qStartIdx超出范围后，由于编译器不支持大数值类型转换，kernel侧int_64转float类型时可能发生截断。
-    OP_CHECK_IF(kvStartIdx - qStartIdx > INT32_MAX || kvStartIdx - qStartIdx < INT32_MIN, OPS_REPORT_VECTOR_INNER_ERR(opName,
-        "kvStartIdx - qStartIdx should >= %d and <= %d, but qStartIdx = %ld, kvStartIdx = %ld.", INT32_MIN, INT32_MAX, qStartIdx, kvStartIdx),
+    OP_CHECK_IF(kvStartIdx - qStartIdx > INT32_MAX || kvStartIdx - qStartIdx < INT32_MIN, OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName,
+        "The difference between kvStartIdx and qStartIdx must be within the range [%d %d].", INT32_MIN, INT32_MAX),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
