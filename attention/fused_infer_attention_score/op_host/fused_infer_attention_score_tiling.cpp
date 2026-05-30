@@ -1497,6 +1497,24 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.isTilingSink = true;
     }
     faInfo.workspaces = context->GetWorkspaceSizes(1);
+
+    auto keyBlockStrides = context->GetDynamicInputStride(KEY_INDEX, 0);
+    if (keyBlockStrides != nullptr && keyBlockStrides->GetDimNum() > 0) {
+        faInfo.keyBnStride = keyBlockStrides->GetStride(0);
+        printf("======= keybkick stride is %d\n", faInfo.keyBnStride);
+        if (keyBlockStrides->GetDimNum() > 1) {
+            faInfo.keyN2Stride = keyBlockStrides->GetStride(1);
+        }
+    }
+    auto valueBlockStrides = context->GetDynamicInputStride(VALUE_INDEX, 0);
+    if (valueBlockStrides != nullptr && valueBlockStrides->GetDimNum() > 0) {
+        faInfo.valueBnStride = valueBlockStrides->GetStride(0);
+        printf("======= valuebkick stride is %d\n", faInfo.valueBnStride);
+        if (valueBlockStrides->GetDimNum() > 1) {
+            faInfo.valueN2Stride = valueBlockStrides->GetStride(1);
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
