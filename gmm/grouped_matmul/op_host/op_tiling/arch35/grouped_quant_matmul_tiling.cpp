@@ -198,7 +198,7 @@ is INT8 or INT32, actual is %s.",
             return false;
         }
     } else {
-        OP_LOGE_FOR_INVALID_VALUE("GroupedMatmul", "bias", "not nullptr", "nullptr");
+        OP_LOGE_FOR_INVALID_VALUE("GroupedMatmul", "bias", "nonnull", "nullptr");
         return false;
     }
     return true;
@@ -434,7 +434,7 @@ bool GroupedQmmTiling::CheckQuantParamsForMxQuantMode(const gert::StorageShape *
 {
     // 多数参数在CheckQuantParamsForMxQuantMode函数调用前已有非空校验
     OP_CHECK_IF(xScaleStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE("GroupedMatmul", "perTokenScale", "nullptr", "not nullptr"),
+                OP_LOGE_FOR_INVALID_VALUE("GroupedMatmul", "perTokenScale", "nullptr", "nonnull"),
                 return false);
     auto &xScaleShape = xScaleStorageShape->GetStorageShape();
     if (inputParams_.groupType == SPLIT_M) {
