@@ -25,11 +25,11 @@
 
 | 参数名           |输入/输出/属性|    描述    | 数据类型    |数据格式|
 |-------------|------------|------|-----|-----|
-|q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为[B, S1, N1, D]，当layout_q为TND时shape为[T1, N1, D]。|BFLOAT16|ND|
-|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为[block_num1, block_size1, KV_N, D]|FLOAT8_E4M3FN|ND|
-|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为[block_num2, block_size2, KV_N, D]|FLOAT8_E4M3FN|ND|
-|ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K1]，layout_q为TND时shape为[T1, KV_N, K1]|INT32|ND|
-|cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为[B, Q_S, KV_N, K2]，layout_q为TND时shape为[T1, KV_N, K2]|INT32|ND|
+|q|输入|公式中的$Q$，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_q, headdim_q)，layout_q为TND时shape为(total_q, nheads_q, headdim_q)。|BFLOAT16|ND|
+|ori_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为原始不经压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_orikv, block_size_orikv, nheads_kv, headdim_kv)|FLOAT8_E4M3FN|ND|
+|cmp_kv|可选输入|公式中的$\tilde{K}$和$\tilde{V}$的一部分，为经过压缩的KV，支持非连续，layout_kv为PA_BBND时shape为(block_num_cmpkv, block_size_cmpkv, nheads_kv, headdim_kv)|FLOAT8_E4M3FN|ND|
+|ori_sparse_indices|可选输入|预留参数，当前不生效，代表离散取oriKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_orikv)，layout_q为TND时shape为(total_q, nheads_kv, topk_orikv)|INT32|ND|
+|cmp_sparse_indices|可选输入|代表离散取cmpKvCache的索引，不支持非连续，layout_q为BSND时shape为(batch_size, seqlen_q, nheads_kv, topk_cmpkv)，layout_q为TND时shape为(total_q, nheads_kv, topk_cmpkv)|INT32|ND|
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cmp_block_table|可选输入|PageAttention中cmpKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cu_seqlens_q|可选输入|表示当前Batch及前序Batch中q的有效token数的累加和，维度为B+1，仅layout_q为TND场景需传入|INT32|ND|
@@ -37,7 +37,7 @@
 |cu_seqlens_cmp_kv|可选输入|表示当前Batch及前序Batch中cmp_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
 |seqused_q|可选输入|表示不同Batch中q的真实使用长度，维度为B|INT32|ND|
 |seqused_ori_kv|可选输入|表示不同Batch中ori_kv的真实使用长度，维度为B|INT32|ND|
-|seqused_cmp_kv|可选输入|表示不同Batch中cmp_kv的真实使用长度，维度为B，cmp长度改为参数传入而非根据cmp_ratio计算|INT32|ND|
+|seqused_cmp_kv|可选输入|表示不同Batch中cmp_kv的真实使用长度，维度为B|INT32|ND|
 |cmp_residual_kv|可选输入|cmp_mask_mode=3且cmp_ratio≠1时必须传入，表示每个Batch的余数，用于精确计算mask边界|INT32|ND|
 |ori_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
 |cmp_topk_length|可选输入|预留参数，当前不生效|INT32|ND|
@@ -47,22 +47,23 @@
 |rope_head_dim|可选属性|默认值为None，当前仅支持64|INT32|-|
 |softmax_scale|可选属性|默认值为None，代表缩放系数，作为q与ori_kv和cmp_kv矩阵乘后Muls的scalar值|FLOAT32|-|
 |cmp_ratio|可选属性|默认值为None，表示对ori_kv的压缩率，kv压缩场景支持1~128，非kv压缩场景仅支持传1|INT32|-|
-|ori_mask_mode|可选属性|默认值为0，表示q和ori_kv计算的mask模式，当前仅支持4，代表band模式的mask|INT32|-|
-|cmp_mask_mode|可选属性|默认值为0，表示q和cmp_kv计算的mask模式，当前仅支持3，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景|INT32|-|
+|ori_mask_mode|可选属性|默认值为0，表示q和ori_kv计算的mask模式，当前仅支持4，代表band模式的mask，需与ori_win_left和ori_win_right配合使用|INT32|-|
+|cmp_mask_mode|可选属性|默认值为0，表示q和cmp_kv计算的mask模式，当前仅支持3，代表rightDownCausal模式的mask，对应以右下顶点为划分的下三角场景|INT32|-|
 |ori_win_left|可选属性|默认值为-1，表示q和ori_kv计算中q对过去token计算的数量，当前仅支持127|INT32|-|
 |ori_win_right|可选属性|默认值为-1，表示q和ori_kv计算中q对未来token计算的数量，当前仅支持0|INT32|-|
 |layout_q|可选属性|默认值为BSND，用于标识输入q的数据排布格式，支持BSND和TND|STRING|-|
 |layout_kv|可选属性|默认值为BSND，用于标识输入ori_kv和cmp_kv的数据排布格式，支持BSND、TND、PA_BBND|STRING|-|
 |topk_value_mode|可选属性|默认值为1，当前仅支持1|INT32|-|
 |return_softmax_lse|可选属性|默认值为False，预留参数，当前暂不支持，表示是否返回softmax_lse。True表示返回，False表示不返回|BOOL|-|
-|attention_out|输出|当layout_q为BSND时shape为[B, S1, N1, D]，当layout_q为TND时shape为[T1, N1, D]|BFLOAT16|ND|
-|softmax_lse|可选输出|输出q乘k的结果先取max得到softmax_max，q乘k的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。当layout_q为BSND时shape为[B, N2, S1, N1/N2]，当layout_q为TND时shape为[N2, T1, N1/N2]。目前softmax_lse输出为无效值|FLOAT32|ND|
+|attention_out|输出|当layout_q为BSND时shape为(batch_size, seqlen_q, nheads_q, headdim_q)，当layout_q为TND时shape为(total_q, nheads_q, headdim_q)|BFLOAT16|ND|
+|softmax_lse|可选输出|输出q乘k的结果先取max得到softmax_max，q乘k的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。当layout_q为BSND时shape为(batch_size, nheads_kv, seqlen_q, nheads_q/nheads_kv)，当layout_q为TND时shape为(nheads_kv, total_q, nheads_q/nheads_kv)。目前softmax_lse输出为无效值|FLOAT32|ND|
 
 ## 约束说明
 -   该接口支持aclgraph模式。
--   该接口当前支持三种计算场景：场景一，仅传入ori\_kv时为Sliding Window Attention计算；场景二，传入ori\_kv及cmp\_kv时为Sliding Window Attention + Compressed Attention计算；场景三，传入ori\_kv、cmp\_kv及cmp\_sparse\_indices时为Sliding Window Attention + Sparse Compressed Attention计算。
--   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值仅支持640，按kv\_rope、kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；kv\_nope数据类型为`float8_e4m3fn`，nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
--   参数ori\_kv、cmp\_kv的数据类型必须保持一致。
+-   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值仅支持640，支持两种组织形式：
+    -   **组织形式一（quant\_mode=1）**：按kv\_rope、kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；kv\_nope数据类型为`float8_e4m3fn`，nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
+    -   **组织形式二（quant\_mode=2）**：按kv\_rope、hif8\_kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；hif8\_kv\_nope数据类型为`hybrid float8`（HiF8），nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
+-   参数ori\_kv、cmp\_kv的数据类型必须保持一致，且不可同时为空。
 -   参数q中的N1当前支持64/128，ori\_kv、cmp\_kv中的KV\_N仅支持1。
 -   参数ori\_kv和cmp\_kv中的block\_size1和block\_size2需为16的倍数，最大支持1024；block\_num1及block_num2为PageAttention时block总数。
 -   参数ori\_sparse\_indices与cmp\_sparse\_indices中的K1与K2为一次离散选取的block数，需要保证每行有效值均在前半部分，无效值均在后半部分，当前不支持传入ori\_sparse\_indices，cmp\_sparse\_indices中K2仅支持512/1024。
@@ -78,5 +79,9 @@
 -   Q\_S和S1表示q shape中的S，S2表示ori\_kv shape中的S，Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori\_kv\_heads和num\_cmp\_kv\_heads；T1表示q shape中的T。
 
 ## 调用说明
+-   该接口当前支持三种计算场景：
+    -   **场景一**：仅传入ori\_kv时为Sliding Window Attention计算。
+    -   **场景二**：传入ori\_kv及cmp\_kv时为Sliding Window Attention + Compressed Attention计算。
+    -   **场景三**：传入ori\_kv、cmp\_kv及cmp\_sparse\_indices时为Sliding Window Attention + Sparse Compressed Attention计算。
 -   调用方式：使用npu_ops_tranformer包中的npu_mixed_quant_sparse_flash_mla接口进行调用，
              详见torch_extension/npu_ops_transformer/ops/mixed_quant_sparse_flash_mla.py
