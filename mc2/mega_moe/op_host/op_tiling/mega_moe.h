@@ -58,7 +58,7 @@ struct MegaMoeConfig {
 };
 using namespace Ops::Transformer::OpTiling;
 
-ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext* context, MegaMoeConfig& config);
+ge::graphStatus MegaMoeA5TilingFuncImplPublic(gert::TilingContext* context, MegaMoeConfig& config);
 
 }
 
