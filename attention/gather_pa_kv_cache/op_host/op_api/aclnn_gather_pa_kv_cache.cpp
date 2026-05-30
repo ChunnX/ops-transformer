@@ -494,6 +494,7 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
                             strlen(cacheMode) == 0 ||
                             strcmp(cacheMode, "Norm") == 0);
     if (isArch35 && isCacheModeNorm) {
+        OP_LOGI(ACLNN_SUCCESS, ">>> aclnnGatherPaKvCache A5 LAUNCH");
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
