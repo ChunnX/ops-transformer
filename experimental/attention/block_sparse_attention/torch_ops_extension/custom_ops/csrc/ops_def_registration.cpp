@@ -1,0 +1,33 @@
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#include <torch/extension.h>
+#include <torch/library.h>
+
+// 在custom命名空间里注册block_sparse_attention算子，每次新增自定义aten ir都需先增加定义
+// step1, 为新增自定义算子添加定义
+//   - schema 入参顺序：必选张量 + 必选标量在前，'*' 之后为可选张量与带默认值的属性
+//   - 张量 dtype / 属性默认值对齐 op_host/block_sparse_attention_def.cpp
+TORCH_LIBRARY(custom, m) {
+    m.def("npu_block_sparse_attention(Tensor query, Tensor key, Tensor value, "
+          "Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor p_scale, "
+          "Tensor sparse_indices, Tensor sparse_seq_len, Tensor atten_mask, "
+          "float softmax_scale, int q_block_size, int kv_block_size, *, "
+          "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
+          "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+          "Tensor? block_table=None, Tensor? metadata=None, "
+          "int max_seqlen_q=0, int max_seqlen_kv=0, "
+          "str kv_layout='PA_BSND', str sparse_indices_layout='BNQQbKb', "
+          "int quant_mode=0, int mask_mode=0, bool return_softmax_lse=False) -> (Tensor, Tensor)");
+}
+
+// 通过pybind将c++接口和python接口绑定，这里绑定的是接口不是算子
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+}
