@@ -30,7 +30,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
     GlobalTensor<int32_t>& cuSeqlensCmpKvGm, GlobalTensor<int32_t>& actualSeqQlenGm,
     GlobalTensor<int32_t>& actualSeqOriKvlenGm, GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
-    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensQ, bool hasCuSeqlensOriKv,
+    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
     int32_t actualS1Size = 0;
@@ -93,12 +93,12 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
     GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
     GlobalTensor<int32_t>& cuSeqlensCmpKvGm, GlobalTensor<int32_t>& actualSeqQlenGm,
     GlobalTensor<int32_t>& actualSeqOriKvlenGm, GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
-    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensQ, bool hasCuSeqlensOriKv,
+    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm,
         cuSeqlensCmpKvGm, actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm,
-        cmpResidualKvGm, hasCuSeqlensQ, hasCuSeqlensOriKv, hasCuSeqlensCmpKv,
+        cmpResidualKvGm, hasCuSeqlensOriKv, hasCuSeqlensCmpKv,
         hasActualSeqQlen, hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
 }
 
@@ -176,7 +176,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t sIdx, GlobalTensor<int32_t>& cuSeqlensQGm, bool hasCuSeqlensQ)
+    int32_t sIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
@@ -200,7 +200,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, GlobalTensor<int32_t>& cuSeqlensQGm, bool hasCuSeqlensQ)
+    uint32_t sOuterLoopIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if (runParam.nextTokensPerBatchOri < 0) {
         if (runParam.s1oIdx < (runParam.nextTokensPerBatchOri * (-1)) /
@@ -211,12 +211,12 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
 
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQGm, hasCuSeqlensQ);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQGm);
     return false;
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, GlobalTensor<int32_t>& cuSeqlensQGm, bool hasCuSeqlensQ)
+__aicore__ inline bool ComputeLastBN(RunParamStr& runParam, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         if (runParam.boIdx > 0 &&
@@ -283,11 +283,11 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
         runInfo.cmpResidual = runParam.cmpResidual;
+        runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
     }
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
     runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
 }
 
