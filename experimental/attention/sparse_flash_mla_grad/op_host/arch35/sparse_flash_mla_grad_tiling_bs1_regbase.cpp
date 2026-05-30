@@ -156,8 +156,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    // int64_t selectBlockCount = std::max(static_cast<int64_t>(std::max(tmpData.ori_selected_block_count, tmpData.cmp_selected_block_count)), static_cast<int64_t>(128));
     int64_t selectBlockCount = 4096;
+    int64_t softmaxL1SelectBlockCount = std::max(static_cast<int64_t>(tmpData.ori_selected_block_count + tmpData.cmp_selected_block_count), static_cast<int64_t>(128));
 
     int64_t mm4WorkspaceLen = selectBlockCount * tmpData.d * B32;
     int64_t mm5WorkspaceLen = selectBlockCount * tmpData.d1 * B32;
@@ -165,7 +165,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t softmaxL1WorkspaceLen = selectBlockCount * tmpData.g * B32 * coreNum;
+    int64_t softmaxL1WorkspaceLen = softmaxL1SelectBlockCount * tmpData.g * B32 * coreNum;
 
     int64_t dqWorkspaceLen = tmpData.dqWorkspaceLen;
     int64_t doriKVWorkspaceLen = tmpData.doriKVWorkspaceLen;
