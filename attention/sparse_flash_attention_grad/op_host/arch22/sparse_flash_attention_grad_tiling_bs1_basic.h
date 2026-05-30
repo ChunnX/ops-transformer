@@ -47,16 +47,6 @@ struct TempParams {
     bool deterministic = false;
 };
 
-struct AiCoreParams {
-    uint64_t ubSize;
-    uint64_t blockDim;
-    uint64_t aicNum;
-    uint64_t l1Size;
-    uint64_t l0aSize;
-    uint64_t l0bSize;
-    uint64_t l0cSize;
-};
-
 class SparseFlashAttentionGradBasicTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit SparseFlashAttentionGradBasicTiling(gert::TilingContext *context) : TilingBaseClass(context) {};
