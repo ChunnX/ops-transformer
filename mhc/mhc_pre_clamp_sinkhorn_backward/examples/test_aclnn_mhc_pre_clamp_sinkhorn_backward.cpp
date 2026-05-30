@@ -349,11 +349,11 @@ int main()
     }
 
     aclnn_ret = aclnnMhcPreClampSinkhornBackward(workspace_addr, workspace_size, executor, stream);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackward failed, error: %d\n", aclnn_ret); return -1);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornBackward failed, error: %d\n", aclnn_ret); return -1);
 
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed\n"); return -1);
 
-    LOG_PRINT("MhcPreSinkhornBackward compute success!\n");
+    LOG_PRINT("MhcPreClampSinkhornBackward compute success!\n");
     LOG_PRINT("Output tensor grad_x (first 10 elements):\n");
     PrintTensorDataBfloat16(grad_x_shape, tensors.grad_x_addr);
 

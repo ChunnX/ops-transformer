@@ -303,7 +303,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
+ge::graphStatus TilingMhcPreClampSinkhornBackward(gert::TilingContext *context)
 {
     if (context == nullptr) {
         OP_LOGE(context, "context is nullptr");
@@ -382,7 +382,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    MhcPreSinkhornBackwardTilingData tilingData;
+    MhcPreClampSinkhornBackwardTilingData tilingData;
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
@@ -457,12 +457,12 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForMhcPreClampSinkhornBackward(gert::TilingParseContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(MhcPreClampSinkhornBackward)
-    .Tiling(TilingMhcPreSinkhornBackward)
-    .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
+    .Tiling(TilingMhcPreClampSinkhornBackward)
+    .TilingParse<MhcPreClampSinkhornBackwardCompileInfo>(TilingParseForMhcPreClampSinkhornBackward); // 向框架注册入口函数
 } // namespace optiling

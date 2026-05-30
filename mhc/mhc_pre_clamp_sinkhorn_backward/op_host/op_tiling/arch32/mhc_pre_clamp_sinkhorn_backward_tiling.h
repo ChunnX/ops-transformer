@@ -20,7 +20,7 @@
 #include "err/ops_err.h"
 
 namespace optiling {
-BEGIN_TILING_DATA_DEF(MhcPreSinkhornBackwardTilingData)
+BEGIN_TILING_DATA_DEF(MhcPreClampSinkhornBackwardTilingData)
 TILING_DATA_FIELD_DEF(int64_t, batchSize)
 TILING_DATA_FIELD_DEF(int64_t, seqLength)
 TILING_DATA_FIELD_DEF(int64_t, c)
@@ -39,9 +39,9 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm2TilingData)
 END_TILING_DATA_DEF
 
-REGISTER_TILING_DATA_CLASS(MhcPreSinkhornBackward, MhcPreSinkhornBackwardTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPreClampSinkhornBackward, MhcPreClampSinkhornBackwardTilingData)
 
-struct MhcPreSinkhornBackwardCompileInfo {
+struct MhcPreClampSinkhornBackwardCompileInfo {
 };
 } // namespace optiling
 

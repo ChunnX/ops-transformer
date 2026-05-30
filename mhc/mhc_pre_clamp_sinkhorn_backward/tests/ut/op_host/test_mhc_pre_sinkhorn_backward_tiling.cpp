@@ -55,7 +55,7 @@ TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
     int64_t phiDim0 = hcMix;
     int64_t phiDim1 = N * C;
 
-    optiling::MhcPreSinkhornBackwardCompileInfo compileInfo = {};
+    optiling::MhcPreClampSinkhornBackwardCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPreClampSinkhornBackward",
@@ -108,7 +108,7 @@ TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
     int64_t phiDim0 = hcMix;
     int64_t phiDim1 = N * C;
 
-    optiling::MhcPreSinkhornBackwardCompileInfo compileInfo = {};
+    optiling::MhcPreClampSinkhornBackwardCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
         "MhcPreClampSinkhornBackward",
@@ -161,10 +161,10 @@ TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B4_S64_N4_C512)
     int64_t phiDim0 = hcMix;
     int64_t phiDim1 = N * C;
 
-    optiling::MhcPreSinkhornBackwardCompileInfo compileInfo = {};
+    optiling::MhcPreClampSinkhornBackwardCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
-        "MhcPreSinkhornBackward",
+        "MhcPreClampSinkhornBackward",
         {
             {{{B, S, C}, {B, S, C}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
