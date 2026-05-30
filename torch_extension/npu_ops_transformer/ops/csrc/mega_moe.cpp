@@ -93,7 +93,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t h = x_size[1];
     int64_t k = topk_ids_size[1];
 
-    if ((dispatch_quant_out_dtype.has_value()) &&	 
+    if ((dispatch_quant_out_dtype.has_value()) &&
         (dispatch_quant_out_dtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
         TORCH_CHECK(h % 2 == 0,
                     "The last dim input shape must be divisible by 2 if "
@@ -111,11 +111,11 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string activation_str = std::string(activation);
     char *activation_ptr = const_cast<char *>(activation_str.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()	 
+    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()
          ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
          : 28;
 
-    int64_t activation_out_result_dtype = activation_out_dtype.has_value()	 
+    int64_t activation_out_result_dtype = activation_out_dtype.has_value()
          ? static_cast<int64_t>(GetAclDataType(activation_out_dtype.value()))
          : 28;
 

@@ -9,7 +9,7 @@
  */
 
 #include <algorithm>
- #include <vector>
+#include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList,
-                            aclTensorList *&outList, aclOpExecutor *executor)
+                              aclTensorList *&outList, aclOpExecutor *executor)
 {
     if (ioList == nullptr) {
         std::vector<aclTensor*> emptyTensors;
