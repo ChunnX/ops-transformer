@@ -860,7 +860,7 @@ static aclnnStatus Postprocess(const aclTensor *&l0AttentionOutOut, const aclTen
         l0AttentionOutOut = l0op::Reshape(
             l0AttentionOutOut, executor->AllocIntArray(paddedSBNDShape.data(), paddedSBNDShape.size()), executor);
         OP_CHECK(l0AttentionOutOut != nullptr,
-            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "if l0AttentionOutOut is present, the l0AttentionOutOut cannot be nullptr"),
+            OP_LOGE_WITH_INVALID_INPUT("flash_attention_score", "l0AttentionOutOut"),
             return ACLNN_ERR_PARAM_NULLPTR);
     }
 
