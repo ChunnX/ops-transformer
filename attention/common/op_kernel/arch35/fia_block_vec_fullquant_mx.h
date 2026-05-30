@@ -369,7 +369,7 @@ public:
             constexpr uint32_t zeroBytes = 16640;
             LocalTensor<uint8_t> zeroTarget;
             zeroTarget.SetAddr(stage1CastTensor.address_);
-            Duplicate(zeroTarget, static_cast<uint8_t>(0u), zeroBytes);
+            Duplicate(zeroTarget, static_cast<uint8_t>(0U), zeroBytes);
             PipeBarrier<PIPE_V>();
         }
         bmm1ResBuf.SetCrossCore();
@@ -1145,7 +1145,7 @@ public:
         if (!isSkipMaskForNext) {
             AttentionmaskCopyInDn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(1U), maskSize);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskSize);
         }
 
         if (!isSkipMaskForPre) {
