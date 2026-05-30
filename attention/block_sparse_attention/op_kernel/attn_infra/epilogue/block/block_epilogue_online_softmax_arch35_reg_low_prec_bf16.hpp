@@ -279,8 +279,8 @@ private:
                                                uint32_t tailN, uint32_t nPadding, ElementInput dScale,
                                                uint16_t S2BaseSize)
     {
-        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
                       "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
@@ -460,8 +460,8 @@ private:
                                                uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
                                                uint32_t tailNOdd, uint32_t tailNEven)
     {
-        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
                       "ComputeExpSubSum16 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
@@ -651,8 +651,8 @@ private:
                                                   uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
                                                   uint32_t tailNOdd, uint32_t tailNEven)
     {
-        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
-                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStagesBf16::TWO,
                       "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
