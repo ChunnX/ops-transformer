@@ -38,7 +38,7 @@ using namespace MoeDistributeV2Base;
 
 template <typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter,
     uint8_t QuantMode, bool HasAddRmsNorm>
-class MoeDistributeCombineQuant{
+class MoeDistributeCombineQuant {
 public:
     float scaleValFloat_;
     LocalTensor<half> fp16CastTensor_;
@@ -178,7 +178,8 @@ public:
     }
     
     template <typename T>
-    __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<float>& sumTensor,LocalTensor<float>& sumFinalTensor, float scaleVal)
+    __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<float>& sumTensor,
+        LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
         LocalTensor<T> castFp8LocalTensor_ = inLocal.template ReinterpretCast<T>();
         // bf16/fp16量化为mxfp8后，字节差2倍
@@ -188,10 +189,10 @@ public:
         __ubuf__ fp8_e8m0_t *srcPtr0 = (__ubuf__ fp8_e8m0_t *)scaleDivFp8Tensor_.GetPhyAddr();
         __ubuf__ T *tokenPtr0 = (__ubuf__ T *)castFp8LocalTensor_.GetPhyAddr();
         __ubuf__ float *sumFinalDstPtr = (__ubuf__ float *)sumFinalTensor.GetPhyAddr();
-        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float); //64
+        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float); // 64
         uint16_t repeatTimes = Ceil(quantScaleNum_, fp32RepeatSize);
-        uint16_t fp32RepeatTimes = Ceil(axisH_, fp32RepeatSize*2);
-        uint32_t axisHx4 = 4*axisH_;
+        uint16_t fp32RepeatTimes = Ceil(axisH_, fp32RepeatSize * 2);
+        uint32_t axisHx4 = 4 * axisH_;
         int16_t EXP_SHIFT = 23;
         __VEC_SCOPE__
         {
@@ -217,14 +218,15 @@ public:
             AscendC::MicroAPI::MaskReg maskReg2;
             AscendC::MicroAPI::MaskReg maskReg3;
             // read all the scales, cast all the e8m0 scale to FP32, store them
-            for (uint16_t i = 0; i < repeatTimes; i++){
+            for (uint16_t i = 0; i < repeatTimes; i++) {
                 maskReg = AscendC::MicroAPI::UpdateMask<float>(quantScaleNum_);
                 MicroAPI::DataCopy<fp8_e8m0_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
                     vSrcReg, srcPtr0 + i * fp32RepeatSize);
                 // cast e8m0 to FP32
-                MicroAPI::ShiftLefts((AscendC::MicroAPI::RegTensor<uint32_t> &)dyScaleFp32Reg, (AscendC::MicroAPI::RegTensor<uint32_t> &)vSrcReg, EXP_SHIFT, maskReg);
+                MicroAPI::ShiftLefts((AscendC::MicroAPI::RegTensor<uint32_t> &)dyScaleFp32Reg,
+                    (AscendC::MicroAPI::RegTensor<uint32_t> &)vSrcReg, EXP_SHIFT, maskReg);
                 MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
-                    dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE, dyScaleFp32Reg, dyScaleFp32Reg, maskReg );
+                    dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE, dyScaleFp32Reg, dyScaleFp32Reg, maskReg);
             }
 
             MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
@@ -234,9 +236,10 @@ public:
                 // 广播4B->32B，8倍
                 MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(dyScaleFp32Reg, dyScaleFp32Ptr + i * 8);
                 // 接收到的token float8_e5m2_t
-                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_UNPACK_B8>(tokenSrcReg,
-                                                                          tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
-                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(sumFinalDstReg_1, sumFinalDstReg_2,
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+                    tokenSrcReg, tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    sumFinalDstReg_1, sumFinalDstReg_2,
                                                                                sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
                 MicroAPI::Cast<float, T, castTrait0>(tokenFp32SrcReg_1, tokenSrcReg, maskReg3);
                 MicroAPI::Cast<float, T, castTrait2>(tokenFp32SrcReg_2, tokenSrcReg, maskReg3);
@@ -246,7 +249,9 @@ public:
                 MicroAPI::Muls(sumLocalDstReg_2, sumLocalDstReg_2, scaleVal, maskReg2); // token与专家scale相乘
                 MicroAPI::Add(sumFinalDstReg_1, sumFinalDstReg_1, sumLocalDstReg_1, maskReg2); // combine累加
                 MicroAPI::Add(sumFinalDstReg_2, sumFinalDstReg_2, sumLocalDstReg_2, maskReg2); // combine累加
-                MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinalDstReg_1, sumFinalDstReg_2, maskReg2); // 最后搬出 float类型
+                MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
+                    sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinalDstReg_1, sumFinalDstReg_2,
+                    maskReg2); // 最后搬出 float类型
             }
         }
     }
@@ -270,7 +275,7 @@ public:
         }
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
-            DeQuantMxFp8<fp8_e5m2_t>(inLocal, sumTensor , sumFinalTensor, scaleVal);
+            DeQuantMxFp8<fp8_e5m2_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
         } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
             DeQuantMxFp8<fp8_e4m3fn_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
         }
