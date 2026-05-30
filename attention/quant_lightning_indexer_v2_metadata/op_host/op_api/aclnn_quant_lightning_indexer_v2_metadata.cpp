@@ -36,18 +36,15 @@ extern "C" {
 
 aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
-    int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t quantMode,
-    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
-    const aclTensor *metadata, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK,
+    int64_t headDim, int64_t topk, int64_t quantMode, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK,
+    char *layoutQOptional, char *layoutKOptional, int64_t maskMode, int64_t cmpRatio, const aclTensor *metadata,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantLightningIndexerV2Metadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                          cmpResidualKOptional,
-                          numHeadsQ, numHeadsK, headDim, topk, quantMode,
-                          batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional,
-                          maskMode, cmpRatio),
+                          cmpResidualKOptional, numHeadsQ, numHeadsK, headDim, topk, quantMode, batchSize, maxSeqlenQ,
+                          maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio),
                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -59,46 +56,57 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const std::string socVersion = npuInfo.GetSocLongVersion();
 
     auto ret = ParamsCheckQliV2(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                                cmpResidualKOptional,
-                                numHeadsQ, numHeadsK, topk, quantMode, batchSize,
-                                maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional,
-                                maskMode, cmpRatio,
+                                cmpResidualKOptional, numHeadsQ, numHeadsK, headDim, topk, quantMode, batchSize,
+                                maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio, metadata,
                                 aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
     if (cuSeqlensQOptional != nullptr) {
         cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
-        CHECK_RET(cuSeqlensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (cuSeqlensQOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_q contiguous is none");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     const aclTensor *cuSeqlensKOptionalContiguous = nullptr;
     if (cuSeqlensKOptional != nullptr) {
         cuSeqlensKOptionalContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
-        CHECK_RET(cuSeqlensKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (cuSeqlensKOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cu_seqlens_k contiguous is none");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     const aclTensor *sequsedQOptionalContiguous = nullptr;
     if (sequsedQOptional != nullptr) {
         sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-        CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (sequsedQOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_q contiguous is none");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     const aclTensor *sequsedKOptionalContiguous = nullptr;
     if (sequsedKOptional != nullptr) {
         sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
-        CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (sequsedKOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "seqused_k contiguous is none");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     const aclTensor *cmpResidualLKOptionalContiguous = nullptr;
     if (cmpResidualKOptional != nullptr) {
         cmpResidualLKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
-        CHECK_RET(cmpResidualLKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (cmpResidualLKOptionalContiguous == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "cmp_residual_k contiguous is none");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
 
     auto output = l0op::QuantLightningIndexerV2Metadata(
         cuSeqlensQOptionalContiguous, cuSeqlensKOptionalContiguous, sequsedQOptionalContiguous,
-        sequsedKOptionalContiguous, cmpResidualLKOptionalContiguous,
-        numHeadsQ, numHeadsK, headDim, topk, quantMode,
-        batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode,
-        cmpRatio,
-        aicCoreNum, aivCoreNum, socVersion.c_str(), metadata, uniqueExecutor.get());
+        sequsedKOptionalContiguous, cmpResidualLKOptionalContiguous, numHeadsQ, numHeadsK, headDim, topk, quantMode,
+        batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio, aicCoreNum, aivCoreNum,
+        socVersion.c_str(), metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;
