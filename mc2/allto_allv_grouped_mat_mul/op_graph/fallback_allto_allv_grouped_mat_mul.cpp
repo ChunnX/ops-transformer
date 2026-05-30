@@ -18,7 +18,7 @@
 #include <cstring>
 namespace fallback
 {
-constexpr size_t K_COMM_MODE = 6;
+constexpr size_t K_COMM_MODE = 7;
 // 输入参数和属性的校验
 static ge::graphStatus CheckInputsAndAttrs(
     const gert::Tensor* gmmX,

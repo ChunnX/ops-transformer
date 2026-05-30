@@ -629,7 +629,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
             return ge::GRAPH_FAILED;
         }
     } else {
-        commMode == Mc2Comm::COMM_MODE_AICPU;
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     OP_LOGD(context->GetNodeName(), "CommMode is %u.", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
@@ -730,7 +730,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
             return ge::GRAPH_FAILED;
         }
     } else {
-        commMode == Mc2Comm::COMM_MODE_AICPU;
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
