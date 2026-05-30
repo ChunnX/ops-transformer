@@ -380,11 +380,11 @@ public:
         LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
         this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
         this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-        uint64_t pscaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
-        uint64_t vecOffset = constInfo.subBlockIdx * pscaleDataLen;
+        uint64_t pScaleDataLen = (mBaseSize >> 1) * s2BaseSizeCur / MXFP_GROUP_SIZE;
+        uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         uint16_t copyCount = (runInfo.actMSizeAlign32 >> 1) >> 4;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            uint64_t subLoopOffset = pscaleDataLen * 2;
+            uint64_t subLoopOffset = pScaleDataLen * 2;
             uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
             for (uint16_t i = 0; i < 4; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {copyCount, 1, 0, dstStride});
@@ -427,25 +427,6 @@ public:
         return;
     }
 
-    __aicore__ inline void UpdateMinCheckValueForDn(uint32_t &min)
-    {
-        if constexpr (!USE_DN) {
-            return;
-        }
-        float minValue = *((float*)&min);
-        minValue *= constInfo.scaleValue;
-        float tmp = minValue / LN2;
-        // int64_t 最大能表示约 9e18。
-        // 如果 tmp 比 -9e18 还要小（说明是绝对值极大的负数，如 -10^37），
-        // 在这个数量级下，float 丢掉了所有小数位，它本身就已经等价于取整后的值了，直接乘回 LN2 即可。
-        if (tmp > -9000000000000000000.0f) {
-            minValue = static_cast<int64_t>(tmp) * LN2; // 最小值是负数，ceil可以直接强转
-        } else {
-            minValue = tmp * LN2;
-        }
-        min = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&minValue));
-    }
-
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
         if constexpr (FLASH_DECODE) {
@@ -463,6 +444,25 @@ public:
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
         }
+    }
+
+        __aicore__ inline void UpdateMinCheckValueForDn(uint32_t &min)
+    {
+        if constexpr (!USE_DN) {
+            return;
+        }
+        float minValue = *((float*)&min);
+        minValue *= constInfo.scaleValue;
+        float tmp = minValue / LN2;
+        // int64_t 最大能表示约 9e18。
+        // 如果 tmp 比 -9e18 还要小（说明是绝对值极大的负数，如 -10^37），
+        // 在这个数量级下，float 丢掉了所有小数位，它本身就已经等价于取整后的值了，直接乘回 LN2 即可。
+        if (tmp > -9000000000000000000.0f) {
+            minValue = static_cast<int64_t>(tmp) * LN2; // 最小值是负数，ceil可以直接强转
+        } else {
+            minValue = tmp * LN2;
+        }
+        min = static_cast<uint32_t>(*reinterpret_cast<int32_t *>(&minValue));
     }
 
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
@@ -1003,6 +1003,7 @@ public:
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
         tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
+        tPipe->InitBuffer(pScaleSubLoop0Que, 1, 512);
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
