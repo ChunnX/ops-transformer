@@ -58,6 +58,25 @@ TILING_DATA_FIELD_DEF(int64_t, numTokens);
 TILING_DATA_FIELD_DEF(uint64_t, maxUbHiddenSizeK);
 TILING_DATA_FIELD_DEF(uint64_t, maxUbHiddenSizeV);
 TILING_DATA_FIELD_DEF(uint64_t, maxUbHiddenSize);
+// ===== 非连续支持字段 =====
+// 0=全连续(走原有路径), 非0=有非连续tensor
+// bit0: keyCache非连续, bit1: valueCache非连续
+// bit2: key输出非连续, bit3: value输出非连续
+// bit4: kCache blockSize轴非连续, bit5: kCache N轴非连续
+// bit6: vCache blockSize轴非连续, bit7: vCache N轴非连续
+TILING_DATA_FIELD_DEF(uint32_t, nonContiguousFlag);
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride0);  // blockNum轴stride (元素粒度)
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride1);  // blockSize轴stride
+TILING_DATA_FIELD_DEF(int64_t, kCacheStride2);  // N轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride0);  // blockNum轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride1);  // blockSize轴stride
+TILING_DATA_FIELD_DEF(int64_t, vCacheStride2);  // N轴stride
+TILING_DATA_FIELD_DEF(int64_t, keyOutStride0);  // B轴stride
+TILING_DATA_FIELD_DEF(int64_t, keyOutStride1);  // S轴stride
+TILING_DATA_FIELD_DEF(int64_t, valueOutStride0); // B轴stride
+TILING_DATA_FIELD_DEF(int64_t, valueOutStride1); // S轴stride
+TILING_DATA_FIELD_DEF(uint64_t, numHeadsK);     // key的head数量
+TILING_DATA_FIELD_DEF(uint64_t, numHeadsV);     // value的head数量
 END_TILING_DATA_DEF;
 
 constexpr uint64_t TILING_KEY_1111 = 1111;
@@ -162,6 +181,28 @@ private:
 
     uint64_t tilingKey_ = 0;
     GatherPaKvCacheTilingDataV35 tilingData_;
+
+    // ===== 非连续支持 =====
+    gert::Stride kCacheStride_;
+    gert::Stride vCacheStride_;
+    gert::Stride keyOutStride_;
+    gert::Stride valueOutStride_;
+
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+
+    bool isKCacheContiguous_ = true;
+    bool isVCacheContiguous_ = true;
+    bool isKeyOutContiguous_ = true;
+    bool isValueOutContiguous_ = true;
+
+    bool isKCacheSlotNonContig_ = false;  // blockSize轴非连续
+    bool isKCacheHeadNonContig_ = false;  // N轴非连续
+    bool isVCacheSlotNonContig_ = false;
+    bool isVCacheHeadNonContig_ = false;
+
+    uint64_t numHeadsK_ = 0;
+    uint64_t numHeadsV_ = 0;
 };
 } // namespace optiling
 #endif // GATHER_PA_KV_CACHE_TILING_H
