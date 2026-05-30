@@ -20,17 +20,17 @@
 namespace optiling {
 class FlashAttentionScoreEmptyInputTilingDataRegbase {
 public:
-    uint32_t coreNum;
-    uint32_t attentionOutFormerNum;
-    uint32_t attentionOutTailNum;
-    uint32_t softmaxMaxFormerNum;
-    uint32_t softmaxMaxTailNum;
-    uint64_t attentionOutSingleCoreDataSize;
-    uint64_t attentionOutTailCoreDataSize;
-    uint64_t softmaxMaxSingleCoreDataSize;
-    uint64_t softmaxMaxTailCoreDataSize;
-    uint64_t attentionOutLastCoreDataSize;
-    uint64_t attentionOutLastCoreIndex;
+    uint32_t coreNum = 0;
+    uint32_t attentionOutFormerNum = 0;
+    uint32_t attentionOutTailNum = 0;
+    uint32_t softmaxMaxFormerNum = 0;
+    uint32_t softmaxMaxTailNum = 0;
+    uint64_t attentionOutSingleCoreDataSize = 0;
+    uint64_t attentionOutTailCoreDataSize = 0;
+    uint64_t softmaxMaxSingleCoreDataSize = 0;
+    uint64_t softmaxMaxTailCoreDataSize = 0;
+    uint64_t attentionOutLastCoreDataSize = 0;
+    uint64_t attentionOutLastCoreIndex = 0;
 
     uint32_t get_coreNum() const {return coreNum;}
     uint32_t get_attentionOutFormerNum() const {return attentionOutFormerNum;}
@@ -59,84 +59,84 @@ public:
 
 class InputParamsRegbase {
 public:
-    int64_t bSize;
-    int64_t t1Size;
-    int64_t t2Size;
-    int64_t n2Size;
-    int64_t gSize;
-    int64_t s1Size;
-    int64_t s2Size;
-    int64_t alignedS2;
-    int64_t dSize;
-    int64_t dSizeV;
-    int64_t dSizeRope;
-    float keepProb;
-    float scaleValue;
-    int64_t preTokens;
-    int64_t nextTokens;
-    int64_t pseS1Size;
-    int64_t pseS2Size;
-    uint32_t pseBSize;
-    uint32_t bandIndex;
-    uint8_t layoutType;  // 1: BSH/BSND, 2: SBH, 3: BNSD
-    uint8_t pseShapeType;  // 0: (B,N2,G,S1,S2), 1: (B,N2,G,1,S2)
-    uint8_t attenMaskShapeType;  // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
-    uint8_t attenMaskDataType;  // 0: fp16, 1: bool(uint8)
-    uint8_t attenMaskCompressMode;  // ALL: 0, NONE: 1, ANY: 2, CAUSAL: 3, BAND: 4
-    uint8_t implMode;  // 0: high precise, 1: high performance, 2: invalid line high precise
-    uint8_t sparseType;
-    uint8_t needDropMaskOp;
-    uint8_t dropMaskOuter;
-    uint8_t pseEncodeType;
-    uint8_t tndSoftmaxOut;
-    uint8_t remain;
-    uint32_t attenMaskS2Size;
-    uint32_t pseType;
-    uint32_t rsv1;
-    int64_t qStartIdx;
-    int64_t kvStartIdx;
-    int64_t s1SparseValidSize;
-    int64_t s2SparseValidSize;
-    int64_t seed;
-    int64_t offset;
-    int64_t keepProbUint8;
-    int64_t pseAlibiBaseS1;
-    int64_t pseAlibiBaseS2;
+    int64_t bSize = 0;
+    int64_t t1Size = 0;
+    int64_t t2Size = 0;
+    int64_t n2Size = 0;
+    int64_t gSize = 0;
+    int64_t s1Size = 0;
+    int64_t s2Size = 0;
+    int64_t alignedS2 = 0;
+    int64_t dSize = 0;
+    int64_t dSizeV = 0;
+    int64_t dSizeRope = 0;
+    float keepProb = 1.0f;
+    float scaleValue = 1.0f;
+    int64_t preTokens = 2147483647;
+    int64_t nextTokens = 2147483647;
+    int64_t pseS1Size = 0;
+    int64_t pseS2Size = 0;
+    uint32_t pseBSize = 0;
+    uint32_t bandIndex = 0;
+    uint8_t layoutType = 0;  // 1: BSH/BSND, 2: SBH, 3: BNSD
+    uint8_t pseShapeType = 0;  // 0: (B,N2,G,S1,S2), 1: (B,N2,G,1,S2)
+    uint8_t attenMaskShapeType = 0;  // 0: (B,N2,G,S1,S2), 1: (B,1,1,S1,S2), 2: (1,1,1,S1,S2)
+    uint8_t attenMaskDataType = 0;  // 0: fp16, 1: bool(uint8)
+    uint8_t attenMaskCompressMode = 0;  // ALL: 0, NONE: 1, ANY: 2, CAUSAL: 3, BAND: 4
+    uint8_t implMode = 0;  // 0: high precise, 1: high performance, 2: invalid line high precise
+    uint8_t sparseType = 0;
+    uint8_t needDropMaskOp = 0;
+    uint8_t dropMaskOuter = 0;
+    uint8_t pseEncodeType = 0;
+    uint8_t tndSoftmaxOut = 0;
+    uint8_t remain = 0;
+    uint32_t attenMaskS2Size = 0;
+    uint32_t pseType = 0;
+    uint32_t rsv1 = 0;
+    int64_t qStartIdx = 0;
+    int64_t kvStartIdx = 0;
+    int64_t s1SparseValidSize = 0;
+    int64_t s2SparseValidSize = 0;
+    int64_t seed = 0;
+    int64_t offset = 0;
+    int64_t keepProbUint8 = 255; // UINT8_MAX when keepProb = 1.0f
+    int64_t pseAlibiBaseS1 = 0;
+    int64_t pseAlibiBaseS2 = 0;
 
     // PFA
-    uint8_t deqScaleFlag;  // 0: uint64  1: float32
-    uint8_t deqScale2Flag;  // 0: uint64  1: float32
-    uint8_t isActualSeqLengthsNull;
-    uint8_t isActualSeqLengthsKVNull;
-    uint32_t actualSeqLengthsSize;
-    uint32_t actualSeqLengthsKVSize;
-    uint8_t isKvContinuous;
-    uint8_t fromFused;
-    uint8_t isBSNDOut;
-    uint8_t transposeLayout;
-    uint8_t isGqa;
-    uint8_t isSoftMaxLseEnable;
-    uint8_t isActualSharedPrefixLenNull;
-    uint8_t isQHasLeftPadding;
-    uint8_t isKVHasLeftPadding;
-    uint32_t ropeHeadSize;
-    uint32_t prefixSeqInnerSize;
-    uint32_t headNumRatio;
-    int32_t blockSize;
-    int32_t blockTableDim2;
-    int32_t paBlockNumSum;
-    int32_t attenMaskS1Size;
-    uint32_t kvSplitPart;
-    uint32_t accumOutSize;
-    uint32_t logSumExpSize;
+    uint8_t deqScaleFlag = 0;  // 0: uint64  1: float32
+    uint8_t deqScale2Flag = 0;  // 0: uint64  1: float32
+    uint8_t isActualSeqLengthsNull = 1;
+    uint8_t isActualSeqLengthsKVNull = 1;
+    uint32_t actualSeqLengthsSize = 0;
+    uint32_t actualSeqLengthsKVSize = 0;
+    uint8_t isKvContinuous = 0;
+    uint8_t fromFused = 0;
+    uint8_t isBSNDOut = 0;
+    uint8_t transposeLayout = 0;
+    uint8_t isGqa = 0;
+    uint8_t isSoftMaxLseEnable = 0;
+    uint8_t isActualSharedPrefixLenNull = 1;
+    uint8_t isQHasLeftPadding = 0;
+    uint8_t isKVHasLeftPadding = 0;
+    uint32_t ropeHeadSize = 0;
+    uint32_t prefixSeqInnerSize = 0;
+    uint32_t headNumRatio = 1;
+    int32_t blockSize = 0;
+    int32_t blockTableDim2 = 0;
+    int32_t paBlockNumSum = 0;
+    int32_t attenMaskS1Size = 0;
+    uint32_t kvSplitPart = 0;
+    uint32_t accumOutSize = 0;
+    uint32_t logSumExpSize = 0;
     uint8_t paLayoutType = 0; // 重构前tiling无赋值，需赋默认值
-    uint8_t isRowInvalid;
-    uint8_t isPostQuantPerChnl;
-    uint8_t isPostQuantBF16;
-    uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
-    uint16_t antiquantPerTensorFlag;
-    uint16_t antiquantPerHeadFlag;
-    uint32_t antiquantParaSeqSize;
+    uint8_t isRowInvalid = 0;
+    uint8_t isPostQuantPerChnl = 0;
+    uint8_t isPostQuantBF16 = 0;
+    uint8_t antiquantPageAttentionFlag = 0;        // antiquantMode == 4 or 5
+    uint16_t antiquantPerTensorFlag = 0;
+    uint16_t antiquantPerHeadFlag = 0;
+    uint32_t antiquantParaSeqSize = 1;
 
     int64_t get_bSize() const {return bSize;}
     void set_bSize(int64_t bSizeParam) {this->bSize = bSizeParam;}
@@ -297,16 +297,16 @@ public:
 
 class MultiCoreParamsRegbase {
 public:
-    int32_t coreNum;
-    int64_t totalSize;
-    int64_t s1OuterSize;
-    int64_t splitFactorSize;
-    int64_t splitFactorTailSize;
-    uint32_t bnStartIdx[48];
-    int64_t sparseStartIdx[48];
-    int64_t firstFullLoadS1OuterIdx;
-    uint8_t splitCoreMode;
-    uint8_t reserve[3];
+    int32_t coreNum = 0;
+    int64_t totalSize = 0;
+    int64_t s1OuterSize = 0;
+    int64_t splitFactorSize = 0;
+    int64_t splitFactorTailSize = 0;
+    uint32_t bnStartIdx[48] = {};
+    int64_t sparseStartIdx[48] = {};
+    int64_t firstFullLoadS1OuterIdx = 0;
+    uint8_t splitCoreMode = 0;
+    uint8_t reserve[3] = {};
 
     int32_t get_coreNum() const {return coreNum;}
     void set_coreNum(int32_t coreNumParam) {this->coreNum = coreNumParam;}
@@ -339,11 +339,11 @@ public:
 
 class DropmaskParamsRegbase {
 public:
-    int32_t multiCoreFactorSize;
-    int32_t baseUbCalSize;
-    int64_t multiCoreTotalSize;
-    int64_t shapeTotalSize;
-    int64_t dropMaskAddrOffset;
+    int32_t multiCoreFactorSize = 0;
+    int32_t baseUbCalSize = 0;
+    int64_t multiCoreTotalSize = 0;
+    int64_t shapeTotalSize = 0;
+    int64_t dropMaskAddrOffset = 0;
 
     int32_t get_multiCoreFactorSize() const {return multiCoreFactorSize;}
     void set_multiCoreFactorSize(int32_t multiCoreFactorSizeParam) {this->multiCoreFactorSize = multiCoreFactorSizeParam;}
@@ -357,12 +357,12 @@ public:
 
 class InitOutputParams {
 public:
-    uint32_t singleCoreSize;
-    uint8_t needInit;
-    uint8_t isOneN;
-    uint8_t rsvd[2];
-    int64_t totalOutputSize;
-    int64_t totalSoftMaxLseOutputSize;
+    uint32_t singleCoreSize = 0;
+    uint8_t needInit = 0;
+    uint8_t isOneN = 0;
+    uint8_t rsvd[2] = {};
+    int64_t totalOutputSize = 0;
+    int64_t totalSoftMaxLseOutputSize = 0;
 
     uint32_t get_singleCoreSize() const {return singleCoreSize;}
     void set_singleCoreSize(uint32_t singleCoreSizeParam) {this->singleCoreSize = singleCoreSizeParam;}
