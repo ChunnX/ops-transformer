@@ -18,6 +18,8 @@ extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* que
                                                             __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable,
                                                             __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
+    AscendC::printf("[BSA KERNEL ENTRY] BlockIdx=%u, TILING_KEY=%lu\n", GetBlockIdx(), TILING_KEY_VAR);
+    
     if (TILING_KEY_VAR >= RFA_BASE_TILING) {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
