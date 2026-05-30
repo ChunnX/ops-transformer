@@ -89,6 +89,10 @@ public:
             }
             if (cuSeqlensCmpKv != nullptr) {
                 cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+            } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+                if (cuSeqlensOriKv != nullptr) {
+                    cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+                }
             }
             // if (sequsedKv != nullptr) {
             //     actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
@@ -276,8 +280,9 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
                     runInfo.n2oIdx * constInfo.s2Dv + s2Idx * constInfo.dSize; // BSN(1)D
             }
         } else if (LAYOUT_T == SMLA_LAYOUT::TND) {
-            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) * constInfo.n2Size +
-                runInfo.n2oIdx + s2Idx) * constInfo.dSize; // TN(1)D
+            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) *
+                            constInfo.n2Size * constInfo.dSize +
+                            runInfo.n2oIdx * constInfo.dSize; // TN(1)D
         }
     }
     return realkeyOffset;
@@ -298,6 +303,10 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(
     intriParams.blockLen = constInfo.dSize * sizeof(KV_T);
 
     DataCopyPadExtParams<KV_T> padParams;
+    padParams.isPad = true;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = CeilAlign(constInfo.dSize * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
+    padParams.paddingValue = 0;
     DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
 }
 
@@ -420,6 +429,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
             return;
         }
         keyGm = cmpKVGm;
+        // TND场景，CmpKv未传入则cuSeqlensKv传入OriKv
         cuSeqlensKvGm = cuSeqlensCmpKvGm;
         sparseIndicesGm = cmpSparseIndicesGm;
         if constexpr (IS_PA) {

@@ -271,12 +271,22 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
             cuSeqlensOriKvGm, constInfo.actualSeqLenSize);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-            cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+            if (cuSeqlensCmpKv != nullptr) {
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
+            } else if (cuSeqlensOriKv != nullptr) {
+                cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+            }
             this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
                 cuSeqlensCmpKvGm, constInfo.actualSeqLenSize);
         }
     } else {
         // BSND不需要初始化
+        this->oriKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size,
+            constInfo.s2Size, constInfo.dSize);
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+            this->cmpKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size,
+                constInfo.s2Size / constInfo.cmpRatio, constInfo.dSize);
+        }
     }
 }
 
