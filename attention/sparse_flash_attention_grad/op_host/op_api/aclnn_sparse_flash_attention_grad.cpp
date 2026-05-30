@@ -17,9 +17,9 @@ extern "C" {
 namespace {
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseIndices,
+    const aclTensor *query, const aclTensor *key, const aclTensor *sparseIndices,
     const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
-    const aclTensor *actualSeqLengthsQueryOptional,
+    const aclTensor *valueOptional, const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
     double scaleValue, int64_t sparseBlockSize, char *layoutOptional, int64_t sparseMode, int64_t preTokens,
     int64_t nextTokens, bool deterministic, const aclTensor *dQueryOut, const aclTensor *dKeyOut,
@@ -58,7 +58,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
-        query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
+        query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, value,
         actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
         scaleValue, sparseBlockSize, layoutOptional, sparseMode, preTokens, nextTokens, deterministic,
         dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional, dKeyRopeOutOptional, workspaceSize, executor);
