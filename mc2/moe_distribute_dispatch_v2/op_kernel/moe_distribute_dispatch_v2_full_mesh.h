@@ -158,12 +158,12 @@ private:
     __aicore__ inline void RecordRankCommDuration(LocalTensor<int32_t> &performanceInfoTensor, uint64_t startTime);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return ctx_.GetWindAddrByRankId(COMM_EP_IDX, rankId, epRankIdOriginal_) + winDataSizeOffset_;
+        return ctx_.GetWindAddrByRankId(rankId, epRankIdOriginal_) + winDataSizeOffset_;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        return ctx_.GetWindStateAddrByRankId(COMM_EP_IDX, rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
+        return ctx_.GetWindStateAddrByRankId(rankId, epRankIdOriginal_) + dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -442,8 +442,8 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SetDataStatus()
 {
     statusDataSpaceGM_ = ctx_.GetStatusDataSpaceGm();
-    uint32_t epRankIdHccl = ctx_.GetEpRankId(epRankIdOriginal_);
-    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize(epWorldSizeOriginal_);
+    uint32_t epRankIdHccl = ctx_.GetEpRankId();
+    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize();
     selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGM_ + FLAG_FIELD_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
@@ -466,7 +466,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     tpipe_->InitBuffer(calBeginBuf_, UB_ALIGN);
     aivId_ = GetBlockIdx();
     totalWinSize_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
-    ctx_.Set(mc2Context);
+    ctx_.Set(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize);
     ctx_.InitEpAndCheck(totalWinSize_, tpipe_, expandXOut);
     xGMTensor_.SetGlobalBuffer((__gm__ XInType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
