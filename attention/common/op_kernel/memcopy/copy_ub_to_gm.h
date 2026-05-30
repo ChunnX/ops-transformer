@@ -284,7 +284,7 @@ template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
                                                 const CONST_INFO_T &constInfo) 
-{ 
+{
     uint32_t startS1Idx = mOffset / constInfo.realGSize; 
     uint32_t startGIdx = mOffset % constInfo.realGSize; 
     uint32_t endS1Idx = (mOffset + dealCount - 1) / constInfo.realGSize; 

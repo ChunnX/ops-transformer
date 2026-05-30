@@ -73,8 +73,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 
     runParam.actualS1Size = actualS1Size;
     runParam.actualS2OriSize = actualS2OriSize;
-    runParam.actualS2CmpSize = actualS2CmpSize;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        runParam.actualS2CmpSize = actualS2CmpSize;
         runParam.cmpResidual = cmpResidualKvGm.GetValue(bIdx);
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
@@ -278,8 +278,10 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2OriSize = runParam.actualS2OriSize;
-    runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
-    runInfo.cmpResidual = runParam.cmpResidual;
+    if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {	 
+        runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
+        runInfo.cmpResidual = runParam.cmpResidual;
+    }
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
