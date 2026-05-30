@@ -35,7 +35,12 @@ static ge::graphStatus IsInputTensorNull(const gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(SCALE2_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(GROUPLIST_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(YREF_INDEX));
-    OP_CHECK_NULL_WITH_CONTEXT(context, context->GetOptionalInputShape(SCALE1_INDEX));
+    OP_CHECK_IF(context->GetOptionalInputShape(SCALE1_INDEX) == nullptr,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "scale1",
+                    "context->GetOptionalInputShape(SCALE1_INDEX)",
+                    "null check with context: context->GetOptionalInputShape(SCALE1_INDEX)"),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
