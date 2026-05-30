@@ -77,13 +77,13 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
+        OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;
     OP_TILING_CHECK(SetHCommCfg(context, tilingData, groupEp, groupTp, tpWorldSize) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -93,7 +93,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
     uint32_t batch_mode = 1U;
     auto ret = context->SetScheduleMode(batch_mode);
     GE_ASSERT_GRAPH_SUCCESS(ret);
-    
+
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeCombine Tiling func");
     MoeDistributeCombineTilingData *tilingData = context->GetTilingData<MoeDistributeCombineTilingData>();
@@ -138,12 +138,32 @@ bool MoeDistributeCombineTilingA5::CheckEpWorldSize(const char *nodeName, uint32
 {
     // 为支持在 A5 上的验证，放开 epWorldSize 为 2 或 4 的校验
     // 检验epWorldSize是否是2的倍数
-    OP_TILING_CHECK(epWorldSize % 2 != 0, OP_LOGE(nodeName,
-        "epWorldSize should be divisible by 2, but got epWorldSize = %u.", epWorldSize), return false);
+    OP_TILING_CHECK(
+        epWorldSize % 2 != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("epWorldSize should be divisible by 2, but got epWorldSize = ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
+        return false
+    );
 
-    OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
-        "epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
-        epWorldSize), return false);
+    OP_TILING_CHECK(
+        (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got"
+                "epWorldSize = ") +
+                std::to_string(epWorldSize) +
+                "."
+        ),
+        return false
+    );
 
     return true;
 }

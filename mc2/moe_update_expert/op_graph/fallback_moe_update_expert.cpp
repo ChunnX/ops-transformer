@@ -37,12 +37,18 @@ namespace fallback
                  return ge::GRAPH_FAILED);
 
         const auto expertIds = host_api_ctx->GetInputTensor(static_cast<size_t>(IDX_IN_EXPERT_IDS));
-        OPS_CHECK(expertIds == nullptr, OP_LOGE("MoeUpdateExpertFallback", "expertIds is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            expertIds == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "expertIds"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto eplbTable = host_api_ctx->GetInputTensor(static_cast<size_t>(IDX_IN_EPLB_TABLE));
-        OPS_CHECK(eplbTable == nullptr, OP_LOGE("MoeUpdateExpertFallback", "eplbTable is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            eplbTable == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "eplbTable"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto expertScales = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(IDX_IN_EXPERT_SCALES));
         const auto pruningThreshold = host_api_ctx->GetOptionalInputTensor(
@@ -50,30 +56,47 @@ namespace fallback
         const auto activeMask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(IDX_IN_ACTIVE_MASK));
 
         const auto balancedExpertIds = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_EXPERT_IDS));
-        OPS_CHECK(balancedExpertIds == nullptr, OP_LOGE("MoeUpdateExpertFallback", "balancedExpertIds is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            balancedExpertIds == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedExpertIds"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto balancedActiveMask = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_ACTIVE_MASK));
-        OPS_CHECK(balancedActiveMask == nullptr,
-            OP_LOGE("MoeUpdateExpertFallback", "balancedActiveMask is null"),
-            return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            balancedActiveMask == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedActiveMask"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto attrs = host_api_ctx->GetAttrs();
-        OPS_CHECK(attrs == nullptr, OP_LOGE("MoeUpdateExpertFallback", "attrs is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            attrs == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "attrs"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto localRankId = attrs->GetInt(static_cast<size_t>(IDX_ATTR_LOCAL_RANK_ID));
-        OPS_CHECK(localRankId == nullptr, OP_LOGE("MoeUpdateExpertFallback", "localRankId is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            localRankId == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "localRankId"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto worldSize = attrs->GetInt(static_cast<size_t>(IDX_ATTR_WORLD_SIZE));
-        OPS_CHECK(worldSize == nullptr, OP_LOGE("MoeUpdateExpertFallback", "worldSize is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            worldSize == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "worldSize"),
+            return ge::GRAPH_FAILED
+        );
 
         const auto balanceMode = attrs->GetInt(static_cast<size_t>(IDX_ATTR_BALANCE_MODE));
-        OPS_CHECK(balanceMode == nullptr, OP_LOGE("MoeUpdateExpertFallback", "balanceMode is null"),
-                 return ge::GRAPH_FAILED);
-        
+        OPS_CHECK(
+            balanceMode == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balanceMode"),
+            return ge::GRAPH_FAILED
+        );
+
         const auto apiRet = EXEC_OPAPI_CMD(aclnnMoeUpdateExpert, expertIds, eplbTable, expertScales,
             pruningThreshold, activeMask, *localRankId, *worldSize, *balanceMode,
             balancedExpertIds, balancedActiveMask);
