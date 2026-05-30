@@ -15,7 +15,6 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
-// const std::vector<at::Tensor> &weight1
 std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
     const at::Tensor &topk_weights, const std::vector<at::Tensor> &weight1,
@@ -23,12 +22,22 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t ccl_buffer_size,
     const c10::optional<std::vector<at::Tensor>> &weight_scales1,
     const c10::optional<std::vector<at::Tensor>> &weight_scales2,
+    const c10::optional<std::vector<at::Tensor>> &bias1,
+    const c10::optional<std::vector<at::Tensor>> &bias2,
     const c10::optional<at::Tensor> &x_active_mask,
     const c10::optional<at::Tensor> &scales,
     int64_t max_recv_token_num,
     int64_t dispatch_quant_mode,
-    int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
-    c10::optional<int64_t> dispatch_quant_out_type,
+    int64_t combine_quant_mode,
+    std::string comm_alg,
+    int64_t num_max_tokens_per_rank,
+    std::string activation,
+    double activation_clamp,
+    bool transpose_weight1,
+    bool transpose_weight2,
+    int64_t weight1_interleave,
+    c10::optional<int64_t> dispatch_quant_out_dtype,
+    c10::optional<int64_t> activation_out_dtype,
     c10::optional<int64_t> weight1_type,
     c10::optional<int64_t> weight2_type)
 {
@@ -62,6 +71,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight1_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
         weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
     } else {
+        // 这个else直接改成按照输入类型来
         weight_scales1_dtype = aclDataType::ACL_FLOAT;
     }
 
@@ -73,6 +83,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight2_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
         weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
     } else {
+        // 这个else直接改成按照输入类型来
         weight_scales2_dtype = aclDataType::ACL_FLOAT;
     }
     
@@ -82,8 +93,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t h = x_size[1];
     int64_t k = topk_ids_size[1];
 
-    if ((dispatch_quant_out_type.has_value()) &&
-        (dispatch_quant_out_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
+    if ((dispatch_quant_out_dtype.has_value()) &&	 
+        (dispatch_quant_out_dtype.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
         TORCH_CHECK(h % 2 == 0,
                     "The last dim input shape must be divisible by 2 if "
                     "dispatch quant output type is torch_npu.float4_e2m1");
@@ -97,9 +108,16 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string comm_alg_str = std::string(comm_alg);
     char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_type.has_value()
-        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_type.value()))
-        : 28;
+    std::string activation_str = std::string(activation);
+    char *activation_ptr = const_cast<char *>(activation_str.c_str());
+
+    int64_t dispatch_quant_result_type = dispatch_quant_out_dtype.has_value()	 
+         ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_dtype.value()))
+         : 28;
+
+    int64_t activation_out_result_dtype = activation_out_dtype.has_value()	 
+         ? static_cast<int64_t>(GetAclDataType(activation_out_dtype.value()))
+         : 28;
 
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
@@ -108,11 +126,28 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     TensorListWrapper weight2_wrapper = {weight2_ref, weight2_ref_dtype};
     TensorListWrapper weight_scales1_wrapper = {weight_scales1_ref, weight_scales1_dtype};
     TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};
+
+    at::TensorList bias1_ref;
+    if (bias1.has_value()) {
+        bias1_ref = at::TensorList(bias1.value());
+    } else {
+        bias1_ref = at::TensorList();
+    }
+    at::TensorList bias2_ref;
+    if (bias2.has_value()) {
+        bias2_ref = at::TensorList(bias2.value());
+    } else {
+        bias2_ref = at::TensorList();
+    }
+    TensorListWrapper bias1_wrapper = {bias1_ref, aclDataType::ACL_FLOAT};
+    TensorListWrapper bias2_wrapper = {bias2_ref, aclDataType::ACL_FLOAT};
+
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
-        weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, x_active_mask, scales,
-        moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
+        weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
+        x_active_mask, scales, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
-        comm_alg_ptr, global_bs, y, expert_token_nums);
+        comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp, activation_out_result_dtype,
+        transpose_weight1, transpose_weight2, weight1_interleave, y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
 }

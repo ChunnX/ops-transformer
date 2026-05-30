@@ -28,19 +28,27 @@ class _MegaMoeOpBuilder(OpBuilder):
     def schema(self) -> str:
         return "npu_mega_moe(Tensor context, Tensor x, Tensor topk_ids, Tensor topk_weights, " \
             "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, " \
-            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, Tensor? x_active_mask=None, " \
-            "Tensor? scales=None, int max_recv_token_num=0, int dispatch_quant_mode=0, " \
-            "int combine_quant_mode=0, str comm_alg=\"\", int global_bs=0, " \
-            "int? dispatch_quant_out_type=None, int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
+            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, " \
+            "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
+            "Tensor? x_active_mask=None, Tensor? scales=None, int max_recv_token_num=0, " \
+            "int dispatch_quant_mode=0, int combine_quant_mode=0, " \
+            "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
+            "float activation_clamp=3.4028234663852886e+38, " \
+            "bool transpose_weight1=False, bool transpose_weight2=False, int weight1_interleave=0, " \
+            "int? dispatch_quant_out_dtype=None, int? activation_out_dtype=None,  " \
+            "int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mega_moe_meta(context, x, topk_ids, topk_weights, weight1, weight2,
                               moe_expert_num, ep_world_size, ccl_buffer_size,
-                              weight_scales1=None, weight_scales2=None, x_active_mask=None,
-                              scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                              combine_quant_mode=0, comm_alg="", global_bs=0,
-                              dispatch_quant_out_type=None, weight1_type=None, weight2_type=None):
+                              weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
+                              x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
+                              combine_quant_mode=0, comm_alg="",
+                              num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38, 
+                              transpose_weight1=False, transpose_weight2=False, weight1_interleave=0,
+                              dispatch_quant_out_dtype=None, activation_out_dtype=None,
+                              weight1_type=None, weight2_type=None):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -63,16 +71,19 @@ _op_module = _mega_moe_op_builder.load()
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
 def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   moe_expert_num, ep_world_size, ccl_buffer_size,
-                  weight_scales1=None, weight_scales2=None,
-                  x_active_mask=None, scales=None, max_recv_token_num=0,
-                  dispatch_quant_mode=0, combine_quant_mode=0,
-                  comm_alg="", global_bs=0,
-                  dispatch_quant_out_type=None, weight1_type=None, weight2_type=None):
+                  weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
+                  x_active_mask=None, scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
+                  combine_quant_mode=0, comm_alg="",
+                  num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=3.4028234663852886e+38,
+                  transpose_weight1=False, transpose_weight2=False, weight1_interleave=0, 
+                  dispatch_quant_out_dtype=None, activation_out_dtype=None,
+                  weight1_type=None, weight2_type=None):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
-        ccl_buffer_size, weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
-        dispatch_quant_mode, combine_quant_mode, comm_alg, global_bs,
-        dispatch_quant_out_type, weight1_type, weight2_type)
+        ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask, scales, max_recv_token_num,
+        dispatch_quant_mode, combine_quant_mode, comm_alg, num_max_tokens_per_rank, activation,
+        activation_clamp, transpose_weight1, transpose_weight2, weight1_interleave,
+        dispatch_quant_out_dtype, activation_out_dtype, weight1_type, weight2_type)
 
 
 class IntWrapper:
@@ -91,7 +102,8 @@ class SymmBuffer:
         intermediate_hidden: int,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_type: Optional[int] = None,
+        dispatch_quant_out_dtype: Optional[int] = None,
+        activation_out_dtype: Optional[int] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -112,7 +124,8 @@ class SymmBuffer:
         self.hidden = hidden
         self.intermediate_hidden = intermediate_hidden
         self.dispatch_quant_mode = dispatch_quant_mode
-        self.dispatch_quant_out_type = dispatch_quant_out_type
+        self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
+        self.activation_out_dtype = activation_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
 
@@ -120,7 +133,7 @@ class SymmBuffer:
 def npu_get_mega_moe_ccl_buffer_size(
     ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
     num_topk: int, hidden: int,
-    dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28,
+    dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28,
     combine_quant_mode: int = 0, comm_alg: str = ""
 ) -> int:
     def inline_align(val, align):
@@ -160,7 +173,8 @@ def get_symm_buffer_for_mega_moe(
     *,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
-    dispatch_quant_out_type: Optional[int] = None,
+    dispatch_quant_out_dtype: Optional[int] = None,
+    activation_out_dtype: Optional[int] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = ""
 ) -> SymmBuffer:
@@ -174,7 +188,8 @@ def get_symm_buffer_for_mega_moe(
         intermediate_hidden,
         max_recv_token_num,
         dispatch_quant_mode,
-        dispatch_quant_out_type,
+        dispatch_quant_out_dtype,
+        activation_out_dtype,
         combine_quant_mode,
         comm_alg
     )
@@ -188,10 +203,12 @@ def mega_moe(
     l2_weights: List[torch.Tensor],
     sym_buffer: SymmBuffer,
     *,
-    scales: Optional[torch.Tensor] = None,
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
+    l1_bias: Optional[List[torch.Tensor]] = None,
+ 	l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
+    scales: Optional[torch.Tensor] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None
 ):
@@ -208,14 +225,22 @@ def mega_moe(
         sym_buffer.ccl_buffer_size.value,
         weight_scales1=l1_weights_sf,
         weight_scales2=l2_weights_sf,
+        bias1=l1_bias,
+        bias2=l2_bias,
         x_active_mask=x_active_mask,
         scales=scales,
         max_recv_token_num=sym_buffer.max_recv_token_num,
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
-        global_bs=sym_buffer.num_max_tokens_per_rank,
-        dispatch_quant_out_type=sym_buffer.dispatch_quant_out_type,
+        num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
+        activation="swiglu",
+        activation_clamp=3.4028234663852886e+38,
+        transpose_weight1=False,
+        transpose_weight2=False,
+        weight1_interleave=0,
+        dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        activation_out_dtype=sym_buffer.activation_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type
     )
