@@ -19,11 +19,11 @@
 #include <memory>
 #include "defs.h"
 #include "quant_checker_base.h"
-#include "quant_checker_unquant.h"
+#include "unquant_checker.h"
 #include "static_quant_checker.h"
-#include "quant_checker_pertoken.h"
-#include "quant_checker_pergroup.h"
-#include "quant_checker_mx.h"
+#include "per_token_checker.h"
+#include "per_group_checker.h"
+#include "mx_quant_checker.h"
 
 namespace moe_dispatch {
 

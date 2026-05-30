@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_checker_mx.h
+ * \file mx_quant_checker.h
  * \brief MOE Distribute Dispatch MX 量化校验 (mode=4)
  *        构造参数化：dynScalesDtype 由调用方传入
  */
@@ -17,7 +17,7 @@
 #ifndef MOE_DISPATCH_QUANT_CHECKER_MX_H
 #define MOE_DISPATCH_QUANT_CHECKER_MX_H
 
-#include "quant_checker_dynamic_base.h"
+#include "dynamic_quant_checker_base.h"
 #include "defs.h"
 #include "utils.h"
 
