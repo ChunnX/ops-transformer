@@ -24,6 +24,22 @@ constexpr FlagID AIC_INTER_BLOCK_BARRIER = 9;
 constexpr FlagID AIV_INTER_SUBBLOCK_BARRIER = 10;
 constexpr FlagID FFTS_MAX_FLAG = 7;
 
+constexpr uint8_t CROSS_CORE_SYNC_MODE_4 = 4U;
+constexpr FlagID FLAG_ID0 = 0;
+constexpr FlagID FLAG_ID1 = 1;
+constexpr FlagID FLAG_ID2 = 2;
+constexpr FlagID FLAG_ID3 = 3;
+constexpr FlagID FLAG_ID4 = 4;
+constexpr FlagID FLAG_ID5 = 5;
+constexpr FlagID FLAG_ID6 = 6;
+constexpr FlagID FLAG_ID16 = 16;
+constexpr FlagID FLAG_ID17 = 17;
+constexpr FlagID FLAG_ID18 = 18;
+constexpr FlagID FLAG_ID19 = 19;
+constexpr FlagID FLAG_ID20 = 20;
+constexpr FlagID FLAG_ID21 = 21;
+constexpr FlagID FLAG_ID22 = 22;
+
 struct CrossCoreFlag {
     __aicore__ inline
     CrossCoreFlag() : id(0) {}

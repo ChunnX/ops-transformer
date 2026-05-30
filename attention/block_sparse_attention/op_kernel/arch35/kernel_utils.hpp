@@ -60,6 +60,36 @@ struct BsaKernelParamsArch35 {
         workSpace(workSpace_), tiling(tiling_) {}
 };
 
+struct BsaFullQuantKernelParamsArch35 {
+    GM_ADDR query;
+    GM_ADDR key;
+    GM_ADDR value;
+    GM_ADDR blockSparseMask;
+    GM_ADDR attenMask;
+    GM_ADDR blockTable;
+    GM_ADDR actualSeqLengths;
+    GM_ADDR actualSeqLengthsKv;
+    GM_ADDR qDequantScale;
+    GM_ADDR kDequantScale;
+    GM_ADDR vDequantScale;
+    GM_ADDR attentionOut;
+    GM_ADDR workSpace;
+    GM_ADDR tiling;
+
+    // Methods
+    __aicore__ inline BsaFullQuantKernelParamsArch35() {}
+    __aicore__ inline BsaFullQuantKernelParamsArch35(GM_ADDR query_, GM_ADDR key_, GM_ADDR value_,
+                                                     GM_ADDR blockSparseMask_, GM_ADDR attenMask_, GM_ADDR blockTable_,
+                                                     GM_ADDR actualSeqLengths_, GM_ADDR actualSeqLengthsKv_,
+                                                     GM_ADDR qDequantScale_, GM_ADDR kDequantScale_,
+                                                     GM_ADDR vDequantScale_, GM_ADDR attentionOut_,
+                                                     GM_ADDR workSpace_, GM_ADDR tiling_)
+        : query(query_), key(key_), value(value_), blockSparseMask(blockSparseMask_), attenMask(attenMask_),
+          blockTable(blockTable_), actualSeqLengths(actualSeqLengths_), actualSeqLengthsKv(actualSeqLengthsKv_),
+          qDequantScale(qDequantScale_), kDequantScale(kDequantScale_), vDequantScale(vDequantScale_),
+          attentionOut(attentionOut_), workSpace(workSpace_), tiling(tiling_) {}
+};
+
 __aicore__ inline
 uint32_t GetCurQSTileNum(int64_t curQSeqlen, uint32_t blockShapeX, uint32_t qBaseTile)
 {
