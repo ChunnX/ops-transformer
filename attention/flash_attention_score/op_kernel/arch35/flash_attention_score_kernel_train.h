@@ -220,6 +220,10 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         multiCoreInnerLimit = this->sharedParams.multiCoreInnerLimit;
     }
 
+    if (unlikely(this->aicIdx >= this->sharedParams.coreNum)) {
+        return;
+    }
+
     // 初始化AxisIdx
     RunParamStr<isInfer> runParam;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {

@@ -18,8 +18,8 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 #include "moe_init_routing_quant_v2_tiling_base.h"
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {

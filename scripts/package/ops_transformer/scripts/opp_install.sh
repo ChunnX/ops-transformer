@@ -347,6 +347,9 @@ install_es_whl() {
  	local whl_install_dir_path="${TARGET_VERSION_DIR}/python/site-packages"
  	chmod u+w "${whl_install_dir_path}" 2> /dev/null
  	install_es_whl_package "${es_whl_path}" "${python_es_whl_name}" "${whl_install_dir_path}"
+  if [ -d "${TARGET_VERSION_DIR}/ops_transformer" ]; then
+ 	  rm -rf "${TARGET_VERSION_DIR}/ops_transformer"
+ 	fi
 }
 
 add_init_py() {
@@ -368,7 +371,7 @@ add_init_py() {
 }
 
 install_whl_package() {
-  local whl_dir="${CURR_PATH}/../../../../python/site-packages"
+  local whl_dir="${CURR_PATH}/../../../../ops_transformer"
   local target_python_dir="${TARGET_VERSION_DIR}/python/site-packages"
 
   # 查找 whl 文件
@@ -417,7 +420,7 @@ install_opp() {
   update_install_infos "${TARGET_USERNAME}" "${TARGET_USERGROUP}" "${INSTALL_TYPE}" "${relative_path_val}"
   log_with_errorlevel "$?" "error" "[ERROR]: ERR_NO:${INSTALL_FAILED};ERR_DES:Update opp install info failed."
 
-  bash "${COMMON_PARSER_FILE}" --package="${OPP_PLATFORM_DIR}" --install --username="${TARGET_USERNAME}" \
+  bash "${COMMON_PARSER_FILE}" --copy_all --package="${OPP_PLATFORM_DIR}" --install --username="${TARGET_USERNAME}" \
     --usergroup="${TARGET_USERGROUP}" --set-cann-uninstall --version=$RUN_PKG_VERSION \
     --use-share-info --version-dir=$PKG_VERSION_DIR $INSTALL_OPTION ${INSTALL_FOR_ALL} "--feature=all" "--chip=all" \
     "${INSTALL_TYPE}" "${TARGET_INSTALL_PATH}" "${FILELIST_FILE}"

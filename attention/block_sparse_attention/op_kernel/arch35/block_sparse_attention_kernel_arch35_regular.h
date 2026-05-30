@@ -106,7 +106,7 @@ public:
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        BlockMmadPV blockMmadPV(resource, pvL1AddrStart_, mm2L1TileHelper_);
+        BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, mm2L1TileHelper_);
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -149,6 +149,7 @@ public:
         uint32_t curBatch = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
         int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
+        uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
         uint32_t curTotalTaskNum = firstBatchTaskNum_;
         // Go through each task
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
@@ -165,17 +166,18 @@ public:
                 }
                 qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
                 kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
-                curTotalTaskNum += GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_) * qHeads_;
+                curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
+                curTotalTaskNum += curQSTileNum * qHeads_;
             }
             uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
-            uint32_t qSTileIdx = taskIdxCurBatch / qHeads_;
+            uint32_t qHeadIdx = taskIdxCurBatch / curQSTileNum;
+            uint32_t kvHeadIdx = qHeadIdx / groupSize;
+            uint32_t qSTileIdx = taskIdxCurBatch - qHeadIdx * curQSTileNum;
             // corresponding xBlock index of cur task
             uint32_t xBlockIdx = qSTileIdx / qSTileNumPerFullXBlock;
             // the q base tile index within the corrsponding xBlock of cur task
             uint32_t qSTileIdxCurXBlock = qSTileIdx - xBlockIdx * qSTileNumPerFullXBlock;
             // corresponding head index of cur task
-            uint32_t qHeadIdx = taskIdxCurBatch - qSTileIdx * qHeads_;
-            uint32_t kvHeadIdx = qHeadIdx / groupSize;
             // corresponding blockSparseMask gm offset of cur task
             // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
             int64_t sparseMaskBOffset = curBatch * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
@@ -283,11 +285,16 @@ public:
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
 #ifdef __DAV_CUBE__
+                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
+                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
                     blockMmadQK(
                         gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapeQK,
                         gatheredKvSTileIdx, kvSeqlen,
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                        prefixSumL0AStages, prefixSumL0BStages,
                         mm1ToSmFlag);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
@@ -300,8 +307,6 @@ public:
                     auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId],
                     l1PLayoutTla, Arch::PositionL1{});
 #ifdef __DAV_VEC__
-                    // Stage 2: Online softmax (computed on VECTOR core)
-                    // online softmax
                     epilogueOnlineSoftmax(
                         l1PTensorTla,
                         actualBlockShapeQK,
@@ -333,11 +338,16 @@ public:
                     
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
+                    uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
+                    uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
+                        gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
                     blockMmadPV(
                         gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx],
                         actualBlockShapePV,
                         gatheredKvSTileIdxDe, kvSeqlen,
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                        prefixSumL0AStages, prefixSumL0BStages,
                         smToMm2Flag, mm2ToReFlag);
 #endif
 #ifdef __DAV_VEC__
@@ -407,8 +417,31 @@ public:
         Gemm::Block::Mm2L1TileHelper mm2L1TileHelper(mm2L1TileM_, mm2L1TileN_, mm2L1TileKLeft_, mm2L1TileKRight_,
             pL1BufNum_, vL1BufNum_);
         mm2L1TileHelper_ = mm2L1TileHelper;
-        pvL1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
+        mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
             mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
+        mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
+        mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
+        mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
+        mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
+    }
+
+    __aicore__ inline
+    uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(
+        uint32_t gatheredKvSTileIdx, uint32_t singleMm1L0Stages,
+        uint32_t singleMm2L0Stages, uint32_t kvSLoopNum,
+        bool isCurPhaseMm1)
+    {
+        uint64_t prefixSumStages;
+        if (isCurPhaseMm1) {
+            prefixSumStages = (gatheredKvSTileIdx <= PRE_LAUNCH) ?
+                gatheredKvSTileIdx * singleMm1L0Stages :
+                gatheredKvSTileIdx * singleMm1L0Stages + (gatheredKvSTileIdx - PRE_LAUNCH) * singleMm2L0Stages;
+        } else {
+            prefixSumStages = (gatheredKvSTileIdx < kvSLoopNum - PRE_LAUNCH) ?
+                (gatheredKvSTileIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages:
+                kvSLoopNum * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages;
+        }
+        return prefixSumStages;
     }
 
     __aicore__ inline
@@ -419,7 +452,7 @@ public:
     {
         for (uint32_t i = 0; i < pL1BufNum_; i++) {
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-                pvL1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
+                mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
         }
         uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
         uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
@@ -457,6 +490,8 @@ public:
         // L0C
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         // cross core sync
         if constexpr (SM_MM2_MODE == 4U) {
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(2);
@@ -510,6 +545,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         if constexpr (MM1_SM_MODE == 4U) {
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(0);
             AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(1);
@@ -586,7 +623,11 @@ private:
     uint32_t kL1BufNum_;
     uint32_t vL1BufNum_;
     uint32_t pL1BufNum_;
-    uint32_t pvL1AddrStart_ = 0;
+    uint32_t mm1L0ATotalStages_;
+    uint32_t mm1L0BTotalStages_;
+    uint32_t mm2L0ATotalStages_;
+    uint32_t mm2L0BTotalStages_;
+    uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
 };

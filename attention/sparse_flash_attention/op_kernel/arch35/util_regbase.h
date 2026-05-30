@@ -67,8 +67,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t softmaxLseOffset;       // souter层确定
 
     int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
+    int64_t kvLoopEndIdx;
 };
 
 #define COMMON_RUN_INFO \
@@ -116,8 +115,7 @@ struct RunInfo {
     int64_t softmaxLseOffset;
 
     int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
+    int64_t kvLoopEndIdx;
 };
 
 #define COMMON_CONST_INFO \
@@ -184,10 +182,12 @@ struct RunInfo {
     int64_t s1BaseBN2GDv; \
     int32_t s1BaseDv; \
     int32_t s2BaseDv; \
+    bool returnSoftmaxLse; \
     /* matmul跳读参数 */ \
     int64_t mm1Ka; \
     /* dq 或者attentionOut的Stride */ \
     int64_t attentionOutStride; \
+    uint32_t aicIdx; \
     uint32_t aivIdx; \
     uint8_t layoutType; \
     uint8_t subBlockIdx;\
@@ -249,8 +249,8 @@ struct RunInfo {
     uint32_t cmpBlockSize : 12; \
     uint32_t oriMaxBlockNumPerBatch; \
     uint32_t cmpMaxBlockNumPerBatch; \
-    uint32_t usedCoreNum
-
+    uint32_t usedCoreNum; \
+    bool returnSoftmaxLse
 
 struct ConstInfo {
     COMMON_CONST_INFO;

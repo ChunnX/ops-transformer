@@ -16,7 +16,7 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
@@ -103,6 +103,7 @@ protected:
     ge::graphStatus CheckCommonPlatformInfo();
     ge::graphStatus GetCommonShapeAttrsInfo();
     ge::graphStatus CheckCommonShapeAttrsInfo();
+    ge::graphStatus GetShapeInfo();
 
     // platform info
     platform_ascendc::SocVersion socVersion_;
@@ -155,7 +156,6 @@ protected:
 private:
     // get
     ge::graphStatus GetAttrsInfo();
-    ge::graphStatus GetShapeInfo();
     ge::graphStatus GetGmmXShapeInfo();
     ge::graphStatus GetGmmWeightShapeInfo();
     ge::graphStatus GetCountsTensorShapeInfo();

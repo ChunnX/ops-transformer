@@ -100,7 +100,7 @@ public:
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
-    static constexpr uint32_t WS_DOBULE = 2;
+    static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
     TPipe *pipe = nullptr;
@@ -445,7 +445,7 @@ __aicore__ inline void QSIPreload<QSIT>::Init(__gm__ uint8_t *query, __gm__ uint
     uint64_t offset = 0;
 
     // mm1开DoubleBuffer
-    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
@@ -453,12 +453,12 @@ __aicore__ inline void QSIPreload<QSIT>::Init(__gm__ uint8_t *query, __gm__ uint
     // (aic, 8, 2, 2, 2048)
     // (aic, s1_cube, 头尾, idx/value, K)
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOBULE * WS_DOBULE * MAX_TOPK * sizeof(float);
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * MAX_TOPK * sizeof(float);
 
     // (aic, 8, 2, 16)
     // (aic, s1_cube, 头尾，16ele)
     vec1ParamGm.SetGlobalBuffer((__gm__ int64_t *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOBULE * LD_PARAM_NUM * sizeof(int64_t);
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * LD_PARAM_NUM * sizeof(int64_t);
 
     qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
     if ASCEND_IS_AIV {

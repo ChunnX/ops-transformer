@@ -21,7 +21,7 @@
     #include "arch35/quant_lightning_indexer_kernel.h"
 
 #else
-    #include "arch32/quant_lightning_indexer_kernel.h"
+    #include "arch22/quant_lightning_indexer_kernel.h"
 #endif
 
 using namespace QLIKernel;

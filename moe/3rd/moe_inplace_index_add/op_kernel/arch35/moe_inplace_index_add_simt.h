@@ -18,6 +18,10 @@
 #include "kernel_operator.h"
 #include "op_kernel/math_util.h"
 #include "moe_inplace_index_add_common.h"
+#include "simt_api/asc_simt.h"
+#include "simt_api/device_atomic_functions.h"
+#include "simt_api/asc_fp16.h"
+#include "simt_api/asc_bf16.h"
 
 namespace MoeInplaceIndexAdd
 {
@@ -208,8 +212,8 @@ void MoeInplaceIndexAddSimt<VAR_T, IDX_T, COMP_T, CAST_T, WITH_ALPHA, IS_CONTIGU
         alphaValue = alpha[0];
     }
 
-    for (COMP_T i = blockIdx * Simt::GetThreadNum() + Simt::GetThreadIdx(); i < updatesAxis;
-         i += blockNum * Simt::GetThreadNum()) {
+    for (COMP_T i = blockIdx * blockDim.x + threadIdx.x; i < updatesAxis;
+         i += blockNum * blockDim.x) {
         COMP_T dim0Idx = Simt::UintDiv(i, m0, shift0);
         COMP_T dim0Rem = i - dim0Idx * updatesStride0;
 
@@ -227,18 +231,18 @@ void MoeInplaceIndexAddSimt<VAR_T, IDX_T, COMP_T, CAST_T, WITH_ALPHA, IS_CONTIGU
         if constexpr (WITH_ALPHA) {
             if constexpr (IsSameType<VAR_T, int8_t>::value || IsSameType<VAR_T, uint8_t>::value ||
                           IsSameType<VAR_T, int16_t>::value) {
-                Simt::AtomicAdd(varWorkspaceGm + varOffset, static_cast<CAST_T>(static_cast<float>(updates[i]) * static_cast<float>(alphaValue)));
+                asc_atomic_add(varWorkspaceGm + varOffset, static_cast<CAST_T>(static_cast<float>(updates[i]) * static_cast<float>(alphaValue)));
             } else if constexpr (IsSameType<VAR_T, bfloat16_t>::value || IsSameType<VAR_T, half>::value)  {
-                Simt::AtomicAdd(var + varOffset, static_cast<VAR_T>(static_cast<float>(updates[i]) * static_cast<float>(alphaValue)));
+                asc_atomic_add(var + varOffset, static_cast<VAR_T>(static_cast<float>(updates[i]) * static_cast<float>(alphaValue)));
             } else {
-                Simt::AtomicAdd(var + varOffset, updates[i] * alphaValue);
+                asc_atomic_add(var + varOffset, updates[i] * alphaValue);
             }
         } else {
             if constexpr (IsSameType<VAR_T, int8_t>::value || IsSameType<VAR_T, uint8_t>::value ||
                           IsSameType<VAR_T, int16_t>::value) {
-                Simt::AtomicAdd(varWorkspaceGm + varOffset, static_cast<CAST_T>(updates[i]));
+                asc_atomic_add(varWorkspaceGm + varOffset, static_cast<CAST_T>(updates[i]));
             } else {
-                Simt::AtomicAdd(var + varOffset, updates[i]);
+                asc_atomic_add(var + varOffset, updates[i]);
             }
         }
     }
@@ -267,7 +271,7 @@ __aicore__ inline void MoeInplaceIndexAddSimt<VAR_T, IDX_T, COMP_T, CAST_T, WITH
     GetUintDivMagicAndShift(m0, shift0, updatesStride0);
     GetUintDivMagicAndShift(m1, shift1, afterAxis);
 
-    AscendC::Simt::VF_CALL<MoeInplaceIndexAddSimt<VAR_T, IDX_T, COMP_T, CAST_T, WITH_ALPHA, IS_CONTIGUOUS>::SimtCompute>(AscendC::Simt::Dim3(USED_THREAD), 
+    asc_vf_call<MoeInplaceIndexAddSimt<VAR_T, IDX_T, COMP_T, CAST_T, WITH_ALPHA, IS_CONTIGUOUS>::SimtCompute>(dim3(USED_THREAD), 
                         varInAxis, afterAxis, updatesStride0, updatesAxis, m0, shift0, m1, shift1,
                         (__gm__ VAR_T*)(var_.GetPhyAddr()), (__gm__ IDX_T*)(indices_.GetPhyAddr()),
                         (__gm__ VAR_T*)(updates_.GetPhyAddr()), (__gm__ VAR_T*)(alpha_.GetPhyAddr()),

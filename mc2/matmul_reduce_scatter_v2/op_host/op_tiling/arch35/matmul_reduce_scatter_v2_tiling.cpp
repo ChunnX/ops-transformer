@@ -26,8 +26,9 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
 
@@ -55,15 +56,15 @@ bool MatmulReduceScatterV2Tiling::IsCapable()
 void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
-    OP_LOGD(opName, " tiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " tiling.mTailCnt %d", tiling.mTailCnt);
-    OP_LOGD(opName, " tiling.nTailCnt %d", tiling.nTailCnt);
-    OP_LOGD(opName, " tiling.kTailCnt %d", tiling.kTailCnt);
-    OP_LOGD(opName, " tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.mTailMain %d", tiling.mTailMain);
-    OP_LOGD(opName, " tiling.nTailMain %d", tiling.nTailMain);
-    OP_LOGD(opName, " tiling.aswWindowLen %d", tiling.aswWindowLen);
+    OP_LOGD(opName, "tiling.isHf32 %d", tiling.isHf32);
+    OP_LOGD(opName, "tiling.mTailCnt %d", tiling.mTailCnt);
+    OP_LOGD(opName, "tiling.nTailCnt %d", tiling.nTailCnt);
+    OP_LOGD(opName, "tiling.kTailCnt %d", tiling.kTailCnt);
+    OP_LOGD(opName, "tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, "tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, "tiling.mTailMain %d", tiling.mTailMain);
+    OP_LOGD(opName, "tiling.nTailMain %d", tiling.nTailMain);
+    OP_LOGD(opName, "tiling.aswWindowLen %d", tiling.aswWindowLen);
 }
 
 void MatmulReduceScatterV2Tiling::PrintAllTilingData() const
@@ -110,6 +111,10 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);

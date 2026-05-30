@@ -14,7 +14,7 @@
  */
 #ifndef BLITZ_SPARSE_ATTENTION_TILING_CONTEXT_H
 #define BLITZ_SPARSE_ATTENTION_TILING_CONTEXT_H
-#include "tiling_base/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 
@@ -117,6 +117,9 @@ struct ContextParamsForPFATiling {
     uint32_t isBSNDOut = 0;
     const bool *softmaxLseFlag = nullptr;
     bool isSoftMaxLseEnable = false;
+    // block_shape attr: [BLOCK_SIZE_Q, BLOCK_SIZE_KV], both multiples of 128. Default 128/128.
+    int32_t qBlockSize = 128;
+    int32_t kvBlockSize = 128;
     uint32_t fromTilingSink = 0; // Flag indicating whether it is the step to enter the workspace calculation from tiling sinking
     bool hasKeyAntiquantScale = 0;
     bool hasValueAntiquantScale = 0;

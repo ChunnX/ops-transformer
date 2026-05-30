@@ -12,7 +12,7 @@
  * \file prompt_flash_attention_template_tiling_key_enum.h
  * \brief
  */
- 
+
 
 #ifndef PROMPT_FLASH_ATTENTION_TEMPLATE_TILING_KEY_ENUM_H_
 #define PROMPT_FLASH_ATTENTION_TEMPLATE_TILING_KEY_ENUM_H_
@@ -22,34 +22,47 @@
 #define ASCENDC_TPL_3_BW 3
 
 #if (__CCE_AICORE__ == 310)
-#define PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, ...) \
-    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]); \
+#define PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, ...)                                                  \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);  \
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1); \
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2); \
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d); \
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);                     \
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);                     \
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);                         \
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
-#define PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, ...) \
-    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]); \
+#define PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, ...)                                                    \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);  \
     constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1); \
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2); \
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d); \
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);                     \
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);                     \
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);                         \
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
-#define PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...) \
-    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][0]); \
-    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][1]); \
-    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1); \
-    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2); \
-    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d); \
+#define PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...)                                                  \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);  \
+    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
+    constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);                     \
+    constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);                     \
+    constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);                         \
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
 #endif
 
-enum class inferFaLayOutTypeEnum { None = 0, LAYOUT_BSH = 1, LAYOUT_SBH = 2, LAYOUT_BNSD = 3, LAYOUT_TND = 4, LAYOUT_NTD_TND = 5, LAYOUT_NTD = 6};
-enum class inferPFALayoutTypeEnum { LAYOUT_BSH = 0, LAYOUT_BNSD = 1, LAYOUT_TND = 2, LAYOUT_NTD = 3};
+enum class inferFaLayOutTypeEnum {
+    None = 0,
+    LAYOUT_BSH = 1,
+    LAYOUT_SBH = 2,
+    LAYOUT_BNSD = 3,
+    LAYOUT_TND = 4,
+    LAYOUT_NTD_TND = 5,
+    LAYOUT_NTD = 6
+};
+enum class inferPFALayoutTypeEnum {
+    LAYOUT_BSH = 0,
+    LAYOUT_BNSD = 1,
+    LAYOUT_TND = 2,
+    LAYOUT_NTD = 3
+};
 enum class inferDTemplateType {
     Aligned16 = 16,
     Aligned32 = 32,
@@ -96,7 +109,7 @@ enum class inferImplModeEnum {
 #define ImplMode_AA_HIGH_PERFORMANCE 1
 #define ImplMode_AA_INVALID_LINE_HIGH_PRECISION 2
 
-static constexpr  inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] ={
+static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] = {
     {inferFaLayOutTypeEnum::LAYOUT_BNSD, inferFaLayOutTypeEnum::LAYOUT_BNSD},
     {inferFaLayOutTypeEnum::LAYOUT_BSH, inferFaLayOutTypeEnum::LAYOUT_BSH},
     {inferFaLayOutTypeEnum::LAYOUT_TND, inferFaLayOutTypeEnum::LAYOUT_TND},
@@ -104,7 +117,7 @@ static constexpr  inferFaLayOutTypeEnum InOutLayoutTypeValue[5][2] ={
     {inferFaLayOutTypeEnum::LAYOUT_NTD, inferFaLayOutTypeEnum::LAYOUT_NTD},
 };
 
-static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
+static constexpr inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] = {
     {inferPFALayoutTypeEnum::LAYOUT_BNSD, inferPFALayoutTypeEnum::LAYOUT_BNSD},
     {inferPFALayoutTypeEnum::LAYOUT_BSH, inferPFALayoutTypeEnum::LAYOUT_BSH},
     {inferPFALayoutTypeEnum::LAYOUT_TND, inferPFALayoutTypeEnum::LAYOUT_TND},
@@ -113,7 +126,7 @@ static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
 };
 
 #define InOutLayoutType_BNSD_BNSD 0
-#define InOutLayoutType_BSH_BSH 1 //BSND由于排布与BSH一样，因此两个会编译成相同取值
+#define InOutLayoutType_BSH_BSH 1 // BSND由于排布与BSH一样，因此两个会编译成相同取值
 #define InOutLayoutType_TND_TND 2
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
@@ -154,6 +167,8 @@ static constexpr ConfigParams ConfigValue[] ={
    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //24
    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //25
    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //26
+   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //27
+   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //28
 };
 
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 0
@@ -183,9 +198,11 @@ static constexpr ConfigParams ConfigValue[] ={
 #define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128 24
 #define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64 25
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26
+#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 27
+#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 28
 
 
-//PseMode
+// PseMode
 #define PSE_MODE_PSE_OUTER_MUL_ADD_TYPE 0
 #define PSE_MODE_PSE_OUTER_ADD_MUL_TYPE 1
 #define PSE_MODE_PSE_INNER_MUL_ADD_TYPE 2
@@ -195,28 +212,29 @@ static constexpr ConfigParams ConfigValue[] ={
 
 // QuantModeEnum
 #define AntiquantMode_PER_CHANNEL 0
-#define AntiquantMode_PER_TOKEN 1
 #define AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN 2
-#define AntiquantMode_PER_TOKEN_HEAD 3
-#define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
-#define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
+#define AntiquantMode_K_PER_TOKEN 6 // 表示其他伪量化类型
 #define PerBlock 17
 #define FULLQUANT_MODE_PER_TOKEN_HEAD 18
+#define FULLQUANT_MODE_MXFP8_PREFILL 19
+#define FULLQUANT_MODE_MXFP8_DECODE 20
 #define FullQuantMode 30
 #define NoQuantMode 31
 
-// PFAMaskEnum
-#define PFAMask_DISABLE_MASK 0
-#define PFAMask_ENABLE_MASK_NO_BAND 1
-#define PFAMask_ENABLE_MASK_BAND 2
-
-// PFAMatMulTypeEnum
-#define PFAMatMulType_MM_PFA 0
-#define PFAMatMulType_MM_PA 1
-#define PFAMatMulType_MM_IFA_MLA 2
-#define PFAMatMulType_MM_IFA_MLA_PA 3
-#define PFAMatMulType_MM_PA_D512 4
-#define PFAMatMulType_MM_DN 5
+// KvLayoutType
+/*
+    To ensure template compatibility and reduce total tilingkey, KvLayoutType is assigned different optional values for
+   kernel templates before/after refactoring.
+    1. For refactored template(e.g. GQA non quant), KvLayoutType is template parameterized, KvLayoutType_NO_PA,
+   KvLayoutType_PA_BBH, KvLayoutType_PA_BNBD, KvLayoutType_PA_NZ are required.
+    2. For unrefactored templates, KvLayoutType_NO_PA and KvLayoutType_ENABLE_PA are recommended to reduce tilingkey and
+   keep compatibility, KvLayoutType has same meaning as the original isPa.
+*/
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_ENABLE_PA 1
+#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
 
 // SplitCoreModeEnum
 #define SplitCoreMode_SPLIT_NBS_VECTOR 0

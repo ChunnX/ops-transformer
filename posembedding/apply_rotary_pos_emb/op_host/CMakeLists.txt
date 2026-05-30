@@ -13,6 +13,8 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+set(apply_rotary_pos_emb_mc62cm12a_arch_directory arch35 arch38 CACHE INTERNAL "apply_rotary_pos_emb mc62cm12a arch")
+
 if (BUILD_OPS_RTY_KERNEL)
     add_ops_compile_options(
             OP_NAME ApplyRotaryPosEmb

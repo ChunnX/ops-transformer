@@ -62,7 +62,7 @@ protected:
     ge::graphStatus AdjustHCCLLimit();
 
     ge::graphStatus DoQuantTiling();
-    ge::graphStatus GetWorkspaceSizeInStandardCard4P(const uint64_t gmcFloat);
+    ge::graphStatus GetWorkspaceSizeForA2ARSAG(const uint64_t gmcFloat);
     ge::graphStatus GetWorkspaceSizeOfCommQuantScaleOrFP8(const uint64_t gmcFloat);
     ge::graphStatus SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType, const uint8_t dataType);

@@ -40,3 +40,19 @@ else()
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
         OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
 endif()
+
+if((UT_TEST_ALL OR OP_HOST_UT) AND TARGET ${OPHOST_NAME}_tiling_obj)
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp)
+    target_link_libraries(${OPHOST_NAME}_tiling_obj PRIVATE
+        $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>)
+endif()
+
+if((UT_TEST_ALL OR OP_API_UT) AND TARGET ${OPHOST_NAME}_opapi_obj)
+    target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../grouped_matmul/op_api/grouped_matmul_950_checker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../grouped_matmul/op_api/grouped_matmul_util.cpp)
+    target_include_directories(${OPHOST_NAME}_opapi_obj PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../grouped_matmul/op_api)
+endif()

@@ -17,8 +17,8 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../op_kernel/gqmm_tiling_key.h"
 
 using namespace Ops::Transformer::OpTiling;
@@ -946,6 +946,14 @@ void Mc2GroupedQbmmTiling::CalBasicBlock()
             // 64: mx_mmad requires the inner axis to align to 64
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
         }
+    }
+
+    if (basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C > aicoreParams_.l0cSize) {
+        uint64_t maxBaseN = aicoreParams_.l0cSize / (basicTiling_.baseM * DATA_SIZE_L0C);
+        basicTiling_.baseN = std::min(basicTiling_.baseN, maxBaseN);
+        basicTiling_.baseN = !inputParams_.transB ?
+            FloorAlign(basicTiling_.baseN, CUBE_BLOCK) :
+            FloorAlign(basicTiling_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
     }
 }
 

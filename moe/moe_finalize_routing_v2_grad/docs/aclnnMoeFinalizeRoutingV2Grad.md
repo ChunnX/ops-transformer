@@ -287,8 +287,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
     <td>输入和输出的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
-    <td> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td> 561002 </td>
+    <td> ACLNN_ERR_INNER_NULLPTR </td>
+    <td> 561103 </td>
     <td>输入和输出的shape、取值不满足参数说明中的要求。</td>
     </tr>
   </tbody></table>

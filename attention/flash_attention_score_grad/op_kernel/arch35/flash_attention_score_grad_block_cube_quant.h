@@ -308,8 +308,8 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsP(LocalTenso
     int64_t qOffset = runInfo.commonRunInfo.queryOffset + runInfo.quantRunInfo.s1Idx * constInfo.commonConstInfo.n2D * CUBE_BASEM;
     int64_t kOffset = runInfo.commonRunInfo.keyOffset + runInfo.quantRunInfo.s2Idx * constInfo.commonConstInfo.n2GD * CUBE_BASEN;
     
-    LocalTensor<INPUT_TYPE> vL1Tensor = vL1Buf[runInfo.quantRunInfo.s2Idx].Get().GetTensor<INPUT_TYPE>();
-    LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buf[runInfo.quantRunInfo.s2Idx].Get().GetTensor<INPUT_TYPE>();
+    LocalTensor<INPUT_TYPE> vL1Tensor = vL1Buf[runInfo.quantRunInfo.s2Idx].Get().template GetTensor<INPUT_TYPE>();
+    LocalTensor<INPUT_TYPE> kL1Tensor = kL1Buf[runInfo.quantRunInfo.s2Idx].Get().template GetTensor<INPUT_TYPE>();
     if (!runInfo.isValueReuse && runInfo.quantRunInfo.s1Idx == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(runInfo.quantRunInfo.s2Idx);
         CopyInKeyToL1(kL1Tensor, kOffset, realM, HEAD_DIM_ALIGN, constInfo.commonConstInfo.n2GD);
@@ -445,8 +445,8 @@ __aicore__ inline void FAGBlockCubeQuant<TEMPLATE_ARGS>::IterateMmDsK(LocalTenso
     LocalTensor<INPUT_TYPE> L0BTensor = l0bBuffer.GetTensor<INPUT_TYPE>();
 
     if (runInfo.isKeyReuse) {
-        kL1Tensor = kL1Buf[runInfo.quantRunInfo.s2Idx].Get().GetTensor<INPUT_TYPE>();
-        kL1TensorSecond = kL1Buf[runInfo.quantRunInfo.s2Idx + 1].Get().GetTensor<INPUT_TYPE>();
+        kL1Tensor = kL1Buf[runInfo.quantRunInfo.s2Idx].Get().template GetTensor<INPUT_TYPE>();
+        kL1TensorSecond = kL1Buf[runInfo.quantRunInfo.s2Idx + 1].Get().template GetTensor<INPUT_TYPE>();
         LocalTensor<INPUT_TYPE> L0BTensorSecond = L0BTensor[L0_OFFSET];
         LoadDataToL0B<INPUT_TYPE>(L0BTensor, kL1Tensor, param, 0, kSizeFirst, HEAD_DIM_ALIGN);
         LoadDataToL0B<INPUT_TYPE>(L0BTensorSecond, kL1TensorSecond, param, 0, kSizeSecond, HEAD_DIM_ALIGN);

@@ -15,8 +15,8 @@ import sys
 
 def replace_paths_in_test_file(test_file_path, path):
     """
-    替换test_qli_batch.py中的占位符为实际路径
-    :param test_file_path: test_qli_batch.py的路径
+    替换test_li_batch.py中的占位符为实际路径
+    :param test_file_path: test_li_batch.py的路径
     :param path1: 实际路径
     """
     try:

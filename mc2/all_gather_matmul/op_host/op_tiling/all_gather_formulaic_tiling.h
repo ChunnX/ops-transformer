@@ -33,29 +33,22 @@ public:
     bool strongTpBound_ = false;
     bool hasLocalAtFront_ = true;  // local提前计算
 
-    // Constructor
+// Constructor
     explicit AllGatherPlusMM(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
-                             SocVersion inputSocVersion = SocVersion::SOC910_B)
+                            SocVersion inputSocVersion)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion)
     {
         commPerf_.SetCommShapeLen(clusterInfo_.kValue);
         commPerf_.SetCommDTypeSize(clusterInfo_.inMatrixADtypeSize);
         rankTileNum_ = commPerf_.GetRankTileNum();
         tilingM_.SetMinLenByMax(commPerf_.GetLinearThresholdLen());
-
-        if (clusterInfo_.socType == SocVersion::SOC910_B) {
-            tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankDim_));
-        } else {
-            tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));
-        }
     }
     void EstimateKernelTime() override;
     void SelectTilingMethod() override;
 
 private:
-    void SetCommTimeFactorForA5();
-    void SetCommTimeFactorForOther();
-    void SetCommTimeFactor();
+    virtual void SetCommTimeFactor() = 0;
+    virtual bool GetAllowMoreCuts(bool smallMFlag) = 0;
     void PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime);
 };
 

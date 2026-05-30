@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPBASE_TAG_ID c8d83f3e57a63a7375e89a2d6937452c0ae2e522)
+set(OPBASE_TAG_ID ee5334d157016d2afa736d4a23381855dbf1fe37)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../../ops-base")
   get_filename_component(OPBASE_SOURCE_PATH
@@ -38,10 +38,16 @@ else()
 
   set(OPBASE_SOURCE_PATH ${CANN_3RD_LIB_PATH}/opbase)
 
-  if(EXISTS ${OPBASE_SOURCE_PATH}/include)
-    file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/include)
-  endif()
   if(EXISTS ${OPBASE_SOURCE_PATH}/aicpu_common)
     file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/aicpu_common)
+  endif()
+  if(EXISTS ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/log)
+    file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/log)
+  endif()
+  if(EXISTS ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_host)
+    file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_host)
+  endif()
+  if(EXISTS ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel)
+    file(REMOVE_RECURSE ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel)
   endif()
 endif()

@@ -42,6 +42,12 @@ OP_REPO_LIST+="posembedding "
 OP_REPO_LIST+="mc2 "
 OP_REPO_LIST+="mhc "
 
+SOC_LIST=""
+SOC_LIST+="ascend310p "
+SOC_LIST+="ascend910b "
+SOC_LIST+="ascend910_93 "
+SOC_LIST+="ascend950 "
+
 # 读取算子option配置 ################################################################################################
 op_config_yaml="$CODE_PATH/tests/test_config.yaml"
 op_temp_dir="$CODE_PATH/log_ut/op_content/"
@@ -109,21 +115,61 @@ for OP_REPO in $OP_REPO_LIST; do
         fi
 
         cd $CODE_PATH
-        timeout $TIMEOUT bash build.sh -u --ops=$op_option_list --cov --soc=ascend310p,ascend910b,ascend910_93,ascend950 &> $LOG_PATH/op_test/$OP.log
-        if [ $? -ne 0 ]; then
-            echo -ne "\033[31mFAIL\033[0m            "
-            echo -n "FAIL," &>> $LOG_PATH/results.csv
-        else
-            echo -ne "\033[32mPASS\033[0m            "
-            echo -n "PASS," &>> $LOG_PATH/results.csv
-        fi
+        if [ "$OP_REPO" = "mc2" ]; then
+            run_mc2_ut_case() {
+                local test_type=$1
+                local soc_param=$2
 
-        if [ -f build/cov_result/coverage.info ]; then
-            echo "$OP ut coverage file info is:" >> $LOG_PATH/ut.log
-            ls -sh build/cov_result/coverage.info &>> $LOG_PATH/ut.log
-            cat build/cov_result/coverage.info >> ./coverage.info
+                if [ $test_type = "host" ]; then
+                    timeout $TIMEOUT bash build.sh -u --ophost --ops=$op_option_list --cov --soc=$soc_param &>> $LOG_PATH/op_test/$OP.log
+                elif [ $test_type = "api" ]; then
+                    timeout $TIMEOUT bash build.sh -u --opapi --ops=$op_option_list --cov &>> $LOG_PATH/op_test/$OP.log
+                fi
+
+                if [ $? -ne 0 ]; then
+                    echo -ne "\033[31m$test_type $soc_param FAIL\033[0m    "
+                    echo -n "$test_type $SOC FAIL," &>> $LOG_PATH/results.csv
+                else
+                    echo -ne "\033[32m$test_type $soc_param PASS\033[0m    "
+                    echo -n "$test_type $SOC PASS," &>> $LOG_PATH/results.csv
+                fi
+
+                if [ -f build/cov_result/coverage.info ]; then
+                    echo "$OP $test_type $soc_param ut coverage file info is:" >> $LOG_PATH/ut.log
+                    ls -sh build/cov_result/coverage.info &>> $LOG_PATH/ut.log
+                    cat build/cov_result/coverage.info >> ./coverage.info
+                else
+                    echo "$OP $test_type $soc_param ut do not generate!" >> $LOG_PATH/ut.log
+                fi
+            }
+            for TEST in $TEST_LIST; do
+                if [ "$TEST" = "host" ]; then
+                    for SOC in $SOC_LIST; do
+                        run_mc2_ut_case "host" "$SOC"
+                    done
+                elif [ "$TEST" = "api" ]; then
+                    run_mc2_ut_case "api" ""
+                else
+                    echo "host cannot be executed temporarily" &>> $LOG_PATH/op_test/$OP.log
+                fi  
+            done
         else
-            echo "$OP ut do not generate!" >> $LOG_PATH/ut.log
+            timeout $TIMEOUT bash build.sh -u --ops=$op_option_list --cov --soc=ascend310p,ascend910b,ascend910_93,ascend950 &> $LOG_PATH/op_test/$OP.log
+            if [ $? -ne 0 ]; then
+                echo -ne "\033[31mFAIL\033[0m            "
+                echo -n "FAIL," &>> $LOG_PATH/results.csv
+            else
+                echo -ne "\033[32mPASS\033[0m            "
+                echo -n "PASS," &>> $LOG_PATH/results.csv
+            fi
+
+            if [ -f build/cov_result/coverage.info ]; then
+                echo "$OP ut coverage file info is:" >> $LOG_PATH/ut.log
+                ls -sh build/cov_result/coverage.info &>> $LOG_PATH/ut.log
+                cat build/cov_result/coverage.info >> ./coverage.info
+            else
+                echo "$OP ut do not generate!" >> $LOG_PATH/ut.log
+            fi
         fi
         
         echo ""

@@ -66,7 +66,7 @@
 | token_x                     | 输入      | 公式中计算Query和Key的输入tensor | INT8, BF16 | ND         |
 | weight_dq                   | 输入      | 公式中计算Query的下采样权重矩阵$W^{DQ}$ | INT8, BF16 | FRACTAL_NZ |
 | weight_uq_qr                 | 输入      | 公式中计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$。| INT8, BF16 | FRACTAL_NZ |
-| weight_uk                   | 输入      | 公式中计算Key的上采样权重$W^{UK}$ | FLOAT16, BF16       | ND         |
+| weight_uk                   | 输入      | 公式中计算Key的上采样权重$W^{UK}$ | BF16       | ND         |
 | weight_dkv_kr                | 输入      | 公式中计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$ | INT8, BF16| FRACTAL_NZ |
 | rmsnorm_gamma_cq             | 输入      | 计算$c^Q$的RmsNorm公式中$\gamma$参数 | FLOAT16, BF16       | ND         |
 | rmsnorm_gamma_ckv            | 输入      | 计算$c^{KV}$的RmsNorm公式中$\gamma$参数 | FLOAT16, BF16       | ND         |
@@ -262,7 +262,7 @@
         <td> / </td>
       </tr>
       <tr>
-        <td> dequant_scale_w_uq_qr </td>
+        <td> dequant_scale_w_dq </td>
         <td>无需赋值</td>
         <td> / </td>
         <td>无需赋值</td>
@@ -271,13 +271,22 @@
         <td> / </td>
       </tr>
       <tr>
+        <td> dequant_scale_w_uq_qr </td>
+        <td>无需赋值</td>
+        <td> / </td>
+        <td> FLOAT </td>
+        <td> (1, N*(D+Dr)) </td>
+        <td> FLOAT </td>
+        <td> (1, N*(D+Dr)) </td>
+      </tr>
+      <tr>
         <td> dequant_scale_w_dkv_kr </td>
         <td>无需赋值</td>
         <td> / </td>
-        <td>FLOAT</td>
-        <td> (1, N*(D+Dr)) </td>
-        <td>FLOAT</td>
-        <td> (1, N*(D+Dr)) </td>
+        <td>无需赋值</td>
+        <td> / </td>
+        <td>无需赋值</td>
+        <td> / </td>
       </tr>
       <tr>
         <td> quant_scale_ckv </td>

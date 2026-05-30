@@ -232,21 +232,20 @@ macro(add_modules_sources_with_soc)
       message(WARNING "failed to extract OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
       return()
   endif()
-  if("${OPS_NAME}" STREQUAL "moe_distribute_dispatch_v2" OR 
-    "${OPS_NAME}" STREQUAL "moe_distribute_combine_v2")
-      list(APPEND ARCH_DIRECTORY arch35)
-      message(STATUS "${OPS_NAME} appended ARCH_DIRECTORY: arch35")
-  endif()
+  set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
   foreach(COMPUTE_UNIT IN LISTS ASCEND_COMPUTE_UNIT)
+      if (DEFINED ${_op_name}_${COMPUTE_UNIT}_arch_directory)
+          list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${COMPUTE_UNIT}_arch_directory})
+      endif()
       if("${COMPUTE_UNIT}" STREQUAL "ascend310p" AND MODULE_OP_MC2_ENABLE)
-          list(APPEND ARCH_DIRECTORY arch31)
+          list(APPEND OP_ARCH_DIRECTORY arch31)
       endif()
   endforeach()
   # deduplicate
- 	list(REMOVE_DUPLICATES ARCH_DIRECTORY)
+ 	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
   
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  foreach(ARCH ${ARCH_DIRECTORY})
+  foreach(ARCH ${OP_ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
     list(APPEND OPINFER_SRCS ${files})
   endforeach()
@@ -270,7 +269,7 @@ macro(add_modules_sources_with_soc)
     endif()
   endif()
 
-  foreach(ARCH ${ARCH_DIRECTORY})
+  foreach(ARCH ${OP_ARCH_DIRECTORY})
   if (MODULE_OP_MC2_ENABLE)
     file(GLOB_RECURSE files ${SOURCE_DIR}/op_tiling/${ARCH}/*.cpp)
   else()
@@ -362,10 +361,10 @@ function(add_opapi_modules)
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common/op_host>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -406,7 +405,7 @@ set(INFER_OBJ_INCLUDE
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
   $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
-  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
+  $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/external>>
@@ -541,7 +540,7 @@ function(add_tiling_modules)
       
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
@@ -596,6 +595,7 @@ function(add_graph_plugin_modules)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
     target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
       ${OP_PROTO_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
     )
     target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
     target_compile_options(
@@ -661,7 +661,8 @@ function(add_fallback_modules)
       PRIVATE
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
-      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/include/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${OPBASE_SOURCE_PATH}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -886,10 +887,49 @@ function(add_aicpu_cust_kernel_modules target_name)
             PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
             $<BUILD_INTERFACE:dlog_headers>
             -Wl,--no-whole-archive
-            Eigen3::EigenTransformer
+            Eigen3::Eigen
     )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
+    endif()
+  endif()
+endfunction()
+
+# Compiles aicpu source as OBJECT for host side (x86).
+# Collects into AICPU_HOST_OBJ_TARGETS; linking into libtransformer_constant_folding_ops.so
+# is done in symbol.cmake gen_aicpu_const_symbol().
+function(add_aicpu_host_kernel_modules host_target_name)
+  message(STATUS "add_aicpu_host_kernel_modules for ${host_target_name}")
+  if(NOT TARGET ${host_target_name})
+    add_library(${host_target_name} OBJECT)
+    target_include_directories(${host_target_name} PRIVATE
+        ${AICPU_INCLUDE}
+        ${CANN_3RD_LIB_PATH}/eigen
+    )
+    target_compile_definitions(
+      ${host_target_name} PRIVATE
+                    _FORTIFY_SOURCE=2
+                    google=ascend_private
+    )
+    target_compile_options(
+      ${host_target_name} PRIVATE
+                    -Dgoogle=ascend_private
+                    -fvisibility=hidden ${AICPU_DEFINITIONS}
+    )
+    target_link_libraries(
+      ${host_target_name}
+      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx14,intf_pub_cxx14>>
+              $<BUILD_INTERFACE:dlog_headers>
+              Eigen3::Eigen
+    )
+
+    get_property(_host_targets GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
+    if (NOT host_target_name IN_LIST _host_targets)
+      set_property(GLOBAL APPEND PROPERTY
+        AICPU_HOST_OBJ_TARGETS ${host_target_name})
+      message(STATUS "Aicpu regist host target: ${host_target_name}")
+    else()
+      message(STATUS "Skip duplicate target: ${host_target_name}")
     endif()
   endif()
 endfunction()

@@ -26,14 +26,15 @@ namespace matmulReduceScatterV2_util {
 
 #define DEQUANT_ARGS_CALL()                                                                                            \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(peerMem),                     \
-        reinterpret_cast<GM_ADDR>(output), tileM0, tileN0, pValue, swizzlDirect, swizzlCount, coreIdx, coreNum,        \
-        rankIdx, rankSize, calIdx, resource, needPerChannel, needPerToken
+        reinterpret_cast<GM_ADDR>(output), reinterpret_cast<GM_ADDR>(biasptr), tileM0, tileN0, pValue, swizzlDirect,   \
+        swizzlCount, coreIdx, coreNum, rankIdx, rankSize, calIdx, resource, needPerChannel, needPerToken
 
 #define DEQUANT_ARGS_FUN()                                                                                             \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
-        __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, uint32_t tileM0, uint32_t tileN0, uint32_t pValue, \
-        uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum, uint32_t rankIdx,             \
-        uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
+        __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0,                  \
+        uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx,               \
+        uint32_t coreNum, uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx,                                        \
+        Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
 
 constexpr int32_t MAX_BLOCK_COUNT = 2;
 constexpr int32_t MAX_BLOCK_COUNT_SM = 4;
@@ -249,10 +250,12 @@ public:
 
     __aicore__ inline void SetBuffFlag(__gm__ int32_t *buff, int32_t flag)
     {
-        SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
-        WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
+        SetFlag<HardEvent::MTE3_S>(EVENT_ID2);
+        WaitFlag<HardEvent::MTE3_S>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.AllocTensor<int32_t>();
         ubTensor(0) = flag + RAND_BASE;
+        SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
         CopyUbufToGmAlignB16(buff, ubTensor, 1, sizeof(int32_t), 0, 0);
     }
 

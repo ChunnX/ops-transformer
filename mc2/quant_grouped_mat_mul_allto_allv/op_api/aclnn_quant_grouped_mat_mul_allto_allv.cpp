@@ -25,9 +25,12 @@
 #include "opdev/platform.h"
 #include "securec.h"
 #include <algorithm>
+#include <cstdlib>
 
 namespace {
 using namespace op;
+
+#include "mc2_comm_utils.h"
 
 enum class QuantModeType : int64_t {
     NO_QUANT = 0,
@@ -317,6 +320,22 @@ static aclnnStatus HandleGmmMxTranspose(const aclTensor *&weight, const aclTenso
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus HandleGmmTtTranspose(const aclTensor *&weight, bool &transWeight)
+{
+    bool notContiguous = IsTransposeLastTwoDims(weight);
+    if (notContiguous && transWeight) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous and transGmmWeight is already set!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        weight = SwapTensorDims(weight, 1, 2);
+        CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        transWeight = !transWeight;
+        OP_LOGD("gmmWeight transposed detected: transWeight flipped to %d", transWeight);
+    }
+    return ACLNN_SUCCESS;
+}
+
 // 检测 mmWeight stride 转置，同时 reshape weight 和 scale（swap dim[0]/dim[1]）
 static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, const aclTensor *&scale, bool &transWeight)
 {
@@ -335,6 +354,22 @@ static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, const aclTensor
             scale = SwapTensorDims(scale, 0, 1);
             CHECK_RET(scale != nullptr, ACLNN_ERR_INNER_NULLPTR);
         }
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus HandleMmTtTranspose(const aclTensor *&weight, bool &transWeight)
+{
+    bool notContiguous = IsTransposeLastTwoDims(weight);
+    if (notContiguous && transWeight) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mmWeight not contiguous and transMmWeight is already set!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (notContiguous && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        weight = SwapTensorDims(weight, 0, 1);
+        CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        transWeight = !transWeight;
+        OP_LOGD("mmWeight transposed detected: transWeight flipped to %d", transWeight);
     }
     return ACLNN_SUCCESS;
 }
@@ -410,6 +445,15 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
         }
         OP_LOGD("Final: transGmmWeight=%d, transMmWeight=%d", transGmmWeight, transMmWeight);
     }
+    bool isTtQuant = (gmmXQuantMode == static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT));
+    if (isTtQuant) {
+        auto transRet = HandleGmmTtTranspose(gmmWeight, transGmmWeight);
+        CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
+        if (mmWeightOptional != nullptr) {
+            transRet = HandleMmTtTranspose(mmWeightOptional, transMmWeight);
+            CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
+        }
+    }
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, commQuantScaleOptional,
@@ -424,7 +468,14 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(void *workspace, uint64_
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                OP_LOGD("Arch35 platform, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);

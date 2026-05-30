@@ -15,7 +15,7 @@
 #ifndef DROPOUT_H 
 #define DROPOUT_H
 
-#include "../common.h"
+#include "../flash_attention_score_grad_common.h"
 #include "../../../../common/op_kernel/arch35/dropmask.h"
  
 using namespace AscendC;

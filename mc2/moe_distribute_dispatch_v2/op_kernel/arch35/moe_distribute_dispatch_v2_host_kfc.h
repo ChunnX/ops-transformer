@@ -226,20 +226,6 @@ private:
         return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
-
-    __aicore__ inline int32_t ReduceSumWorkNeedSize(int32_t calCnt)
-    {
-        int typeSize = static_cast<int>(sizeof(int32_t));
-        int32_t elementsPerBlock = 32 / typeSize;
-        int32_t iter1OutputCount = calCnt;
-        int32_t iter1AlignEnd = ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
-        return iter1AlignEnd;
-    }
-
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> expertIdsGMTensor_;
@@ -629,6 +615,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertIdsCnt_ = axisBS_ * axisK_;
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+        hFp32Size = Align128(axisH_) * sizeof(float);
+    }
+#endif
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
     uint32_t expertCntAlign = Ceil(moeExpertNum_ * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_DATA_SIZE;
@@ -2120,7 +2111,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitAndFormatOutput
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_);
             CopyOut(xOutInt32Tensor, wAddr, index, dstPosition, copyCnt);
-            // finish更新并clean
             expertFinishNumTensor_(index) += copyCnt;
             expertLeftNumTensor_(index) -= copyCnt;
             if (expertLeftNumTensor_(index) == 0) {

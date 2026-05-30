@@ -16,7 +16,7 @@
 #define RECURRENT_GATED_DELTA_RULE_TILING_H
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "err/ops_err.h"
 #include "../op_kernel/recurrent_gated_delta_rule_tiling_data.h"
 

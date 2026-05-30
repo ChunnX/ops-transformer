@@ -8,8 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-# add_modules_sources(HOSTNAME ${OPHOST_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR} OPTYPE moe_init_routing_v2_grad ACLNNTYPE aclnn_inner)
-
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
        moe_init_routing_v2_grad_def.cpp

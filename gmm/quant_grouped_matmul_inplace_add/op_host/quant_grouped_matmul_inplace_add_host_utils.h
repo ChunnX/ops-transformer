@@ -27,5 +27,6 @@ constexpr uint32_t PER_TOKEN_SCALE_INDEX = 5;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint64_t TILING_KEY = 0;
 constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 0;
+constexpr uint32_t ATTR_INDEX_GROUP_SIZE = 1;
 } // namespace QuantGroupedMatmulInplaceAdd
 #endif

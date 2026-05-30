@@ -21,7 +21,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_opversion_manager.h"
 
 namespace optiling {
@@ -96,7 +96,7 @@ public:
     static ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode);
     static ge::graphStatus TilingCheckMoeDistributeDispatchA5(gert::TilingContext *context,
-        const bool isScales, const uint32_t quantMode, const uint32_t isTokenMask);
+        const bool isScales, const uint32_t quantMode, const bool isTokenMask);
 protected:
     static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName,
         const bool isScales, const uint32_t quantMode, const uint32_t opVersion);
