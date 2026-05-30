@@ -584,7 +584,7 @@ static bool CheckAttrs(const gert::TilingContext *context, int64_t &epSize, int6
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr, OP_LOGE(nodeName, "attrs is null."), return false);
+    OPS_ERR_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return false);
 
     const char *groupEp = attrs->GetStr(static_cast<size_t>(ops::BmmReduceScatterAlltoAllAttrIdx::K_GROUP_EP));
     const char *groupTp = attrs->GetStr(static_cast<size_t>(ops::BmmReduceScatterAlltoAllAttrIdx::K_GROUP_TP));
@@ -629,13 +629,13 @@ static ge::graphStatus TilingCheckBatchMatMulReduceScatterAlltoAll(gert::TilingC
     OP_LOGI(nodeName, "Enter BmmReduceScatterAlltoAll tiling check impl.");
     const gert::StorageShape *xStorageShape = context->GetInputShape(static_cast<size_t>(ops::MC2MoeInputIdx::K_X));
 
-    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE(nodeName, "xShape is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return ge::GRAPH_FAILED);
     const gert::StorageShape *weightStorageShape = context->GetInputShape(static_cast<size_t>(ops::
         MC2MoeInputIdx::K_WEIGHT));
-    OP_TILING_CHECK(weightStorageShape == nullptr, OP_LOGE(nodeName, "weightShape is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(weightStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "weight"), return ge::GRAPH_FAILED);
     const gert::StorageShape *yStorageShape = context->GetOutputShape(static_cast<size_t>(ops::
         BmmReduceScatterAlltoAllOutIdx::K_Y));
-    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE(nodeName, "yShape is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "y"), return ge::GRAPH_FAILED);
 
     // 检查属性
     int64_t epSize = -1;

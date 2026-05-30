@@ -97,13 +97,13 @@ static graphStatus GroupedMatMulAllReduceExecuteFunc(OpExecuteContext* host_api_
     }
 
     auto attrs = host_api_ctx->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr, OP_LOGE("gmm_all_reduce_fallback", "attrs is null"), return GRAPH_FAILED);
+    OPS_ERR_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT("gmm_all_reduce_fallback", "attrs"), return GRAPH_FAILED);
     const int64_t* splitItem = attrs->GetAttrPointer<int64_t>(GMMAllReduceAttrIdx::K_SPLIT_ITEM);
-    OPS_ERR_IF(splitItem == nullptr, OP_LOGE("gmm_all_reduce_fallback", "splitItem is null"), return GRAPH_FAILED);
+    OPS_ERR_IF(splitItem == nullptr, OP_LOGE_WITH_INVALID_INPUT("gmm_all_reduce_fallback", "splitItem"), return GRAPH_FAILED);
     const char *group = attrs->GetStr(static_cast<size_t>(GMMAllReduceAttrIdx::K_GROUP));
-    OPS_ERR_IF(group == nullptr, OP_LOGE("gmm_all_reduce_fallback", "group is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(group == nullptr, OP_LOGE_WITH_INVALID_INPUT("gmm_all_reduce_fallback", "group"), return ge::GRAPH_FAILED);
     const char *op = attrs->GetStr(static_cast<size_t>(GMMAllReduceAttrIdx::K_OP));
-    OPS_ERR_IF(op == nullptr, OP_LOGE("gmm_all_reduce_fallback", "op is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(op == nullptr, OP_LOGE_WITH_INVALID_INPUT("gmm_all_reduce_fallback", "op"), return ge::GRAPH_FAILED);
     const int64_t *comm_turn_ptr = attrs->GetInt(static_cast<size_t>(GMMAllReduceAttrIdx::K_COMM_TURN));
     const int64_t comm_turn = (comm_turn_ptr != nullptr ? *comm_turn_ptr : 0);
     const int64_t stream_mode = 1;  // 1  STOP_ON_FAILURE

@@ -101,9 +101,9 @@ static ge::graphStatus CheckAxisKShapeForMatmulAlltoAll(const gert::InferShapeCo
               "axis k cannot exceed " + std::to_string(AXIS_K_UPPER_LIMIT)),
               return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2) {
-        OP_LOGE(context->GetNodeName(),
-                "In matmul_allto_all, x1.k must be the same to x2.k, but actual get x1.k: %ld, x2.k: %ld",
-                shape.k1, shape.k2);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
+                (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
+                "x1.k must equal x2.k");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -157,9 +157,9 @@ static ge::graphStatus CheckRankDimForMatmulAlltoAll(gert::InferShapeContext* co
         OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "rank"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(std::find(SUPPORT_RANK_NUM.begin(), SUPPORT_RANK_NUM.end(), *rankDim) >= SUPPORT_RANK_NUM.end(),
-                    OP_LOGE(INNER_DEBUG,
-                            "Rank number should be in %s, but the actual value is %ld.",
-                            VectorToString(SUPPORT_RANK_NUM).c_str(), *rankDim),
+                    OP_LOGE_FOR_INVALID_VALUE(INNER_DEBUG,
+                            "rank", std::to_string(*rankDim).c_str(),
+                            VectorToString(SUPPORT_RANK_NUM).c_str()),
                     return ge::GRAPH_FAILED);
     shape.rankNum = *rankDim;
     return ge::GRAPH_SUCCESS;
@@ -225,9 +225,9 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext* c
     OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0)
                && !(*x1QuantMode == X1_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM)
                && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
-               OP_LOGE(INNER_DEBUG,
-                       "The x1 or x2 quant mode is invalid, x1QuantMode is: %ld, x2QuantMode is: %ld",
-                       *x1QuantMode, *x2QuantMode),
+               OP_LOGE_WITH_INVALID_ATTR(INNER_DEBUG, "quant_mode",
+                       (std::to_string(*x1QuantMode) + "/" + std::to_string(*x2QuantMode)).c_str(),
+                       "valid quant mode combination"),
                return ge::GRAPH_FAILED);
 
     auto yType = ge::DataType::DT_UNDEFINED;
@@ -236,7 +236,7 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext* c
         OP_LOGI(INNER_DEBUG, "The yDtype value is: %ld", *yDtypePtr);
         yType = static_cast<ge::DataType>(*yDtypePtr);
     } else {
-        OP_LOGE(INNER_DEBUG, "The yDtypePtr is null or get invalid yDtype value: DT_UNDEFINED.");
+        OP_LOGE_WITH_INVALID_ATTR(INNER_DEBUG, "yDtype", "null or DT_UNDEFINED", "valid dtype");
         return ge::GRAPH_FAILED;
     }
     // 设置推导的datatype

@@ -909,7 +909,8 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
             "not null", "should be null when antiquant"),
         return ge::GRAPH_FAILED);
     if (!CheckAntiQuantOffsetValid()) {
-        OP_LOGE(context_->GetNodeName(), "Antiquantoffset input valid.");
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "antiquantOffset",
+            "invalid", "valid antiquantOffset");
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK(
@@ -1104,7 +1105,9 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(
 
     OP_TILING_CHECK(
         blockBaseM == 0ull || blockBaseN == 0ull,
-        OP_LOGE(opName_, "BlockBaseM or blockBaseN cannot be zero."),
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "blockBaseM, blockBaseN",
+            (std::string(std::to_string(blockBaseM)) + ", " + std::to_string(blockBaseN)).c_str(),
+            "positive values"),
         return false);
 
     if (totalSize >= l2CacheSize || sizeA >= singleMatrixSize || sizeB >= singleMatrixSize ||
@@ -1444,7 +1447,7 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
 {
     const auto scale = mmrCtxInfo_.antiquant_scale_shape;
     if (scale == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "No antiquantScale.");
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquantScale");
         return false;
     }
     // 校验bias dim

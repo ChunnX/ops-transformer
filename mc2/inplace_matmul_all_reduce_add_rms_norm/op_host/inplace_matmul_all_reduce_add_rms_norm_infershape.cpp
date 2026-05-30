@@ -164,7 +164,7 @@ static ge::graphStatus InferShapeForMC2AddRmsNorm(gert::InferShapeContext* conte
         return ge::GRAPH_FAILED);
     const size_t dim_num = res_shape->GetDimNum();
     OPS_CHECK(
-        dim_num != 3U, OP_LOGE(context->GetNodeName(), "Invalid dim number %lu for residual.", dim_num),
+        dim_num != 3U, OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "residual", (std::to_string(dim_num) + "D").c_str(), "3D"),
         return ge::GRAPH_FAILED);
     shape_out_y->SetDimNum(dim_num);
     shape_out_norm->SetDimNum(dim_num);
