@@ -241,6 +241,84 @@ __aicore__ inline void MmadInnerWithSync(LocalTensor<float> &l0cTensor,
     l0bPingPongFlag = 1 - l0bPingPongFlag;
 }
 
+template <typename T1, bool needAtomic = false, bool isScatterFixOut = false>
+__aicore__ inline void MmadInnerWithSyncFixpNzOut(LocalTensor<float> &l0cTensor,
+                                 LocalTensor<T1> &l1aTensor, LocalTensor<T1> &l1bTensor,
+                                 LocalTensor<T1> (&aL0TensorPingPong)[2], LocalTensor<T1> (&bL0TensorPingPong)[2],
+                                 struct MMParam &mmParam, uint32_t &l0aPingPongFlag, uint32_t &l0bPingPongFlag,
+                                 uint32_t l0cPingPongFlag, bool needCopyL0a,
+                                 const GlobalTensor<float> &resGm) {
+    MmadParams mmadParams;
+    mmadParams.m = (mmParam.singleM == 1) ? 2 : mmParam.singleM;
+    mmadParams.n = mmParam.singleN;
+    mmadParams.k = mmParam.singleK;
+    mmadParams.cmatrixInitVal = mmParam.isOutKFisrt;
+
+    LocalTensor<T1> l0aTensor = aL0TensorPingPong[l0aPingPongFlag & 1];
+    LocalTensor<T1> l0bTensor = bL0TensorPingPong[l0bPingPongFlag & 1];
+
+    uint32_t l0a_event = L0A_EVENTS[l0aPingPongFlag & 1];
+    uint32_t l0b_event = L0B_EVENTS[l0bPingPongFlag & 1];
+    uint32_t l0c_event = L0C_EVENTS[l0cPingPongFlag & 1];
+    
+    SetFlag<HardEvent::MTE2_MTE1>(l0b_event);
+    WaitFlag<HardEvent::MTE2_MTE1>(l0b_event);
+
+    // 反向同步
+    WaitFlag<HardEvent::M_MTE1>(l0a_event);
+    if (needCopyL0a) {
+        if (mmParam.isLeftTranspose) {
+            LoadDataMm1AWithTranspose<T1>(l0aTensor, l1aTensor, mmParam);
+        } else {
+            LoadDataMm1A<T1>(l0aTensor, l1aTensor, mmParam);
+        }
+    }
+
+    // 反向同步
+    WaitFlag<HardEvent::M_MTE1>(l0b_event);
+    LoadDataMm1B<T1>(l0bTensor, l1bTensor, mmParam);
+
+    SetFlag<HardEvent::MTE1_M>(l0b_event);
+    WaitFlag<HardEvent::MTE1_M>(l0b_event);
+    PIPE_BARRIER(PIPE_M);
+    // 反向同步
+    WaitFlag<HardEvent::FIX_M>(l0c_event);
+    Mmad(l0cTensor, l0aTensor, l0bTensor, mmadParams);
+
+    SetFlag<HardEvent::M_MTE1>(l0a_event);
+    SetFlag<HardEvent::M_MTE1>(l0b_event);
+    
+    if (mmParam.isFixOut) {
+        SetFlag<HardEvent::M_FIX>(l0c_event);
+        WaitFlag<HardEvent::M_FIX>(l0c_event);
+
+        FixpipeParamsV220 fixpipeParams;
+        fixpipeParams.nSize = mmParam.singleN; // 128
+        fixpipeParams.mSize = mmParam.singleM; // 128
+        // L0C 端 srcStride 受 16 行 fractal 硬约束，必须 align16
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // 128
+        // GM 端 dstStride 紧密布局：每 fractal 占 mSize*16 fp32 = mSize*2 个 32B 块，无 padding
+        fixpipeParams.dstStride = fixpipeParams.mSize * 2;
+        fixpipeParams.ndNum = 1;
+        fixpipeParams.srcNdStride = 0;
+        fixpipeParams.dstNdStride = 0;
+        if constexpr (needAtomic) {
+            AscendC::SetAtomicAdd<float>();
+        }
+        Fixpipe<float, float, CFG_NZ>(resGm, l0cTensor, fixpipeParams); // 将matmul结果从L0C搬运到UB
+        if constexpr (needAtomic) {
+            AscendC::SetAtomicNone();
+        }
+    }
+    // scatter out场景的反向同步在ScatterFixOut做
+    if constexpr(!isScatterFixOut) {
+        SetFlag<HardEvent::FIX_M>(l0c_event);
+    }
+    
+    l0aPingPongFlag = 1 - l0aPingPongFlag;
+    l0bPingPongFlag = 1 - l0bPingPongFlag;
+}
+
 template <bool needAtomic = false>
 __aicore__ inline void ScatterFixOutWithSync(const GlobalTensor<float> &resGm, const GlobalTensor<int32_t> &topkIndicesGm, const LocalTensor<float> &l0cTensor, struct MMParam &mmParam, const int32_t selectedBlockSize, const int32_t blockOffset, const int32_t dimN2, const uint32_t eventId)
 {
