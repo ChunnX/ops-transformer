@@ -67,8 +67,6 @@ public:
         vGm.SetGlobalBuffer((__gm__ T*)v);
         expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
 
-        // yGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * h);
         int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * h);
         int32_t rowFactorKAlignedT = RoundUp<T>(tilingData->rowFactor * k);
