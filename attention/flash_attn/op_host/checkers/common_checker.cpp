@@ -41,7 +41,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 {
     const std::vector<FaLayout> supportedQLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
     const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND, FaLayout::PA_BBND,
-                                                      FaLayout::PA_BNBD, FaLayout::PA_Nz};
+                                                      FaLayout::PA_BNBD, FaLayout::PA_NZ};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
     OP_CHECK_IF(std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
@@ -52,7 +52,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 
     OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
                     supportedKvLayouts.end(),
-                OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ, but got %s",
                         LayoutToSerialString(faInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -236,9 +236,9 @@ struct LayoutConstraintConfig {
 };
 
 static const std::map<FaLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    {FaLayout::BNSD, {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::BNSD, FaLayout::BSND}}},
-    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::BSND}}},
-    {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::TND}}},
+    {FaLayout::BNSD, {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
+    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BSND}}},
+    {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::TND}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FaTilingInfo &faInfo)
@@ -327,9 +327,9 @@ ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FaTilingInfo &
     FaTilingShapeCompareParam shapeParams;
     shapeParams.Bn = static_cast<int64_t>(faInfo.totalBlockNum);
     shapeParams.N = static_cast<int64_t>(faInfo.n2Size);
-    // For PA_Nz: Bs axis stores BlockSize/16, D0=16
+    // For PA_NZ: Bs axis stores BlockSize/16, D0=16
     // For PA_BBND/PA_BNBD: Bs axis stores BlockSize, D0=kvBlockElemNum
-    if (faInfo.kvLayout == FaLayout::PA_Nz) {
+    if (faInfo.kvLayout == FaLayout::PA_NZ) {
         shapeParams.Bs = static_cast<int64_t>(faInfo.blockSize / kvBlockElemNum);
         shapeParams.D0 = static_cast<int64_t>(kvBlockElemNum);
     } else {
@@ -356,7 +356,7 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
         return CheckKVShapeForContinuous(faInfo);
     }
 
-    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_Nz) {
+    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
         }

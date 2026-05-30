@@ -200,7 +200,7 @@ def rearrange_by_block_table(bnsd_tensor, block_table, block_size, b, act_seq_le
     elif kv_storage_mode == "PA_BNBD":
         return page_cache_tensor
     elif kv_storage_mode == "PA_NZ":
-        # PA_Nz format: (NumBlocks, N_kv, BlockSize/16, D, 16)
+        # PA_NZ format: (NumBlocks, N_kv, BlockSize/16, D, 16)
         # PA_BNBD input: (NumBlocks, N_kv, BlockSize, D)
         # Correct conversion: reshape to (NumBlocks, N_kv, BlockSize//16, 16, D) then permute to (NumBlocks, N_kv, BlockSize//16, D, 16)
         blk_elem = 16  # NZ format always has D0=16

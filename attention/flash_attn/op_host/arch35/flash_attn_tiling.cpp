@@ -233,7 +233,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
     } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+    } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     }
 }
@@ -348,7 +348,7 @@ void FlashAttnTilingImpl::ComputeTilingData()
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
         } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
