@@ -168,6 +168,7 @@ int CreateBackwardInputTensors(const std::vector<float> &grad_hin_host_data,
                                const std::vector<float> &inv_rms_host_data,
                                const std::vector<float> &sum_out_host_data,
                                const std::vector<float> &norm_out_host_data,
+                               const std::vector<float> &reduce_out_host_data,
                                const std::vector<int64_t> &grad_hin_shape,
                                const std::vector<int64_t> &grad_h_post_shape,
                                const std::vector<int64_t> &grad_h_res_shape,
@@ -180,6 +181,7 @@ int CreateBackwardInputTensors(const std::vector<float> &grad_hin_host_data,
                                const std::vector<int64_t> &inv_rms_shape,
                                const std::vector<int64_t> &sum_out_shape,
                                const std::vector<int64_t> &norm_out_shape,
+                               const std::vector<int64_t> &reduce_out_shape,
                                BackwardTensors &tensors)
 {
     int ret = CreateAclTensorBfloat16(grad_hin_host_data, grad_hin_shape, tensors.grad_hin_addr, tensors.grad_hin);
@@ -206,6 +208,8 @@ int CreateBackwardInputTensors(const std::vector<float> &grad_hin_host_data,
     CHECK_RET(ret == 0, LOG_PRINT("Create sum_out_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32(norm_out_host_data, norm_out_shape, tensors.norm_out_addr, tensors.norm_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create norm_out_tensor failed\n"); return -1);
+    ret = CreateAclTensorFloat32(reduce_out_host_data, reduce_out_shape, tensors.reduce_out_addr, tensors.reduce_out);
+    CHECK_RET(ret == 0, LOG_PRINT("Create reduce_out_tensor failed\n"); return -1);
     return 0;
 }
 
@@ -223,15 +227,6 @@ int CreateBackwardOutputTensors(const std::vector<int64_t> &grad_x_shape,
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_alpha_tensor failed\n"); return -1);
     ret = CreateAclTensorFloat32Output(grad_bias_shape, tensors.grad_bias_addr, tensors.grad_bias);
     CHECK_RET(ret == 0, LOG_PRINT("Create grad_bias_tensor failed\n"); return -1);
-    return 0;
-}
-
-int CreateReduceOutTensor(const std::vector<int64_t> &reduce_out_shape, BackwardTensors &tensors)
-{
-    int64_t size = GetShapeSize(reduce_out_shape);
-    std::vector<float> reduce_out_host_data(size, 0.0f);
-    int ret = CreateAclTensorFloat32(reduce_out_host_data, reduce_out_shape, tensors.reduce_out_addr, tensors.reduce_out);
-    CHECK_RET(ret == 0, LOG_PRINT("Create reduce_out_tensor failed\n"); return -1);
     return 0;
 }
 
@@ -391,6 +386,7 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     std::vector<float> inv_rms_host(fp32_size);
     std::vector<float> sum_out_host(fp32_size);
     std::vector<float> norm_out_host(fp32_size);
+    std::vector<float> reduce_out_host(reduce_out_size, 0.0f);
 
     for (int64_t i = 0; i < bf16_size; ++i) {
         grad_hin_host[i] = gen_float();
@@ -417,22 +413,22 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     ret = CreateBackwardInputTensors(grad_hin_host, grad_h_post_host, grad_h_res_host,
                                      x_host, phi_host, alpha_host, bias_host,
                                      h_pre_host, hc_before_norm_host, inv_rms_host,
-                                     sum_out_host, norm_out_host,
+                                     sum_out_host, norm_out_host, reduce_out_host,
                                      bf16_shape, fp32_shape, fp32_shape,
                                      bf16_shape, fp32_shape, fp32_shape, fp32_shape,
                                      fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape,
+                                     fp32_shape, fp32_shape, reduce_out_shape,
                                      ref_tensors);
     ASSERT_EQ(ret, 0) << "Create ref input tensors failed";
 
     ret = CreateBackwardInputTensors(grad_hin_host, grad_h_post_host, grad_h_res_host,
                                      x_host, phi_host, alpha_host, bias_host,
                                      h_pre_host, hc_before_norm_host, inv_rms_host,
-                                     sum_out_host, norm_out_host,
+                                     sum_out_host, norm_out_host, reduce_out_host,
                                      bf16_shape, fp32_shape, fp32_shape,
                                      bf16_shape, fp32_shape, fp32_shape, fp32_shape,
                                      fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape,
+                                     fp32_shape, fp32_shape, reduce_out_shape,
                                      tgt_tensors);
     ASSERT_EQ(ret, 0) << "Create tgt input tensors failed";
 
@@ -442,13 +438,9 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     ret = CreateBackwardOutputTensors(bf16_shape, fp32_shape, fp32_shape, fp32_shape, tgt_tensors);
     ASSERT_EQ(ret, 0) << "Create tgt output tensors failed";
 
-    ret = CreateReduceOutTensor(reduce_out_shape, ref_tensors);
-    ASSERT_EQ(ret, 0) << "Create ref reduce_out tensor failed";
-
-    ret = CreateReduceOutTensor(reduce_out_shape, tgt_tensors);
-    ASSERT_EQ(ret, 0) << "Create tgt reduce_out tensor failed";
-
     const float hc_eps = 1e-6f;
+    const float min_val = 0.0f;
+    const float max_val = 1.0f;
 
     aclnnStatus aclnn_ret = ACLNNCLEAR;
     void *ref_workspace = nullptr;
@@ -475,7 +467,7 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
         tgt_tensors.h_pre, tgt_tensors.hc_before_norm, tgt_tensors.inv_rms,
         tgt_tensors.sum_out, tgt_tensors.norm_out,
         tgt_tensors.reduce_out,
-        hc_eps,
+        hc_eps, min_val, max_val,
         tgt_tensors.grad_x, tgt_tensors.grad_phi, tgt_tensors.grad_alpha, tgt_tensors.grad_bias,
         &tgt_workspace_size, &tgt_executor);
     ASSERT_EQ(aclnn_ret, ACL_SUCCESS) << "tgt aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize failed";
