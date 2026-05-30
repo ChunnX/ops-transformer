@@ -280,6 +280,16 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
         radixTopKService.AllocEventID();
+        
+        uint32_t blockIdx = GetBlockIdx();
+        if (blockIdx == 0) {
+            uint32_t totalElements = constInfo.batchSize * constInfo.numHeads * constInfo.xBlocks * constInfo.yBlocks;
+            uint32_t writeCount = (totalElements < 100) ? totalElements : 100;
+            for (uint32_t i = 0; i < writeCount; i++) {
+                maskOutGm.SetValue(static_cast<OUT_T>(0x42), i);
+            }
+            AscendC::printf("[Process] Core 0 wrote 0x42 to first %u elements of maskOut\n", writeCount);
+        }
     } else {
         matmulService.AllocEventID();
     }

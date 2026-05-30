@@ -204,6 +204,11 @@ void BSASelectBlockMaskTilingBase::CalcMultiCoreParams()
     uint32_t extraYCores = yBlocks % activeYCoreNum;
     uint32_t yBlocksPerCore = baseYRows + (extraYCores > 0 ? 1 : 0);
 
+    printf("[TILING] CalcMultiCoreParams: coreNum=%u, activeCoreNum=%u, rowsPerCore=%u, extraCores=%u, totalRows=%u\n",
+           coreNum, activeCoreNum, rowsPerCore, extraCores, xBlocks);
+    printf("[TILING] CalcMultiCoreParams: activeYCoreNum=%u, yBlocksPerCore=%u, extraYCores=%u\n",
+           activeYCoreNum, yBlocksPerCore, extraYCores);
+
     multiCoreParams_->set_coreNum(coreNum);
     multiCoreParams_->set_activeCoreNum(activeCoreNum);
     multiCoreParams_->set_rowsPerCore(rowsPerCore);
@@ -221,6 +226,11 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
     uint64_t topkWorkspaceSize = static_cast<uint64_t>(RADIX_NUM_BINS * aicNum + aicNum + aicNum) * sizeof(int32_t);
     uint64_t maskSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint8_t);
+
+    printf("[TILING] CalcOutputParams: qCmpSize=%lu, kCmpSize=%lu, attnScoreSize=%lu\n",
+           qCmpSize, kCmpSize, attnScoreSize);
+    printf("[TILING] CalcOutputParams: softmaxTmpSize=%lu, topkWorkspaceSize=%lu, maskSize=%lu\n",
+           softmaxTmpSize, topkWorkspaceSize, maskSize);
 
     outputParams_->set_qCmpSize(qCmpSize);
     outputParams_->set_kCmpSize(kCmpSize);
@@ -311,6 +321,25 @@ ge::graphStatus BSASelectBlockMaskTilingBase::DoOpTiling()
     context_->SetScheduleMode(SCHEDULE_MODE_ALL_CORE);
 
     CalcOutputParams();
+
+    printf("[TILING] ========== FINAL TILING PARAMETERS ==========\n");
+    printf("[TILING] batchSize=%u, numHeads=%u, maxQSeqlen=%u, maxKvSeqlen=%u\n",
+           batchSize, numHeads, maxQSeqlen, maxKvSeqlen);
+    printf("[TILING] dSize=%u, blockShapeX=%lu, blockShapeY=%lu\n",
+           dSize, blockShapeX, blockShapeY);
+    printf("[TILING] xBlocks=%u, yBlocks=%u, topKValue=%u, sparsityMode=%u\n",
+           xBlocks, yBlocks, topKValue, sparsityMode);
+    printf("[TILING] scaleValue=%f, sparsity=%f\n",
+           scaleValue, sparsity);
+    printf("[TILING] coreNum=%u, activeCoreNum=%u, rowsPerCore=%u, extraCores=%u\n",
+           multiCoreParams_->get_coreNum(), multiCoreParams_->get_activeCoreNum(),
+           multiCoreParams_->get_rowsPerCore(), multiCoreParams_->get_extraCores());
+    printf("[TILING] yBlocksPerCore=%u, extraYCores=%u, qChunkSize=%u, kChunkSize=%u\n",
+           multiCoreParams_->get_yBlocksPerCore(), multiCoreParams_->get_extraYCores(),
+           Q_CHUNK_SIZE, K_CHUNK_SIZE);
+    printf("[TILING] totalWorkspaceSize=%lu\n",
+           outputParams_->get_totalWorkspaceSize());
+    printf("[TILING] ================================================\n");
 
     OP_LOGD(opName, "DoOpTiling: activeCoreNum[%u] rowsPerCore[%u] xBlocks[%u].",
             multiCoreParams_->get_activeCoreNum(), multiCoreParams_->get_rowsPerCore(),
