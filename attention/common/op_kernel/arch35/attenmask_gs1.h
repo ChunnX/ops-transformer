@@ -84,25 +84,6 @@ __simd_vf__ inline void MergeBand(const uint64_t maskNextUb, const uint64_t mask
     }
 }
 
-__simd_vf__ inline void MergeBandDn(const uint64_t maskNextUb, const uint64_t maskPreUb, const uint16_t loopCount)
-{
-    RegTensor<uint32_t> vreg_pre;
-    RegTensor<uint32_t> vreg_next;
-    RegTensor<uint32_t> vreg_xor;
-    RegTensor<uint32_t> vreg_not;
-    RegTensor<uint32_t> vreg_and;
-    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
-    Duplicate(vreg_xor, 0x1010101);
-
-    for (uint16_t i = 0; i < loopCount; ++i) {
-        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
-        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
-        Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
-        And(vreg_and, vreg_not, vreg_next, preg_all);
-        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_and, preg_all);
-    }
-}
-
 template <typename T, uint32_t s2BaseSize>
 __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T * maskUb, uint16_t headGLoop, uint16_t midGLoop,
     uint16_t tailGLoop, uint16_t midS1Count)
@@ -179,7 +160,7 @@ __aicore__ inline void MergeMaskDn(LocalTensor<T> &maskNext, LocalTensor<T> &mas
     uint64_t maskNextUb = maskNext.GetPhyAddr();
     uint16_t loopCount = static_cast<uint16_t>(byteSize / regBytes);
 
-    MergeBandDn(maskNextUb, maskPreUb, loopCount);
+    MergeBand(maskNextUb, maskPreUb, loopCount);
 }
 
 template <typename T, uint32_t s2BaseSize>

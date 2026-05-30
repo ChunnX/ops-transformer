@@ -155,6 +155,7 @@ public:
     T negativeFloatScalar;
     float pScaleValue { 1.0f };
     bool isSkipMask { false };
+    bool isAllMasked { false };
 
     // ==================== Functions ======================
     __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
@@ -362,6 +363,14 @@ public:
                     mxfp8s2RealSize, static_cast<T>(constInfo.scaleValue), descaleQK, pScaleValue, negativeFloatScalar,
                     0.0F, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
+        }
+        if (isAllMasked) {
+            PipeBarrier<PIPE_V>();
+            constexpr uint32_t zeroBytes = 16640;
+            LocalTensor<uint8_t> zeroTarget;
+            zeroTarget.SetAddr(stage1CastTensor.address_);
+            Duplicate(zeroTarget, static_cast<uint8_t>(0u), zeroBytes);
+            PipeBarrier<PIPE_V>();
         }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_MASK) {
@@ -1113,6 +1122,20 @@ public:
         bool isSkipMaskForNext = IsSkipAttentionmask(maskInfo);
         bool isSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
         isSkipMask = isSkipMaskForNext && isSkipMaskForPre;
+        isAllMasked = false;
+        if (!isSkipMask && maskInfo.sparseMode == BAND) {
+            int32_t qStart = maskInfo.gs1StartIdx / maskInfo.gSize;
+            int64_t effPre = static_cast<int64_t>(maskInfo.preToken) +
+                             static_cast<int64_t>(maskInfo.s1Size) - static_cast<int64_t>(maskInfo.s2Size);
+            int64_t effNext = static_cast<int64_t>(maskInfo.nextToken) +
+                              static_cast<int64_t>(maskInfo.s2Size) - static_cast<int64_t>(maskInfo.s1Size);
+            int32_t qEnd = static_cast<int32_t>((maskInfo.gs1StartIdx + maskInfo.gs1dealNum) / maskInfo.gSize);
+            bool allPreMasked = static_cast<int64_t>(maskInfo.s2StartIdx + maskInfo.s2dealNum) <=
+                                static_cast<int64_t>(qStart) - effPre;
+            bool allNextMasked = static_cast<int64_t>(maskInfo.s2StartIdx) >
+                                 static_cast<int64_t>(qEnd - 1) + effNext;
+            isAllMasked = allPreMasked || allNextMasked;
+        }
         uint32_t maskSize = (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur;
         if (isSkipMask) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), (maskInfo.gs1dealNum >> 1) * s2BaseSizeCur);
