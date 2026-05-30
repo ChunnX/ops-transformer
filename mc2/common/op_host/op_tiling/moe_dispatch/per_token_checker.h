@@ -9,22 +9,22 @@
  */
 
 /*!
- * \file quant_checker_pergroup.h
- * \brief MOE Distribute Dispatch PerGroup 动态量化校验 (mode=3)
+ * \file per_token_checker.h
+ * \brief MOE Distribute Dispatch PerToken 动态量化校验 (mode=2)
  */
 
-#ifndef MOE_DISPATCH_QUANT_CHECKER_PERGROUP_H
-#define MOE_DISPATCH_QUANT_CHECKER_PERGROUP_H
+#ifndef MOE_DISPATCH_QUANT_CHECKER_PERTOKEN_H
+#define MOE_DISPATCH_QUANT_CHECKER_PERTOKEN_H
 
-#include "quant_checker_dynamic_base.h"
+#include "dynamic_quant_checker_base.h"
 #include "defs.h"
 #include "utils.h"
 
 namespace moe_dispatch {
 
-class PerGroupChecker : public DynamicQuantCheckerBase {
+class PerTokenChecker : public DynamicQuantCheckerBase {
 public:
-    PerGroupChecker() : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERGROUP_DYNAMIC_QUANT)
+    PerTokenChecker() : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)
     {
     }
 
@@ -32,7 +32,7 @@ public:
     ge::graphStatus CheckDynamicScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
                                        uint32_t h) const override
     {
-        // PerGroup 必须有 dynamicScales
+        // PerToken 必须有 dynamicScales
         if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
         }
@@ -45,10 +45,10 @@ public:
         return ge::GRAPH_SUCCESS;
     }
 
-    // dynamicScales 维度数 - 2D
+    // dynamicScales 维度数 - 1D
     uint32_t GetDynamicScalesDimNum() const override
     {
-        return moe_dispatch_defs::DYNAMIC_SCALE_TWO_DIM_NUM;
+        return moe_dispatch_defs::DYNAMIC_SCALE_ONE_DIM_NUM;
     }
 
     // dynamicScales dtype
@@ -57,24 +57,16 @@ public:
         return ge::DT_FLOAT;
     }
 
-    // dynamicScales dim1 计算
-    // PerGroup: CeilDiv(h, 128)
-    uint32_t CalcDynamicScalesDim1(uint32_t h) const override
-    {
-        return moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::PERGROUP_BLOCK_SIZE);
-    }
-
     // tokenMsgSize 计算
-    // PerGroup: AlignUp(AlignUp(h, 128) + CeilDiv(h, 128), 512)
+    // PerToken: AlignUp(AlignUp(h, 32) + 4, 512)
     uint32_t CalcTokenMsgSize(uint32_t h) const override
     {
-        uint32_t alignedH = moe_dispatch_utils::AlignUp(h, moe_dispatch_defs::ALIGN_128);
-        uint32_t scalesDim1 = moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::ALIGN_128);
-        uint32_t totalSize = alignedH + scalesDim1;
+        uint32_t alignedH = moe_dispatch_utils::AlignUp(h, moe_dispatch_defs::ALIGN_32);
+        uint32_t totalSize = alignedH + moe_dispatch_defs::QUANT_HS_OFFSET;
         return moe_dispatch_utils::AlignUp(totalSize, moe_dispatch_defs::ALIGN_512);
     }
 };
 
 } // namespace moe_dispatch
 
-#endif // MOE_DISPATCH_QUANT_CHECKER_PERGROUP_H
+#endif // MOE_DISPATCH_QUANT_CHECKER_PERTOKEN_H
