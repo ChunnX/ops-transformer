@@ -271,7 +271,8 @@ private:
     __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
         uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
     {
-        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
     }
     
@@ -401,7 +402,8 @@ private:
                                                __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
                                                uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeExpSubSum16 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
@@ -482,7 +484,8 @@ private:
                                                   __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
                                                   uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
-        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+        static_assert(kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::ONE ||
+                      kvBaseTileRegSplitStages == KvBaseTileRegSplitStages::TWO,
                       "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
