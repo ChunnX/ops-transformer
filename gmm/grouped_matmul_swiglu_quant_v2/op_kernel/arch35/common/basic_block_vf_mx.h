@@ -28,18 +28,15 @@ using AscendC::VECTOR_REG_WIDTH;
 
 namespace GMMSQWeightQuant {
 
-template <typename xType, typename wType, typename biasType>
+template <typename xType, typename wType>
 struct MxA8W4NzParams {
     uint64_t loopKNum;
     uint64_t innerLoopNum;
     uint64_t loopKDstStride;
     uint64_t innerDstStride;
-    uint64_t biasLoopNum;
     uint64_t nRealSizeAlign;
     __ubuf__ wType *weightLowBitPhyAddr;
     __ubuf__ xType *weightHighBitPhyAddr;
-    __ubuf__ biasType *biasInUbAddr;
-    __ubuf__ biasType *biasOutUbAddr;
 };
 
 static constexpr uint32_t E2M1_SHIFT_RIGHT_SIZE = 0x2;

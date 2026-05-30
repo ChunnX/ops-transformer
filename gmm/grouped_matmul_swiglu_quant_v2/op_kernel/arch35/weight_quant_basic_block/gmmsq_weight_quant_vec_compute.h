@@ -52,10 +52,6 @@ struct GmmsqUbBufferInfo {
     uint64_t weightHighBitSingleBufferSize;
     uint64_t weightLowbitTotalSize;
     uint64_t weightLowBitSingleBufferSize;
-    uint64_t biasTotalSize;
-    uint64_t biasSingleBufferSize;
-    uint64_t biasRescaleTotalSize;
-    uint64_t biasRescaleSingleBufferSize;
     uint64_t maxB16TotalSize;
     uint64_t scaleE8M0TotalSize;
     uint64_t yFp8TotalSize;
@@ -73,10 +69,6 @@ __aicore__ constexpr GmmsqUbBufferInfo GetGMMSQMxA8W4BufferInfo()
         .weightHighBitSingleBufferSize = 128 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
         .weightLowbitTotalSize = 64 * GetKBUnit<int8_t>(),
         .weightLowBitSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
-        .biasTotalSize = 1 * GetKBUnit<half>(),
-        .biasSingleBufferSize = 1 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-        .biasRescaleTotalSize = 1 * GetKBUnit<half>(),
-        .biasRescaleSingleBufferSize = 1 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
         .maxB16TotalSize = 2 * GetKBUnit<half>(),
         .scaleE8M0TotalSize = 16 * GetKBUnit<fp8_e8m0_t>(),
         .yFp8TotalSize = 32 * GetKBUnit<fp8_e4m3fn_t>(),
@@ -87,11 +79,11 @@ __aicore__ constexpr GmmsqUbBufferInfo GetGMMSQMxA8W4BufferInfo()
 }
 
 #define GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM                                                                            \
-    template <typename xType, typename wType, typename biasType, typename yType, typename yScaleType, bool hasBias,    \
-              const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
+    template <typename xType, typename wType, typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,       \
+              const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VEC_COMPUTE_CLASS                                                                                     \
-    GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType, hasBias, wqmmConfig, vecConfig>
+    GMMSQWeightQuantVecCompute<xType, wType, yType, yScaleType, wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 class GMMSQWeightQuantVecCompute {
@@ -99,15 +91,13 @@ public:
     __aicore__ inline GMMSQWeightQuantVecCompute(){};
 
     __aicore__ inline void Init(__gm__ yType *yFp32Addr, __gm__ yScaleType *yScaleAddr);
-    __aicore__ inline void UpdateGlobalAddr(__gm__ wType *weight, __gm__ biasType *bias, const bool weightL2Cacheable);
+    __aicore__ inline void UpdateGlobalAddr(__gm__ wType *weight, const bool weightL2Cacheable);
     __aicore__ inline void WaitVToMTE2();
     __aicore__ inline void SetVToMTE2();
     __aicore__ inline void CopyGmToUb(uint64_t ubMte2KSize, uint64_t kGmOffset, uint64_t kL1Offset,
-                                      uint64_t biasGmOffset, uint64_t biasRealSize,
                                       const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void WeightAntiQuantComputeNzNk(uint64_t kRealSize, uint64_t biasRealSize, uint64_t kGmOffset,
+    __aicore__ inline void WeightAntiQuantComputeNzNk(uint64_t kRealSize, uint64_t kGmOffset,
                                                       const LocalTensor<xType> &weightHighBitL1,
-                                                      const LocalTensor<biasType> &biasL1,
                                                       const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SwiGLU(const LocalTensor<float> &yF32, const BasicBlockOffsetParam &param);
     __aicore__ inline void ComputeMaxExp(const LocalTensor<float> &yF32, const BasicBlockOffsetParam &param);
@@ -120,7 +110,7 @@ public:
     __aicore__ inline void End();
 
 private:
-    __aicore__ inline void AntiQuantProcessNzMxA8W4(uint64_t biasRealSize, uint64_t ubMte2KSize, uint64_t kGmOffset,
+    __aicore__ inline void AntiQuantProcessNzMxA8W4(uint64_t ubMte2KSize, uint64_t kGmOffset,
                                                     const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyWeightHighBitForAligned(uint64_t antiQuantRealN, uint64_t antiQuantRealK,
                                                        const LocalTensor<xType> &weightHighBitL1);
@@ -135,17 +125,12 @@ private:
     static constexpr uint32_t EVENT_ID_MTE3_TO_V = 0;
     static constexpr uint32_t EVENT_ID_V_TO_MTE3 = 0;
 
-    static constexpr uint32_t QUADRUPLE_BUFFER_MASK = QUADRUPLE_BUFFER_NUM - 1;
-
     GlobalTensor<wType> wGlobal_;
-    GlobalTensor<biasType> biasGlobal_;
     GlobalTensor<yType> yFp32Global_;
     GlobalTensor<yScaleType> yScaleGlobal_;
 
     LocalTensor<int8_t> weightLowBit_;
     LocalTensor<xType> weightHighBit_;
-    LocalTensor<biasType> bias_;
-    LocalTensor<biasType> biasRescale_;
     LocalTensor<half> maxB16Buffer_;
     LocalTensor<fp8_e8m0_t> scaleE8M0Buffer_;
     LocalTensor<fp8_e4m3fn_t> yFp8Buffer_;
@@ -179,12 +164,6 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Init(__gm__ yType *yFp32Addr,
 
     ubOffset += UB_BUFFER_INFO.weightHighBitTotalSize;
 
-    bias_ = LocalTensor<biasType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.biasTotalSize);
-    ubOffset += UB_BUFFER_INFO.biasTotalSize * sizeof(biasType);
-
-    biasRescale_ = LocalTensor<biasType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.biasRescaleTotalSize);
-    ubOffset += UB_BUFFER_INFO.biasRescaleTotalSize * sizeof(biasType);
-
     maxB16Buffer_ = LocalTensor<half>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.maxB16TotalSize);
     ubOffset += UB_BUFFER_INFO.maxB16TotalSize * sizeof(half);
 
@@ -203,15 +182,12 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Init(__gm__ yType *yFp32Addr,
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ wType *weight, __gm__ biasType *bias,
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ wType *weight,
                                                                     const bool weightL2Cacheable)
 {
     wGlobal_.SetGlobalBuffer(weight);
     if (!weightL2Cacheable) {
         wGlobal_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-    }
-    if constexpr (hasBias) {
-        biasGlobal_.SetGlobalBuffer(bias);
     }
 }
 
@@ -230,20 +206,9 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::SetVToMTE2()
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSize, uint64_t kGmOffset,
-                                                              uint64_t kL1Offset, uint64_t biasGmOffset,
-                                                              uint64_t biasRealSize,
+                                                              uint64_t kL1Offset,
                                                               const BasicBlockOffsetParam &offsetParam)
 {
-    if constexpr (hasBias) {
-        if (kGmOffset == 0 && biasRealSize != 0) {
-            DataCopyPad2D(bias_[(weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize],
-                          biasGlobal_[biasGmOffset], 1, biasRealSize, biasRealSize, biasRealSize);
-
-            SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-            WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
-        }
-    }
-
     if (offsetParam.nL1Size == 0 || ubMte2KSize == 0) {
         return;
     }
@@ -273,15 +238,13 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::CopyGmToUb(uint64_t ubMte2KSi
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(uint64_t kRealSize, uint64_t biasRealSize,
-                                                                              uint64_t kGmOffset,
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(uint64_t kRealSize, uint64_t kGmOffset,
                                                                               const LocalTensor<xType> &weightHighBitL1,
-                                                                              const LocalTensor<biasType> &biasL1,
                                                                               const BasicBlockOffsetParam &offsetParam)
 {
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V + (ubComputeLoopIdx_ & (UB_BUFFER_INFO.weightHighBitBufferNum - 1)));
 
-    AntiQuantProcessNzMxA8W4(biasRealSize, kRealSize, kGmOffset, offsetParam);
+    AntiQuantProcessNzMxA8W4(kRealSize, kGmOffset, offsetParam);
 
     SetFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
@@ -289,25 +252,16 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::WeightAntiQuantComputeNzNk(ui
     if (likely(kRealSize > 0)) {
         CopyWeightHighBitForAligned(offsetParam.nL1Size, kRealSize, weightHighBitL1);
     }
-    if constexpr (hasBias) {
-        if (kGmOffset == 0 && biasRealSize != 0) {
-            DataCopy(
-                biasL1,
-                biasRescale_[(ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
-                biasRealSize);
-        }
-    }
 
     SetFlag<HardEvent::MTE3_V>(EVENT_ID_MTE3_TO_V + (ubComputeLoopIdx_ & (UB_BUFFER_INFO.weightHighBitBufferNum - 1)));
     ubComputeLoopIdx_++;
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(uint64_t biasRealSize, uint64_t ubMte2KSize,
-                                                                            uint64_t kGmOffset,
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(uint64_t ubMte2KSize, uint64_t kGmOffset,
                                                                             const BasicBlockOffsetParam &offsetParam)
 {
-    MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams;
+    MxA8W4NzParams<xType, wType> mxA8W4NzParams;
     uint64_t ubMte2BufferIdx = weightMte2LoopIdx_ & (vecConfig.ubMte2BufferNum - 1);
     mxA8W4NzParams.nRealSizeAlign = CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     mxA8W4NzParams.weightLowBitPhyAddr =
@@ -324,20 +278,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::AntiQuantProcessNzMxA8W4(uint
     mxA8W4NzParams.innerDstStride = VECTOR_REG_WIDTH * UB_BUFFER_INFO.weightHighBitBufferNum;
     mxA8W4NzParams.loopKDstStride = mxA8W4NzParams.innerLoopNum * mxA8W4NzParams.innerDstStride;
 
-    if constexpr (hasBias) {
-        if (kGmOffset == 0 && biasRealSize != 0) {
-            mxA8W4NzParams.biasInUbAddr = (__ubuf__ biasType *)bias_.GetPhyAddr(
-                (weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize);
-            mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
-                (ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
-            mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
-            GmmsqAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
-        } else {
-            GmmsqAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
-        }
-    } else {
-        GmmsqAntiQuantMxA8W4NzNkVf<xType, wType, biasType, false>(mxA8W4NzParams);
-    }
+    GmmsqAntiQuantMxA8W4NzNkVf<xType, wType>(mxA8W4NzParams);
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
