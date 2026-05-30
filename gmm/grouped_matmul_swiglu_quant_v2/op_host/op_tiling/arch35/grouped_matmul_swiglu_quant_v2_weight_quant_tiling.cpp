@@ -17,6 +17,7 @@
 #include "../../../op_kernel/arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #include "op_host/tiling_templates_registry.h"
 #include "common/include/err/ops_err.h"
+#include "../../../../grouped_matmul/op_host/grouped_matmul_host_util.h"
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
@@ -29,12 +30,12 @@ constexpr uint32_t ALIGN_SIZE_K = 32;
 constexpr uint32_t ALIGN_SIZE_N = 128;
 constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
 
-constexpr uint32_t DIM_NUM_X = 2;
-constexpr uint32_t DIM_NUM_XSCALE = 3;
-constexpr uint32_t DIM_NUM_GROUPLIST = 1;
-constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5;
-constexpr uint32_t DIM_NUM_WEIGHT_ND = 3;
-constexpr uint32_t DIM_NUM_WSCALE = 4;
+constexpr uint64_t DIM_NUM_X = 2;
+constexpr uint64_t DIM_NUM_XSCALE = 3;
+constexpr uint64_t DIM_NUM_GROUPLIST = 1;
+constexpr uint64_t DIM_NUM_WEIGHT_NZ = 5;
+constexpr uint64_t DIM_NUM_WEIGHT_ND = 3;
+constexpr uint64_t DIM_NUM_WSCALE = 4;
 
 constexpr int64_t C0_SIZE = 32;
 constexpr int64_t CUBE_BLOCK = 16;
@@ -50,12 +51,6 @@ template <typename T>
 constexpr T GetOrDefault(const T* ptr, T defaultValue)
 {
     return ptr == nullptr ? defaultValue : *ptr;
-}
-
-template <typename T>
-static T CeilDiv(T a, T b)
-{
-    return b == 0 ? a : (a + b - 1) / b;
 }
 
 bool CheckCoreNum(gert::TilingContext *context, uint32_t aicNum, uint32_t aivNum)
@@ -266,7 +261,7 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     const auto *wDesc = context.GetInputDesc(WEIGHT_INDEX);
     params.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
     OP_CHECK_IF(params.wFormat != ge::FORMAT_FRACTAL_NZ && params.wFormat != ge::FORMAT_FRACTAL_NZ_C0_32,
-        OP_LOGE(&context, "Weight format is only support to be FRACTAL_NZ or FRACTAL_NZ_C0_32, but got %s(%ld)",
+        OP_LOGE(&context, "Weight format is only support to be FRACTAL_NZ or FRACTAL_NZ_C0_32, but got %s(%d)",
             ge::TypeUtils::FormatToAscendString(params.wFormat).GetString(), params.wFormat),
         return false);
 
@@ -328,7 +323,7 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
 
     const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetFormat().GetStorageFormat()));
-    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND && xScaleFormat != ge::FORMAT_NCL,
+    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCL,
         OP_LOGE(params.opName, "weightScale format must be ND or NCL, but got %s.",
             ge::TypeUtils::FormatToSerialString(wScaleFormat).c_str()),
         return false);
@@ -336,7 +331,7 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
     return true;
 }
 
-std::string ToShapeString(const std::vector<uint64_t>& shape)
+std::string ToShapeString(const std::vector<int64_t>& shape)
 {
     std::string shapeStr("[");
     const char* sep = "";
@@ -351,7 +346,7 @@ std::string ToShapeString(const std::vector<uint64_t>& shape)
 
 bool CheckInputShape(
     gert::TilingContext* context, const char* variableName, const gert::Shape& shape,
-    const std::vector<uint64_t>& expectedShape)
+    const std::vector<int64_t>& expectedShape)
 {
     auto shapeLen = shape.GetDimNum();
     OP_CHECK_IF(
@@ -362,7 +357,7 @@ bool CheckInputShape(
     size_t i = 0;
     for (auto dim : expectedShape) {
         OP_CHECK_IF(
-            dim != static_cast<uint64_t>(shape.GetDim(i++)),
+            dim != shape.GetDim(i++),
             OP_LOGE(context, "Check input %s shape failed, expected %s, but got %s", variableName,
                 ToShapeString(expectedShape).c_str(), Ops::Base::ToString(shape).c_str()),
             return false);
@@ -370,7 +365,7 @@ bool CheckInputShape(
     return true;
 }
 
-bool IsInputShapeInvalid(gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
+bool IsInputShapeValid([[maybe_unused]] gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
 {
     OP_CHECK_IF(params.mSize < MIN_M_SIZE,
         OP_LOGE(params.opName, "M size %ld < min %ld.", params.mSize, MIN_M_SIZE),
@@ -396,7 +391,7 @@ bool IsInputShapeInvalid(gert::TilingContext& context, const GMMSQWeightQuantInp
 
 bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams& params)
 {
-    if (!IsInputShapeInvalid(context, params)) {
+    if (!IsInputShapeValid(context, params)) {
         return false;
     }
 
@@ -424,14 +419,10 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
 
     if (params.wFormat == ge::FORMAT_FRACTAL_NZ || params.wFormat == ge::FORMAT_FRACTAL_NZ_C0_32) {
         const gert::Shape &wStorageShape = weightShapePtr->GetStorageShape();
-        OP_CHECK_IF(wStorageShape.GetShapeSize() == 0,
-            OP_LOGE(&context, "input dimension of storage shape for weight should be %zu, but got %zu",
-                DIM_NUM_WEIGHT_NZ, wStorageShape.GetDimNum()),
-            return false);
-        const std::vector<uint64_t> expectedWeightShape = {
-            static_cast<uint64_t>(params.groupNum),
-            CeilDiv<int64_t>(params.kSize, C0_SIZE),
-            CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
+        const std::vector<int64_t> expectedWeightShape = {
+            static_cast<int64_t>(params.groupNum),
+            GroupedMatmul::CeilDiv<int64_t>(params.kSize, C0_SIZE),
+            GroupedMatmul::CeilDiv<int64_t>(params.nSize, CUBE_BLOCK),
             CUBE_BLOCK,
             C0_SIZE
         };
@@ -440,20 +431,20 @@ bool CheckInputs(gert::TilingContext& context, const GMMSQWeightQuantInputParams
         }
     }
 
-    uint64_t scaleKSize = CeilDiv<uint64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
-    const std::vector<uint64_t> expectedXScaleShape = {
-        static_cast<uint64_t>(params.mSize),
+    int64_t scaleKSize = GroupedMatmul::CeilDiv<int64_t>(params.kSize, MX_SCALE_BLOCK_SIZE);
+    const std::vector<int64_t> expectedXScaleShape = {
+        static_cast<int64_t>(params.mSize),
         scaleKSize,
         MX_INNER_DIM
     };
     if (!CheckInputShape(&context, "xScale", xScaleShape, expectedXScaleShape)) {
         return false;
     }
-    if (!CheckInputShape(&context, "groupList", groupListShape, {static_cast<uint64_t>(params.groupNum)})) {
+    if (!CheckInputShape(&context, "groupList", groupListShape, {params.groupNum})) {
         return false;
     }
-    const std::vector<uint64_t> expectedWeightScaleShape = {
-        static_cast<uint64_t>(params.groupNum),
+    const std::vector<int64_t> expectedWeightScaleShape = {
+        params.groupNum,
         params.nSize,
         scaleKSize,
         MX_INNER_DIM
