@@ -28,6 +28,8 @@ constexpr int64_t FP16_BF16_DTYPE_SIZE = 2;
 constexpr int64_t FP32_DTYPE_SIZE = 4;
 constexpr int64_t INT32_DTYPE_SIZE = 4;
 constexpr int64_t REPEAT_FP32 = 64;
+constexpr int64_t D_LIMIT = 1024;
+constexpr int64_t INTERLEAVE_MODE_COEF = 2;
 constexpr int64_t TBUF_SIZE = 0;
 constexpr int64_t ALIGN_32 = 8;
 constexpr int64_t ALIGN_16 = 16;
@@ -291,6 +293,21 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     xdim3_ = headDim_;
     OP_CHECK_IF(headDim_ <= 0,
         OP_LOGE(context_->GetNodeName(), "slice not right"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(allHeadDim_ > D_LIMIT,
+        OP_LOGE(context_->GetNodeName(), "D must be less than %ld, actual %ld.", D_LIMIT, allHeadDim_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(allHeadDim_ % INTERLEAVE_MODE_COEF != 0,
+        OP_LOGE(context_->GetNodeName(), "D must be multiples of 2 in interleave mode, actual %ld.", allHeadDim_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(start_ < 0,
+        OP_LOGE(context_->GetNodeName(), "sliceStart must be >= 0, actual %ld.", start_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(end_ < 0,
+        OP_LOGE(context_->GetNodeName(), "sliceEnd must be >= 0, actual %ld.", end_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(end_ > allHeadDim_,
+        OP_LOGE(context_->GetNodeName(), "sliceEnd must be <= D(%ld), actual %ld.", allHeadDim_, end_),
         return ge::GRAPH_FAILED);
     r1dim3_ =  inputR1Shape.GetDim(3);
     r1dim0_ =  inputR1Shape.GetDim(0);
