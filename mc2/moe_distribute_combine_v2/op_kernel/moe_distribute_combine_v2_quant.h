@@ -240,7 +240,7 @@ public:
                     tokenSrcReg, tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
                 MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
                     sumFinalDstReg_1, sumFinalDstReg_2,
-                                                                               sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
+                    sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
                 MicroAPI::Cast<float, T, castTrait0>(tokenFp32SrcReg_1, tokenSrcReg, maskReg3);
                 MicroAPI::Cast<float, T, castTrait2>(tokenFp32SrcReg_2, tokenSrcReg, maskReg3);
                 MicroAPI::Mul(sumLocalDstReg_1, dyScaleFp32Reg, tokenFp32SrcReg_1, maskReg2); // token与量化参数相乘
