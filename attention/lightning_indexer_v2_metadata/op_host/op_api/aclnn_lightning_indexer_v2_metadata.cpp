@@ -154,8 +154,8 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t t
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *cmpResidualKOptional,
+aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
     const char *layoutQOptional, const char *layoutKOptional)
 {
     // Query 存在性逻辑
@@ -167,6 +167,10 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio,
     if (strcmp(layoutKOptional, "TND") == 0) {
         CHECK_COND(IsTensorExistLiV2(cuSeqlensKOptional), ACLNN_ERR_PARAM_INVALID,
             "For layout_k TND, cu_seqlens_k must be provided!");
+    }
+    if (strcmp(layoutKOptional, "PA_BBND") == 0) {
+        CHECK_COND(IsTensorExistLiV2(sequsedKOptional), ACLNN_ERR_PARAM_INVALID,
+            "For layout_k PA_BBND, seqused_k must be provided!");
     }
     // cmp_residual_k 存在性逻辑
     if (cmpRatio != LI_CMP_RATIO_LOWER_BOUND && maskMode == LI_CAUSAL_MASK_MODE) {
@@ -258,8 +262,8 @@ aclnnStatus ParamsCheckLiV2(const aclTensor *cuSeqlensQOptional, const aclTensor
         aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceLiV2(maskMode, cmpRatio,
-        cuSeqlensQOptional, cuSeqlensKOptional, cmpResidualKOptional, layoutQOptional, layoutKOptional);
+    ret = CheckExistenceLiV2(maskMode, cmpRatio, cuSeqlensQOptional, cuSeqlensKOptional, sequsedKOptional,
+        cmpResidualKOptional, layoutQOptional, layoutKOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencyLiV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional,
@@ -280,7 +284,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk,
     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
     char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *metadata, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerV2Metadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
@@ -288,7 +292,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
                           numHeadsQ, numHeadsK, headDim, topk,
                           batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional,
                           maskMode, cmpRatio),
-                   DFX_OUT(metaData));
+                   DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -336,7 +340,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
         sequsedKOptionalContiguous, cmpResidualLKOptionalContiguous,
         numHeadsQ, numHeadsK, headDim, topk,
         batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio,
-        aicCoreNum, aivCoreNum, socVersion.c_str(), metaData, uniqueExecutor.get());
+        aicCoreNum, aivCoreNum, socVersion.c_str(), metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

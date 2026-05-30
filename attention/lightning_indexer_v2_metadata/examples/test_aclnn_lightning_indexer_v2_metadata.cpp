@@ -114,7 +114,7 @@ struct ArgContext {
     int64_t maskMode { 0 };
     int64_t cmpRatio { 0 };
     // output
-    Tensor metaData {};
+    Tensor metadata {};
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) 
@@ -183,7 +183,7 @@ void DestroyTensor(Tensor &tensor)
 
 void DestroyArgs(ArgContext &context)
 {
-    DestroyTensor(context.metaData);
+    DestroyTensor(context.metadata);
     DestroyTensor(context.cuSeqlensQOptional);
     DestroyTensor(context.cuSeqlensKOptional);
     DestroyTensor(context.sequsedQOptional);
@@ -210,7 +210,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsK = 1;
     context.headDim = 128;
     context.topk = 0;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
+    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
     context.maskMode = 0;                   // 0: no mask, 3: causal
@@ -276,7 +276,7 @@ int main() {
         context.numHeadsQ, context.numHeadsK, context.headDim, context.topk,
         context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
         context.layoutKOptional, context.maskMode, context.cmpRatio,
-        context.metaData.data, &workspaceSize, &executor);
+        context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
     if (workspaceSize > static_cast<uint64_t>(0)) {
@@ -300,7 +300,7 @@ int main() {
 
     // 5. 打印输出
     LiV2MetaData result {};
-    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
     for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {

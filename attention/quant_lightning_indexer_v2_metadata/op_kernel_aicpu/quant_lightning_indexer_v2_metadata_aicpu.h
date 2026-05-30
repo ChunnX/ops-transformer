@@ -223,7 +223,7 @@ struct SplitContext {
 struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
-    uint32_t s2Size { 0U };
+    uint64_t revertS2Size { 0U };
     int64_t preTokenLeftUp { 0 };
     int64_t nextTokenLeftUp { 0 };
     BlockCost<int64_t> typeCost {};
@@ -279,15 +279,15 @@ private:
     int32_t GetQueryBatchSize();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
-    bool GenMetaData(SplitResult &splitRes);
+    bool GenMetadata(SplitResult &splitRes);
     ValidSocVersion ProcessSocVersion();
 
   // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
-    uint32_t GetSparseSeqSize(uint32_t bIdx);
-    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
-    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size);
+    uint64_t GetRevertS2Size(uint32_t bIdx);
+    int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
+    int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint64_t s2Size);
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache);
     int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
     BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
@@ -323,12 +323,13 @@ private:
 private:
     CpuKernelContext* context_ = nullptr;
     // input
-    Tensor *actSeqLenQ_ = nullptr;
-    Tensor *actSeqLenK_ = nullptr;
-    Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedK_ = nullptr;
+    Tensor *cuSeqlensQ_ = nullptr;
+    Tensor *cuSeqlensK_ = nullptr;
+    Tensor *sequsedQ_ = nullptr;
+    Tensor *sequsedK_ = nullptr;
+    Tensor *cmpResidualK_ = nullptr;
     // output
-    Tensor *metaData_ = nullptr;
+    Tensor *metadata_ = nullptr;
     // attributes
     std::string socVersion_ = "";
     bool supportFd_ = false;
@@ -340,12 +341,12 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsK_ = 0;
     int32_t headDim_ = 0;
-    int32_t queryQuantMode_ = 0;
-    int32_t keyQuantMode_ = 0;
+    int32_t quantMode_ = 0;
     int32_t topk_ = 0;
     std::string layoutQ_ = "BSND";
     std::string layoutK_ = "BSND";
     int32_t maskMode_ = 0;
+    int32_t cmpRatio_ = 1;
     uint32_t attentionMode_ = 0;
     ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
 
@@ -364,8 +365,9 @@ private:
         actSeqLenK = 1,
         seqUsedQ = 2,
         seqUsedK = 3,
+        cmpResidualK = 4,
         // output
-        metaData = 0,
+        metadata = 0,
     };
 };
 } // namespace aicpu
