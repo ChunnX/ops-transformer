@@ -37,6 +37,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 const char *A_INNER_DEBUG_BARRIER = "DistributeBarrier Tiling Debug";
