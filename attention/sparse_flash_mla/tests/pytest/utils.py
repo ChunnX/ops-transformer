@@ -76,27 +76,27 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 'testcase_name': lambda x: pd.NA if pd.isna(x) else str(x),
                 'T1': to_int_or_na,
                 'T2': to_int_or_na,
-                'T3': to_int_or_na,
+                # 'T3': to_int_or_na,
                 'S1': to_int_or_na,
                 'S2': to_int_or_na,
                 'block_size1': to_int_or_na,
                 'block_size2': to_int_or_na,
-                'kv_quant_mode': to_int_or_na,
+                # 'kv_quant_mode': to_int_or_na,
             })
         df = df.replace({np.nan: None, pd.NA: None})
         df = df.applymap(parse_to_list)
         df = df.astype({
             'T1': "Int64",
             'T2': "Int64",
-            'T3': "Int64",
+            # 'T3': "Int64",
             'S1': "Int64",
             'S2': "Int64",
             'block_size1': "Int64",
             'block_size2': "Int64",
-            'kv_quant_mode': "Int64",
+            # 'kv_quant_mode': "Int64",
         })
         # 处理可能为空的列
-        default_None_columns = ["K1", "cu_seqlens_ori_kv","cu_seqlens_cmp_kv",
+        default_None_columns = ["K1", "cu_seqlens_ori_kv","cu_seqlens_cmp_kv","T2","T3",
                                 "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv"]
         for key in default_None_columns:
             if key not in df.columns:
