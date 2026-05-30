@@ -1255,10 +1255,11 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     } else {
         remoteRankId = rankId_ - 16;
     }
-    remoteExpAddr = (GM_ADDR)((HcclRankRelationResV2 *)((HcclRankRelationResV2 *)(winContext->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp);
+    remoteExpAddr = (GM_ADDR)((HcclRankRelationResV2 *)((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp);
     GlobalTensor<uint32_t> selfDataStatusGMAivSend;
     selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
     selfDataStatusGMAivSend.SetValue(12, sendStatusGMTensor_.GetValue(0));
+    selfDataStatusGMAivSend.SetValue(13, sendStatusGMTensor_);
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 }
@@ -1497,6 +1498,21 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm));
         selfDataStatusGMAiv.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm + aivId_ * 64));
         selfDataStatusGMAiv.SetValue(0, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(1, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(2, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(3, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(4, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(5, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(6, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(7, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(8, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(9, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(10, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(11, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(12, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(13, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(14, 88); // 初始化为0，表示数据未准备好
+        selfDataStatusGMAiv.SetValue(15, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(10, worldSize_); // 初始化为0，表示数据未准备好
         // selfDataStatusGMTensor.SetValue(98, rankId_); // 初始化为0，表示数据未准备好winContext->rankSize
         // selfDataStatusGMTensor.SetValue(99, winContext_->localUsrRankId); // 初始化为0，表示数据未准备好
