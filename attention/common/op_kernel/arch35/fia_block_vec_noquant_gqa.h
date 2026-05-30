@@ -96,7 +96,7 @@ public:
     using OUT_T = OUTPUT_T;
 
     // gm
-    TPipe *tPipe;
+    TPipe *tPipe = nullptr;
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
 
