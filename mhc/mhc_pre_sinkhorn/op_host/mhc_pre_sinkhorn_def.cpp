@@ -42,7 +42,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("hin")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("hPost")
@@ -86,7 +86,7 @@ public:
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f); // default value
         this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("need_backward").AttrType(OPTIONAL).Bool(true);
-            
+
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
 
