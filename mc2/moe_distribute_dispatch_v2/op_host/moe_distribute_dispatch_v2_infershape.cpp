@@ -28,6 +28,7 @@ enum class QuantMode : int64_t {
     QUANT_MODE_PERTOKEN = 2,
     QUANT_MODE_PERGROUP = 3,
     QUANT_MODE_MX = 4,
+    QUANT_MODE_MX_CLIP = 6,
 };
 }
 
@@ -99,7 +100,7 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, (h + PER_GROUP_SIZE - 1) / PER_GROUP_SIZE);
-    } else if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    } else if ((quantMode == QuantMode::QUANT_MODE_MX) || (quantMode == QuantMode::QUANT_MODE_MX_CLIP)) {
         dynamicScalesShape->SetDimNum(DIM_TWO);
         dynamicScalesShape->SetDim(0U, a);
         dynamicScalesShape->SetDim(1U, ((h + MX_QUANT_SIZE - 1) / MX_QUANT_SIZE + 1) / NUM_EVEN * NUM_EVEN);
@@ -116,7 +117,7 @@ static void InferShapeDynamicScalesA5(gert::Shape *dynamicScalesShape, const ger
 static ge::DataType InferDataTypeDynamicScales(int64_t quantMode, ge::DataType scalesType, bool quantFlag)
 {
     ge::DataType dynamicScalesDtype = ge::DT_FLOAT;
-    if (static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_MX) {
+    if ((quantMode == QuantMode::QUANT_MODE_MX) || (quantMode == QuantMode::QUANT_MODE_MX_CLIP)) {
         dynamicScalesDtype = ge::DT_FLOAT8_E8M0;
     }
     if (quantFlag && static_cast<QuantMode>(quantMode) == QuantMode::QUANT_MODE_NO_QUANT) {
@@ -326,13 +327,18 @@ static ge::graphStatus CheckQuantMode(const gert::InferDataTypeContext *context,
         OP_LOGE(context->GetNodeName(), "when quantmode is dynamic quant, ydtype must be int8 or "
                 "float8_e4m3fn or float8_e5m2"),
         return ge::GRAPH_FAILED);
-    } else if ((static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_PERGROUP) ||
-               (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_MX)) {
+    } else if ((*quantMode == QuantMode::QUANT_MODE_PERGROUP) || (*quantMode == QuantMode::QUANT_MODE_MX_CLIP)) {
+        OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)),
+        OP_LOGE(context->GetNodeName(), "when quantmode is pergoup or mx_quant_cuBLAS "
+                "ydtype must be float8_e4m3fn or float8_e5m2"),
+        return ge::GRAPH_FAILED);
+    } else if (*quantMode == QuantMode::QUANT_MODE_MX) {
         OP_CHECK_IF((yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                     (yDtype != static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
                     (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E2M1)) &&
                     (yDtype != static_cast<int64_t>(ge::DT_FLOAT4_E1M2)),
-        OP_LOGE(context->GetNodeName(), "when quantmode is pergoup or mxfp8 quant, "
+        OP_LOGE(context->GetNodeName(), "when quantmode is mx_quant, "
                 "ydtype must be float8_e4m3fn, float8_e5m2, float4_e2m1 or float4_e1m2"),
         return ge::GRAPH_FAILED);
     }

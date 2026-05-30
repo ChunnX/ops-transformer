@@ -398,7 +398,8 @@ inline uint32_t CheckQuantModeAndExpandXType(const gert::TilingContext *context,
 static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *context, const char *nodeName,
     bool isScales, const uint32_t quantMode)
 {
-    OP_TILING_CHECK(isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)),
+    OP_TILING_CHECK(isScales && ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT))),
         OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u.",
         quantMode), return ge::GRAPH_FAILED);
     auto xDesc = context->GetInputDesc(X_INDEX);
@@ -1127,7 +1128,8 @@ static bool CheckDistinctTensorDataType(const gert::TilingContext *context, cons
     if (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
         OP_TILING_CHECK(!CheckTensorDataTypeNonQuant(context, nodeName, isScales, config),
             OP_LOGE(nodeName, "CheckTensorDataType for nonquant mode failed."), return false);
-    } else if (quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) {
+    } else if ((quantMode == static_cast<uint32_t>(QuantModeA5::MX_QUANT)) ||
+        (quantMode == static_cast<uint32_t>(QuantModeA5::MX_CLIP_QUANT))) {
         OP_TILING_CHECK(!CheckTensorDataTypeMxfp8(context, nodeName, config),
             OP_LOGE(nodeName, "CheckTensorDataType for mx quant mode failed."), return false);
     } else {
@@ -1276,9 +1278,9 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     const int64_t* quantModePtr, const char *nodeName)
 {
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
-    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_QUANT)),
+    (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT)),
     OP_LOGE(nodeName, "quantMode is invalid, only support [0, %ld], but got quantMode=%ld.",
-    static_cast<int64_t>(QuantModeA5::MX_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
+    static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

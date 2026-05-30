@@ -75,7 +75,7 @@ public:
             scaleOutBytes = sizeof(float); // PERTOKEN量化一个token生成一个scale
         }
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        else if constexpr (QuantMode == MX_QUANT) {
+        else if constexpr (QuantMode == MX_QUANT || QuantMode == MX_CLIP_QUANT) {
             if constexpr (Std::IsSame<ExpandXOutType, fp4x2_e2m1_t>::value ||
                 Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value) {
                 hOutSizeAlign_ = Align256(Ceil(axisH_, FP4_ELEMS_PER_BYTE));
@@ -115,6 +115,8 @@ public:
         #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MX_QUANT) {
             QuantDynamicMx(outLocal, inLocal);
+        } else if constexpr (QuantMode == MX_CLIP_QUANT) {
+            QuantDynamicMxClip(outLocal, inLocal);
         } else if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
             QuantDynamicPerGroup(outLocal, inLocal, expertIndex, scalesGMTensor_);
         }
@@ -259,6 +261,26 @@ public:
         } else {
             // 计算量化后的expandx并填充
             quant::ComputeFp4Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
+        }
+    }
+
+    __aicore__ inline void QuantDynamicMxClip(LocalTensor<XOutType>& outLocal, LocalTensor<XInType>& inLocal)
+    {
+        uint32_t mxScaleNum = Align2(Ceil32(axisH_));
+        __ubuf__ XInType* srcAddr = (__ubuf__ XInType*)inLocal.GetPhyAddr();
+        __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)floatLocalTemp_.GetPhyAddr();
+        __ubuf__ uint16_t* halfScaleLocalAddr = (__ubuf__ uint16_t*)floatLocalTemp_[Align32(mxScaleNum)].GetPhyAddr();
+        __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
+        __ubuf__ uint16_t* mxScaleLocalAddr = (__ubuf__ uint16_t*)outLocal[Align256<uint32_t>(axisH_)].GetPhyAddr();
+
+        quant::ComputeMaxExpcuBLAS(srcAddr, maxExpAddr, axisH_); // 计算最大Exp
+        // 计算scales并填充
+        quant::ComputeScalecuBLAS<ExpandXOutType, XInType>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
+        if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
+            Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
+            // 计算量化后的expandx并填充
+            quant::ComputeFp8Data<XInType, ExpandXOutType, AscendC::RoundMode::CAST_TRUNC,
                 AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_);
         }
     }
