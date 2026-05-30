@@ -370,11 +370,18 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
         return false;
     }
- 
+
     // 仅支持非量化，占用2B
     const int64_t dataTypeSize = 2U;
+    // isCapable阶段，platformInfo_中还没有l2Size和aicNum，额外获取一次
+    auto platformInfoPtr = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
+                return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    platformInfo_.aicNum = ascendcPlatform.GetCoreNumAic();
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
     int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
- 
+
     // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
     return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
            platformInfo_.l2Size;

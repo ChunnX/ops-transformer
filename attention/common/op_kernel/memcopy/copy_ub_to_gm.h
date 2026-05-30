@@ -249,8 +249,8 @@ __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxL
 }
 
 template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+__aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                 const CONST_INFO_T &constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
@@ -313,8 +313,8 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float>
 }
 
 template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+__aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                                 const CONST_INFO_T &constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
@@ -343,6 +343,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softm
         ubOffset += curDealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     }
 }
+
 template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
