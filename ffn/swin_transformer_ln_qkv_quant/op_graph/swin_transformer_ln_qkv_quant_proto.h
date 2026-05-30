@@ -39,7 +39,7 @@ namespace ge {
 * @li epsilon: A required attribute, the type is float. Defaults to 0.000001.
 * @li ori_height: A required attribute, the type is int. Defaults to 7
 * @li ori_weight: A required attribute, the type is int. Defaults to 7. \n
-* @li h_win_size: A required attribute, the type is int. Defaults to 7. \n
+* @li h_win_szie: A required attribute, the type is int. Defaults to 7. \n
 * @li w_win_size: A required attribute, the type is int. Defaults to 7. \n
 * @li weight_transpose: A required attribute, the type is bool. Defaults to true. \n
 
@@ -53,8 +53,8 @@ REG_OP(SwinTransformerLnQkvQuant)
     .INPUT(x, TensorType({DT_FLOAT16}))
     .INPUT(gamma, TensorType({DT_FLOAT16}))
     .INPUT(beta, TensorType({DT_FLOAT16}))
-    .INPUT(weight, TensorType({DT_INT8}))
-    .INPUT(bias, TensorType({DT_INT32}))
+    .INPUT(weight, TensorType({DT_FLOAT16}))
+    .INPUT(bias, TensorType({DT_FLOAT16}))
     .INPUT(quant_scale, TensorType({DT_FLOAT16}))
     .INPUT(quant_offset, TensorType({DT_FLOAT16}))
     .INPUT(dequant_scale, TensorType({DT_UINT64}))
@@ -66,7 +66,7 @@ REG_OP(SwinTransformerLnQkvQuant)
     .REQUIRED_ATTR(epsilon, Float)
     .REQUIRED_ATTR(ori_height, Int)
     .REQUIRED_ATTR(ori_weight, Int)
-    .REQUIRED_ATTR(h_win_size, Int)
+    .REQUIRED_ATTR(h_win_szie, Int)
     .REQUIRED_ATTR(w_win_size, Int)
     .REQUIRED_ATTR(weight_transpose, Bool)
     .OP_END_FACTORY_REG(SwinTransformerLnQkvQuant)
