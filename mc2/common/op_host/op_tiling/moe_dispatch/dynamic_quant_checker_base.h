@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_checker_dynamic_base.h
+ * \file dynamic_quant_checker_base.h
  * \brief MOE Distribute Dispatch 动态量化基类定义 (PerToken/PerGroup/MX 共有骨架)
  */
 

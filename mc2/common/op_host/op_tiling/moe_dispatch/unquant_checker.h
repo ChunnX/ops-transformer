@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_checker_unquant.h
+ * \file unquant_checker.h
  * \brief MOE Distribute Dispatch 非量化模式校验 (mode=0)
  */
 
