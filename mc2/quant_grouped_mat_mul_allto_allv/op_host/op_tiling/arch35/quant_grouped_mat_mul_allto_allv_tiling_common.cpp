@@ -792,7 +792,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t QuantGroupedMatmulAllToAllvTilingCommon::GetCommModeIndex()
+uint32_t QuantGroupedMatmulAllToAllvTilingCommon::GetCommModeIndex() const
 {
     return GmmA2AvAttrIndex::ATTR_COMM_MODE_INDEX;
 }
@@ -846,9 +846,15 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint8_t commMode = 0;
-    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
     }
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);

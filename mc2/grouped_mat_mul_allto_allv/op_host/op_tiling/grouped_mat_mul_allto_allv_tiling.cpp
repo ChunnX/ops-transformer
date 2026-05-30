@@ -320,7 +320,7 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t GroupedMatmulAllToAllvTiling::GetCommModeIndex()
+uint32_t GroupedMatmulAllToAllvTiling::GetCommModeIndex() const
 {
     return ATTR_COMM_MODE;
 }
