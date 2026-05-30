@@ -770,6 +770,9 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoOpTilingKHFullLoad(int64_t rowOfF
     if (k == 1) {
         int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER;
         rowFactor = CalcRowFactorForKHFullLoad(ubSizeRemained, true);
+    else if (k <= 4) {
+        int64_t ubSizeRemained = ubSize_ / DOUBLE_BUFFER;
+        rowFactor = CalcRowFactorForKHFullLoad(ubSizeRemained, true);
     } else {
         int64_t kHAlignedByte = k * hAligned * dtypeSize;	
         int64_t hasBiasvalue = hasBias_ ? kHAlignedByte : 0;

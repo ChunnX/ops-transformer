@@ -50,6 +50,7 @@ public:
         // k == 1时，expandedX/bias大小是row_num, h，其他情况是k*row_num, h
         // k表示从总的专家E中选出K个专家， E表示expert num,即专家数，E需要大于等于K
         k1 = k == 1;
+        k4 = k <= 4;
         x1Gm.SetGlobalBuffer((__gm__ T*)x1);
         x2Gm.SetGlobalBuffer((__gm__ T*)x2);
         biasGm.SetGlobalBuffer((__gm__ T*)bias);
@@ -70,6 +71,8 @@ public:
         if (k1) {
             pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
             pipe->InitBuffer(expandedRowIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+        } else if(k4) {
+            pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
         } else {
             pipe->InitBuffer(expandedXQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
         }
@@ -78,6 +81,8 @@ public:
             if (k1) {
                 pipe->InitBuffer(biasQue, DOUBLE_BUFFER, tilingData->rowFactor * hAligned * sizeof(T));
                 pipe->InitBuffer(expertIdxQue, DOUBLE_BUFFER, rowFactorKAlignedTInt32 * sizeof(int32_t));
+            } if (k4) {
+                pipe->InitBuffer(biasQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
             } else {
                 pipe->InitBuffer(biasQue, DOUBLE_BUFFER, k * hAligned * sizeof(T));
             }
@@ -118,6 +123,8 @@ public:
             if (k1) {
                 // k == 1
                 ProcessYWithInputK1(rowOuterIdx, rowInnerLoop);
+            } else if (k4) {
+                ProcessYWithInputk4(rowOuterIdx, rowInnerLoop);
             } else {
                 ProcessYWithInput(rowOuterIdx, rowInnerLoop);
             }
@@ -436,6 +443,55 @@ private:
         }
         if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
             Cast(yLocal.template ReinterpretCast<T>(), yLocal, RoundMode::CAST_RINT, rowInnerLoop * h);
+        }
+    }
+
+    __aicore__ inline void ProcessExpandedXBiasAndScaleK4(int64_t rowOuterIdx, int64_t rowInnerIdx)
+    {
+        validK = 0;
+        for (int64_t kIdx = 0; kIdx < tilingData->k; kIdx += 1) {
+            SetExpandedRowIdxOffset(rowOuterIdx, rowInnerIdx, kIdx);
+            int64_t expandedRowIdxGmValue = expandedRowIdxGm.GetValue(expandedRowIdxOffset);
+            if (!IsValidExpandedRowIdx(expandedRowIdxGmValue)) {
+                continue;
+            }
+            int64_t expertIdx = GetExpertIdxValue(rowInnerIdx, rowOuterIdx, kIdx);
+            if (!LoadExpandedXForK(rowOuterIdx, rowInnerIdx, expertIdx, expandedRowIdxGmValue)) {
+                continue;
+            }
+            if (hasBiasAndExpertIdx) {
+                int64_t biasGmOffset = expertIdxGm.GetValue(expertIdxOffset) * tilingData->h;
+                CopyIn(biasGm[biasGmOffset], biasLocal[validK * tilingData->hAligned], 1, tilingData->h);
+            }
+            // 由于会将k轴融到VF中，所以drop_pad场景需要将有效的Scale按序设置
+            if (hasScales) {
+                S scaleValue = scalesLocal[rowInnerIdx * tilingData->k].GetValue(kIdx);
+                scalesLocal[rowInnerIdx * tilingData->k].SetValue(validK, scaleValue);
+            }
+            validK += 1;
+        }
+    }
+
+    __aicore__ inline void ProcessYWithInputk4(int64_t rowOuterIdx, int64_t rowInnerLoop)
+    {
+        for (int64_t rowInnerIdx = 0; rowInnerIdx < rowInnerLoop; rowInnerIdx += 1) {
+            AllocTensorsForProcessY();
+            ProcessExpandedXBiasAndScaleK4(rowOuterIdx, rowInnerIdx);
+            EnQueDeQueTensors();
+            LocalTensor<S> innerScaleLocal;
+            if (hasScales) {
+                event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+                SetFlag<HardEvent::S_V>(eventId);
+                WaitFlag<HardEvent::S_V>(eventId);
+                innerScaleLocal = scalesLocal[rowInnerIdx * tilingData->k];
+            }
+            ProcessExpandXBiasScaleOptimized<T, S>(yLocal[rowInnerIdx * tilingData->h], expandedXLocal, biasLocal,
+                                                   innerScaleLocal, validK, tilingData->h, hasBiasAndExpertIdx,
+                                                   hasScales);
+            FreeTensorsForProcessY();
+        }
+        if constexpr (IsSameType<T, half>::value || IsSameType<T, bfloat16_t>::value) {
+            Cast(yLocal.template ReinterpretCast<T>(), yLocal, RoundMode::CAST_RINT, rowInnerLoop * tilingData->h);
         }
     }
 
