@@ -540,7 +540,8 @@ static aclnnStatus CheckGroupListCommonTensor(const gmm::GroupedMatmulParams &gm
 
 static aclnnStatus CheckGroupListSplitK(const gmm::GroupedMatmulParams &gmmParams, const bool isRequiredGroupList,
                                         const bool xSeparated, const bool weightSeparated, const size_t groupNum,
-                                        const char *opName) {
+                                        const char *opName)
+{
   int64_t groupListLastValue = 0;
   if (gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz || gmmParams.apiVersion == gmm::GMMApiVersion::V5
       || gmmParams.apiVersion == gmm::GMMApiVersion::V4 || gmmParams.apiVersion == gmm::GMMApiVersion::V3) {
@@ -549,9 +550,9 @@ static aclnnStatus CheckGroupListSplitK(const gmm::GroupedMatmulParams &gmmParam
     return ACLNN_SUCCESS;
   }
   CHECK_COND(
-    CheckGroupListCommonIntArray(gmmParams, isRequiredGroupList, groupNum, groupListLastValue, opName) ==
-        ACLNN_SUCCESS,
-    ACLNN_ERR_PARAM_INVALID, "CheckGroupListCommonIntArray failed.");
+      CheckGroupListCommonIntArray(gmmParams, isRequiredGroupList, groupNum, groupListLastValue, opName) ==
+          ACLNN_SUCCESS,
+      ACLNN_ERR_PARAM_INVALID, "CheckGroupListCommonIntArray failed.");
   if (gmmParams.groupListOptional != nullptr) {
     if (xSeparated) {
       int64_t preOffset = 0;
@@ -588,7 +589,8 @@ static aclnnStatus CheckGroupListSplitK(const gmm::GroupedMatmulParams &gmmParam
 
 static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParams, const bool isRequiredGroupList,
                                         const bool xSeparated, const bool ySeparated, const size_t groupNum,
-                                        const char *opName) {
+                                        const char *opName)
+{
   int64_t groupListLastValue = 0;
   if (gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz || gmmParams.apiVersion == gmm::GMMApiVersion::V5
       || gmmParams.apiVersion == gmm::GMMApiVersion::V4 || gmmParams.apiVersion == gmm::GMMApiVersion::V3) {
@@ -597,9 +599,9 @@ static aclnnStatus CheckGroupListSplitM(const gmm::GroupedMatmulParams &gmmParam
     return ACLNN_SUCCESS;
   }
   CHECK_COND(
-    CheckGroupListCommonIntArray(gmmParams, isRequiredGroupList, groupNum, groupListLastValue, opName) ==
-        ACLNN_SUCCESS,
-    ACLNN_ERR_PARAM_INVALID, "CheckGroupListCommonIntArray failed!");
+      CheckGroupListCommonIntArray(gmmParams, isRequiredGroupList, groupNum, groupListLastValue, opName) ==
+          ACLNN_SUCCESS,
+      ACLNN_ERR_PARAM_INVALID, "CheckGroupListCommonIntArray failed!");
   if (gmmParams.groupListOptional != nullptr) {
     if (xSeparated) {
       int64_t preGoupList = 0;
