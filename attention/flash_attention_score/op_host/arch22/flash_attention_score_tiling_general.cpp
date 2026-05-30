@@ -2754,7 +2754,11 @@ protected:
                          (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
                          (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
-                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND);
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND) &&
+                         dSize >= 128;
+        if (optimCond) {
+            OP_LOGI(opName, "L2 cache optimization: s1BasicBlock set to 64 for B4_1.");
+        }
         s1BasicBlock = optimCond ? std::min(64L, alignedS1) : std::min(128L, alignedS1); // PERFORMANCE OPT
         s2BasicBlock = std::min(128L, alignedS2);
     }
@@ -3241,7 +3245,11 @@ protected:
                          (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
                          (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
-                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND);
+                          tilingData->inputParams.get_layoutType() == LAYOUT_BSND) &&
+                         dSize >= 128;
+        if (optimCond) {
+            OP_LOGI(opName, "L2 cache optimization: nRatio set to 4 for B4_1.");
+        }
         nRatio = optimCond ? 4L : 8L;
         // s2Size (1025, 1040]
         if (s2Size / s2BasicBlock == 8L && s2Size % s2BasicBlock > 0 && s2Size % s2BasicBlock <= 16L) {
