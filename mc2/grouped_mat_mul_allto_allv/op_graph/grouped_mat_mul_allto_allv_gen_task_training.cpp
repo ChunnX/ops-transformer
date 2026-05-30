@@ -27,7 +27,8 @@ static const size_t ATTR_COMM_MODE_INDEX = 6;
 static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 static const size_t RANK_DIM_BOUNDARY = 8;
 static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, int64_t &rankSize,
-                                            std::string &commMode) {
+                                            std::string &commMode)
+{
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
