@@ -505,10 +505,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         // expertIdxValueGm: 每个核需要存储2个int32 (lastExpertId和lastCoreExpertIdNum)
         int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
-        workspaceSize_ += expertIdxValueWorkspaceSize;
+        int64_t stableExpertCountWorkspaceSize =
+            tilingDataPtr_->coreNum * tilingDataPtr_->actualExpertNum * sizeof(int32_t);
+        workspaceSize_ += expertIdxValueWorkspaceSize + stableExpertCountWorkspaceSize;
 
-        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld",
-                 expertIdxValueWorkspaceSize);
+        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld, stableExpertCountWorkspace=%ld",
+                 expertIdxValueWorkspaceSize, stableExpertCountWorkspaceSize);
     }
 
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&

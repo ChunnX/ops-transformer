@@ -25,14 +25,18 @@ template <typename T>
 class MoeV3SrcToDstWithCapacity {
 public:
     __aicore__ inline MoeV3SrcToDstWithCapacity(){};
-    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale, GM_ADDR workspace,
-                                const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale,
+                                GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void CopyIn(int64_t progress);
     __aicore__ inline void CopyOut(int64_t progress);
     __aicore__ inline void CopyOutRemain();
+    __aicore__ inline void CountStableExpertIdx();
+    __aicore__ inline void InitStablePrefix(LocalTensor<int32_t> &expertCountLocal);
+    __aicore__ inline void BuildStableExpandedRowIdx();
+    __aicore__ inline void ZeroDropPadOutput();
     __aicore__ inline void SyncAll();
     __aicore__ inline void AssistInit();
     __aicore__ inline void CopyScaleZeroOut(int64_t index);
@@ -43,11 +47,14 @@ private:
     TQue<QuePosition::VECOUT, 1> copyOutQueue_;
     TQue<QuePosition::VECOUT, 1> copyOutZeroQueue_;
     TQue<QuePosition::VECOUT, 1> scaleZeroOutQueue_;
+    TBuf<TPosition::VECCALC> stableExpertCountBuf_;
 
+    GlobalTensor<int32_t> expertIdxGm_;
     GlobalTensor<int32_t> expandDstToSrcRowGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
     GlobalTensor<int32_t> expandedExpertIdxGm_;
+    GlobalTensor<int32_t> stableCoreExpertCountGm_;
     GlobalTensor<T> expandedXGm_;
     GlobalTensor<uint8_t> expandedXUint8Gm_;
     GlobalTensor<float> expandedScaleGm_;
@@ -67,6 +74,8 @@ private:
     int64_t rowLoops_;
     int64_t expertCapacity_;
     int64_t expertNum_;
+    int64_t actualExpertNum_;
+    int64_t expertStart_;
     int64_t cols_;
     int64_t perLoopCols_;
     int64_t lastLoopCols_;
@@ -110,6 +119,141 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
             int32_t lastExpertNum = expertIdxValueGm_.GetValue(i * 2 + 1);
             this->lastCoreExpertIdNum_ += lastExpertNum;
         }
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CountStableExpertIdx()
+{
+    LocalTensor<int32_t> expertCountLocal = stableExpertCountBuf_.Get<int32_t>();
+    Duplicate<int32_t>(expertCountLocal, static_cast<int32_t>(0), this->actualExpertNum_);
+    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIDVToS);
+    WaitFlag<HardEvent::V_S>(eventIDVToS);
+
+    currentLoopRows_ = perLoopRows_;
+    int64_t globalBase = this->blockIdx_ * this->srcToDstTilingData_->perCoreRows;
+    for (int64_t loop = 0; loop < this->rowLoops_; loop++) {
+        if (loop == this->rowLoops_ - 1) {
+            currentLoopRows_ = lastLoopRows_;
+        }
+        LocalTensor<int32_t> inLocal = copyInQueue_.AllocTensor<int32_t>();
+        int64_t globalOffset = globalBase + loop * perLoopRows_;
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                     static_cast<uint32_t>(currentLoopRows_ * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(inLocal, expertIdxGm_[globalOffset], copyParams, padParams);
+        copyInQueue_.EnQue<int32_t>(inLocal);
+
+        LocalTensor<int32_t> expertIdxLocal = copyInQueue_.DeQue<int32_t>();
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+        for (int64_t idx = 0; idx < currentLoopRows_; idx++) {
+            int32_t expertIdx = expertIdxLocal.GetValue(idx);
+            if (expertIdx < this->expertStart_ || expertIdx >= this->expertStart_ + this->actualExpertNum_) {
+                continue;
+            }
+            int64_t expertOffset = expertIdx - this->expertStart_;
+            int32_t expertCount = expertCountLocal.GetValue(expertOffset);
+            expertCountLocal.SetValue(expertOffset, expertCount + 1);
+        }
+        copyInQueue_.FreeTensor(expertIdxLocal);
+    }
+
+    DataCopyExtParams copyOutParams{static_cast<uint16_t>(1),
+                                    static_cast<uint32_t>(this->actualExpertNum_ * sizeof(int32_t)), 0, 0, 0};
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    DataCopyPad(stableCoreExpertCountGm_[this->blockIdx_ * this->actualExpertNum_], expertCountLocal, copyOutParams);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::InitStablePrefix(LocalTensor<int32_t> &expertCountLocal)
+{
+    Duplicate<int32_t>(expertCountLocal, static_cast<int32_t>(0), this->actualExpertNum_);
+    event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIDVToS);
+    WaitFlag<HardEvent::V_S>(eventIDVToS);
+
+    for (int64_t expertOffset = 0; expertOffset < this->actualExpertNum_; expertOffset++) {
+        int32_t prefixCount = 0;
+        for (int64_t coreIdx = 0; coreIdx < this->blockIdx_; coreIdx++) {
+            prefixCount += stableCoreExpertCountGm_.GetValue(coreIdx * this->actualExpertNum_ + expertOffset);
+        }
+        expertCountLocal.SetValue(expertOffset, prefixCount);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::BuildStableExpandedRowIdx()
+{
+    LocalTensor<int32_t> expertCountLocal = stableExpertCountBuf_.Get<int32_t>();
+    InitStablePrefix(expertCountLocal);
+
+    currentLoopRows_ = perLoopRows_;
+    int64_t globalBase = this->blockIdx_ * this->srcToDstTilingData_->perCoreRows;
+    LocalTensor<int32_t> outLocal = copyOutQueue_.AllocTensor<int32_t>();
+    DataCopyExtParams copyOutParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
+    for (int64_t loop = 0; loop < this->rowLoops_; loop++) {
+        if (loop == this->rowLoops_ - 1) {
+            currentLoopRows_ = lastLoopRows_;
+        }
+        LocalTensor<int32_t> inLocal = copyInQueue_.AllocTensor<int32_t>();
+        int64_t globalOffset = globalBase + loop * perLoopRows_;
+        DataCopyExtParams copyInParams{static_cast<uint16_t>(1),
+                                       static_cast<uint32_t>(currentLoopRows_ * sizeof(int32_t)), 0, 0, 0};
+        DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        DataCopyPad(inLocal, expertIdxGm_[globalOffset], copyInParams, padParams);
+        copyInQueue_.EnQue<int32_t>(inLocal);
+
+        LocalTensor<int32_t> expertIdxLocal = copyInQueue_.DeQue<int32_t>();
+        SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+        for (int64_t idx = 0; idx < currentLoopRows_; idx++) {
+            int32_t expertIdx = expertIdxLocal.GetValue(idx);
+            if (expertIdx < this->expertStart_ || expertIdx >= this->expertStart_ + this->actualExpertNum_) {
+                continue;
+            }
+            int64_t expertOffset = expertIdx - this->expertStart_;
+            int32_t expertCount = expertCountLocal.GetValue(expertOffset);
+            if (expertCount < this->expertCapacity_) {
+                int32_t outIndex = expertOffset * this->expertCapacity_ + expertCount;
+                outLocal.SetValue(0, outIndex);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                DataCopyPad(expandedRowIdxGm_[globalOffset + idx], outLocal, copyOutParams);
+            }
+            expertCountLocal.SetValue(expertOffset, expertCount + 1);
+        }
+        copyInQueue_.FreeTensor(expertIdxLocal);
+    }
+    copyOutQueue_.FreeTensor(outLocal);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::ZeroDropPadOutput()
+{
+    int64_t totalOutputRows = this->expertNum_ * this->expertCapacity_;
+    int64_t perCoreOutputRows = Ceil(totalOutputRows, this->coreNum_);
+    int64_t outputStart = this->blockIdx_ * perCoreOutputRows;
+    int64_t outputEnd = Min(outputStart + perCoreOutputRows, totalOutputRows);
+    if (outputStart >= outputEnd) {
+        return;
+    }
+
+    int64_t curLoopCols = this->perLoopCols_;
+    for (int64_t row = outputStart; row < outputEnd; row++) {
+        for (int64_t colLoop = 0; colLoop < this->colLoops_; colLoop++) {
+            if (colLoop == this->colLoops_ - 1) {
+                curLoopCols = this->lastLoopCols_;
+            }
+            DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0,
+                                         0, 0};
+            if constexpr (IsSameType<T, hifloat8_t>::value) {
+                DataCopyPad(expandedXUint8Gm_[row * this->cols_ + colLoop * this->perLoopCols_],
+                            this->outTmpUint8Local_, copyParams);
+            } else {
+                DataCopyPad(expandedXGm_[row * this->cols_ + colLoop * this->perLoopCols_], this->outTmpLocal_,
+                            copyParams);
+            }
+        }
+        CopyScaleZeroOut(row);
     }
 }
 
@@ -246,7 +390,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::SyncAll()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                                           GM_ADDR expandedScale, GM_ADDR workspace,
                                                           const MoeInitRoutingV3Arch35TilingData *tilingData,
                                                           TPipe *tPipe)
@@ -259,6 +403,8 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
     this->totalLength_ = tilingData->n * tilingData->k;
     this->srcToDstTilingData_ = &(tilingData->srcToDstDropPadParamsOp);
     this->expertNum_ = tilingData->expertNum;
+    this->actualExpertNum_ = tilingData->actualExpertNum;
+    this->expertStart_ = tilingData->expertStart;
     this->expertCapacity_ = tilingData->expertCapacity;
     this->cols_ = tilingData->cols;
     this->quantMode_ = tilingData->quantMode;
@@ -280,6 +426,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
     this->colLoops_ = this->srcToDstTilingData_->colLoops;
 
     int64_t length = Align(this->totalLength_, sizeof(int32_t));
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, length);
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, length);
 
     if constexpr (IsSameType<T, hifloat8_t>::value) {
@@ -307,9 +454,13 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
     expertIdxValueGm_.SetGlobalBuffer(
         (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset, 
         this->coreNum_ * 2);
+    int64_t stableCountOffset = length * 7;
+    stableCoreExpertCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + stableCountOffset,
+                                             this->coreNum_ * this->actualExpertNum_);
 
-    pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
+    pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)));
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(INT32_ONE_BLOCK_NUM, sizeof(int32_t)));
+    pipe_->InitBuffer(stableExpertCountBuf_, AlignBytes(this->actualExpertNum_, sizeof(int32_t)));
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         pipe_->InitBuffer(copyOutZeroQueue_, 1, AlignBytes(this->perLoopCols_, sizeof(uint8_t)));
     } else {
@@ -333,15 +484,20 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Process()
         if (this->isInputScale_ == 1) {
             this->scaleZeroLocal_ = scaleZeroOutQueue_.DeQue<float>();
         }
-        currentLoopRows_ = perLoopRows_;
-        for (int64_t loop = 0; loop < this->rowLoops_; loop++) {
-            if (loop == this->rowLoops_ - 1) {
-                currentLoopRows_ = lastLoopRows_;
-            }
-            CopyIn(loop);
-            CopyOut(loop);
+        ZeroDropPadOutput();
+        CountStableExpertIdx();
+    }
+    this->SyncAll();
+    if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
+        BuildStableExpandedRowIdx();
+        if constexpr (IsSameType<T, hifloat8_t>::value) {
+            copyOutZeroQueue_.FreeTensor(this->outTmpUint8Local_);
+        } else {
+            copyOutZeroQueue_.FreeTensor(this->outTmpLocal_);
         }
-        CopyOutRemain();
+        if (this->isInputScale_ == 1) {
+            scaleZeroOutQueue_.FreeTensor(this->scaleZeroLocal_);
+        }
     }
     this->SyncAll();
 }

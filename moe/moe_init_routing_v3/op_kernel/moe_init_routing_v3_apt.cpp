@@ -272,7 +272,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
             TPipe rowIdxGatherDropPadPipe;
             MoeV3SrcToDstWithCapacity<DTYPE_X> rowIdxGatherDropPadOp;
-            rowIdxGatherDropPadOp.Init(expandedRowIdx, expandedX, expandedScale, userWS, t, &rowIdxGatherDropPadPipe);
+            rowIdxGatherDropPadOp.Init(expertIdx, expandedRowIdx, expandedX, expandedScale, userWS, t,
+                                       &rowIdxGatherDropPadPipe);
             rowIdxGatherDropPadOp.Process();
             rowIdxGatherDropPadPipe.Destroy();
         }
