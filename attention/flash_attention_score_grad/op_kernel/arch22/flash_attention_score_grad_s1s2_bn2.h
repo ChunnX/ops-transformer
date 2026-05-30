@@ -2637,7 +2637,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                 if (prefixCompressCanSimplify == false) {
                     uint32_t s2InnerAlign =
                         (emitInsn.s2Inner + 31) / 32 * 32; // attenmask做pad时会32对齐，故加31/32做ceil
-                    int32_t maskNum = emitInsn.s1Inner * s2InnerAlign / 2; // 除2数据量按照uint16类型折半
+                        int64_t maskNum = static_cast<int64_t>(emitInsn.s1Inner) *
+                            static_cast<int64_t>(s2InnerAlign) / 2; // 除2数据量按照uint16类型折半
 
                     AscendC::SetFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));
                     AscendC::WaitFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));
