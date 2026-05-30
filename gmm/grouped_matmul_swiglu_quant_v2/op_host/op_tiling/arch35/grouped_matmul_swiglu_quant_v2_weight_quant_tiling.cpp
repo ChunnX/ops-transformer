@@ -323,8 +323,8 @@ bool CheckInputFormats(const gert::TilingContext& context, const GMMSQWeightQuan
 
     const auto *wScaleDesc = context.GetInputDesc(WEIGHT_SCALE_INDEX);
     auto wScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wScaleDesc->GetFormat().GetStorageFormat()));
-    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCL,
-        OP_LOGE(params.opName, "weightScale format must be ND or NCL, but got %s.",
+    OP_CHECK_IF(wScaleFormat != ge::FORMAT_ND && wScaleFormat != ge::FORMAT_NCHW,
+        OP_LOGE(params.opName, "weightScale format must be ND or NCHW, but got %s.",
             ge::TypeUtils::FormatToSerialString(wScaleFormat).c_str()),
         return false);
 
