@@ -95,7 +95,7 @@ namespace SplitFuse {
             uint32_t sparseMode = fATilingData->sparseMode;
             int64_t preToken = fATilingData->preToken;
             int64_t nextToken = fATilingData->nextToken;
-            uint64_t keyBnStride = fATilingData->keyStrides.get_bnStride();
+            uint64_t keyBnStride = fATilingData->keyStrides.bnStride;
             printf("======= [decode kernel] keyBnStride = %lu\n", keyBnStride);
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
