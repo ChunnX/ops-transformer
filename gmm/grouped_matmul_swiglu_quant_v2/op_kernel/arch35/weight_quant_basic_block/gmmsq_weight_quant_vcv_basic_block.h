@@ -34,13 +34,11 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                                        \
-    template <typename xType, typename wType, typename weightScaleType, typename xScaleType,                           \
-              typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,                                       \
-              const VecAntiQuantConfig &vecConfig>
+    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename yType,           \
+              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS                                                                                 \
-    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType,                       \
-                                  wqmmConfig, vecConfig>
+    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 class GMMSQWeightQuantVcvBasicBlock {
@@ -133,9 +131,11 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGr
 }
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
-    __gm__ xType *x, __gm__ wType *weight, __gm__ weightScaleType *weightScale, __gm__ xScaleType *xScale,
-    __gm__ yType *y, __gm__ yScaleType *yScale, const bool weightL2Cacheable)
+__aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(__gm__ xType *x, __gm__ wType *weight,
+                                                                        __gm__ weightScaleType *weightScale,
+                                                                        __gm__ xScaleType *xScale, __gm__ yType *y,
+                                                                        __gm__ yScaleType *yScale,
+                                                                        const bool weightL2Cacheable)
 {
     if ASCEND_IS_AIC {
         cubeCompute_.UpdateGlobalAddr(x, reinterpret_cast<__gm__ float *>(y), weightScale, xScale);

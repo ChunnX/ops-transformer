@@ -41,15 +41,14 @@ namespace GMMSQWeightQuant {
     template <typename xType, typename weightScaleType, typename xScaleType, typename yType,                           \
               const WqmmConfig &wqmmConfig>
 
-#define GMMSQ_WQ_CUBE_COMPUTE_CLASS                                                                                    \
-    GMMSQWeightQuantCubeCompute<xType, weightScaleType, xScaleType, yType, wqmmConfig>
+#define GMMSQ_WQ_CUBE_COMPUTE_CLASS GMMSQWeightQuantCubeCompute<xType, weightScaleType, xScaleType, yType, wqmmConfig>
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 class GMMSQWeightQuantCubeCompute {
 public:
     __aicore__ inline GMMSQWeightQuantCubeCompute(){};
-    __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y,
-                                            __gm__ weightScaleType *weightScale, __gm__ xScaleType *xScale);
+    __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y, __gm__ weightScaleType *weightScale,
+                                            __gm__ xScaleType *xScale);
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t kMutilLoadL1Size, const BasicBlockOffsetParam &param);
@@ -244,8 +243,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAGmToL1(const BasicBlockOffsetParam &param,
-                                                                       int64_t kaGmOffset)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset)
 {
     if (kaGmOffset % param.kaL1Size != 0) {
         return;
