@@ -851,7 +851,6 @@ package_static() {
 
 function process_soc_input(){
     local input_string="$1"
-    input_string=$(echo "$input_string" | sed 's/ascend950/ascend950/g')
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 
@@ -1042,6 +1041,10 @@ set_ut_mode() {
     OP_GRAPH_UT=TRUE
     UT_TEST_ALL=FALSE
     OP_KERNEL_UT=FALSE
+  fi
+  if [[ "$OP_KERNEL_UT" == "TRUE" ]] && [[ -z "$ascend_op_name" ]]; then
+    echo "Warning: Please use --ops when running Opkernel UT."
+    ascend_op_name="recurrent_gated_delta_rule,chunk_gated_delta_rule"
   fi
 }
 parse_changed_files() {
