@@ -122,6 +122,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     if ASCEND_IS_AIV {
         if (GetBlockIdx() == 0) {
             uint32_t errCount = 0;
+            auto &baseInfo = tilingData->baseParams;
+            auto &outInfo = tilingData->outputParams;
 
             uint32_t expXBlocks = (constInfo.maxQSeqlen + constInfo.blockShapeX - 1) / constInfo.blockShapeX;
             uint32_t expYBlocks = (constInfo.maxKvSeqlen + constInfo.blockShapeY - 1) / constInfo.blockShapeY;
@@ -136,25 +138,75 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
+            uint64_t expTopkWsSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.coreNum + constInfo.coreNum + constInfo.coreNum) * sizeof(int32_t);
 
             AscendC::printf("=== Kernel Tiling Verification (core 0) ===\n");
-            AscendC::printf("batchSize=%u, numHeads=%u, maxQSeqlen=%u, maxKvSeqlen=%u\n",
-                            constInfo.batchSize, constInfo.numHeads, constInfo.maxQSeqlen, constInfo.maxKvSeqlen);
-            AscendC::printf("dSize=%u, blockShapeX=%lu, blockShapeY=%lu\n",
-                            constInfo.dSize, constInfo.blockShapeX, constInfo.blockShapeY);
+            AscendC::printf("[baseParams]\n");
+            AscendC::printf("batchSize=%u (exp=1) %s\n", constInfo.batchSize,
+                            (constInfo.batchSize == 1) ? "OK" : "ERR");
+            if (constInfo.batchSize != 1) errCount++;
+            AscendC::printf("numHeads=%u (exp=8) %s\n", constInfo.numHeads,
+                            (constInfo.numHeads == 8) ? "OK" : "ERR");
+            if (constInfo.numHeads != 8) errCount++;
+            AscendC::printf("maxQSeqlen=%u (exp=4096) %s\n", constInfo.maxQSeqlen,
+                            (constInfo.maxQSeqlen == 4096) ? "OK" : "ERR");
+            if (constInfo.maxQSeqlen != 4096) errCount++;
+            AscendC::printf("maxKvSeqlen=%u (exp=4096) %s\n", constInfo.maxKvSeqlen,
+                            (constInfo.maxKvSeqlen == 4096) ? "OK" : "ERR");
+            if (constInfo.maxKvSeqlen != 4096) errCount++;
+            AscendC::printf("dSize=%u (exp=128) %s\n", constInfo.dSize,
+                            (constInfo.dSize == 128) ? "OK" : "ERR");
+            if (constInfo.dSize != 128) errCount++;
+            AscendC::printf("blockShapeX=%lu (exp=128) %s\n", constInfo.blockShapeX,
+                            (constInfo.blockShapeX == 128) ? "OK" : "ERR");
+            if (constInfo.blockShapeX != 128) errCount++;
+            AscendC::printf("blockShapeY=%lu (exp=128) %s\n", constInfo.blockShapeY,
+                            (constInfo.blockShapeY == 128) ? "OK" : "ERR");
+            if (constInfo.blockShapeY != 128) errCount++;
             AscendC::printf("xBlocks=%u (exp=%u) %s\n", constInfo.xBlocks, expXBlocks,
                             (constInfo.xBlocks == expXBlocks) ? "OK" : "ERR");
             if (constInfo.xBlocks != expXBlocks) errCount++;
             AscendC::printf("yBlocks=%u (exp=%u) %s\n", constInfo.yBlocks, expYBlocks,
                             (constInfo.yBlocks == expYBlocks) ? "OK" : "ERR");
             if (constInfo.yBlocks != expYBlocks) errCount++;
+            AscendC::printf("scaleValue=%f\n", constInfo.scaleValue);
+            AscendC::printf("sparsity=%f\n", constInfo.sparsity);
             AscendC::printf("topKValue=%u (nonzero=%s)\n", constInfo.topKValue,
                             (constInfo.topKValue > 0) ? "OK" : "ERR");
             if (constInfo.topKValue == 0) errCount++;
-            AscendC::printf("sparsityMode=%u, scaleValue=%f, sparsity=%f\n",
-                            static_cast<uint32_t>(constInfo.sparsityMode), constInfo.scaleValue, constInfo.sparsity);
-            AscendC::printf("coreNum=%u, activeCoreNum=%u (exp=%u) %s\n",
-                            constInfo.coreNum, constInfo.activeCoreNum, expActiveCoreNum,
+            AscendC::printf("sparsityMode=%u (exp=0) %s\n",
+                            static_cast<uint32_t>(constInfo.sparsityMode),
+                            (static_cast<uint32_t>(constInfo.sparsityMode) == 0) ? "OK" : "ERR");
+            if (static_cast<uint32_t>(constInfo.sparsityMode) != 0) errCount++;
+            AscendC::printf("queryLayout=%u (exp=1=BNSD) %s\n",
+                            static_cast<uint32_t>(baseInfo.queryLayout),
+                            (static_cast<uint32_t>(baseInfo.queryLayout) == 1) ? "OK" : "ERR");
+            if (static_cast<uint32_t>(baseInfo.queryLayout) != 1) errCount++;
+            AscendC::printf("kvLayout=%u (exp=1=BNSD) %s\n",
+                            static_cast<uint32_t>(baseInfo.kvLayout),
+                            (static_cast<uint32_t>(baseInfo.kvLayout) == 1) ? "OK" : "ERR");
+            if (static_cast<uint32_t>(baseInfo.kvLayout) != 1) errCount++;
+            AscendC::printf("useActualBlockLenQ=%u (exp=0) %s\n",
+                            static_cast<uint32_t>(baseInfo.useActualBlockLenQ),
+                            (static_cast<uint32_t>(baseInfo.useActualBlockLenQ) == 0) ? "OK" : "ERR");
+            if (static_cast<uint32_t>(baseInfo.useActualBlockLenQ) != 0) errCount++;
+            AscendC::printf("useActualBlockLenK=%u (exp=0) %s\n",
+                            static_cast<uint32_t>(baseInfo.useActualBlockLenK),
+                            (static_cast<uint32_t>(baseInfo.useActualBlockLenK) == 0) ? "OK" : "ERR");
+            if (static_cast<uint32_t>(baseInfo.useActualBlockLenK) != 0) errCount++;
+            AscendC::printf("qChunkSize=%u (exp=128) %s\n", constInfo.qChunkSize,
+                            (constInfo.qChunkSize == 128) ? "OK" : "ERR");
+            if (constInfo.qChunkSize != 128) errCount++;
+            AscendC::printf("kChunkSize=%u (exp=128) %s\n", constInfo.kChunkSize,
+                            (constInfo.kChunkSize == 128) ? "OK" : "ERR");
+            if (constInfo.kChunkSize != 128) errCount++;
+
+            AscendC::printf("[multiCoreParams]\n");
+            AscendC::printf("coreNum=%u (exp=20) %s\n", constInfo.coreNum,
+                            (constInfo.coreNum == 20) ? "OK" : "ERR");
+            if (constInfo.coreNum != 20) errCount++;
+            AscendC::printf("activeCoreNum=%u (exp=%u) %s\n",
+                            constInfo.activeCoreNum, expActiveCoreNum,
                             (constInfo.activeCoreNum == expActiveCoreNum) ? "OK" : "ERR");
             if (constInfo.activeCoreNum != expActiveCoreNum) errCount++;
             AscendC::printf("rowsPerCore=%u (exp=%u) %s\n", constInfo.rowsPerCore, expRowsPerCore,
@@ -172,7 +224,32 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             AscendC::printf("extraYCores=%u (exp=%u) %s\n", constInfo.extraYCores, expExtraYCores,
                             (constInfo.extraYCores == expExtraYCores) ? "OK" : "ERR");
             if (constInfo.extraYCores != expExtraYCores) errCount++;
-            AscendC::printf("qChunkSize=%u, kChunkSize=%u\n", constInfo.qChunkSize, constInfo.kChunkSize);
+
+            AscendC::printf("[outputParams]\n");
+            AscendC::printf("qCmpSize=%lu (exp=%lu) %s\n", outInfo.qCmpSize, expQCmpSize,
+                            (outInfo.qCmpSize == expQCmpSize) ? "OK" : "ERR");
+            if (outInfo.qCmpSize != expQCmpSize) errCount++;
+            AscendC::printf("kCmpSize=%lu (exp=%lu) %s\n", outInfo.kCmpSize, expKCmpSize,
+                            (outInfo.kCmpSize == expKCmpSize) ? "OK" : "ERR");
+            if (outInfo.kCmpSize != expKCmpSize) errCount++;
+            AscendC::printf("attnScoreSize=%lu (exp=%lu) %s\n", outInfo.attnScoreSize, expAttnScoreSize,
+                            (outInfo.attnScoreSize == expAttnScoreSize) ? "OK" : "ERR");
+            if (outInfo.attnScoreSize != expAttnScoreSize) errCount++;
+            AscendC::printf("softmaxTmpSize=%lu (exp=%lu) %s\n", outInfo.softmaxTmpSize, expSoftmaxTmpSize,
+                            (outInfo.softmaxTmpSize == expSoftmaxTmpSize) ? "OK" : "ERR");
+            if (outInfo.softmaxTmpSize != expSoftmaxTmpSize) errCount++;
+            AscendC::printf("topkWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.topkWorkspaceSize, expTopkWsSize,
+                            (outInfo.topkWorkspaceSize == expTopkWsSize) ? "OK" : "ERR");
+            if (outInfo.topkWorkspaceSize != expTopkWsSize) errCount++;
+            AscendC::printf("maskSize=%lu (exp=%lu) %s\n", outInfo.maskSize, expMaskSize,
+                            (outInfo.maskSize == expMaskSize) ? "OK" : "ERR");
+            if (outInfo.maskSize != expMaskSize) errCount++;
+            uint64_t expTotalWs = expQCmpSize + expKCmpSize + expAttnScoreSize + expSoftmaxTmpSize + expTopkWsSize + expMaskSize;
+            AscendC::printf("totalWorkspaceSize=%lu (exp=%lu) %s\n", outInfo.totalWorkspaceSize, expTotalWs,
+                            (outInfo.totalWorkspaceSize == expTotalWs) ? "OK" : "ERR");
+            if (outInfo.totalWorkspaceSize != expTotalWs) errCount++;
+
+            AscendC::printf("[workspace offsets]\n");
             AscendC::printf("qCmpOffset=%lu (exp=0) %s\n", constInfo.qCmpOffset,
                             (constInfo.qCmpOffset == 0) ? "OK" : "ERR");
             if (constInfo.qCmpOffset != 0) errCount++;
