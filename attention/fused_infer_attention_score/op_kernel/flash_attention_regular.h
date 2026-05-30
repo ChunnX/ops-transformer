@@ -114,7 +114,7 @@ namespace SplitFuse {
             nextToken = fATilingData->nextToken;
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
-            uint64_t keyBnStride = fATilingData->keyStrides.get_bnStride();
+            uint64_t keyBnStride = fATilingData->keyStrides.bnStride;
             printf("======= [regular kernel] keyBnStride = %lu\n", keyBnStride);
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
