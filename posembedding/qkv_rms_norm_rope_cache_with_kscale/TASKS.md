@@ -15,7 +15,7 @@
 | ID | Task | Status | Verification | Commit |
 |----|------|--------|--------------|--------|
 | S00 | Create implementation scaffold | Done | Top-level CMake configure reached this no-op directory; configure then failed in pre-existing mc2/ffn targets unrelated to this scaffold | Included in scaffold commit |
-| T00 | Host checker/tiling contract + UT | Not started | Host UT + host compile | |
+| T00 | Host checker/tiling contract + UT | Done | Host sources compiled with CANN/opbase includes; pure contract smoke test passed; CMake reached new op_host then failed in pre-existing mc2/ffn targets; OP_HOST_UT configure failed earlier in pre-existing mc2/3rd target | Included in T00 commit |
 | T01 | Controller and basic block skeleton | Not started | Kernel compile | |
 | T02 | AIV local slice and tail row range | Not started | Kernel compile + Host UT extension | |
 | T03 | Static buffer and tensor binding | Not started | Kernel compile | |
@@ -33,6 +33,6 @@
 
 ## Next Task
 
-T00 is the next implementation task. It should add host-side checker/tiling
-contract support and the corresponding host UT coverage without depending on
-later kernel functionality.
+T01 is the next implementation task. It should add the kernel controller and
+basic block skeleton that consume the T00 tiling contract without adding the
+full compute body yet.
