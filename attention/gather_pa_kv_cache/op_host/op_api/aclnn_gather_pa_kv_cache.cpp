@@ -494,10 +494,11 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
                             strlen(cacheMode) == 0 ||
                             strcmp(cacheMode, "Norm") == 0);
     if (isArch35 && isCacheModeNorm) {
-        OP_LOGI(ACLNN_SUCCESS, ">>> aclnnGatherPaKvCache A5 LAUNCH");
+        OP_LOGD(">>> aclnnGatherPaKvCache A5 LAUNCH");
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
+            OP_LOGD(">>> aclnnGatherPaKvCache A5 ProcessNonContiguous LAUNCH");
             return ProcessNonContiguous(
                 keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
                 seqOffsetOptional, cacheMode, isSeqLensCumsum,
@@ -517,7 +518,6 @@ aclnnStatus aclnnGatherPaKvCache(
     aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGatherPaKvCache);
-    OP_LOGI(ACLNN_SUCCESS, ">>> aclnnGatherPaKvCache LAUNCH");
     CHECK_COND(CommonOpExecutorRun(workspace, workspaceSize, executor, stream) == ACLNN_SUCCESS, ACLNN_ERR_INNER,
                "GatherPaKvCache launch aicore failed.");
     return ACLNN_SUCCESS;
