@@ -1248,6 +1248,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         dataSpaceSize_ + serverId_ * STATE_OFFSET); // 那1M 分了serverNum个512B
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 2);
     PipeBarrier<PIPE_ALL>();
+    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(sendStatusGMTensor_);
+
     // GM_ADDR remoteExpAddr;
     // uint32_t remoteRankId;
     // if (rankId_ <= 15) {
@@ -1294,7 +1297,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         PipeBarrier<PIPE_ALL>();
         return ARRIVAL_STATUS;
     }
-
+    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+        AscendC::DcciDst::CACHELINE_OUT>(readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)]);
     DataCopy(statusTensor, readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
         FLAG_SIZE / sizeof(uint64_t));
     PipeBarrier<PIPE_ALL>();
@@ -1507,7 +1511,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         selfDataStatusGMAiv.SetValue(6, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(7, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(8, 88); // 初始化为0，表示数据未准备好
-        selfDataStatusGMAiv.SetValue(9, 88); // 初始化为0，表示数据未准备好
+        // selfDataStatusGMAiv.SetValue(9, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(10, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(11, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(12, 88); // 初始化为0，表示数据未准备好
