@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file allto_allv_grouped_mat_mul_tiling.h
@@ -32,7 +32,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
-#include "allto_allv_grouped_mat_mul_tiling_base.h"
+#include "../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 
 namespace optiling {
 class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase
@@ -45,17 +45,22 @@ protected:
     bool IsCapable() override;
 };
 
-class AlltoAllvGmmTiling
+class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase
 {
+    friend class AlltoAllvGmmTilingHelper;
 public:
+    explicit AlltoAllvGmmTiling(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context) {}
+
     AlltoAllvGmmTilingData* tilingData;
 
-    ge::graphStatus Init(gert::TilingContext* context);
+    ge::graphStatus Init();
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
     virtual std::vector<int64_t> GetEpWorldSizeOptional() const = 0;
     virtual bool NeedToCheckCounts() const = 0;
 
 protected:
+    bool IsCapable() override { return true; }
+    ge::graphStatus DoOpTiling() override { return ge::GRAPH_SUCCESS; }
     ge::graphStatus GetContextAttr(const gert::TilingContext* context);
     ge::graphStatus GetShapeAndFormat(const gert::TilingContext* context);
     ge::graphStatus CheckMKN(const gert::TilingContext* context);
@@ -69,34 +74,41 @@ protected:
     ge::graphStatus CheckMmShapeDims(const gert::TilingContext* context) const;
     ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
 
-    ge::graphStatus CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const;
-    ge::graphStatus SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const;
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
-    uint64_t GetTilingKey(const gert::TilingContext* context) const;
+    uint64_t GetTilingKey() const override;
     ge::graphStatus setNumBlocks(gert::TilingContext* context);
 
 private:
-    int32_t maxM_;
-    int32_t maxN_;
-    int32_t maxK_;
-    int32_t baseM_;
-    int32_t baseN_;
-    int32_t baseK_;
-    uint32_t mmDataTypeSize;
+    int32_t maxM_ = 0;
+    int32_t maxN_ = 0;
+    int32_t maxK_ = 0;
+    int32_t baseM_ = 0;
+    int32_t baseN_ = 0;
+    int32_t baseK_ = 0;
+    uint32_t mmDataTypeSize = 0;
 
-    int32_t maxMForMM_;
-    int32_t maxNForMM_;
-    int32_t maxKForMM_;
-    int32_t baseMForMM_;
-    int32_t baseNForMM_;
-    int32_t baseKForMM_;
+    int32_t maxMForMM_ = 0;
+    int32_t maxNForMM_ = 0;
+    int32_t maxKForMM_ = 0;
+    int32_t baseMForMM_ = 0;
+    int32_t baseNForMM_ = 0;
+    int32_t baseKForMM_ = 0;
+};
 
-    const char* epGroup_;
-    uint32_t rankSize_;
-    uint32_t libApiWorkSpaceSize_;
-    uint64_t epWorldSize_;
-
-    ge::DataType mmDType_ = ge::DT_UNDEFINED;
+class AlltoAllvGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
+public:
+    AlltoAllvGmmTilingHelper(AlltoAllvGmmTiling& parent)
+        : Mc2GroupedQbmmTiling(parent.context_), parent_(parent) {}
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetAlltoAllvQuantHelperData() const { return tilingData_; }
+    bool AnalyzeAttrs() override { return true; }
+    bool AnalyzeDtype() override { return true; }
+    bool AnalyzeInputs() override { return true; }
+    void Reset() override {}
+    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
+                                    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype);
+    ge::graphStatus Process();
+private:
+    AlltoAllvGmmTiling& parent_;
 };
 } // namespace optiling
 #endif

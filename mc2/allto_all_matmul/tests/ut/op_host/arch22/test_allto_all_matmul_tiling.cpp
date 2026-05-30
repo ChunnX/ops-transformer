@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "mc2_hcom_topology_mocker.h"
 #include "../allto_all_matmul_host_ut_param.h"
 
 namespace AlltoAllMatmulUT {
@@ -430,8 +431,10 @@ static void TestOneParamCase(const AlltoAllMatmulTestParam &param)
     //
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfoA3,
                                               param.socVersion, param.coreNum);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValue("rankNum", static_cast<uint64_t>(param.worldSizeAttr));
     ExecuteTestCase(tilingContextPara, param.status, param.expectTilingKey, param.expectTilingData,
                     param.expectWorkspaces, param.mc2TilingDataReservedLen);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
 }
 
 static void ThreadFunction(const AlltoAllMatmulTestParam *testCases, size_t caseNum, size_t threadIdx, size_t threadNum)
@@ -514,8 +517,10 @@ TEST_P(AlltoAllMatmulArch22CsvTilingTest, csv_param)
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfoA3,
                                               param.soc);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValue("rankNum", static_cast<uint64_t>(param.worldSize));
     ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingData,
                     param.expectWorkspaces, param.mc2TilingDataReservedLen);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
 }
 
 INSTANTIATE_TEST_SUITE_P(AlltoAllMatmulCsvTilingUT, AlltoAllMatmulArch22CsvTilingTest,

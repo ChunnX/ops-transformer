@@ -486,7 +486,15 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
           ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj OBJECT
           $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
           )
+      else()
+        target_sources(
+          ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE
+          $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
+          )
       endif()
+      add_dependencies(
+        ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj ${opName}_${socVersion}_cases_obj
+        )
       target_link_libraries(
         ${OP_KERNEL_MODULE_NAME}_${oriSocVersion}_cases_obj PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
                                                                     $<TARGET_OBJECTS:${opName}_${socVersion}_cases_obj>
@@ -504,7 +512,11 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
-  include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+  add_cann_third_party(gtest)
+  if (TARGET GTest::gtest)
+    add_library(gtest ALIAS GTest::gtest)
+  endif()
+
   function(AddAicpuOpTestCase opName)
     get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
     get_filename_component(OP_NAME ${UT_DIR} NAME)
@@ -542,7 +554,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             -ldl
             gtest
             c_sec
-            Eigen3::EigenMath
+            Eigen3::Eigen
             )
 
     ## add object: math_op_kernel_ut_cases_obj
@@ -562,7 +574,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             $<TARGET_OBJECTS:${opName}_cases_obj>
             gtest
             c_sec
-            Eigen3::EigenMath
+            Eigen3::Eigen
             )
   endfunction()
 endif()

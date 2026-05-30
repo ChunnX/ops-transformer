@@ -147,6 +147,10 @@ struct CommonConstInfo {
     uint8_t subBlockIdx;
     uint32_t coreNum;
 
+    /* S1外切 */
+    bool enableS1OutSplit;
+    uint32_t totalSize;
+
     /* FA中间结果写出workspace信息 */
     uint32_t accumOutSize;
     uint32_t logSumExpSize;

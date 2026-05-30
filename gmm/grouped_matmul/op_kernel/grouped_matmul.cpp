@@ -397,16 +397,32 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     // ANTIQUANT
     if constexpr ((D_T_A == GMM_TPL_BF16) &&
                   A16W8_KERNEL_TEMPLATE == GROUPED_MATMUL_A16W4_KERNEL_TEMPLATE_MSD_ANTIQUANT_GS32) {
-        GMM_CV_SPLIT_IMP_A16W4_MSD(A16W4Msd::GMMWeightQuantA16W4MsdController, false);
+        if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+            GMM_CV_SPLIT_IMP_A16W4_MSD(A16W4Msd::GMMWeightQuantA16W4MsdControllerMSparse, false);
+        } else {
+            GMM_CV_SPLIT_IMP_A16W4_MSD(A16W4Msd::GMMWeightQuantA16W4MsdController, false);
+        }
     } else if constexpr ((D_T_A == GMM_TPL_FLOAT16 || D_T_A == GMM_TPL_BF16) &&
                          A16W8_KERNEL_TEMPLATE != GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_MSD) {
         // ANTIQUANT_A16W4 & ANTIQUANT_A16W8_NOT_MSD
         if constexpr (TRANS_B == 0 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_1) {
-            GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantProcess, false, false, false, matmulCFG);
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantSparseProcess, false, false, false, matmulCFG);
+            } else {
+                GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantProcess, false, false, false, matmulCFG);
+            }
         } else if constexpr (TRANS_B == 1 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_1) {
-            GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantProcess, false, true, false, matmulCFG);
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantSparseProcess, false, true, false, matmulCFG);
+            } else {
+                GMM_IMP(GMMAntiquantComputeNorm, GMMAntiquantProcess, false, true, false, matmulCFG);
+            }
         } else if constexpr (TRANS_B == 0 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_2) {
-            GMM_IMP(GMMAntiquantComputePerformance, GMMAntiquantProcess, false, false, false, matmulCFG);
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_IMP(GMMAntiquantComputePerformance, GMMAntiquantSparseProcess, false, false, false, matmulCFG);
+            } else {
+                GMM_IMP(GMMAntiquantComputePerformance, GMMAntiquantProcess, false, false, false, matmulCFG);
+            }
         }
     }
 #if defined(ORIG_DTYPE_WEIGHT) && defined(DT_INT8) && ORIG_DTYPE_WEIGHT == DT_INT8
@@ -414,11 +430,21 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     if constexpr ((D_T_A == GMM_TPL_FLOAT16 || D_T_A == GMM_TPL_BF16) && D_T_B == GMM_TPL_INT8 &&
                   A16W8_KERNEL_TEMPLATE == GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_MSD) {
         if constexpr (TRANS_B == 0) {
-            GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDProcess, false, false, false, matmulCFG,
-                             xTypeMSD, weightTypeMSD, yTypeMSD);
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDMSparseProcess, false, false, false,
+                                 matmulCFG, xTypeMSD, weightTypeMSD, yTypeMSD);
+            } else {
+                GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDProcess, false, false, false,
+                                 matmulCFG, xTypeMSD, weightTypeMSD, yTypeMSD);
+            }
         } else if constexpr (TRANS_B == 1) {
-            GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDProcess, false, true, false, matmulCFG,
-                             xTypeMSD, weightTypeMSD, yTypeMSD);
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDMSparseProcess, false, true, false,
+                                 matmulCFG, xTypeMSD, weightTypeMSD, yTypeMSD);
+            } else {
+                GMM_CV_SPLIT_IMP(GMMA16W8MSDCompute, GMMA16W8MSDProcess, false, true, false,
+                                 matmulCFG, xTypeMSD, weightTypeMSD, yTypeMSD);
+            }
         }
     }
 #endif
@@ -484,7 +510,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #elif defined(GMM_A4W4)
     // QUANT_A4W4
     if constexpr (D_T_A == GMM_TPL_INT4 && D_T_B == GMM_TPL_INT4) {
-        if constexpr (TRANS_B == 0){
+        if constexpr (TRANS_B == 0) {
             GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);
             if (gmmBaseParams_.isA4W4Optimize) {
                 tPipe.Destroy();
@@ -496,10 +522,18 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
                 AscendC::SetMMLayoutTransform(false);
             } else {
-                GMM_A4W4_IMP(GMMA4W4Compute, false, false, matmulCFG, xType, weightType, yType);
+                if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                    GMM_A4W4_IMP(GMMA4W4SparseCompute, false, false, matmulCFG, xType, weightType, yType);
+                } else {
+                    GMM_A4W4_IMP(GMMA4W4Compute, false, false, matmulCFG, xType, weightType, yType);
+                }
             }
-        }else{
-            GMM_A4W4_IMP(GMMA4W4Compute, false, true, matmulCFG, xType, weightType, yType);
+        } else {
+            if constexpr (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM) {
+                GMM_A4W4_IMP(GMMA4W4SparseCompute, false, true, matmulCFG, xType, weightType, yType);
+            } else {
+                GMM_A4W4_IMP(GMMA4W4Compute, false, true, matmulCFG, xType, weightType, yType);
+            }
         }
     }
 #elif defined(GMM_QUANT_INT8) || defined(GMM_QUANT_INT32)
@@ -531,22 +565,33 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     }
 #elif defined(GMM_FLOAT)
     // NO_QUANT
-    if (GROUP_LIST_TYPE != GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM &&
-        IS_STATIC_TILING_API == 0 &&
-        A8W4_KERNEL_TEMPLATE == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE) {
-            if constexpr (TRANS_A == 0 && TRANS_B == 0 && AIV_AIC_RATIO == GROUPED_MATMUL_CUBE_ONLY) {
-                    GMM_CUBE_IMP(GMMProcess, false, false, false, matmulCFGUnitFlag);
-            } else if constexpr (TRANS_A == 0 && TRANS_B == 1 && AIV_AIC_RATIO == GROUPED_MATMUL_CUBE_ONLY) {
-                    GMM_CUBE_IMP(GMMProcess, false, true, false, matmulCFGUnitFlag);
-            } else if constexpr (TRANS_A == 1 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_1) {
-                if ASCEND_IS_AIV {
-                    GET_TILING_DATA(tilingData, tiling);
-                    EmptyTensorCompute<DTYPE_Y>(groupList, y, &tilingData);
-                }
-                if ASCEND_IS_AIC {
+    if (IS_STATIC_TILING_API == 0 && A8W4_KERNEL_TEMPLATE == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE) {
+        GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);
+        if constexpr (TRANS_A == 0 && TRANS_B == 0 && AIV_AIC_RATIO == GROUPED_MATMUL_CUBE_ONLY) {
+            if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+                GMM_CUBE_IMP(GMMGroupMSparseProcess, false, false, false, matmulCFGUnitFlag);
+            } else {
+                GMM_CUBE_IMP(GMMProcess, false, false, false, matmulCFGUnitFlag);
+            }
+        } else if constexpr (TRANS_A == 0 && TRANS_B == 1 && AIV_AIC_RATIO == GROUPED_MATMUL_CUBE_ONLY) {
+            if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+                GMM_CUBE_IMP(GMMGroupMSparseProcess, false, true, false, matmulCFGUnitFlag);
+            } else {
+                GMM_CUBE_IMP(GMMProcess, false, true, false, matmulCFGUnitFlag);
+            }
+        } else if constexpr (TRANS_A == 1 && AIV_AIC_RATIO == GROUPED_MATMUL_AIV_AIC_RATIO_1) {
+            if ASCEND_IS_AIV {
+                GET_TILING_DATA(tilingData, tiling);
+                EmptyTensorCompute<DTYPE_Y>(groupList, y, &tilingData);
+            }
+            if ASCEND_IS_AIC {
+                if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+                    GMM_CUBE_IMP(GMMGroupMSparseProcess, true, false, false, matmulCFG);
+                } else {
                     GMM_CUBE_IMP(GMMProcess, true, false, false, matmulCFG);
                 }
             }
+        }
     }
 
 #endif
@@ -554,17 +599,30 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
 #if defined(GMM_FLOAT)
+    GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);
     if constexpr (TRANS_A == 0 && TRANS_B == 0) {
-        GMM_CUBE_IMP(GMMProcess, false, false, false, matmulCFG);
+        if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+            GMM_CUBE_IMP(GMMGroupMSparseProcess, false, false, false, matmulCFG);
+        } else {
+            GMM_CUBE_IMP(GMMProcess, false, false, false, matmulCFG);
+        }
     } else if constexpr (TRANS_A == 0 && TRANS_B == 1) {
-        GMM_CUBE_IMP(GMMProcess, false, true, false, matmulCFG);
+        if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+            GMM_CUBE_IMP(GMMGroupMSparseProcess, false, true, false, matmulCFG);
+        } else {
+            GMM_CUBE_IMP(GMMProcess, false, true, false, matmulCFG);
+        }
     } else if constexpr (TRANS_A == 1 && TRANS_B == 0) {
         if ASCEND_IS_AIV {
             GET_TILING_DATA(tilingData, tiling);
             EmptyTensorCompute<DTYPE_Y>(groupList, y, &tilingData);
         }
         if ASCEND_IS_AIC {
-            GMM_CUBE_IMP(GMMProcess, true, false, false, matmulCFG);
+            if (GROUP_LIST_TYPE == GROUPED_MATMUL_GROUP_LIST_TYPE_SPARSEM && gmmBaseParams_.groupType == 0) {
+                GMM_CUBE_IMP(GMMGroupMSparseProcess, true, false, false, matmulCFG);
+            } else {
+                GMM_CUBE_IMP(GMMProcess, true, false, false, matmulCFG);
+            }
         }
     }
 #endif

@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 #include "mc2_infer_shape_case_executor.h"
 #include "infer_datatype_context_faker.h"
+#include "op_tiling_parse_context_builder.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace {
@@ -261,6 +262,71 @@ TEST_F(MatmulReduceScatterV2InferDTypeTest, AttrYDtype)
     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MatmulReduceScatterV2")->infer_datatype;
     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), attrYDtype);
+}
+
+// inferShape用例 - isAmaxOut=true
+TEST_F(MatmulReduceScatterV2InferShapeTest, AmaxOutEnabled)
+{
+    gert::StorageShape x1Shape = {{8192, 1536}, {}};
+    gert::StorageShape x2Shape = {{1536, 12288}, {}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "MatmulReduceScatterV2",
+        {
+            {x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}
+        }
+    );
+    Mc2Hcom::MockValues hcomTopologyMockValues {
+        {"rankNum", 8}
+    };
+
+    std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}, {1}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// TilingParse回调测试
+class MatmulReduceScatterV2TilingParseTest : public testing::Test {
+protected:
+    static void SetUpTestCase() { std::cout << "MatmulReduceScatterV2TilingParseTest SetUp" << std::endl; }
+    static void TearDownTestCase() { std::cout << "MatmulReduceScatterV2TilingParseTest TearDown" << std::endl; }
+};
+
+TEST_F(MatmulReduceScatterV2TilingParseTest, TilingParse_Success)
+{
+    gert::OpTilingParseContextBuilder builder;
+    auto holder = builder.Build();
+    auto parseContext = holder.GetContext();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MatmulReduceScatterV2");
+    ASSERT_NE(opImpl, nullptr);
+    ASSERT_NE(opImpl->tiling_parse, nullptr);
+
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
+    EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
 }
 
 } // namespace

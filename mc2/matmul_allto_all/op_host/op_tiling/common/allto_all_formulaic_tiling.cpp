@@ -13,7 +13,6 @@
  * \brief
  */
 #include "allto_all_formulaic_tiling.h"
-#include <iostream>
 #include "mc2_log.h"
 
 /**

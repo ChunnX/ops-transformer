@@ -207,8 +207,8 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = true;
-    baseInfo.sparseMode = 0;
+    baseInfo.attenMaskFlag = (maskMode_ != 0);
+    baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
@@ -234,13 +234,9 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    
-    // Debug print
-    printf("[DEBUG] maskMode_=%d, baseInfo.sparseMode=%d, GetSparseMode()=%d\n",
-           maskMode_, baseInfo.sparseMode, static_cast<int>(baseInfo.GetSparseMode()));
-    printf("[DEBUG] preToken=%u, nextToken=%u\n", baseInfo.preToken, baseInfo.nextToken);
-    printf("[DEBUG] querySeqSize=%u, kvSeqSize=%u\n", baseInfo.querySeqSize, baseInfo.kvSeqSize);
-    
+    if (maskMode_ == 4) {
+        param.fdOn = false;
+    }
     return true;
 }
 

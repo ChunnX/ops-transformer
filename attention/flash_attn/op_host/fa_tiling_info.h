@@ -49,7 +49,6 @@ const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
-const std::string DETERMINISTIC_NAME = "deterministic";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
@@ -82,7 +81,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;       // layout_q
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;      // layout_kv
 constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;     // layout_out
 constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;     // return_softmax_lse
-constexpr uint32_t ATTR_DETERMINISTIC_INDEX = 10; // deterministic
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -204,7 +202,6 @@ struct FAParaInfo {
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
     const int64_t *returnSoftMaxLse = nullptr;
-    const int64_t *deterministic = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -255,7 +252,6 @@ public:
     // Others Flag
     bool batchContinuousFlag = true;
     bool softmaxLseFlag = false;
-    bool deterministicFlag = false;
     bool sinksFlag = false;
     bool emptyTensorFlag = false;
 

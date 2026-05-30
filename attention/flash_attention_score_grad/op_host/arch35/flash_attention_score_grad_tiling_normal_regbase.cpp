@@ -1033,6 +1033,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
     preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
+    preTilingData_->set_hasInvalidCol(fBaseParams.isInvalidCol);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
@@ -1516,6 +1517,9 @@ void FlashAttentionScoreGradTilingNormalRegbase::FillBlockInfoLoadBalance(
                     leftIntersectionPoint > int64_t(actualS1Len) ? actualS1Len : leftIntersectionPoint);
                 float acturalS1End = static_cast<float>(std::min(
                     int64_t(actualS1Len), std::max(fBaseParams.cvS2Inner * j + cvBlockTail + actualCalcS1Token, 0L)));
+                if (fBaseParams.splitAxis == SplitAxisEnum::BN2S2 && (acturalS1Begin >= acturalS1End)) {
+                    fBaseParams.isInvalidCol = true;
+                }
                 float acturalS1Num = acturalS1Begin > acturalS1End ? 0 : acturalS1End - acturalS1Begin;
                 float acturalS2Num = static_cast<float>(cvBlockTail);
                 acturalBlockInfo[i][j] = acturalS1Num / static_cast<float>(fBaseParams.s1CvInner) +
@@ -1647,9 +1651,6 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
-    s1s2BNGS1S2BaseParams_->set_qSize(fBaseParams.qSize);
-    s1s2BNGS1S2BaseParams_->set_kSize(fBaseParams.kSize);
-    s1s2BNGS1S2BaseParams_->set_vSize(fBaseParams.vSize);
 
     bool isSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
@@ -1663,7 +1664,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
                          fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
         isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) &&
+            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
              fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
              bandCond);

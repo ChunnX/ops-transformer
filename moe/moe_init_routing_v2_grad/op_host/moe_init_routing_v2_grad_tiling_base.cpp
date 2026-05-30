@@ -26,13 +26,18 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(
-        platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"),
+        platformInfo == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "platformInfo", "nullptr", "Failed to get platform info."),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion = ascendcPlatform.GetSocVersion();
 
     auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV2GradCompileInfo*>(context_->GetCompileInfo());
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        compileInfoPtr == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "compileInfo", "nullptr", "Compile info should not be null."),
+        return ge::GRAPH_FAILED);
     aivNum = compileInfoPtr->aivNum;
     aicoreParams_.numBlocks = aivNum;
     aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -55,18 +60,22 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::CheckDtypeValidity()
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXDesc);
     auto outDtype = gradXDesc->GetDataType();
     if (inDtype != outDtype) {
-        OP_LOGE(context_->GetNodeName(), "inputdtype [%d] must be the same with outputDtype [%d].", inDtype, outDtype);
+        std::string dtypeMsg = Ops::Base::ToString(inDtype) + " and " + Ops::Base::ToString(outDtype);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context_->GetNodeName(), "grad_expanded_x and grad_x", dtypeMsg.c_str(),
+            "The dtype of grad_expanded_x and grad_x must be the same.");
         return ge::GRAPH_FAILED;
     }
     if (rowIdxDtype != ge::DataType::DT_INT32) {
-        OP_LOGE(context_->GetNodeName(), "gradExpandedX dtype only support [%d].", ge::DataType::DT_INT32);
+        std::string dtypeStr = Ops::Base::ToString(rowIdxDtype);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "expanded_row_idx", dtypeStr.c_str(), "INT32");
         return ge::GRAPH_FAILED;
     }
     auto it = std::find(DATA_TYPE_SUPPORT.begin(), DATA_TYPE_SUPPORT.end(), inDtype);
     if (it == DATA_TYPE_SUPPORT.end()) {
-        OP_LOGE(
-            context_->GetNodeName(), "inputdtype [%d] must be in float32:[%d], float16:[%d], bfloat16:[%d]", inDtype,
-            ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16, ge::DataType::DT_BF16);
+        std::string dtypeStr = Ops::Base::ToString(inDtype);
+        OP_LOGE_FOR_INVALID_DTYPE(
+            context_->GetNodeName(), "grad_expanded_x", dtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -117,62 +126,77 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::CheckParamsValidity(
 {
     // attr属性校验
     if (dropPadMode != 0 && dropPadMode != 1) {
-        OP_LOGE(context_->GetNodeName(), "Attr drop_pad_mode should in range [0, 1].");
+        std::string dropPadModeStr = std::to_string(dropPadMode);
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", dropPadModeStr.c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
     }
 
     if (topK <= 0) {
-        OP_LOGE(context_->GetNodeName(), "Attr top_k must be larger than zero.");
+        std::string topKStr = std::to_string(topK);
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "top_k", topKStr.c_str(), "greater than 0");
         return ge::GRAPH_FAILED;
     }
 
     if (activeNum < 0) {
-        OP_LOGE(context_->GetNodeName(), "Attr active_num should larger than or equal zero.");
+        std::string activeNumStr = std::to_string(activeNum);
+        OP_LOGE_WITH_INVALID_ATTR(
+            context_->GetNodeName(), "active_num", activeNumStr.c_str(), "greater than or equal to 0");
         return ge::GRAPH_FAILED;
     }
 
     // shape校验
     size_t xDimNnum = xShape.GetDimNum();
     if (xDimNnum != DIM_TWO && xDimNnum != DIM_THREE) {
-        OP_LOGE(context_->GetNodeName(), "The dim number of grad_expanded_x should be 2 or 3.");
+        std::string dimNumStr = std::to_string(xDimNnum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "grad_expanded_x", dimNumStr.c_str(), "2D or 3D");
         return ge::GRAPH_FAILED;
     }
 
     if (dropPadMode == 1 && xDimNnum != DIM_THREE) {
-        OP_LOGE(context_->GetNodeName(), "GradExpandedX input shape must be 3D under Drop/Pad mode.");
+        std::string dimNumStr = std::to_string(xDimNnum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "grad_expanded_x", dimNumStr.c_str(), "3D");
         return ge::GRAPH_FAILED;
     }
 
     if (dropPadMode == 0) {
         if (activeNum == 0 && xShape.GetDim(0) != rowIdxShape.GetDim(0)) {
-            OP_LOGE(context_->GetNodeName(), "All inputs Dim 0 size should be same under dropless mode.");
+            std::string shapeMsg = Ops::Base::ToString(xShape) + " and " + Ops::Base::ToString(rowIdxShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "grad_expanded_x and expanded_row_idx", shapeMsg.c_str(),
+                "Dim 0 size should be the same under dropless mode.");
             return ge::GRAPH_FAILED;
         }
 
         if (activeNum > 0 && xShape.GetDim(0) != activeNum) {
-            OP_LOGE(
-                context_->GetNodeName(), "Dim 0 size of GradExpandedX should be equal active_num under active scene.");
+            std::string shapeStr = Ops::Base::ToString(xShape);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(), "grad_expanded_x", shapeStr.c_str(),
+                "Dim 0 size of grad_expanded_x should be equal to active_num under active scene.");
             return ge::GRAPH_FAILED;
         }
     }
 
     size_t outDimNum = gradXShape.GetDimNum();
     if (outDimNum != DIM_TWO) {
-        OP_LOGE(context_->GetNodeName(), "The dim number of grad_x should be 2.");
+        std::string dimNumStr = std::to_string(outDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "grad_x", dimNumStr.c_str(), "2D");
         return ge::GRAPH_FAILED;
     }
 
     int64_t hiddenSizeLocal = (dropPadMode == 0) ? xShape.GetDim(1) : xShape.GetDim(2); // 2: drop/pad 场景，尾轴在第三维
     if (gradXShape.GetDim(1) != hiddenSizeLocal) {
-        OP_LOGE(context_->GetNodeName(), "Tail dim size of input and output should be same.");
+        std::string shapeMsg = Ops::Base::ToString(xShape) + " and " + Ops::Base::ToString(gradXShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context_->GetNodeName(), "grad_expanded_x and grad_x", shapeMsg.c_str(),
+            "Tail dim size of input and output should be the same.");
         return ge::GRAPH_FAILED;
     }
 
     if (gradXShape.GetDim(0) != rowIdxShape.GetDim(0) / topK) {
-        OP_LOGE(
-            context_->GetNodeName(),
-            "output shape invalid, dim 0 of output gradX should be equal to the division of expandedRowIdx dim 0 and "
-            "topK.");
+        std::string shapeMsg = Ops::Base::ToString(rowIdxShape) + " and " + Ops::Base::ToString(gradXShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context_->GetNodeName(), "expanded_row_idx and grad_x", shapeMsg.c_str(),
+            "Dim 0 of grad_x should be equal to expanded_row_idx dim 0 divided by top_k.");
         return ge::GRAPH_FAILED;
     }
 
@@ -227,7 +251,10 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::GetShapeAttrsInfo()
     C = (dropPadMode == 0) ? 0 : xShape.GetDim(1);
     hiddenSize = (dropPadMode == 0) ? xShape.GetDim(1) : xShape.GetDim(2); // 2 for H, when shape is {E, C, H}
     if (BSK % topK != 0) {
-        OP_LOGE(context_->GetNodeName(), "expanded_row_idx shape or top_k val invalid");
+        std::string actualMsg = "expanded_row_idx dim 0: " + std::to_string(BSK) + ", top_k: " + std::to_string(topK);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "expanded_row_idx dim 0 and top_k", actualMsg.c_str(),
+            "expanded_row_idx dim 0 should be divisible by top_k.");
         return ge::GRAPH_FAILED;
     }
     N = BSK / topK;
@@ -262,16 +289,22 @@ ge::graphStatus TilingPrepareForMoeInitRoutingV2Grad(gert::TilingParseContext* c
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (compileInfo->aivNum <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2Grad fail to get core num."), return ge::GRAPH_FAILED);
+    if (compileInfo->aivNum <= 0) {
+        std::string aivNumStr = std::to_string(compileInfo->aivNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "aivNum", aivNumStr.c_str(), "Failed to get valid core num.");
+        return ge::GRAPH_FAILED;
+    }
 
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
-    OP_CHECK_IF(
-        (compileInfo->ubSize <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2Grad fail to get ub size."), return ge::GRAPH_FAILED);
+    if (compileInfo->ubSize <= 0) {
+        std::string ubSizeStr = std::to_string(compileInfo->ubSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "ubSize", ubSizeStr.c_str(), "Failed to get valid ub size.");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

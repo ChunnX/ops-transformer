@@ -87,6 +87,9 @@ public:
     uint32_t sabiQblocks = 0;
     uint32_t sabiKVBlocks = 0;
     uint32_t sabiLen = 0;
+    // block_shape attr: per-sabi-index token strides (multiples of 128). Default 128/128.
+    uint32_t qBlockSize = 128;
+    uint32_t kvBlockSize = 128;
 
     // ========================
     // Getter & Setter 方法
@@ -292,6 +295,12 @@ public:
 
     uint32_t get_sabiLen() const { return sabiLen; }
     void set_sabiLen(uint32_t sabiLen) { this->sabiLen = sabiLen; }
+
+    uint32_t get_qBlockSize() const { return qBlockSize; }
+    void set_qBlockSize(uint32_t qBlockSize) { this->qBlockSize = qBlockSize; }
+
+    uint32_t get_kvBlockSize() const { return kvBlockSize; }
+    void set_kvBlockSize(uint32_t kvBlockSize) { this->kvBlockSize = kvBlockSize; }
 };
 
 class PromptAttentionBaseApiBaseParams {

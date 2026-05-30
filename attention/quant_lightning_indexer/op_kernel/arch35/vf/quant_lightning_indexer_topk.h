@@ -55,12 +55,12 @@ public:
         tmpIdxLocal = sharedTmpBuffer[0];
         tmpValueLocal = tmpIdxLocal[topK];
         histogramsLocal = tmpValueLocal[topK];
-        idx0Local = histogramsLocal[256];
-        idx1Local = idx0Local[256]; 
-        idx2Local = idx1Local[256]; 
-        idx3Local = idx2Local[256]; 
-        nkValueLocal = idx3Local[256];
-        outputValueLocal = nkValueLocal[64];
+        idx0Local = histogramsLocal[256]; // 256: 本地内存对齐基线
+        idx1Local = idx0Local[256]; // 256: 同上
+        idx2Local = idx1Local[256]; // 256: 同上
+        idx3Local = idx2Local[256]; // 256: 同上
+        nkValueLocal = idx3Local[256]; // 256: 同上
+        outputValueLocal = nkValueLocal[64]; // 64: 单核/单线程输出元素容量（G维度切分阈值）
     }
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
@@ -115,14 +115,15 @@ public:
     __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
     {
         LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
+        // 256: 将 topK 实际分配容量向上取整至 256 的倍数
         LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[QLICommon::Align(topK, (uint32_t)256)];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[QLICommon::Align(topK, (uint32_t)256)];
-        idxHighLocal = histogramsLocal[256];
-        idxLowLocal = idxHighLocal[256];
-        nkValueLocal = idxLowLocal[256];
-        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64];
+        histogramsLocal = hisIndexLocal2[QLICommon::Align(topK, (uint32_t)256)]; // 256: 同上
+        idxHighLocal = histogramsLocal[256]; // 256: 本地内存对齐基线步长。
+        idxLowLocal = idxHighLocal[256]; // 256: 延续对齐基线步长
+        nkValueLocal = idxLowLocal[256]; // 256: 固定偏移步长
+        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64]; // 64: 单核/单线程输出容量
         tmpIndexLocal = tmpIndexLocalTmp.template ReinterpretCast<uint16_t>();
     }
 
@@ -139,15 +140,17 @@ public:
         if (loopIdx == 0) {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // 2: 双缓冲的“对侧”Bank
         } else {
             topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], 
-                                    topK, loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), s2SeqLen);
+            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, // 2: 双缓冲的Bank
+                mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], // 2: 双缓冲的Bank
+                topK, loopIdx * trunkLen - QLICommon::Align(topK, (uint32_t)256), s2SeqLen); // 256: 硬件对齐粒度
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], QLICommon::Align(topK, (uint32_t)256));
+                AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
+                    QLICommon::Align(topK, (uint32_t)256)); // 256: 硬件对齐粒度; 2: 双缓冲的Bank
             }
         }
     }

@@ -152,6 +152,11 @@ private:
     uint32_t vecCount = 0;
     uint32_t xRowSumCount;
     uint32_t withOffset;
+    int64_t isSingleTensor = 0;
+    GM_ADDR weightTensorPtr;
+    GM_ADDR scaleTensorPtr;
+    GM_ADDR biasTensorPtr;
+    GM_ADDR offsetTensorPtr;
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -165,6 +170,12 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
     tiling = tilingData;
     xRowSumCount = tiling->m;
     withOffset = tiling->withOffset;
+    isSingleTensor = tiling->isSingleTensor;
+
+    weightTensorPtr = weight;
+    scaleTensorPtr = scale;
+    biasTensorPtr = bias;
+    offsetTensorPtr = offset;
 
     xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
     weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(0, weight));
@@ -283,10 +294,19 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
 
         uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
         uint64_t weightOffset;
-        if constexpr (mmType::BT::format == CubeFormat::NZ) {
-            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN * tiling->k;
+        if (isSingleTensor == 0) {
+            weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(groupIdx, weightTensorPtr));
+            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+                weightOffset = tailN * tiling->k;
+            } else {
+                weightOffset = tailN;
+            }
         } else {
-            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN;
+            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+                weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN * tiling->k;
+            } else {
+                weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN;
+            }
         }
         if (cubeCount >= tiling->parallNum) {
             CrossCoreWaitFlag(SYNC_AIV_TO_AIC);
@@ -304,7 +324,12 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
                 weightSlice.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
             }
             mm.SetTensorB(weightSlice);
-            mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
+            if (isSingleTensor == 0) {
+                scaleGm.SetGlobalBuffer(GetTensorAddr<DTYPE_SCALE_DEV_A8W4MSD>(groupIdx, scaleTensorPtr));
+                mm.SetQuantVector(scaleGm[loopK * tiling->n + tailN]);
+            } else {
+                mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
+            }
             uint64_t worskspaceOffset = mnConfig.workSpaceOffset;
 #ifndef __CCE_KT_TEST__
             mm.Iterate();
@@ -329,8 +354,18 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
     uint32_t vecBaseM = tiling->ubCalSize / (Ceil(mnConfig.baseN, uint32_t(8)) * 8);  //  8: num int32_t in 32B ub block  32*256/256
     vecBaseM = vecBaseM < curCubeSingleM ? vecBaseM : curCubeSingleM;
     uint32_t curVecBaseN = mnConfig.baseN;
-    uint64_t scaleOffset = groupIdx * tiling->n + mnConfig.nIdx * mnConfig.singleN;
-    uint64_t offsetOffset = scaleOffset;
+    uint64_t scaleOffset;
+    uint64_t offsetOffset;
+    if (isSingleTensor == 0) {
+        biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD>(groupIdx, biasTensorPtr));
+        scaleOffset = mnConfig.nIdx * mnConfig.singleN;
+        if (withOffset == WITH_OFFSET) {
+            offsetGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OFFSET_A8W4MSD>(groupIdx, offsetTensorPtr));
+        }
+    } else {
+        scaleOffset = groupIdx * tiling->n + mnConfig.nIdx * mnConfig.singleN;
+    }
+    offsetOffset = scaleOffset;
     uint32_t taskRation = GetTaskRation();
     CrossCoreWaitFlag(SYNC_AIC_TO_AIV);
     for (uint32_t offsetN = 0; offsetN < curCubeSingleN; offsetN += mnConfig.baseN) {

@@ -95,8 +95,8 @@ if (BUILD_OPEN_PROJECT)
     ${ASCEND_CANN_PACKAGE_PATH}/include
     ${ASCEND_CANN_PACKAGE_PATH}/include/base
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
+    ${OPBASE_SOURCE_PATH}/include/op_common
+    ${OPBASE_SOURCE_PATH}/pkg_inc/op_common
     ${ASCEND_CANN_PACKAGE_PATH}/include/aicpu
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/common
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/aicpu_common/context/utils

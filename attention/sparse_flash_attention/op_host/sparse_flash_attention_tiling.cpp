@@ -260,7 +260,8 @@ void SFAMlaTiling::GenTilingKey()
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV,
-        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaInfo_->gSize > 64)); // N1 > 128时核间切G
+        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE,
+        static_cast<uint32_t>(sfaInfo_->gSize > 64)); // N1 > 128时核间切G; 64: 触发核间并行切分G维度的性能阈值
 
     OP_LOGI(sfaInfo_->opName, "SFA tilingKey_: %lu.", tilingKey_);
 }
@@ -1337,8 +1338,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(gSize_ < 1 || (gSize_ > 64 && gSize_ != 128),
-        OP_LOGE(opName_, "group num should be in 1 ~ 64, 128, but got %u", gSize_),
+    OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
+        OP_LOGE(opName_, "group num should be in 1 ~ 128, but got %u", gSize_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != 512,

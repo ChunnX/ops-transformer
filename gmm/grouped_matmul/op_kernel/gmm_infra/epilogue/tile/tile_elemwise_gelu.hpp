@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
-#define CATLASS_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
+#ifndef GMM_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
+#define GMM_EPILOGUE_TILE_TILE_ELEMWISE_GELU_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
 

@@ -52,12 +52,15 @@ static inline bool CheckDtypeValid(const aclTensor *expandedX, const aclTensor *
     }
     if (x1Optional != nullptr && x1Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x1Optional, return false);
     }
     if (x2Optional != nullptr && x2Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x2Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x2Optional, return false);
     }
     if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, biasOptional, return false);
     }
     if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
@@ -67,6 +70,7 @@ static inline bool CheckDtypeValid(const aclTensor *expandedX, const aclTensor *
     }
     if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, out, return false);
     }
     return true;
 }
@@ -84,12 +88,15 @@ static inline bool CheckDtypeValid310P(const aclTensor *expandedX, const aclTens
     }
     if (x1Optional != nullptr && x1Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x1Optional, return false);
     }
     if (x2Optional != nullptr && x2Optional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x2Optional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, x2Optional, return false);
     }
     if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, biasOptional, return false);
     }
     if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
@@ -99,6 +106,7 @@ static inline bool CheckDtypeValid310P(const aclTensor *expandedX, const aclTens
     }
     if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_FINALIZE_ROUTING_V2_DTYPE_SUPPORT_LIST_X_310P, return false);
+        OP_CHECK_DTYPE_NOT_SAME(expandedX, out, return false);
     }
     return true;
 }

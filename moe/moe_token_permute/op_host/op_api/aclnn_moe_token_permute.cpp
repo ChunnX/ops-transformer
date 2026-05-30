@@ -23,6 +23,53 @@
 
 using namespace op;
 
+namespace MoeTokenPermuteCheck {
+
+static const std::initializer_list<op::DataType> MOE_DTYPE_SUPPORT_LIST_X = {DataType::DT_FLOAT16, DataType::DT_BF16,
+                                                                             DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_DTYPE_SUPPORT_LIST_EXPERT_IDX_REGBASE = {DataType::DT_INT32,
+                                                                                              DataType::DT_INT64};
+static const std::initializer_list<op::DataType> MOE_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
+
+static inline bool CheckNotNull(const aclTensor *tokens, const aclTensor *indices, const aclTensor *permuteTokensOut,
+                                const aclTensor *sortedIndicesOut)
+{
+    OP_CHECK_NULL(tokens, return false);
+    OP_CHECK_NULL(indices, return false);
+    OP_CHECK_NULL(permuteTokensOut, return false);
+    OP_CHECK_NULL(sortedIndicesOut, return false);
+    return true;
+}
+
+static inline bool CheckDtypeValidRegbase(const aclTensor *tokens, const aclTensor *indices,
+                                          const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut)
+{
+    if (tokens != nullptr && tokens->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(tokens, MOE_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (indices != nullptr && indices->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(indices, MOE_DTYPE_SUPPORT_LIST_EXPERT_IDX_REGBASE, return false);
+    }
+    if (permuteTokensOut != nullptr && permuteTokensOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(permuteTokensOut, MOE_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(tokens, permuteTokensOut, return false);
+    }
+    if (sortedIndicesOut != nullptr && sortedIndicesOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(sortedIndicesOut, MOE_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
+    }
+    return true;
+}
+
+static aclnnStatus CheckParamsRegbase(const aclTensor *tokens, const aclTensor *indices,
+                                      const aclTensor *permuteTokensOut, const aclTensor *sortedIndicesOut)
+{
+    CHECK_RET(CheckNotNull(tokens, indices, permuteTokensOut, sortedIndicesOut), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckDtypeValidRegbase(tokens, indices, permuteTokensOut, sortedIndicesOut), ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace MoeTokenPermuteCheck
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,8 +82,8 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenPermute,
         DFX_IN(tokens, indices, numOutTokens, paddedMode),
-        DFX_OUT(permuteTokensOut, sortedIndicesOut));
-                
+                   DFX_OUT(permuteTokensOut, sortedIndicesOut));
+
     static bool useMoeInitRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeInitRoutingV2) {
         return aclnnInnerMoeTokenPermuteGetWorkspaceSize(
@@ -44,15 +91,12 @@ aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
-    // 参数检查
-    OP_CHECK_NULL(tokens, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(indices, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(permuteTokensOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(sortedIndicesOut, return ACLNN_ERR_PARAM_NULLPTR);
-
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclnnStatus ret = MoeTokenPermuteCheck::CheckParamsRegbase(tokens, indices, permuteTokensOut, sortedIndicesOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto tokensContiguous = l0op::Contiguous(tokens, uniqueExecutor.get());
@@ -89,7 +133,7 @@ aclnnStatus aclnnMoeTokenPermute(void* workspace, uint64_t workspaceSize, aclOpE
     if (!useMoeInitRoutingV2) {
         return aclnnInnerMoeTokenPermute(workspace, workspaceSize, executor, stream);
     }
-    
+
     L2_DFX_PHASE_2(aclnnMoeTokenPermute);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }

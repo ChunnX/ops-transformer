@@ -1178,12 +1178,7 @@ ge::graphStatus FusedInferAttentionScoreTilingArch38::DoOpTiling()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, tempCompileInfoPtr.l0ASize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, tempCompileInfoPtr.l0BSize);
         tempCompileInfoPtr.socShortName = ascendcPlatform.GetSocVersion();
-        if (tempCompileInfoPtr.socShortName == platform_ascendc::SocVersion::ASCEND310P) {
-            // sys workspace size default value
-            tempCompileInfoPtr.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-        } else {
-            tempCompileInfoPtr.defaultSysWorkspaceSize = 0;
-        }
+        tempCompileInfoPtr.defaultSysWorkspaceSize = 0;
 
         contextParamsForPFATiling.compileInfoPtr = &tempCompileInfoPtr;
         auto ret = ConvertContextToParamsPFA(context_, contextParamsForPFATiling, isMaxWorkspace);

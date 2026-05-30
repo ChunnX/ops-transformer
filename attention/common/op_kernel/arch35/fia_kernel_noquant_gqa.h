@@ -91,14 +91,10 @@ public:
     VecFdBlockType vecFdBlock;
 
     uint32_t coreGS1Loops = 0U;
-    uint32_t frontGS1Count = 0U;
-    uint32_t invalidGS1Size = 0U;
     uint32_t accGS1Loops = 0U;
-    uint32_t totalSize = 0U;
-    uint32_t createdTaskCount = 0U;
-    uint32_t executedTaskCount = 0U;
     uint32_t varlenCalcTimes = 0U;
-    bool enableS1OutSplit = false;
+    int64_t preTaskIdx = 0;
+    int64_t curTaskIdx = 0;
 
     // schduler params
     uint64_t actSeqLensKv = 0;
@@ -298,10 +294,14 @@ public:
             if (!constInfo.isActualSharedPrefixLenNull) {
                 constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             }
+        } else {
+            constInfo.actualKVPrefixSize = 0;
         }
+        // learnableSink
+        constInfo.learnableSinkFlag = false;
 
-        enableS1OutSplit = fiaS1OuterSplitCoreParams.enableS1OutSplit;
-        if (enableS1OutSplit) {
+        if (fiaS1OuterSplitCoreParams.enableS1OutSplit) {
+            constInfo.enableS1OutSplit = true;
             constInfo.bN2Start = 0;
             constInfo.gS1OStart = 0;
             constInfo.s2OStart = 0;
@@ -309,7 +309,7 @@ public:
             constInfo.gS1OEnd = 0;
             constInfo.s2OEnd = 0;
             constInfo.coreFirstTmpOutWsPos = 0;
-            totalSize = fiaS1OuterSplitCoreParams.totalSize;
+            constInfo.totalSize = fiaS1OuterSplitCoreParams.totalSize;
         } else {
             // 任务起始位置
             constInfo.bN2Start = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_START_INDEX));
@@ -349,11 +349,11 @@ public:
         return FA_METADATA_SIZE * NPU_AIC_CORE_NUM + FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
-    __aicore__ inline void ClacS1OutSplitLoopTimes()
+    __aicore__ inline void CalcS1OutSplitLoopTimes()
     {
         int64_t varlenCycleCoreNums = constInfo.coreNum * 2;
-        int64_t varlenCalcLoops = totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
-        int64_t varlenCalcLoopsRemain = totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
+        int64_t varlenCalcLoops = constInfo.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
+        int64_t varlenCalcLoopsRemain = constInfo.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
         varlenCalcTimes = varlenCalcLoops * 2;
         if (varlenCalcLoopsRemain >= constInfo.aicIdx + 1) {
             varlenCalcTimes++;
@@ -364,23 +364,12 @@ public:
         }
     }
 
-    __aicore__ inline bool SkipForS1OutSplit()
+    __aicore__ inline int64_t CalcS1OutTaskIdx()
     {
-        if (!enableS1OutSplit) {
-            return false;
-        }
-
         if (coreGS1Loops % 2 == 0) {
-            if (coreGS1Loops * constInfo.coreNum + constInfo.aicIdx != accGS1Loops) {
-                return true;
-            }
-        } else {
-            if ((coreGS1Loops + 1) * constInfo.coreNum - constInfo.aicIdx - 1 != accGS1Loops) {
-                return true;
-            }
+            return coreGS1Loops * constInfo.coreNum + constInfo.aicIdx;
         }
-
-        return false;
+        return (coreGS1Loops + 1) * constInfo.coreNum - constInfo.aicIdx - 1;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -417,19 +406,21 @@ public:
             return;
         }
 
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint32_t bN2Cur = constInfo.bN2Start;
         uint32_t gS1Cur = constInfo.gS1OStart;
         uint32_t s2Cur = constInfo.s2OStart;
         prevBN2Idx = bN2Cur;
         prevGS1Idx = gS1Cur;
 
-        if (enableS1OutSplit) {
-            ClacS1OutSplitLoopTimes();
+        if (constInfo.enableS1OutSplit) {
+            CalcS1OutSplitLoopTimes();
         }
 
         bool shouldDispatchTask = true;
         bool shouldExecuteTask = false;
+        uint32_t createdTaskCount = 0U;
+        uint32_t executedTaskCount = 0U;
         while (shouldDispatchTask || shouldExecuteTask) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
@@ -462,17 +453,14 @@ public:
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        if (enableS1OutSplit) {
-            return coreGS1Loops < varlenCalcTimes; // 按照S1块维度进行任务拦截
+        if (constInfo.enableS1OutSplit) {
+            return coreGS1Loops < varlenCalcTimes;
         }
         return ((bN2Cur != constInfo.bN2End) || (gS1Cur != constInfo.gS1OEnd) || (s2Cur != constInfo.s2OEnd));
     }
 
     __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        if (enableS1OutSplit) {
-            return executedTaskCount < createdTaskCount + PRELOAD_N;
-        }
         for (uint32_t i = 0; i < PRELOAD_TASK_CACHE_SIZE; i++) {
             if (taskRunInfo[i].isValid) {
                 return true;
@@ -496,6 +484,11 @@ public:
             actSeqLensKv += constInfo.actualKVPrefixSize;
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
         }
+
+        if (constInfo.enableS1OutSplit && accGS1Loops != CalcS1OutTaskIdx()) {
+            return TASK_DEAL_MODE::SKIP_S1OUT;
+        }
+
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
@@ -521,16 +514,16 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
-        }
-
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
+        if (curS2Start >= curS2End) {
             return TASK_DEAL_MODE::SKIP;
         }
 
-        if (SkipForS1OutSplit()) {
-            return TASK_DEAL_MODE::SKIP_S1OUT;
+        if (s2Cur < curS2Start) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
+        if (s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
         }
 
         if (s2Cur == curS2Start) {
@@ -568,7 +561,7 @@ public:
             curS2Start = constInfo.s2OStart;
         }
 
-        if (!enableS1OutSplit && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1OEnd)) {
+        if (!constInfo.enableS1OutSplit && (bN2Cur == constInfo.bN2End) && (gS1Cur == constInfo.gS1OEnd)) {
             tailS2Split = constInfo.s2OEnd != 0U;
             curS2End = constInfo.s2OEnd;
         }
@@ -715,12 +708,12 @@ public:
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ;
         info.actS2Size = actSeqLensKv;
-
         info.actMSize = mBaseSize;
         uint64_t gS1Size = info.actS1Size * constInfo.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
+
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
@@ -769,7 +762,12 @@ public:
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
-        if (!enableS1OutSplit && (constInfo.bN2Start == constInfo.bN2End && constInfo.gS1OStart == constInfo.gS1OEnd)) {
+        if (constInfo.enableS1OutSplit) {
+            info.isS2SplitCore = false;
+            return;
+        }
+
+        if ((constInfo.bN2Start == constInfo.bN2End && constInfo.gS1OStart == constInfo.gS1OEnd)) {
             // 所有任务属于同一个S1G
             info.isS2SplitCore = true;
         } else {
@@ -777,7 +775,7 @@ public:
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
                 info.isS2SplitCore = true;
             } else if (tailS2Split && (bN2Cur == constInfo.bN2End) &&
-                       (!enableS1OutSplit && gS1Cur == constInfo.gS1OEnd)) {
+                       (gS1Cur == constInfo.gS1OEnd)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
@@ -785,41 +783,103 @@ public:
         }
     }
 
+    __aicore__ inline void S1OutSplitUpdateAxis(uint32_t &bN2Cur, uint32_t &gS1Cur)
+    {
+        if (coreGS1Loops >= varlenCalcTimes || bN2Cur >= constInfo.n2Size * constInfo.bSize) {
+            return;
+        }
+        curTaskIdx = CalcS1OutTaskIdx();
+
+        // 本次需要跳过的GS1
+        int64_t gS1Skip = curTaskIdx - preTaskIdx;
+        accGS1Loops += gS1Skip;
+        preTaskIdx = curTaskIdx;
+        if (gS1Skip == 0) {
+            return;
+        }
+
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = actSeqLensQ == 0 ? constInfo.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1RemainCurBN2 = gS1LoopTimes - gS1Cur;
+
+        // gS1Skip 不超过当前BN2剩余的S1G，则只需要更新gS1Cur
+        if (gS1Skip < gS1RemainCurBN2) {
+            gS1Cur += gS1Skip;
+            return;
+        }
+
+        // 先跳过当前BN2剩余的S1G，再跳N2
+        gS1Skip -= gS1RemainCurBN2;
+        gS1Cur = 0;
+
+        uint32_t n2Size = constInfo.n2Size;
+        uint32_t n2Idx = bN2Cur % n2Size;
+        uint32_t bIdx = bN2Cur / n2Size;
+        uint64_t gS1RemainCurBatch = 0;
+        // 先跳过当前Batch剩余的N2
+        if (n2Idx + 1 < n2Size) {
+            bN2Cur++;
+            n2Idx++;
+            gS1RemainCurBatch = gS1LoopTimes * (n2Size - n2Idx);
+            // 这个batch剩余的N2足够 gS1Skip
+            if (gS1Skip < gS1RemainCurBatch) {
+                bN2Cur += gS1Skip / gS1LoopTimes;
+                gS1Cur = gS1Skip % gS1LoopTimes;
+                return;
+            }
+            gS1Skip -= gS1RemainCurBatch;
+        }
+        n2Idx = 0;
+        bIdx++;
+
+        // 跳batch
+        while (bIdx < constInfo.bSize) {
+            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+            gS1Size = actSeqLensQ * constInfo.gSize;
+            gS1LoopTimes = actSeqLensQ == 0 ? constInfo.gSize : (gS1Size + mBaseSize - 1) / mBaseSize;
+            if (gS1Skip >= n2Size * gS1LoopTimes) {
+                bIdx++;
+                gS1Skip -= n2Size * gS1LoopTimes;
+                continue;
+            }
+
+            gS1Cur = gS1Skip % gS1LoopTimes;
+            n2Idx = (gS1Skip / gS1LoopTimes) % n2Size;
+            bN2Cur = bIdx * n2Size + n2Idx;
+            return;
+        }
+
+        // 所有batch已经执行完
+        bN2Cur = constInfo.bSize * n2Size;
+    }
+
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        } else if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
             s2Cur++;
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK ||
-            taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            if (!SkipForS1OutSplit()) {
-                coreGS1Loops++;
-            }
-            accGS1Loops++;
-        }
-
         // 当前BN2未处理完
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
-            gS1Cur++;
+        if (constInfo.enableS1OutSplit) {
+            if (taskDealMode != TASK_DEAL_MODE::SKIP_S1OUT) {
+                coreGS1Loops++;
+            }
+            S1OutSplitUpdateAxis(bN2Cur, gS1Cur);
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
-             taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
-            if (!SkipForS1OutSplit()) {
-                coreGS1Loops++;
-            }
-            accGS1Loops++;
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        if (gS1Cur + 1 < gS1LoopTimes) {
+            gS1Cur++;
+            return;
         }
 
         // 当前BN2已处理完
