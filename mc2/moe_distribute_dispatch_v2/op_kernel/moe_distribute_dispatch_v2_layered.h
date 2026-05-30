@@ -1302,7 +1302,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     uint64_t endFlagValue = statusTensor.GetValue(0);
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
-    selfDataStatusGMAiv.SetValue(14, (uint32_t)(windowInGM_));
+    selfDataStatusGMAiv.SetValue(14, (uint32_t)((uint64_t)windowInGM_));
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
 
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
