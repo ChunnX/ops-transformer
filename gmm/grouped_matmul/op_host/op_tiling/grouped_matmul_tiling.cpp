@@ -132,14 +132,14 @@ constexpr int64_t DIM_NUM_5 = 5;
 static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uint32_t avg_m, uint32_t maxN_, uint32_t groupNum_, const uint32_t& aicNum) {
   int32_t mDim = CeilDiv(avg_m, baseM_);
   int32_t nDim = CeilDiv(maxN_, baseN_);
-  int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-  int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
+  int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum_);
+  int64_t taskNumPerCore = CeilDiv(taskNum, static_cast<int64_t>(aicNum));
   //每个核只需要做1个基本块的时候，任务量太少，无需处理
   if(taskNumPerCore <= 1){
     return baseN_;
   }
   int32_t curNDim = 0;
-  int32_t curTaskNum = 0;
+  int64_t curTaskNum = 0;
   int32_t bestSingleN = baseN_;
   float ratio = 0;
   for (uint32_t i = 1; i <= aicNum; ++i){
@@ -148,8 +148,8 @@ static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uin
       continue;
     }
     curNDim = CeilDiv(maxN_, bestSingleN);
-    curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-    ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
+    curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
+    ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(aicNum)));
     if(ratio >= EFFECTIVE_TASK_RATIO) {
       return bestSingleN;
     }
@@ -523,7 +523,7 @@ ge::graphStatus GMMTiling::Init(const gert::TilingContext* context) {
   tilingData.gmmBaseParams.set_groupType(static_cast<int32_t>(groupType_));
   tilingData.gmmBaseParams.set_activeType(actType_);
   tilingData.gmmBaseParams.set_quantParam(perTokenOrPerGroupSize_);
-  tilingData.gmmBaseParams.set_groupListType(groupListType_);
+  tilingData.gmmBaseParams.set_groupListType(static_cast<uint32_t>(groupListType_));
   tilingData.gmmBaseParams.set_k(maxK_);
   tilingData.gmmBaseParams.set_n(maxN_);
   OP_LOGI(context->GetNodeName(), "GMM_tiling: groupNum_ is %u, maxM_ is %ld, maxK_ is %ld, maxN_ is %ld.",
@@ -611,14 +611,14 @@ int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
     }
     int32_t mDim = CeilDiv(tuningConfig_, baseM_);
     int32_t nDim = CeilDiv(maxN_, baseN_);
-    int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-    int32_t taskNumPerCore = CeilDiv(taskNum, usedCoreNum);
+    int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum_);
+    int64_t taskNumPerCore = CeilDiv(taskNum, static_cast<int64_t>(usedCoreNum));
     // 每个核只需要做1个基本块的时候，任务量太少，无需处理
     if (taskNumPerCore <= 1) {
         return baseN_;
     }
     int32_t curNDim = 0;
-    int32_t curTaskNum = 0;
+    int64_t curTaskNum = 0;
     int32_t bestSingleN = baseN_;
     float ratio = 0;
     for (uint32_t i = 1; i <= usedCoreNum; ++i) {
@@ -632,8 +632,9 @@ int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
             return baseN_;
         }
         curNDim = CeilDiv(maxN_, bestSingleN);
-        curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-        ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), usedCoreNum);
+        curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
+        ratio =
+            static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(usedCoreNum)));
         if (ratio >= EFFECTIVE_TASK_RATIO) {
             return bestSingleN;
         }
@@ -1179,7 +1180,7 @@ void GMMTiling::GMMSetTplTilingKey(gert::TilingContext* context) {
                                                 GetTplDataType(yDtype_),
                                                 transposeX_? 1UL : 0UL,
                                                 transposeWeight_? 1UL : 0UL,
-                                                groupListType_,
+                                                static_cast<uint64_t>(groupListType_),
                                                 isStaticTilingApi,
                                                 a8w4KernelTemplate,
                                                 a16w8KernelTemplate,
@@ -1200,7 +1201,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   const int64_t* groupTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
   const int64_t* splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_SPLIT_ITEM);
   const int64_t* actTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
-  const uint32_t* groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+  const int64_t* groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
   const auto tuningConfigPtr = attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
   transposeWeight_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
   transposeX_ = transposeXPtr != nullptr ? *transposeXPtr : false;
@@ -1755,7 +1756,7 @@ ge::graphStatus GMMTiling::A16W4MsdTiling(gert::TilingContext *context, const GM
     if (CheckA16W4MsdEnable(mSize, antiquantGroupNum, context, compileInfoPtr) != ge::GRAPH_SUCCESS) {
         return GRAPH_PARAM_INVALID;
     }
-    OP_LOGD(context->GetNodeName(), "A16W4 enable msd. groupListType: %u. ", groupListType_);
+    OP_LOGD(context->GetNodeName(), "A16W4 enable msd. groupListType: %ld. ", groupListType_);
     GMMTilingData tilingDataA16W4;
     tilingDataA16W4.mmTilingData.set_dbL0B(1);
     tilingDataA16W4.mmTilingData.set_dbL0C(1);
@@ -1784,7 +1785,8 @@ ge::graphStatus GMMTiling::A16W4MsdTiling(gert::TilingContext *context, const GM
     context->SetBlockDim(compileInfoPtr->aicNum);
     context->SetScheduleMode(1);  // set as batchmod for template using SyncAll
     context->SetTilingKey(GET_TPL_TILING_KEY(
-        GMM_TPL_BF16, GMM_TPL_INT4, GMM_TPL_BF16, 0, 1, groupListType_, 0, GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE,
+        GMM_TPL_BF16, GMM_TPL_INT4, GMM_TPL_BF16, 0, 1, static_cast<uint64_t>(groupListType_), 0,
+        GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_NONE,
         GROUPED_MATMUL_A16W4_KERNEL_TEMPLATE_MSD_ANTIQUANT_GS32, GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
     tilingDataA16W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingDataA16W4.GetDataSize());
