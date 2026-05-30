@@ -19,7 +19,7 @@
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
@@ -42,7 +42,8 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum) {
+static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
+{
     // 获取卡数
     uint32_t rankSize = 0;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
@@ -52,7 +53,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "aicpu") == 0) {
+        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (std::strcmp(commModeStr, "ccu") == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
@@ -63,7 +64,7 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
                 commModeEnum = Mc2Comm::COMM_MODE_AICPU;
             }
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'aicpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'ccu', 'ai_cpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -154,9 +155,9 @@ static aclnnStatus CheckParams(const aclTensor* gmmX, const aclTensor* gmmWeight
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
     const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional, const aclTensor* mmWeightOptional,
-    const char* group, const char* commMode, int64_t epWorldSize, const aclIntArray* sendCounts, const aclIntArray* recvCounts,
-    bool transGmmWeight, bool transMmWeight, aclTensor* y, aclTensor* mmYOptional, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+    const char* group, const char* commMode, int64_t epWorldSize, const aclIntArray* sendCounts,
+    const aclIntArray* recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor* y,
+    aclTensor* mmYOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     auto ret_param =
         CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
@@ -185,7 +186,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
 }
 
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                        aclrtStream stream)
+                                          aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -193,7 +194,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void* workspace, uint64_t workspaceSiz
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
             if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-                OP_LOGD("Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                OP_LOGD("Arch35 platform, use AICPU mode");
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 OP_LOGD("Arch35 platform, use CCU mode");
