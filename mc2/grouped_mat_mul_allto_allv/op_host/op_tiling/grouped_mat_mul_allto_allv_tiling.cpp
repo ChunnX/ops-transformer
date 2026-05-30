@@ -320,6 +320,11 @@ ge::graphStatus GroupedMatmulAllToAllvTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+uint32_t GroupedMatmulAllToAllvTiling::GetCommModeIndex()
+{
+    return ATTR_COMM_MODE;
+}
+
 ge::graphStatus GroupedMatmulAllToAllvTiling::GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();

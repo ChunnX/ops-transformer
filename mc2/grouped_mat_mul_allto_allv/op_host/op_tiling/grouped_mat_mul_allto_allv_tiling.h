@@ -37,6 +37,7 @@ protected:
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
     ge::graphStatus GetPlatformInfo() override;
     uint64_t GetTilingKey() const override;
+    uint32_t GetCommModeIndex() const override;
     ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
 
     static constexpr uint32_t GMM_X_INDEX = 0;
