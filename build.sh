@@ -82,6 +82,11 @@ ENABLE_AICPU_KERNEL=FALSE
 CANN_3RD_LIB_PATH="${CURRENT_DIR}/third_party"
 CUSTOM_OPTION="-DBUILD_OPEN_PROJECT=ON"
 
+if [[ "${PROF}" == "ON" || "${PROF}" == "on" || "${PROF}" == "1" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_PROFILING=ON"
+    echo "[PROFILER] ENABLE_PROFILING=ON"
+fi
+
 dotted_line="---------------------------------------------------------------------------------------------------------------------"
 ########################################################################################################################
 # 预定义函数

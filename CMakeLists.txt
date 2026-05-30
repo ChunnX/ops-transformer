@@ -40,6 +40,11 @@ option(OP_KERNEL_AICPU_UT         "Enable aicpu kernel ut"          OFF)
 option(UT_TEST_ALL                "Enable all ut"                   OFF)
 option(ENABLE_OOM                 "Enable kernel oom"               OFF)
 option(UT_INFERSHAPE_FLAG         "Enable infershape ut"            OFF)
+option(ENABLE_PROFILING           "Enable device-side profiler"     OFF)
+
+if(ENABLE_PROFILING)
+    add_compile_definitions(ENABLE_PROFILING=1)
+endif()
 
 set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc that need to be compiled")
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")

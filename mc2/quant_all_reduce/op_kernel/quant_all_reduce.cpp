@@ -21,6 +21,7 @@
 #include "quant_all_reduce_tiling_data.h"
 #include "quant_all_reduce_tiling_key.h"
 #include "quant_all_reduce_mte_one_shot.h"
+#include "../quant_reduce_scatter/profiler.h"
 
 using namespace AscendC;
 using namespace QuantAllReduceImpl;
@@ -34,10 +35,22 @@ __global__ __aicore__ void quant_all_reduce(GM_ADDR x, GM_ADDR scales, GM_ADDR o
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantAllReduceTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantAllReduceTilingData, tilingData, tilingGM);
+
+    GM_ADDR profBufGm;
+    if (tilingData.quantAllReduceTilingInfo.profBufAddr != 0) {
+        profBufGm = (GM_ADDR)tilingData.quantAllReduceTilingInfo.profBufAddr;
+    } else {
+        profBufGm = (GM_ADDR)((__gm__ uint8_t*)workspaceGM + tilingData.quantAllReduceTilingInfo.profBufOffset);
+    }
+    PROF_INIT(profBufGm);
+    PROF_MARK(profBufGm, EVT_KERNEL_BEGIN, 0);
+
     TPipe pipe;
     if constexpr (quantAllReduceCommMode == MTE_ONE_SHOT) {
         QuantAllReduceMteOneShot<DTYPE_X, DTYPE_SCALES, DTYPE_OUT_PUT> op;
         op.Init(x, scales, output, &pipe, &tilingData);
-        op.Process();
+        op.Process(profBufGm);
     }
+
+    PROF_MARK(profBufGm, EVT_KERNEL_END, 0);
 }

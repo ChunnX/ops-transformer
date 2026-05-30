@@ -106,6 +106,10 @@ while [[ $# -gt 0 ]]; do
         ENABLE_OOM="$2"
         shift 2
         ;;
+    --enable_profiling)
+        ENABLE_PROFILING="$2"
+        shift 2
+        ;;
     --enable_tiling_sink)
         ENABLE_TILING_SINK="$2"
         shift 2
@@ -179,7 +183,8 @@ function build() {
         -DENABLE_TILING_SINK=${ENABLE_TILING_SINK} \
         -DENABLE_AICPU=${ENABLE_AICPU} \
         -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}  \
-        -DENABLE_OOM=${ENABLE_OOM}
+        -DENABLE_OOM=${ENABLE_OOM} \
+        -DENABLE_PROFILING=${ENABLE_PROFILING}
         
     make ${JOB_NUM} prepare_build
 }

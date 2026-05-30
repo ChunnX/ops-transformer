@@ -26,6 +26,16 @@
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
 
+#ifdef ENABLE_PROFILING
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+#include <fstream>
+static constexpr uint32_t PROF_BUF_TOTAL = 56 * 64 + 56 * 4096 * 16;
+static constexpr uint64_t PROF_BUF_OFFSET = 16ULL * 1024 * 1024;
+#endif
+
 using namespace op;
 
 namespace {
@@ -156,18 +166,48 @@ extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* 
     aclnnStatus ret = aclnnInnerQuantReduceScatterGetWorkspaceSize(x, scales, const_cast<char*>(group),
         const_cast<char*>(reduceOp), yDtype, worldSize, output, workspaceSize, executor);
     OP_LOGD("QuantReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
+#ifdef ENABLE_PROFILING
+    *workspaceSize += PROF_BUF_TOTAL;
+#endif
     return ret;
 }
 
 extern "C" aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
+#ifdef ENABLE_PROFILING
+    void* profBufDevicePtr = nullptr;
+    aclrtMalloc(&profBufDevicePtr, PROF_BUF_TOTAL, ACL_MEM_MALLOC_HUGE_FIRST);
+    aclrtMemset(profBufDevicePtr, PROF_BUF_TOTAL, 0, PROF_BUF_TOTAL);
+    std::fprintf(stderr, "[PROFILER] Allocated profiler buffer at %p (size=%u)\n", profBufDevicePtr, PROF_BUF_TOTAL);
+    std::fflush(stderr);
+#endif
+    
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
+    
     aclnnStatus ret = aclnnInnerQuantReduceScatter(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     }
+#ifdef ENABLE_PROFILING
+    const char* dumpEnv = std::getenv("PROF_DUMP");
+    if (dumpEnv && std::strlen(dumpEnv) > 0) {
+        aclrtSynchronizeStreamWithTimeout(stream, 30000);
+        uint64_t kernelWorkspaceGM = 0;
+        aclrtMemcpy(&kernelWorkspaceGM, sizeof(uint64_t), workspace, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST);
+        std::fprintf(stderr, "[PROFILER] host workspace=%p, kernel workspaceGM=0x%lx\n", workspace, kernelWorkspaceGM);
+        std::vector<uint8_t> hostBuf(256);
+        aclrtMemcpy(hostBuf.data(), 256, workspace, 256, ACL_MEMCPY_DEVICE_TO_HOST);
+        static int dumpCounter = 0;
+        char fname[256];
+        std::snprintf(fname, sizeof(fname), "%s/prof_qrs_%d.bin", dumpEnv, dumpCounter++);
+        std::ofstream ofs(fname, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(hostBuf.data()), 256);
+        std::fprintf(stderr, "[PROFILER] QRS dumped to %s (256 bytes from offset 0)\n", fname);
+        std::fflush(stderr);
+    }
+#endif
     return ACLNN_SUCCESS;
 }

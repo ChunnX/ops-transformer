@@ -19,6 +19,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "adv_api/reduce/sum.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "profiler.h"
 
 namespace QuantMTECommImpl {
 
@@ -52,12 +53,16 @@ public:
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
     __aicore__ inline void CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count);
+    __aicore__ inline void CopyResultToOutputWithClear(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count,
+                                                        LocalTensor<float>& sumTensorToClear, uint32_t clearCount);
     __aicore__ inline void ComputeTailAivId(uint64_t totalAivCount);
     __aicore__ inline GM_ADDR GetWinAddrGm(uint32_t rankId, uint64_t offset = 0);
     __aicore__ inline GM_ADDR GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag);
     __aicore__ inline GM_ADDR GetWinStatusAddrGm(uint32_t rankId, uint32_t winFlag);
+    __aicore__ inline void SetProfBuf(GM_ADDR profBufGm) { profBufGm_ = profBufGm; }
 
     __gm__ Mc2Kernel::HcclOpParam *hcclContext_;
+    GM_ADDR profBufGm_{0};
     uint32_t aivId_{0};
     uint64_t aivNum_{0};
     uint32_t round_{0};
@@ -259,6 +264,7 @@ template <TemplateTypeClass>
 template <bool isReduceScatter>
 __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xSliceSizeNums, uint64_t scaleSliceNums)
 {
+    PROF_MARK(profBufGm_, EVT_COPY_TO_WIN_BEGIN, 0);
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
@@ -283,6 +289,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
         }
     }
     PipeBarrier<PIPE_ALL>();
+    PROF_MARK(profBufGm_, EVT_COPY_TO_WIN_END, 0);
 }
 
 /**
@@ -296,6 +303,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 {
+    PROF_MARK(profBufGm_, EVT_WRITE_STATUS_BEGIN, 0);
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim; // Win区大小为 aivNum * rankDim, 此处计算核偏移
     // 遍历每一张卡，给每一张卡都要写入状态
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
@@ -313,6 +321,7 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
         DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
+    PROF_MARK(profBufGm_, EVT_WRITE_STATUS_END, 0);
 }
 
 /**
@@ -325,6 +334,7 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
 {
+    PROF_MARK(profBufGm_, EVT_READ_STATUS_BEGIN, 0);
     GM_ADDR stateGM = GetWinStatusAddrGm(hcclContext_->rankId, winBufferFlags_); // 获取本卡的状态区用于读取
     GlobalTensor<float> selfStatusWinTensor;
     uint32_t offset = aivId_ * hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM; // 获取当前核所需读取状态位的头地址，状态按32B对齐
@@ -346,6 +356,7 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
+    PROF_MARK(profBufGm_, EVT_READ_STATUS_END, 0);
 }
 
 /**
@@ -367,6 +378,25 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
     }
     xOutQueue_.EnQue(xOutTensor_);
     xOutTensor_ = xOutQueue_.DeQue<OutputType>();
+    DataCopy(outputTensor_[outOffsetGM], xOutTensor_, count);
+    xOutQueue_.FreeTensor(xOutTensor_);
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutputWithClear(
+    uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count,
+    LocalTensor<float>& sumTensorToClear, uint32_t clearCount)
+{
+    xOutTensor_ = xOutQueue_.AllocTensor<OutputType>();
+    if constexpr (AscendC::IsSameType<OutputType, float>::value) {
+        DataCopy(xOutTensor_, localResultTensor, count);
+    } else {
+        Cast(xOutTensor_, localResultTensor, RoundMode::CAST_RINT, count);
+    }
+    xOutQueue_.EnQue(xOutTensor_);
+    xOutTensor_ = xOutQueue_.DeQue<OutputType>();
+    // Vector (Duplicate) and MTE3 (DataCopy) can run in parallel
+    Duplicate<float>(sumTensorToClear, (float)0.0, clearCount);
     DataCopy(outputTensor_[outOffsetGM], xOutTensor_, count);
     xOutQueue_.FreeTensor(xOutTensor_);
 }

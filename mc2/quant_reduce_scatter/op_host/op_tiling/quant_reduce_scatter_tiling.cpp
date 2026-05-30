@@ -88,6 +88,7 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     tilingData.quantReduceScatterTilingInfo.hiddenSize = xValueH;
     tilingData.quantReduceScatterTilingInfo.scaleHiddenSize = scalesValueH;
     tilingData.quantReduceScatterTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    tilingData.quantReduceScatterTilingInfo.profBufOffset = SYSTEM_NEED_WORKSPACE;
 }
 
 // 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock（先除 rankSize 再反推），写入 tilingData
