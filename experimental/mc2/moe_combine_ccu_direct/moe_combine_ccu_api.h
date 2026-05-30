@@ -14,7 +14,7 @@
  *
  * v11 架构（与 dispatch_ccu_direct 完全对称）：
  *   - combine_setup 走 CCU 路径（hcomm CcuKernel），反向发送 expand_x 到对端
- *   - combine_teardown 走 AIV ascendc 路径（直调），内部轮询等齐 + 加权求和
+ *   - combine_teardown 走 AIV ascendc 路径（直调），内部轮询等齐 + K-stride 取 j=0 副本
  *
  * Mc2CcuKernelBase 占位基类 + 4 个 0.5RTT API 声明（RecordExpectCount /
  *   WriteNbWithArriveNotify / WaitAllPeersArriveNotify / ClearAllPeersArriveNotify）

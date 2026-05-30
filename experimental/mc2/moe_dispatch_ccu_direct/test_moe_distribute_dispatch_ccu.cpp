@@ -82,24 +82,15 @@ int main(int argc, char *argv[])
     }
     const int32_t deviceId = rankId;
 
-    // ---- op_def 对齐参数 ----
-    const std::string groupEp    = "epgroup_v4";            // op_def REQUIRED
+    // ---- 参数 ----
+    const std::string groupEp    = "epgroup_v4";            // 仅 host 日志用
     const uint32_t bs            = 8;
     const uint32_t hiddenSize    = 7168;
     const uint32_t topK          = 8;
     const uint32_t moeExpertNum  = 32;
-    // 简化版固定：sharedExpertNum=0 (op_def 默认 1，但 950 平台当前仅支持 0)，
-    //              sharedExpertRankNum=0，quantMode=0
-    const uint32_t sharedExpertNum     = 0;
-    const uint32_t sharedExpertRankNum = 0;
-    const uint32_t quantMode           = 0;
-    // v9: commType 改 2 (=URMA)。op_def 默认 0，但 docs §约束明确 950 当前仅支持 2。
-    // v8 之前误传 0 跟 op_def 默认值对齐——这是 op_def 注册期 fallback，跟实际平台支持范围不同。
-    const uint32_t commType            = 2;
-    const std::string commAlg          = "";                 // 对齐 op_def 默认值（预留字段）
-    const uint32_t expertTokenNumsType = 1;                  // 对齐 op_def 默认值
+    const uint32_t sharedExpertRankNum = 0;                  // moeExpertPerRankNum 分母
+    const uint32_t quantMode           = 0;                  // 0=BF16, 1=MXFP8
 
-    const uint64_t tokenMsgLen         = static_cast<uint64_t>(hiddenSize) * sizeof(uint16_t);
     const uint32_t moeExpertPerRankNum = moeExpertNum / (rankSize - sharedExpertRankNum);
 
     printf("[rank %d] MoeDistributeDispatchCcu host driver v4 start "
@@ -141,9 +132,7 @@ int main(int argc, char *argv[])
 
     // ---- 注册 setup / teardown 两个 CcuKernel ----
     auto setupArg = std::make_shared<hcomm::CcuKernelArgMoeDistributeDispatchCcuSetup>(
-        groupEp, rankSize, rankId, moeExpertNum, bs, topK, hiddenSize,
-        0 /*expertShardType*/, sharedExpertNum, sharedExpertRankNum, quantMode,
-        0 /*globalBs*/, commType, commAlg);
+        rankSize, rankId, moeExpertNum, bs, topK, hiddenSize, quantMode);
     // v10 ★ teardown 不再是 CcuKernel——改为 AIV ascendc kernel 直调路径，
     //   不需要 CcuKernelArg / Creator / Register；改用 tiling buffer + `<<<>>>` 直 launch。
 
@@ -196,64 +185,55 @@ int main(int argc, char *argv[])
     const size_t   A                      = static_cast<size_t>(bs) * rankSize
                                             * static_cast<size_t>(localExpertNum < topK ? localExpertNum : topK);
 
-    // op_def Input
-    const size_t xBytes               = static_cast<size_t>(bs) * hiddenSize * sizeof(uint16_t);                   // (Bs, H)
-    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);                         // (Bs, K) INT32
-    const size_t scalesBytes          = static_cast<size_t>(sharedExpertNum + moeExpertNum)
-                                        * hiddenSize * sizeof(float);                                              // OPT (sharedExpertNum+moeExpertNum, H) FLOAT
-    const size_t xActiveMaskBytes     = static_cast<size_t>(bs) * sizeof(uint8_t);                                 // OPT (Bs,) BOOL
-
-    // op_def Output（setup）
-    // v13 ★ op_def yAddr 字段语义恢复库上（src 端发送缓冲），caller 按 op_def 公式 alloc 占位，
-    //   device 端不读不写。对端接收 window 由独立的 commWindowAddr 字段承载（工程内部 scratch）。
-    // v15 ★ commWindow / expandX 每槽含 32B metadata 三元组（tokenWithMetaLen 替代 tokenMsgLen）
-    //        xWithMetaBytes: host 预拼装 (bs*K, tokenWithMetaLen) 给 dispatch_setup 段 7 阶段 B 用
-    const size_t opDefYBytes          = static_cast<size_t>(bs) * (topK + sharedExpertNum) * tokenMsgSizeBytes;
-    const size_t commWindowBytes      = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes;  // v15 ★
-    const size_t xWithMetaBytes       = static_cast<size_t>(bs) * topK * tokenWithMetaLenBytes;             // v15 ★
+    // ---- buffer 字节数（只留 device 实际读写的）----
+    const size_t xBytes               = static_cast<size_t>(bs) * hiddenSize * sizeof(uint16_t);  // hostX 用（构造 xWithMeta）
+    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);        // (Bs,K) INT32
+    const size_t commWindowBytes      = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes;
+    const size_t xWithMetaBytes       = static_cast<size_t>(bs) * topK * tokenWithMetaLenBytes;
     const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
-    const size_t commCmdInfoBytes     = (static_cast<size_t>(bs) * (topK + sharedExpertNum)
+    const size_t commCmdInfoBytes     = (static_cast<size_t>(bs) * topK
                                          + static_cast<size_t>(rankSize) * localExpertNum)
                                         * 16 * sizeof(int32_t);
+    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // op_def 标准 A 公式
+    const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);
+    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);  // 内部 scratch
 
-    // op_def Output（teardown）
-    // v18 ★ FIX：expandXBytes 改用 op_def 标准 A 公式（替代之前的保守上界 rankSize*bs*K）
-    //   A = BS * epWorldSize * min(localExpertNum, K)  ← aclnnMoeDistributeDispatchSetup.md
-    //   原 rankSize*bs*K 是"K 维度"上界，A 是"min(localExpertNum, K) 维度"紧密上界
-    //   当 localExpertNum < K 时，A < rankSize*bs*K，原 alloc 浪费空间但不越界
-    //   ★ 真正 bug 在 combine_setup unroll 上界：之前 bs*K 在 routing 极端不均衡时
-    //     可能 < A → 漏发 token；改 A 公式 + combine_setup unroll = A 后彻底解决
-    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // v18 ★ A * tokenWithMetaLen (op_def 标准)
-    const size_t dynamicScalesBytes   = A * sizeof(float);                                                         // (A,) FLOAT
-    const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);                                                 // (A*128,) INT32
-    const size_t expertTokenNumsBytes = static_cast<size_t>(localExpertNum) * sizeof(uint64_t);                    // (localExpertNum,) INT64
-    // 内部 scratch（库上无）
-    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
-
-    void *xDev               = devAlloc(xBytes);
     void *expertIdsDev       = devAlloc(expertIdsBytes);
-    void *scalesDev          = devAlloc(scalesBytes);
-    void *xActiveMaskDev     = devAlloc(xActiveMaskBytes);
-    void *yDev               = devAlloc(opDefYBytes);            // v13 ★ op_def yAddr 占位
-    void *commWindowDev      = devAlloc(commWindowBytes);        // v13/v15 接收 window（v15 含 metadata）
-    void *xWithMetaDev       = devAlloc(xWithMetaBytes);         // v15 ★ host 预拼装 x+metadata
+    void *commWindowDev      = devAlloc(commWindowBytes);        // 接收 window（含 metadata）
+    void *xWithMetaDev       = devAlloc(xWithMetaBytes);         // host 预拼装 x+metadata
     void *expandIdxDev       = devAlloc(expandIdxBytes);
     void *commCmdInfoDev     = devAlloc(commCmdInfoBytes);
 
-    // v11 ★ commCmdInfo 前 epWorldSize 槽位初始化为 sentinel -1（0xFFFFFFFF）
-    //   teardown AIV 轮询此区域判断 src rank 是否已到位（== -1 表示未到位）。
-    //   后段（scratch 区）保持 0 默认值不变。
-    const size_t cmdInfoSentinelBytes = static_cast<size_t>(rankSize) * sizeof(int32_t);
-    ACL_CHECK(aclrtMemset(commCmdInfoDev, cmdInfoSentinelBytes, 0xFF, cmdInfoSentinelBytes));
+    // 收口 ★ commWindow 空 slot 初始化为 0xFF sentinel（metadata.srcRank = -1）。
+    //   dispatch_teardown 收口后【自数】有效 token（按 metadata.srcRank==r 判定），空 slot 必须用
+    //   sentinel 与"rank 0 真实发来的 token (srcRank=0)"区分；devAlloc 默认 memset 0 不够，显式覆 0xFF。
+    ACL_CHECK(aclrtMemset(commWindowDev, commWindowBytes, 0xFF, commWindowBytes));
+
+    // 收口 ★ commCmdInfo 简化为只剩 ready 区，从偏移 0 起（删了 tokenCount/scratch 区）。
+    //   teardown 轮询 ready 区 [0,R) 全 1 → 数据齐。alloc 大小保持不变（无害，远大于 R）。
+    //   devAlloc 已整块 memset 0，ready 区初始 0（未就绪）；这里显式重申 ready 区清零。
+    const size_t readyRegionByteOff = 0;        // 收口 ★ ready 区从偏移 0 起（与 setup/teardown 一致）
+    const size_t readyRegionBytes   = static_cast<size_t>(rankSize) * sizeof(int32_t);
+    ACL_CHECK(aclrtMemset(static_cast<uint8_t*>(commCmdInfoDev) + readyRegionByteOff,
+                          readyRegionBytes, 0, readyRegionBytes));
+
+    // 收口 ★ oneBuf：ready 写源（host 填 R 个 int32=1）。setup 段 10 用 1 次 LocalCopyNb 整块拷到
+    //   commCmdInfo ready 区。⚠️ 必须用 aclrtMemcpy 从 host vector(R,1) 拷——不能用 aclrtMemset 填 1，
+    //   memset 按字节填 → int32 会变成 0x01010101 而非 1。
+    const size_t oneBufBytes = static_cast<size_t>(rankSize) * sizeof(int32_t);
+    void *oneBufDev          = devAlloc(oneBufBytes);
+    {
+        std::vector<int32_t> hostOne(rankSize, 1);
+        ACL_CHECK(aclrtMemcpy(oneBufDev, oneBufBytes, hostOne.data(), oneBufBytes,
+                              ACL_MEMCPY_HOST_TO_DEVICE));
+    }
+
     void *expandXDev         = devAlloc(expandXBytes);
-    void *dynamicScalesDev   = devAlloc(dynamicScalesBytes);
     void *assistInfoDev      = devAlloc(assistInfoBytes);
-    void *expertTokenNumsDev = devAlloc(expertTokenNumsBytes);
     void *routingTableDev    = devAlloc(routingTableBytes);
 
     // ---- 测试数据 ----
-    std::vector<uint8_t> hostX(xBytes, 0x01);
-    ACL_CHECK(aclrtMemcpy(xDev, xBytes, hostX.data(), xBytes, ACL_MEMCPY_HOST_TO_DEVICE));
+    std::vector<uint8_t> hostX(xBytes, 0x01);   // 仅用于构造 xWithMeta（dispatch_setup 读 xWithMeta）
 
     std::vector<uint32_t> hostExpertIds(bs * topK);
     std::vector<uint32_t> hostRoutingTable(bs * topK);
@@ -316,32 +296,39 @@ int main(int argc, char *argv[])
         printf("\n");
     }
 
+    // ---- v19 ★ 计算 3 个本地 buffer 的 token（hcomm GetTokenInfo(addr, size)）----
+    //   token 范式（亲核实 hccl mesh1d + ccu_alg_template_base.cc GetToken）：每块本地 buffer
+    //   按 (虚拟地址, 字节数) 调 GetTokenInfo 算 token，传给 device 作访存鉴权凭证。
+    //   device 端 LocalAddr/RemoteAddr 的 .token 必须设（见 setup.cpp）。
+    const uint64_t xWithMetaToken  = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(xWithMetaDev),  static_cast<uint64_t>(xWithMetaBytes));
+    // expandIdx 写本卡 HBM 用 StoreVariable Variable 地址版（无 token），无需 expandIdx token
+    const uint64_t commWindowToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(commWindowDev), static_cast<uint64_t>(commWindowBytes));
+    const uint64_t commCmdInfoToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(commCmdInfoDev), static_cast<uint64_t>(commCmdInfoBytes));
+    // 收口 ★ oneBuf 独立 token（token 跟随 buffer，单独 GetTokenInfo）
+    const uint64_t oneBufToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(oneBufDev), static_cast<uint64_t>(oneBufBytes));
+
     // ---- TaskArg + Launch ----
     auto setupTask = std::make_unique<hcomm::CcuTaskArgMoeDistributeDispatchCcuSetup>(
-        reinterpret_cast<uint64_t>(xDev),
         reinterpret_cast<uint64_t>(expertIdsDev),
-        reinterpret_cast<uint64_t>(scalesDev),
-        reinterpret_cast<uint64_t>(xActiveMaskDev),
-        reinterpret_cast<uint64_t>(yDev),               // v13 ★ op_def yAddr 占位
         reinterpret_cast<uint64_t>(expandIdxDev),
         reinterpret_cast<uint64_t>(commCmdInfoDev),
-        reinterpret_cast<uint64_t>(commWindowDev),      // v13 ★ 接收 window
+        reinterpret_cast<uint64_t>(commWindowDev),
         reinterpret_cast<uint64_t>(routingTableDev),
-        reinterpret_cast<uint64_t>(xWithMetaDev));      // v15 ★ host 预拼装 x+metadata
+        reinterpret_cast<uint64_t>(xWithMetaDev),
+        xWithMetaToken, commWindowToken, commCmdInfoToken,
+        reinterpret_cast<uint64_t>(oneBufDev), oneBufToken);   // 收口 ★ ready 写源（末尾追加）
 
     // v10 ★ teardown tiling buffer 准备（host 填充 + memcpy 到 device）
     MoeDistributeDispatchCcuTeardownTilingData hostTiling = {};
-    hostTiling.epWorldSize         = rankSize;
-    hostTiling.epRankId            = rankId;
-    hostTiling.moeExpertNum        = moeExpertNum;
-    hostTiling.moeExpertPerRankNum = moeExpertPerRankNum;
-    hostTiling.bs                  = bs;
-    hostTiling.topK                = topK;
-    hostTiling.hiddenSize          = hiddenSize;
-    hostTiling.expertTokenNumsType = expertTokenNumsType;
-    hostTiling.tokenMsgLen         = tokenMsgSizeBytes;
-    hostTiling.tokenWithMetaLen    = tokenWithMetaLenBytes;                                     // v15 ★
-    hostTiling.segBytes            = static_cast<uint64_t>(bs) * topK * tokenWithMetaLenBytes;  // v15 ★
+    hostTiling.epWorldSize      = rankSize;
+    hostTiling.bs               = bs;
+    hostTiling.topK             = topK;
+    hostTiling.tokenMsgLen      = tokenMsgSizeBytes;
+    hostTiling.tokenWithMetaLen = tokenWithMetaLenBytes;
     void *tilingDev = devAlloc(sizeof(hostTiling));
     ACL_CHECK(aclrtMemcpy(tilingDev, sizeof(hostTiling),
                           &hostTiling, sizeof(hostTiling), ACL_MEMCPY_HOST_TO_DEVICE));
@@ -360,27 +347,18 @@ int main(int argc, char *argv[])
     //     A5/纯 host gcc 编译环境下该行不能直接编译——本工程目标 A6 ascendc 仿真/真机。
     constexpr uint32_t kTeardownBlockDim = 1;   // 简化 demo（生产可拆按 epWorldSize 并行）
     moe_distribute_dispatch_ccu_teardown<<<kTeardownBlockDim, nullptr, stream>>>(
-        xDev, yDev, expertIdsDev, commCmdInfoDev,
-        expandXDev, dynamicScalesDev,
-        assistInfoDev, expertTokenNumsDev,
-        commWindowDev,                  // v13 ★ device 端实际读的接收 window
-        /*workspace=*/nullptr, tilingDev);
+        commCmdInfoDev, commWindowDev, expandXDev, assistInfoDev, tilingDev);
     ACL_CHECK(aclrtSynchronizeStream(stream));
-
-    // ---- v10 简化版输出归零（device 端不写的 IO 字段）----
-    ACL_CHECK(aclrtMemset(dynamicScalesDev,   dynamicScalesBytes,   0, dynamicScalesBytes));
-    ACL_CHECK(aclrtMemset(expertTokenNumsDev, expertTokenNumsBytes, 0, expertTokenNumsBytes));
 
     printf("[rank %d] dispatch_setup + dispatch_teardown launched and synced\n", rankId);
 
     // ---- 释放 ----
-    aclrtFree(xDev); aclrtFree(expertIdsDev); aclrtFree(scalesDev); aclrtFree(xActiveMaskDev);
-    aclrtFree(yDev); aclrtFree(commWindowDev); aclrtFree(xWithMetaDev);   // v15 ★
+    aclrtFree(expertIdsDev); aclrtFree(commWindowDev); aclrtFree(xWithMetaDev);
     aclrtFree(expandIdxDev); aclrtFree(commCmdInfoDev);
-    aclrtFree(expandXDev); aclrtFree(dynamicScalesDev);
-    aclrtFree(assistInfoDev); aclrtFree(expertTokenNumsDev);
+    aclrtFree(oneBufDev);                                       // 收口 ★
+    aclrtFree(expandXDev); aclrtFree(assistInfoDev);
     aclrtFree(routingTableDev);
-    aclrtFree(tilingDev);   // v10 ★
+    aclrtFree(tilingDev);
     HCCL_CHECK(HcclCommDestroy(hcclComm));
     ACL_CHECK(aclrtDestroyStream(stream));
     ACL_CHECK(aclrtResetDevice(deviceId));

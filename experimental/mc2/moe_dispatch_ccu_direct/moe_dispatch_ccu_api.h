@@ -75,6 +75,26 @@ protected:
 
     // 清除本端 tag 标记的 totalCntXn 与所有 wishCntXn。
     HcclResult ClearAllPeersArriveNotify(std::string tag);
+
+    // ============ 标量写 GM（Variable 动态地址版）============
+    //
+    // 【为何需要】CCU 算法要把 device 标量（Variable，如 expand_idx 计数）写回 GM 的"运行期动态地址"
+    //   （base 来自 Load，非 host 编译期立即数）。
+    //
+    // 【真相：hcomm 早有此能力，只是 pkg_inc CcuKernel 漏暴露】
+    //   legacy CcuContext 有两个 StoreVariable 重载（ccu_ctx.h:148/150，实现 ccu_context.cpp:285/295）：
+    //       void StoreVariable(const Variable &var, uint64_t addr);        // 立即数地址
+    //       void StoreVariable(const Variable &var, const Variable &src);  // ★ Variable 动态地址（无 token）
+    //   mc2 通算融合的 mc2_context.cpp 正用第二个写本卡 HBM 信号（StoreVariable(sig, hbmSigAddr)，
+    //   hbmSigAddr 是 Variable、无 token）——证明"写本卡 HBM 标量"不需要调用方传 token。
+    //   而 pkg_inc 新体系 CcuKernel（我们继承的）只暴露了立即数版（ccu_kernel.h:172），Variable 地址版
+    //   漏暴露（对比 Load 有 Variable 地址版 :169，Store 没有——不对称遗漏）。
+    //
+    // 【本工程处理】占位声明 Variable 地址版（语义=legacy CcuContext::StoreVariable(Variable,Variable)），
+    //   用标准名表达正确意图、-fsyntax-only 通过；待 SE 把该重载补进 pkg_inc CcuKernel（照搬 legacy 实现、
+    //   非新造）后即用基类版、删本占位。expand_idx 写本卡 HBM 输出 buffer，无需 token。
+    using CcuKernel::StoreVariable;   // 引入基类立即数版，避免 name hiding
+    void StoreVariable(const CcuRep::Variable &val, const CcuRep::Variable &src);
 };
 
 } // namespace hcomm

@@ -27,17 +27,15 @@
  *   Outputs:
  *     x (REQUIRED, BF16/FP16)               ← 最终还原结果，shape (Bs, H)
  *
- * v11 双流并行架构（与 dispatch_teardown v11 完全对称）：
+ * 双流并行架构（与 dispatch_teardown 完全对称）：
  *   - combine_setup CCU 立即返回（异步），通过 0.5RTT (tag = MOE_COMBINE_CCU_TAG) 反向发数据
- *   - combine_teardown AIV 内部 WaitForAllSrcRanks 轮询 commCmdInfo sentinel 等齐
- *   - 等齐后做加权求和：对每个本卡 (i, j)，从 yCombine[rank 段, slot 槽] 读 expert 结果，
- *     乘以 expert_scales[i*K+j]，累加到 x[i]
+ *   - combine_teardown AIV 内部 WaitForAllSrcRanks 轮询 commCmdInfo ready 区 [0,R) 等齐
+ *   - 等齐后以 K 为 stride 取 commWindow[i*K]（j=0 副本）→ xOut[i]；identity 下 commWindow[i*K]==x[i]
  *
- * 简化范围（v11 demo）：
+ * 简化范围（demo）：
  *   - dtype 写死 bfloat16_t
  *   - block 数 = 1
- *   - 加权求和路径：v11 简化为"K 次覆盖"（每个 (i, j) DataCopy yCombine → x[i]，
- *     最后一次覆盖；正确加权求和待生产版实施。详见 OPEN_QUESTIONS）
+ *   - K-stride 取 j=0 副本（非加权求和）：生产版需对每 i 的 K 个副本 Cast+Muls expertScales+Add
  *   - quant_expand_x / x_active_mask / shared_expert_x device 端不读
  */
 
@@ -47,21 +45,16 @@
 #include <cstdint>
 
 // ----- v11 Tiling 结构（host 填充 + device 读取） -----
+// 彻底精简版：只保留 Process 实际读取的 tiling 字段。
+//   已删 device 不读的字段：epRankId / moeExpertNum / moeExpertPerRankNum /
+//     tokenMsgLen（Process 未用）/ segBytes（Process 未用）。
 struct MoeDistributeCombineCcuTeardownTilingData {
-    uint32_t epWorldSize;
-    uint32_t epRankId;
-    uint32_t moeExpertNum;
-    uint32_t moeExpertPerRankNum;
+    uint32_t epWorldSize;        // WaitForAllSrcRanks 用
     uint32_t bs;
     uint32_t topK;
-    uint32_t hiddenSize;
-    uint32_t commQuantMode;       // v17 Phase 2 ★ 0=非量化 BF16，1=MXFP8（影响 Process 拷贝字节数）
-                                  //   BF16:  每 token data 段 = hiddenSize * sizeof(BF16) = 2*H 字节
-                                  //   MXFP8: 每 token data+scale 段 = H + H/32 字节（FP8 data + E8M0 scale）
-                                  //   字节透传：xOut 在 MXFP8 模式下保留 FP8+scale 格式（不解量化）
-    uint64_t tokenMsgLen;          // = Align256(H) * sizeof(YOutType) [BF16] / Align32(H+H/32) [MXFP8]
-    uint64_t tokenWithMetaLen;     // v15 ★ = tokenMsgLen + 32（commWindow 中每槽含 token data + metadata）
-    uint64_t segBytes;             // = bs * topK * tokenWithMetaLen
+    uint32_t hiddenSize;         // Process copyElemsPerToken 用（dataBytesPerToken）
+    uint32_t commQuantMode;      // 0=BF16（2*H 字节）/ 1=MXFP8（H+H/32 字节）：切 copyLen
+    uint64_t tokenWithMetaLen;   // = tokenMsgLen + 32（commWindow 每槽 stride）
 };
 
 #endif // MOE_DISTRIBUTE_COMBINE_CCU_TEARDOWN_H

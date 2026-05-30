@@ -13,18 +13,18 @@
  * \brief v12 dispatch + combine 完整链路 demo + 数据闭环校验（双流并行架构）。
  *
  * 流程：
- *   1) host 准备 x（每 token 不同 byte pattern 便于校验）+ expertIds + routingTable + expert_scales
+ *   1) host 准备 x（每 token 不同 byte pattern 便于校验）+ expertIds + routingTable
  *   2) Launch dispatch_setup CCU (异步发数据)
  *   3) Launch dispatch_teardown AIV (轮询等齐 + DataCopy y → expand_x)
  *   4) (跳过 expert，identity 模式：expand_x 不动)
  *   5) Launch combine_setup CCU (反向发 expand_x)
- *   6) Launch combine_teardown AIV (轮询等齐 + last-write-wins → xOut)
+ *   6) Launch combine_teardown AIV (轮询等齐 + K-stride 取 j=0 副本 → xOut)
  *   7) 校验 xOut == x（端到端数据闭环）
  *
- * identity expert + last-write-wins 模式下，xOut 应严格等于原始 x：
+ * identity expert + K-stride 取 j=0 模式下，xOut 应严格等于原始 x：
  *   - 本卡 token t_i 在 dispatch 中被发到 K 个 rank 的 K 个槽位
- *   - 每个槽位的 expert 处理结果（identity = 原值 t_i）反向回到本卡 yCombine[r 段, slot 槽]
- *   - combine_teardown 按 (i, j) 顺序 last-write-wins 写 xOut[i]，最后一次 j=K-1 写的就是 t_i
+ *   - 每个槽位的 expert 处理结果（identity = 原值 t_i）反向回到本卡 commWindow[slot=i*K+j]
+ *   - combine_teardown 以 K 为 stride 取 commWindow[i*K]（j=0 副本）写 xOut[i]，即 t_i
  *   - 闭环成立
  *
  * 本驱动在 A6 ascendc 仿真/真机下编译运行；A5 host gcc 下 `<<<>>>` 行不可直接编译。
@@ -79,21 +79,13 @@ static bool ExchangeRootInfo(int32_t rankId, HcclRootInfo *rootInfo) {
 #define ACL_CHECK(expr) do { aclError _r = (expr); if (_r != ACL_SUCCESS) { printf("[ERROR] " #expr " ret=%d\n", (int)_r); return -1; } } while (0)
 #define HCCL_CHECK(expr) do { HcclResult _r = (expr); if (_r != HCCL_SUCCESS) { printf("[ERROR] " #expr " ret=%d\n", (int)_r); return -1; } } while (0)
 
-// v13 ★ 加 GM_ADDR commWindow（与 teardown.h / 实际 .cpp 11 参签名一致）
+// 彻底精简签名（与 teardown.h / .cpp 严格一致）
 extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
-    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo,
-    GM_ADDR expandX, GM_ADDR dynamicScales,
-    GM_ADDR assistInfoForCombine, GM_ADDR expertTokenNums,
-    GM_ADDR commWindow,
-    GM_ADDR workspace, GM_ADDR tilingGM);
+    GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR expandX,
+    GM_ADDR assistInfoForCombine, GM_ADDR tilingGM);
 
-// v16 ★ 12 参（删 yCombine 和 routingTable，加 commWindow 复用 dispatch 同款）
 extern "C" __global__ __aicore__ void moe_distribute_combine_ccu_teardown(
-    GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-    GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
-    GM_ADDR xOut,
-    GM_ADDR commWindow,
-    GM_ADDR workspace, GM_ADDR tilingGM);
+    GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR xOut, GM_ADDR tilingGM);
 
 int main(int argc, char *argv[]) {
     int32_t rankId = 0, rankSize = 2;
@@ -104,37 +96,29 @@ int main(int argc, char *argv[]) {
     const int32_t deviceId = rankId;
 
     // ---- demo 参数（v12 简化，便于校验）----
-    const std::string groupEp = "epgroup_v12";
     const uint32_t bs           = 8;
     const uint32_t hiddenSize   = 256;
     const uint32_t topK         = 2;
     const uint32_t moeExpertNum = 8;       // → moeExpertPerRankNum = 4
-    // 简化（与 950 当前支持范围一致 + comm_type=2 是 URMA）
-    const uint32_t sharedExpertNum     = 0;
     const uint32_t sharedExpertRankNum = 0;
-    // v17 ★ quantMode 切换：0 = 非量化 BF16，1 = MXFP8（host 端预量化）
-    //   combine driver 默认 quantMode=0 保留 BF16 端到端闭环验证；
-    //   切换 quantMode=1 测 MXFP8 dispatch 链路（combine_teardown 端 v17 暂未支持量化输出，
-    //   quantMode=1 时 xOut 字节级校验会失败，但 RDMA 量化数据链路本身可验证 launch 成功）
+    // quantMode：0 = 非量化 BF16，1 = MXFP8（host 端预量化）
+    //   commQuantMode 必须 = quantMode（dispatch 发什么格式 combine 收同款，两端 tokenMsgLen 公式须一致）
     const uint32_t quantMode           = 0;      // dispatch quantMode (0=BF16, 1=MXFP8)
-    // v17 ★ 修复 #v17-2：commQuantMode 必须 = quantMode（dispatch 发什么格式 combine 收同款）
-    //   两端 tokenMsgLen 公式必须严格一致才能透传 RDMA 字节流，否则 GM 偏移错位
     const uint32_t commQuantMode       = quantMode;
-    const uint32_t commType            = 2;
-    const std::string commAlg          = "";
-    const uint32_t expertTokenNumsType = 1;
 
     const uint32_t localExpertNum     = moeExpertNum / (rankSize - sharedExpertRankNum);
     auto align256 = [](uint32_t n) -> uint32_t { return ((n + 255U) / 256U) * 256U; };
     auto align32  = [](uint32_t n) -> uint32_t { return ((n + 31U)  / 32U)  * 32U;  };
 
-    // v17 Phase 2 ★ MXFP8 模式 H 约束 runtime check：H 必须是 64 的倍数
-    //   原因：combine_teardown 按 BF16 视图整除 copyElemsPerToken = (H + H/32) / 2，
-    //         要求 (H + H/32) = H*33/32 是 2 的倍数 ↔ H 是 64 的倍数
-    //   生产 H ∈ {256, 4096, 7168, 8192} 都满足；违反则字节级闭环最后 1 字节 mismatch
-    if (quantMode == 1 && (hiddenSize % 64U != 0)) {
-        printf("[rank %d][ERROR] MXFP8 模式要求 hiddenSize 是 64 的倍数（当前 H=%u 不满足，"
-               "原因见 combine_teardown.cpp 注释）\n", rankId, hiddenSize);
+    // v17 Phase 2 ★ MXFP8 模式 H 约束 runtime check：(H + H/32) 必须是 32 的倍数（即 H 是 1024 的倍数）
+    //   原因：combine_teardown 用基础 DataCopy 搬 copyElemsPerToken=(H+H/32)/2 个 BF16 元素，
+    //         每次(含尾块 copyElemsPerToken%256)搬运字节数须是 32B(单 block) 整数倍
+    //         → copyElemsPerToken%16==0 → (H+H/32)%32==0（H 已 %32 时等价 H%1024==0）。
+    //         仅 H%64（保证 (H+H/32) 为偶不丢字节）不够，还需 32B 对齐，故收紧到 (H+H/32)%32。
+    //   生产 H ∈ {4096, 7168, 8192} 都满足；H=256 不满足（但本 demo 跑 BF16，MXFP8 旁路不触发）
+    if (quantMode == 1 && ((hiddenSize + hiddenSize / 32U) % 32U != 0)) {
+        printf("[rank %d][ERROR] MXFP8 模式要求 (H + H/32) 是 32 的倍数（即 H 是 1024 的倍数），"
+               "当前 H=%u 不满足（原因见 combine_teardown.cpp 注释）\n", rankId, hiddenSize);
         return -1;
     }
     // v17 ★ tokenMsgLen 按 quantMode 切（与 dispatch_setup.cpp constructor 公式严格一致）
@@ -183,13 +167,11 @@ int main(int argc, char *argv[]) {
     // ==================== 注册 2 个 CCU kernel（setup 只）====================
     // teardown 是 AIV ascendc kernel，通过 `<<<>>>` 直调，不 register
     auto dispatchSetupArg = std::make_shared<hcomm::CcuKernelArgMoeDistributeDispatchCcuSetup>(
-        groupEp, rankSize, rankId, moeExpertNum, bs, topK, hiddenSize,
-        0, sharedExpertNum, sharedExpertRankNum, quantMode, 0, commType, commAlg);
+        rankSize, rankId, moeExpertNum, bs, topK, hiddenSize, quantMode);
     dispatchSetupArg->channels = channels;
 
     auto combineSetupArg = std::make_shared<hcomm::CcuKernelArgMoeDistributeCombineCcuSetup>(
-        groupEp, rankSize, rankId, moeExpertNum, bs, topK, hiddenSize,
-        0, sharedExpertNum, sharedExpertRankNum, 0, commQuantMode, commType, commAlg);
+        rankSize, rankId, moeExpertNum, bs, topK, hiddenSize, commQuantMode);
     combineSetupArg->channels = channels;
 
     hcomm::KernelCreator dispatchSetupCreator = [](const hcomm::CcuKernelArg &arg) {
@@ -216,64 +198,47 @@ int main(int argc, char *argv[]) {
         return p;
     };
 
-    // dispatch op_def Input/Output
-    const size_t xBytes               = static_cast<size_t>(bs) * hiddenSize * sizeof(uint16_t);
-    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
-    const size_t scalesBytes          = static_cast<size_t>(sharedExpertNum + moeExpertNum) * hiddenSize * sizeof(float);
-    const size_t xActiveMaskBytes     = static_cast<size_t>(bs) * sizeof(uint8_t);
-    // v15 ★ buffer 大小公式全面切换到 tokenWithMetaLenBytes（每槽 = data + 32B metadata）
-    //   commWindow / expandX / yCombine 三大 buffer 都按 rankSize * bs * topK 槽 × tokenWithMetaLen 算
-    //   xWithMeta: host 预拼装 (bs*K, tokenWithMetaLen)，dispatch_setup 段 7 阶段 B 一次 RDMA 把 data+meta 整体送
-    //   assistInfoForCombine: 紧密区 sum_r(commCmdInfo[r]) * 3 个 INT32（worst-case rankSize*bs*topK*3*4 字节）
-    const size_t opDefYBytes          = static_cast<size_t>(bs) * (topK + sharedExpertNum) * tokenMsgSizeBytes;
-    const size_t commWindowBytes      = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes; // v15 ★
-    const size_t xWithMetaBytes       = static_cast<size_t>(bs) * topK * tokenWithMetaLenBytes;            // v15 ★
-    const size_t yBytes               = opDefYBytes;
-    const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
-    const size_t dispCmdInfoBytes     = (static_cast<size_t>(bs) * (topK + sharedExpertNum)
+    // ---- buffer 字节数（只留 device 实际读写的）----
+    //   commWindow / expandX 每槽 = tokenWithMetaLen（data + 32B metadata）
+    //   assistInfo：紧密区每 token 3 个 INT32；保留 A*128*4 兼容（远大于实际写量）
+    const size_t xBytes               = static_cast<size_t>(bs) * hiddenSize * sizeof(uint16_t);   // hostX：构造 xWithMeta + 校验
+    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);         // dispatch_setup 读
+    const size_t commWindowBytes      = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes;
+    const size_t xWithMetaBytes       = static_cast<size_t>(bs) * topK * tokenWithMetaLenBytes;
+    const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);         // dispatch_setup 写
+    const size_t dispCmdInfoBytes     = (static_cast<size_t>(bs) * topK
                                          + static_cast<size_t>(rankSize) * localExpertNum) * 16 * sizeof(int32_t);
-    // v18 ★ FIX：expandXBytes 改用 op_def 标准 A 公式（替代之前的 rankSize*bs*K 保守上界）
-    //   A = bs * rankSize * min(localExpertNum, K)  ← aclnnMoeDistributeDispatchSetup.md
-    //   ★ 原 rankSize*bs*K 不仅浪费空间，更严重的是导致 combine_setup unroll bs*K < A
-    //     时漏发 token（极端 routing 不均衡）；现在 expandX 按 A 紧凑 + combine_setup unroll A
-    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // v18 ★ op_def 标准
-    const size_t dynamicScalesBytes   = A * sizeof(float);
-    // v15 ★ assistInfoForCombine：每个紧密 token 对应 3 个 INT32 三元组，紧密上界 = A * 3 * 4
-    //   保留 op_def shape A*128*4 兼容（远大于实际写量）
-    const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);
-    const size_t expertTokenNumsBytes = static_cast<size_t>(localExpertNum) * sizeof(uint64_t);
-    // combine op_def
-    const size_t quantExpandXBytes    = expandXBytes;       // 与 expandX 同公式（v18 跟着 A 公式）
+    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // op_def 标准 A 公式
+    const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);   // dispatch_teardown 写 metadata 三元组
     const size_t combCmdInfoBytes     = dispCmdInfoBytes;
-    const size_t expertScalesBytes    = static_cast<size_t>(bs) * topK * sizeof(float);
-    // v17 Phase 2 ★ xOut 字节数按 quantMode 切：
-    //   BF16:  bs * H * sizeof(BF16) = bs * 2H 字节
-    //   MXFP8: bs * (H + H/32) 字节（保留 FP8 data + E8M0 scale 字节流）
+    // xOut 字节数按 quantMode 切：BF16=bs*2H；MXFP8=bs*(H+H/32)
     const size_t xOutBytes            = (quantMode == 0)
         ? xBytes
         : static_cast<size_t>(bs) * (hiddenSize + hiddenSize / 32U);
-    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
-    // v16 ★ 删除 yCombineBytes —— combine 阶段复用 dispatch 同一块 commWindowDev
+    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);         // dispatch_setup 读
 
-    void *xDev               = devAlloc(xBytes);
     void *expertIdsDev       = devAlloc(expertIdsBytes);
-    void *scalesDev          = devAlloc(scalesBytes);
-    void *xActiveMaskDev     = devAlloc(xActiveMaskBytes);
-    void *yDev               = devAlloc(opDefYBytes);   // v13：op_def yAddr 占位 alloc，device 端不动
-    void *commWindowDev      = devAlloc(commWindowBytes); // v13 ★ 对端接收 window（v15 含 metadata）
-    void *xWithMetaDev       = devAlloc(xWithMetaBytes);  // v15 ★ host 预拼装 (bs*K, tokenWithMetaLen)
+    void *commWindowDev      = devAlloc(commWindowBytes); // 对端接收 window（含 metadata），dispatch/combine 复用
+    void *xWithMetaDev       = devAlloc(xWithMetaBytes);  // host 预拼装 (bs*K, tokenWithMetaLen)
     void *expandIdxDev       = devAlloc(expandIdxBytes);
     void *dispCmdInfoDev     = devAlloc(dispCmdInfoBytes);
     void *expandXDev         = devAlloc(expandXBytes);
-    void *dynamicScalesDev   = devAlloc(dynamicScalesBytes);
     void *assistInfoDev      = devAlloc(assistInfoBytes);
-    void *expertTokenNumsDev = devAlloc(expertTokenNumsBytes);
-    void *quantExpandXDev    = devAlloc(quantExpandXBytes);   // host 0，combine 占位
     void *combCmdInfoDev     = devAlloc(combCmdInfoBytes);
-    void *expertScalesDev    = devAlloc(expertScalesBytes);
     void *xOutDev            = devAlloc(xOutBytes);
     void *routingTableDev    = devAlloc(routingTableBytes);
-    // v16 ★ 不再 alloc yCombineDev —— combine 阶段复用 commWindowDev
+
+    // 收口 ★ oneBuf：dispatch_setup + combine_setup 段 10 ready 写的源（host 填 R 个 int32=1）。
+    //   两路 setup 共用同一 oneBuf（值相同，都是 R 个 1）；setup 用 1 次 LocalCopyNb 整块拷到各自的
+    //   commCmdInfo ready 区。⚠️ 必须 aclrtMemcpy 从 host vector(R,1) 拷，不能 aclrtMemset 填 1
+    //   （memset 按字节 → int32 变 0x01010101）。
+    const size_t oneBufBytes = static_cast<size_t>(rankSize) * sizeof(int32_t);
+    void *oneBufDev          = devAlloc(oneBufBytes);
+    {
+        std::vector<int32_t> hostOne(rankSize, 1);
+        ACL_CHECK(aclrtMemcpy(oneBufDev, oneBufBytes, hostOne.data(), oneBufBytes,
+                              ACL_MEMCPY_HOST_TO_DEVICE));
+    }
 
     // ==================== Demo 数据准备 ====================
     // x: 每个 token i 全部填 byte = (i + 1)，便于校验闭环
@@ -283,7 +248,7 @@ int main(int argc, char *argv[]) {
     for (uint32_t i = 0; i < bs; ++i) {
         std::memset(hostX.data() + i * bytesPerToken, static_cast<uint8_t>(i + 1), bytesPerToken);
     }
-    ACL_CHECK(aclrtMemcpy(xDev, xBytes, hostX.data(), xBytes, ACL_MEMCPY_HOST_TO_DEVICE));
+    // hostX 仅用于构造 xWithMeta + Stage 6 校验（dispatch_setup 读 xWithMeta，无需单独 xDev）
 
     // v17 ★ 构造 xWithMetaDev：按 quantMode 切 data 段格式
     //   layout（每行 tokenWithMetaLen 字节）：
@@ -332,6 +297,12 @@ int main(int argc, char *argv[]) {
     ACL_CHECK(aclrtMemcpy(xWithMetaDev, xWithMetaBytes, hostXWithMeta.data(),
                           xWithMetaBytes, ACL_MEMCPY_HOST_TO_DEVICE));
 
+    // 收口 ★ dispatch 阶段 commWindow 空 slot 初始化为 0xFF sentinel（metadata.srcRank=-1）。
+    //   dispatch_teardown 收口后【自数】有效 token（按 metadata.srcRank==r 判定），空 slot 必须用
+    //   sentinel 与 rank 0 真实 token（srcRank=0）区分。devAlloc 默认 memset 0 不够，显式覆 0xFF。
+    //   （combine 阶段 commWindow 在 Stage 4 前另行 memset 0——combine_teardown 用 K-stride 不自数，不需 sentinel。）
+    ACL_CHECK(aclrtMemset(commWindowDev, commWindowBytes, 0xFF, commWindowBytes));
+
     // v15 ★ 把 expandX padding 区预初始化为 0xFF（int32 视角 = -1 sentinel）
     //   dispatch_teardown 紧密拷完后，后面区域保留 sentinel，
     //   combine_setup 段 5/7 host unroll bs*K 次时，padding token metadata.srcRank=-1
@@ -354,27 +325,38 @@ int main(int argc, char *argv[]) {
     ACL_CHECK(aclrtMemcpy(routingTableDev, routingTableBytes, hostRoutingTable.data(),
                           routingTableBytes, ACL_MEMCPY_HOST_TO_DEVICE));
 
-    // expert_scales: 全 1.0（last-write-wins demo 模式不使用，但 op_def 要求）
-    std::vector<float> hostExpertScales(bs * topK, 1.0f);
-    ACL_CHECK(aclrtMemcpy(expertScalesDev, expertScalesBytes, hostExpertScales.data(),
-                          expertScalesBytes, ACL_MEMCPY_HOST_TO_DEVICE));
+    // expert_scales 已删：combine_teardown 简化版 K-stride 取 j=0 副本，不做加权求和
 
     // ==================== Stage 1: dispatch_setup CCU ====================
-    // 初始化 dispatch commCmdInfo sentinel: 前 epWorldSize 槽 = -1 (0xFFFFFFFF)
-    const size_t cmdSentinelBytes = static_cast<size_t>(rankSize) * sizeof(int32_t);
-    ACL_CHECK(aclrtMemset(dispCmdInfoDev, cmdSentinelBytes, 0xFF, cmdSentinelBytes));
+    // 收口 ★ commCmdInfo 简化为只剩 ready 区，从偏移 0 起（删了 tokenCount/scratch）；
+    //   teardown 轮询 ready 区 [0,R) 全 1。alloc 大小保持不变（无害）。devAlloc 已整块清 0，
+    //   ready 区初始 0=未就绪；这里显式重申 ready 区清零（dispatch + combine 共用此偏移）。
+    const size_t readyRegionByteOff = 0;        // 收口 ★ ready 区从偏移 0 起（与 setup/teardown 一致）
+    const size_t readyRegionBytes   = static_cast<size_t>(rankSize) * sizeof(int32_t);
+    ACL_CHECK(aclrtMemset(static_cast<uint8_t*>(dispCmdInfoDev) + readyRegionByteOff,
+                          readyRegionBytes, 0, readyRegionBytes));
+
+    // v19 ★ dispatch 4 本地 buffer token
+    const uint64_t dispXWithMetaToken  = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(xWithMetaDev),  static_cast<uint64_t>(xWithMetaBytes));
+    // expandIdx 写本卡 HBM 用 StoreVariable Variable 地址版（无 token），无需 expandIdx token
+    const uint64_t dispCommWindowToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(commWindowDev), static_cast<uint64_t>(commWindowBytes));
+    const uint64_t dispCmdInfoToken    = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(dispCmdInfoDev), static_cast<uint64_t>(dispCmdInfoBytes));
+    // 收口 ★ oneBuf 独立 token（dispatch / combine 复用同一 buffer，故 token 相同，算一次即可）
+    const uint64_t oneBufToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(oneBufDev), static_cast<uint64_t>(oneBufBytes));
 
     auto dispatchSetupTask = std::make_unique<hcomm::CcuTaskArgMoeDistributeDispatchCcuSetup>(
-        reinterpret_cast<uint64_t>(xDev),
         reinterpret_cast<uint64_t>(expertIdsDev),
-        reinterpret_cast<uint64_t>(scalesDev),
-        reinterpret_cast<uint64_t>(xActiveMaskDev),
-        reinterpret_cast<uint64_t>(yDev),                // v13: op_def yAddr 占位
         reinterpret_cast<uint64_t>(expandIdxDev),
         reinterpret_cast<uint64_t>(dispCmdInfoDev),
-        reinterpret_cast<uint64_t>(commWindowDev),       // v13 ★ commWindow
+        reinterpret_cast<uint64_t>(commWindowDev),
         reinterpret_cast<uint64_t>(routingTableDev),
-        reinterpret_cast<uint64_t>(xWithMetaDev));       // v15 ★ host 预拼装 x+metadata
+        reinterpret_cast<uint64_t>(xWithMetaDev),
+        dispXWithMetaToken, dispCommWindowToken, dispCmdInfoToken,
+        reinterpret_cast<uint64_t>(oneBufDev), oneBufToken);   // 收口 ★ ready 写源（末尾追加）
 
     HCCL_CHECK(HcclCcuKernelLaunch(hcclComm, threadHandle, dispatchSetupKernel,
                                     static_cast<void *>(dispatchSetupTask.get())));
@@ -383,49 +365,44 @@ int main(int argc, char *argv[]) {
 
     // ==================== Stage 2: dispatch_teardown AIV ====================
     MoeDistributeDispatchCcuTeardownTilingData dispTearTiling = {};
-    dispTearTiling.epWorldSize         = rankSize;
-    dispTearTiling.epRankId            = rankId;
-    dispTearTiling.moeExpertNum        = moeExpertNum;
-    dispTearTiling.moeExpertPerRankNum = moeExpertPerRankNum;
-    dispTearTiling.bs                  = bs;
-    dispTearTiling.topK                = topK;
-    dispTearTiling.hiddenSize          = hiddenSize;
-    dispTearTiling.expertTokenNumsType = expertTokenNumsType;
-    dispTearTiling.tokenMsgLen         = tokenMsgSizeBytes;
-    dispTearTiling.tokenWithMetaLen    = tokenWithMetaLenBytes;                                     // v15 ★
-    dispTearTiling.segBytes            = static_cast<uint64_t>(bs) * topK * tokenWithMetaLenBytes;  // v15 ★
+    dispTearTiling.epWorldSize      = rankSize;
+    dispTearTiling.bs               = bs;
+    dispTearTiling.topK             = topK;
+    dispTearTiling.tokenMsgLen      = tokenMsgSizeBytes;
+    dispTearTiling.tokenWithMetaLen = tokenWithMetaLenBytes;
     void *dispTilingDev = devAlloc(sizeof(dispTearTiling));
     ACL_CHECK(aclrtMemcpy(dispTilingDev, sizeof(dispTearTiling),
                           &dispTearTiling, sizeof(dispTearTiling), ACL_MEMCPY_HOST_TO_DEVICE));
 
     moe_distribute_dispatch_ccu_teardown<<<1, nullptr, stream>>>(
-        xDev, yDev, expertIdsDev, dispCmdInfoDev,
-        expandXDev, dynamicScalesDev, assistInfoDev, expertTokenNumsDev,
-        commWindowDev,       // v13 ★ 新增 commWindow 参数（device 端实际读这个，op_def yAddr 占位）
-        nullptr, dispTilingDev);
+        dispCmdInfoDev, commWindowDev, expandXDev, assistInfoDev, dispTilingDev);
     ACL_CHECK(aclrtSynchronizeStream(stream));
-    // device 端不写的字段 host 归零
-    ACL_CHECK(aclrtMemset(dynamicScalesDev,   dynamicScalesBytes,   0, dynamicScalesBytes));
-    ACL_CHECK(aclrtMemset(expertTokenNumsDev, expertTokenNumsBytes, 0, expertTokenNumsBytes));
     printf("[rank %d] stage 2 dispatch_teardown done\n", rankId);
 
     // ==================== Stage 3: 跳过 expert 处理（identity 模式）====================
     // 生产场景这里跑 GroupedMatmul 等 expert 计算；本 demo 不动 expandX 用 identity 验证闭环。
 
     // ==================== Stage 4: combine_setup CCU ====================
-    // 初始化 combine commCmdInfo sentinel
-    ACL_CHECK(aclrtMemset(combCmdInfoDev, cmdSentinelBytes, 0xFF, cmdSentinelBytes));
+    // v19 ★ combine commCmdInfo ready 区清零（[2R,3R)）；不再写 -1 sentinel
+    ACL_CHECK(aclrtMemset(static_cast<uint8_t*>(combCmdInfoDev) + readyRegionByteOff,
+                          readyRegionBytes, 0, readyRegionBytes));
     // v16 ★ combine 阶段复用 commWindowDev，dispatch 残留数据需清零（防止 combine_teardown 误读 dispatch 数据）
     ACL_CHECK(aclrtMemset(commWindowDev, commWindowBytes, 0, commWindowBytes));
 
+    // v19 ★ combine 3 本地 buffer token（数据源 expandX；自反自落地 commWindow；cmd combCmdInfo）
+    const uint64_t combExpandXToken    = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(expandXDev),    static_cast<uint64_t>(expandXBytes));
+    const uint64_t combCommWindowToken = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(commWindowDev), static_cast<uint64_t>(commWindowBytes));
+    const uint64_t combCmdInfoToken    = hcomm::CcuRep::GetTokenInfo(
+        reinterpret_cast<uint64_t>(combCmdInfoDev), static_cast<uint64_t>(combCmdInfoBytes));
+
     auto combineSetupTask = std::make_unique<hcomm::CcuTaskArgMoeDistributeCombineCcuSetup>(
-        reinterpret_cast<uint64_t>(expandXDev),           // op_def Input 1
-        reinterpret_cast<uint64_t>(expertIdsDev),          // op_def Input 2
-        reinterpret_cast<uint64_t>(assistInfoDev),         // op_def Input 3
-        reinterpret_cast<uint64_t>(quantExpandXDev),       // op_def Output 1 (host 0)
-        reinterpret_cast<uint64_t>(combCmdInfoDev),        // op_def Output 2
-        reinterpret_cast<uint64_t>(commWindowDev),         // v16 ★ 复用 dispatch 同款 commWindow
-        reinterpret_cast<uint64_t>(routingTableDev));      // v16 device 端不读，保留 IO 契约
+        reinterpret_cast<uint64_t>(expandXDev),
+        reinterpret_cast<uint64_t>(combCmdInfoDev),
+        reinterpret_cast<uint64_t>(commWindowDev),
+        combExpandXToken, combCommWindowToken, combCmdInfoToken,
+        reinterpret_cast<uint64_t>(oneBufDev), oneBufToken);   // 收口 ★ ready 写源（复用同一 oneBuf）
 
     HCCL_CHECK(HcclCcuKernelLaunch(hcclComm, threadHandle, combineSetupKernel,
                                     static_cast<void *>(combineSetupTask.get())));
@@ -434,27 +411,18 @@ int main(int argc, char *argv[]) {
 
     // ==================== Stage 5: combine_teardown AIV ====================
     MoeDistributeCombineCcuTeardownTilingData combTearTiling = {};
-    combTearTiling.epWorldSize         = rankSize;
-    combTearTiling.epRankId            = rankId;
-    combTearTiling.moeExpertNum        = moeExpertNum;
-    combTearTiling.moeExpertPerRankNum = moeExpertPerRankNum;
-    combTearTiling.bs                  = bs;
-    combTearTiling.topK                = topK;
-    combTearTiling.hiddenSize          = hiddenSize;
-    combTearTiling.commQuantMode       = commQuantMode;     // v17 Phase 2 ★ 切 BF16/MXFP8 拷贝路径
-    combTearTiling.tokenMsgLen         = tokenMsgSizeBytes;
-    combTearTiling.tokenWithMetaLen    = tokenWithMetaLenBytes;                                     // v15 ★
-    combTearTiling.segBytes            = static_cast<uint64_t>(bs) * topK * tokenWithMetaLenBytes;  // v15 ★
+    combTearTiling.epWorldSize      = rankSize;
+    combTearTiling.bs               = bs;
+    combTearTiling.topK             = topK;
+    combTearTiling.hiddenSize       = hiddenSize;
+    combTearTiling.commQuantMode    = commQuantMode;     // 切 BF16/MXFP8 拷贝路径
+    combTearTiling.tokenWithMetaLen = tokenWithMetaLenBytes;
     void *combTilingDev = devAlloc(sizeof(combTearTiling));
     ACL_CHECK(aclrtMemcpy(combTilingDev, sizeof(combTearTiling),
                           &combTearTiling, sizeof(combTearTiling), ACL_MEMCPY_HOST_TO_DEVICE));
 
     moe_distribute_combine_ccu_teardown<<<1, nullptr, stream>>>(
-        expandXDev, quantExpandXDev, expertIdsDev, expandIdxDev,
-        expertScalesDev, combCmdInfoDev, nullptr /*xActiveMask*/, nullptr /*sharedExpertX*/,
-        xOutDev,
-        commWindowDev,             // v16 ★ 复用 dispatch 同款 commWindow（替代 yCombine + routingTable）
-        nullptr /*workspace*/, combTilingDev);
+        combCmdInfoDev, commWindowDev, xOutDev, combTilingDev);
     ACL_CHECK(aclrtSynchronizeStream(stream));
     printf("[rank %d] stage 5 combine_teardown done\n", rankId);
 
@@ -462,7 +430,7 @@ int main(int argc, char *argv[]) {
     // v17 Phase 2 ★ MXFP8 路径也支持 byte-level 校验（字节透传方案）：
     //   BF16:  xOut[i] = bs 个 hostX[i]（每 token 全 byte=(i+1) BF16 数据，2*H 字节）
     //   MXFP8: xOut[i] = hostXWithMeta[i*K + 0][0..H+H/32) （FP8 data + E8M0 scale）
-    //          identity 模式 + last-write-wins：本卡 (i, j=0) 副本经路由→回本卡 commWindow[i*K]→xOut[i]
+    //          identity 模式 + K-stride 取 j=0：本卡 (i, j=0) 副本经路由→回本卡 commWindow[i*K]→xOut[i]
     std::vector<uint8_t> hostXOut(xOutBytes);
     ACL_CHECK(aclrtMemcpy(hostXOut.data(), xOutBytes, xOutDev, xOutBytes, ACL_MEMCPY_DEVICE_TO_HOST));
 
@@ -482,7 +450,7 @@ int main(int argc, char *argv[]) {
             if (!pass) break;
         }
         if (pass) {
-            printf("[rank %d] ★ PASS (BF16): 数据闭环验证通过——xOut == x (identity + last-write-wins)\n", rankId);
+            printf("[rank %d] ★ PASS (BF16): 数据闭环验证通过——xOut == x (identity + K-stride 取 j=0)\n", rankId);
         } else {
             printf("[rank %d] ✗ FAIL (BF16): 闭环失败，首个不匹配 token = %u\n", rankId, firstMismatchToken);
         }
@@ -512,12 +480,12 @@ int main(int argc, char *argv[]) {
     }
 
     // ==================== 释放 ====================
-    aclrtFree(xDev); aclrtFree(expertIdsDev); aclrtFree(scalesDev); aclrtFree(xActiveMaskDev);
-    aclrtFree(yDev); aclrtFree(commWindowDev); aclrtFree(xWithMetaDev);   // v15 ★
+    aclrtFree(expertIdsDev); aclrtFree(commWindowDev); aclrtFree(xWithMetaDev);
     aclrtFree(expandIdxDev); aclrtFree(dispCmdInfoDev);
-    aclrtFree(expandXDev); aclrtFree(dynamicScalesDev); aclrtFree(assistInfoDev); aclrtFree(expertTokenNumsDev);
-    aclrtFree(quantExpandXDev); aclrtFree(combCmdInfoDev); aclrtFree(expertScalesDev); aclrtFree(xOutDev);
-    aclrtFree(routingTableDev);   // v16 ★ 已删 yCombineDev
+    aclrtFree(oneBufDev);                                       // 收口 ★
+    aclrtFree(expandXDev); aclrtFree(assistInfoDev);
+    aclrtFree(combCmdInfoDev); aclrtFree(xOutDev);
+    aclrtFree(routingTableDev);
     aclrtFree(dispTilingDev); aclrtFree(combTilingDev);
 
     HCCL_CHECK(HcclCommDestroy(hcclComm));

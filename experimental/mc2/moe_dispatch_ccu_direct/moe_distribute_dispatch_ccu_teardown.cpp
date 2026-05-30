@@ -24,9 +24,10 @@
  *   已就位；stream 顺序保证 v10 teardown launch 时 y / commCmdInfo 内容稳定。
  *
  * Algorithm 三段式（纯 vector 计算，无任何通信）：
- *   1. 读 commCmdInfo[r] (r in [0, epWorldSize)) 得每个 src rank 发本卡的 token 数
- *   2. 按 src rank 整段 DataCopy y[r 段] → expand_x[r 段]（每段 segBytes 字节）
- *   3. 累计 token 数，写 assist_info[r] 前缀和
+ *   1. 轮询 commCmdInfo ready 区 [0, R) 全 1 等齐（收口 ★ ready 区移到偏移 0）
+ *   2. 收口 ★【自数】遍历 commWindow 段 r 的 slot 按 metadata.srcRank==r 计有效 token，
+ *      紧密 DataCopy commWindow[有效 slot] → expand_x[紧密区]（不再读对端写的 tokenCount）
+ *   3. 同 slot metadata 三元组写 assist_info，dstTokenIdx 推进即每段有效 token 数累计
  *
  * 简化范围：
  *   - dtype 写死 bfloat16_t（生产可按 tilingData 字段切模板）
@@ -63,10 +64,8 @@ public:
         epWorldSize_      = tiling->epWorldSize;
         bs_               = tiling->bs;
         topK_             = tiling->topK;
-        hiddenSize_       = tiling->hiddenSize;
         tokenMsgLen_      = tiling->tokenMsgLen;
-        tokenWithMetaLen_ = tiling->tokenWithMetaLen;   // v15 ★ tokenMsgLen + 32
-        segBytes_         = tiling->segBytes;
+        tokenWithMetaLen_ = tiling->tokenWithMetaLen;   // = tokenMsgLen + 32
 
         // v13 ★ commWindowGM_ 绑定到对端接收 window（v13 工程内部 scratch，库上 op_def 无此字段）
         commWindowGM_.SetGlobalBuffer((__gm__ YType*)commWindow);
@@ -85,50 +84,50 @@ public:
     }
 
     /**
-     * v11 ★ 等齐阶段：轮询本卡 commCmdInfo[r] 等 sentinel 被覆盖。
+     * 收口 ★ 等齐阶段：轮询本卡 commCmdInfo 的 ready 区 [0, R) 等全为 1。
      *
      * 双流并行架构：setup CCU 立即返回（异步），teardown AIV 内部等齐。
      *
-     * Sentinel 机制：
-     *   - host 初始化 commCmdInfo 前 epWorldSize 槽为 0xFFFFFFFF (= -1 as int32)
-     *   - setup 段 8 跨卡 WriteNbWithArriveNotify 写 commCmdInfo[本卡 epRankId] = token 数
-     *     （>= 0，覆盖 sentinel）
-     *   - setup 段 8 末尾本地 StoreVariable 写本卡 commCmdInfo[self] = token 数
-     *   - teardown AIV 轮询本卡 commCmdInfo[r]（r in [0, epWorldSize)）：
-     *       值 == -1 → src rank r 还未发到位，继续轮询
-     *       值 >= 0  → src rank r 已到位（含发 0 token 的合法场景）
+     * 等齐信号 = "专用 ready 区全 1"。setup CCU 段 9 内部 WaitAllPeersArriveNotify(R-1) 确认本卡作为
+     *   接收方已收齐 *所有* 对端数据，段 10 用【1 次 LocalCopyNb】把 oneBuf（host 填 R 个 int32=1）
+     *   整块写到 ready 区，置 ready[0..R) 全 1。所以 ready 区全 1 ⟺ 本卡数据彻底落地。
+     *
+     * 布局收口：commCmdInfo 简化为只剩 ready 区，从偏移 0 起（删了 tokenCount/scratch 区）。
+     *   ready 区 int32 下标 = r（readyBase = 0）。tokenCount 不再由对端跨卡写——本卡每段的有效 token
+     *   数改由本 teardown 在 Process 里【自数】（遍历 commWindow 段 r 的 slot 按 metadata.srcRank 判定）。
+     *   ★ setup 段 10 写的 readyAddr 偏移（0）== 此处 readyBase（0），务必一致。
      *
      * 为何不依赖 0.5RTT totalCntXn 等齐：AIV 不能直接读 CCU 硬件寄存器；
-     * GM 共享内存（commCmdInfo）是 AIV/CCU 都能访问的唯一同步介质。
+     * GM 共享内存（commCmdInfo ready 区）是 AIV/CCU 都能访问的唯一同步介质。
      */
     __aicore__ inline void WaitForAllSrcRanks()
     {
-        constexpr int32_t kSentinelUnset = -1;
-        bool allArrived = false;
-        while (!allArrived) {
-            allArrived = true;
+        const uint32_t readyBase = 0U;          // 收口 ★ ready 区从偏移 0 起（与 setup 段 10 一致）
+        bool allReady = false;
+        while (!allReady) {
+            allReady = true;
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
-                int32_t val = commCmdInfoGM_.GetValue(r);
-                if (val == kSentinelUnset) {
-                    allArrived = false;
+                int32_t val = commCmdInfoGM_.GetValue(readyBase + r);
+                if (val != 1) {
+                    allReady = false;
                     break;
                 }
             }
             // 轮询间隔：GetValue 本身有 GM 访问延迟，无需显式 sleep。
-            // 生产版本可加 PipeBarrier + 微等待以减少 cache 压力。
         }
     }
 
     /**
-     * Process: 等齐 + 紧密拷贝 + 写三元组（v15 ★ 重写）。
+     * Process: 等齐 + 自数有效 token + 紧密拷贝 + 写三元组（收口 ★ 改为自数）。
      *
-     * v15 关键算法变更：
-     *   1. 不再按固定 segBytes 整段拷贝（含 padding），改为按 commCmdInfo[r] 实际数量紧密拷贝
-     *   2. expandX 输出紧密排列：rank 0 的 commCmdInfo[0] 个 token 在前，rank 1 的接着，依此类推
+     * 关键算法：
+     *   1. 不再读 commCmdInfo.tokenCount（收口删除了对端跨卡写 tokenCount）——改为遍历 commWindow
+     *      段 r 全部 slot，按 metadata.srcRank==r 自数有效 token 数（空 slot 0xFF→srcRank=-1 跳过）
+     *   2. expandX 输出紧密排列：rank 0 的有效 token 在前，rank 1 的接着，依此类推
      *   3. 每个 token 仍含 tokenWithMetaLen 字节（data + 32B metadata）
-     *   4. 同时从每个 token 末尾的 metadata 提取三元组 (srcRank, srcSlot, dstK) 写到 assistInfoForCombine
+     *   4. 同时从每个有效 token 末尾的 metadata 提取三元组 (srcRank, srcSlot, dstK) 写到 assistInfoForCombine
      *      assistInfoForCombine layout: [(r0t0_meta), (r0t1_meta), ..., (r1t0_meta), ...]
-     *      连续 sum_r(commCmdInfo[r]) * 3 个 INT32，与 expandX 紧密区每 token 一一对应
+     *      连续 dstTokenIdx*3 个 INT32，与 expandX 紧密区每 token 一一对应
      */
     __aicore__ inline void Process()
     {
@@ -150,55 +149,52 @@ public:
         // expandX 紧密拷贝目的偏移（按元素数累加）
         uint64_t dstTokenIdx = 0;   // expandX 中的紧密 token 索引（0..N-1）
 
+        // 收口 ★ tokenCount 不再由对端 CCU 跨卡写——本卡每段有效 token 数改为本 teardown【自数】：
+        //   遍历 commWindow 段 r 的全部 bs*topK 个 slot，读每 slot 末尾 metadata.srcRank，
+        //   仅 srcRank == r 的 slot 才是"对端 rank r 真实发来的有效 token"（空 slot 由 host 预初始化为
+        //   0xFF sentinel → srcRank = -1，不命中任何 r）。命中即紧密拷贝 + 写 assistInfo + 计数。
+        //   纯标量循环（GetValue / DataCopy / SetValue），不新增任何 AscendC API。
+        //
+        //   为何能区分有效/空 slot：dispatch driver 已把 commWindow 整块初始化为 0xFF（详见 driver 注释），
+        //   空 slot 的 metadata.srcRank = -1。这是"接收方自数"相对"对端写 tokenCount"的必要配套
+        //   （否则 rank 0 的有效 token srcRank=0 与 memset-0 空 slot 的 0 无法区分）。
+        const uint32_t segSlotCapacity = bs_ * topK_;   // 段 r 的 slot 容量
         for (uint32_t r = 0; r < epWorldSize_; ++r) {
-            // ====== 阶段 1：读 commCmdInfo[r] 得本段有效 token 数 ======
-            int32_t srcTokens = commCmdInfoGM_.GetValue(r);
-
-            // ====== 阶段 2：紧密拷贝 commWindow[r 段, slot 0..srcTokens-1] → expandX[紧密区 dstTokenIdx..+srcTokens] ======
-            //   每个 token tokenWithMetaLen 字节，含 data + metadata（一起拷过去）
-            //   段内 slot k 的 commWindow 起址 = r * segElemsCapacity + k * tokenWithMetaElems
-            //   紧密区 token dstTokenIdx 的 expandX 起址 = dstTokenIdx * tokenWithMetaElems
-            for (int32_t k = 0; k < srcTokens; ++k) {
+            for (uint32_t k = 0; k < segSlotCapacity; ++k) {
                 const uint64_t srcOff = static_cast<uint64_t>(r) * segElemsCapacity
                                        + static_cast<uint64_t>(k) * tokenWithMetaElems;
+                // 先读该 slot 的 metadata.srcRank 判定有效性（int32 视图下标）
+                const uint64_t metaSrcByteOff = (srcOff + metaOffsetElems) * sizeof(YType);
+                const uint64_t metaSrcIntIdx  = metaSrcByteOff / sizeof(int32_t);
+                int32_t srcRank = commWindowMetaGM_.GetValue(metaSrcIntIdx + 0);
+                if (srcRank != static_cast<int32_t>(r)) {
+                    continue;   // 空 slot（srcRank=-1）或非本段数据，跳过，不占紧密区
+                }
 
-                const uint64_t dstOff = (dstTokenIdx + static_cast<uint64_t>(k)) * tokenWithMetaElems;
-
-                // chunked GM→UB→GM 整 token + metadata
+                // ====== 紧密拷贝有效 token：commWindow[r 段, slot k] → expandX[紧密区 dstTokenIdx] ======
+                const uint64_t dstOff = dstTokenIdx * tokenWithMetaElems;
                 for (uint64_t off = 0; off < tokenWithMetaElems; off += kChunkElems) {
                     uint32_t copyLen = static_cast<uint32_t>(
                         (tokenWithMetaElems - off >= kChunkElems) ? kChunkElems : (tokenWithMetaElems - off));
-
                     DataCopy(ubLocal, commWindowGM_[srcOff + off], copyLen);
                     PipeBarrier<PIPE_ALL>();
                     DataCopy(expandXGM_[dstOff + off], ubLocal, copyLen);
                     PipeBarrier<PIPE_ALL>();
                 }
 
-                // ====== 阶段 3：从该 token 末尾 metadata 提取三元组写 assistInfoForCombine ======
-                //   v16+ ★ 用 Init 阶段创建的 commWindowMetaGM_（int32 视图）直接读，
-                //          替代 GetPhyAddr() 临时 reinterpret（GetPhyAddr 非 ascendc 标准 API）
-                //   metadata 三元组 (srcRank, srcSlot, dstK) 在 commWindow 该 token 偏移 = srcOff + metaOffsetElems
-                //   按 int32 视图换算下标：metaSrcIntIdx = (srcOff + metaOffsetElems) * sizeof(YType) / sizeof(int32_t)
-                const uint64_t metaSrcByteOff = (srcOff + metaOffsetElems) * sizeof(YType);
-
-                const uint64_t metaSrcIntIdx  = metaSrcByteOff / sizeof(int32_t);
-
-                int32_t srcRank = commWindowMetaGM_.GetValue(metaSrcIntIdx + 0);
+                // ====== 同 slot metadata 三元组 (srcRank, srcSlot, dstK) 写 assistInfoForCombine ======
                 int32_t srcSlot = commWindowMetaGM_.GetValue(metaSrcIntIdx + 1);
                 int32_t dstK    = commWindowMetaGM_.GetValue(metaSrcIntIdx + 2);
-
-                const uint64_t assistIdx = (dstTokenIdx + static_cast<uint64_t>(k)) * 3;
-
+                const uint64_t assistIdx = dstTokenIdx * 3;
                 assistInfoGM_.SetValue(assistIdx + 0, srcRank);
                 assistInfoGM_.SetValue(assistIdx + 1, srcSlot);
                 assistInfoGM_.SetValue(assistIdx + 2, dstK);
-            }
 
-            dstTokenIdx += static_cast<uint64_t>(srcTokens);
+                ++dstTokenIdx;   // 收口 ★ 自数：有效 token 计数 = 紧密区推进 = 每段有效 token 数累计
+            }
         }
 
-        // v15 ★ expandX 紧密区后面是 host 端预初始化的 sentinel (0xFF → metadata.srcRank = -1)
+        // expandX 紧密区后面是 host 端预初始化的 sentinel (0xFF → metadata.srcRank = -1)
         //   combine_setup 段 5/7 host unroll bs*K 次时，padding token 的 srcRank=-1 不命中任何 r ∈ [0, rankSize)，
         //   自动被 CCU_IF 过滤掉，无需额外清理逻辑。
     }
@@ -215,10 +211,8 @@ private:
     uint32_t epWorldSize_;
     uint32_t bs_;
     uint32_t topK_;
-    uint32_t hiddenSize_;
     uint64_t tokenMsgLen_;
     uint64_t tokenWithMetaLen_;     // v15 ★
-    uint64_t segBytes_;
 };
 
 /**
@@ -227,27 +221,14 @@ private:
  *   host driver 通过 `<<<blockDim, l2_ctrl, stream>>>(...)` 直接 launch。
  */
 extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
-    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo,
-    GM_ADDR expandX, GM_ADDR dynamicScales,
-    GM_ADDR assistInfoForCombine, GM_ADDR expertTokenNums,
-    GM_ADDR commWindow, /* v13 ★ 工程内部 scratch，op_def 无此字段 */
-    GM_ADDR workspace, GM_ADDR tilingGM)
+    GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR expandX,
+    GM_ADDR assistInfoForCombine, GM_ADDR tilingGM)
 {
-    // v10/v13 简化：device 端不读这 6 个字段（端到端 IO 契约保留，host driver 归零或不动）。
-    //   特别地 v13：op_def yAddr 也不读（caller 占位 alloc，device 端真正读的是 commWindow）。
-    
-    (void)x;
-    (void)y;
-    (void)expertIds;
-    (void)dynamicScales;
-    (void)expertTokenNums;
-    (void)workspace;
-
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchCcuTeardownTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchCcuTeardownTilingData, tilingData, tilingGM);
 
-    // v10 简化：dtype 写死 bfloat16_t；生产可按 tilingData 字段切模板（如 INT8 / FP8E5M2 等）。
+    // dtype 写死 bfloat16_t；生产可按 tilingData 字段切模板（如 INT8 / FP8E5M2 等）。
     MoeDistributeDispatchCcuTeardownAiv<bfloat16_t> op;
     op.Init(commWindow, commCmdInfo, expandX, assistInfoForCombine, &pipe, &tilingData);
     op.Process();

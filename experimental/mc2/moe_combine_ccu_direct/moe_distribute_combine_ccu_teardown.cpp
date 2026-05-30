@@ -10,26 +10,21 @@
 
 /*!
  * \file moe_distribute_combine_ccu_teardown.cpp
- * \brief v11 combine_teardown AIV ascendc kernel（与 dispatch_teardown v11 完全对称）。
+ * \brief combine_teardown AIV ascendc kernel（与 dispatch_teardown 对称，v20）。
  *
- * Algorithm 三段式（与 dispatch_teardown v11 对称）：
- *   1. WaitForAllSrcRanks  轮询本卡 commCmdInfo[r] sentinel 等齐所有 src rank 反向写完
- *   2. 按 (i, j) 遍历本卡所有 token 副本：
- *      - 从 routingTable[i*K+j] 得 dst rank（= dispatch 时的 dst rank）
- *      - 本卡的 yCombine[rank 段, peerRecvCount[rank] 槽] 是该 (i,j) 副本经 expert 处理后的反向结果
- *      - DataCopy yCombine[...] → x[i]（简化版："K 次覆盖"，正确加权求和待生产版）
- *      - peerRecvCount[rank] += 1
- *   3. （生产版）加权求和：x[i] = Σ_{j=0..K-1} expert_scales[i*K+j] * yCombine[rank_route[i,j], slot]
+ * Algorithm 两段（纯 vector，无通信）：
+ *   1. WaitForAllSrcRanks：轮询本卡 commCmdInfo 的 ready 区 [0,R) 等全为 1
+ *      （combine_setup CCU 段 9 WaitAllPeersArriveNotify 收齐反向数据后，段 10 LocalCopyNb 置 ready=1）。
+ *   2. K-stride 取 commWindow[i*K]（token i 的 j=0 副本）→ xOut[i]。
+ *      identity 模式下 commWindow[i*K] 即 x[i]，故 xOut==x 闭环成立。
+ *      生产版需对每 i 的 K 个副本加权求和（Cast + Muls expertScales + Add）。
  *
- * 简化范围（v11 demo）：
- *   - "K 次覆盖"代替"加权求和"——demo 验证 kernel 框架 + 双流并行 + 等齐机制，
- *     正确语义留待生产版（需 BF16→FP32 Cast + Mul + Accumulate + FP32→BF16 Cast）
- *   - block 数 = 1，dtype = bfloat16_t
+ * 简化范围（demo）：block 数 = 1，dtype = bfloat16_t；K-stride 取 j=0 副本（非加权求和）。
  *
- * Sentinel 等齐机制（与 dispatch_teardown 完全相同）：
- *   - host 初始化 commCmdInfo 前 epWorldSize 槽为 -1（0xFFFFFFFF）
- *   - combine_setup 段 8 跨卡 / 本地写 token 数（>= 0）覆盖 sentinel
- *   - teardown 轮询所有 r 的 commCmdInfo[r] != -1 → 等齐
+ * 等齐机制（v20 收口，与 dispatch_teardown 完全相同）：
+ *   - commCmdInfo 简化为只剩 ready 区 [0,R)（删 tokenCount/scratch），driver 初始化为 0。
+ *   - combine_setup 段 10 用 1 次 LocalCopyNb 把 ready[0..R) 置 1（收齐后）。
+ *   - teardown 轮询 ready[r] 全 == 1 → 数据齐。K-stride 算法不读 tokenCount。
  */
 
 #include "kernel_operator.h"
@@ -58,9 +53,7 @@ public:
         topK_             = tiling->topK;
         hiddenSize_       = tiling->hiddenSize;
         commQuantMode_    = tiling->commQuantMode;     // v17 Phase 2 ★
-        tokenMsgLen_      = tiling->tokenMsgLen;
         tokenWithMetaLen_ = tiling->tokenWithMetaLen;
-        segBytes_         = tiling->segBytes;
 
         // v16 ★ 复用 dispatch 同款 commWindow（hccl 开辟），不再用 yCombine
         commWindowGM_.SetGlobalBuffer((__gm__ YType*)commWindow);
@@ -73,24 +66,26 @@ public:
     }
 
     /**
-     * v11 ★ 等齐：轮询本卡 commCmdInfo sentinel（与 dispatch_teardown 完全相同的机制）。
+     * 收口 ★ 等齐：轮询本卡 commCmdInfo 的 ready 区 [0, R) 等全为 1（与 dispatch_teardown 完全相同）。
      *
-     * Sentinel 约定：
-     *   - host 初始化 commCmdInfo 前 epWorldSize 槽为 -1（0xFFFFFFFF）
-     *   - combine_setup 段 8 跨卡 WriteNbWithArriveNotify / 本地 StoreVariable
-     *     写完后变为 >= 0 的实际 token 数（覆盖 sentinel）
-     *   - 本函数轮询所有 r：commCmdInfoGM_.GetValue(r) != -1 → 已到位
+     * 等齐信号 = "专用 ready 区全 1"。combine_setup CCU 段 9 WaitAllPeersArriveNotify(R-1) 确认本卡
+     *   收齐反向数据后，段 10 用 1 次 LocalCopyNb 把 oneBuf 整块写到 ready 区置 ready[0..R)=1。
+     *
+     * 布局收口：commCmdInfo 简化为只剩 ready 区，从偏移 0 起（删了 tokenCount/scratch）。
+     *   ready 区 int32 下标 = r（readyBase = 0）。combine_teardown 用 K-stride 算法（从 commWindow[i*K]
+     *   取副本），本就不读 tokenCount，故此简化对 combine teardown 无其它影响。
+     *   ★ setup 段 10 写的 readyAddr 偏移（0）== 此处 readyBase（0），务必一致。
      */
     __aicore__ inline void WaitForAllSrcRanks()
     {
-        constexpr int32_t kSentinelUnset = -1;
-        bool allArrived = false;
-        while (!allArrived) {
-            allArrived = true;
+        const uint32_t readyBase = 0U;          // 收口 ★ ready 区从偏移 0 起（与 setup 段 10 一致）
+        bool allReady = false;
+        while (!allReady) {
+            allReady = true;
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
-                int32_t val = commCmdInfoGM_.GetValue(r);
-                if (val == kSentinelUnset) {
-                    allArrived = false;
+                int32_t val = commCmdInfoGM_.GetValue(readyBase + r);
+                if (val != 1) {
+                    allReady = false;
                     break;
                 }
             }
@@ -135,11 +130,13 @@ public:
         //     - xOut[i] = (H + H/32) 字节字节流（保留 MXFP8 格式，不反量化）
         //     - copyElemsPerToken = (H + H/32) / sizeof(BF16) 个 BF16 元素
         //
-        //   ★★★ MXFP8 H 约束（host driver runtime check）：H 必须是 64 的倍数 ★★★
-        //     原因：copyElemsPerToken = (H + H/32) / 2 要求 (H + H/32) 是 2 的倍数
-        //          = H * 33/32 是 2 的倍数 ↔ H/32 是 2 的倍数 ↔ H 是 64 的倍数
-        //     生产 H ∈ {256, 4096, 7168, 8192} 都满足 ✓
-        //     违反约束的边缘 case (H=32/96/160 等) host driver 已 abort，device 端不必再 check
+        //   ★★★ MXFP8 H 约束（host driver runtime check）：(H + H/32) 必须是 32 的倍数（即 H 是 1024 的倍数）★★★
+        //     原因：下方循环用基础 DataCopy(count) 搬 copyElemsPerToken 个 BF16 元素，每次搬运字节数
+        //          （含尾块 copyElemsPerToken%256）必须是 32B(单 block) 整数倍 → copyElemsPerToken%16==0
+        //          → (H+H/32)/2 % 16 == 0 → (H+H/32) % 32 == 0 →（H 已 %32 时）H % 1024 == 0。
+        //          注：仅 H%64（保证 (H+H/32) 为偶不丢字节）不够——还需 32B 对齐，故收紧到 (H+H/32)%32==0。
+        //     生产 H ∈ {4096, 7168, 8192} 都满足 ✓（H=256 不满足，但 demo 跑 BF16 不触发 MXFP8 旁路）
+        //     违反约束的 case host driver 已 abort，device 端不必再 check
         //
         //   两路径都不引入类型转换——纯字节透传，xOut layout 随 quantMode 切
         //   生产版加权求和（Phase 3+）：BF16 模式可加 Muls expertScales；MXFP8 模式需先 FP8→FP32 cast
@@ -177,30 +174,20 @@ private:
     uint32_t topK_;
     uint32_t hiddenSize_;
     uint32_t commQuantMode_;       // v17 Phase 2 ★ 0=BF16, 1=MXFP8（影响 copyLen）
-    uint64_t tokenMsgLen_;
     uint64_t tokenWithMetaLen_;    // v15 ★
-    uint64_t segBytes_;
 };
 
 /**
- * v11 combine teardown kernel 入口。
- *   入参顺序对齐库上 op_def（Inputs: expandX, quantExpandX, expertIds, expandIdx,
- *   expertScales, commCmdInfo, xActiveMask, sharedExpertX; Output: xOut）。
- *   + v11 工程内部参数：yCombineAddr（接收 buffer）/ routingTableAddr（路由表）。
+ * combine teardown kernel 入口（精简签名）。
+ *   实际入参：commCmdInfo（ready 区轮询等齐）/ commWindow（复用 dispatch 同款，K-stride 读 j=0 副本）/
+ *   xOut（输出）/ tilingGM。库上 op_def 的 expandX/quantExpandX/expertIds/expandIdx/expertScales/
+ *   xActiveMask/sharedExpertX 等输入，精简后不在 kernel 签名内（metadata 自带定位、本 demo 不需）。
  *
  * host driver 通过 `<<<blockDim, l2_ctrl, stream>>>(...)` 直接 launch。
  */
 extern "C" __global__ __aicore__ void moe_distribute_combine_ccu_teardown(
-    GM_ADDR expandX, GM_ADDR quantExpandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-    GM_ADDR expertScales, GM_ADDR commCmdInfo, GM_ADDR xActiveMask, GM_ADDR sharedExpertX,
-    GM_ADDR xOut,
-    GM_ADDR commWindow,                       // v16 ★ 复用 dispatch 同款 commWindow（替代 yCombine + routingTable）
-    GM_ADDR workspace, GM_ADDR tilingGM)
+    GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR xOut, GM_ADDR tilingGM)
 {
-    // v16 简化：device 端不读这几个字段（端到端 IO 契约保留）
-    (void)expandX; (void)quantExpandX; (void)expertIds; (void)expandIdx;
-    (void)expertScales; (void)xActiveMask; (void)sharedExpertX; (void)workspace;
-
     REGISTER_TILING_DEFAULT(MoeDistributeCombineCcuTeardownTilingData);
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineCcuTeardownTilingData, tilingData, tilingGM);
