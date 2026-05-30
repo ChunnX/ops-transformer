@@ -302,11 +302,26 @@ public:
                 Get<DETER_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape), Get<DETER_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
             int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
+            int64_t singleM = Get<MNK_M>(singleShape);
+            // === tile-level workspace overflow check ===
+            int64_t wsAccum   = static_cast<int64_t>(cumulativeGroupM_ - deterSync_.windowStartM);
+            int64_t tileWsEnd = wsAccum + tileMOffset + singleM;
+            if (tileWsEnd > static_cast<int64_t>(deterSync_.windowSize)) {
+                deterSync_.curGroupM = cumulativeGroupM_ + static_cast<uint64_t>(tileMOffset);
+                SyncAll<false>();
+                if ASCEND_IS_AIV {
+                    FRDeterministic(params);
+                }
+                deterSync_.windowStartM = deterSync_.curGroupM;
+                deterSync_.lowBoundM  = deterSync_.curGroupM + deterSync_.windowSize;
+                SyncAll<false>();
+            }
+            // === end overflow check ===
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
                 }
-                AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<MNK_M>(singleShape),
+                AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{singleM,
                                                                              Get<MNK_N>(singleShape), k};
                 mmadOp_(aGlobal_[Get<DETER_IDX_A_OFFSETS>(blockOffset_)],
                         bGlobal_[Get<DETER_IDX_B_OFFSETS>(blockOffset_)], l0cOutUb_, mmSingleShape, transA, transB);
@@ -314,7 +329,7 @@ public:
             }
             isVecSetSyncCom_ = true;
             if ASCEND_IS_AIV {
-                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
+                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{singleM,
                                                                                       Get<MNK_N>(singleShape), 0, 0};
                 int64_t nOffset = y - tileMOffset * n;
                 epilogueDequantOp_.SetWorkspaceGroupOffset(cumulativeGroupM_ - deterSync_.windowStartM);
