@@ -174,12 +174,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
     ASSERT_EQ(tiling.tokenTile, 6U);
     ASSERT_EQ(CalcTileNum(input.totalTokens, tiling.tokenTile), 3U);
 
-    auto firstTile = MakeTileParam(0, input.totalTokens, tiling);
+    auto firstTile = MakeTileParam(0, 0, tiling.tokenTile, input.totalTokens, tiling);
     EXPECT_EQ(firstTile.tokenOffset, 0U);
     EXPECT_EQ(firstTile.tokenSize, 6U);
     EXPECT_EQ(firstTile.rowSize, tiling.rowTile);
 
-    auto tailTile = MakeTileParam(2, input.totalTokens, tiling);
+    auto tailTile = MakeTileParam(0, 12, 1, input.totalTokens, tiling);
     EXPECT_EQ(tailTile.tokenOffset, 12U);
     EXPECT_EQ(tailTile.tokenSize, 1U);
     EXPECT_EQ(tailTile.rowSize, tiling.qkHeadTile);
@@ -192,25 +192,95 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailTileAndAivSlicesStayContiguous)
     EXPECT_EQ(aiv1.rowSize, 0U);
 }
 
-TEST(QkvRmsNormRopeCacheWithKScaleTiling, TileRangeCoversWaveAndEmptyCoreCases)
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
 {
-    const auto wave0 = MakeTileRange(65, 0, 32);
-    EXPECT_EQ(wave0.begin, 0U);
-    EXPECT_EQ(wave0.end, 65U);
-    EXPECT_EQ(wave0.stride, 32U);
-    EXPECT_EQ(wave0.begin + wave0.stride, 32U);
-    EXPECT_EQ(wave0.begin + 2 * wave0.stride, 64U);
+    ContractTiling tiling;
+    auto input = BuildInput(11, 32, 4, 4);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(tiling.tokenTile, 6U);
 
-    const auto wave31 = MakeTileRange(65, 31, 32);
-    EXPECT_EQ(wave31.begin, 31U);
-    EXPECT_EQ(wave31.end, 65U);
-    EXPECT_EQ(wave31.stride, 32U);
-    EXPECT_EQ(wave31.begin + wave31.stride, 63U);
+    auto fullTile = MakeTileParam(0, 0, tiling.tokenTile, input.totalTokens, tiling);
+    auto fullAiv0 = MakeAivSlice(fullTile, tiling.qkHeadTile, 0);
+    auto fullAiv1 = MakeAivSlice(fullTile, tiling.qkHeadTile, 1);
+    EXPECT_EQ(fullTile.bufferId, 0U);
+    EXPECT_EQ(fullAiv0.tokenOffset, 0U);
+    EXPECT_EQ(fullAiv0.tokenSize, tiling.tokenTilePerAiv);
+    EXPECT_EQ(fullAiv1.tokenOffset, tiling.tokenTilePerAiv);
+    EXPECT_EQ(fullAiv1.tokenSize, tiling.tokenTilePerAiv);
+    EXPECT_EQ(fullAiv1.rowOffset, fullAiv0.rowSize);
+    EXPECT_EQ(fullAiv0.rowSize + fullAiv1.rowSize, fullTile.rowSize);
 
-    const auto empty = MakeTileRange(1, 1, 32);
-    EXPECT_EQ(empty.begin, 0U);
-    EXPECT_EQ(empty.end, 0U);
-    EXPECT_EQ(empty.stride, 1U);
+    auto tailTile = MakeTileParam(1, 6, 5, input.totalTokens, tiling);
+    auto tailAiv0 = MakeAivSlice(tailTile, tiling.qkHeadTile, 0);
+    auto tailAiv1 = MakeAivSlice(tailTile, tiling.qkHeadTile, 1);
+    ASSERT_EQ(tailTile.tokenOffset, 6U);
+    ASSERT_EQ(tailTile.tokenSize, 5U);
+    EXPECT_EQ(tailTile.bufferId, 1U);
+    EXPECT_EQ(tailTile.rowSize, 5U * tiling.qkHeadTile);
+    EXPECT_EQ(tailAiv0.tokenOffset, 6U);
+    EXPECT_EQ(tailAiv0.tokenSize, 3U);
+    EXPECT_EQ(tailAiv0.rowOffset, 0U);
+    EXPECT_EQ(tailAiv0.rowSize, 3U * tiling.qkHeadTile);
+    EXPECT_EQ(tailAiv1.tokenOffset, 9U);
+    EXPECT_EQ(tailAiv1.tokenSize, 2U);
+    EXPECT_EQ(tailAiv1.rowOffset, tailAiv0.rowSize);
+    EXPECT_EQ(tailAiv1.rowSize, 2U * tiling.qkHeadTile);
+    EXPECT_EQ(tailAiv0.rowSize + tailAiv1.rowSize, tailTile.rowSize);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeBalancesContiguousTokens)
+{
+    EXPECT_EQ(CalcCoreGroupNum(65, 32), 32U);
+    EXPECT_EQ(CalcCoreGroupNum(13, 32), 13U);
+    EXPECT_EQ(CalcCoreGroupNum(0, 32), 0U);
+    EXPECT_EQ(CalcCoreGroupNum(128, 0), 0U);
+
+    uint32_t coveredEnd = 0;
+    for (uint32_t cubeIndex = 0; cubeIndex < 32; ++cubeIndex) {
+        const auto range = MakeCoreTokenRange(65, cubeIndex, 32);
+        EXPECT_EQ(range.begin, coveredEnd);
+        EXPECT_GE(range.end, range.begin);
+        EXPECT_LE(range.end - range.begin, 3U);
+        EXPECT_GE(range.end - range.begin, 2U);
+        coveredEnd = range.end;
+    }
+    EXPECT_EQ(coveredEnd, 65U);
+
+    const auto first = MakeCoreTokenRange(13, 0, 32);
+    EXPECT_EQ(first.begin, 0U);
+    EXPECT_EQ(first.end, 1U);
+
+    const auto empty = MakeCoreTokenRange(13, 13, 32);
+    EXPECT_EQ(empty.begin, 13U);
+    EXPECT_EQ(empty.end, 13U);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreLocalTilesFollowContiguousTokenRange)
+{
+    ContractTiling tiling;
+    auto input = BuildInput(40, 32, 4, 4);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(tiling.tokenTile, 6U);
+
+    const auto range = MakeCoreTokenRange(input.totalTokens, 0, 3);
+    ASSERT_EQ(range.begin, 0U);
+    ASSERT_EQ(range.end, 14U);
+
+    auto tile0 = MakeTileParam(0, range.begin, tiling.tokenTile, input.totalTokens, tiling);
+    auto tile1 = MakeTileParam(1, tile0.tokenOffset + tile0.tokenSize, tiling.tokenTile, input.totalTokens, tiling);
+    auto tile2 = MakeTileParam(2, tile1.tokenOffset + tile1.tokenSize, range.end - tile1.tokenOffset - tile1.tokenSize,
+        input.totalTokens, tiling);
+
+    EXPECT_EQ(tile0.tokenOffset, 0U);
+    EXPECT_EQ(tile0.tokenSize, 6U);
+    EXPECT_EQ(tile0.bufferId, 0U);
+    EXPECT_EQ(tile1.tokenOffset, 6U);
+    EXPECT_EQ(tile1.tokenSize, 6U);
+    EXPECT_EQ(tile1.bufferId, 1U);
+    EXPECT_EQ(tile2.tokenOffset, 12U);
+    EXPECT_EQ(tile2.tokenSize, 2U);
+    EXPECT_EQ(tile2.bufferId, 0U);
+    EXPECT_EQ(tile0.tokenSize + tile1.tokenSize + tile2.tokenSize, range.end - range.begin);
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)

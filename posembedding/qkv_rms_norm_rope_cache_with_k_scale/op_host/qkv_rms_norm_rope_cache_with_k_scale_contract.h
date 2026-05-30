@@ -22,6 +22,7 @@ constexpr uint32_t kL0cMaxRows = 256;
 constexpr uint32_t kUbInputRowsPerAiv = 160;
 constexpr uint32_t kUbOutputRowsPerAiv = 128;
 constexpr uint32_t kDimTileFast = 128;
+constexpr uint32_t kAivPerAic = 2;
 
 enum class ContractStatus : uint32_t {
     kSuccess = 0,
@@ -103,10 +104,9 @@ struct ContractTiling {
     uint32_t dimTile = 0;
 };
 
-struct TileRange {
+struct TokenRange {
     uint32_t begin = 0;
     uint32_t end = 0;
-    uint32_t stride = 1;
 };
 
 struct TileParam {
@@ -133,8 +133,10 @@ uint32_t AlignUp(uint32_t value, uint32_t align);
 uint32_t CeilDiv(uint32_t value, uint32_t divisor);
 ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling);
 uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile);
-TileRange MakeTileRange(uint32_t totalTiles, uint32_t cubeIndex, uint32_t coreGroupNum);
-TileParam MakeTileParam(uint32_t tileId, uint32_t totalTokens, const ContractTiling &tiling);
+uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum);
+TokenRange MakeCoreTokenRange(uint32_t totalTokens, uint32_t cubeIndex, uint32_t coreGroupNum);
+TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize, uint32_t totalTokens,
+    const ContractTiling &tiling);
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId);
 const char *ContractStatusName(ContractStatus status);
 

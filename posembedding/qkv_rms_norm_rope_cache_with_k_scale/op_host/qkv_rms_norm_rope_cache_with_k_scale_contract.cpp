@@ -160,28 +160,36 @@ uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile)
     return CeilDiv(totalTokens, tokenTile);
 }
 
-TileRange MakeTileRange(uint32_t totalTiles, uint32_t cubeIndex, uint32_t coreGroupNum)
+uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum)
 {
-    TileRange range;
-    if (coreGroupNum == 0 || cubeIndex >= coreGroupNum || cubeIndex >= totalTiles) {
+    return std::min(totalTokens, aicNum);
+}
+
+TokenRange MakeCoreTokenRange(uint32_t totalTokens, uint32_t cubeIndex, uint32_t coreGroupNum)
+{
+    TokenRange range;
+    if (coreGroupNum == 0 || cubeIndex >= coreGroupNum || totalTokens == 0) {
         return range;
     }
-    range.begin = cubeIndex;
-    range.end = totalTiles;
-    range.stride = coreGroupNum;
+
+    const uint32_t baseTokenSize = totalTokens / coreGroupNum;
+    const uint32_t extraTokenNum = totalTokens - baseTokenSize * coreGroupNum;
+    range.begin = cubeIndex * baseTokenSize + std::min(cubeIndex, extraTokenNum);
+    range.end = range.begin + baseTokenSize + (cubeIndex < extraTokenNum ? 1U : 0U);
     return range;
 }
 
-TileParam MakeTileParam(uint32_t tileId, uint32_t totalTokens, const ContractTiling &tiling)
+TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize, uint32_t totalTokens,
+    const ContractTiling &tiling)
 {
     TileParam tile;
     tile.tileId = tileId;
     tile.bufferId = tileId & 1U;
-    tile.tokenOffset = tileId * tiling.tokenTile;
-    if (tile.tokenOffset >= totalTokens) {
+    tile.tokenOffset = tokenOffset;
+    if (tile.tokenOffset >= totalTokens || tokenSize == 0) {
         return tile;
     }
-    tile.tokenSize = std::min(tiling.tokenTile, totalTokens - tile.tokenOffset);
+    tile.tokenSize = std::min({tokenSize, tiling.tokenTile, totalTokens - tile.tokenOffset});
     tile.qkHeadOffset = 0;
     tile.qkHeadSize = tiling.qkHeadTile;
     tile.vHeadOffset = 0;
@@ -194,7 +202,7 @@ TileParam MakeTileParam(uint32_t tileId, uint32_t totalTokens, const ContractTil
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)
 {
     AivSlice slice;
-    const uint32_t aiv0TokenSize = CeilDiv(tile.tokenSize, 2);
+    const uint32_t aiv0TokenSize = CeilDiv(tile.tokenSize, kAivPerAic);
     const uint32_t tokenPrefix = aivLocalId == 0 ? 0 : aiv0TokenSize;
     const uint32_t tokenSize = aivLocalId == 0 ? aiv0TokenSize : tile.tokenSize - aiv0TokenSize;
     slice.tokenOffset = tile.tokenOffset + tokenPrefix;

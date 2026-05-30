@@ -25,7 +25,7 @@ using qkv_rms_norm_rope_cache_with_k_scale::ContractDtype;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractStatus;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractStatusName;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractTiling;
-using qkv_rms_norm_rope_cache_with_k_scale::CalcTileNum;
+using qkv_rms_norm_rope_cache_with_k_scale::CalcCoreGroupNum;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::ValidateAndBuildTiling;
@@ -238,7 +238,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
         return ge::GRAPH_FAILED);
     context->GetRawTilingData()->SetDataSize(tilingDataSize);
     context->SetTilingKey(kTilingKeyArch35D128);
-    context->SetBlockDim(std::min(CalcTileNum(input.totalTokens, contractTiling.tokenTile), compileInfo->aicNum));
+    context->SetBlockDim(CalcCoreGroupNum(input.totalTokens, compileInfo->aicNum));
     return ge::GRAPH_SUCCESS;
 }
 

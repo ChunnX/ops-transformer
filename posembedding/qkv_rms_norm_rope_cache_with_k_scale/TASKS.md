@@ -18,7 +18,7 @@
 | T00 | Host checker/tiling contract + UT | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; 9 host UT passed. `--noexec` host UT compile also passed | Included in T00 commit and host UT build.sh fix commit |
 | P01 | Empty kernel package precheck | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | e2b91bd90 |
 | T01 | Controller and basic block skeleton | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 9 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Re-ran `--pkg` after splitting the D=128 fast-path kernel template into its own header. | 76d2f307f plus this commit |
-| T02 | AIV local slice and tail row range | Not started | Kernel compile + Host UT extension | |
+| T02 | AIV local slice and tail row range | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
 | T03 | Static buffer and tensor binding | Not started | Kernel compile | |
 | T04 | CrossCore wrappers and flag ids | Not started | Kernel compile + static review | |
 | T05 | Intra-core event constants and Init/End | Not started | Kernel compile + event id static check | |
@@ -34,6 +34,7 @@
 
 ## Next Task
 
-T02 is the next implementation task. It should add AIV0/AIV1 local token and
-row slice derivation inside the basic block while preserving the cube-group tile
-range introduced by T01.
+T03 is the next implementation task. It should add the static L1/UB buffer and
+tensor binding layout used by later preprocess, Cube, Fixpipe, and postprocess
+tasks, while reusing the T02 contiguous token range, local tile buffer id, and
+AIV slice metadata.
