@@ -636,6 +636,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                      qr_bf16=None, kr_bf16=None):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
     EPSILON = 1e-20
+    LN2 = math.log(2.0)
     Q_BLOCK_SIZE = 128
     K_BLOCK_SIZE = 256
     V_BLOCK_SIZE = 512
@@ -727,6 +728,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             S_ij = S_ij.masked_fill(causal_mask_j, float('-inf'))
 
             m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
+            m_block_j = torch.ceil(m_block_j / LN2) * LN2
             m_block_j = m_block_j - ln_p_scale
             m_block_j = torch.max(mi, m_block_j)
             P_ij_raw = torch.exp(S_ij - m_block_j)
@@ -750,6 +752,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 S_ij1 = S_ij1.masked_fill(causal_mask_j1, float('-inf'))
 
                 m_block_j1, _ = torch.max(S_ij1, dim=-1, keepdims=True)
+                m_block_j1 = torch.ceil(m_block_j1 / LN2) * LN2
                 m_block_j1 = m_block_j1 - ln_p_scale
                 m_block_j1 = torch.max(m_block_j, m_block_j1)
                 P_ij1_raw = torch.exp(S_ij1 - m_block_j1)
@@ -767,7 +770,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                 V_part1 = Vj_dequant[:, :, :Kj.shape[2], :]
                 V_part2 = Vj_dequant[:, :, Kj.shape[2]:Kj.shape[2] + Kj1.shape[2], :]
-                P_ij_Vj = torch.matmul(P_ij_drop, V_part1) + torch.matmul(P_ij1_drop, V_part2)
+                P_ij_Vj = torch.matmul(P_ij_drop * update_mul_j, V_part1) + torch.matmul(P_ij1_drop, V_part2)
 
                 si_new = update_mul_si * si + s_block_j * update_mul_j + s_block_j1
                 o_BLOCKS[i] = update_mul_si * oi + P_ij_Vj
