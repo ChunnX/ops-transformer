@@ -1280,7 +1280,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::CheckQuantModePtr(
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
     (*quantModePtr > static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT)),
     OP_LOGE(nodeName, "quantMode is invalid, only support [0, %ld], but got quantMode=%ld.",
-    static_cast<int64_t>(QuantModeA5::MX_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
+    static_cast<int64_t>(QuantModeA5::MX_CLIP_QUANT), *quantModePtr), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
