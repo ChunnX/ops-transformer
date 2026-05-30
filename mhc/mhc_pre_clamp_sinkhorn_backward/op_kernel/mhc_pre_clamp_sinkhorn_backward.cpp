@@ -21,7 +21,7 @@ using namespace AscendC;
 extern "C" __global__ __aicore__ void
 mhc_pre_clamp_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x, GM_ADDR phi,
                           GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre, GM_ADDR hc_before_norm, GM_ADDR inv_rms,
-                          GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR min, GM_ADDR max, GM_ADDR reduce_out,
+                          GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR reduce_out,
                           GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha,
                           GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
@@ -41,7 +41,7 @@ mhc_pre_clamp_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR g
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
 
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out,
-                norm_out, min, max, reduce_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+                norm_out, reduce_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     } else if (TILING_KEY_IS(0)) {
         MhcPreClampSinkhornBackwardKernel<DTYPE_X, DTYPE_PHI, false> op;
@@ -51,7 +51,7 @@ mhc_pre_clamp_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR g
         op.mm2_.Init(&tilingData.mm2TilingData, &pipe);
 
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out,
-                norm_out, min, max, reduce_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
+                norm_out, reduce_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     }
 }

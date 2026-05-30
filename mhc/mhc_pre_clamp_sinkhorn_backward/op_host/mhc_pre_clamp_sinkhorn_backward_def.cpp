@@ -79,16 +79,6 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("min")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("max")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("reduceOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
@@ -126,6 +116,8 @@ public:
         this->AICore().AddConfig("ascend910_93", aicConfig);
 
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
+        this->Attr("min").AttrType(OPTIONAL).Float(0.0f);
+        this->Attr("max").AttrType(OPTIONAL).Float(1.0f);
     }
 };
 

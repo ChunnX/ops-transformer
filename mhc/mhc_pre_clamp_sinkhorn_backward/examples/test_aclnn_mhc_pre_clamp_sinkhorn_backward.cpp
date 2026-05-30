@@ -173,14 +173,12 @@ struct Tensors {
     void *x_addr = nullptr, *phi_addr = nullptr, *alpha_addr = nullptr, *bias_addr = nullptr;
     void *h_pre_addr = nullptr, *hc_before_norm_addr = nullptr, *inv_rms_addr = nullptr;
     void *sum_out_addr = nullptr, *norm_out_addr = nullptr;
-    void *min_addr = nullptr, *max_addr = nullptr;
     void *grad_x_addr = nullptr, *grad_phi_addr = nullptr, *grad_alpha_addr = nullptr, *grad_bias_addr = nullptr;
     void *reduce_out_addr = nullptr;
     aclTensor *grad_hin = nullptr, *grad_h_post = nullptr, *grad_h_res = nullptr;
     aclTensor *x = nullptr, *phi = nullptr, *alpha = nullptr, *bias = nullptr;
     aclTensor *h_pre = nullptr, *hc_before_norm = nullptr, *inv_rms = nullptr;
     aclTensor *sum_out = nullptr, *norm_out = nullptr;
-    aclTensor *min_tensor = nullptr, *max_tensor = nullptr;
     aclTensor *grad_x = nullptr, *grad_phi = nullptr, *grad_alpha = nullptr, *grad_bias = nullptr;
     aclTensor *reduce_out = nullptr;
 };
@@ -191,7 +189,6 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
                        const std::vector<int64_t> &bias_shape, const std::vector<int64_t> &h_pre_shape,
                        const std::vector<int64_t> &hc_before_norm_shape, const std::vector<int64_t> &inv_rms_shape,
                        const std::vector<int64_t> &sum_out_shape, const std::vector<int64_t> &norm_out_shape,
-                       const std::vector<int64_t> &min_shape, const std::vector<int64_t> &max_shape,
                        const std::vector<int64_t> &reduce_out_shape,
                        Tensors &tensors)
 {
@@ -233,13 +230,6 @@ int CreateInputTensors(const std::vector<int64_t> &grad_hin_shape, const std::ve
     ret = CreateAclTensorFloat32(norm_out_host_data, norm_out_shape, tensors.norm_out_addr, tensors.norm_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create norm_out_tensor failed\n"); return -1);
 
-    std::vector<float> min_host_data = {0.0f};
-    std::vector<float> max_host_data = {1.0f};
-    ret = CreateAclTensorFloat32(min_host_data, min_shape, tensors.min_addr, tensors.min_tensor);
-    CHECK_RET(ret == 0, LOG_PRINT("Create min_tensor failed\n"); return -1);
-    ret = CreateAclTensorFloat32(max_host_data, max_shape, tensors.max_addr, tensors.max_tensor);
-    CHECK_RET(ret == 0, LOG_PRINT("Create max_tensor failed\n"); return -1);
-
     std::vector<float> reduce_out_host_data(reduce_out_shape.size() > 0 ? 1 : 0, 0.0f);
     ret = CreateAclTensorFloat32(reduce_out_host_data, reduce_out_shape, tensors.reduce_out_addr, tensors.reduce_out);
     CHECK_RET(ret == 0, LOG_PRINT("Create reduce_out_tensor failed\n"); return -1);
@@ -277,8 +267,6 @@ void DestroyTensors(Tensors &tensors)
     aclDestroyTensor(tensors.inv_rms);
     aclDestroyTensor(tensors.sum_out);
     aclDestroyTensor(tensors.norm_out);
-    aclDestroyTensor(tensors.min_tensor);
-    aclDestroyTensor(tensors.max_tensor);
     aclDestroyTensor(tensors.grad_x);
     aclDestroyTensor(tensors.grad_phi);
     aclDestroyTensor(tensors.grad_alpha);
@@ -300,8 +288,6 @@ void FreeDeviceMemory(Tensors &tensors)
     aclrtFree(tensors.inv_rms_addr);
     aclrtFree(tensors.sum_out_addr);
     aclrtFree(tensors.norm_out_addr);
-    aclrtFree(tensors.min_addr);
-    aclrtFree(tensors.max_addr);
     aclrtFree(tensors.grad_x_addr);
     aclrtFree(tensors.grad_phi_addr);
     aclrtFree(tensors.grad_alpha_addr);
@@ -339,8 +325,6 @@ int main()
     std::vector<int64_t> grad_phi_shape = {hc_mix, n * c};
     std::vector<int64_t> grad_alpha_shape = {3};
     std::vector<int64_t> grad_bias_shape = {hc_mix};
-    std::vector<int64_t> min_shape = {1};
-    std::vector<int64_t> max_shape = {1};
     std::vector<int64_t> reduce_out_shape = {bs, seq_len, n, c};
 
     int ret = InitAcl(device_id, context, stream);
@@ -349,7 +333,7 @@ int main()
     ret = CreateInputTensors(grad_hin_shape, grad_h_post_shape, grad_h_res_shape, x_shape,
                              phi_shape, alpha_shape, bias_shape, h_pre_shape,
                              hc_before_norm_shape, inv_rms_shape, sum_out_shape, norm_out_shape,
-                             min_shape, max_shape, reduce_out_shape, tensors);
+                             reduce_out_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
     ret = CreateOutputTensors(grad_x_shape, grad_phi_shape, grad_alpha_shape, grad_bias_shape, tensors);
@@ -363,7 +347,7 @@ int main()
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
         tensors.sum_out, tensors.norm_out,
-        tensors.min_tensor, tensors.max_tensor, tensors.reduce_out,
+        tensors.reduce_out,
         hc_eps,
         tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
         &workspace_size, &executor);

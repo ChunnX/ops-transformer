@@ -36,8 +36,6 @@ constexpr uint8_t HC_BEFORE_NORM_IDX = 8;
 constexpr uint8_t INV_RMS_IDX = 9;
 constexpr uint8_t SUM_OUT_IDX = 10;
 constexpr uint8_t NORM_OUT_IDX = 11;
-constexpr uint8_t MIN_IDX = 12;
-constexpr uint8_t MAX_IDX = 13;
 constexpr uint8_t GRAD_X_IDX = 0;
 constexpr uint8_t GRAD_PHI_IDX = 1;
 constexpr uint8_t GRAD_ALPHA_IDX = 2;
@@ -342,6 +340,10 @@ ge::graphStatus TilingMhcPreClampSinkhornBackward(gert::TilingContext *context)
     }
     auto epsPtr = attrsPtr->GetAttrPointer<float>(0);
     float eps = (epsPtr != nullptr) ? static_cast<float>(*epsPtr) : DEFAULT_EPS;
+    auto minPtr = attrsPtr->GetAttrPointer<float>(1);
+    float minVal = (minPtr != nullptr) ? static_cast<float>(*minPtr) : 0.0f;
+    auto maxPtr = attrsPtr->GetAttrPointer<float>(2);
+    float maxVal = (maxPtr != nullptr) ? static_cast<float>(*maxPtr) : 1.0f;
 
     int64_t batchSize = xShape.GetDim(BATCH_SIZE_DIM_IDX);
     int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
@@ -426,28 +428,6 @@ ge::graphStatus TilingMhcPreClampSinkhornBackward(gert::TilingContext *context)
     tilingData.set_skIterCount(skIterCount);
     tilingData.set_eps(eps);
 
-    auto minPtr = context->GetInputShape(MIN_IDX);
-    auto maxPtr = context->GetInputShape(MAX_IDX);
-    float minVal = 0.0f;
-    float maxVal = 1.0f;
-    if (minPtr != nullptr) {
-        auto minShape = minPtr->GetStorageShape();
-        if (minShape.GetDimNum() == 1 && minShape.GetDim(0) == 1) {
-            auto minDataPtr = context->GetInputData(MIN_IDX);
-            if (minDataPtr != nullptr && minDataPtr->GetData() != nullptr) {
-                minVal = *reinterpret_cast<const float *>(minDataPtr->GetData());
-            }
-        }
-    }
-    if (maxPtr != nullptr) {
-        auto maxShape = maxPtr->GetStorageShape();
-        if (maxShape.GetDimNum() == 1 && maxShape.GetDim(0) == 1) {
-            auto maxDataPtr = context->GetInputData(MAX_IDX);
-            if (maxDataPtr != nullptr && maxDataPtr->GetData() != nullptr) {
-                maxVal = *reinterpret_cast<const float *>(maxDataPtr->GetData());
-            }
-        }
-    }
     tilingData.set_minVal(minVal);
     tilingData.set_maxVal(maxVal);
 
