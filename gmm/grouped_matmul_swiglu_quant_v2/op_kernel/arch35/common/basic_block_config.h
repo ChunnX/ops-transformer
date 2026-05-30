@@ -28,9 +28,6 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
 
-constexpr static uint16_t WEIGHT_F16_UB_NZ_STRIDE = 65;
-constexpr int16_t SHIFT_FOR_BF16 = 1;
-
 struct WqmmConfig {
     bool aTrans;
     bool bTrans;
@@ -77,78 +74,5 @@ struct VecAntiQuantConfig {
 };
 static constexpr VecAntiQuantConfig VEC_ANTIQUANT_CONFIG_DYNAMIC = {4, 0};
 
-struct UbConsumeConfig {
-    uint64_t ubVfBufferNum;
-    uint64_t l1RequireVfComputeRealK;
-    uint64_t l1RequireVfComputeRealN;
-    uint64_t kWeightLowBitUbOffset;
-    uint64_t nWeightLowBitUbOffset;
-    uint64_t ubMxBiasNSize;
-    bool calcMxBias = false;
-    bool isBiasSingleVector = false;
-};
-
-struct L1ConsumeConfig {
-    uint64_t l1SplitTwoVecExternalOffset;
-    uint64_t l1RealExternalLen;
-    uint64_t l1MxBiasSplitNOffset;
-};
-
-struct UbBufferInfo {
-    uint64_t ubWeightOutputHighBitBufferNum;
-    uint64_t weightInputLowbitUbTotalSize;
-    uint64_t highBitDataUbTotalSize;
-    uint64_t biasUbTotalSize;
-    uint64_t biasReducedUbTotalSize;
-    uint64_t antiQuantScaleUbTotalSize;
-    uint64_t antiQuantScaleAfterCastUbTotalSize;
-    uint64_t antiQuantOffsetUbTotalSize;
-    uint64_t weightInputLowBitUbSingleBufferSize;
-    uint64_t antiQuantScaleUbSingleBufferSize;
-    uint64_t antiQuantScaleAfterCastUbSingleBufferSize;
-    uint64_t biasUbSingleBufferSize;
-    uint64_t biasReducedSingleBufferSize;
-    uint64_t antiQuantOffsetUbSingleBufferSize;
-    uint64_t highBitDataUbSingleBufferSize;
-    uint32_t antiQuantScaleMaskBufferSize;
-};
-
-template <const VecAntiQuantConfig &vecConfig>
-__aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
-{
-    return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(), // 64KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<int8_t>(),      // 128KB
-            .biasUbTotalSize = 2 * GetKBUnit<half>(),                 // 2KB
-            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),          // 2KB
-            .antiQuantScaleUbTotalSize = 0,
-            .antiQuantScaleAfterCastUbTotalSize = 0,
-            .antiQuantOffsetUbTotalSize = 0,
-            .weightInputLowBitUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
-            .antiQuantScaleUbSingleBufferSize = 0,
-            .antiQuantScaleAfterCastUbSingleBufferSize = 0,
-            .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .biasReducedSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
-            .antiQuantScaleMaskBufferSize = 0};
-}
-
-template <typename xType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__aicore__ constexpr UbBufferInfo GetBufferConfig()
-{
-    return GetMxA8W4NzBufferInfo<vecConfig>();
-}
-
-struct VfConfig {
-    uint64_t vfNStandardLen;
-    uint64_t vfKStandardLen;
-};
-
-template <typename xType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
-__aicore__ constexpr VfConfig GetVfConfig()
-{
-    return {.vfNStandardLen = 256, .vfKStandardLen = 64};
-}
 } // namespace GMMSQWeightQuant
 #endif // GMMSQ_BASIC_BLOCK_CONFIG_H
