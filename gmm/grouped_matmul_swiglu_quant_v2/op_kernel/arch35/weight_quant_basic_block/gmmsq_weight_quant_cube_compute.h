@@ -309,8 +309,8 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
     uint64_t mL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     uint64_t nL1AlignSize = Ops::Base::CeilAlign(l0CopyAndCalcParams.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
     if (kbOffset == 0) {
-        uint64_t nextL0cBufSize = CeilAlign(l0CopyAndCalcParams.mL0Size, static_cast<int64_t>(BLOCK_CUBE)) *
-                                  CeilAlign(l0CopyAndCalcParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));
+        uint64_t nextL0cBufSize = CeilAlign(l0CopyAndCalcParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
+                                  CeilAlign(l0CopyAndCalcParams.nL0Size, static_cast<uint64_t>(BLOCK_CUBE));
         if (l0cOffset_ + nextL0cBufSize > L0C_BUF_SIZE) {
             l0cOffset_ = 0;
         }
