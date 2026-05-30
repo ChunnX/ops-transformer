@@ -76,7 +76,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.actualS2CmpSize = actualS2CmpSize;
         runParam.cmpResidual = cmpResidualKvGm.GetValue(bIdx);
-        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
+        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio +
+            runParam.cmpResidual - runParam.actualS1Size;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
@@ -218,7 +219,8 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeLastBN(RunParamStr& runParam, GlobalTensor<int32_t>& cuSeqlensQGm, bool hasCuSeqlensQ)
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
-        if (runParam.boIdx > 0 && cuSeqlensQGm.GetValue(runParam.boIdx + 1) - cuSeqlensQGm.GetValue(runParam.boIdx) == 0) {
+        if (runParam.boIdx > 0 &&
+            cuSeqlensQGm.GetValue(runParam.boIdx + 1) - cuSeqlensQGm.GetValue(runParam.boIdx) == 0) {
             return true;
         }
     }

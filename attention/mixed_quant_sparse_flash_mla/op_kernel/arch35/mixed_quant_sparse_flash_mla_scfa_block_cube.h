@@ -359,7 +359,8 @@ public:
     __aicore__ inline SCFABlockCubeDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, \
         __gm__ uint8_t *query) {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, const ConstInfo& constInfo) {}
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+        const ConstInfo& constInfo) {}
 };
 
 template <typename T>
