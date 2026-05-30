@@ -20,7 +20,7 @@
 #include "defs.h"
 #include "quant_checker_base.h"
 #include "quant_checker_unquant.h"
-#include "quant_checker_static.h"
+#include "static_quant_checker.h"
 #include "quant_checker_pertoken.h"
 #include "quant_checker_pergroup.h"
 #include "quant_checker_mx.h"

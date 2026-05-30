@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_checker_static.h
+ * \file static_quant_checker.h
  * \brief MOE Distribute Dispatch 静态量化模式校验 (mode=1)
  */
 
