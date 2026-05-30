@@ -46,6 +46,17 @@ struct CopyL0CToDstQuantMode<
     static constexpr auto VALUE = QuantMode_t::NoQuant;
 };
 
+#if (__CCE_AICORE__ == 310)
+template <class ArchTag>
+struct CopyL0CToDstQuantMode<
+    ArchTag,
+    float, float,
+    ScaleGranularity::PER_TENSOR
+> {
+    static constexpr auto VALUE = QuantMode_t::QF322F32_PRE;
+};
+#endif
+
 // CopyL0CToGm cast fp32 to fp16
 template <class ArchTag>
 struct CopyL0CToDstQuantMode<
@@ -62,7 +73,8 @@ struct CopyL0CToDstQuantMode<
     float, half,
     ScaleGranularity::PER_TENSOR
 > {
-    static constexpr auto VALUE = QuantMode_t::F322F16;
+    // static constexpr auto VALUE = QuantMode_t::F322F16;
+    static constexpr auto VALUE = QuantMode_t::QF322F16_PRE;
 };
 
 // CopyL0CToGm cast fp32 to bf16
@@ -81,7 +93,8 @@ struct CopyL0CToDstQuantMode<
     float, bfloat16_t,
     ScaleGranularity::PER_TENSOR
 > {
-    static constexpr auto VALUE = QuantMode_t::F322BF16;
+    // static constexpr auto VALUE = QuantMode_t::F322BF16;
+    static constexpr auto VALUE = QuantMode_t::QF322BF16_PRE;
 };
 
 // CopyL0CToGm cast float to uint8/int8
