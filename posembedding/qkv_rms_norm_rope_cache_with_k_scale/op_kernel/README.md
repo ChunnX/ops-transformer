@@ -1,11 +1,23 @@
 # op_kernel
 
-This directory contains the AscendC D=128 fast-path controller and basic block
-for tiling key `350128` with `KERNEL_TYPE_MIX_AIC_1_2`.
+This directory contains the AscendC D=128 fast-path implementation for tiling
+key `350128` with `KERNEL_TYPE_MIX_AIC_1_2`.
 
 `qkv_rms_norm_rope_cache_with_k_scale.cpp` is only the kernel entry and tiling
-key dispatch shell. The D=128 fast-path controller, basic block, range helpers,
-and tensor bundle live in `qkv_rms_norm_rope_cache_with_k_scale_d128_fast.h`.
+key dispatch shell. The D=128 fast-path implementation is split by module:
+
+- `qkv_rms_norm_rope_cache_with_k_scale_d128_fast.h`: aggregate include for
+  the entry file.
+- `qkv_rms_norm_rope_cache_with_k_scale_common.h`: common constants, POD
+  structs, tensor bundles, range/tile helpers, and CrossCore wrappers.
+- `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level
+  contiguous token range loop and tile scheduling.
+- `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: resource binding,
+  static tensor binding, lifecycle hooks, and AIC/AIV dispatch.
+- `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
+- `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
+- `qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h`: kernel-side POD tiling
+  data.
 
 The controller reads the kernel-side POD tiling data, maps AIC `GetBlockIdx()`
 and AIV `GetBlockIdx() / 2` to the same cube group, computes a contiguous
