@@ -275,12 +275,14 @@ private:
     ElementInput MIN_VALUE;
 
     template <KvBaseTileRegSplitStagesBf16 kvBaseTileRegSplitStages>
-    __simd_vf__ inline void ComputeScaleAndMax(
-        __ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb,
-        uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
+    __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb, uint16_t m,
+                                               uint32_t tailN, uint32_t nPadding, ElementInput dScale,
+                                               uint16_t S2BaseSize)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
     }
-    
+
     template <>
     __simd_vf__ inline void ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::ONE>(
         __ubuf__ ElementInput *srcUb, __ubuf__ float *newMaxUb,
@@ -452,12 +454,13 @@ private:
     }
 
     template <KvBaseTileRegSplitStagesBf16 kvBaseTileRegSplitStages>
-    __simd_vf__ inline void ComputeExpSubSum16(
-        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
-        __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride,
-        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
+    __simd_vf__ inline void ComputeExpSubSum16(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
+                                               __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb, uint16_t m,
+                                               uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
+                                               uint32_t tailNOdd, uint32_t tailNEven)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeExpSubSum16 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>
@@ -641,12 +644,13 @@ private:
     }
 
     template <KvBaseTileRegSplitStagesBf16 kvBaseTileRegSplitStages>
-    __simd_vf__ inline void ComputeExpSubSum16FP8(
-        __ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
-        __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride,
-        uint16_t S2BaseSize, uint32_t tailNOdd, uint32_t tailNEven)
+    __simd_vf__ inline void ComputeExpSubSum16FP8(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
+                                                  __ubuf__ float *nowMaxUb, __ubuf__ float *expSumUb, uint16_t m,
+                                                  uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize,
+                                                  uint32_t tailNOdd, uint32_t tailNEven)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>

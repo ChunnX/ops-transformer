@@ -271,6 +271,8 @@ private:
     __simd_vf__ inline void ComputeScaleAndMax(__ubuf__ ElementInput *srcUb, __ubuf__ ElementInput *newMaxUb,
         uint16_t m, uint32_t tailN, uint32_t nPadding, ElementInput dScale, uint16_t S2BaseSize)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeScaleAndMax only supports ONE Or TWO stages, please use the specialized versions.");
     }
     
     template <>
@@ -396,9 +398,11 @@ private:
 
     template <KvBaseTileRegSplitStages kvBaseTileRegSplitStages>
     __simd_vf__ inline void ComputeExpSubSum16(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
-        __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+                                               __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
+                                               uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeExpSubSum16 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>
@@ -475,9 +479,11 @@ private:
 
     template <KvBaseTileRegSplitStages kvBaseTileRegSplitStages>
     __simd_vf__ inline void ComputeExpSubSum16FP8(__ubuf__ ElementOutput *expUb, __ubuf__ ElementInput *srcUb,
-        __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
-        uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
+                                                  __ubuf__ ElementInput *nowMaxUb, __ubuf__ ElementInput *expSumUb,
+                                                  uint16_t m, uint32_t tailN, uint32_t blockStride, uint16_t S2BaseSize)
     {
+        static_assert(DEPENDENT_FALSE<kvBaseTileRegSplitStages>,
+                      "ComputeExpSubSum16FP8 only supports ONE Or TWO stages, please use the specialized versions.");
     }
 
     template <>

@@ -102,21 +102,20 @@ std::unordered_map<std::string, std::string> inputLayoutMapQ2Kv = {
     {"BNSD", "BNSD"}
 };
 
-std::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
-    {ge::DT_FLOAT8_E4M3FN, "ge::DT_FLOAT8_E4M3FN"},
-    {ge::DT_BF16, "DT_BFLOAT16"},
-    {ge::DT_FLOAT16, "DT_FLOAT16"},
-    {ge::DT_FLOAT, "DT_FLOAT"},
-    {ge::DT_INT8, "DT_INT8"},
-    {ge::DT_INT16, "DT_INT16"},
-    {ge::DT_INT32, "DT_INT32"},
-    {ge::DT_INT64, "DT_INT64"},
-    {ge::DT_BOOL, "DT_BOOL"},
-    {ge::DT_DOUBLE, "DT_DOUBLE"}
-};
-
 static std::string DataTypeToString(ge::DataType dataType)
 {
+    static const ::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
+        {ge::DT_FLOAT8_E4M3FN, "ge::DT_FLOAT8_E4M3FN"},
+        {ge::DT_BF16, "DT_BFLOAT16"},
+        {ge::DT_FLOAT16, "DT_FLOAT16"},
+        {ge::DT_FLOAT, "DT_FLOAT"},
+        {ge::DT_INT8, "DT_INT8"},
+        {ge::DT_INT16, "DT_INT16"},
+        {ge::DT_INT32, "DT_INT32"},
+        {ge::DT_INT64, "DT_INT64"},
+        {ge::DT_BOOL, "DT_BOOL"},
+        {ge::DT_DOUBLE, "DT_DOUBLE"}};
+
     const auto it = DataTypeToStringMap.find(dataType);
     if (it != DataTypeToStringMap.end()) {
         return it->second;
