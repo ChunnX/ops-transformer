@@ -66,6 +66,12 @@ class Network(torch.nn.Module):
                                 value_dtype=None)
         return npu_result
 
+
+def get_cmp_residual_kv_for_npu(op_input, params):
+    if params[-1] == "SWA":
+        return None
+    return op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None
+
 def test_qsmla_quant_process_graph(test_data, device_id=0):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
@@ -119,6 +125,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     metadata.npu()
 
     print("npu_mixed_quant_sparse_flash_mla...")
+    cmp_residual_kv = get_cmp_residual_kv_for_npu(op_input, params)
     npu_result = npu_mode(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
@@ -130,7 +137,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                                 seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
-                                cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
+                                cmp_residual_kv=cmp_residual_kv,
                                 sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
                                 metadata=metadata,
                                 kv_quant_mode=op_input['kv_quant_mode'],
@@ -211,6 +218,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     metadata.npu()
 
     print("npu_mixed_quant_sparse_flash_mla...")
+    cmp_residual_kv = get_cmp_residual_kv_for_npu(op_input, params)
     npu_result, _ = torch.ops.npu_ops_transformer.npu_mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
@@ -225,7 +233,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 seqused_q=op_input['seqused_q'].npu() if op_input['seqused_q'] is not None else torch.tensor([]).npu(),
                                 seqused_ori_kv=op_input['seqused_ori_kv'].npu() if op_input['seqused_ori_kv'] is not None else None,
                                 seqused_cmp_kv=op_input['seqused_cmp_kv'].npu() if op_input['seqused_cmp_kv'] is not None else None,
-                                cmp_residual_kv=op_input['cmp_residual_kv'].npu() if op_input['cmp_residual_kv'] is not None else None,
+                                cmp_residual_kv=cmp_residual_kv,
                                 ori_topk_length=None,
                                 cmp_topk_length=None,
                                 sinks=op_input['sinks'].npu() if op_input['sinks'] is not None else None,
