@@ -136,11 +136,19 @@ protected:
         }
         if (pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_TYPE) ||
             pseType == static_cast<int64_t>(PseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-            OP_CHECK_IF(inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "INNER Pse does not support sparse mode 7."), return false);
+if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL_BAND)) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
+                    std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                    "The value of sparse_type cannot be RIGHT_DOWN_CAUSAL_BAND when pseType is 2 or 3");
+                return false;
+            }
             if (inputParamsRegbase_->get_sparseType() == static_cast<uint8_t>(SparseEnum::BAND_LEFT_UP_CAUSAL)) {
-                OP_CHECK_IF(!SetBandLeftUpCausalPseParamsRegbase(),
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "Inner pse sparse mode 8 param set error."), return false);
+                if (!SetBandLeftUpCausalPseParamsRegbase()) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_mode",
+                    std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                    "The parameters of input pse should be valid when sparse_mode is BAND_LEFT_UP_CAUSAL and pseType is 2 or 3");
+                return false;
+            }
                 return true;
             }
             for (int64_t i = 0L; i < bSize; ++i) {
@@ -174,10 +182,14 @@ protected:
                     return false;
                 }
             }
-            OP_CHECK_IF(inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
+if (inputParamsRegbase_->get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
                            inputParamsRegbase_->get_sparseType() !=
-                               static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Pse alibi only support causal sparse type."), return false);
+                               static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL)) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparse_type",
+                        std::to_string(static_cast<int64_t>(inputParamsRegbase_->get_sparseType())).c_str(),
+                        "The value of sparse_type must be CAUSAL or RIGHT_DOWN_CAUSAL when pse alibi is used");
+                    return false;
+                }
             pseEncodeType = PseEncodeType::PSE_ENCODE_ALIBI_S2_FULL;
             OP_LOGD(context_, "[%s] PSE_ENCODE_ALIBI_S2_FULL.", templateName);
         }
@@ -287,11 +299,14 @@ protected:
     bool CheckBandPretokenAndNexttoken(SparseEnum &sparseType)
     {
         if (preTokens < 0) {
-            OP_LOGE(context_, "pre_tokens[%ld] config error, has invalid data block.", preTokens);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+                std::to_string(preTokens).c_str(), "The value of pre_tokens must be greater than zero");
             return false;
         }
         if (nextTokens < 0 && preTokens + nextTokens < 0) {
-            OP_LOGE(context_, "pre_tokens[%ld], next_tokens[%ld], invalid config.", preTokens, nextTokens);
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+                (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
+                "The following constraint must be met: next_tokens >= 0 or pre_tokens + next_tokens >= 0");
             return false;
         }
         for (int64_t i = 0L; i < bSize; ++i) {
@@ -299,8 +314,9 @@ protected:
                 continue;
             }
             if (actualSeqLenData[i] - nextTokens > actualSeqLenKvData[i]) {
-                OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", i,
-                            actualSeqLenData[i], actualSeqLenKvData[i], nextTokens);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+                    std::to_string(nextTokens).c_str(),
+                    "The following constraint must be met for each batch: actual_seq_len_q - next_tokens <= actual_seq_len_kv");
                 return false;
             }
         }
@@ -380,23 +396,28 @@ protected:
             sparseType = SparseEnum::RIGHT_DOWN_CAUSAL;
         } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND)) {
             OP_CHECK_IF(!CheckBandPretokenAndNexttoken(sparseType),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName, "Check band mode pre_tokens and next_tokens fail."),
+                       OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "pre_tokens and next_tokens",
+                           (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
+                           "The values of pre_tokens and next_tokens must satisfy the band mode constraints"),
                        return false);
         } else if (sparseMode == static_cast<int64_t>(SparseMode::RIGHT_DOWN_CAUSAL_BAND)) {
             OP_CHECK_IF(!CheckRightDownCausalBandPretokenAndNexttoken(sparseType),
-                       OPS_REPORT_VECTOR_INNER_ERR(opName,
-                       "Check right down causal band mode pre_tokens and next_tokens fail."),
+                       OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "pre_tokens and next_tokens",
+                           (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
+                           "The values of pre_tokens and next_tokens must satisfy the right down causal band mode constraints"),
                        return false);
         } else if (sparseMode == static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
             if (actualSeqLenData[bandIndex] - nextTokens > actualSeqLenKvData[bandIndex]) {
-                OP_LOGE(context_, "Batch[%ld], s1[%ld], s2[%ld], next_tokens[%ld], has invalid row.", bandIndex,
-                          actualSeqLenData[0], actualSeqLenKvData[0], nextTokens);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+                    std::to_string(nextTokens).c_str(),
+                    "The following constraint must be met for the band index batch: actual_seq_len_q - next_tokens <= actual_seq_len_kv");
                 return false;
             }
             int64_t firstS2 = actualSeqLenKvData[bandIndex];
             if (preTokens < firstS2) {
-                OP_LOGE(context_, "Band_LeftUpCausal mode: pre_tokens[%ld] is smaller than first valid s2[%ld].",
-                          preTokens, firstS2);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+                    std::to_string(preTokens).c_str(),
+                    "The value of pre_tokens must be greater than the first valid actual_seq_len_kv in BAND_LEFT_UP_CAUSAL mode");
                 return false;
             }
             sparseType = SparseEnum::BAND_LEFT_UP_CAUSAL;
@@ -408,7 +429,8 @@ protected:
                                SparseEnum &sparseType)
     {
         if (nextTokens < 0) {
-            OP_LOGE(context_, "nextTokens[%ld] config error, there is no valid data block.", nextTokens);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "next_tokens",
+                std::to_string(nextTokens).c_str(), "To have valid data blocks, the value of next_tokens must be greater than zero");
             return false;
         }
         if (preTokens >= maxS1Val && nextTokens >= maxS2Val) {
@@ -419,8 +441,9 @@ protected:
                 continue;
             }
             if (actualSeqLenKvData[i] + preTokens < actualSeqLenData[i]) {
-                OP_LOGE(context_, "Batch[%ld] s1[%ld] s2[%ld] has invalid row, check pre_tokens and next_tokens.", i,
-                          actualSeqLenData[i], actualSeqLenKvData[i]);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "pre_tokens",
+                    std::to_string(preTokens).c_str(),
+                    "The following constraint must be met for each batch: actual_seq_len_kv + pre_tokens >= actual_seq_len_q");
                 return false;
             }
         }
@@ -439,9 +462,9 @@ protected:
                 sparseType = SparseEnum::BAND;
                 return true;
             } else {
-                OP_LOGE(context_,
-                          "preTokens[%ld] and nextTokens[%ld] config error with S[%ld], has invalid data block.",
-                          preTokens, nextTokens, minS2Val);
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+                    (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
+                    "The following constraint must be met: pre_tokens + next_tokens >= min(actual_seq_len_kv) when pre_tokens < 0");
                 return false;
             }
         }
@@ -480,25 +503,26 @@ protected:
         }
 
         for (int64_t i = 0; i < bSize; ++i) {
-            if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
-                if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
-                    OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [0, %ld]",
-                              templateName, i, prefixNData[i], actualSeqLenKvData[i]);
-                    return false;
-                }
+if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
+                    if (prefixNData[i] < 0 || prefixNData[i] > actualSeqLenKvData[i]) {
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "prefix_n",
+                            std::to_string(prefixNData[i]).c_str(),
+                            "The value of prefix_n must be [0, actual_seq_len_kv] when actual_seq_len_q > actual_seq_len_kv");
+                        return false;
+                    }
                 if (prefixNData[i] == 0) {
                     implMode = ImplMode::AA_INVALID_LINE_HIGH_PRECISION;
                     OP_LOGD(context_, "Enable invalid line impl mode.");
                 }
-            } else {
-                if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
-                    prefixNData[i] > actualSeqLenKvData[i]) {
-                    OP_LOGE(context_, "[%s] batch[%ld] prefixN=%ld is invalid, should be in range of [%ld, %ld]",
-                              templateName, i, prefixNData[i], actualSeqLenKvData[i] - actualSeqLenData[i],
-                              actualSeqLenKvData[i]);
-                    return false;
+} else {
+                    if (prefixNData[i] < actualSeqLenKvData[i] - actualSeqLenData[i] ||
+                        prefixNData[i] > actualSeqLenKvData[i]) {
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "prefix_n",
+                            std::to_string(prefixNData[i]).c_str(),
+                            "The value of prefix_n must be [actual_seq_len_kv - actual_seq_len_q, actual_seq_len_kv] when actual_seq_len_q <= actual_seq_len_kv");
+                        return false;
+                    }
                 }
-            }
         }
 
         sparseType = SparseEnum::PREFIX;
@@ -508,7 +532,9 @@ protected:
     bool VarLenSparseModeProcess(SparseEnum &sparseType)
     {
         if (!CheckPretokenAndNexttoken(sparseType)) {
-            OP_LOGE(context_, "Check pre_tokens and next_tokens failed.");
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_, "pre_tokens and next_tokens",
+                (std::to_string(preTokens) + " and " + std::to_string(nextTokens)).c_str(),
+                "The values of pre_tokens and next_tokens must satisfy the sparse mode constraints");
             return false;
         }
 
@@ -527,7 +553,8 @@ protected:
                   preTokens, nextTokens, s1Size, s2Size, hasAttenMask);
         if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX) ||
             sparseMode > static_cast<int64_t>(SparseMode::BAND_LEFT_UP_CAUSAL)) {
-            OP_LOGE(context_, "Var len not support sparse mode %ld.", sparseMode);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_, "sparse_mode",
+                std::to_string(sparseMode).c_str(), "The value of sparse_mode must be within the supported range for VarLen mode");
             return false;
         }
 
