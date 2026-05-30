@@ -61,8 +61,8 @@
 ## 约束说明
 -   该接口支持aclgraph模式。
 -   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值支持两种组织形式：
-    -   quant_mode为1时：KV的布局为block\_size\*(rope[64\*2]+nope[448]+scale[448/64\*2]+pad[18])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为bf16。
-    -   quant_mode为2时：KV的布局为block\_size\*(nope+rope)+block\_size\*(scale+pad[1])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为e8m0。
+    -   quant_mode为1时：KV的D支持608，布局为block\_size\*(rope[64\*2]+nope[448]+scale[448/64\*2]+pad[18])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为bf16。
+    -   quant_mode为2时：KV的D支持584，布局为block\_size\*(nope+rope)+block\_size\*(scale+pad[1])。其中rope部分为非量化且与q一致；nope部分为per-token-group FP8\_e4m3量化，group\_size=64；scale部分数据类型为e8m0。
 -   参数ori\_kv、cmp\_kv的数据类型必须保持一致，且不可同时为空。
 -   参数q中的N1当前支持64/128，ori\_kv、cmp\_kv中的KV\_N仅支持1。
 -   参数ori\_kv和cmp\_kv中的block\_size1和block\_size2需为16的倍数，最大支持1024；block\_num1及block_num2为PageAttention时block总数。
