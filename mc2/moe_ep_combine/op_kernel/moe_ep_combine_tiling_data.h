@@ -21,19 +21,6 @@ struct MoeEpCombineTilingData {
     MoeEpCombineInfo moeEpCombineInfo;
 };
 
-struct MoeEpCombineA2Info {
-    MoeEpCommonTilingData cfg;
-    uint32_t hasTopkWeights     = 0;
-    uint32_t aivNum             = 0;
-    uint64_t totalWinSizeEp     = 0;
-    uint64_t totalUbSize        = 0;
-    bool reserved1              = false;
-};
 
-struct MoeEpCombineA2TilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling;
-    MoeEpCombineA2Info moeEpCombineInfo;
-};
 
 #endif  // MOE_EP_COMBINE_TILING_DATA_H

@@ -5,20 +5,17 @@
 
 namespace Mc2Tiling {
 
-#define TILINGKEY_TPL_A2 0
-#define TILINGKEY_TPL_A3 1
 #define TILINGKEY_TPL_A5 2
 
-ASCENDC_TPL_ARGS_DECL(MoeEpDispatchEpilogue)
+ASCENDC_TPL_ARGS_DECL(MoeEpDispatchEpilogue,
+    ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
+                        TILINGKEY_TPL_A5));
 
-ASCENDC_TPL_SEL(MoeEpDispatchEpilogue,
-    ASCENDC_TPL_SEL_ENTRY(MoeEpDispatchEpilogue, A5,
+ASCENDC_TPL_SEL(
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
         ASCENDC_TPL_TILING_STRUCT_SEL(MoeEpDispatchEpilogueTilingData)),
-    ASCENDC_TPL_SEL_ENTRY(MoeEpDispatchEpilogue, A3,
-        ASCENDC_TPL_TILING_STRUCT_SEL(MoeEpDispatchEpilogueTilingData)),
-    ASCENDC_TPL_SEL_ENTRY(MoeEpDispatchEpilogue, A2,
-        ASCENDC_TPL_TILING_STRUCT_SEL(MoeEpDispatchEpilogueA2TilingData)))
+);
 
 }  // namespace Mc2Tiling
-
 #endif  // MOE_EP_DISPATCH_EPILOGUE_TILING_KEY_H
