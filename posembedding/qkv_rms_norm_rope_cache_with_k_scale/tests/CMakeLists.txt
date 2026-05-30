@@ -8,16 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ============================================================================
 
-message(STATUS "=== Debug: start ops.posembedding.qkv_rms_norm_rope_cache_with_kscale.CMakeLists.txt")
-
-# Opbuild derives QkvRmsNormRopeCacheWithKScale as qkv_rms_norm_rope_cache_with_k_scale.
-set(qkv_rms_norm_rope_cache_with_k_scale_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")
-set(qkv_rms_norm_rope_cache_with_k_scale_apt_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")
-
+message(STATUS "=== Debug: start ops.posembedding.qkv_rms_norm_rope_cache_with_k_scale.tests.CMakeLists.txt")
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
-if(NOT ENABLE_TEST AND NOT BENCHMARK)
-    list(REMOVE_ITEM CURRENT_DIRS tests)
-endif()
 foreach(SUB_DIR ${CURRENT_DIRS})
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
         add_subdirectory(${SUB_DIR})

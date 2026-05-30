@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_CONTRACT_H_
-#define QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_CONTRACT_H_
+#ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CONTRACT_H_
+#define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CONTRACT_H_
 
 #include <cstdint>
 
 namespace optiling {
-namespace qkv_rms_norm_rope_cache_with_kscale {
+namespace qkv_rms_norm_rope_cache_with_k_scale {
 
 constexpr uint32_t kHeadDimFast = 128;
 constexpr uint32_t kMaxTokenTile = 16;
@@ -138,7 +138,7 @@ TileParam MakeTileParam(uint32_t tileId, uint32_t totalTokens, const ContractTil
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId);
 const char *ContractStatusName(ContractStatus status);
 
-} // namespace qkv_rms_norm_rope_cache_with_kscale
+} // namespace qkv_rms_norm_rope_cache_with_k_scale
 } // namespace optiling
 
-#endif // QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_CONTRACT_H_
+#endif // QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CONTRACT_H_

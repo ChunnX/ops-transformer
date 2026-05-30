@@ -25,8 +25,8 @@ extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
     GM_ADDR q_scale, GM_ADDR k_cache_out, GM_ADDR v_cache_out, GM_ADDR k_scale_cache_out, GM_ADDR workspace,
     GM_ADDR tiling)
 {
-    if (TILING_KEY_IS(QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_D128_FAST)) {
-        KERNEL_TASK_TYPE(QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_D128_FAST, KERNEL_TYPE_MIX_AIC_1_2);
+    if (TILING_KEY_IS(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_D128_FAST)) {
+        KERNEL_TASK_TYPE(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_D128_FAST, KERNEL_TYPE_MIX_AIC_1_2);
 
         REGISTER_TILING_DEFAULT(QkvRmsNormRopeCacheWithKScaleTilingData);
         GET_TILING_DATA_WITH_STRUCT(QkvRmsNormRopeCacheWithKScaleTilingData, tilingDataIn, tiling);

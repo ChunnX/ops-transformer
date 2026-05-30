@@ -8,11 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ============================================================================
 
-message(STATUS "=== Debug: start ops.posembedding.qkv_rms_norm_rope_cache_with_kscale.op_host.CMakeLists.txt")
+message(STATUS "=== Debug: start ops.posembedding.qkv_rms_norm_rope_cache_with_k_scale.op_host.CMakeLists.txt")
 
-get_filename_component(QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-set(qkv_rms_norm_rope_cache_with_k_scale_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_DIR} CACHE INTERNAL "")
-set(qkv_rms_norm_rope_cache_with_k_scale_apt_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_DIR} CACHE INTERNAL "")
+get_filename_component(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(qkv_rms_norm_rope_cache_with_k_scale_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR} CACHE INTERNAL "")
+set(qkv_rms_norm_rope_cache_with_k_scale_apt_dir ${QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_DIR} CACHE INTERNAL "")
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
@@ -30,7 +30,7 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     add_modules_sources(OPTYPE qkv_rms_norm_rope_cache_with_k_scale ACLNNTYPE aclnn_exclude)
     if(TARGET ${OPHOST_NAME}_tiling_obj)
         target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-            qkv_rms_norm_rope_cache_with_kscale_contract.cpp
+            qkv_rms_norm_rope_cache_with_k_scale_contract.cpp
         )
     endif()
 endif()

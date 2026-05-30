@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "qkv_rms_norm_rope_cache_with_kscale_contract.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 
 #include <algorithm>
 
 namespace optiling {
-namespace qkv_rms_norm_rope_cache_with_kscale {
+namespace qkv_rms_norm_rope_cache_with_k_scale {
 namespace {
 
 bool IsShape1D(const TensorShapeInfo &shape, uint64_t d0)
@@ -254,5 +254,5 @@ const char *ContractStatusName(ContractStatus status)
     }
 }
 
-} // namespace qkv_rms_norm_rope_cache_with_kscale
+} // namespace qkv_rms_norm_rope_cache_with_k_scale
 } // namespace optiling

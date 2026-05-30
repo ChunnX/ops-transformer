@@ -6,7 +6,7 @@ This directory is the implementation workspace for the arch35
 Current state:
 
 1. T00 host op definition, infer shape, tiling contract, and host UT sources
-   are present. `op_host/qkv_rms_norm_rope_cache_with_kscale_contract.cpp`
+   are present. `op_host/qkv_rms_norm_rope_cache_with_k_scale_contract.cpp`
    contains pure host-side validation and tiling math shared by tiling runtime
    and UT; it is not device kernel code.
 2. T01 kernel controller and basic block skeleton are present in

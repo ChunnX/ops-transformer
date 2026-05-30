@@ -14,7 +14,7 @@
 #include "kernel_operator.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 
-#define QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_D128_FAST 350128
+#define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_D128_FAST 350128
 
 namespace QkvRmsNormRopeCacheWithKScale {
 using namespace AscendC;

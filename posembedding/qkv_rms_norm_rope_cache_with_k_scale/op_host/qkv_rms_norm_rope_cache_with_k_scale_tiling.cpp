@@ -8,10 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "qkv_rms_norm_rope_cache_with_kscale_tiling.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 #include "log/log.h"
-#include "qkv_rms_norm_rope_cache_with_kscale_contract.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_contract.h"
 #include "register/op_impl_registry.h"
 #include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -20,15 +20,15 @@
 
 namespace optiling {
 namespace {
-using qkv_rms_norm_rope_cache_with_kscale::ContractInput;
-using qkv_rms_norm_rope_cache_with_kscale::ContractDtype;
-using qkv_rms_norm_rope_cache_with_kscale::ContractStatus;
-using qkv_rms_norm_rope_cache_with_kscale::ContractStatusName;
-using qkv_rms_norm_rope_cache_with_kscale::ContractTiling;
-using qkv_rms_norm_rope_cache_with_kscale::CalcTileNum;
-using qkv_rms_norm_rope_cache_with_kscale::TensorContractInfo;
-using qkv_rms_norm_rope_cache_with_kscale::TensorShapeInfo;
-using qkv_rms_norm_rope_cache_with_kscale::ValidateAndBuildTiling;
+using qkv_rms_norm_rope_cache_with_k_scale::ContractInput;
+using qkv_rms_norm_rope_cache_with_k_scale::ContractDtype;
+using qkv_rms_norm_rope_cache_with_k_scale::ContractStatus;
+using qkv_rms_norm_rope_cache_with_k_scale::ContractStatusName;
+using qkv_rms_norm_rope_cache_with_k_scale::ContractTiling;
+using qkv_rms_norm_rope_cache_with_k_scale::CalcTileNum;
+using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
+using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
+using qkv_rms_norm_rope_cache_with_k_scale::ValidateAndBuildTiling;
 
 constexpr size_t kQkvIndex = 0;
 constexpr size_t kQGammaIndex = 1;

@@ -13,11 +13,11 @@
 #include <cstdint>
 #include <initializer_list>
 
-#include "../../../op_host/qkv_rms_norm_rope_cache_with_kscale_contract.h"
-#include "../../../op_host/qkv_rms_norm_rope_cache_with_kscale_tiling.h"
+#include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_contract.h"
+#include "../../../op_host/qkv_rms_norm_rope_cache_with_k_scale_tiling.h"
 
 namespace {
-using namespace optiling::qkv_rms_norm_rope_cache_with_kscale;
+using namespace optiling::qkv_rms_norm_rope_cache_with_k_scale;
 
 TensorShapeInfo Shape(std::initializer_list<uint64_t> dims, bool present = true)
 {

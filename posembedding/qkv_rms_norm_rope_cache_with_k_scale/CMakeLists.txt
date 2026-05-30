@@ -8,13 +8,18 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ============================================================================
 
-if(UT_TEST_ALL OR OP_HOST_UT)
-    add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
-    add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
-    list(FIND ASCEND_OP_NAME qkv_rms_norm_rope_cache_with_kscale QKV_KSCALE_UT_INDEX)
-    if("${ASCEND_OP_NAME}" STREQUAL "ALL" OR NOT QKV_KSCALE_UT_INDEX EQUAL -1)
-        target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/qkv_rms_norm_rope_cache_with_kscale_contract.cpp
-        )
-    endif()
+message(STATUS "=== Debug: start ops.posembedding.qkv_rms_norm_rope_cache_with_k_scale.CMakeLists.txt")
+
+# Opbuild derives QkvRmsNormRopeCacheWithKScale as qkv_rms_norm_rope_cache_with_k_scale.
+set(qkv_rms_norm_rope_cache_with_k_scale_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")
+set(qkv_rms_norm_rope_cache_with_k_scale_apt_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")
+
+file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+if(NOT ENABLE_TEST AND NOT BENCHMARK)
+    list(REMOVE_ITEM CURRENT_DIRS tests)
 endif()
+foreach(SUB_DIR ${CURRENT_DIRS})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
+        add_subdirectory(${SUB_DIR})
+    endif()
+endforeach()

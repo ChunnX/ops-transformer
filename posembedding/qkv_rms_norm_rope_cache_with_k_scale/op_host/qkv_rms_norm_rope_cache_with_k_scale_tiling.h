@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_TILING_H_
-#define QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_TILING_H_
+#ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
+#define QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
 
 #include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 #include "register/op_impl_registry.h"
@@ -39,4 +39,4 @@ ge::graphStatus TilingPrepare4QkvRmsNormRopeCacheWithKScale(gert::TilingParseCon
 
 } // namespace optiling
 
-#endif // QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_TILING_H_
+#endif // QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TILING_H_
