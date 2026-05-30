@@ -106,7 +106,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                "The op [FusedInferAttentionScore] try alloc tensor failed.");
+                "The op [FusedInferAttentionScore] try alloc fake actualSeqLengthsKvOptional failed.");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         return ret;
     }
@@ -114,7 +114,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
     ret = FakeArray(actualSharedPrefixLenOptional, fakeActualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                "The op [FusedInferAttentionScore] try alloc tensor failed.");
+                "The op [FusedInferAttentionScore] try alloc fake actualSharedPrefixLenOptional failed.");
         aclDestroyTensor(fakeActualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(fakeActualSeqLengthsKvOptional);
        return ret;

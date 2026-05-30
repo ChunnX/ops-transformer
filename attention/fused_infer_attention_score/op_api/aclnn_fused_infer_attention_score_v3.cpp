@@ -69,7 +69,7 @@ aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays,  FiaAct
     ret = FakeArray(inArrays.actualSeqLengthsKvOptional, outTensors.actualSeqLengthsKvOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                "The op [FusedInferAttentionScore] try alloc tensor failed.");
+                "The op [FusedInferAttentionScore] try alloc fake actualSeqLengthsKvOptional failed.");
         aclDestroyTensor(outTensors.actualSeqLengthsOptional); // 没有返回值无需校验
         return ret;
     }
@@ -77,7 +77,7 @@ aclnnStatus FakeFiaActualSeqArrays(const FiaActualSeqInArrays &inArrays,  FiaAct
     ret = FakeArray(inArrays.actualSharedPrefixLenOptional, outTensors.actualSharedPrefixLenOptional);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                "The op [FusedInferAttentionScore] try alloc tensor failed.");
+                "The op [FusedInferAttentionScore] try alloc fake actualSharedPrefixLenOptional failed.");
         aclDestroyTensor(outTensors.actualSeqLengthsOptional); // 没有返回值无需校验
         aclDestroyTensor(outTensors.actualSeqLengthsKvOptional);
         return ret;

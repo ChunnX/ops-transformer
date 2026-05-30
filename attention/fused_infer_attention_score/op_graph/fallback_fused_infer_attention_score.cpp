@@ -14,7 +14,6 @@
  */
 
 #include "log/log.h"
-#include <cstdio>
 #include "log/error_code.h"
 #include "fallback/fallback_comm.h"
 #include "fallback/fallback.h"
@@ -291,7 +290,7 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
     auto apiRet = FiaFillTensorParams(host_api_ctx, fiaTensors);
     OP_CHECK_IF(apiRet != GRAPH_SUCCESS,
         OP_LOGE("aclnnfallback",
-                "The op [FusedInferAttentionScore] received bad params, the reason is: [Input Tensors invalid]"),
+                "The op [FusedInferAttentionScore] received bad params, the reason is: [input tensors invalid]"),
         return GRAPH_FAILED);
 
     std::vector<const gert::Tensor *> ge_tenserListKey;
@@ -307,21 +306,18 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
     auto attrs = host_api_ctx->GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
         OP_LOGE("aclnnfallback",
-                "The op [FusedInferAttentionScore] missing [attribute] attribute"),
+            "The op [FusedInferAttentionScore] received bad params, the reason is: [host_api_ctx Attrs is null]"),
         return GRAPH_FAILED);
     FillAttrPointers(attrs, attrPointers);
 
     FusedInferHostScalarParams scalarParams{};
     GetFusedInferHostScalarParams(attrPointers, scalarParams);
 
-    if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) {
-        // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
-        char logMsg[512] = {0};
-        (void)snprintf(logMsg, sizeof(logMsg),
+    if (scalarParams.innerPrecise < 0 || scalarParams.innerPrecise > 3) { // innerPrecise=2,3 corresponds to rows with invalid high precision and high performance
+        OP_LOGE(host_api_ctx->GetNodeName(), 
             "The op [FusedInferAttentionScore] received bad params, the reason is: "
-            "[invalid innerPrecise(%ld). Only support 0~3 now.]",
+            "[invalid innerPrecise(%ld). only support 0~3 now.]",
             scalarParams.innerPrecise);
-        OP_LOGE(host_api_ctx->GetNodeName(), logMsg);
         return GRAPH_FAILED;
     }
     OP_LOGD(host_api_ctx->GetNodeName(), "FusedInferAttentionScore fallback begin, numHeads = %ld, dScaleValue = %lf",
@@ -354,11 +350,8 @@ static graphStatus FusedInferHostExecuteFunc(OpExecuteContext *host_api_ctx)
         scalarParams.queryQuantMode, scalarParams.pseType, fiaTensors.output, fiaTensors.softmaxLse);
 
     if (apiRet != GRAPH_SUCCESS) {
-        char logMsg[512] = {0};
-        (void)snprintf(logMsg, sizeof(logMsg),
-            "The op [FusedInferAttentionScore] received bad params, the reason is: [apiRet failed:%u]",
-            apiRet);
-        OP_LOGE(host_api_ctx->GetNodeName(), logMsg);
+        OP_LOGE(host_api_ctx->GetNodeName(),
+            "The op [FusedInferAttentionScore] apiRet failed:%u", apiRet);
         return GRAPH_FAILED;
     }
 
