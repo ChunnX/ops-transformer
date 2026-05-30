@@ -9,6 +9,7 @@
  */
 
 #include <dlfcn.h>
+#include <sstream>
 
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
@@ -21,6 +22,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 #include "grouped_matmul_finalize_routing.h"
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/transpose.h"
@@ -38,6 +40,23 @@ extern "C" {
 
 
 namespace {
+
+std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+}
 
 static constexpr int INDEX_X1_IN_MANDTORY_TUPLE = 0;
 static constexpr int INDEX_X2_IN_MANDTORY_TUPLE = 1;
@@ -1429,9 +1448,10 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
     } else if (!((transposeX1 == false && transposeX2 == false) ||
                  (transposeX1 == false && transposeX2 == true &&
                   op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510))) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulFinalizeRoutingV3: valid transpose config: transposeX1=%s,transposeX2=%s",
-                transposeX1 ? "true" : "false", transposeX2 ? "true" : "false");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
+            "x=" + ViewShapeToString(x1) + ", weight=" + ViewShapeToString(x2),
+            "the value of x and weight transpose config must be false/false or false/true on DAV_3510");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // unpack int32 to int4
@@ -1454,12 +1474,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
     bool isMXValid = CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
                      CheckType(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && !isMXValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "aclnnGroupedMatmulFinalizeRoutingV3 weightNd: Invalid dtype combination."
-                "Expected: x1 and x2 both in [FLOAT8_E5M2, FLOAT8_E4M3FN, "
-                "FLOAT4_E2M1] for mx."
-                "But got x1=%s, x2=%s",
-                op::ToString(x1->GetDataType()).GetString(), op::ToString(tmpWeightV3->GetDataType()).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
+            "x=" + std::string(op::ToString(x1->GetDataType()).GetString()) +
+                ", weight=" + op::ToString(tmpWeightV3->GetDataType()).GetString(),
+            "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
         return ACLNN_ERR_PARAM_INVALID;
     }
         auto uniqueExecutor = CREATE_EXECUTOR();
