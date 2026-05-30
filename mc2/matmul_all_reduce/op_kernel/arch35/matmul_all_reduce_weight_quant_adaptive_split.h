@@ -30,14 +30,14 @@
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
 using Mc2WeightQuantBatchMatmulV2::Mc2QuantType;
-template <typename XType, typename WType, typename YType, class MmType, bool basedA2aRsAg>
+template <typename XType, typename WType, typename YType, class MmType, bool basedA2aRsAg, int commMode>
 class MatmulAllReduceWeightQuantAdaptiveSplit
-    : public MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg>
+    : public MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceWeightQuantAdaptiveSplit(
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
-        : MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg>(
+        : MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>(
               addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
         mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData*)tilingData;
@@ -81,7 +81,8 @@ private:
     Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData* mc2TilingData_;
 };
 
-#define INVOKE_MC2_WEIGHT_QUANT_ADAPTIVE_SPLIT_KERNEL(bTransFlag, offsetFlag, quantType, biasType, vecAntiQuantConfig, basedA2aRsAg) \
+#define INVOKE_MC2_WEIGHT_QUANT_ADAPTIVE_SPLIT_KERNEL(                                                                 \
+    bTransFlag, offsetFlag, quantType, biasType, vecAntiQuantConfig, basedA2aRsAg, commMode)                           \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData, tilingData, tilingGM);       \
         static constexpr Mc2WeightQuantBatchMatmulV2::Arch35::WqmmConfig wqmmCfg = {                                      \
@@ -91,7 +92,7 @@ private:
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
         \ 
         QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr};                             \
-        MatmulAllReduceWeightQuantAdaptiveSplit<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, basedA2aRsAg> op(                    \
+        MatmulAllReduceWeightQuantAdaptiveSplit<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, basedA2aRsAg, commMode> op(       \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe);                                      \
         op.Init();                                                                                                     \
         op.Process();                                                                                                  \

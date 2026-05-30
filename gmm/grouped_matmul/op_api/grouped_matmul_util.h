@@ -45,6 +45,7 @@ constexpr size_t MX_TUPLE_GROUP_NUMBER_DIM_INDEX = 4UL;
 
 constexpr int64_t CUBE_BLOCK_SIZE_16 = 16L;
 constexpr int64_t CUBE_BLOCK_SIZE_32 = 32L;
+constexpr int64_t CUBE_BLOCK_SIZE_64 = 64L;
 constexpr int64_t PERTILE_GROUP_SIZE = 128L;
 constexpr int64_t MXFP_DIVISOR_SIZE = 64L;
 constexpr int64_t MXFP_MULTI_BASE_SIZE = 2L;
@@ -110,7 +111,8 @@ const std::map<DataType, aclDataType> BIAS_DTYPE {
     {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
     {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},
     {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
-    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT}
+    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT},
+    {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT}
 };
 
 const std::map<DataType, std::string> DTYPE_STRING{

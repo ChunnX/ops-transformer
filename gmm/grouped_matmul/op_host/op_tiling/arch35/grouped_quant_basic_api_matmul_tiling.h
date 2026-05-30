@@ -41,14 +41,13 @@ protected:
     ge::graphStatus PostTiling() override;
     void PrintQuantParams() override;
     virtual void Reset();
-    
-private:
     ge::graphStatus CalL1Tiling();
+
+private:
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();
-
     GroupedMatmulTilingData::GMMQuantBasicApiTilingData tilingData_;
 };
 } // namespace optiling

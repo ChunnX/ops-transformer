@@ -65,6 +65,7 @@ constexpr int64_t BS_UPPER_BOUND = 4UL;
 constexpr int64_t COMM_CMD_INFO_MULTIPLY = 16UL;
 constexpr int64_t MIN_AVAILABLE_BUFF_SIZE = 2UL;
 constexpr int64_t HCCL_BUFFER_SIZE = 44UL;
+constexpr int64_t STATIC_QUANT_DIM_0 = 1;
 
 constexpr int64_t MIN_H = 1024UL;
 constexpr int64_t MAX_H = 8192UL;
@@ -182,10 +183,9 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetRequiredAttrAndSetTilin
     return ge::GRAPH_SUCCESS;
 }
 
-const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckSharedExpertAttrValue()
+const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckSharedExpertAttrValue(
+    const uint32_t sharedExpertNum, const uint32_t sharedExpertRankNum)
 {
-    const uint32_t& sharedExpertNum = tilingData_->moeDistributeDispatchSetupInfo.sharedExpertNum;
-    const uint32_t& sharedExpertRankNum = tilingData_->moeDistributeDispatchSetupInfo.sharedExpertRankNum;
     // 共享专家卡数>=共享专家数且可以整除
     if (sharedExpertRankNum == 0) {
         return ge::GRAPH_SUCCESS;
@@ -291,7 +291,9 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetOptionalAttrAndSetTilin
     }
 
     // 校验共享专家限制
-    if (CheckSharedExpertAttrValue() != ge::GRAPH_SUCCESS) {
+    const uint32_t sharedExpertNum = static_cast<uint32_t>(*sharedExpertNumPtr);
+    const uint32_t sharedExpertRankNum = static_cast<uint32_t>(*sharedExpertRankNumPtr);
+    if (CheckSharedExpertAttrValue(sharedExpertNum, sharedExpertRankNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -466,13 +468,31 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckTensorShapeRela
     }
 
     // H校验
+    int64_t quantMode = tilingData_->moeDistributeDispatchSetupInfo.quantMode;
     if (scalesShape != nullptr) {
-        OP_TILING_CHECK(
-            xStorageShape->GetStorageShape().GetDim(1) != scalesShape->GetStorageShape().GetDim(1),
-            OP_LOGE(
-                nodeName_, "x's dim1[%lu] should be equal to scales's dim1[%lu]",
-                xStorageShape->GetStorageShape().GetDim(1), scalesShape->GetStorageShape().GetDim(1)),
-            return ge::GRAPH_FAILED);
+        size_t scalesDimNum = scalesShape->GetStorageShape().GetDimNum();
+        // 1D: Static quant only
+        if (scalesDimNum == ONE_DIMS) {
+            auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
+            const int64_t scalesDim0 = scalesShape->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK((quantMode == STATIC_QUANT) && (yDesc -> GetDataType() == ge::DT_INT8)
+                && (scalesDim0 != xStorageShape->GetStorageShape().GetDim(1)) && (scalesDim0 != STATIC_QUANT_DIM_0),
+                OP_LOGE(nodeName_, "The expected scalesDim0 is %lu or %lu in static quant, but got %ld",
+                    xStorageShape->GetStorageShape().GetDim(1), STATIC_QUANT_DIM_0, scalesDim0),
+                    return ge::GRAPH_FAILED);
+            OP_TILING_CHECK((quantMode == STATIC_QUANT) && (yDesc->GetDataType() == ge::DT_HIFLOAT8)
+                && (scalesDim0 != STATIC_QUANT_DIM_0),
+                OP_LOGE(nodeName_,
+                    "The expected scalesDim0 is 1 when y dype is hifloat8 in static quant, but got %ld.", scalesDim0),
+                    return ge::GRAPH_FAILED);
+        } else {
+            OP_TILING_CHECK(
+                xStorageShape->GetStorageShape().GetDim(1) != scalesShape->GetStorageShape().GetDim(1),
+                OP_LOGE(
+                    nodeName_, "x's dim1[%lu] should be equal to scales's dim1[%lu]",
+                    xStorageShape->GetStorageShape().GetDim(1), scalesShape->GetStorageShape().GetDim(1)),
+                return ge::GRAPH_FAILED);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -638,15 +658,18 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckComplexTensorSh
     int64_t K = tilingData_->moeDistributeDispatchSetupInfo.k;
 
     auto scalesShape = context_->GetOptionalInputShape(SCALES_INDEX);
-    if (scalesShape != nullptr) {
-        int64_t scalesDim0GoldenSize = moeExpertNum + sharedExpertNum;
-        int64_t scalesDim0Size = context_->GetOptionalInputShape(SCALES_INDEX)->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(
-            scalesDim0Size != scalesDim0GoldenSize,
-            OP_LOGE(
-                nodeName_, "scales's dim0[%lu] should equal to moeExpertNum + sharedExpertNum[%lu].", scalesDim0Size,
-                scalesDim0GoldenSize),
-            return ge::GRAPH_FAILED);
+    if ((scalesShape != nullptr)) {
+        size_t scalesDimNum = scalesShape->GetStorageShape().GetDimNum();
+        if (scalesDimNum != ONE_DIMS) {
+            int64_t scalesDim0GoldenSize = moeExpertNum + sharedExpertNum;
+            int64_t scalesDim0Size = context_->GetOptionalInputShape(SCALES_INDEX)->GetStorageShape().GetDim(0);
+                OP_TILING_CHECK(
+                    scalesDim0Size != scalesDim0GoldenSize,
+                    OP_LOGE(nodeName_,
+                        "scales's dim0[%lu] should equal to moeExpertNum + sharedExpertNum[%lu].", scalesDim0Size,
+                        scalesDim0GoldenSize),
+                    return ge::GRAPH_FAILED);
+        }
     }
 
     int64_t yOutDim0GoldenSize = (BS * (K + sharedExpertNum));

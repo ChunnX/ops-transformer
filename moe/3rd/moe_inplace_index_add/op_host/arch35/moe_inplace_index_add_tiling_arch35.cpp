@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "moe_inplace_index_add_tiling_arch35.h"
 
 namespace optiling

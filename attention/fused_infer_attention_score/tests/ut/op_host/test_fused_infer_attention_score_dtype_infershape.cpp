@@ -28,6 +28,9 @@ protected:
     }
 };
 
+// 临时添加，待框架修复后删除
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(FusedInferAttentionScoreInferDTypeTest);
+
 TEST_P(FusedInferAttentionScoreInferDTypeTest, param)
 {
     auto param = GetParam();

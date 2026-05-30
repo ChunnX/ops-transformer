@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "aclnn/aclnn_base.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/common_types.h"
 #include "gmm_csv_parse_utils.h"
@@ -43,6 +44,23 @@ inline aclDataType ParseAclDtype(const std::string &dtype)
     };
     const auto it = dtypeMap.find(Trim(dtype));
     return it == dtypeMap.end() ? ACL_DT_UNDEFINED : it->second;
+}
+
+inline aclnnStatus ParseAclnnStatus(const std::string &status)
+{
+    static const std::map<std::string, aclnnStatus> statusMap = {
+        {"ACLNN_SUCCESS", ACLNN_SUCCESS},
+        {"ACLNN_ERR_PARAM_INVALID", ACLNN_ERR_PARAM_INVALID},
+        {"ACLNN_ERR_PARAM_NULLPTR", ACLNN_ERR_PARAM_NULLPTR},
+        {"ACLNN_ERR_INNER_NULLPTR", ACLNN_ERR_INNER_NULLPTR},
+        {"ACLNN_ERR_INNER", ACLNN_ERR_INNER},
+    };
+    const auto trimmed = Trim(status);
+    const auto it = statusMap.find(trimmed);
+    if (it != statusMap.end()) {
+        return it->second;
+    }
+    return static_cast<aclnnStatus>(std::stoll(trimmed));
 }
 
 inline aclFormat ParseAclFormat(const std::string &format)

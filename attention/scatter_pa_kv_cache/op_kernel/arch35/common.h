@@ -13,9 +13,17 @@
  * \brief
  */
 
+#include "op_kernel/math_util.h"
+#include "op_kernel/platform_util.h"
+
 #ifndef COMMON_H_
 #define COMMON_H_
 namespace ScatterPaKvCache {
+    constexpr int32_t B8 = 1;
+    constexpr int32_t B16 = 2;
+    constexpr int32_t B32 = 4;
     constexpr int64_t DUAL_IN_OUT = 2;
+    constexpr int64_t DOUBLE_BUFFER = 2;
+    static constexpr uint32_t BLOCK_SIZE = Ops::Base::GetUbBlockSize();
 }
 #endif

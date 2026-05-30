@@ -18,8 +18,8 @@
 #include <map>
 #include <numeric>
 
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
 #include "register/op_impl_registry.h"

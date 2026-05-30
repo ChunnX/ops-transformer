@@ -210,7 +210,7 @@ __aicore__ inline void ScatterPaKvCacheAlibiNotFullyLoad<T, IndexDtype, InOutMod
             }
             curOffset = seqLenOffset - offsetIndex + k;
             startIdx = slotMappingLocal.GetValue(i) + k;
-            if (startIdx >= tilingData_->numBlocks * tilingData_->blockSize || curOffset < 0) {
+            if (startIdx < 0 || startIdx >= tilingData_->numBlocks * tilingData_->blockSize || curOffset < 0) {
                 continue;
             }
 

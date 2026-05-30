@@ -174,7 +174,6 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, COPYOUTTYPE, SMOOTHTYPE>::Co
     DataCopyExtParams quantScaleParams{1, static_cast<uint32_t>(sizeof(int32_t)), 0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
-    ;
 
     if constexpr (SMOOTHTYPE == SCALE_1H) {
         DataCopyPad(smoothLocal, quantSmoothGm_, smoothCopyParams, {false, 0, 0, 0});

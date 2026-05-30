@@ -14,6 +14,7 @@
 #include "infer_datatype_context_faker.h"
 #define private public
 #include "platform/platform_info.h"
+#undef private
 
 namespace MoeDistributeDispatchV2 {
 class MoeDistributeDispatchV2Infershape : public testing::Test {
@@ -107,4 +108,51 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0)
 
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_FLOAT16);
 }
+
+// ep_rank_id < shared_expert_rank_num：走共享专家卡分支（与 MoE 主分支区分）
+TEST_F(MoeDistributeDispatchV2Infershape, inferShape_SharedExpertLowRankId)
+{
+    fe::PlatformInfo platformInfo;
+    fe::OptionalInfo optiCompilationInfo;
+    optiCompilationInfo.soc_version = "Ascend910B";
+    platformInfo.str_info.short_soc_version = "Ascend910B";
+    fe::PlatformInfoManager::Instance().platform_info_map_["Ascend910B"] = platformInfo;
+    fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optiCompilationInfo);
+
+    gert::StorageShape xShape = {{32, 7168}, {}};
+    gert::StorageShape expertIdsShape = {{32, 8}, {}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeDistributeDispatchV2",
+        {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND}, {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
+         {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
+         {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"shared_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"shared_expert_rank_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    std::vector<std::vector<int64_t>> expertOutputShape = {{512, 7168}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
 }
+
+} // namespace MoeDistributeDispatchV2

@@ -162,18 +162,6 @@ static aclnnStatus ValidateParams(const aclTensor *dout,
         return ACLNN_ERR_PARAM_INVALID;
     }    
 
-    // 验证Q layout
-    if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
-    // 验证KV layout
-    if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
     // 验证Q和KV格式一致性：如果其中一个是BNSD，另一个也必须是BNSD
     bool qIsBNSD = (qLayout == "BNSD");
     bool kvIsBNSD = (kvLayout == "BNSD");

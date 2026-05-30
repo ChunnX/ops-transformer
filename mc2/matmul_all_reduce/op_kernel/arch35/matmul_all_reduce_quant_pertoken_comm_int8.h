@@ -37,7 +37,7 @@ using namespace AscendC;
 using namespace MatmulAllReduceQuantMulCastImpl;
 using namespace MatmulAllReduceQuantPerchannelImpl;
 using namespace MatmulAllReduceDequantPerchannelImpl;
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 class MatmulAllReduceQuantPertokenCommInt8
 {
 public:
@@ -76,7 +76,7 @@ private:
     GM_ADDR reduceScatterOutGM_;
     GM_ADDR allGatherInGM_;
     GM_ADDR allGatherOutGM_;
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_{false};
 
     // 仅在0核上使用
@@ -98,8 +98,8 @@ private:
     uint32_t tailPadDataCnt_ = 0;
 };
 
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType>::Init(
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType, commMode>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenScaleGM,
     GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
     Mc2Tiling::QuantMatmulAllReduceTilingDataA5* tilingData, TPipe* tPipe)
@@ -133,9 +133,9 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     }
 }
 
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType>::SendCountCheck(
-    uint32_t prepareIndex)
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
+__aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = tilePadDataCnt_ / tilingData_->param.rankDim;
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -144,8 +144,9 @@ __aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<xType, WType, YT
     return sendCount;
 }
 
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType>::PrepareInit()
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::PrepareInit()
 {
     auto&& mc2Tiling = tilingData_->param;
     uint32_t rankNum = mc2Tiling.rankDim;
@@ -186,30 +187,30 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
         uint32_t numN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) / NUM_TWO_PERTOKEN;
         uint32_t numReN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) % NUM_TWO_PERTOKEN;
         for (uint32_t i = 0U; i < numN; ++i) { // 按总核数下发
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
         }
 
         if (numReN != 0U) { // 余数下发
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
@@ -217,10 +218,11 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     }
 }
 
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType>::InnerProcess(
-    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd, uint32_t needUbBuffer,
-    uint32_t padM, bool isTailFlag)
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
+    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd,
+    uint32_t needUbBuffer, uint32_t padM, bool isTailFlag)
 {
     const uint64_t aOffset = CalcShapeOffset(sizeof(xType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.Ka);
     const uint64_t cOffset = CalcShapeOffset(sizeof(YType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.N);
@@ -252,13 +254,13 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceQuantMulCastCommInt8<YType>(
+                MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
                     reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, tilePadM_,
                     mmTiling->matmulTiling.N, tPipe_, hccl_);
                 reduceScatterOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(float);
                 allGatherInGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceQuantMulCastCommInt8<YType>(
+                MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
                     reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, padM,
                     mmTiling->matmulTiling.N, tPipe_, hccl_);
                 reduceScatterOutGM_ += padM * mmTiling->matmulTiling.N * sizeof(float);
@@ -278,8 +280,8 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     }
 }
 
-template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType>::Process()
+template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType, commMode>::Process()
 {
     auto&& mc2Tiling = tilingData_->param;
 
@@ -306,7 +308,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             padM = tailPadM_;
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
         }
-        MatmulAllReduceQuantMulCastCommInt8<YType>(
+        MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
             reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, padM, lastN, tPipe_, hccl_);
         SyncAll();
         hccl_.Commit(allGatherHandleId_[reduceScatterWaitIdx_]);
@@ -342,15 +344,16 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     }
 }
 
-#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_COMM_INT8_IMPL(templateClass, coreType, scaleType, isATrans, isBTrans, ...)            \
+#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_COMM_INT8_IMPL(                                                             \
+    templateClass, coreType, commMode, scaleType, isATrans, isBTrans, ...)                                             \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);                \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                                  \
         using OpType = templateClass<                                                                                  \
             DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, float, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, isATrans, isBTrans, \
-            DTYPE_LOC_LOCAL, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;                  \
-        MatmulAllReduceQuantPertokenCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType> op;                        \
+            DTYPE_LOC_LOCAL, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;            \
+        MatmulAllReduceQuantPertokenCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;              \
         op.Init(                                                                                                       \
             aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,         \
             &tilingData, &tPipe);                                                                                      \

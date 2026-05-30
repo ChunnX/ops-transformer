@@ -106,10 +106,14 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
             actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+            if (runParam.actualSeqLengthOfMlaPerBatch == 0) {
+                actualMSize = 0;
+            } else {
+                actualMSize = constInfo.gS1;
+            }
         }
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
                          layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -172,11 +176,10 @@ __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
                     runParam.actualS2Size + runParam.preTokensPerBatch :
                     runParam.actualS1Size;
             }
-
-            // 计算S1的尾块大小，非对齐
-            if (runParam.nextTokensPerBatch < 0) {
-                runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
-            }
+        }
+        // 计算S1的尾块大小，非对齐
+        if (runParam.nextTokensPerBatch < 0) {
+            runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
         }
     }
 
@@ -405,8 +408,6 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const C
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
-        runParam.s1LoopTimes = s1LoopTimes;
-        return;
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
@@ -562,6 +563,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
             }
         } else {
             if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
+                runParam.sOuterOffset += (runParam.nextTokensPerBatch < 0) ? runParam.nextTokensPerBatch : 0;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
                         runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
@@ -570,7 +572,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                         runParam.sOuterOffset * constInfo.dSizeV;
                 }
             } else if (constInfo.isGqa) { // IFA
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +	
+                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
                         runParam.sOuterOffset * constInfo.dSizeV;
             } else {
                 if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
@@ -605,7 +607,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     runParam.sOuterOffset;
             }
         } else {
-            if (constInfo.isGqa) {
+            if (constInfo.isGqa && constInfo.s1Size > 1) {
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
+                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
+                } else {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset +
+                        runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+                }
+            } else if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                     runParam.sOuterOffset;
             } else {
@@ -639,12 +649,21 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, __gm__ int64_t *actualSeqQlenAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx] - actualSeqQlenAddr[runParam.boIdx - 1] == 0) {
             return true;
+        }
+    } else {
+        if (!constInfo.isActualLenDimsNull) {
+            if (constInfo.actualSeqLenSize == 1) {
+                return actualSeqQlenAddr[0] == 0;
+            } else {
+                return actualSeqQlenAddr[runParam.boIdx] == 0;
+            }
         }
     }
     return false;

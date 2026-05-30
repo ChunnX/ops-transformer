@@ -289,8 +289,8 @@ aclnnStatus aclnnMoeInitRoutingV2(
         <td>计算输入和输出的数据类型和格式不在支持的范围内。</td>
       </tr>
       <tr>
-        <td rowspan="5">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="5">561002</td>
+        <td rowspan="5">ACLNN_ERR_INNER_NULLPTR</td>
+        <td rowspan="5">561103</td>
         <td>expertTokensCountOrCumsumOut需要输出时，expertNum等于0。</td>
       </tr>
       <tr>

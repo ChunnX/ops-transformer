@@ -23,6 +23,44 @@ class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
 
+def create_tensor_with_stride_padding(src_tensor, pad_len):
+    if src_tensor is None or src_tensor.dim() != 4:
+        return src_tensor
+
+    device = src_tensor.device
+    dtype = src_tensor.dtype
+    shape = list(src_tensor.shape) # [65, 128, 1, 512]
+
+    # 1. 计算 Stride
+    row_logical_size = shape[1] * shape[2] * shape[3]
+    stride_0 = row_logical_size + pad_len
+    new_strides = [stride_0, shape[2] * shape[3], shape[3], 1]
+
+    # 2. 直接在 NPU 上分配物理存储并填充 NaN
+    # 注意：使用 torch.full 确保底层分配后立即初始化
+    physical_numel = stride_0 * shape[0]
+    storage_tensor = torch.full((physical_numel,), float('nan'),
+                                dtype=dtype, device=device)
+
+    # 获取原始存储引用
+    raw_storage = storage_tensor.untyped_storage()
+
+    # 3. 构造视图并绑定 Storage
+    target_tensor = torch.empty((0,), dtype=dtype, device=device)
+    target_tensor.set_(raw_storage, 0, shape, new_strides)
+
+    # 4. 核心修正：逐行拷贝 + 强制同步
+    # 在 NPU 上，连续的 copy_ 可能会被合并。通过循环并确保每一行是独立 view 拷贝。
+    for i in range(shape[0]):
+        # .narrow(0, i, 1) 或者直接 target_tensor[i]
+        # 确保 src[i] 到 target_tensor[i] 的拷贝严格遵守 stride
+        target_tensor[i].copy_(src_tensor[i])
+
+    # 5. 关键点：NPU 是异步的，打印前必须同步，否则可能看到的是内存旧值
+    torch_npu.npu.synchronize()
+
+    return target_tensor
+
 def call_npu(input_data):
     params = input_data['params']
     metadata_input = input_data['metadata_input']
@@ -40,12 +78,27 @@ def call_npu(input_data):
     # tensor解析
     q = tensor_input['q'].npu()
     ori_kv = tensor_input['ori_kv'].npu()
-    ori_block_table = tensor_input['ori_block_table'].npu()
+    if 'ori_block_table' in tensor_input and tensor_input['ori_block_table'] is not None:
+        ori_block_table = tensor_input['ori_block_table'].npu()
+    else:
+        ori_block_table = None
     if 'cu_seqlens_q' in tensor_input and tensor_input['cu_seqlens_q'] is not None:
         cu_seqlens_q = tensor_input['cu_seqlens_q']
     else:
         cu_seqlens_q = torch.tensor([])
     cu_seqlens_q = cu_seqlens_q.npu()
+
+    if 'cu_seqlens_ori_kv' in tensor_input and tensor_input['cu_seqlens_ori_kv'] is not None:
+        cu_seqlens_ori_kv = tensor_input['cu_seqlens_ori_kv']
+    else:
+        cu_seqlens_ori_kv = torch.tensor([])
+    cu_seqlens_ori_kv = cu_seqlens_ori_kv.npu()
+    if 'cu_seqlens_cmp_kv' in tensor_input and tensor_input['cu_seqlens_cmp_kv'] is not None:
+        cu_seqlens_cmp_kv = tensor_input['cu_seqlens_cmp_kv']
+    else:
+        cu_seqlens_cmp_kv = torch.tensor([])
+    cu_seqlens_cmp_kv = cu_seqlens_cmp_kv.npu()
+
     used_seqused_q_flag = False
     if 'seqused_q' in tensor_input and tensor_input['seqused_q'] is not None:
         seqused_q = tensor_input['seqused_q']
@@ -53,7 +106,7 @@ def call_npu(input_data):
     else:
         seqused_q = torch.tensor([])
     seqused_q = seqused_q.npu()
-    seqused_kv = tensor_input['seqused_kv'].npu()
+    seqused_kv = tensor_input['seqused_kv'].npu() if tensor_input['seqused_kv'] is not None else None
     sinks = tensor_input['sinks'].npu()
     softmax_scale = tensor_input['softmax_scale']
     ori_mask_mode = tensor_input['ori_mask_mode']
@@ -64,6 +117,11 @@ def call_npu(input_data):
     layout_kv = tensor_input['layout_kv']
     ori_k_in_pa_shape = tensor_input['ori_kv'].npu()
     cmp_k_in_pa_shape = tensor_input['cmp_kv'].npu() if tensor_input['cmp_kv'] is not None else None
+    if layout_kv == 'PA_ND':
+        ori_k_in_pa_shape = create_tensor_with_stride_padding(ori_k_in_pa_shape, 64)
+        cmp_k_in_pa_shape = create_tensor_with_stride_padding(cmp_k_in_pa_shape, 64)
+    ori_kv_stride = ori_k_in_pa_shape.stride(0) if ori_k_in_pa_shape is not None else 0
+    cmp_kv_stride = cmp_k_in_pa_shape.stride(0) if cmp_k_in_pa_shape is not None else 0
     max_seqlen_q = metadata_input['max_seqlen_q']
     ori_max_s2 = metadata_input['max_seqlen_kv']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
@@ -94,10 +152,6 @@ def call_npu(input_data):
         cmp_sparse_indices = cmp_sparse_indices.npu()
 
     q = q.npu()
-    ori_k_in_pa_shape = ori_k_in_pa_shape.npu()
-    ori_block_table = ori_block_table.npu()
-    cu_seqlens_q = cu_seqlens_q.npu()
-    seqused_kv = seqused_kv.npu()
     sinks = sinks.npu()
 
     if template_idx == 0:
@@ -106,8 +160,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
@@ -118,13 +172,15 @@ def call_npu(input_data):
             ori_win_right=ori_win_right,
             layout_q=layout_q,
             layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
+            has_ori_kv=ori_k_in_pa_shape is not None,
+            has_cmp_kv=cmp_k_in_pa_shape is not None,
             device = "npu:0")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                             ori_kv=ori_k_in_pa_shape,
                                                             ori_block_table=ori_block_table,
                                                             cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
+                                                            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+                                                            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
                                                             seqused_q=seqused_q if used_seqused_q_flag else None,
                                                             seqused_kv=seqused_kv,
                                                             sinks=sinks,
@@ -141,8 +197,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
@@ -155,8 +211,8 @@ def call_npu(input_data):
             ori_win_right=ori_win_right,
             layout_q=layout_q,
             layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
+            has_ori_kv=ori_k_in_pa_shape is not None,
+            has_cmp_kv=cmp_k_in_pa_shape is not None,
             device = "npu:0")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                             ori_kv=ori_k_in_pa_shape,
@@ -164,6 +220,8 @@ def call_npu(input_data):
                                                             ori_block_table=ori_block_table,
                                                             cmp_block_table=cmp_block_table,
                                                             cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
+                                                            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+                                                            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
                                                             seqused_q=seqused_q if used_seqused_q_flag else None,
                                                             seqused_kv=seqused_kv,
                                                             sinks=sinks,
@@ -182,8 +240,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
@@ -197,8 +255,8 @@ def call_npu(input_data):
             ori_win_right=ori_win_right,
             layout_q=layout_q,
             layout_kv=layout_kv,
-            has_ori_kv=ori_k_in_pa_shape != None,
-            has_cmp_kv=cmp_k_in_pa_shape != None,
+            has_ori_kv=ori_k_in_pa_shape is not None,
+            has_cmp_kv=cmp_k_in_pa_shape is not None,
             device = "npu:0")
         npu_result, softmax_lse = torch.ops.custom.npu_sparse_attn_sharedkv(q,
                                                                 ori_kv=ori_k_in_pa_shape,
@@ -207,6 +265,8 @@ def call_npu(input_data):
                                                                 ori_block_table=ori_block_table,
                                                                 cmp_block_table=cmp_block_table,
                                                                 cu_seqlens_q=cu_seqlens_q if layout_q == 'TND' else None,
+                                                                cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+                                                                cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
                                                                 seqused_q=seqused_q if used_seqused_q_flag else None,
                                                                 seqused_kv=seqused_kv,
                                                                 sinks=sinks,

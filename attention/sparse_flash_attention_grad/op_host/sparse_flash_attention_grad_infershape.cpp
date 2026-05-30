@@ -67,12 +67,12 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
 
     auto attrs = context->GetAttrs();
-    auto scaleValue = attrs->GetInt(static_cast<size_t>(AttrIndex::SCALE_VALUE));
-    auto selectedBlockSize = attrs->GetInt(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
-    const char *inputLayout = attrs->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    auto scaleValue = attrs->GetInt(static_cast<size_t>(AttrIndex::SCALE_VALUE));
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleValue);
+    auto selectedBlockSize = attrs->GetInt(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
     OP_CHECK_NULL_WITH_CONTEXT(context, selectedBlockSize);
+    const char *inputLayout = attrs->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayout);
 
     std::string inputLayoutSfag = std::string(inputLayout);

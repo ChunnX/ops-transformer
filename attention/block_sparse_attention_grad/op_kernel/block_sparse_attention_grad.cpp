@@ -13,7 +13,7 @@
 #if __CCE_AICORE__ == 310
 #include "arc35/block_sparse_attention_grad.h"
 #else
-#include "arc32/block_sparse_attention_grad_interface.h"
+#include "arc22/block_sparse_attention_grad_interface.h"
 #endif
 // ============================================================================
 // Kernel Entry Point

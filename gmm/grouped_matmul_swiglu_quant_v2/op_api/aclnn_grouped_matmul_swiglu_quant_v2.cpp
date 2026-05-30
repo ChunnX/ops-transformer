@@ -160,6 +160,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         .SetGroupList(groupList).SetGroupListType(groupListType)
         .SetWeightAssistMatrix(weightAssistMatrix)
         .SetDequantAttr(dequantMode, dequantDtype)
+        .SetQuantAttr(quantMode, static_cast<int64_t>(output->GetDataType()))
+        .SetTransposeAttr(false).SetBias(bias)
         .SetScenario()
         .SetTuningConfig(tuningConfigOptional).Build();
 

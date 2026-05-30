@@ -159,7 +159,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>数据类型与attentionOut的数据类型一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,S,S]、[B,N,1,Skv]、[1,N,S,S]</td>
+        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -570,6 +570,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - inputLayout必须一致。
 - 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
 - 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
+- MLA concat场景：仅支持dSize=128，dSizeRope=64
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
@@ -588,6 +589,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     | 3           | 算子自动生成pse 先mul再add再sqrt         | - |
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
+- sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
 - sparseMode约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
@@ -599,7 +601,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 - prefixOptional稀疏计算场景，场景包括sequence长度相等的场景下sparseMode=5、sparseMode=6；sequence长度不相等的场景下sparseMode=6。这两种场景下，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]；当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
 - realShiftOptional：Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional。
-- attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
+- TND场景下attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - 支持actualSeqQLenOptional中某个Batch上的S长度为0；如果存在S为0的情况，不支持pse输入，
   假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -607,6 +609,11 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     - keepProb小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
+- realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+  - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
+  - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
+  - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 
 ## 调用示例
 
@@ -617,6 +624,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_flash_attention_score.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -748,26 +756,26 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
  
-  std::vector<float> qHostData(q_size, 1.0);
-  std::vector<float> kHostData(kv_size, 1.0);
-  std::vector<float> vHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> qHostData(q_size, 1.0);
+  std::vector<op::fp16_t> kHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> vHostData(kv_size, 1.0);
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);
   std::vector<float> softmaxMaxHostData(softmax_size, 3.0);
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sinkHostData, sinkShape, &sinkDeviceAddr, aclDataType::ACL_FLOAT, &sink);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
+  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -838,7 +846,7 @@ int main() {
   aclDestroyTensor(k);
   aclDestroyTensor(v);
   aclDestroyTensor(attenmask);
-  aclDestoryTensor(sink);
+  aclDestroyTensor(sink);
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);

@@ -62,7 +62,7 @@ constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_FLOAT8 = {
     AscendC::RoundMode::CAST_RINT};
 
 constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_HIFLOAT8 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_ROUND};
 
 constexpr int64_t BLOCK_SIZE = 32;

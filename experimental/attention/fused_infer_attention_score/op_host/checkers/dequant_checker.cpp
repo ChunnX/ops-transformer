@@ -133,7 +133,19 @@ ge::graphStatus DequantChecker::CheckDequantGQAFullquantNz(const FiaTilingInfo &
                         "output datatype(%s) must be FLOAT16 or BF16.",
                         DataTypeToSerialString(fiaInfo.outputType).c_str()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckInputShapeGQAPerblock(fiaInfo),
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckFeaturePerblockFullquant(fiaInfo),
+                OP_LOGE(fiaInfo.opName,
+                        "In per-block fullquant 512 Tiling scenario, no features are supported."),
+                return ge::GRAPH_FAILED);
+    // 不支持后量化
+    OP_CHECK_IF(fiaInfo.isOutQuantEnable,
+                OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, postquant is not supported."),
+                return ge::GRAPH_FAILED);
+    // 不支持learnableSink
+    OP_CHECK_IF(fiaInfo.learnableSinkFlag,
+                OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, learnableSink is not supported."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckInputShapeGQAPerblock(fiaInfo),
                 OP_LOGE(fiaInfo.opName,
                         "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
                 return ge::GRAPH_FAILED);
@@ -490,7 +502,7 @@ ge::graphStatus DequantChecker::CheckFeaturePertensorFullquant(const FiaTilingIn
 // GQA per-block
 ge::graphStatus DequantChecker::CheckFeaturePerblockFullquant(const FiaTilingInfo &fiaInfo)
 {
-    if (!enablePerblockQuant_) {
+    if (!(enablePerblockQuant_ || enablePerblockQuantOpt)) {
         return ge::GRAPH_SUCCESS;
     }
 

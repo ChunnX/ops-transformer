@@ -320,6 +320,8 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const F
     auto deqScaleKInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_K));
     auto deqScaleVInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_V));
     auto deqScaleDyInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DY));
+    auto deqScaleDsInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_DS_IDX));
+    auto deqScalePInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::D_SCALE_P_IDX));
     if (yInput != nullptr) {
         auto yInputDtype = yInput->GetDataType();
         bool isYInputNotValid = (fBaseParams.queryType == ge::DT_HIFLOAT8 && yInputDtype != ge::DT_BF16);
@@ -330,18 +332,26 @@ ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const F
             return ge::GRAPH_FAILED);
     }
     if (deqScaleQInput != nullptr && deqScaleKInput != nullptr
-        && deqScaleVInput != nullptr && deqScaleDyInput != nullptr) {
+        && deqScaleVInput != nullptr && deqScaleDyInput != nullptr &&
+        deqScaleDsInput != nullptr && deqScalePInput != nullptr) {
         auto deqScaleQDtype = deqScaleQInput->GetDataType();
         auto deqScaleKDtype = deqScaleKInput->GetDataType();
         auto deqScaleVDtype = deqScaleVInput->GetDataType();
         auto deqScaleDyDtype = deqScaleDyInput->GetDataType();
+        auto deqScaleDsDtype = deqScaleDsInput->GetDataType();
+        auto deqScalePDtype = deqScalePInput->GetDataType();
         OP_CHECK_IF(deqScaleQDtype != ge::DT_FLOAT || deqScaleKDtype != ge::DT_FLOAT ||
-            deqScaleVDtype != ge::DT_FLOAT || deqScaleDyDtype != ge::DT_FLOAT,
-            OP_LOGE(context_, 
-                "Invalid deqScaleDType [deqScaleQDtype:%s, deqScaleKDtype:%s, deqScaleVDtype:%s, deqScaleDyDtype:%s], only support FLOAT32.", 
-                ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype).c_str(),
+            deqScaleVDtype != ge::DT_FLOAT || deqScaleDyDtype != ge::DT_FLOAT ||
+            deqScaleDsDtype != ge::DT_FLOAT || deqScalePDtype != ge::DT_FLOAT,
+            OP_LOGE(context_,
+                "Invalid deqScaleDType [deqScaleQDtype:%s, deqScaleKDtype:%s, deqScaleVDtype:%s,"
+                "deqScaleDyDtype:%s, deqScaleDsDtype:%s, deqScalePDtype:%s], only support FLOAT32.",
+                ge::TypeUtils::DataTypeToSerialString(deqScaleQDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleKDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(deqScaleVDtype).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype).c_str()),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleDyDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScaleDsDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(deqScalePDtype).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -667,13 +677,9 @@ void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     int64_t m{fBaseParams.s1Outer}, n{fBaseParams.s2Outer}, k{static_cast<int64_t>(fBaseParams.aicNum)}, b{fBaseParams.b * fBaseParams.n2};
     int64_t actualCalcS1Token{fBaseParams.s1Token}, actualCalcS2Token{fBaseParams.s2Token};
-    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
-        fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
-        actualCalcS1Token = actualCalcS1Token + fBaseParams.s1 - fBaseParams.s2;
-        actualCalcS2Token = actualCalcS2Token - fBaseParams.s1 + fBaseParams.s2;
-    }
     int64_t p = CeilDivideBy(actualCalcS1Token, fBaseParams.s1Inner * fBaseParams.s1CvRatio) + 1;
     int64_t q = CeilDivideBy(actualCalcS2Token, fBaseParams.s2Inner * fBaseParams.s2CvRatio) + 1;
+
     q = q > n ? n : q;
     p = p > m ? m : p;
 
@@ -723,8 +729,8 @@ void CalcleCausalDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m > n) {
         int64_t skipM = (fBaseParams.s1 - fBaseParams.s2) / (fBaseParams.s1Inner * fBaseParams.s1CvRatio);
         m -= skipM;
-    } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
-               (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) && n > m)) {
+    } else if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
+               fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL)) && n > m) {
         n = m;
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m < n) {
         fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_BAND);
@@ -1419,8 +1425,27 @@ ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoPar
     } else if (isAlibiBNHS) {
         fBaseParams.pseShapeType = static_cast<uint32_t>(PseShapeType::PSE_SHAPE_TYPE_BNHS);
     } else {
-        OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual", dim0, dim1,
-                  dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token);
+        if (isTndPse) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld]", dim0, dim1, dim2, dim3, fBaseParams.s1Token,
+                    fBaseParams.s2Token, fBaseParams.n1, fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s2);
+        } else if (isPse && !isTnd) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld] or [%ld,%ld,1,%ld] or [%ld,%ld,%ld,%ld] or "
+                    "[1,%ld,%ld,%ld]", dim0, dim1, dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.n1,
+                    fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s2, fBaseParams.b, fBaseParams.n1,
+                    fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.s2, fBaseParams.n1,
+                    fBaseParams.s1, fBaseParams.s2);
+        } else if (!isTnd) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[%ld,%ld,1,%ld] or [%ld,%ld,%ld,%ld] or [1,%ld,%ld,%ld]", dim0, dim1, dim2, dim3,
+                    fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.b, fBaseParams.n1, fBaseParams.s2,
+                    fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.s2, fBaseParams.n1, fBaseParams.s1,
+                    fBaseParams.s2);
+        } else {
+            OP_LOGE(context_, "In the TND, pse is supported only when s1>=1024, s1==s2 in length for each batch, and "
+                    "the sparseMode is 0,2,3(lower triangular mask scenarios).");
+        }
         return ge::GRAPH_PARAM_INVALID;
     }
     return ge::GRAPH_SUCCESS;

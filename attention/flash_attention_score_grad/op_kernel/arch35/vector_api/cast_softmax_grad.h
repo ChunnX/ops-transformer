@@ -13,7 +13,7 @@
  */
 #ifndef CAST_SOFTMAX_GRAD_
 #define CAST_SOFTMAX_GRAD_
-#include "../common.h"
+#include "../flash_attention_score_grad_common.h"
 #include "./vf_softmax_grad_front_cast.h"
 #include "./vf_anti_quant_softmax_grad_front_cast.h"
 

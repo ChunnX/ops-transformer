@@ -72,38 +72,6 @@ static aclnnStatus CheckFormat(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus IsTcQuant(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
-{
-    auto x1ScaleDimNum = params.scale1Optional->GetViewShape().GetDimNum();
-    CHECK_COND(x1ScaleDimNum == 1 || x1ScaleDimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num in T-C quant
-               "The dimension of scale1 should be 1 or 2 in T-C quant mode, but actual is %zu.", x1ScaleDimNum);
-    auto x2ScaleDimNum = params.scale2->GetViewShape().GetDimNum();
-    CHECK_COND(x2ScaleDimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num in T-C quant
-               "The dimension of scale2 should be 2 in T-C quant mode, but actual is %zu.", x2ScaleDimNum);
-    auto nDim = params.x2->GetViewShape().GetDim(1);
-    auto g = params.groupList->GetViewShape().GetDim(0);
-    auto x1ScaleLastDim = params.scale1Optional->GetViewShape().GetDim(x1ScaleDimNum - 1);
-    auto x1ScaleFirstDim = params.scale1Optional->GetViewShape().GetDim(0);
-    if (x1ScaleDimNum == 1) {
-        CHECK_COND(x1ScaleFirstDim == g, ACLNN_ERR_PARAM_INVALID,
-                   "In T-C quant mode, the expected shape of scale1 is (%ld, ) or (%ld, 1), \
-but the actual is (%ld, ).",
-                   g, g, x1ScaleFirstDim);
-    } else {
-        CHECK_COND(x1ScaleFirstDim == g && x1ScaleLastDim == 1, ACLNN_ERR_PARAM_INVALID,
-                   "In T-C quant mode, the expected shape of scale1 is (%ld, ) or (%ld, 1), \
-but the actual is (%ld, %ld).",
-                   g, g, x1ScaleFirstDim, x1ScaleLastDim);
-    }
-
-    auto x2ScaleLastDim = params.scale2->GetViewShape().GetDim(x2ScaleDimNum - 1);
-    auto x2ScaleFirstDim = params.scale2->GetViewShape().GetDim(0);
-    CHECK_COND(x2ScaleFirstDim == g && x2ScaleLastDim == nDim, ACLNN_ERR_PARAM_INVALID,
-               "In T-C quant mode, the expected shape of scale2 is (%ld, %ld), but the actual is (%ld, %ld).", g, nDim,
-               x2ScaleFirstDim, x2ScaleLastDim);
-    return ACLNN_SUCCESS;
-}
-
 
 static aclnnStatus IsMxQuantDim(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
@@ -166,17 +134,8 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
     CHECK_COND(params.groupList->GetDataType() == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
                "Input groupList dtype should be INT64, actual dtype is %s.",
                op::ToString(params.groupList->GetDataType()).GetString());
-    if (x1Dtype == DataType::DT_HIFLOAT8 && x2Dtype == DataType::DT_HIFLOAT8) {
-        CHECK_COND(IsTcQuant(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "With HIFLOAT8 inputs, only support T-C quant.");
-        CHECK_COND(params.scale2->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                   "With HIFLOAT8 inputs, scale2 dtype should be FLOAT32, actual dtype is %s.",
-                   op::ToString(params.scale2->GetDataType()).GetString());
-        CHECK_COND(params.scale1Optional->GetDataType() == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                   "With HIFLOAT8 inputs, scale1 dtype should be FLOAT32, actual dtype is %s.",
-                   op::ToString(params.scale1Optional->GetDataType()).GetString());
-    } else if ((x1Dtype == DataType::DT_FLOAT8_E4M3FN || x1Dtype == DataType::DT_FLOAT8_E5M2) &&
-               (x2Dtype == DataType::DT_FLOAT8_E4M3FN || x2Dtype == DataType::DT_FLOAT8_E5M2)) {
+    if ((x1Dtype == DataType::DT_FLOAT8_E4M3FN || x1Dtype == DataType::DT_FLOAT8_E5M2) &&
+        (x2Dtype == DataType::DT_FLOAT8_E4M3FN || x2Dtype == DataType::DT_FLOAT8_E5M2)) {
         CHECK_COND(IsMxQuantDim(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Check IsMxQuantDim failed.");
         CHECK_COND(params.scale2->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                    "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale2 dtype should be FLOAT8_E8M0, actual dtype is %s.",
@@ -184,7 +143,7 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
         CHECK_COND(params.scale1Optional->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                    "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale1 dtype should be FLOAT8_E8M0, actual dtype is %s.",
                    op::ToString(params.scale1Optional->GetDataType()).GetString());
-    } else {
+    } else if (!(x1Dtype == DataType::DT_HIFLOAT8 && x2Dtype == DataType::DT_HIFLOAT8)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x1 dtype %s and x2 dtype %s is not supported.",
                 op::ToString(x1Dtype).GetString(), op::ToString(x2Dtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
@@ -194,6 +153,10 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
 
 static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
+    CHECK_COND(params.groupListType == 0 || params.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
+               "GroupListType must be 0 or 1, but actual value is %ld.", params.groupListType);
+    CHECK_COND(params.groupSize == 0, ACLNN_ERR_PARAM_INVALID,
+               "GroupSize must be 0, but actual value is %ld.", params.groupSize);
     CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -211,9 +174,9 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     gmmParams.transposeX = true;
     gmmParams.transposeWeight = false;
     if (params.x1->GetDataType() == DataType::DT_HIFLOAT8 && params.x2->GetDataType() == DataType::DT_HIFLOAT8) {
-        auto checkerTC = QGmmInPlaceAdd::AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>(gmmParams);
-        checkerTC.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
-        CHECK_RET(checkerTC.CheckQuantGroupedMatmulInplaceAddDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        auto checker = QGmmInPlaceAdd::AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>(gmmParams);
+        checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
+        CHECK_RET(checker.CheckQuantGroupedMatmulInplaceAddDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
         auto checker = gmm::AclnnGroupedMatmulDAV3510Checker<aclTensor>(gmmParams);
         checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");

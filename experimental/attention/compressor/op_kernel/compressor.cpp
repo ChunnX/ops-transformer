@@ -14,8 +14,8 @@
  */
 
 #if (__CCE_AICORE__ == 220)
-#include "arch32/compressor_kernel.h"
-#include "arch32/compressor_kernel_perf.h"
+#include "arch22/compressor_kernel.h"
+#include "arch22/compressor_kernel_perf.h"
 #else
 #include "arch35/compressor_kernel.h"
 #include "arch35/compressor_kernel_full_load.h"

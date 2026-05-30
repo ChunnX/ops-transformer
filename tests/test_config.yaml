@@ -70,11 +70,26 @@ examples:
         ut_cov_exclude:
           - examples/mc2/all_gather_add
         test:
+          examples: False
           ut: False
         options:
           - all_gather_add
 
 attention:
+  attention_update:
+    module: True
+    src:
+      - attention/attention_update
+    exclude:
+      - attention/attention_update/docs
+      - attention/attention_update/README.md
+    ut_cov_exclude:
+      - attention/attention_update
+    test:
+      ut: False
+    options:
+      - attention_update
+
   flash_attention_score:
     module: True
     src:
@@ -84,6 +99,8 @@ attention:
       - attention/flash_attention_score/README.md
     ut_cov_exclude:
       - attention/flash_attention_score
+    test:
+      ut: True
     options:
       - flash_attention_score
 
@@ -94,6 +111,8 @@ attention:
     exclude:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
+    test:
+      ut: True
     ut_cov_exclude:
       - attention/flash_attention_score_grad
     options:
@@ -110,9 +129,10 @@ attention:
     ut_cov_exclude:
       - attention/fused_infer_attention_score/op_kernel
       - attention/fused_infer_attention_score/tests
-      - attention/fused_infer_attention_score/op_host/arch32
+      - attention/fused_infer_attention_score/op_host/arch22
     test:
-      examples: False
+      ut: True
+      examples: True
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -128,7 +148,8 @@ attention:
     ut_cov_exclude:
       - attention/incre_flash_attention/op_kernel
     test:
-      examples: False
+      examples: True
+      ut: True
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -145,6 +166,8 @@ attention:
       - attention/nsa_compress
     options:
       - nsa_compress
+    test:
+      ut: False
 
   nsa_compress_attention:
     module: True
@@ -159,6 +182,7 @@ attention:
       - nsa_compress_attention
     test:
       ut: False
+      examples: False
 
   nsa_compress_attention_infer:
     module: True
@@ -185,6 +209,8 @@ attention:
       - attention/nsa_compress_grad
     options:
       - nsa_compress_grad
+    test:
+      ut: False
 
   nsa_compress_with_cache:
     module: True
@@ -214,6 +240,7 @@ attention:
       - nsa_selected_attention
     test:
       ut: False
+      examples: False
 
   nsa_selected_attention_grad:
     module: True
@@ -240,6 +267,8 @@ attention:
       - attention/nsa_selected_attention_infer
     options:
       - nsa_selected_attention_infer
+    test:
+      ut: False
 
   prompt_flash_attention:
     module: True
@@ -259,7 +288,8 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h   # arch38 tiling 目前UT框架不支持（会被高级api拦截走不进去tiling，后续打通后开放）
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
-      examples: False
+      examples: True
+      ut: True
     options:
       - fused_infer_attention_score
       - prompt_flash_attention
@@ -292,8 +322,8 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
       test:
+        ut: False
         examples: False
-        ut: True
       options:
         - mla_prolog
 
@@ -375,6 +405,7 @@ attention:
       - attention/lightning_indexer/tests
     test:
       examples: False
+      ut: True
     options:
       - lightning_indexer
 
@@ -390,6 +421,7 @@ attention:
       - attention/sparse_flash_attention/tests
     test:
       examples: False
+      ut: True
     options:
       - sparse_flash_attention
 
@@ -403,6 +435,7 @@ attention:
       - attention/quant_lightning_indexer/tests
     test:
       examples: False
+      ut: True
     options:
       - quant_lightning_indexer
 
@@ -416,9 +449,38 @@ attention:
       - attention/kv_quant_sparse_flash_attention/tests
     test:
       examples: False
+      ut: True
     options:
       - kv_quant_sparse_flash_attention
 
+  recurrent_gated_delta_rule:
+    module: True
+    src:
+      - attention/recurrent_gated_delta_rule
+    exclude:
+      - attention/recurrent_gated_delta_rule/docs
+      - attention/recurrent_gated_delta_rule/README.md
+    ut_cov_exclude:
+      - attention/recurrent_gated_delta_rule
+    test:
+      examples: True
+      ut: True
+    options:
+      - recurrent_gated_delta_rule
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
@@ -432,7 +494,7 @@ gmm:
     options:
       - grouped_matmul
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant:
     module: True
@@ -446,7 +508,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant_v2:
     module: True
@@ -474,7 +536,7 @@ gmm:
     options:
       - grouped_matmul_add
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_finalize_routing:
     module: True
@@ -512,6 +574,8 @@ ffn:
       - ffn/swin_attention_ffn/README.md
     ut_cov_exclude:
       - ffn/swin_attention_ffn
+    test:
+      ut: False
     options:
       - swin_attention_ffn
 
@@ -524,6 +588,8 @@ ffn:
       - ffn/swin_transformer_ln_qkv/README.md
     ut_cov_exclude:
       - ffn/swin_transformer_ln_qkv
+    test:
+      ut: False
     options:
       - swin_transformer_ln_qkv
 
@@ -553,7 +619,7 @@ moe:
     ut_cov_exclude:
       - moe/moe_finalize_routing_v2
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_finalize_routing_v2
       - moe_token_unpermute
@@ -621,6 +687,23 @@ moe:
       - moe/moe_gating_top_k
     options:
       - moe_gating_top_k
+
+  moe_gating_top_k_backward:
+    module: True
+    src:
+      - moe/moe_gating_top_k_backward
+    exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/README.md
+    ut_cov_exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/examples
+      - moe/moe_gating_top_k_backward/tests
+    test:
+      examples: True
+      ut: True
+    options:
+      - moe_gating_top_k_backward
 
   moe_gating_top_k_softmax:
     module: True
@@ -807,7 +890,7 @@ moe:
     options:
       - moe_token_permute_with_routing_map
     test:
-      examples: False
+      examples: True
 
   moe_token_permute_with_routing_map_grad:
     module: True
@@ -834,7 +917,7 @@ moe:
       - moe/moe_token_unpermute/op_graph
       - moe/moe_token_unpermute/op_kernel
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_token_unpermute
       - moe_token_permute_with_routing_map_grad
@@ -889,7 +972,7 @@ moe:
     options:
       - moe_token_unpermute_with_routing_map
     test:
-      examples: False
+      examples: True
 
   moe_token_unpermute_with_routing_map_grad:
     module: True
@@ -967,7 +1050,7 @@ posembedding:
     options:
       - rope_with_sin_cos_cache
     test:
-      examples: False
+      examples: True
 
   rotary_position_embedding:
     module: True
@@ -993,6 +1076,34 @@ posembedding:
     options:
       - rotary_position_embedding_grad
 
+  kv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/kv_rms_norm_rope_cache
+    exclude:
+      - posembedding/kv_rms_norm_rope_cache/docs
+      - posembedding/kv_rms_norm_rope_cache/README.md
+    ut_cov_exclude:
+      - posembedding/kv_rms_norm_rope_cache
+    test:
+      ut: False
+    options:
+      - kv_rms_norm_rope_cache
+
+  qkv_rms_norm_rope_cache:
+    module: True
+    src:
+      - posembedding/qkv_rms_norm_rope_cache
+    exclude:
+      - posembedding/qkv_rms_norm_rope_cache/docs
+      - posembedding/qkv_rms_norm_rope_cache/README.md
+    ut_cov_exclude:
+      - posembedding/qkv_rms_norm_rope_cache
+    test:
+      ut: False
+    options:
+      - qkv_rms_norm_rope_cache
+
 mc2:
   matrix:
     all_gather_matmul:
@@ -1006,7 +1117,10 @@ mc2:
         - mc2/all_gather_matmul/docs
         - mc2/all_gather_matmul/README.md
       ut_cov_exclude:
-        - mc2/all_gather_matmul
+        - mc2/all_gather_matmul/op_graph
+        - mc2/all_gather_matmul/op_kernel
+      test:
+        examples: False
       options:
         - all_gather_matmul
 
@@ -1023,7 +1137,7 @@ mc2:
         - mc2/all_gather_matmul_v2/op_graph
         - mc2/all_gather_matmul_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - all_gather_matmul_v2
 
@@ -1196,7 +1310,7 @@ mc2:
         - mc2/matmul_all_reduce/op_graph
         - mc2/matmul_all_reduce/op_kernel
       test:
-        ut: False
+        examples: False
       options:
         - matmul_all_reduce
 
@@ -1213,6 +1327,8 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_all_reduce_add_rms_norm/op_graph
         - mc2/matmul_all_reduce_add_rms_norm/op_kernel
+      test:
+        examples: False
       options:
         - matmul_all_reduce_add_rms_norm
 
@@ -1229,6 +1345,8 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_reduce_scatter/op_graph
         - mc2/matmul_reduce_scatter/op_kernel
+      test:
+        examples: False
       options:
         - matmul_reduce_scatter
 
@@ -1242,7 +1360,10 @@ mc2:
         - mc2/matmul_allto_all/docs
         - mc2/matmul_allto_all/README.md
       ut_cov_exclude:
-        - mc2/matmul_allto_all
+        - mc2/matmul_allto_all/op_graph
+        - mc2/matmul_allto_all/op_kernel
+      test:
+        examples: False
       options:
         - matmul_allto_all
 
@@ -1262,6 +1383,22 @@ mc2:
         examples: False
       options:
         - matmul_reduce_scatter_v2
+
+    mega_moe:
+      module: True
+      src:
+        - mc2/mega_moe
+        - mc2/common
+      exclude:
+        - mc2/mega_moe/docs
+        - mc2/mega_moe/README.md
+      ut_cov_exclude:
+        - mc2/mega_moe/op_graph
+        - mc2/mega_moe/op_kernel
+      test:
+        examples: False
+      options:
+        - mega_moe
 
     quant_all_reduce:
       module: True
@@ -1313,8 +1450,29 @@ mc2:
         examples: False
       options:
         - distribute_barrier
+        - distribute_barrier_extend
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
         - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
+
+    distribute_barrier_extend:
+      module: True
+      src:
+        - mc2/distribute_barrier
+        - mc2/distribute_barrier_extend
+        - mc2/common
+      exclude:
+        - mc2/distribute_barrier/docs
+        - mc2/distribute_barrier/README.md
+        - mc2/distribute_barrier_extend/README.md
+      ut_cov_exclude:
+        - mc2/distribute_barrier_extend/op_graph
+        - mc2/distribute_barrier_extend/op_kernel
+      test:
+        examples: False
+      options:
+        - distribute_barrier_extend
 
     elastic_receivable_info_collect:
       module: True
@@ -1404,7 +1562,6 @@ mc2:
         - mc2/moe_distribute_combine_add_rms_norm/docs
         - mc2/moe_distribute_combine_add_rms_norm/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_add_rms_norm/op_api
         - mc2/moe_distribute_combine_add_rms_norm/op_graph
         - mc2/moe_distribute_combine_add_rms_norm/op_kernel
       test:
@@ -1412,6 +1569,9 @@ mc2:
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+        - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
 
     moe_distribute_combine_setup:
       module: True
@@ -1423,7 +1583,6 @@ mc2:
         - mc2/moe_distribute_combine_setup/docs
         - mc2/moe_distribute_combine_setup/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_setup/op_api
         - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
@@ -1441,13 +1600,54 @@ mc2:
         - mc2/moe_distribute_combine_teardown/docs
         - mc2/moe_distribute_combine_teardown/README.md
       ut_cov_exclude:
-        - mc2/moe_distribute_combine_teardown/op_api
         - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
         examples: False
       options:
         - moe_distribute_combine_teardown
+    
+    moe_distribute_dispatch_setup:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_setup
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_setup/docs
+        - mc2/moe_distribute_dispatch_setup/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_setup/op_api
+        - mc2/moe_distribute_dispatch_setup/op_graph
+        - mc2/moe_distribute_dispatch_setup/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+        - moe_distribute_dispatch_teardown
+        - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+
+    moe_distribute_dispatch_teardown:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_teardown
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_teardown/docs
+        - mc2/moe_distribute_dispatch_teardown/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_teardown/op_api
+        - mc2/moe_distribute_dispatch_teardown/op_graph
+        - mc2/moe_distribute_dispatch_teardown/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+        - moe_distribute_dispatch_teardown
+        - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
 
     moe_distribute_combine_v2:
       module: True
@@ -1588,6 +1788,9 @@ mc2:
       options:
         - moe_update_expert
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+        - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
         - moe_distribute_combine_add_rms_norm
 
     attention_to_ffn:
@@ -1642,7 +1845,7 @@ mhc:
       - mhc/mhc_post/examples
       - mhc/mhc_post/tests
     test:
-      examples: False
+      examples: True
       ut: True
   mhc_pre:
     module: True
@@ -1669,4 +1872,30 @@ mhc:
       - mhc/mhc_pre_backward/tests
     test:
       examples: False
+      ut: True
+  mhc_pre_sinkhorn_backward:
+    module: True
+    src:
+      - mhc/mhc_pre_sinkhorn_backward
+    exclude:
+      - mhc/mhc_pre_sinkhorn_backward/docs
+      - mhc/mhc_pre_sinkhorn_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_pre_sinkhorn_backward/examples
+      - mhc/mhc_pre_sinkhorn_backward/tests
+    test:
+      examples: True
+      ut: True
+  mhc_post_backward:
+    module: True
+    src:
+      - mhc/mhc_post_backward
+    exclude:
+      - mhc/mhc_post_backward/docs
+      - mhc/mhc_post_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_post_backward/examples
+      - mhc/mhc_post_backward/tests
+    test:
+      examples: True
       ut: True

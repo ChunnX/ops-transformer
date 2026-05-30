@@ -62,6 +62,9 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradProbNoneDropPadFalse<P
         int64_t rowIdMapLoopOffset = this->rowIdMapStartOffset + indicesLoopTime;
         int64_t tokenId = this->SafeDiv(rowIdMapLoopOffset, this->topK);
         int64_t permuteTokenId = this->sortedTwiceIndexGm.GetValue(rowIdMapLoopOffset);
+        if (permuteTokenId < 0) {
+            continue;
+        }
         SToMTE2Sync();
         for (int64_t hiddenLoop = 0; hiddenLoop < this->hiddenSizeLoopTimes; hiddenLoop++) {
             uint32_t hiddenLoopNum =

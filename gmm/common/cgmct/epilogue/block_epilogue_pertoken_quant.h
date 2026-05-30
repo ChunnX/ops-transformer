@@ -167,6 +167,11 @@ BlockEpiloguePertokenQuant<QMM_BLOCK_EPILOGUE_PERTOKEN_QUANT_FUNC_LOCAL_PARAMS>:
     if ASCEND_IS_AIC {
         return;
     }
+    // All groups may legally map to zero tokens. In that case the producer stage
+    // does not write any valid rows, so the per-token quant tail must exit early.
+    if (realM == 0U) {
+        return;
+    }
     CalParams(realM);
     InitParams();
     InitAndSetBuffer(params_->workSpaceGMAddr, params_->yGmAddr, params_->yScaleGmAddr);

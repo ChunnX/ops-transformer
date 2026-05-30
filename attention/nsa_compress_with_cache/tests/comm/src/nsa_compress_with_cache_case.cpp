@@ -21,7 +21,7 @@
 #include "tests/utils/log.h"
 #include "tests/utils/platform.h"
 #include "tiling/ncwc/tiling_data.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 /**
  * 以下函数声明需要保持与 CMakeList.txt 中调用 OpsTest_Level2_AddOp 函数时 KERNEL_PRIVATE_COMPILE_DEFINITIONS_EXT

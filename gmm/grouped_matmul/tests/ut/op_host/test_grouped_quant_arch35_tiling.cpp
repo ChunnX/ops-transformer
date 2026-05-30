@@ -108,7 +108,9 @@ public:
         gert::StorageShape groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
         int64_t kScaleBlocks = (k + 63) / 64;
         int64_t splitKScaleBlocks = k / 64 + groupNum;
+        bool isSplitKPertensor = groupType == 2 && scaleDtype != ge::DT_FLOAT8_E8M0;
         gert::StorageShape perTokenScaleShape =
+            isSplitKPertensor ? ops::ut::MakeGertStorageShape({groupNum}, {groupNum}) :
             groupType == 2 ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
                              ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
@@ -116,14 +118,20 @@ public:
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
         vector<int64_t> weightStorageDims;
         if (weightFormat == "NZ") {
-            weightStorageDims = transposeWeight ? vector<int64_t>{groupNum, (k + 31) / 32, (n + 15) / 16, 16, 32} :
-                                                  vector<int64_t>{groupNum, (n + 31) / 32, (k + 15) / 16, 16, 32};
+            const bool weight4Bit = weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 ||
+                                    weightDtype == ge::DT_FLOAT4_E1M2;
+            const int64_t n0 = weight4Bit ? 64 : 32;
+            const int64_t n1 = (n + n0 - 1) / n0;
+            const int64_t k1 = (k + 15) / 16;
+            weightStorageDims = transposeWeight ? vector<int64_t>{groupNum, (k + n0 - 1) / n0, (n + 15) / 16, 16, n0} :
+                                                  vector<int64_t>{groupNum, n1, k1, 16, n0};
         } else {
             weightStorageDims = weightOriginDims;
         }
         gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
         vector<int64_t> scaleDims =
+            isSplitKPertensor ? vector<int64_t>{groupNum} :
             groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
                            : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
                                               : vector<int64_t>{groupNum, kScaleBlocks, n, 2});
@@ -150,6 +158,10 @@ public:
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
         ASSERT_EQ(tilingResult, result) << "prefix=" << prefix << ", case=" << caseName;
         if (!result) {
+            return;
+        }
+        if (expectTilingData.empty()) {
+            // For some csv cases we only care success/failure path, not exact tiling binary details.
             return;
         }
 

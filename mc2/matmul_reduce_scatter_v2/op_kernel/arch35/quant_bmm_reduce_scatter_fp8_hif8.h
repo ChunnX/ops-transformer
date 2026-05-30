@@ -26,8 +26,8 @@
 #include "matmul_reduce_scatter_v2_c_tiling.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
-                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans>
-#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans
+                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -38,8 +38,8 @@ public:
     __aicore__ inline QuantBMMReduceScatter(){ }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
                                 GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
-                                Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData,
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -71,7 +71,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;        // CCU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];  // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
@@ -80,12 +80,13 @@ private:
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
-    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, __gm__ void* mc2InitTiling, 
-    __gm__ void* mc2CcTiling, TPipe* tPipe)
+    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, TPipe* tPipe)
 {
     tilingData_ = tilingData;
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;
@@ -150,7 +151,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     uint8_t repeat = 1;
     if ASCEND_IS_AIC {
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[0] = hccl_.ReduceScatter<true>(
+        handles_[0] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
     }
 }
@@ -246,7 +247,7 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.ReduceScatter<true>(
+        handles_[i + shift] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;
@@ -291,7 +292,7 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
         SyncAll<false>();
         if ASCEND_IS_AIC {
             recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-            handles_[i + shift] = hccl_.ReduceScatter<true>(
+            handles_[i + shift] = hccl_.template ReduceScatter<true>(
                 cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         }
         aAddr += aOffset;

@@ -23,7 +23,8 @@ namespace ge {
 
 * @par Inputs
 * Three inputs, including:
-* @li x_ref: An optional tensor, reserved. Support dtype:bfloat16, float16, float32, bool, int8, int16, int32, int64, uint8, uint16, uint32, uint64. Support format: ND.
+* @li x_ref: An tensor, reserved. Support dtype:bfloat16, float16, float32, bool, int8, int16, int32, int64, uint8,
+  uint16, uint32, uint64, float8_e5m2, float_8e4m3fn, float4_e1m2, float4_e2m1, hifloat8, int4. Support format: ND.
 * @li time_out: An optional tensor. Support dtype:int32. Support format: ND.
 * @li elastic_info: An optional tensor. Support dtype:int32. Support format: ND.
 
@@ -33,15 +34,18 @@ namespace ge {
 
 * @par Outputs
 * One outputs, including:
-* @li x_ref: A tensor. reserved. Support dtype:bfloat16, float16, float32, bool, int8, int16, int32, int64, uint8, uint16, uint32, uint64. Support format: ND.
+* @li x_ref: A tensor. reserved. Support dtype:bfloat16, float16, float32, bool, int8, int16, int32, int64, uint8,
+  uint16, uint32, uint64, float8_e5m2, float_8e4m3fn, float4_e1m2, float4_e2m1, hifloat8, int4. Support format: ND.
 */
 REG_OP(DistributeBarrier)
-    .INPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64,
-           DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
+    .INPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8,
+           DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1,
+           DT_HIFLOAT8, DT_INT4}))
     .OPTIONAL_INPUT(time_out, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))
-    .OUTPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64,
-            DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
+    .OUTPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8,
+            DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1,
+            DT_HIFLOAT8, DT_INT4}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
     .OP_END_FACTORY_REG(DistributeBarrier)

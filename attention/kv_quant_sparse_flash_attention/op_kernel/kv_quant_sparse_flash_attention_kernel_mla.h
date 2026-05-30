@@ -350,7 +350,10 @@ __aicore__ inline uint32_t KvQuantSparseFlashAttentionMla<QSFAT>::GetActualSeqLe
 {
     if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
         if (bIdx > 0) {
-            return actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
+            int32_t curActualSeqLen = actualSeqLengthsKVGm.GetValue(bIdx);
+            int32_t prevActualSeqLen = actualSeqLengthsKVGm.GetValue(bIdx - 1);
+            return (curActualSeqLen >= prevActualSeqLen) ?
+                static_cast<uint32_t>(curActualSeqLen - prevActualSeqLen) : 0U;
         } else if (bIdx == 0) {
             return actualSeqLengthsKVGm.GetValue(0);
         } else {
@@ -906,7 +909,10 @@ KvQuantSparseFlashAttentionMla<QSFAT>::GetBalanceActualSeqLengths(GlobalTensor<i
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         if (bIdx > 0) {
-            return actualSeqLengths.GetValue(bIdx) - actualSeqLengths.GetValue(bIdx - 1);
+            int32_t curActualSeqLen = actualSeqLengths.GetValue(bIdx);
+            int32_t prevActualSeqLen = actualSeqLengths.GetValue(bIdx - 1);
+            return (curActualSeqLen >= prevActualSeqLen) ?
+                static_cast<uint64_t>(curActualSeqLen - prevActualSeqLen) : 0ULL;
         } else if (bIdx == 0) {
             return actualSeqLengths.GetValue(0);
         } else {

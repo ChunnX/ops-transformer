@@ -15,28 +15,11 @@
 
 namespace l0op {
 const aclTensor* QuantLightningIndexerMetadata(
-    const aclTensor* actualSeqLengthsQueryOptional,
-    const aclTensor* actualSeqLengthsKeyOptional,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    const char* socVersion,
-    int64_t numHeadsQ,
-    int64_t numHeadsK,
-    int64_t headDim,
-    int64_t queryQuantMode,
-    int64_t keyQuantMode,
-    int64_t batchSizeOptional,
-    int64_t maxSeqlenQOptional,
-    int64_t maxSeqlenKOptional,
-    char* layoutQueryOptional,
-    char* layoutKeyOptional,
-    int64_t sparseCountOptional,
-    int64_t sparseModeOptional,
-    int64_t preTokensOptional,
-    int64_t nextTokensOptional,
-    int64_t cmpRatioOptional,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t aicCoreNum,
+    int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim,
+    int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK,
+    char* layoutQueryOptional, char* layoutKeyOptional, int64_t sparseCount, int64_t sparseMode, int64_t preTokens,
+    int64_t nextTokens, int64_t cmpRatio, const aclTensor* metadata, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

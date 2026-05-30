@@ -26,17 +26,7 @@
 #include <cstdint>
 #include <string>
 
-#include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "platform/platform_infos_def.h"
-#include "../../../moe_distribute_dispatch_v2/op_host/op_tiling/moe_distribute_dispatch_tiling_v2.h"
-#include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2_tiling.h"
-#include "mc2_hcom_topo_info.h"
-#include "mc2_exception_dump.h"
+#include "moe_distribute_dispatch_v3_tiling_base.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -44,7 +34,7 @@ using namespace ge;
 
 
 namespace optiling {
-static ge::graphStatus MoeDistributeDispatchV3TilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeDispatchV3TilingFuncBase::MoeDistributeDispatchV3TilingFunc(gert::TilingContext* context)
 {
     DispatchV2Config config;
     config.contextIndex = 0;  // 0: 根据dispatchV3算子原型标志位初始化context索引
@@ -79,17 +69,6 @@ static ge::graphStatus MoeDistributeDispatchV3TilingFunc(gert::TilingContext* co
     return ret;
 }
 
-struct MoeDistributeDispatchCompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeDispatchV3(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeDispatchV3)
-    .Tiling(MoeDistributeDispatchV3TilingFunc)
-    .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV3);
-
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 // Register exception func
 inline void MoeDistributeDispatchV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
@@ -103,18 +82,18 @@ __attribute__((constructor)) void RegisterMoeDistributeDispatchV3ExceptionFunc()
     int32_t metadefVersionNum = 0;
 
     if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeDispatchV3", "Get runtime version failed");
+        OP_LOGW("MoeDistributeDispatchV3", "Get runtime version failed when register exception func.");
         return;
     }
     if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeDispatchV3", "Get metadef version failed");
+        OP_LOGW("MoeDistributeDispatchV3", "Get metadef version failed when register exception func.");
         return;
     }
 
     if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
-        OP_LOGE("MoeDistributeDispatchV3",
-            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
-            runtimeVersionNum, metadefVersionNum);
+        OP_LOGW("MoeDistributeDispatchV3",
+            "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+            runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
         return;
     }
 

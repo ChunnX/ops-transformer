@@ -269,7 +269,7 @@ __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint16_t* outputIdxBuf, __ubuf__
     MicroAPI::RegTensor<int16_t> idxC;
     MicroAPI::RegTensor<uint16_t> sqzIdxOut;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::Arange(idxC, beginIdx + i * 128);
 
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * 128);
@@ -292,7 +292,7 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf
     MicroAPI::RegTensor<uint16_t> tmpIdx;
     MicroAPI::RegTensor<uint16_t> outputValue;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 128);
 
         MicroAPI::Gather(outputValue, inputValueBuf, tmpIdx, pregB16);
@@ -315,7 +315,7 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
     MicroAPI::RegTensor<uint32_t> outputGatherIdx;
     MicroAPI::RegTensor<uint32_t> outputAddsIdx;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
 
         MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, topK - 1, pregB32);
@@ -382,6 +382,7 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter
+    AscendC::Duplicate(tmpIdxLocal, (uint16_t)(0), QLICommon::Align(topK, (uint32_t)128));
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
@@ -390,6 +391,25 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     // 是否输出Value
     if constexpr (ISOUTVALUE) {
         FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum16);
+    }
+}
+
+/**
+    LD:输出最终的Idx
+*/
+__simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf, __ubuf__ uint32_t* hisIdxBuf, uint16_t vfLoop)
+{
+    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    MicroAPI::RegTensor<uint16_t> tmpIdx;
+    MicroAPI::RegTensor<uint32_t> outputIdx;
+
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
+
+        MicroAPI::Gather(outputIdx, hisIdxBuf, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, pregB32);
+
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputIdx, pregB32);
     }
 }
 
@@ -425,6 +445,26 @@ __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLoca
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
 
     FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
+}
+
+/**
+    LD:gather最终的Idx
+*/
+__aicore__ inline void LiTopKLDGatherVF(const LocalTensor<uint32_t>& outputIdxLocal, // 输出Idx topK * 2B
+                                        const LocalTensor<uint16_t>& tmpIdxLocal, // 本轮tmpIdx输入 validLen * 2B
+                                        const LocalTensor<uint32_t>& hisIdxLocal, // 上一轮Idx输入 topK * 4B
+                                        uint32_t topK) // topK元素个数
+{
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
+
+    const uint16_t repeatSize32 = 64;
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
+    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
+
+    FindLDRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topkLoopNum32);
 }
 }
 #endif

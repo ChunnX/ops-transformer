@@ -22,7 +22,7 @@
 #include "tests/utils/io.h"
 #include "tests/utils/platform.h"
 #include "tiling/qgmmia/tiling_data.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 using Case = ops::adv::tests::utils::Case;
 using QuantGroupedMatmulInplaceAddCase =

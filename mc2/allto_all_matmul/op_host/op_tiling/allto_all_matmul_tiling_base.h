@@ -17,13 +17,12 @@
 
 #include "tiling/tiling_api.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_formulaic_tiling.h"
 
 namespace MC2Tiling {
-
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
@@ -44,6 +43,7 @@ protected:
     {
         return ge::GRAPH_SUCCESS;
     }
+    virtual CutResult GetCutResOfCommAndCompute();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();
     ge::graphStatus CheckAlltoAllOutShape(const gert::TilingContext *context, const char *opName);
@@ -51,13 +51,14 @@ protected:
     ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, const char *opName);
     ge::graphStatus SetAlltoAllMatmulShapeInfo(const gert::TilingContext *context, TilingContextInfo &contextInfo);
     ge::graphStatus CheckKcQuantTensorDataType(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
+    ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName,
+                                          const OpAttrIndexSchema &indexSchema);
 
     NpuArch npuArch_;
     const char *opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
-    TilingContextInfo contextInfo;
-    TilingInferredInfo inferredInfo;
+    TilingContextInfo contextInfo_;
+    TilingInferredInfo inferredInfo_;
 
 private:
     // 功能后移，基类的GetShapeAttrsInfo在isCapable之前，当前将校验和参数获取放到子类的DoOptiling中

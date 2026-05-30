@@ -31,27 +31,35 @@ logging.basicConfig(
 def find_device_and_csv_by_num(profiling_path_func, card_num_func):
     csv_filename = "kernel_details.csv"
     csv_path_list_func = [None] * card_num_func
-    device_pattern = re.compile(r'^device_(\d+)$')
-    csv_search_root_mapping = {}
-    for root, dirs, _ in os.walk(profiling_path_func):
-        for dir_name in dirs:
-            match = device_pattern.match(dir_name) # 匹配device_*文件
-            if not match:
-                continue
-            device_num = int(match.group(1)) # 获取该文件是来自第几张卡的信息
-            if 0 <= device_num < card_num_func:
-                device_full_path = os.path.join(root, dir_name)
-                device_direct_path = os.path.dirname(device_full_path)
-                csv_search_root = os.path.dirname(device_direct_path)
-                csv_search_root_mapping[device_num] = csv_search_root # 获取csv表的搜寻目录
-    for device_num, csv_search_root in csv_search_root_mapping.items():
+
+    # 1. 只在传入路径第一层找包含 ascend_pt 的文件夹（不递归）
+    ascend_pt_dirs = []
+    try:
+        for entry in os.listdir(profiling_path_func):
+            dir_full_path = os.path.join(profiling_path_func, entry)
+            # 是文件夹 + 名称包含 ascend_pt
+            if os.path.isdir(dir_full_path) and "ascend_pt" in entry:
+                ascend_pt_dirs.append(dir_full_path)
+    except PermissionError:
+        logging.error("访问路径{%s}权限不足，无法读取目录", profiling_path_func)
+    except Exception as e:
+        logging.error("读取目录 {%s} 失败，异常信息:{%s}", profiling_path_func, str(e))
+
+    # 2. 按卡数量取前 N 个
+    target_dirs = ascend_pt_dirs[:card_num_func]
+
+    # 3. 在每个 ascend_pt 文件夹内查找csv 文件
+    for idx, ascend_dir in enumerate(target_dirs):
         csv_path = None
-        for sub_root, _, sub_files in os.walk(csv_search_root):
-            if sub_root != csv_search_root and csv_filename in sub_files:
+        # 递归遍历目录找 csv
+        for sub_root, _, sub_files in os.walk(ascend_dir):
+            if csv_filename in sub_files:
                 csv_path = os.path.join(sub_root, csv_filename)
-                break
-        logging.info("%d卡 profiling数据:%s", device_num, csv_path)
-        csv_path_list_func[device_num] = csv_path
+                break  # 找到第一个就停止
+
+        csv_path_list_func[idx] = csv_path
+        logging.info("%s卡 profiling数据:%s", idx, csv_path)
+
     return csv_path_list_func
 
 
@@ -88,9 +96,9 @@ def get_card_data_by_cprofiling(csv_path_list_func):
         current_count = type_count.get(type_val, 0)
         type_count[type_val] = current_count + 1
         base_mapping[(type_val, current_count)] = dur_0
-    reslut_dict = {}
+    result_dict = {}
     for (type_val, count), dur_0 in base_mapping.items():
-        reslut_dict[(type_val, count)] = [dur_0] + ["NA"] * (card_num_func - 1)
+        result_dict[(type_val, count)] = [dur_0] + ["NA"] * (card_num_func - 1)
     for card_num in range(1, card_num_func):
         card_path = csv_path_list_func[card_num]
         if card_path is None or not os.path.exists(card_path):
@@ -112,24 +120,24 @@ def get_card_data_by_cprofiling(csv_path_list_func):
             idx = current_type_count.get(t, 0)
             current_type_count[t] = idx + 1
             card_map[(t, idx)] = dur
-        for key in reslut_dict:
+        for key in result_dict:
             if key in card_map:
-                reslut_dict[key][card_num] = card_map[key]
+                result_dict[key][card_num] = card_map[key]
 
-    return reslut_dict
+    return result_dict
             
 
 # 计算最大最小值、抖动并导出
-def get_all_data(reslut_dict):
+def get_all_data(result_dict):
     script_path = os.path.abspath(__file__)
     csv_filename = "profiling_all_data.csv"
     csv_abs_path = os.path.dirname(os.path.join(script_path, csv_filename))
     rows_func = []
-    if not reslut_dict:
+    if not result_dict:
         logging.warning("无数据可导出")
         return
-    max_card_num = len(next(iter(reslut_dict.values())))
-    for (type_name, count), dur_list in reslut_dict.items():
+    max_card_num = len(next(iter(result_dict.values())))
+    for (type_name, count), dur_list in result_dict.items():
         valid_vals = [v for v in dur_list if v != 'NA']
         if not valid_vals:
             max_val = min_val = del_num = 'NA'
@@ -153,19 +161,19 @@ def get_all_data(reslut_dict):
 
 
 # 计算每种type算子的平均抖动
-def calculate_avg(reslut_dict):
+def calculate_avg(result_dict):
     script_path = os.path.abspath(__file__)
     csv_filename = "profiling_avg_data.csv"
     csv_abs_path = os.path.dirname(os.path.join(script_path, csv_filename))
     logging.info("开始计算所有算子的平均抖动")
     type_total_count = {}
     logging.info("计算算子平均抖动时, 不计算算子第0次调用时的抖动值")
-    for (type_name, _) in reslut_dict.keys():
+    for (type_name, _) in result_dict.keys():
         if type_name not in type_total_count:
             type_total_count[type_name] = 0
         type_total_count[type_name] += 1
     type_del_map = {}
-    for (type_name, count), dur_list in reslut_dict.items():
+    for (type_name, count), dur_list in result_dict.items():
         if count == 0:
             continue
         valid_vals = [v for v in dur_list if v != "NA"]

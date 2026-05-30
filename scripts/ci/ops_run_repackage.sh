@@ -15,6 +15,7 @@ RUN_PKG_SAVE_PATH=""
 OS_ARCH=$(uname -m)
 PKG_NAME=""
 SOC=""
+OPP_PREFIX="opp"
 
 # -----------------------------
 # 函数定义
@@ -95,12 +96,12 @@ HOST_RUN_NAME="host.run"
 HOST_EXTRACT_DIR="host"
 MAKESELF_TARGET_DIR="build/makeself"
 RUNFILE_TARGET_DIR="build/_CPack_Packages/makeself_staging"
-PACKAGE_SCRIPT="${WORKDIR}/scripts/package/package.py"
-MERGE_SCRIPT="${WORKDIR}/scripts/package/common/py/merge_binary_info_config.py"
+PACKAGE_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/package.py"
+MERGE_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/merge_binary_info_config.py"
 PKG_OUTPUT_DIR="build/_CPack_Packages/makeself_staging"
 RUN_PACKAGE_SAVE_AB_PATH=${TOP_DIR}/${RUN_PKG_SAVE_PATH}
 ARCHIVE_RUN_DIR="${TOP_DIR}/vendor/hisi/build/delivery/${SOC}/"
-MERGE_OPS_SCRIPT="${WORKDIR}/scripts/package/common/py/json_merger.py"
+MERGE_OPS_SCRIPT="$TOP_DIR/open_source/cann-cmake/scripts/package/json_merger.py"
 
 
 cd ${WORKDIR}/ || exit
@@ -159,8 +160,8 @@ PROCESS_FIFO="/tmp/process_fifo_$$"
 PROCESS_ERROR_FILE="/tmp/process_errors_$$"
 > "$PROCESS_ERROR_FILE"
 
-TARGET_KERNEL_DIR="$HOST_EXTRACT_DIR/${PKG_NAME}/built-in/op_impl/ai_core/tbe/kernel/$SOC/$PKG_NAME/"
-TARGET_CONFIG_DIR="$HOST_EXTRACT_DIR/${PKG_NAME}/built-in/op_impl/ai_core/tbe/kernel/config/$SOC/ops_transformer"
+TARGET_KERNEL_DIR="$HOST_EXTRACT_DIR/${OPP_PREFIX}/built-in/op_impl/ai_core/tbe/kernel/$SOC/$PKG_NAME/"
+TARGET_CONFIG_DIR="$HOST_EXTRACT_DIR/${OPP_PREFIX}/built-in/op_impl/ai_core/tbe/kernel/config/$SOC/ops_transformer"
 ensure_dir "$TARGET_KERNEL_DIR"
 ensure_dir "$TARGET_CONFIG_DIR"
 
@@ -292,7 +293,9 @@ python3 "$PACKAGE_SCRIPT" \
     --pkg-output-dir "${WORKDIR}/$PKG_OUTPUT_DIR" \
     --independent_pkg \
     --chip_name "$SOC" \
-    --os_arch linux-"$OS_ARCH"
+    --os_arch linux-"$OS_ARCH"\
+    --delivery_dir "${WORKDIR}/build" \
+    --source_dir "${WORKDIR}"
 
 log "Packaging completed successfully!"
 
