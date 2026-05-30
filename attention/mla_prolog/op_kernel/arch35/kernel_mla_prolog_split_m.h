@@ -122,8 +122,7 @@ private:
                                             LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
                                             LocalTensor<typename MLAPT::ropeComputType> &sinLocalCkvKr,
                                             CkvkrParams ropeAndScatterKrParams);
-    __aicore__ inline void ScatterKr(LocalTensor<krCacheType> &outputKrLocal,
-                                     CkvkrParams ropeAndScatterKrParams);
+    __aicore__ inline void ScatterKr(LocalTensor<krCacheType> &outputKrLocal, CkvkrParams ropeAndScatterKrParams);
     __aicore__ inline void RmsNormAndScatterCkv(LocalTensor<float> &dequantScaleXLocal,
                                                 LocalTensor<uint8_t> &shareTmpUb,
                                                 LocalTensor<typename MLAPT::ropeComputType> &cosLocalCkvKr,
@@ -131,17 +130,14 @@ private:
                                                 CkvkrParams rmsNormAndScatterCkvParams);
     __aicore__ inline void RmsNormAndQuantizeCkv(LocalTensor<kvCacheType> &outputLocal,
                                                  LocalTensor<uint8_t> &rmsNormShareTmpUb,
-                                                 LocalTensor<float> &dequantScaleXLocal,
-                                                 RmsNormParam rmsNormParams,
+                                                 LocalTensor<float> &dequantScaleXLocal, RmsNormParam rmsNormParams,
                                                  CkvkrParams rmsNormAndScatterCkvParams);
-    __aicore__ inline void RmsNormAndQuantizeCkvMxfp8(
-                                                    LocalTensor<kvCacheType> &outputLocal,
-                                                    LocalTensor<uint8_t> &rmsNormShareTmpUb,
-                                                    LocalTensor<float> &dequantScaleXLocal,
-                                                    RmsNormParam rmsNormParams,
-                                                    CkvkrParams rmsNormAndScatterCkvParams);
-    __aicore__ inline void ScatterCkv(LocalTensor<kvCacheType> &outputLocal,
-                                      CkvkrParams rmsNormAndScatterCkvParams);
+    __aicore__ inline void RmsNormAndQuantizeCkvMxfp8(LocalTensor<kvCacheType> &outputLocal,
+                                                      LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                      LocalTensor<float> &dequantScaleXLocal,
+                                                      RmsNormParam rmsNormParams,
+                                                      CkvkrParams rmsNormAndScatterCkvParams);
+    __aicore__ inline void ScatterCkv(LocalTensor<kvCacheType> &outputLocal, CkvkrParams rmsNormAndScatterCkvParams);
     __aicore__ inline void RmsNormRopeScatterCkvKr(int64_t tokenIndex, int64_t rmsNormCkvOffset, int64_t ropeKrOffset,
                                                    int64_t curVecToken);
     // 低时延算力分组场景
@@ -1012,7 +1008,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQcQr(AicOffset &aicOffset
             }
         }
         if constexpr (MLAPT::enableDequantOpt) {
-            uint32_t spacing = CeilDivT(nL1loops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT - 1));
+            uint32_t spacing = CeilDivT(nL1loops,
+                    static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT / 3)); // 3：确保flagID安全
             if ((nL1 + 1) % spacing == 0 || nL1 + 1 == static_cast<int64_t>(nL1loops)) {
                 CrossCoreSetFlag<0x2, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
             }
@@ -1039,7 +1036,8 @@ MlaPrologV3SplitM<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int
     // [32, 2, 128] * [2, 128, 512] = [32, 2, 512]
 
     for (int64_t i = 0; i < subLoopTimes; i++) {
-        uint32_t coarse = CeilDivT(static_cast<uint32_t>(subLoopTimes), static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT - 1));
+        uint32_t coarse = CeilDivT(static_cast<uint32_t>(subLoopTimes),
+                                   static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT / 3)); // 3：确保flagID安全
         if (i % coarse == 0) {
             CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
         } else if ((subLoopTimes - CeilDivT(static_cast<uint32_t>(subLoopTimes), coarse)) <= MAX_SYNC_FLAG_COUNT) {
@@ -1048,11 +1046,11 @@ MlaPrologV3SplitM<MLAPT>::MatmulQnSyncDynamicQuantAndMulQr(int64_t qcOffset, int
 
         // Qn 用 MatmulSplitK 避免 L0A 溢出：每 L0 步 128×64=8192<16384，bf16 无 scale
         for (int64_t nL1 = 0; nL1 < mmQnParam_.n; nL1 += mmQnParam_.baseN) {
-            uint32_t subN = static_cast<uint32_t>(
-                (nL1 + mmQnParam_.baseN > mmQnParam_.n) ? (mmQnParam_.n - nL1) : mmQnParam_.baseN);
+            uint32_t subN = static_cast<uint32_t>((nL1 + mmQnParam_.baseN > mmQnParam_.n) ? (mmQnParam_.n - nL1) :
+                                                                                            mmQnParam_.baseN);
             MatmulSplitK<mmQnInputType, mmQnOutputType, dequantScaleType, false, false, true, DataFormat::ND>(
-                mmQnResGm_[qnResOffset], mmQcQrResDequantGm_[qcOffset],
-                weightUkGm_[weightUkOffset], mmQnParam_, bufParam_, static_cast<uint32_t>(nL1), subN);
+                mmQnResGm_[qnResOffset], mmQcQrResDequantGm_[qcOffset], weightUkGm_[weightUkOffset], mmQnParam_,
+                bufParam_, static_cast<uint32_t>(nL1), subN);
         }
 
         if constexpr (std::is_same<mmQcQrOutputType, int32_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
@@ -1302,11 +1300,11 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndScatterCkv(LocalTenso
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
                   (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && !isFp8E8m0) ||
                   std::is_same<rmsNormCkvOutputType, HIF8>::value) {
-        RmsNormAndQuantizeCkv(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal,
-            rmsNormParams, rmsNormAndScatterCkvParams);
+        RmsNormAndQuantizeCkv(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal, rmsNormParams,
+                              rmsNormAndScatterCkvParams);
     } else if constexpr (std::is_same<rmsNormCkvOutputType, FP8E4M3>::value && isFp8E8m0) {
-        RmsNormAndQuantizeCkvMxfp8(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal,
-            rmsNormParams, rmsNormAndScatterCkvParams);
+        RmsNormAndQuantizeCkvMxfp8(outputLocal, rmsNormShareTmpUb, dequantScaleXLocal, rmsNormParams,
+                                   rmsNormAndScatterCkvParams);
     } else {
         RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, rmsNormCkvOutputType, dequantScaleType>(
             outputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
@@ -1358,7 +1356,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
         }
         AscendC::PipeBarrier<PIPE_V>();
     } else if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-                            std::is_same<mmCkvKrOutputType, float>::value) {
+                         std::is_same<mmCkvKrOutputType, float>::value) {
         Rectangle rectangleParams{
             (uint32_t)vectorRow_,               // row
             (uint32_t)baseParams_->headSizeCkv, // col
@@ -1378,19 +1376,18 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkv(LocalTens
 }
 
 template <typename MLAPT>
-__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkvMxfp8(
-                                                                        LocalTensor<kvCacheType> &outputLocal,
-                                                                        LocalTensor<uint8_t> &rmsNormShareTmpUb,
-                                                                        LocalTensor<float> &dequantScaleXLocal,
-                                                                        RmsNormParam rmsNormParams,
-                                                                        CkvkrParams rmsNormAndScatterCkvParams)
+__aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormAndQuantizeCkvMxfp8(LocalTensor<kvCacheType> &outputLocal,
+                                                                            LocalTensor<uint8_t> &rmsNormShareTmpUb,
+                                                                            LocalTensor<float> &dequantScaleXLocal,
+                                                                            RmsNormParam rmsNormParams,
+                                                                            CkvkrParams rmsNormAndScatterCkvParams)
 {
     LocalTensor<float> inputLocal = rmsNormShareTmpUb.ReinterpretCast<float>();
     LocalTensor<uint8_t> sharedBuf =
         inputLocal[vectorRow_ * baseParams_->headSizeCkv].template ReinterpretCast<uint8_t>();
     RmsNormNormal<mmCkvKrOutputType, rmsNormGammaType, rmsNormComputType, float, dequantScaleType>(
-        inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_,
-        dequantScaleWDkvKrLocal_, dequantScaleXLocal, sharedBuf, rmsNormParams);
+        inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
+        dequantScaleXLocal, sharedBuf, rmsNormParams);
 
     AscendC::DataSyncBarrier<MemDsbT::UB>();
 
@@ -1695,7 +1692,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
         if (colOffsetVecEnd > mmQcQrParam_.n) { // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
             colOffsetVecEnd = mmQcQrParam_.n;
         }
-        uint32_t qcQrSpacing = CeilDivT(totalLoops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT - 1));
+        uint32_t qcQrSpacing =
+            CeilDivT(totalLoops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT / 3)); // 3：确保flagID安全
         if (splitCount % qcQrSpacing == 0) {
             CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
         }
@@ -1715,11 +1713,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
 
             DataCopy(mmQcQrResDequantGm_[mmQnPreDequantResOffset], outputLocal, outputCopyParams);
             {
-                uint32_t qcSpacing = CeilDivT(totalQcLoops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT - 1));
+                uint32_t qcSpacing =
+                    CeilDivT(totalQcLoops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT / 3)); // 3：确保flagID安全
                 if ((qcCount + 1) % qcSpacing == 0 || qcCount + 1 == totalQcLoops) {
                     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
                 } else if ((totalQcLoops - CeilDivT(totalQcLoops, qcSpacing)) <=
-                        static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT) &&
+                               static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT) &&
                            ((qcCount + 1) % (qcSpacing * 2) == qcSpacing)) {
                     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP);
                 }
