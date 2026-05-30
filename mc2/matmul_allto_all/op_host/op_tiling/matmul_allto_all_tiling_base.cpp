@@ -150,24 +150,24 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
     uint64_t nAxis = x2TransFlag ? shapeInfo.x2Dim0 : shapeInfo.x2Dim1;
     // MatmulAlltoAll, n要整除rankSize
     OP_TILING_CHECK(nAxis % static_cast<uint64_t>(rankDim) != 0,
-                    OP_LOGE(opName, "N (%lu) is not divisible by rankSize (%ld).", nAxis, rankDim),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "n",
+                        std::to_string(nAxis).c_str(),
+                        (std::string("must be divisible by rankSize(") + std::to_string(rankDim) + ")").c_str()),
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: x1Dim1 = x2 K-axis
     OP_TILING_CHECK((shapeInfo.x1Dim1 != kAxis),
-                    OP_LOGE(opName,
-                            "The x1 second dim should be the same with the %s dim of x2, "
-                            "the x1 second dim is %lu, the x2 %s dim is %lu.",
-                            x2TransFlag ? "second" : "first", shapeInfo.x1Dim1, x2TransFlag ? "second" : "first",
-                            kAxis),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1dim1 and x2Kdim",
+                        (std::to_string(shapeInfo.x1Dim1) + " vs " + std::to_string(kAxis)).c_str(),
+                        "x1 second dim must equal x2 K-axis dim"),
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: yDim0 = x1Dim0 * rankDim and x2 N-axis = yDim1 * rankDim
     OP_TILING_CHECK((((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0) || (nAxis != (shapeInfo.yDim1 * rankDim))),
-                    OP_LOGE(opName,
-                            "The y first dim should be %lu times of the first dim of x1, "
-                            "the x2 %s dim should be %lu times of the second dim of y. "
-                            "rankDim: %lu, x1Dim0: %lu, yDim0: %lu, x2Dim%d: %lu, yDim1: %lu.",
-                            rankDim, x2TransFlag ? "first" : "second", rankDim, rankDim, shapeInfo.x1Dim0,
-                            shapeInfo.yDim0, x2TransFlag ? 0 : 1, nAxis, shapeInfo.yDim1),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1_x2_y",
+                        (std::string("x1Dim0=") + std::to_string(shapeInfo.x1Dim0) + " yDim0=" +
+                         std::to_string(shapeInfo.yDim0) + " nAxis=" + std::to_string(nAxis) +
+                         " yDim1=" + std::to_string(shapeInfo.yDim1)).c_str(),
+                        (std::string("yDim0 = x1Dim0 * rankSize and nAxis = yDim1 * rankSize, rankSize=") +
+                         std::to_string(rankDim)).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -212,16 +212,14 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::Ti
     uint64_t x1ScaleDim = x1ScaleShape->GetStorageShape().GetDim(0);
     uint64_t x2ScaleDim = x2ScaleShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((x1ScaleDim != shapeInfo.x1Dim0),
-                    OP_LOGE(opName,
-                            "the x1Scale dim should be same with the "
-                            "x1 first dim, the x1Scale dim is %lu, the x1 first dim is %lu.",
-                            x1ScaleDim, shapeInfo.x1Dim0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale",
+                        (std::to_string(x1ScaleDim) + " vs " + std::to_string(shapeInfo.x1Dim0)).c_str(),
+                        "x1Scale dim must equal x1 first dim"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleDim != nAxis),
-                    OP_LOGE(opName,
-                            "the x2Scale dim should be same with the "
-                            "x2 second dim, the x2Scale dim is %lu, the x2 second dim is %lu.",
-                            x2ScaleDim, nAxis),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2Scale",
+                        (std::to_string(x2ScaleDim) + " vs " + std::to_string(nAxis)).c_str(),
+                        "x2Scale dim must equal x2 second dim"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
