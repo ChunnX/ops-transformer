@@ -89,7 +89,8 @@ private:
     __aicore__ inline void ProcessMoeExpert(uint32_t tokenIndexOffset, uint32_t topkId, float scaleVal);
     __aicore__ inline void ProcessExpert(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void ProcessMoeExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t& index);
-    __aicore__ inline void ProcessSharedExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset, uint32_t processLen);
+    __aicore__ inline void ProcessSharedExpertsLoop(uint32_t tokenIndex, uint32_t tokenIndexOffset,
+        uint32_t processLen);
     __aicore__ inline void AddSharedExpertX(uint32_t tokenIndex, uint32_t processLen);
     __aicore__ inline void ExpertScaleCopy(const uint32_t beginIndex, const uint32_t endIndex, const uint32_t tokenPerAivNum);
     __aicore__ inline void CalConstExpertAlpha(GlobalTensor<ExpandXType> constExpertAlphaGM, uint32_t const_expert_idx, float &alphaFloat);
@@ -995,8 +996,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
 
     if (sendCntNum_ != 0U) {
         LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
-        const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
-                                          0U, 0U};
+        const DataCopyExtParams bskParams{
+            1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
+            0U, 0U, 0U};
         const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
 
@@ -1014,7 +1016,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
                 uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
                 uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));
                 if (isScalingDownFlag_) {
-                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + rankIdExpandIdx);
+                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
+                        epWorldSizeOriginal_ + rankIdExpandIdx);
                 }
                 ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
             }
@@ -1201,7 +1204,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::CheckPackedTo
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::CheckPackedTokenArriveNeededSlots(uint32_t tokenIndex)
+__aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::CheckPackedTokenArriveNeededSlots(
+    uint32_t tokenIndex)
 {
     uint32_t needWaitCount = 0U;
     uint32_t arriveCount = 0U;
@@ -1250,7 +1254,8 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::NeedWaitToken
 }
 
 template <CombineMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ClearPackedTokenFlags(uint32_t tokenIndex, LocalTensor<float> flagTensor)
+__aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ClearPackedTokenFlags(
+    uint32_t tokenIndex, LocalTensor<float> flagTensor)
 {
     if (blockCntPerToken_ == 0U) {
         return;
@@ -1529,6 +1534,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
         PipeBarrier<PIPE_V>();
         AscendC::Add(sumFloatBufLocal_, sumFloatBufLocal_, mulBufLocal_, processLen);
     }
+    PipeBarrier<PIPE_ALL>();
     moeSumQueue_.FreeTensor<XType>(tmpUb);
 }
 
@@ -1573,7 +1579,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
     } else {
         for (uint32_t topkId = 0U; topkId < axisK_; topkId++) {
             // 读取expert_id
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertIdsGM_[tokenIndex * axisK_ + topkId]);
+            DataCacheCleanAndInvalid<int32_t,
+                CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertIdsGM_[tokenIndex * axisK_ + topkId]);
             uint32_t expert_id = expertIdsGM_.GetValue(tokenIndex * axisK_ + topkId);
             if (isInputExpertMaskFlag_) {
                 bool maskExpertFlag = expertMaskTensor_.GetValue(tokenIndex * axisK_ + topkId);
