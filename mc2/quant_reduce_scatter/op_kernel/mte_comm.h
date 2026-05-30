@@ -320,8 +320,6 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
     }
     PROF_MARK(profBufGm_, EVT_WRITE_STATUS_END, 0);
 }
