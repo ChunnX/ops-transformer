@@ -100,7 +100,7 @@ bool IsDynamicInputEmpty(const gert::TilingContext& context, uint32_t index)
         return true;
     }
     const auto &storageShape = shapePtr->GetStorageShape();
-    return storageShape.GetShapeSize() == 0;
+    return storageShape.GetShapeSize() == 0 || storageShape.GetShapeSize() == 1;
 }
 
 ge::graphStatus CheckTilingDataCapacity(gert::TilingContext& context, uint64_t tilingDataSize)
