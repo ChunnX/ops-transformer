@@ -24,15 +24,14 @@ namespace moe_dispatch {
 
 class PerGroupChecker : public DynamicQuantCheckerBase {
 public:
-    PerGroupChecker()
-        : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERGROUP_DYNAMIC_QUANT) {}
+    PerGroupChecker() : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERGROUP_DYNAMIC_QUANT)
+    {
+    }
 
     // dynamicScales 校验
-    ge::graphStatus CheckDynamicScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const override {
+    ge::graphStatus CheckDynamicScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                       uint32_t h) const override
+    {
         // PerGroup 必须有 dynamicScales
         if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
@@ -47,24 +46,28 @@ public:
     }
 
     // dynamicScales 维度数 - 2D
-    uint32_t GetDynamicScalesDimNum() const override {
+    uint32_t GetDynamicScalesDimNum() const override
+    {
         return moe_dispatch_defs::DYNAMIC_SCALE_TWO_DIM_NUM;
     }
 
     // dynamicScales dtype
-    ge::DataType GetDynamicScalesDtype() const override {
+    ge::DataType GetDynamicScalesDtype() const override
+    {
         return ge::DT_FLOAT;
     }
 
     // dynamicScales dim1 计算
     // PerGroup: CeilDiv(h, 128)
-    uint32_t CalcDynamicScalesDim1(uint32_t h) const override {
+    uint32_t CalcDynamicScalesDim1(uint32_t h) const override
+    {
         return moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::PERGROUP_BLOCK_SIZE);
     }
 
     // tokenMsgSize 计算
     // PerGroup: AlignUp(AlignUp(h, 128) + CeilDiv(h, 128), 512)
-    uint32_t CalcTokenMsgSize(uint32_t h) const override {
+    uint32_t CalcTokenMsgSize(uint32_t h) const override
+    {
         uint32_t alignedH = moe_dispatch_utils::AlignUp(h, moe_dispatch_defs::ALIGN_128);
         uint32_t scalesDim1 = moe_dispatch_utils::CeilDiv(h, moe_dispatch_defs::ALIGN_128);
         uint32_t totalSize = alignedH + scalesDim1;
