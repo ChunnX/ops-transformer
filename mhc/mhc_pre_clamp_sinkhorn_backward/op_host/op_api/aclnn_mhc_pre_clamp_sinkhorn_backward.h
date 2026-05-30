@@ -35,7 +35,7 @@ aclnnStatus aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize(
     const aclTensor *h_pre, const aclTensor *hc_before_norm, const aclTensor *inv_rms,
     const aclTensor *sum_out, const aclTensor *norm_out,
     const aclTensor *reduce_out,
-    float hc_eps, float min, float max,
+    double min, double max, double hc_eps,
     aclTensor *grad_x, aclTensor *grad_phi, aclTensor *grad_alpha, aclTensor *grad_bias,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 

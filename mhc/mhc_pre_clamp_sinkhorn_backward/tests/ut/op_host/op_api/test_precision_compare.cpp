@@ -438,9 +438,9 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     ret = CreateBackwardOutputTensors(bf16_shape, fp32_shape, fp32_shape, fp32_shape, tgt_tensors);
     ASSERT_EQ(ret, 0) << "Create tgt output tensors failed";
 
-    const float hc_eps = 1e-6f;
-    const float min_val = 0.0f;
-    const float max_val = 1.0f;
+    const double hc_eps = 1e-6;
+    const double min_val = 0.0;
+    const double max_val = 1.0;
 
     aclnnStatus aclnn_ret = ACL_SUCCESS;
     void *ref_workspace = nullptr;
@@ -466,7 +466,7 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
         tgt_tensors.h_pre, tgt_tensors.hc_before_norm, tgt_tensors.inv_rms,
         tgt_tensors.sum_out, tgt_tensors.norm_out,
         tgt_tensors.reduce_out,
-        hc_eps, min_val, max_val,
+        min_val, max_val, hc_eps,
         tgt_tensors.grad_x, tgt_tensors.grad_phi, tgt_tensors.grad_alpha, tgt_tensors.grad_bias,
         &tgt_workspace_size, &tgt_executor);
     ASSERT_EQ(aclnn_ret, ACL_SUCCESS) << "tgt aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize failed";

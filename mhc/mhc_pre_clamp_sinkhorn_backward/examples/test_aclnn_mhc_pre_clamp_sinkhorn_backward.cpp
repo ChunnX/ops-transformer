@@ -307,6 +307,8 @@ int main()
     int64_t hc_mix = n * n + 2 * n;
     int64_t num_iters = 20;
     double hc_eps = 1e-6;
+    double min_val = 0.0;
+    double max_val = 1.0;
 
     std::vector<int64_t> grad_hin_shape = {bs, seq_len, c};
     std::vector<int64_t> grad_h_post_shape = {bs, seq_len, n};
@@ -348,7 +350,7 @@ int main()
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
         tensors.sum_out, tensors.norm_out,
         tensors.reduce_out,
-        hc_eps,
+        min_val, max_val, hc_eps,
         tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
         &workspace_size, &executor);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
