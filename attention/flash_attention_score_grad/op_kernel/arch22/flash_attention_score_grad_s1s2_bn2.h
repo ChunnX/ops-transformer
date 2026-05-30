@@ -994,24 +994,22 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 {
     int64_t realDimT_q = tilingData->postTilingData.t1;
     int64_t realDimT_kv = tilingData->postTilingData.t2;
-    if (realDimT_q > dimT_q || realDimT_kv > dimT_kv) {
-        if (realDimT_q > dimT_q) {
-            int64_t dqGmCleanOffset = dimT_q * dimN2 * dimG * dimDAlign;
-            int64_t dqGmCleanSize = (realDimT_q - dimT_q) * dimN2 * dimG * dimDAlign;
-            DumpGmZero(dqWorkspaceGm, dqGmCleanOffset, dqGmCleanSize);
-        }
-        if (realDimT_kv > dimT_kv) {
-            int64_t dkvGmCleanOffset = dimT_kv * dimN2 * dimDAlign;
-            int64_t dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimDAlign;
-            DumpGmZero(dkWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
+    if (realDimT_q > dimT_q) {
+        int64_t dqGmCleanOffset = dimT_q * dimN2 * dimG * dimDAlign;
+        int64_t dqGmCleanSize = (realDimT_q - dimT_q) * dimN2 * dimG * dimDAlign;
+        DumpGmZero(dqWorkspaceGm, dqGmCleanOffset, dqGmCleanSize);
+    }
+    if (realDimT_kv > dimT_kv) {
+        int64_t dkvGmCleanOffset = dimT_kv * dimN2 * dimDAlign;
+        int64_t dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimDAlign;
+        DumpGmZero(dkWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
 
-            if constexpr (sizeof(T1) == sizeof(float)) {
-                dkvGmCleanOffset = dimT_kv * dimN2 * dimD;
-                dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimD;
-                DumpGmZero(dvGm, dkvGmCleanOffset, dkvGmCleanSize);
-            } else {
-                DumpGmZero(dvWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
-            }
+        if constexpr (sizeof(T1) == sizeof(float)) {
+            dkvGmCleanOffset = dimT_kv * dimN2 * dimD;
+            dkvGmCleanSize = (realDimT_kv - dimT_kv) * dimN2 * dimD;
+            DumpGmZero(dvGm, dkvGmCleanOffset, dkvGmCleanSize);
+        } else {
+            DumpGmZero(dvWorkspaceGm, dkvGmCleanOffset, dkvGmCleanSize);
         }
     }
 }

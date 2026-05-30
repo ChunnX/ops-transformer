@@ -1555,7 +1555,6 @@ public:
         this->t2 = t2_val;
     }
 
-
     void reset()
     {
         coreNum = 0;
