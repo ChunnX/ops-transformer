@@ -788,10 +788,10 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
     if template_idx == 2 or template_idx == 4:
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, S2, N2, K, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
-                                    cmp_ratio, cmp_mask_mode, cmp_sparse_indices_mode, cmp_kv_topk_mode)
+                                    cmp_mask_mode, cmp_sparse_indices_mode, cmp_kv_topk_mode)
         elif layout_q == "TND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, cu_seqlens_ori_kv, seqused_ori_kv, seqused_cmp_kv,
-                                    cmp_residual_kv, cmp_ratio, cmp_mask_mode, cmp_sparse_indices_mode, cmp_kv_topk_mode)
+                                    cmp_residual_kv, cmp_mask_mode, cmp_sparse_indices_mode, cmp_kv_topk_mode)
     else:
         cmp_sparse_indices = None
         cmp_topk_length = None
