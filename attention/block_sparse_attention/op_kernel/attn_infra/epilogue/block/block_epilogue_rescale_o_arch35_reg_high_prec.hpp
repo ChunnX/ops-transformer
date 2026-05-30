@@ -175,9 +175,11 @@ public:
             AscendC::PipeBarrier<PIPE_V>();
             if (isFullQuantFp8) {
                 if (dStages == 1) {
-                    deQuantScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    deQuantScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
+                                                        vlElemNum);
                 } else if (dStages == 2) {
-                    deQuantScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    deQuantScaleO<DRegSplitStages::TWO>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail,
+                                                        vlElemNum);
                 }
             }
             AscendC::PipeBarrier<PIPE_V>();

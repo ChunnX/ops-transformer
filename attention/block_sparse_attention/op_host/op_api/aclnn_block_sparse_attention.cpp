@@ -8,20 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_block_sparse_attention.h"
-
-#include "block_sparse_attention.h"
-#include "aclnn_kernels/contiguous.h"
-#include "opdev/make_op_executor.h"
-#include "opdev/op_dfx.h"
-#include "opdev/tensor_view_utils.h"
+#include <algorithm>
+#include <string>
+#include <unordered_map>
+#include <acl/acl.h>
 #include "opdev/common_types.h"
 #include "opdev/op_errno.h"
 #include "opdev/op_executor.h"
-#include <acl/acl.h>
-#include <algorithm>
-#include <unordered_map>
-#include <string>
+#include "opdev/make_op_executor.h"
+#include "opdev/op_dfx.h"
+#include "opdev/tensor_view_utils.h"
+#include "aclnn_kernels/contiguous.h"
+#include "block_sparse_attention.h"
+#include "aclnn_block_sparse_attention.h"
 
 using namespace op;
 

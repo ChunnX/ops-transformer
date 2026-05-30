@@ -120,10 +120,9 @@ static std::string DataTypeToString(ge::DataType dataType)
     const auto it = DataTypeToStringMap.find(dataType);
     if (it != DataTypeToStringMap.end()) {
         return it->second;
-    } else {
-        OP_LOGE("BlockSparseAttention", "Data type %d is not supported", dataType);
-        return "UNDEFINED";
     }
+    OP_LOGE("BlockSparseAttention", "Data type %d is not supported", dataType);
+    return "UNDEFINED";
 }
 
 static inline uint32_t CeilDiv(uint32_t n1, uint32_t n2)
