@@ -433,18 +433,6 @@ ge::graphStatus QSMLAInfoParser::GetSparseBlockCount()
 ge::graphStatus QSMLAInfoParser::GetActualseqInfo()
 {
     maxActualseq_ = static_cast<uint32_t>(s2Size_);
-    if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
-        actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize(); // cuSeqLensQ shape is B+1
-    }
-    if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
-        actualLenDimsOriKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
-    }
-    if (opParamInfo_.sequsedCmpKv.tensor != nullptr) {
-        actualLenDimsCmpKV_ = opParamInfo_.sequsedCmpKv.tensor->GetShapeSize();
-    }
-    if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
-        cmpResidualKVSize_ = opParamInfo_.cmpResidualKv.tensor->GetShapeSize();
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -457,24 +445,6 @@ ge::graphStatus QSMLAInfoParser::GetDSizeQ()
 ge::graphStatus QSMLAInfoParser::GetDSizeKV()
 {
     dSizeKV_ = GetAxisNum(oriKvShape_, QSMLAAxis::D, kvLayout_);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus QSMLAInfoParser::GetSinks()
-{
-    if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
-        uint32_t oriDimNum = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDimNum();
-        if (oriDimNum != DIM_NUM_ONE) {
-            OP_LOGE(opName_, "the dim num of sinks is %u, it should be %u.", oriDimNum, DIM_NUM_ONE);
-            return ge::GRAPH_FAILED;
-        }
-
-        int64_t oriDimension = opParamInfo_.sequsedOriKv.tensor->GetStorageShape().GetDim(0);
-        if (oriDimension != gSize_) {
-            OP_LOGE(opName_, "sinks's dimension(%ld) should be equal to query head num(%u).", oriDimension, gSize_);
-            return ge::GRAPH_FAILED;
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -525,11 +495,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.oriMaxBlockNumPerBatch = oriMaxBlockNumPerBatch_;
     qsmlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
-    qsmlaInfo.actualLenDimsQ = actualLenDimsQ_;
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
-    qsmlaInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
-    qsmlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
-    qsmlaInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
     qsmlaInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
     qsmlaInfo.tileSize = 64;
@@ -658,9 +624,6 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
     tilingData_.baseParams.set_dSize(tilingInfo->dSize);
     tilingData_.baseParams.set_dSizeVInput(tilingInfo->dSizeVInput);
-    tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
-    tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
-    tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

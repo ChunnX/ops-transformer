@@ -282,6 +282,13 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
+    __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, GlobalTensor<ACTLEN_T> cuSeqlensQGmQ,
+                                GlobalTensor<ACTLEN_T> sequsedQGmQ, uint32_t cuSeqlensQDims, uint32_t sequsedQDims)
+    {
+        actualSeqLensQParser.Init(cuSeqlensQGmQ, sequsedQGmQ, cuSeqlensQDims, sequsedQDims);
+        gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
+    }
+
     __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, const SeqLensQParserType& parser)
     {
         actualSeqLensQParser = parser;

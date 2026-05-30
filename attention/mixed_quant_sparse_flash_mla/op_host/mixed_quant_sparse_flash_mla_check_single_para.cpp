@@ -299,9 +299,9 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
+    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio!=1"),
+            OP_LOGE(opName_, "cmp_residual_kv is required in SCFA and CFA mode "),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
