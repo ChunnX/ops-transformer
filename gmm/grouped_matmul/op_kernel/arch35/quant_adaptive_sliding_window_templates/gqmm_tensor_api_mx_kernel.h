@@ -55,7 +55,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutB = wLayout;
     using LayoutC = yLayout;
     using ProblemShape = Blaze::Gemm::MatmulShape;
-    using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
+    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<2>;
     using BlockMmad =
         Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
                                       LayoutC>;
