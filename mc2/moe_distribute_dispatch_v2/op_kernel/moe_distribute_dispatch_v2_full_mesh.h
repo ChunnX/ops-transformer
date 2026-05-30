@@ -2346,7 +2346,163 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         __gm__ uint8_t* custom_ptr = (__gm__ uint8_t*)shmemBuffer_;
         AscendC::printf("[DEVICE custom_ptr] %llu\n", shmemBuffer_);
 
-        // ############### SIMT Data Path
+//         // ############### SIMT Data Path
+//         int message_length = 64;    // trans_size * sizeof(int32_t)
+
+//         int64_t my_pe = aclshmem_my_pe();
+//         int64_t pe_size = aclshmem_n_pes();
+
+//         int64_t start = 0;
+//         int64_t end = 0;
+//         int64_t end2 = 0;
+
+//         // aclshmemx_barrier_all_vec();
+
+//         if (AscendC::GetBlockIdx() < AIV_URMA_CORE_NUM) {
+//             GM_ADDR gva = (GM_ADDR)custom_ptr;
+//             auto vec_id = AscendC::GetBlockIdx();
+
+//             auto out = (__gm__ uint64_t *) expertIdsGMTensor_.GetPhyAddr();
+//             auto sqs_ori = (__gm__ HcclAiRMAWQ *)(gva + message_length * pe_size);
+//             auto cqs_ori = (__gm__ HcclAiRMACQ *)((uint64_t)sqs_ori + sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM);
+
+//             get_sqs_and_cqs_xb((GM_ADDR)sqs_ori, (GM_ADDR)cqs_ori);
+//             AscendC::printf("get_sqs_and_cqs_xb ok\n");
+//             for (int i = 0; i < RANK_NUM; i++) {
+//                 for (int j = 0; j < PORT_NUM; j++) {
+//                     for (int k = 0; k < JETTY_NUM; k++) {
+//                         auto sq = sqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
+//                         auto cq = cqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
+//                         // AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, sqDB %p, sqDepth %d, headAddr %p, wqeSize %d, tpid %d, rmtEidL %p, rmtEidH %p, rmtObjId %d, rmtTokenValue %d\n", i, j, k, sq->sqVA, sq->dbAddr, sq->sqDepth, sq->headAddr, sq->wqeSize, sq->tp_id, (__gm__ uint64_t *)(sq->rmtEid), (__gm__ uint64_t *)(sq->rmtEid + 8), sq->rmtObjId, sq->rmtTokenValue);
+//                         AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, localTokenId %d\n", i, j, k, sq->sqVA, sq->localTokenId);
+//                     }
+//                 }
+//             }
+
+// #ifdef JETTY_ON_UB
+//             for (int i = 0; i < pe_size * PORT_NUM * JETTY_NUM; i++) {
+//                 // use localTokenId as head
+//                 auto tmp_sq = sqs_ori + i;
+//                 st_dev(0, &(tmp_sq->localTokenId), 0);
+//             }
+//             auto sqs = (__ubuf__ HcclAiRMAWQ *)get_imm(JETTY_INFO_OFFSET);
+//             aclshmemx_mte_get_nbi((__ubuf__ uint8_t *)sqs, (__gm__ uint8_t *)sqs_ori, sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM, my_pe, 0);
+
+//             pipe_barrier(PIPE_ALL);
+// #else
+//             auto sqs = sqs_ori;
+// #endif
+//             auto cqs = cqs_ori;
+
+//             __ubuf__ wqe_desc_array_t *wqes = (__ubuf__ wqe_desc_array_t *)get_imm(WQE_IN_OFFSET); 
+//             uint32_t wqe_cnt = NUM_THREAD;
+//             uint32_t wqe_cnt_per_rank = NUM_THREAD / pe_size;
+//             // Push the local segment to every other PE.
+//             uint32_t wqe_idx = 0;
+//             for (int peer = 0; peer < pe_size; peer++) {
+//                 // if (peer / 8 == my_pe / 8) {
+//                 if (peer == my_pe) {
+//                     // skip intra frame
+//                     continue;
+//                 }
+
+//                 if (peer % AIV_URMA_CORE_NUM != vec_id) {
+//                     continue;
+//                 }
+
+//                 uint64_t localAddr = (uint64_t)gva + message_length * my_pe;
+//                 uint64_t remoteAddr = (uint64_t)aclshmem_ptr((__gm__ void *)localAddr, peer);
+//                 for (int i = 0; i < wqe_cnt_per_rank; i++) {
+//                     wqes->localAddr[wqe_idx] = localAddr;
+//                     wqes->remoteAddr[wqe_idx] = remoteAddr;
+//                     wqes->messageLen[wqe_idx] = message_length;
+//                     wqes->dstRank[wqe_idx] = peer;
+//                     wqes->opcode[wqe_idx] = URMAOPCODE::OP_WRITE;
+//                     wqe_idx++;
+//                 }
+//             }
+//             wqes->size = wqe_idx;
+
+//             AscendC::printf("start sending %d wqes\n", wqe_idx);
+            
+//             auto DB_ARR = (__ubuf__ uint64_t *) get_imm(DB_ARRAY_OFFSET);
+//             auto HEAD_ARR = (__ubuf__ uint32_t *) get_imm(HEAD_ARRAY_OFFSET);
+//             auto PREV_HEAD_ARR = (__ubuf__ uint32_t *) get_imm(PREV_HEAD_ARRAY_OFFSET);
+//             auto OUT_JETTY_IDX = (__ubuf__ uint32_t *) get_imm(OUT_JETTY_IDX_OFFSET);
+
+//             LocalTensor<uint8_t> prev;
+//             prev.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
+//             prev.address_.bufferAddr = reinterpret_cast<uint64_t>(PREV_HEAD_ARR);
+//             prev.address_.dataLen = PREV_HEAD_ARRAY_SIZE;
+//             AscendC::Duplicate<uint8_t>(prev, 0, PREV_HEAD_ARRAY_SIZE);
+//             pipe_barrier(PIPE_ALL);
+
+//             prev.address_.bufferAddr = reinterpret_cast<uint64_t>(HEAD_ARR);
+//             prev.address_.dataLen = HEAD_ARRAY_SIZE;
+//             AscendC::Duplicate<uint8_t>(prev, 0, HEAD_ARRAY_SIZE);
+//             pipe_barrier(PIPE_ALL);
+
+//             prev.address_.bufferAddr = reinterpret_cast<uint64_t>(OUT_JETTY_IDX);
+//             prev.address_.dataLen = OUT_JETTY_IDX_SIZE;
+//             AscendC::Duplicate<uint8_t>(prev, 0, OUT_JETTY_IDX_SIZE);
+//             pipe_barrier(PIPE_ALL);
+            
+//             uint64_t startx = AscendC::GetSystemCycle(); uint64_t midx;
+//             midx = AscendC::GetSystemCycle();
+//             // Write WQEs
+//             // for (int i = 0; i < PACKETS_PER_RANK / NUM_THREAD * pe_size ; i++) {
+//             for (int i = 0; i < 1; i++) {
+//                 simt_nw_mj<RANK_NUM, PORT_NUM, JETTY_NUM>(wqes, wqes->size, sqs);
+//                 // *OUT_JETTY_IDX = 0; 
+            
+//                 midx = AscendC::GetSystemCycle();
+                
+//                 // Ring doorbell sequentially
+//                 // AscendC::printf("iter %d, %d jetties activated\n", i, *OUT_JETTY_IDX);
+//                 for (auto i = 0; i < *OUT_JETTY_IDX; i++) {
+//                     AscendC::printf("dbAddr %p, head %d\n", DB_ARR[i], HEAD_ARR[i]);
+//                     st_dev(HEAD_ARR[i], (__gm__ uint32_t *)(DB_ARR[i]), 0);
+//                 }
+//                 *OUT_JETTY_IDX = 0; 
+//             }
+
+//             uint64_t midy = AscendC::GetSystemCycle();
+
+// //             // Pollcq
+// //             for (int peer = 0; peer < pe_size; peer++) {
+// //                 // if (peer / 8 == my_pe / 8) {
+// //                 if (peer == my_pe) {
+// //                     // skip intra frame
+// //                     continue;
+// //                 }
+                
+// //                 if (peer % AIV_URMA_CORE_NUM != vec_id) {
+// //                     continue;
+// //                 }
+// //                 // AscendC::printf("poll for peer %d\n", peer);
+
+// // #ifdef JETTY_ON_UB
+// //                 for (int i = 0; i < PORT_NUM * JETTY_NUM; i++) {
+// //                     // use localTokenId as head
+// //                     auto tmp_sq = sqs_ori + peer * PORT_NUM * JETTY_NUM + i;
+// //                     auto sq = sqs + peer * PORT_NUM * JETTY_NUM + i;
+// //                     if (i / (PORT_NUM * JETTY_NUM != my_pe)) {
+// //                         st_dev(sq->localTokenId, (__gm__ uint32_t *)(tmp_sq->headAddr), 0);
+// //                     }
+// //                 }
+// // #endif
+// //                 URMAPollCQ(peer, PORT_NUM, JETTY_NUM, sqs_ori, cqs);
+// //             }
+            
+//             uint64_t endx = AscendC::GetSystemCycle();
+
+//             AscendC::printf("wqe cost %d us, wqe+db cost %d us, total %d us\n", midx - startx, midy - startx, endx - startx);
+//         }
+
+//         // aclshmemx_barrier_all_vec();
+//         PipeBarrier<PIPE_ALL>();
+
+        // ################### SIMD Data Path
         int message_length = 64;    // trans_size * sizeof(int32_t)
 
         int64_t my_pe = aclshmem_my_pe();
@@ -2358,182 +2514,26 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
 
         // aclshmemx_barrier_all_vec();
 
-        if (AscendC::GetBlockIdx() < AIV_URMA_CORE_NUM) {
-            GM_ADDR gva = (GM_ADDR)custom_ptr;
-            auto vec_id = AscendC::GetBlockIdx();
-
-            auto out = (__gm__ uint64_t *) expertIdsGMTensor_.GetPhyAddr();
-            auto sqs_ori = (__gm__ HcclAiRMAWQ *)(gva + message_length * pe_size);
-            auto cqs_ori = (__gm__ HcclAiRMACQ *)((uint64_t)sqs_ori + sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM);
-
-            get_sqs_and_cqs_xb((GM_ADDR)sqs_ori, (GM_ADDR)cqs_ori);
-            AscendC::printf("get_sqs_and_cqs_xb ok\n");
-            for (int i = 0; i < RANK_NUM; i++) {
-                for (int j = 0; j < PORT_NUM; j++) {
-                    for (int k = 0; k < JETTY_NUM; k++) {
-                        auto sq = sqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
-                        auto cq = cqs_ori + OFFSET_OF(RANK_NUM, PORT_NUM, JETTY_NUM, i, j, k);
-                        // AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, sqDB %p, sqDepth %d, headAddr %p, wqeSize %d, tpid %d, rmtEidL %p, rmtEidH %p, rmtObjId %d, rmtTokenValue %d\n", i, j, k, sq->sqVA, sq->dbAddr, sq->sqDepth, sq->headAddr, sq->wqeSize, sq->tp_id, (__gm__ uint64_t *)(sq->rmtEid), (__gm__ uint64_t *)(sq->rmtEid + 8), sq->rmtObjId, sq->rmtTokenValue);
-                        AscendC::printf("rank %d, port %d, jetty %d, sqVa %p, localTokenId %d\n", i, j, k, sq->sqVA, sq->localTokenId);
-                    }
-                }
-            }
-
-#ifdef JETTY_ON_UB
-            for (int i = 0; i < pe_size * PORT_NUM * JETTY_NUM; i++) {
-                // use localTokenId as head
-                auto tmp_sq = sqs_ori + i;
-                st_dev(0, &(tmp_sq->localTokenId), 0);
-            }
-            auto sqs = (__ubuf__ HcclAiRMAWQ *)get_imm(JETTY_INFO_OFFSET);
-            aclshmemx_mte_get_nbi((__ubuf__ uint8_t *)sqs, (__gm__ uint8_t *)sqs_ori, sizeof(HcclAiRMAWQ) * pe_size * PORT_NUM * JETTY_NUM, my_pe, 0);
-
-            pipe_barrier(PIPE_ALL);
-#else
-            auto sqs = sqs_ori;
-#endif
-            auto cqs = cqs_ori;
-
-            __ubuf__ wqe_desc_array_t *wqes = (__ubuf__ wqe_desc_array_t *)get_imm(WQE_IN_OFFSET); 
-            uint32_t wqe_cnt = NUM_THREAD;
-            uint32_t wqe_cnt_per_rank = NUM_THREAD / pe_size;
-            // Push the local segment to every other PE.
-            uint32_t wqe_idx = 0;
-            for (int peer = 0; peer < pe_size; peer++) {
-                // if (peer / 8 == my_pe / 8) {
-                if (peer == my_pe) {
-                    // skip intra frame
+        if (AscendC::GetBlockIdx() == 0) {
+            start = AscendC::GetSystemCycle();
+            for (int32_t pe = 0; pe < aclshmem_n_pes(); pe++) {
+                if (pe == aclshmem_my_pe()) {
                     continue;
                 }
-
-                if (peer % AIV_URMA_CORE_NUM != vec_id) {
-                    continue;
-                }
-
-                uint64_t localAddr = (uint64_t)gva + message_length * my_pe;
-                uint64_t remoteAddr = (uint64_t)aclshmem_ptr((__gm__ void *)localAddr, peer);
-                for (int i = 0; i < wqe_cnt_per_rank; i++) {
-                    wqes->localAddr[wqe_idx] = localAddr;
-                    wqes->remoteAddr[wqe_idx] = remoteAddr;
-                    wqes->messageLen[wqe_idx] = message_length;
-                    wqes->dstRank[wqe_idx] = peer;
-                    wqes->opcode[wqe_idx] = URMAOPCODE::OP_WRITE;
-                    wqe_idx++;
-                }
+                aclshmemx_udma_put_nbi(
+                    aclshmem_ptr(custom_ptr + my_pe * message_length, pe), custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+                    message_length, pe);
+                aclshmemx_udma_quiet(pe);
             }
-            wqes->size = wqe_idx;
+            end = AscendC::GetSystemCycle();
+            end2 = AscendC::GetSystemCycle();
 
-            AscendC::printf("start sending %d wqes\n", wqe_idx);
-            
-            auto DB_ARR = (__ubuf__ uint64_t *) get_imm(DB_ARRAY_OFFSET);
-            auto HEAD_ARR = (__ubuf__ uint32_t *) get_imm(HEAD_ARRAY_OFFSET);
-            auto PREV_HEAD_ARR = (__ubuf__ uint32_t *) get_imm(PREV_HEAD_ARRAY_OFFSET);
-            auto OUT_JETTY_IDX = (__ubuf__ uint32_t *) get_imm(OUT_JETTY_IDX_OFFSET);
+            *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
+            *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
 
-            LocalTensor<uint8_t> prev;
-            prev.address_.logicPos = static_cast<uint8_t>(AscendC::TPosition::VECIN);
-            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(PREV_HEAD_ARR);
-            prev.address_.dataLen = PREV_HEAD_ARRAY_SIZE;
-            AscendC::Duplicate<uint8_t>(prev, 0, PREV_HEAD_ARRAY_SIZE);
-            pipe_barrier(PIPE_ALL);
-
-            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(HEAD_ARR);
-            prev.address_.dataLen = HEAD_ARRAY_SIZE;
-            AscendC::Duplicate<uint8_t>(prev, 0, HEAD_ARRAY_SIZE);
-            pipe_barrier(PIPE_ALL);
-
-            prev.address_.bufferAddr = reinterpret_cast<uint64_t>(OUT_JETTY_IDX);
-            prev.address_.dataLen = OUT_JETTY_IDX_SIZE;
-            AscendC::Duplicate<uint8_t>(prev, 0, OUT_JETTY_IDX_SIZE);
-            pipe_barrier(PIPE_ALL);
-            
-            uint64_t startx = AscendC::GetSystemCycle(); uint64_t midx;
-            midx = AscendC::GetSystemCycle();
-            // Write WQEs
-            // for (int i = 0; i < PACKETS_PER_RANK / NUM_THREAD * pe_size ; i++) {
-            for (int i = 0; i < 1; i++) {
-                simt_nw_mj<RANK_NUM, PORT_NUM, JETTY_NUM>(wqes, wqes->size, sqs);
-                // *OUT_JETTY_IDX = 0; 
-            
-                midx = AscendC::GetSystemCycle();
-                
-                // Ring doorbell sequentially
-                // AscendC::printf("iter %d, %d jetties activated\n", i, *OUT_JETTY_IDX);
-                for (auto i = 0; i < *OUT_JETTY_IDX; i++) {
-                    AscendC::printf("dbAddr %p, head %d\n", DB_ARR[i], HEAD_ARR[i]);
-                    st_dev(HEAD_ARR[i], (__gm__ uint32_t *)(DB_ARR[i]), 0);
-                }
-                *OUT_JETTY_IDX = 0; 
-            }
-
-            uint64_t midy = AscendC::GetSystemCycle();
-
-//             // Pollcq
-//             for (int peer = 0; peer < pe_size; peer++) {
-//                 // if (peer / 8 == my_pe / 8) {
-//                 if (peer == my_pe) {
-//                     // skip intra frame
-//                     continue;
-//                 }
-                
-//                 if (peer % AIV_URMA_CORE_NUM != vec_id) {
-//                     continue;
-//                 }
-//                 // AscendC::printf("poll for peer %d\n", peer);
-
-// #ifdef JETTY_ON_UB
-//                 for (int i = 0; i < PORT_NUM * JETTY_NUM; i++) {
-//                     // use localTokenId as head
-//                     auto tmp_sq = sqs_ori + peer * PORT_NUM * JETTY_NUM + i;
-//                     auto sq = sqs + peer * PORT_NUM * JETTY_NUM + i;
-//                     if (i / (PORT_NUM * JETTY_NUM != my_pe)) {
-//                         st_dev(sq->localTokenId, (__gm__ uint32_t *)(tmp_sq->headAddr), 0);
-//                     }
-//                 }
-// #endif
-//                 URMAPollCQ(peer, PORT_NUM, JETTY_NUM, sqs_ori, cqs);
-//             }
-            
-            uint64_t endx = AscendC::GetSystemCycle();
-
-            AscendC::printf("wqe cost %d us, wqe+db cost %d us, total %d us\n", midx - startx, midy - startx, endx - startx);
+            AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
         }
-
-        // aclshmemx_barrier_all_vec();
         PipeBarrier<PIPE_ALL>();
-
-        // // ################### SIMD Data Path
-        // int message_length = 64;    // trans_size * sizeof(int32_t)
-
-        // int64_t my_pe = aclshmem_my_pe();
-        // int64_t pe_size = aclshmem_n_pes();
-
-        // int64_t start = 0;
-        // int64_t end = 0;
-        // int64_t end2 = 0;
-
-        // // aclshmemx_barrier_all_vec();
-
-        // if (AscendC::GetBlockIdx() == 0) {
-        //     start = AscendC::GetSystemCycle();
-        //     for (int32_t pe = 0; pe < aclshmem_n_pes(); pe++) {
-        //         if (pe == aclshmem_my_pe()) {
-        //             continue;
-        //         }
-        //         aclshmemx_udma_put_nbi(
-        //             custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
-        //             message_length, pe);
-        //         aclshmemx_udma_quiet(pe);
-        //     }
-        //     end = AscendC::GetSystemCycle();
-        //     end2 = AscendC::GetSystemCycle();
-
-        //     *((__gm__ int64_t*)(expertIdsGMTensor_.GetPhyAddr())) = end - start;
-        //     *((__gm__ int64_t*)((expertIdsGMTensor_.GetPhyAddr()) + 8)) = end2 - start;
-
-        //     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(expertIdsGMTensor_);
-        // }
-        // PipeBarrier<PIPE_ALL>();
     }
 }
 
