@@ -15,5 +15,25 @@ lifecycle hooks.
 
 The basic block now derives per-tile tail parameters, including `M_tile` row
 size, and computes AIV0/AIV1 local token/row slices using the actual tile token
-count. Buffer binding, synchronization, and real compute are left to later
-tasks.
+count.
+
+T03 binds the static tensor layout directly with `LocalTensor<T>(TPosition,
+offset, size)` in the D=128 fast-path. No `TPipe`/`TBuf` allocation is used for
+these fixed L1/UB regions:
+
+- GM pointers are wrapped as typed `GlobalTensor` members once during `Init`.
+- AIC owns resident `rotation_l1_nz`; `a_rot_l1_nz[2]` exposes two logical
+  pingpong AL1 data buffers. The static L1 budget still reserves the 4 * 64 KiB
+  A_L1 pool, and AIV0/AIV1 write disjoint row ranges into the same logical
+  `bufferId`.
+- AIV UB is split into input DB, output DB, and 40 KiB reserve areas. The
+  reserve area holds `gamma_ub`, `cos_sin_ub[2]`, `slot_mapping_ub[2]`,
+  `v_scale_ub`, and `v_out_ub[2]`.
+- Q/K FP8 staging reuses the `qk_after_cube_ub` output DB buffer instead of
+  allocating another static region.
+
+`bufferId = tileId & 1` only selects data buffers. It is not used to derive
+CrossCore flag ids; T04 will add fixed semantic flag ids for `A_READY`,
+`C_READY`, and `C_CONSUMED`. `a_rot_l1_nz` participates in the later
+CrossCore-protected AL1 data handoff, but it does not consume AIV intra-core
+event ids.

@@ -18,7 +18,10 @@ Current state:
    cube-group token range. T02 keeps the range loop in the controller and adds
    per-tile tail parameters plus AIV0/AIV1 local token/row slices in the D=128
    fast-path basic block.
-4. Buffer binding, synchronization, and real compute are left to later tasks.
-5. Implementation work must follow `TASKS.md`.
-6. After each task is coded and verified, update `TASKS.md` and commit the
+4. T03 adds static GM/L1/UB tensor binding. `rotation_l1_nz` is AIC-only,
+   `a_rot_l1_nz` is the Cube AL1 data slot shared by the later AIV->AIC
+   protocol, and `bufferId = tileId & 1` only selects data buffers.
+5. Synchronization and real compute are left to later tasks.
+6. Implementation work must follow `TASKS.md`.
+7. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.

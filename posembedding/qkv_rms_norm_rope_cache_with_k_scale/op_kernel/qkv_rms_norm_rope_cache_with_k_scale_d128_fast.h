@@ -21,6 +21,53 @@ using namespace AscendC;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
 constexpr uint32_t QKV_RRC_MIX_AIV_PER_AIC = 2U;
+constexpr uint32_t QKV_RRC_DOUBLE_BUFFER_NUM = 2U;
+constexpr uint32_t QKV_RRC_HEAD_DIM_D128 = 128U;
+constexpr uint32_t QKV_RRC_KIB = 1024U;
+
+constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_INPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_INPUT_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_OUTPUT_ONE_BUFFER_BYTES;
+
+constexpr uint32_t QKV_RRC_ROTATION_L1_BYTES =
+    QKV_RRC_HEAD_DIM_D128 * QKV_RRC_HEAD_DIM_D128 * sizeof(bfloat16_t);
+constexpr uint32_t QKV_RRC_A_ROT_L1_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_A_ROT_L1_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_MIX_AIV_PER_AIC;
+constexpr uint32_t QKV_RRC_A_ROT_L1_POOL_BYTES =
+    QKV_RRC_A_ROT_L1_BUFFER_NUM * QKV_RRC_A_ROT_L1_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_ROTATION_L1_OFFSET = 0U;
+constexpr uint32_t QKV_RRC_A_ROT_L1_POOL_OFFSET = QKV_RRC_ROTATION_L1_OFFSET + QKV_RRC_ROTATION_L1_BYTES;
+constexpr uint32_t QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES =
+    QKV_RRC_A_ROT_L1_POOL_BYTES / QKV_RRC_DOUBLE_BUFFER_NUM;
+
+constexpr uint32_t QKV_RRC_RESERVE_UB_BYTES = 40U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_GAMMA_UB_BYTES = 1U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_COS_SIN_ONE_BUFFER_BYTES = 4U * QKV_RRC_KIB;
+constexpr uint32_t QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES = 512U;
+constexpr uint32_t QKV_RRC_V_SCALE_UB_BYTES = 512U;
+constexpr uint32_t QKV_RRC_V_OUT_ONE_BUFFER_BYTES = 10U * QKV_RRC_KIB;
+
+constexpr uint32_t QKV_RRC_GAMMA_UB_OFFSET = 0U;
+constexpr uint32_t QKV_RRC_COS_SIN_DB_POOL_OFFSET = QKV_RRC_GAMMA_UB_OFFSET + QKV_RRC_GAMMA_UB_BYTES;
+constexpr uint32_t QKV_RRC_SLOT_MAPPING_DB_POOL_OFFSET =
+    QKV_RRC_COS_SIN_DB_POOL_OFFSET + QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_COS_SIN_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_V_SCALE_UB_OFFSET =
+    QKV_RRC_SLOT_MAPPING_DB_POOL_OFFSET + QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_V_OUT_DB_POOL_OFFSET = QKV_RRC_V_SCALE_UB_OFFSET + QKV_RRC_V_SCALE_UB_BYTES;
+constexpr uint32_t QKV_RRC_RESERVE_USED_BYTES =
+    QKV_RRC_V_OUT_DB_POOL_OFFSET + QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_V_OUT_ONE_BUFFER_BYTES;
+
+static_assert(QKV_RRC_RESERVE_USED_BYTES <= QKV_RRC_RESERVE_UB_BYTES,
+    "QkvRmsNormRopeCacheWithKScale reserve UB layout exceeds 40 KiB.");
+
+constexpr uint32_t QKV_RRC_INPUT_DB_POOL_OFFSET = 0U;
+constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_OFFSET = QKV_RRC_INPUT_DB_POOL_OFFSET + QKV_RRC_INPUT_DB_POOL_BYTES;
+constexpr uint32_t QKV_RRC_RESERVE_UB_OFFSET = QKV_RRC_OUTPUT_DB_POOL_OFFSET + QKV_RRC_OUTPUT_DB_POOL_BYTES;
+constexpr uint32_t QKV_RRC_UB_USED_BYTES = QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_RESERVE_UB_BYTES;
+
+static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
+    "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 
 struct TokenRange {
     uint32_t begin;
@@ -67,6 +114,39 @@ struct GlobalTensors {
     GM_ADDR workspace;
 };
 
+struct BoundGlobalTensors {
+    GlobalTensor<bfloat16_t> qkv;
+    GlobalTensor<float> qGamma;
+    GlobalTensor<float> kGamma;
+    GlobalTensor<float> cosSin;
+    GlobalTensor<int32_t> slotMapping;
+    GlobalTensor<fp8_e4m3fn_t> kCacheIn;
+    GlobalTensor<fp8_e4m3fn_t> vCacheIn;
+    GlobalTensor<float> kScaleCacheIn;
+    GlobalTensor<int32_t> cuSeqLen;
+    GlobalTensor<bfloat16_t> rotation;
+    GlobalTensor<float> vScale;
+    GlobalTensor<fp8_e4m3fn_t> qOut;
+    GlobalTensor<float> qScale;
+    GlobalTensor<fp8_e4m3fn_t> kCacheOut;
+    GlobalTensor<fp8_e4m3fn_t> vCacheOut;
+    GlobalTensor<float> kScaleCacheOut;
+    GlobalTensor<uint8_t> workspace;
+};
+
+struct StaticLocalTensors {
+    LocalTensor<bfloat16_t> rotationL1Nz;
+    LocalTensor<bfloat16_t> aRotL1Nz[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<bfloat16_t> vUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<float> qkAfterCubeUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<fp8_e4m3fn_t> qkFp8StagingUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<float> gammaUb;
+    LocalTensor<float> cosSinUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<int32_t> slotMappingUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+    LocalTensor<float> vScaleUb;
+    LocalTensor<fp8_e4m3fn_t> vOutUb[QKV_RRC_DOUBLE_BUFFER_NUM];
+};
+
 __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
 {
     if (factor == 0U) {
@@ -78,6 +158,11 @@ __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
 __aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
 {
     return lhs < rhs ? lhs : rhs;
+}
+
+__aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
+{
+    return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
 }
 
 __aicore__ inline uint32_t GetCubeIndex()
@@ -149,13 +234,14 @@ __aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTi
 class D128FastBasicBlock {
 public:
     __aicore__ inline void Init(const GlobalTensors &tensors,
-        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, GM_ADDR workspace)
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         tensors_ = tensors;
         tilingData_ = tilingData;
-        workspace_ = workspace;
         cubeIndex_ = GetCubeIndex();
         aivLocalId_ = g_coreType == AIC ? 0U : GetSubBlockIdx();
+        BindGlobalTensors();
+        InitStaticBuffers();
         InitIntraCoreEvents();
     }
 
@@ -174,6 +260,93 @@ public:
     }
 
 private:
+    __aicore__ inline void BindGlobalTensors()
+    {
+        globalTensors_.qkv.SetGlobalBuffer((__gm__ bfloat16_t *)tensors_.qkv);
+        globalTensors_.qGamma.SetGlobalBuffer((__gm__ float *)tensors_.qGamma);
+        globalTensors_.kGamma.SetGlobalBuffer((__gm__ float *)tensors_.kGamma);
+        globalTensors_.cosSin.SetGlobalBuffer((__gm__ float *)tensors_.cosSin);
+        globalTensors_.slotMapping.SetGlobalBuffer((__gm__ int32_t *)tensors_.slotMapping);
+        globalTensors_.kCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors_.kCache);
+        globalTensors_.vCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors_.vCache);
+        globalTensors_.kScaleCacheIn.SetGlobalBuffer((__gm__ float *)tensors_.kScaleCache);
+        globalTensors_.cuSeqLen.SetGlobalBuffer((__gm__ int32_t *)tensors_.cuSeqLen);
+        globalTensors_.rotation.SetGlobalBuffer((__gm__ bfloat16_t *)tensors_.rotation);
+        globalTensors_.vScale.SetGlobalBuffer((__gm__ float *)tensors_.vScale);
+        globalTensors_.qOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors_.qOut);
+        globalTensors_.qScale.SetGlobalBuffer((__gm__ float *)tensors_.qScale);
+        globalTensors_.kCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors_.kCacheOut);
+        globalTensors_.vCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors_.vCacheOut);
+        globalTensors_.kScaleCacheOut.SetGlobalBuffer((__gm__ float *)tensors_.kScaleCacheOut);
+        globalTensors_.workspace.SetGlobalBuffer((__gm__ uint8_t *)tensors_.workspace);
+    }
+
+    __aicore__ inline void InitStaticBuffers()
+    {
+        InitStaticL1Tensors();
+        if (g_coreType != AIC) {
+            InitAivStaticBuffers();
+        }
+    }
+
+    __aicore__ inline void InitStaticL1Tensors()
+    {
+        localTensors_.rotationL1Nz = LocalTensor<bfloat16_t>(
+            TPosition::TSCM, QKV_RRC_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_L1_BYTES / sizeof(bfloat16_t));
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            localTensors_.aRotL1Nz[i] = LocalTensor<bfloat16_t>(TPosition::TSCM,
+                QKV_RRC_A_ROT_L1_POOL_OFFSET + i * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES,
+                QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES / sizeof(bfloat16_t));
+        }
+    }
+
+    __aicore__ inline void InitAivStaticBuffers()
+    {
+        constexpr uint32_t inputOneBufferElements = QKV_RRC_INPUT_ONE_BUFFER_BYTES / sizeof(bfloat16_t);
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            localTensors_.vUb[i] = LocalTensor<bfloat16_t>(TPosition::LCM,
+                QKV_RRC_INPUT_DB_POOL_OFFSET + i * QKV_RRC_INPUT_ONE_BUFFER_BYTES,
+                inputOneBufferElements);
+        }
+
+        constexpr uint32_t outputOneBufferFloatElements = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / sizeof(float);
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            localTensors_.qkAfterCubeUb[i] = LocalTensor<float>(TPosition::LCM,
+                QKV_RRC_OUTPUT_DB_POOL_OFFSET + i * QKV_RRC_OUTPUT_ONE_BUFFER_BYTES,
+                outputOneBufferFloatElements);
+            localTensors_.qkFp8StagingUb[i] =
+                localTensors_.qkAfterCubeUb[i].template ReinterpretCast<fp8_e4m3fn_t>();
+        }
+
+        BindReserveUbTensors();
+    }
+
+    __aicore__ inline void BindReserveUbTensors()
+    {
+        localTensors_.gammaUb = LocalTensor<float>(TPosition::LCM,
+            QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_GAMMA_UB_OFFSET,
+            QKV_RRC_GAMMA_UB_BYTES / sizeof(float));
+
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            localTensors_.cosSinUb[i] = LocalTensor<float>(TPosition::LCM,
+                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_COS_SIN_DB_POOL_OFFSET +
+                    i * QKV_RRC_COS_SIN_ONE_BUFFER_BYTES,
+                QKV_RRC_COS_SIN_ONE_BUFFER_BYTES / sizeof(float));
+            localTensors_.slotMappingUb[i] = LocalTensor<int32_t>(TPosition::LCM,
+                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_SLOT_MAPPING_DB_POOL_OFFSET +
+                    i * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES,
+                QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES / sizeof(int32_t));
+            localTensors_.vOutUb[i] = LocalTensor<fp8_e4m3fn_t>(TPosition::LCM,
+                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_OUT_DB_POOL_OFFSET +
+                    i * QKV_RRC_V_OUT_ONE_BUFFER_BYTES,
+                QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t));
+        }
+
+        localTensors_.vScaleUb = LocalTensor<float>(TPosition::LCM,
+            QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_SCALE_UB_OFFSET,
+            QKV_RRC_V_SCALE_UB_BYTES / sizeof(float));
+    }
+
     __aicore__ inline void InitIntraCoreEvents()
     {
         // T05 will add the real event-id initialization. T01 keeps lifecycle hooks in place.
@@ -187,18 +360,32 @@ private:
     __aicore__ inline void ComputeAivTile(const TileParam &tile)
     {
         const AivSlice slice = MakeAivSlice(tile, tilingData_->qkHeadTile, aivLocalId_);
+        const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
+        (void)localTensors_.aRotL1Nz[bufferId];
+        (void)localTensors_.vUb[bufferId];
+        (void)localTensors_.qkAfterCubeUb[bufferId];
+        (void)localTensors_.qkFp8StagingUb[bufferId];
+        (void)localTensors_.gammaUb;
+        (void)localTensors_.cosSinUb[bufferId];
+        (void)localTensors_.slotMappingUb[bufferId];
+        (void)localTensors_.vScaleUb;
+        (void)localTensors_.vOutUb[bufferId];
         (void)slice;
     }
 
     __aicore__ inline void ComputeAicTile(const TileParam &tile)
     {
+        const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
+        (void)localTensors_.rotationL1Nz;
+        (void)localTensors_.aRotL1Nz[bufferId];
         (void)tile;
         (void)cubeIndex_;
     }
 
     GlobalTensors tensors_;
+    BoundGlobalTensors globalTensors_;
+    StaticLocalTensors localTensors_;
     const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData_;
-    GM_ADDR workspace_;
     uint32_t cubeIndex_;
     uint32_t aivLocalId_;
 };
@@ -217,7 +404,7 @@ public:
         const TokenRange tokenRange = MakeCoreTokenRange(tilingData_->totalTokens, GetCubeIndex(), GetCubeGroupNum());
 
         D128FastBasicBlock basicBlock;
-        basicBlock.Init(tensors_, tilingData_, tensors_.workspace);
+        basicBlock.Init(tensors_, tilingData_);
         uint32_t localTileId = 0U;
         for (uint32_t tokenOffset = tokenRange.begin; tokenOffset < tokenRange.end;) {
             const uint32_t tokenSize = MinU32(tilingData_->tokenTile, tokenRange.end - tokenOffset);

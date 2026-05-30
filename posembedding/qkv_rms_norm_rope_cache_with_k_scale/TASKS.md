@@ -19,7 +19,7 @@
 | P01 | Empty kernel package precheck | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | e2b91bd90 |
 | T01 | Controller and basic block skeleton | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 9 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Re-ran `--pkg` after splitting the D=128 fast-path kernel template into its own header. | 76d2f307f plus this commit |
 | T02 | AIV local slice and tail row range | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
-| T03 | Static buffer and tensor binding | Not started | Kernel compile | |
+| T03 | Static buffer and tensor binding | Done | Direct `LocalTensor<T>(TPosition, offset, size)` binding without `TPipe`/`TBuf`; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
 | T04 | CrossCore wrappers and flag ids | Not started | Kernel compile + static review | |
 | T05 | Intra-core event constants and Init/End | Not started | Kernel compile + event id static check | |
 | T06 | AIV Q/K/V preprocess | Not started | Kernel compile + preprocess UT | |
@@ -34,7 +34,8 @@
 
 ## Next Task
 
-T03 is the next implementation task. It should add the static L1/UB buffer and
-tensor binding layout used by later preprocess, Cube, Fixpipe, and postprocess
-tasks, while reusing the T02 contiguous token range, local tile buffer id, and
-AIV slice metadata.
+T04 is the next implementation task. It should add fixed semantic CrossCore
+wrappers and flag ids for `A_READY`, `C_READY`, and `C_CONSUMED`, without
+deriving flag ids from `bufferId` or generation. Keep the T03 AL1/UB tensor
+binding unchanged: `bufferId` only selects data buffers, and `a_rot_l1_nz` is a
+CrossCore-protected Cube AL1 data slot, not an AIV intra-core event allocation.
