@@ -24,6 +24,10 @@ using namespace op;
 using namespace gmm_dsq;
 using namespace gmm_dsq_base;
 
+namespace {
+constexpr char GMM_SWIGLU_QUANT_V2_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
+} // namespace
+
 class GmmDsqHandlerFactory {
 private:
     std::unordered_map<NpuArch, std::unique_ptr<GroupedMatmulSwigluQuantHandler>> handlers_;
@@ -78,13 +82,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "grouped_matmul_swiglu_quant_v2";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale));
     CHECK_COND((output != nullptr), ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], [%s] must not be nullptr.", opName, "output");
+               "In op [%s], output must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
         .SetXScale(xScale).SetSmoothScale(smoothScale)
@@ -97,7 +100,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         .SetTuningConfig(tuningConfigOptional).Build();
 
     // 调用公共接口
-    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(opName, params, workspaceSize, executor);
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
+        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTensor *x,
@@ -110,7 +114,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    const char *opName = "grouped_matmul_swiglu_quant_v2";
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
@@ -130,7 +133,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         std::string gotShapeStr = gotShape.str();
         CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                   opName, "weight", gotShapeStr.c_str(),
+                   GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                    "storage shape dim num must be 5 when weight NZ v2");
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
@@ -153,7 +156,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
             std::string gotShapeStr = gotShape.str();
             CHECK_COND((storgeShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
                        "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
-                       opName, "weight", gotShapeStr.c_str(),
+                       GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
                        "storage shape dim num must be 4 when multi-weight NZ v2");
             // weight的StorageFormat无条件视为NZ
             weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
@@ -179,7 +182,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         .SetTuningConfig(tuningConfigOptional).Build();
 
     // 调用公共接口
-    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(opName, params, workspaceSize, executor);
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
+        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

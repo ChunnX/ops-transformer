@@ -9,6 +9,7 @@
  */
 #include <dlfcn.h>
 #include <new>
+#include <string>
 #include "aclnn_kernels/contiguous.h"
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -73,7 +74,7 @@ static const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {Data
 static const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 static const std::initializer_list<DataType> BIAS_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
-static const char *GetSwigluQuantScenarioName(const DataType &xDtype, const DataType &weightDtype)
+static std::string GetSwigluQuantScenarioName(const DataType &xDtype, const DataType &weightDtype)
 {
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         return "A8W8";
@@ -108,12 +109,12 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const aclT
     if (offset != nullptr) {
         OP_LOGW("In op [%s], when %s, nonzero offset is not supported. Features and accuracy are not guaranteed "
                 "if inputting offset with values other than 0.",
-                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()));
+                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()).c_str());
     }
     if (outputOffset != nullptr) {
         OP_LOGW("In op [%s], when %s, nonzero outputOffset is not supported. Features and accuracy are not "
                 "guaranteed if inputting outputOffset with values other than 0.",
-                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()));
+                opName, GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType()).c_str());
     }
     return true;
 }
@@ -339,7 +340,7 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *weight, const a
 static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTensor *output, const char *opName)
 {
     bool isNZ = weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
-    const char *scenario = GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType());
+    std::string scenario = GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType());
     if ((x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8) && !isNZ) {
         // fp16 in fp32 out that is split k template, not precision-advanced now
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -351,14 +352,14 @@ static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTe
     if (IsPrivateFormat(x->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario, "x",
+                opName, scenario.c_str(), "x",
                 op::ToString(x->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario, "output",
+                opName, scenario.c_str(), "output",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }

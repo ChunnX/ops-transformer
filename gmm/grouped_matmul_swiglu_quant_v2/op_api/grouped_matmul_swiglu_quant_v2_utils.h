@@ -268,8 +268,8 @@ protected:
 
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "In op [%s], when %s, weightScale and weight transpose flags should be equal, but actual are "
-                    "%s and %s.",
+                    "In op [%s], when %s, weightScale and weight transpose flags should be equal, "
+                    "but actual are %s and %s.",
                     opName_.c_str(), scenario, transposeWeightScale ? "true" : "false",
                     transposeWeight ? "true" : "false");
             return false;
@@ -570,8 +570,7 @@ protected:
         if (gmmDsqParams_.x->GetViewShape().GetDim(1) <= 0) {
             std::string gotStr = BuildLogValue("K", gmmDsqParams_.x->GetViewShape().GetDim(1));
             std::ostringstream constraint;
-            constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
-                       << " and M is not 0";
+            constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
@@ -582,8 +581,7 @@ protected:
         if (((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex) <= 0) {
             std::string gotStr = BuildLogValue("K", ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex));
             std::ostringstream constraint;
-            constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
-                       << " and N is not 0";
+            constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
