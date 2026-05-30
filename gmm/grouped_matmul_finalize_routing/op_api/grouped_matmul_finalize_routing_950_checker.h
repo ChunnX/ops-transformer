@@ -146,7 +146,7 @@ public:
                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GMMFR_ACLNN_OP_NAME, "y", "nullptr",
                                                                  "the value of y cannot be nullptr"));
         GMMFR_CHECK_REPORT(gmmParams_.offset == nullptr, return ACLNN_ERR_PARAM_INVALID,
-                           OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "offset", "not nullptr", "nullptr"));
+                           OP_LOGE_FOR_INVALID_VALUE(GMMFR_ACLNN_OP_NAME, "offset", "nonnull", "nullptr"));
         if (quantMode_ == QuantMode::MX) {
             GMMFR_CHECK_REPORT(gmmParams_.pertokenScaleOptional != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

@@ -521,7 +521,7 @@ template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxfp8() const
 {
     GMM_CHECK_REPORT(gmmParams_.biasOptional == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), biasName_.c_str(), "not nullptr", "nullptr"));
+        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), biasName_.c_str(), "nonnull", "nullptr"));
     GMM_CHECK_REPORT(gmmParams_.perTokenScaleOptional != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(), "nullptr",
             "in mx case, the value of perTokenScale cannot be nullptr"));
@@ -944,7 +944,7 @@ template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp8Hif8QuantParams() const
 {
     GMM_CHECK_REPORT(gmmParams_.biasOptional == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), biasName_.c_str(), "not nullptr", "nullptr"));
+        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), biasName_.c_str(), "nonnull", "nullptr"));
     CHECK_RET(CheckNonMxQuantTransposeStatus() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
@@ -1093,7 +1093,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), groupTensorName_.c_str(), "nullptr",
             "in quant case, the value of groupList cannot be nullptr"));
     GMM_CHECK_REPORT(gmmParams_.offsetOptional == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "offset", "not nullptr", "nullptr"));
+        OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "offset", "nonnull", "nullptr"));
     GMM_CHECK_REPORT(gmmParams_.groupType != SPLIT_N,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "groupType", std::to_string(gmmParams_.groupType),
             "the value of groupType must be in {0, 2}"));

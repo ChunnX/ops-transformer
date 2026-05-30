@@ -223,8 +223,8 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         OP_LOGE_FOR_INVALID_DTYPE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_,
                                   op::ToString(perTokenScaleDtype).GetString(), "FLOAT32"));
     QGMM_INPLACE_ADD_CHECK_REPORT(gmmParams_.biasOptional == nullptr, return ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, biasName_, "not nullptr",
-                                              "in hifloat8 case, the value of bias cannot be not nullptr"));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, biasName_, "nonnull",
+                                              "in hifloat8 case, the value of bias must be nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(gmmParams_.y != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, yName_, "nullptr",
                                               "in hifloat8 case, the value of y cannot be nullptr"));
@@ -251,8 +251,8 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckQuantGroupe
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, groupTensorName_, "nullptr",
                                               "in quant case, the value of groupList cannot be nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(gmmParams_.offsetOptional == nullptr, return ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "offset", "not nullptr",
-                                              "in quant case, the value of offset cannot be not nullptr"));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "offset", "nonnull",
+                                              "in quant case, the value of offset must be nullptr"));
     QGMM_INPLACE_ADD_CHECK_REPORT(GetInputTensorSize(gmmParams_.x) == 1 &&
                                       GetInputTensorSize(gmmParams_.weight) == 1 &&
                                       GetInputTensorSize(gmmParams_.y) == 1,

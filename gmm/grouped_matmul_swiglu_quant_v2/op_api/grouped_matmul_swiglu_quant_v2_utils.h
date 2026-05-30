@@ -227,19 +227,19 @@ protected:
             gmmDsqParams_.tuningConfig = nullptr;
         }
         if (gmmDsqParams_.weightAssistMatrix != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "weightAssistMatrix", "not nullptr", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "weightAssistMatrix", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.bias != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "bias", "not nullptr", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "bias", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.smoothScale != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "smoothScale", "not nullptr", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "smoothScale", "nonnull", "nullptr");
             return false;
         }
         if (gmmDsqParams_.tuningConfig != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "tuningConfig", "not nullptr", "nullptr");
+            OP_LOGE_FOR_INVALID_VALUE(GMM_SWIGLU_ACLNN_OP_NAME, "tuningConfig", "nonnull", "nullptr");
             return false;
         }
         if ((gmmDsqParams_.dequantMode != QUNAT_MODE_MX && gmmDsqParams_.dequantMode != QUNAT_MODE_PERTOKEN) ||
