@@ -442,7 +442,7 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     const float min_val = 0.0f;
     const float max_val = 1.0f;
 
-    aclnnStatus aclnn_ret = ACLNNCLEAR;
+    aclnnStatus aclnn_ret = ACL_SUCCESS;
     void *ref_workspace = nullptr;
     void *tgt_workspace = nullptr;
     aclOpExecutor *ref_executor = nullptr;
@@ -455,7 +455,6 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
         ref_tensors.x, ref_tensors.phi, ref_tensors.alpha, ref_tensors.bias,
         ref_tensors.h_pre, ref_tensors.hc_before_norm, ref_tensors.inv_rms,
         ref_tensors.sum_out, ref_tensors.norm_out,
-        ref_tensors.reduce_out,
         hc_eps,
         ref_tensors.grad_x, ref_tensors.grad_phi, ref_tensors.grad_alpha, ref_tensors.grad_bias,
         &ref_workspace_size, &ref_executor);
