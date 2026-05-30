@@ -560,6 +560,7 @@ function build_example()
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
 
+    # ========= HACK START =========
     # ========= cann 路径配置（通过环境变量 SHMEM_HOME 指定） =========
     if [[ -z "${ASCEND_HOME_PATH}" ]]; then
         echo "Error: 环境变量 ASCEND_HOME_PATH 未设置，请先 source CANN包"
@@ -677,8 +678,8 @@ function build_example()
                 cannsim record -s Ascend950 ./test_aclnn_${EXAMPLE_NAME} --gen-report
             else 
                 # 指定 SHMEM Master IP
-                export SHMEM_UID_SESSION_ID="141.61.133.110:18899"
-                HOSTS=(141.61.133.110 141.61.133.109)
+                export SHMEM_UID_SESSION_ID="141.61.133.109:18899"
+                HOSTS=(141.61.133.109)
  	            PPN=8
  	            N_PES=$((${#HOSTS[@]} * PPN))
                 WORK_DIR="$(pwd)"                           # ops-transformer/build/
@@ -716,7 +717,18 @@ function build_example()
                     echo '# SHMEM'
                     echo "SHMEM_HOME=${SHMEM_HOME}"
                     echo "export LD_LIBRARY_PATH=${SHMEM_HOME}/build/lib:${LD_LIBRARY_PATH}"
+                    echo "export SHMEM_UID_SESSION_ID=${SHMEM_UID_SESSION_ID}"
                     echo ''
+                    echo "# HCCL"
+                    echo "export HCCL_CONNECT_TIMEOUT=120"
+                    echo "export HCCL_EXEC_TIMEOUT=68"
+                    echo "export HCCL_SOCKET_IFNAME=\"eth2\""
+                    echo ''
+                    echo '# 其他基础环境'
+                    echo "export PATH=${TileXR_PATH}/env/util/cmake/bin:\${PATH}"
+                    echo "export PATH=${TileXR_PATH}/env/util/ccache:\$PATH"
+                    echo "export PATH=${MPI_TEST_HOME}/bin:\${PATH}"
+                    echo "export LD_LIBRARY_PATH=${MPI_TEST_HOME}/lib:\$LD_LIBRARY_PATH"
                     echo '{'
                     echo '    echo "[wrapper] host=${HOST} rank=${RANK}"'
                     echo '    echo "[wrapper] LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"'
@@ -779,9 +791,6 @@ function build_example()
     
                 mpirun -np ${N_PES}     \
                 -hosts "${HOSTS_ARG}"   \
-                -genv PATH "${PATH}"    \
-                -genv LD_LIBRARY_PATH "${LD_LIBRARY_PATH}" \
-                -genv SHMEM_UID_SESSION_ID "${SHMEM_UID_SESSION_ID}" \
                 "${WRAPPER}" "${EXEC}" "tcp://${SHMEM_UID_SESSION_ID}" ${PPN}
             fi
             run_result=$?

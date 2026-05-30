@@ -46,6 +46,7 @@ git checkout feature/CrossPOD_fix_2_mix_topo_ops_transformer
 ```
 
 > **⚠️ 拉取完成后，请手动修改 `ops-transformer` 中的 IP 地址配置**，替换为实际两台机器的 IP。
+> **⚠️ 拉取完成后，请手动修改 `ops-transformer` 中的 HCCL环境变量网口选择**，替换为rank 0所在机器的管理IP网口。
 
 ## 一键构建与运行（one_run.sh）
 
