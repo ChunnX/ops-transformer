@@ -1718,7 +1718,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::QcQrSplit(int64_t curVecToken, 
                 uint32_t qcSpacing = CeilDivT(totalQcLoops, static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT - 1));
                 if ((qcCount + 1) % qcSpacing == 0 || qcCount + 1 == totalQcLoops) {
                     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
-                } else if ((totalQcLoops - CeilDivT(totalQcLoops, qcSpacing)) <= static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT) &&
+                } else if ((totalQcLoops - CeilDivT(totalQcLoops, qcSpacing)) <=
+                        static_cast<uint32_t>(MAX_SYNC_FLAG_COUNT) &&
                            ((qcCount + 1) % (qcSpacing * 2) == qcSpacing)) {
                     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N_GAP);
                 }
