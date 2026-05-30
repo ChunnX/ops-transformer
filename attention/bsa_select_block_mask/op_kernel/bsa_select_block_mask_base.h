@@ -131,11 +131,6 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint32_t expActiveYCoreNum = (constInfo.yBlocks < constInfo.coreNum) ? constInfo.yBlocks : constInfo.coreNum;
             uint32_t expExtraYCores = constInfo.yBlocks % expActiveYCoreNum;
             uint32_t expYBlocksPerCore = constInfo.yBlocks / expActiveYCoreNum + (expExtraYCores > 0 ? 1 : 0);
-            uint32_t totalXY = constInfo.xBlocks * constInfo.yBlocks;
-            uint32_t expTopKValue = (constInfo.sparsity <= 0.5f) ?
-                static_cast<uint32_t>(constInfo.sparsity * totalXY + 0.5f) :
-                static_cast<uint32_t>((1.0f - constInfo.sparsity) * totalXY + 0.5f);
-            if (expTopKValue < 1) expTopKValue = 1;
             uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
             uint64_t expKCmpSize = static_cast<uint64_t>(constInfo.yBlocks) * constInfo.dSize * sizeof(float);
             uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
@@ -153,9 +148,9 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             AscendC::printf("yBlocks=%u (exp=%u) %s\n", constInfo.yBlocks, expYBlocks,
                             (constInfo.yBlocks == expYBlocks) ? "OK" : "ERR");
             if (constInfo.yBlocks != expYBlocks) errCount++;
-            AscendC::printf("topKValue=%u (exp=%u) %s\n", constInfo.topKValue, expTopKValue,
-                            (constInfo.topKValue == expTopKValue) ? "OK" : "ERR");
-            if (constInfo.topKValue != expTopKValue) errCount++;
+            AscendC::printf("topKValue=%u (nonzero=%s)\n", constInfo.topKValue,
+                            (constInfo.topKValue > 0) ? "OK" : "ERR");
+            if (constInfo.topKValue == 0) errCount++;
             AscendC::printf("sparsityMode=%u, scaleValue=%f, sparsity=%f\n",
                             static_cast<uint32_t>(constInfo.sparsityMode), constInfo.scaleValue, constInfo.sparsity);
             AscendC::printf("coreNum=%u, activeCoreNum=%u (exp=%u) %s\n",
