@@ -377,7 +377,6 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     ge::AscendString commMode = "";
     OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr comm_mode failed.");
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "[tzydebug]fussion %s.", commMode);
 
     auto mc2 = ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,

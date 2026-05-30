@@ -46,7 +46,7 @@ static ge::Status GetCommModeFromAttrs(const gert::ExeResGenerationContext *cont
         }
         commMode = (worldSize <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
     } else {
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s.", commModeStr.GetString());
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: [%s].", commModeStr.GetString());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

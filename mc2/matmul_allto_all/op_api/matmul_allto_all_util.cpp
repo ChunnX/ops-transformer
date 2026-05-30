@@ -221,7 +221,6 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             // 获取卡数
             uint32_t rankSize = 0;
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-            OP_LOGI("[tzydebug]into define.");//TODO
             auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
             CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
@@ -230,10 +229,11 @@ aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, u
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
             return ACLNN_ERR_PARAM_INVALID;
         }
+        OP_LOGD("The commMode is [%s].", commModeStr);
     } else {
         // 910B和910_93只支持默认通信引擎
         if (strncmp(commModeStr, "", maxLength) != 0) {
-            OP_LOGI("The commMode [%s] is illegal, will use default communication engine.", commModeStr);
+            OP_LOGI("The commMode is illegal, will use default communication engine.");
         }
     }
 
