@@ -24,6 +24,7 @@
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "log/log.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -1351,22 +1352,23 @@ bool isActivationAllowed(int64_t act_type)
 bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     if (gmmParams.scaleOptional == nullptr || gmmParams.scaleOptional->Size() == 0 ||
         (*gmmParams.scaleOptional)[0] == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, Scale should not be null, but now is null.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            "nullptr", "When the activation function is enabled, scaleOptional cannot be nullptr");
         return false;
     }
     const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
     DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
     if (scaleDtype != DataType::DT_FLOAT && scaleDtype != DataType::DT_BF16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dtype of Scale should be float32 or bfloat16, but actual is %s.",
-                gmm::dTypeToString(scaleDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", gmm::dTypeToString(scaleDtype),
+            "When the activation function is enabled, the dtype of scaleOptional must be float32 or bfloat16");
         return false;
     }
     size_t scaleDimNum = scaleShape.GetDimNum();
     if (scaleDimNum != SCALE_TENSOR_EXPECTED_DIMS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dim of Scale should be 2 for perchannel, but actual is %zu.\n", scaleDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional", std::to_string(scaleDimNum),
+            "When the activation function is enabled, the shape dim of scaleOptional must be 2 for perchannel");
         return false;
     }
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
@@ -1376,10 +1378,11 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
     int64_t scaleNSize = scaleShape.GetDim(scaleDimNum - 1);
     int64_t scaleGroupNum = scaleShape.GetDim(0);
     if (scaleNSize != weightNSize || scaleGroupNum != weightGroupNum) {
-              OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                     "When the activation function is enabled, the shape of scale should be (%ld, %ld), but actual"
-                     " is (%ld, %ld).\n",
-                     weightGroupNum, weightNSize, scaleGroupNum, scaleNSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "scaleOptional",
+            "[" + std::to_string(scaleGroupNum) + ", " + std::to_string(scaleNSize) + "]",
+            "When the activation function is enabled, the shape of scaleOptional must be "
+            "[" + std::to_string(weightGroupNum) + ", " + std::to_string(weightNSize) + "]");
         return false;
     }
     return true;
@@ -1395,15 +1398,14 @@ bool CheckInt8StaticTCQuant(const gmm::GroupedMatmulParams &gmmParams) {
 bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     if (gmmParams.perTokenScaleOptional == nullptr || gmmParams.perTokenScaleOptional->Size() == 0 ||
         (*gmmParams.perTokenScaleOptional)[0] == nullptr) {
-       return false;
+        return false;
     }
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
     if (perTokenScaleDtype != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled,"
-                " the dtype of perTokenScale should be float32, but actual is %s.",
-                gmm::dTypeToString(perTokenScaleDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", gmm::dTypeToString(perTokenScaleDtype),
+            "When the activation function is enabled, the dtype of perTokenScaleOptional must be float32");
         return false;
     }
     const op::Shape &xShape = (*gmmParams.x)[0]->GetViewShape();
@@ -1411,15 +1413,17 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
     int64_t perTokenScaleMSize = perTokenScaleShape.GetDim(perTokenScaleDim - 1);
     if (perTokenScaleDim != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled, the dim of perTokenScale should be 1, but actual is %ld.\n", perTokenScaleDim);
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional", std::to_string(perTokenScaleDim),
+            "When the activation function is enabled, the shape dim of perTokenScaleOptional must be 1");
         return false;
     }
     if (perTokenScaleMSize != mSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When the activation function is enabled and the dim of perTokenScale is 1, the shape of perTokenScale should be (%ld,), but actual"
-                " is (%ld,).\n",
-                mSize, perTokenScaleMSize);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnGroupedMatmulGetWorkspaceSize", "perTokenScaleOptional",
+            "[" + std::to_string(perTokenScaleMSize) + ",]",
+            "When the activation function is enabled and the shape dim of perTokenScaleOptional is 1, the shape of "
+            "perTokenScaleOptional must be [" + std::to_string(mSize) + ",]");
         return false;
     }
     return CheckScaleForInt8Quant(gmmParams);
