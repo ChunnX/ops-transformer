@@ -25,7 +25,7 @@
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(HCOMM_VERSION_NUM) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
 #endif
@@ -42,7 +42,8 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
@@ -105,9 +106,17 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
     return ACLNN_SUCCESS;
 }
 
+static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, size_t maxCopyLen)
+{
+    if (src != nullptr) {
+        (void)strncpy_s(dst, dstSize, src, maxCopyLen);
+    }
+}
+
 static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -156,17 +165,25 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
         performanceInfoOptionalDispatchV2Temp = nullptr;
     }
 
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupEpBuf, HCCL_GROUP_NAME_MAX, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupTpBuf, HCCL_GROUP_NAME_MAX, groupTpDispatchV2Temp, HCCL_GROUP_NAME_MAX - 1);
+    char commAlgBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(commAlgBuf, HCCL_GROUP_NAME_MAX, commAlg, HCCL_GROUP_NAME_MAX - 1);
+
     int64_t ydtype = expandXOut->GetDataType();
     if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
-            const_cast<char *>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
+            performanceInfoOptionalDispatchV2Temp, groupEpBuf, epWorldSize, epRankId, moeExpertNum,
+            groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+            sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commAlgBuf, zeroExpertNum,
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
@@ -175,7 +192,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
             tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
+            commAlgBuf, zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
             expandScalesOut, workspaceSize, executor);
 #endif
@@ -187,7 +204,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
