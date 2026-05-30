@@ -59,12 +59,12 @@ public:
     __aicore__ inline void CopyAGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset);
     __aicore__ inline void CopyMxScaleGmToL1(const BasicBlockOffsetParam &param, uint64_t kbL1Offset);
     __aicore__ inline void GetTensorC(LocalTensor<yType> &yUb, const BasicBlockOffsetParam &param);
-    __aicore__ inline void EndSync();
-    __aicore__ inline void DoMmadCompute(uint64_t loopId, const L0CopyAndCalcParams &l0CopyAndCalcParams);
     __aicore__ inline void PadL1IfNotAlign(const LocalTensor<xType> &l1Buf, uint64_t dbOffset, uint64_t dbIdx,
                                            uint64_t realSize, uint64_t dimSize);
+    __aicore__ inline void EndSync();
 
 private:
+    __aicore__ inline void DoMmadCompute(uint64_t loopId, const L0CopyAndCalcParams &l0CopyAndCalcParams);
     __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1RealSize,
                                                   Dn2NzParams &dn2NzParams);
@@ -197,6 +197,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
+    uint64_t nHalfSize = param.nL1Size / 2;  // SwiGLU splits N into swish/gate halves
     uint64_t kSizeAligned = CeilAlign(param.kSize, K_ALIGNMENT64);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
     uint64_t scaleKL1RealSize = (kbL1Offset + MX_SCALE_K_L1_SIZE) > param.kSize ?
@@ -219,24 +220,24 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
 
     Dn2NzParams scaleBdn2NzParamsSwish;
-    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsSwish);
+    ConfigScaleDn2NzParams(nHalfSize, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsSwish);
     int64_t scaleBGmOffsetSwish = swishNOffset + kScaleOffset;
     GlobalTensor<half> f16ScaleBSwishGlobal;
     f16ScaleBSwishGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetSwish].GetPhyAddr(),
-                                         ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
+                                         (nHalfSize * scaleKL1RealSize) >> 1);
     auto f16ScaleBSwishLocal =
         weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_].template ReinterpretCast<half>();
     DataCopy(f16ScaleBSwishLocal, f16ScaleBSwishGlobal, scaleBdn2NzParamsSwish);
 
     // Copy weightScale part2
     Dn2NzParams scaleBdn2NzParamsGate;
-    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsGate);
+    ConfigScaleDn2NzParams(nHalfSize, scaleKGmSize, scaleKL1RealSize, scaleBdn2NzParamsGate);
     int64_t scaleBGmOffsetGate = gateNOffset + kScaleOffset;
     GlobalTensor<half> f16ScaleBGateGlobal;
     f16ScaleBGateGlobal.SetGlobalBuffer((__gm__ half *)weightScaleGlobal_[scaleBGmOffsetGate].GetPhyAddr(),
-                                        ((param.nL1Size / 2) * scaleKL1RealSize) >> 1);
+                                        (nHalfSize * scaleKL1RealSize) >> 1);
     auto f16ScaleBGateLocal =
-        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + ((param.nL1Size / 2) * scaleKL1RealSize)]
+        weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + (nHalfSize * scaleKL1RealSize)]
             .template ReinterpretCast<half>();
 
     DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
@@ -395,7 +396,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::GetTensorC(LocalTensor<yType
     fixL0CToDstParams.dstNdStride = 0;
     FixL0CToDst(yUb, l0c_[l0cOffset_], fixL0CToDstParams);
     l0cOffset_ += Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
-                  CeilAlign(fixL0CToDstParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));
+                  CeilAlign(fixL0CToDstParams.nL0Size, static_cast<uint64_t>(BLOCK_CUBE));
 }
 
 } // namespace GMMSQWeightQuant

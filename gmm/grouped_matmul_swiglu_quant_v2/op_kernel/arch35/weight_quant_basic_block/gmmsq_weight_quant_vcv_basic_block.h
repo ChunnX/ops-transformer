@@ -49,14 +49,14 @@ public:
                                             __gm__ xScaleType *xScale, __gm__ yType *y, __gm__ yScaleType *yScale,
                                             const bool weightL2Cacheable);
     __aicore__ inline void ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
-                                             const BasicBlockOffsetParam &lastOffsetParam);
+                                             const BasicBlockOffsetParam &previousOffsetParam);
     __aicore__ inline void End(const BasicBlockOffsetParam &curOffsetParam);
 
 protected:
     __aicore__ inline void IterateNzNkWithAiv(const BasicBlockOffsetParam &curOffsetParam,
-                                              const BasicBlockOffsetParam &lastOffsetParam);
+                                              const BasicBlockOffsetParam &previousOffsetParam);
     __aicore__ inline void IterateNzNkWithKAic(const BasicBlockOffsetParam &curOffsetParam,
-                                               const BasicBlockOffsetParam &lastOffsetParam);
+                                               const BasicBlockOffsetParam &previousOffsetParam);
     __aicore__ inline void VecComputeNzNkWithStartLimit(uint64_t &kMte2Offset, uint64_t kMte2Limit,
                                                         const BasicBlockOffsetParam &curOffsetParam);
 
@@ -146,18 +146,18 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(__gm__ x
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
-                                                                         const BasicBlockOffsetParam &lastOffsetParam)
+                                                                         const BasicBlockOffsetParam &previousOffsetParam)
 {
     if ASCEND_IS_AIV {
-        IterateNzNkWithAiv(curOffsetParam, lastOffsetParam);
+        IterateNzNkWithAiv(curOffsetParam, previousOffsetParam);
     } else {
-        IterateNzNkWithKAic(curOffsetParam, lastOffsetParam);
+        IterateNzNkWithKAic(curOffsetParam, previousOffsetParam);
     }
 }
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOffsetParam &curOffsetParam,
-                                                                          const BasicBlockOffsetParam &lastOffsetParam)
+                                                                          const BasicBlockOffsetParam &previousOffsetParam)
 {
     uint64_t kMte2Offset = 0;
     uint64_t curCvLoopIdx = cvLoopIdx_;
@@ -169,14 +169,14 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const 
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
         WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
 
-        vecCompute_.SwiGLU(yF32Buffer_, lastOffsetParam);
-        vecCompute_.ComputeMaxExp(yF32Buffer_, lastOffsetParam);
-        vecCompute_.ComputeScale(lastOffsetParam);
-        vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
-        vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yType *>(lastOffsetParam.yGmAddr));
-        vecCompute_.TransMxScaleLayout(lastOffsetParam);
-        vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam,
-                                       reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleGmAddr));
+        vecCompute_.SwiGLU(yF32Buffer_, previousOffsetParam);
+        vecCompute_.ComputeMaxExp(yF32Buffer_, previousOffsetParam);
+        vecCompute_.ComputeScale(previousOffsetParam);
+        vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, previousOffsetParam);
+        vecCompute_.CopyOutputFromUb2Gm(previousOffsetParam, reinterpret_cast<__gm__ yType *>(previousOffsetParam.yGmAddr));
+        vecCompute_.TransMxScaleLayout(previousOffsetParam);
+        vecCompute_.CopyScaleFromUb2Gm(previousOffsetParam,
+                                       reinterpret_cast<__gm__ yScaleType *>(previousOffsetParam.yScaleGmAddr));
     }
 
     VecComputeNzNkWithStartLimit(kMte2Offset, curOffsetParam.kSize, curOffsetParam);
@@ -213,11 +213,11 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offs
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockOffsetParam &curOffsetParam,
-                                                                           const BasicBlockOffsetParam &lastOffsetParam)
+                                                                           const BasicBlockOffsetParam &previousOffsetParam)
 {
     if (cvLoopIdx_ > 0) {
         WaitAivToAic<PIPE_FIX>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
-        cubeCompute_.GetTensorC(yF32Buffer_, lastOffsetParam);
+        cubeCompute_.GetTensorC(yF32Buffer_, previousOffsetParam);
         SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
     }
     uint64_t kMutilLoadL1Size = MX_SCALE_K_L1_SIZE;
@@ -246,12 +246,12 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const
 }
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetParam &lastOffsetParam)
+__aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetParam &previousOffsetParam)
 {
     if ASCEND_IS_AIC {
         if (cvLoopIdx_ > 0) {
             WaitAivToAic<PIPE_FIX>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
-            cubeCompute_.GetTensorC(yF32Buffer_, lastOffsetParam);
+            cubeCompute_.GetTensorC(yF32Buffer_, previousOffsetParam);
             SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
         }
         cubeCompute_.EndSync();
@@ -260,14 +260,14 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffse
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
             WaitAicToAiv<PIPE_V>(SYNC_AIC_FIX_AIV_VF_FLAG);
 
-            vecCompute_.SwiGLU(yF32Buffer_, lastOffsetParam);
-            vecCompute_.ComputeMaxExp(yF32Buffer_, lastOffsetParam);
-            vecCompute_.ComputeScale(lastOffsetParam);
-            vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, lastOffsetParam);
-            vecCompute_.CopyOutputFromUb2Gm(lastOffsetParam, reinterpret_cast<__gm__ yType *>(lastOffsetParam.yGmAddr));
-            vecCompute_.TransMxScaleLayout(lastOffsetParam);
-            vecCompute_.CopyScaleFromUb2Gm(lastOffsetParam,
-                                           reinterpret_cast<__gm__ yScaleType *>(lastOffsetParam.yScaleGmAddr));
+            vecCompute_.SwiGLU(yF32Buffer_, previousOffsetParam);
+            vecCompute_.ComputeMaxExp(yF32Buffer_, previousOffsetParam);
+            vecCompute_.ComputeScale(previousOffsetParam);
+            vecCompute_.ComputeDataForQuantTargetFp8(yF32Buffer_, previousOffsetParam);
+            vecCompute_.CopyOutputFromUb2Gm(previousOffsetParam, reinterpret_cast<__gm__ yType *>(previousOffsetParam.yGmAddr));
+            vecCompute_.TransMxScaleLayout(previousOffsetParam);
+            vecCompute_.CopyScaleFromUb2Gm(previousOffsetParam,
+                                           reinterpret_cast<__gm__ yScaleType *>(previousOffsetParam.yScaleGmAddr));
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);

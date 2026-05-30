@@ -352,7 +352,7 @@ bool CheckInputShape(
     OP_CHECK_IF(
         shapeLen != expectedShape.size(),
         OP_LOGE(
-            context, "input %s deminsion should be %zu, but got %zu", variableName, expectedShape.size(), shapeLen),
+            context, "input %s dimension should be %zu, but got %zu", variableName, expectedShape.size(), shapeLen),
         return false);
     size_t i = 0;
     for (auto dim : expectedShape) {
