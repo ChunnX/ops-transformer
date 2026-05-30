@@ -142,14 +142,14 @@
    <td>weight_scales1</td>
    <td>可选输入</td>
    <td>量化场景需要，GroupMatmul1 右矩阵反量化参数。</td>
-   <td>FP8_E8M0</td>
+   <td>FP8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
-   <td>weight_cales2</td>
+   <td>weight_scales2</td>
    <td>可选输入</td>
    <td>量化场景需要，GroupMatmul2 右矩阵反量化参数。</td>
-   <td>FP8_E8M0</td>
+   <td>FP8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
