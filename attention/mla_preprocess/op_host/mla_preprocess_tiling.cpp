@@ -98,14 +98,22 @@ inline uint64_t GetDefaultStride0(const gert::Shape &shape)
 
 inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inputIndex, const gert::Shape &shape)
 {
+
+    auto *stride = context->GetInputStride(inputIndex);
+    OP_LOGD(context->GetNodeName(), "===============GetInputStride(DIM_0): stride->GetStride(DIM_0) is %ld.===================", stride->GetStride(DIM_0));
+
     if (!context->InputIsView(inputIndex)) {
+        OP_LOGD(context->GetNodeName(), ">>>>>>>>>> !context->InputIsView(inputIndex) <<<<<<<<<<");
         return GetDefaultStride0(shape);
     }
 
-    auto *stride = context->GetInputStride(inputIndex);
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
+        OP_LOGD(context->GetNodeName(), ">>>>>>>>>> (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) <<<<<<<<<<");
         return GetDefaultStride0(shape);
     }
+
+    // OP_LOGD(context->GetNodeName(), "===============GetInputStride(DIM_0): stride->GetStride(DIM_0) is %ld.===================", stride->GetStride(DIM_0));
+
     return static_cast<uint64_t>(stride->GetStride(DIM_0));
 }
 
@@ -748,12 +756,21 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
 
     auto kvCacheShape = context->GetInputShape(INDEX_KV_CACHE)->GetStorageShape();
     auto kvCacheRopeShape = context->GetInputShape(INDEX_KV_CACHE_ROPE)->GetStorageShape();
-    param.kvCacheBlockSize =
-        param.cacheMode >= 2 ? static_cast<uint64_t>(kvCacheShape.GetDim(DIM_2))
-                             : static_cast<uint64_t>(kvCacheShape.GetDim(DIM_1));
+    auto kvCacheOriginShape = context->GetInputShape(INDEX_KV_CACHE)->GetOriginShape();
 
+    param.kvCacheBlockSize = static_cast<uint64_t>(kvCacheOriginShape.GetDim(DIM_1));
     param.kvCacheStride0 = GetInputStride0(context, INDEX_KV_CACHE, kvCacheShape);
     param.kvCacheRopeStride0 = GetInputStride0(context, INDEX_KV_CACHE_ROPE, kvCacheRopeShape);
+
+    OP_LOGD(context->GetNodeName(), "kvCacheShape: dim0=%ld, dim1=%ld, dim2=%ld.",
+            kvCacheShape.GetDim(DIM_0), kvCacheShape.GetDim(DIM_1),
+            kvCacheShape.GetDimNum() > DIM_2 ? kvCacheShape.GetDim(DIM_2) : -1);
+    OP_LOGD(context->GetNodeName(), "kvCacheRopeShape: dim0=%ld, dim1=%ld.",
+            kvCacheRopeShape.GetDim(DIM_0), kvCacheRopeShape.GetDim(DIM_1));
+    OP_LOGD(context->GetNodeName(), "kvCacheOriginShape: dim0=%ld, dim1=%ld.",
+            kvCacheOriginShape.GetDim(DIM_0), kvCacheOriginShape.GetDim(DIM_1));
+    OP_LOGD(context->GetNodeName(), "kvCacheBlockSize=%lu, kvCacheStride0=%lu, kvCacheRopeStride0=%lu.",
+            param.kvCacheBlockSize, param.kvCacheStride0, param.kvCacheRopeStride0);
 
     return param;
 }

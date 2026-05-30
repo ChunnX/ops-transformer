@@ -2105,6 +2105,8 @@ private:
             uint64_t cacheStart = GetCacheOffset(cacheSlot, SPLIT_SIZE_ONE, kv_cache_stride0_);
             uint64_t cacheStart1 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_ONE, kv_cache_stride0_);
             uint64_t cacheStart2 = GetCacheOffset(cacheSlot, SPLIT_RMSNRORM_SIZE_TWO, kv_cache_rope_stride0_);
+            AscendC::PRINTF("cacheStart=%lu, cacheStart1=%lu, cacheStart2=%lu, cacheSlot=%lu, kv_cache_stride0=%lu, kv_cache_rope_stride0=%lu\n",
+                            cacheStart, cacheStart1, cacheStart2, cacheSlot, kv_cache_stride0_, kv_cache_rope_stride0_);
             SET_FLAG(S, MTE3, EVENT_ID0);
             /* RmsNorm start */
             WAIT_FLAG(MTE2, V, EVENT_ID0);
@@ -2180,6 +2182,8 @@ private:
                 // NZ
                 uint64_t cacheStartI8Nz1 = GetNzCacheOffset(cacheSlot, I8_C0_SIZE, kv_cache_stride0_);
                 uint64_t cacheStartNz2 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_rope_stride0_);
+                AscendC::PRINTF("INT8_NZCACHE: cacheStartI8Nz1=%lu, cacheStartNz2=%lu, cacheSlot=%lu, kv_cache_stride0=%lu, kv_cache_rope_stride0=%lu\n",
+                                cacheStartI8Nz1, cacheStartNz2, cacheSlot, kv_cache_stride0_, kv_cache_rope_stride0_);
                 AscendC::DataCopyExtParams outExt;
                 // nope:int8 nz
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_ONE / I8_C0_SIZE;
@@ -2196,6 +2200,8 @@ private:
             } else if constexpr (cacheMode == CACHE_MODE_NZCACHE) {
                 uint64_t cacheStartNz1 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_stride0_);
                 uint64_t cacheStartNz2 = GetNzCacheOffset(cacheSlot, C0_SIZE, kv_cache_rope_stride0_);
+                AscendC::PRINTF("NZCACHE: cacheStartNz1=%lu, cacheStartNz2=%lu, cacheSlot=%lu, kv_cache_stride0=%lu, kv_cache_rope_stride0=%lu\n",
+                                cacheStartNz1, cacheStartNz2, cacheSlot, kv_cache_stride0_, kv_cache_rope_stride0_);
                 // nope:T1 nz
                 AscendC::DataCopyExtParams outExt;
                 outExt.blockCount = SPLIT_RMSNRORM_SIZE_ONE / C0_SIZE;

@@ -1,0 +1,137 @@
+[2026-05-30 08:04:15] [2026-05-30 08:04:15] Start to run example,name:mla_preprocess mode:eager
+[2026-05-30 08:04:15] Start compile and run example file: ../attention/mla_preprocess/examples/test_aclnn_mla_preprocess.cpp
+[2026-05-30 08:04:18] === Testing non-contiguous first axis for cache tensors, strideMultiplier=2 ===
+[2026-05-30 08:04:18] Non-contiguous dim0 tensor: shape=[192,128,1,576], strides=[147456,576,576,1], contiguousStride0=73728, actualStride0=147456, storageElements=28311552
+[2026-05-30 08:04:18] Non-contiguous dim0 tensor: shape=[192,128,1,64], strides=[16384,64,64,1], contiguousStride0=8192, actualStride0=16384, storageElements=3145728
+[2026-05-30 08:04:18] Non-contiguous dim0 tensor: shape=[192,128,1,576], strides=[147456,576,576,1], contiguousStride0=73728, actualStride0=147456, storageElements=28311552
+[2026-05-30 08:04:18] Non-contiguous dim0 tensor: shape=[192,128,1,64], strides=[16384,64,64,1], contiguousStride0=8192, actualStride0=16384, storageElements=3145728
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-0, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-1, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-2, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-3, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-4, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-5, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-6, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-7, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048272, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] cacheStart=0, cacheStart1=0, cacheStart2=0, cacheSlot=0, kv_cache_stride0=73728, kv_cache_rope_stride0=8192
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-8, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-9, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-10, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-11, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-12, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-13, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-14, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-15, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-16, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-17, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-18, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-19, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-20, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-21, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-22, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-23, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-24, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-25, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-26, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-27, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-28, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-29, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-30, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-31, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-32, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-33, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-34, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-35, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-36, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-37, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-38, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIV-39, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-0, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-1, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-2, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-3, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-4, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-5, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-6, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-7, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-8, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-9, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-10, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-11, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-12, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-13, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-14, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-15, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-16, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-17, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-18, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:18] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:18] opType=MlaPreprocess, DumpHead: AIC-19, CoreType=MIX, block dim=20, total_block_num=60, block_remain_len=1048456, block_initial_space=1048576, rsv=0, magic=5aa5bccd
+[2026-05-30 08:04:19] CANN Version: 1.0.0, TimeStamp: 202602
+[2026-05-30 08:04:19] run test_aclnn_mla_preprocess, execute samples success
+[2026-05-30 08:04:19] Example completed successfully

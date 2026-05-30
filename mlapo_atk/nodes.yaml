@@ -1,11 +1,11 @@
 nodes:
 - backend: pyaclnn
   devices:
-  - 0
+  - 7
   task:
   - accuracy
 - backend: npu
   task: 
   - accuracy
   devices: 
-  - 0
+  - 7
