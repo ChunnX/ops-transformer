@@ -183,6 +183,7 @@ protected:
     virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail){};
     // tiling
     void DoAllReduceTiling(bool useHcclApi = false);
+    void CalcAllReduceSendRecvParams();
     void DoRCSTiling();
     void SetMCutSocVersion(SocVersion& inputSocVersion);
     void DoSplitMTiling();
