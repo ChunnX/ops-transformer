@@ -82,13 +82,13 @@ public:
         this->Input("min")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_SCALAR, ge::FORMAT_SCALAR})
-            .UnknownShapeFormat({ge::FORMAT_SCALAR, ge::FORMAT_SCALAR});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("max")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_SCALAR, ge::FORMAT_SCALAR})
-            .UnknownShapeFormat({ge::FORMAT_SCALAR, ge::FORMAT_SCALAR});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("reduceOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
