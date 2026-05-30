@@ -867,7 +867,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     mm12GmOffset = mmPingPongIdx * mm12WorkspaceLen;
     mm345GmOffset = mmPingPongIdx * mm345WorkspaceLen;
     selectedKGmOffset = selectdKPPPidx * selectedKWspOffset;
-    selectedVGmOffset = selectedKGmOffset;
+    selectedVGmOffset = mmPingPongIdx * selectedVWspOffset;
 
     curMaxS2 = ATTEN_ENABLE ? (s1Index + curS2 - curS1 + 1) : curS2;
     
