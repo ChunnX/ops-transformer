@@ -359,49 +359,95 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
 {
     const int64_t batchSize = 1;
     const int64_t seqLength = 64;
-    const int64_t n = 1;
+    const int64_t n = 4;
     const int64_t c = 128;
+    const int64_t hcMix = n * n + 2 * n;
+    const int64_t numIters = 20;
 
-    const std::vector<int64_t> bf16_shape = {batchSize, seqLength, n, c};
-    const std::vector<int64_t> fp32_shape = {batchSize, seqLength, n, c};
+    const std::vector<int64_t> grad_hin_shape = {batchSize, seqLength, c};
+    const std::vector<int64_t> grad_h_post_shape = {batchSize, seqLength, n};
+    const std::vector<int64_t> grad_h_res_shape = {batchSize, seqLength, n, n};
+    const std::vector<int64_t> x_shape = {batchSize, seqLength, n, c};
+    const std::vector<int64_t> phi_shape = {hcMix, n * c};
+    const std::vector<int64_t> alpha_shape = {3};
+    const std::vector<int64_t> bias_shape = {hcMix};
+    const std::vector<int64_t> h_pre_shape = {batchSize, seqLength, n};
+    const std::vector<int64_t> hc_before_norm_shape = {batchSize, seqLength, hcMix};
+    const std::vector<int64_t> inv_rms_shape = {batchSize, seqLength, 1};
+    const std::vector<int64_t> sum_out_shape = {numIters * 2, batchSize, seqLength, n};
+    const std::vector<int64_t> norm_out_shape = {numIters * 2, batchSize, seqLength, n, n};
     const std::vector<int64_t> reduce_out_shape = {batchSize, seqLength, n, 1};
+    const std::vector<int64_t> grad_x_shape = {batchSize, seqLength, n, c};
+    const std::vector<int64_t> grad_phi_shape = {hcMix, n * c};
+    const std::vector<int64_t> grad_alpha_shape = {3};
+    const std::vector<int64_t> grad_bias_shape = {hcMix};
 
-    int64_t bf16_size = GetShapeSize(bf16_shape);
-    int64_t fp32_size = GetShapeSize(fp32_shape);
+    int64_t grad_hin_size = GetShapeSize(grad_hin_shape);
+    int64_t grad_h_post_size = GetShapeSize(grad_h_post_shape);
+    int64_t grad_h_res_size = GetShapeSize(grad_h_res_shape);
+    int64_t x_size = GetShapeSize(x_shape);
+    int64_t phi_size = GetShapeSize(phi_shape);
+    int64_t alpha_size = GetShapeSize(alpha_shape);
+    int64_t bias_size = GetShapeSize(bias_shape);
+    int64_t h_pre_size = GetShapeSize(h_pre_shape);
+    int64_t hc_before_norm_size = GetShapeSize(hc_before_norm_shape);
+    int64_t inv_rms_size = GetShapeSize(inv_rms_shape);
+    int64_t sum_out_size = GetShapeSize(sum_out_shape);
+    int64_t norm_out_size = GetShapeSize(norm_out_shape);
     int64_t reduce_out_size = GetShapeSize(reduce_out_shape);
 
     std::srand(std::time(nullptr));
 
     auto gen_float = []() { return static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX) * 2.0f - 1.0f; };
 
-    std::vector<float> grad_hin_host(bf16_size);
-    std::vector<float> grad_h_post_host(fp32_size);
-    std::vector<float> grad_h_res_host(fp32_size);
-    std::vector<float> x_host(bf16_size);
-    std::vector<float> phi_host(fp32_size);
-    std::vector<float> alpha_host(fp32_size);
-    std::vector<float> bias_host(fp32_size);
-    std::vector<float> h_pre_host(fp32_size);
-    std::vector<float> hc_before_norm_host(fp32_size);
-    std::vector<float> inv_rms_host(fp32_size);
-    std::vector<float> sum_out_host(fp32_size);
-    std::vector<float> norm_out_host(fp32_size);
+    std::vector<float> grad_hin_host(grad_hin_size);
+    std::vector<float> grad_h_post_host(grad_h_post_size);
+    std::vector<float> grad_h_res_host(grad_h_res_size);
+    std::vector<float> x_host(x_size);
+    std::vector<float> phi_host(phi_size);
+    std::vector<float> alpha_host(alpha_size);
+    std::vector<float> bias_host(bias_size);
+    std::vector<float> h_pre_host(h_pre_size);
+    std::vector<float> hc_before_norm_host(hc_before_norm_size);
+    std::vector<float> inv_rms_host(inv_rms_size);
+    std::vector<float> sum_out_host(sum_out_size);
+    std::vector<float> norm_out_host(norm_out_size);
     std::vector<float> reduce_out_host(reduce_out_size, 0.0f);
 
-    for (int64_t i = 0; i < bf16_size; ++i) {
+    for (int64_t i = 0; i < grad_hin_size; ++i) {
         grad_hin_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < x_size; ++i) {
         x_host[i] = gen_float();
     }
-    for (int64_t i = 0; i < fp32_size; ++i) {
+    for (int64_t i = 0; i < grad_h_post_size; ++i) {
         grad_h_post_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < grad_h_res_size; ++i) {
         grad_h_res_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < phi_size; ++i) {
         phi_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < alpha_size; ++i) {
         alpha_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < bias_size; ++i) {
         bias_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < h_pre_size; ++i) {
         h_pre_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < hc_before_norm_size; ++i) {
         hc_before_norm_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < inv_rms_size; ++i) {
         inv_rms_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < sum_out_size; ++i) {
         sum_out_host[i] = gen_float();
+    }
+    for (int64_t i = 0; i < norm_out_size; ++i) {
         norm_out_host[i] = gen_float();
     }
 
@@ -414,10 +460,10 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
                                      x_host, phi_host, alpha_host, bias_host,
                                      h_pre_host, hc_before_norm_host, inv_rms_host,
                                      sum_out_host, norm_out_host, reduce_out_host,
-                                     bf16_shape, fp32_shape, fp32_shape,
-                                     bf16_shape, fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape, reduce_out_shape,
+                                     grad_hin_shape, grad_h_post_shape, grad_h_res_shape,
+                                     x_shape, phi_shape, alpha_shape, bias_shape,
+                                     h_pre_shape, hc_before_norm_shape, inv_rms_shape,
+                                     sum_out_shape, norm_out_shape, reduce_out_shape,
                                      ref_tensors);
     ASSERT_EQ(ret, 0) << "Create ref input tensors failed";
 
@@ -425,17 +471,17 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
                                      x_host, phi_host, alpha_host, bias_host,
                                      h_pre_host, hc_before_norm_host, inv_rms_host,
                                      sum_out_host, norm_out_host, reduce_out_host,
-                                     bf16_shape, fp32_shape, fp32_shape,
-                                     bf16_shape, fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape, fp32_shape,
-                                     fp32_shape, fp32_shape, reduce_out_shape,
+                                     grad_hin_shape, grad_h_post_shape, grad_h_res_shape,
+                                     x_shape, phi_shape, alpha_shape, bias_shape,
+                                     h_pre_shape, hc_before_norm_shape, inv_rms_shape,
+                                     sum_out_shape, norm_out_shape, reduce_out_shape,
                                      tgt_tensors);
     ASSERT_EQ(ret, 0) << "Create tgt input tensors failed";
 
-    ret = CreateBackwardOutputTensors(bf16_shape, fp32_shape, fp32_shape, fp32_shape, ref_tensors);
+    ret = CreateBackwardOutputTensors(grad_x_shape, grad_phi_shape, grad_alpha_shape, grad_bias_shape, ref_tensors);
     ASSERT_EQ(ret, 0) << "Create ref output tensors failed";
 
-    ret = CreateBackwardOutputTensors(bf16_shape, fp32_shape, fp32_shape, fp32_shape, tgt_tensors);
+    ret = CreateBackwardOutputTensors(grad_x_shape, grad_phi_shape, grad_alpha_shape, grad_bias_shape, tgt_tensors);
     ASSERT_EQ(ret, 0) << "Create tgt output tensors failed";
 
     const double hc_eps = 1e-6;
@@ -486,17 +532,21 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
 
     aclrtSynchronizeStream(stream_);
 
-    int64_t bf16_byte_size = bf16_size * sizeof(uint16_t);
-    int64_t fp32_byte_size = fp32_size * sizeof(float);
+    int64_t grad_x_size = GetShapeSize(grad_x_shape);
+    int64_t grad_phi_size = GetShapeSize(grad_phi_shape);
+    int64_t grad_alpha_size = GetShapeSize(grad_alpha_shape);
+    int64_t grad_bias_size = GetShapeSize(grad_bias_shape);
+    int64_t bf16_byte_size = grad_x_size * sizeof(uint16_t);
+    int64_t fp32_byte_size = grad_phi_size * sizeof(float);
 
-    std::vector<uint16_t> ref_grad_x_bf16(bf16_size);
-    std::vector<uint16_t> tgt_grad_x_bf16(bf16_size);
-    std::vector<float> ref_grad_phi(fp32_size);
-    std::vector<float> tgt_grad_phi(fp32_size);
-    std::vector<float> ref_grad_alpha(fp32_size);
-    std::vector<float> tgt_grad_alpha(fp32_size);
-    std::vector<float> ref_grad_bias(fp32_size);
-    std::vector<float> tgt_grad_bias(fp32_size);
+    std::vector<uint16_t> ref_grad_x_bf16(grad_x_size);
+    std::vector<uint16_t> tgt_grad_x_bf16(grad_x_size);
+    std::vector<float> ref_grad_phi(grad_phi_size);
+    std::vector<float> tgt_grad_phi(grad_phi_size);
+    std::vector<float> ref_grad_alpha(grad_alpha_size);
+    std::vector<float> tgt_grad_alpha(grad_alpha_size);
+    std::vector<float> ref_grad_bias(grad_bias_size);
+    std::vector<float> tgt_grad_bias(grad_bias_size);
 
     aclrtMemcpy(ref_grad_x_bf16.data(), bf16_byte_size, ref_tensors.grad_x_addr, bf16_byte_size, ACL_MEMCPY_DEVICE_TO_HOST);
     aclrtMemcpy(tgt_grad_x_bf16.data(), bf16_byte_size, tgt_tensors.grad_x_addr, bf16_byte_size, ACL_MEMCPY_DEVICE_TO_HOST);
@@ -507,19 +557,19 @@ TEST_F(MhcPreClampSinkhornBackwardPrecisionTest, CompareWithSinkhornBackward)
     aclrtMemcpy(ref_grad_bias.data(), fp32_byte_size, ref_tensors.grad_bias_addr, fp32_byte_size, ACL_MEMCPY_DEVICE_TO_HOST);
     aclrtMemcpy(tgt_grad_bias.data(), fp32_byte_size, tgt_tensors.grad_bias_addr, fp32_byte_size, ACL_MEMCPY_DEVICE_TO_HOST);
 
-    std::vector<float> ref_grad_x(bf16_size);
-    std::vector<float> tgt_grad_x(bf16_size);
-    for (int64_t i = 0; i < bf16_size; ++i) {
+    std::vector<float> ref_grad_x(grad_x_size);
+    std::vector<float> tgt_grad_x(grad_x_size);
+    for (int64_t i = 0; i < grad_x_size; ++i) {
         ref_grad_x[i] = static_cast<float>(static_cast<int16_t>(ref_grad_x_bf16[i])) / 32767.0f;
         tgt_grad_x[i] = static_cast<float>(static_cast<int16_t>(tgt_grad_x_bf16[i])) / 32767.0f;
     }
 
     bool all_pass = true;
 
-    all_pass &= AssertPrecision<float>(ref_grad_x.data(), tgt_grad_x.data(), bf16_size, "grad_x", 1e-2, 1e-2);
-    all_pass &= AssertPrecision<float>(ref_grad_phi.data(), tgt_grad_phi.data(), fp32_size, "grad_phi");
-    all_pass &= AssertPrecision<float>(ref_grad_alpha.data(), tgt_grad_alpha.data(), fp32_size, "grad_alpha");
-    all_pass &= AssertPrecision<float>(ref_grad_bias.data(), tgt_grad_bias.data(), fp32_size, "grad_bias");
+    all_pass &= AssertPrecision<float>(ref_grad_x.data(), tgt_grad_x.data(), grad_x_size, "grad_x", 1e-2, 1e-2);
+    all_pass &= AssertPrecision<float>(ref_grad_phi.data(), tgt_grad_phi.data(), grad_phi_size, "grad_phi");
+    all_pass &= AssertPrecision<float>(ref_grad_alpha.data(), tgt_grad_alpha.data(), grad_alpha_size, "grad_alpha");
+    all_pass &= AssertPrecision<float>(ref_grad_bias.data(), tgt_grad_bias.data(), grad_bias_size, "grad_bias");
 
     if (ref_workspace != nullptr) {
         aclrtFree(ref_workspace);
