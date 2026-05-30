@@ -494,11 +494,9 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
                             strlen(cacheMode) == 0 ||
                             strcmp(cacheMode, "Norm") == 0);
     if (isArch35 && isCacheModeNorm) {
-        OP_LOGD(">>> aclnnGatherPaKvCache A5 LAUNCH");
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
-            OP_LOGD(">>> aclnnGatherPaKvCache A5 ProcessNonContiguous LAUNCH");
             return ProcessNonContiguous(
                 keyCache, valueCache, blockTables, seqLens, keyRef, valueRef,
                 seqOffsetOptional, cacheMode, isSeqLensCumsum,
