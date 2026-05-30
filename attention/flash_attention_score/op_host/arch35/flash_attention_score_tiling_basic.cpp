@@ -74,7 +74,7 @@ protected:
                 dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
                     std::to_string(dBasicBlock).c_str(),
-                    "The aligned head dimension size of input query and key should be 64, 128, 192, or 256 when not greater than 256");
+                    "The value of dBasicBlock must be in range (0, 768]");
         }
     }
 
