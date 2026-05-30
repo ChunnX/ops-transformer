@@ -1248,6 +1248,19 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         dataSpaceSize_ + serverId_ * STATE_OFFSET); // 那1M 分了serverNum个512B
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qpInfo_, ubLocalTensor_, ubLocalHeadTensor_, selfDataStatusGMAiv, 2);
     PipeBarrier<PIPE_ALL>();
+    GM_ADDR remoteExpAddr;
+    uint32_t remoteRankId;
+    if (rankId_ <= 15) {
+        remoteRankId = rankId_ + 16;
+    } else {
+        remoteRankId = rankId_ - 16;
+    }
+    remoteExpAddr = (GM_ADDR)((HcclRankRelationResV2 *)((HcclRankRelationResV2 *)(winContext->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp);
+    GlobalTensor<uint32_t> selfDataStatusGMAivSend;
+    selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
+    selfDataStatusGMAivSend.SetValue(12, sendStatusGMTensor_.GetValue(0));
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
