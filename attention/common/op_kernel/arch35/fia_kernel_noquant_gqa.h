@@ -103,11 +103,11 @@ public:
     // schduler params
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    uint32_t curS2Start;
+    uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
-    uint32_t prevBIdx;
-    uint32_t prevBN2Idx;
-    uint32_t prevGS1Idx;
+    uint32_t prevBIdx = 0;
+    uint32_t prevBN2Idx = 0;
+    uint32_t prevGS1Idx = 0;
     uint32_t mloop = 0;
     bool headS2Split = false;
     bool tailS2Split = false;
