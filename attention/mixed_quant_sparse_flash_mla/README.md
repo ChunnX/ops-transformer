@@ -79,9 +79,5 @@
 -   Q\_S和S1表示q shape中的S，S2表示ori\_kv shape中的S，Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori\_kv\_heads和num\_cmp\_kv\_heads；T1表示q shape中的T。
 
 ## 调用说明
--   该接口当前支持三种计算场景：
-    -   **场景一**：仅传入ori\_kv时为Sliding Window Attention计算。
-    -   **场景二**：传入ori\_kv及cmp\_kv时为Sliding Window Attention + Compressed Attention计算。
-    -   **场景三**：传入ori\_kv、cmp\_kv及cmp\_sparse\_indices时为Sliding Window Attention + Sparse Compressed Attention计算。
 -   调用方式：使用npu_ops_tranformer包中的npu_mixed_quant_sparse_flash_mla接口进行调用，
              详见torch_extension/npu_ops_transformer/ops/mixed_quant_sparse_flash_mla.py
