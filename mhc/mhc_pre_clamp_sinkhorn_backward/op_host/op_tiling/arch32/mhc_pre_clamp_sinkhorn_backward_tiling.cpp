@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward_tiling.cpp
- * \brief MhcPreSinkhornBackward operator tiling implementation
+ * \file mhc_pre_clamp_sinkhorn_backward_tiling.cpp
+ * \brief MhcPreClampSinkhornBackward operator tiling implementation
  */
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward_tiling.h"
+#include "mhc_pre_clamp_sinkhorn_backward_tiling.h"
 #include "log/log.h"
 
 #define CHECK_NULLPTR(ptr)                                                                                             \
@@ -462,7 +462,7 @@ static ge::graphStatus TilingParseForMhcPreSinkhornBackward(gert::TilingParseCon
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MhcPreSinkhornBackward)
+IMPL_OP_OPTILING(MhcPreClampSinkhornBackward)
     .Tiling(TilingMhcPreSinkhornBackward)
     .TilingParse<MhcPreSinkhornBackwardCompileInfo>(TilingParseForMhcPreSinkhornBackward); // 向框架注册入口函数
 } // namespace optiling

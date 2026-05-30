@@ -68,7 +68,7 @@ public:
     matmul::MatmulImpl<A0Type, BType, CType, CType, MHC_PRE_GRAD_MM1_CFG> mm1_;
     matmul::MatmulImpl<A1Type, BType, CType, CType, MHC_PRE_GRAD_MM2_CFG> mm2_; // grad
 
-    __aicore__ inline MhcPreGradKernel() = default;
+    __aicore__ inline MhcPreClampSinkhornBackwardKernel() = default;
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hc_fn, GM_ADDR pre, GM_ADDR grad_y, GM_ADDR grad_post,
                                 GM_ADDR grad_comb, GM_ADDR hc_scale, GM_ADDR hc_base, GM_ADDR h_hat2, GM_ADDR rsqrt,
@@ -1132,4 +1132,4 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     mm2_.End();
 }
 
-#endif // MHC_PRE_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_GRAD_KERNEL_H
+#endif // MHC_PRE_CLAMP_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_CLAMP_SINKHORN_BACKWARD_KERNEL_H

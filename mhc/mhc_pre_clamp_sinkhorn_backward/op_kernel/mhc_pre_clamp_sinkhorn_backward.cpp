@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward.cpp
+ * \file mhc_pre_clamp_sinkhorn_backward.cpp
  * \brief
  */
 #include "kernel_operator.h"
@@ -33,7 +33,7 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
 
     TPipe pipe;
     if (TILING_KEY_IS(1)) {
-        MhcPreGradKernel<DTYPE_X, DTYPE_PHI, true> op;
+        MhcPreClampSinkhornBackwardKernel<DTYPE_X, DTYPE_PHI, true> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
         op.mm2_.SetSubBlockIdx(0);
@@ -43,7 +43,7 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
                 norm_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
     } else if (TILING_KEY_IS(0)) {
-        MhcPreGradKernel<DTYPE_X, DTYPE_PHI, false> op;
+        MhcPreClampSinkhornBackwardKernel<DTYPE_X, DTYPE_PHI, false> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
         op.mm2_.SetSubBlockIdx(0);

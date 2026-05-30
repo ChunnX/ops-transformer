@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward_tiling.h
- * \brief MhcPreSinkhornBackward operator tiling data definition
+ * \file mhc_pre_clamp_sinkhorn_backward_tiling.h
+ * \brief MhcPreClampSinkhornBackward operator tiling data definition
  */
-#ifndef OP_HOST_OP_TILING_ARCH32_MHC_PRE_SINKHORN_BACKWARD_TILING_H
-#define OP_HOST_OP_TILING_ARCH32_MHC_PRE_SINKHORN_BACKWARD_TILING_H
+#ifndef OP_HOST_OP_TILING_ARCH32_MHC_PRE_CLAMP_SINKHORN_BACKWARD_TILING_H
+#define OP_HOST_OP_TILING_ARCH32_MHC_PRE_CLAMP_SINKHORN_BACKWARD_TILING_H
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
@@ -35,7 +35,6 @@ TILING_DATA_FIELD_DEF(int64_t, tileSize)
 TILING_DATA_FIELD_DEF(int64_t, skIterCount)
 TILING_DATA_FIELD_DEF(int64_t, ubSize)
 TILING_DATA_FIELD_DEF(float, eps)
-
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm2TilingData)
 END_TILING_DATA_DEF
@@ -46,4 +45,4 @@ struct MhcPreSinkhornBackwardCompileInfo {
 };
 } // namespace optiling
 
-#endif // OP_HOST_OP_TILING_ARCH32_MHC_PRE_SINKHORN_BACKWARD_TILING_H
+#endif // OP_HOST_OP_TILING_ARCH32_MHC_PRE_CLAMP_SINKHORN_BACKWARD_TILING_H
