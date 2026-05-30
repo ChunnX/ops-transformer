@@ -57,7 +57,7 @@ hidden = Silu(gate) * up
 y = MatMul(hidden, down_weight)
 
 # 融合算子
-y = SwigluGatedMlp(x, gate_up_weight, down_weight, cubeMathType)
+y = SwigluGatedMlp(x, gate_up_weight, down_weight, cube_math_type)
 ```
 
 ## 算子执行接口
@@ -130,7 +130,7 @@ REG_OP(SwigluGatedMlp)
     .INPUT(gate_up_weight, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT}))
     .INPUT(down_weight, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT}))
-    .ATTR(cubeMathType, Int, 1)
+    .ATTR(cube_math_type, Int, 1)
     .OP_END_FACTORY_REG(SwigluGatedMlp)
 ```
 

@@ -29,7 +29,7 @@ For an input `x` with shape `[..., hidden_size]`, `gate_up_weight` has shape
 | gate_up_weight | Input | Weight of the first matmul. The second dimension must be even. | BFLOAT16, FLOAT16, FLOAT | ND |
 | down_weight | Input | Weight of the second matmul. The first dimension must equal `gate_up_weight.shape[1] / 2`. | BFLOAT16, FLOAT16, FLOAT | ND |
 | y | Output | Output tensor. The leading dimensions are the same as `x`, and the last dimension is `down_weight.shape[1]`. | BFLOAT16, FLOAT16, FLOAT | ND |
-| cubeMathType | Attr | MatMul compute mode used by the ACLNN wrapper. Valid values are `0` and `1`; default is `1`. | int64 | - |
+| cube_math_type | Attr | MatMul compute mode used by the ACLNN wrapper. Valid values are `0` and `1`; default is `1`. | int64 | - |
 
 ## Constraints
 

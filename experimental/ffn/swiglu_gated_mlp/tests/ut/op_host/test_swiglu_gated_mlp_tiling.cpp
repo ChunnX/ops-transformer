@@ -110,7 +110,7 @@ TEST_F(SwigluGatedMlpTiling, mm1_stage_tiling)
                       .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeAttrs({{"cubeMathType", Ops::NN::AnyValue::CreateFrom<int64_t>(
+                      .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(
                                                        WG_MLP_STAGE_ATTR_FP16_MM1)}})
                       .TilingData(tilingData.get())
                       .Workspace(workspace)
@@ -155,7 +155,7 @@ TEST_F(SwigluGatedMlpTiling, swiglu_stage_tiling)
                       .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                       .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                       // The stage attr encodes dtype offset plus stage id; 1000 + 102 means FP32 SWIGLU.
-                      .NodeAttrs({{"cubeMathType", Ops::NN::AnyValue::CreateFrom<int64_t>(
+                      .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(
                                                        WG_MLP_STAGE_ATTR_FP32_SWIGLU)}})
                       .TilingData(tilingData.get())
                       .Workspace(workspace)

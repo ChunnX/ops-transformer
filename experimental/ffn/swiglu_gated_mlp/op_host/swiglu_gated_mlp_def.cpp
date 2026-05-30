@@ -55,7 +55,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("cubeMathType")
+        this->Attr("cube_math_type")
             .AttrType(OPTIONAL)
             .Int(1);
 

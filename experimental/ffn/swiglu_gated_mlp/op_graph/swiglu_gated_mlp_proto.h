@@ -48,7 +48,7 @@ namespace ge {
      *
      * @par Attributes:
      * One optional attribute, including:
-     * @li cubeMathType: An optional int. MatMul compute mode, default is 1.
+     * @li cube_math_type: An optional int. MatMul compute mode, default is 1.
      *
      * @par Third-party framework compatibility:
      * New operator SwigluGatedMlp.
@@ -59,7 +59,7 @@ namespace ge {
         .INPUT(down_weight, "T")
         .OUTPUT(y, "T")
         .DATATYPE(T, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT}))
-        .ATTR(cubeMathType, Int, 1)
+        .ATTR(cube_math_type, Int, 1)
         .OP_END_FACTORY_REG(SwigluGatedMlp)
 }  // namespace ge
 

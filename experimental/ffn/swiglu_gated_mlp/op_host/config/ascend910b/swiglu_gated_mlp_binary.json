@@ -12,7 +12,7 @@
                 {"name": "y", "index": 0, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]}
             ],
             "attrs": [
-                {"name": "cubeMathType", "dtype": "int64", "value": null}
+                {"name": "cube_math_type", "dtype": "int64", "value": null}
             ]
         },
         {
@@ -26,7 +26,7 @@
                 {"name": "y", "index": 0, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]}
             ],
             "attrs": [
-                {"name": "cubeMathType", "dtype": "int64", "value": null}
+                {"name": "cube_math_type", "dtype": "int64", "value": null}
             ]
         },
         {
@@ -40,7 +40,7 @@
                 {"name": "y", "index": 0, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]}
             ],
             "attrs": [
-                {"name": "cubeMathType", "dtype": "int64", "value": null}
+                {"name": "cube_math_type", "dtype": "int64", "value": null}
             ]
         }
     ]

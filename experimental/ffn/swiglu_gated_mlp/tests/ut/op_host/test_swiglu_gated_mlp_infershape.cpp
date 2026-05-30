@@ -42,9 +42,9 @@ TEST_F(SwigluGatedMlpInferShape, full_mlp_infershape)
     op.UpdateInputDesc("x", create_desc({2, 3}, ge::DT_FLOAT16));
     op.UpdateInputDesc("gate_up_weight", create_desc({3, 8}, ge::DT_FLOAT16));
     op.UpdateInputDesc("down_weight", create_desc({4, 2}, ge::DT_FLOAT16));
-    op.SetAttr("cubeMathType", static_cast<int64_t>(1));
+    op.SetAttr("cube_math_type", static_cast<int64_t>(1));
 
-    Runtime2TestParam param{{"cubeMathType"}, {}, {}};
+    Runtime2TestParam param{{"cube_math_type"}, {}, {}};
     EXPECT_EQ(InferShapeTest(op, param), ge::GRAPH_SUCCESS);
 
     auto yDesc = op.GetOutputDesc(0);
@@ -62,9 +62,9 @@ TEST_F(SwigluGatedMlpInferShape, swiglu_stage_infershape)
     op.UpdateInputDesc("x", create_desc({2, 8}, ge::DT_FLOAT));
     op.UpdateInputDesc("gate_up_weight", create_desc({3, 8}, ge::DT_FLOAT));
     op.UpdateInputDesc("down_weight", create_desc({4, 2}, ge::DT_FLOAT));
-    op.SetAttr("cubeMathType", static_cast<int64_t>(102));
+    op.SetAttr("cube_math_type", static_cast<int64_t>(102));
 
-    Runtime2TestParam param{{"cubeMathType"}, {}, {}};
+    Runtime2TestParam param{{"cube_math_type"}, {}, {}};
     EXPECT_EQ(InferShapeTest(op, param), ge::GRAPH_SUCCESS);
 
     auto yDesc = op.GetOutputDesc(0);
@@ -82,8 +82,8 @@ TEST_F(SwigluGatedMlpInferShape, illegal_gate_up_shape)
     op.UpdateInputDesc("x", create_desc({2, 3}, ge::DT_FLOAT16));
     op.UpdateInputDesc("gate_up_weight", create_desc({3, 7}, ge::DT_FLOAT16));
     op.UpdateInputDesc("down_weight", create_desc({4, 2}, ge::DT_FLOAT16));
-    op.SetAttr("cubeMathType", static_cast<int64_t>(1));
+    op.SetAttr("cube_math_type", static_cast<int64_t>(1));
 
-    Runtime2TestParam param{{"cubeMathType"}, {}, {}};
+    Runtime2TestParam param{{"cube_math_type"}, {}, {}};
     EXPECT_EQ(InferShapeTest(op, param), ge::GRAPH_FAILED);
 }
