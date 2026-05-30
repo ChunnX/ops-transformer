@@ -443,7 +443,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(
-        platformInfo == nullptr, OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Failed to get platform info."),
+        platformInfo == nullptr, OP_LOGE(opName_, "Failed to get platform info."),
         return ge::GRAPH_FAILED);
     std::string intrinsicName = "Intrinsic_fix_pipe_l0c2out";
     std::string val;
@@ -454,7 +454,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     OP_TILING_CHECK(
         CheckRanksizePlatformSupported() != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Check Ranksize Platform Supported failed."),
+        OP_LOGE(opName_, "Check Ranksize Platform Supported failed."),
             return ge::GRAPH_FAILED);
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     auto coreNum = ascendcPlatform.GetCoreNumAic();
@@ -464,7 +464,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetPlatformInfo()
     aicoreParams_.ubSize = ubSizePlatForm;
 
     OP_TILING_CHECK(
-        !CheckPlatformInfo(), OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Check Platform Info failed."),
+        !CheckPlatformInfo(), OP_LOGE(opName_, "Check Platform Info failed."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -479,7 +479,7 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(
         workspaces == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Get workspace size failed."),
+        OP_LOGE(context_->GetNodeName(), "Get workspace size failed."),
         return ge::GRAPH_FAILED);
 
     uint32_t biasLen = 0;
@@ -520,12 +520,12 @@ ge::graphStatus MatmulAllReduceTilingBase::PostTiling()
     OP_LOGD(opName_, "Final tiling data size: %zu.", tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Tiling data size[") +
+                OP_LOGE(
+                    opName_,
+                    "%s",
+                    (std::string("Tiling data size[") +
                 std::to_string(tilingDataSize) +
-                "] not aligned to 8."
-        ),
+                "] not aligned to 8.").c_str()),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -545,15 +545,16 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckRanksizePlatformSupported() cons
 {
     bool rankSizeSupported = mc2tiling::Mc2TilingUtils::CheckRankSize(npuArch_, rankSize_);
     OP_TILING_CHECK(!rankSizeSupported,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("Rank size ") +
+                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                            context_->GetNodeName(),
+                                            "rank_size",
+                                            std::to_string(rankSize_).c_str(),
+                                            std::string("Rank size ") +
                             std::to_string(rankSize_) +
                             " is not supported by socversion id:" +
                             std::to_string(static_cast<int32_t>(npuArch_)) +
                             " yet; A2 supports rank size 1,2,4,8, A5(NpuArch3510) supports rank size 1,2,4,8,16,32,64,"
-                            "Ascend 310P(NpuArch2002) supports rank size 1,2,4."
-                    ),
+                            "Ascend 310P(NpuArch2002) supports rank size 1,2,4."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -681,57 +682,61 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckInput()
     OP_TILING_CHECK(
         std::find(DTYPE_SUPPORT_LIST_Y.begin(), DTYPE_SUPPORT_LIST_Y.end(),
                   static_cast<ge::DataType>(mmrCtxInfo_.y->GetDataType())) == DTYPE_SUPPORT_LIST_Y.end(),
-                OP_LOGE_FOR_INVALID_VALUE(
-            context_->GetNodeName(), "param", "invalid",
-            std::string("Output's dtype only support fp16, bf16 or float(in mxfp4/mxfp8/fp8hif8), but actually got"
+                OP_LOGE(
+                    context_->GetNodeName(),
+                    "%s",
+                    (std::string("Output's dtype only support fp16, bf16 or float(in mxfp4/mxfp8/fp8hif8), but"
+                        "actually got"
                             "is ") +
-                Ops::Base::ToString(mmrCtxInfo_.y->GetDataType())
-        ),
+                Ops::Base::ToString(mmrCtxInfo_.y->GetDataType())).c_str()),
         return ge::GRAPH_FAILED);
 
     // x1 shape 为2-3维
     size_t x1DimNum = mmrCtxInfo_.x1_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(!((x1DimNum >= DIM_NUM_TWO) && (x1DimNum <= DIM_NUM_THREE)),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("Expect x1 dim to be 2 or 3, but got x1 dim:[") +
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("Expect x1 dim to be 2 or 3, but got x1 dim:[") +
                             std::to_string(x1DimNum) +
-                            "]."
-                    ),
+                            "].").c_str()),
                     return ge::GRAPH_FAILED);
     // bias为n值
     if (mmrCtxInfo_.bias_shape != nullptr) {
         size_t biasDimNum = mmrCtxInfo_.bias_shape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             biasDimNum != DIM_NUM_ONE,
-                        OP_LOGE_FOR_INVALID_VALUE(
-                context_->GetNodeName(), "param", "invalid",
-                std::string("Expect dim of bias to be 1, but got bias dim:[") +
+                        OP_LOGE(
+                            context_->GetNodeName(),
+                            "%s",
+                            (std::string("Expect dim of bias to be 1, but got bias dim:[") +
                     std::to_string(biasDimNum) +
-                    "]."
-            ),
+                    "].").c_str()),
             return ge::GRAPH_FAILED);
         int64_t biasNValue = mmrCtxInfo_.bias_shape->GetStorageShape().GetDim(0);
         int64_t nValue = static_cast<int64_t>(GetNValue());
         OP_TILING_CHECK(biasNValue != nValue,
-                                                OP_LOGE_FOR_INVALID_VALUE(
-                            context_->GetNodeName(), "param", "invalid",
-                            std::string("Expect nValue of bias and output(or residual) to be same, but got bias_n:[") +
+                                                OP_LOGE(
+                                                    context_->GetNodeName(),
+                                                    "%s",
+                                                    (std::string("Expect nValue of bias and output(or"
+                                                        "residual) to be same, but got bias_n:[") +
                                 std::to_string(biasNValue) +
                                 "], output_n:[" +
                                 std::to_string(nValue) +
-                                "]"
-                        ),
+                                "]").c_str()),
                         return ge::GRAPH_FAILED);
     }
     // reduceOp为sum
     OP_TILING_CHECK(
         strncmp(mmrCtxInfo_.reduceOp, "sum", 3) != 0,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Expect reduceOp to be sum."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "reduce_op", "nonzero",
+                                              "Expect reduceOp to be sum."),
         return ge::GRAPH_FAILED);
     // commTurn为0
     OP_TILING_CHECK(mmrCtxInfo_.commTurn != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Expect commTurn to be 0."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "comm_turn", "nonzero",
+                                                          "Expect commTurn to be 0."),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -740,19 +745,30 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W16()
 {
     uint64_t nValue = GetNValue();
     OP_TILING_CHECK(!CheckBiasShape(nValue),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Bias shape is wrong."),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "bias",
+                        "unsupported shape",
+                        "Bias shape is wrong."
+                    ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((mmrCtxInfo_.antiquant_scale_shape != nullptr) || (mmrCtxInfo_.antiquant_offset_shape != nullptr) ||
          (mmrCtxInfo_.dequant_scale_shape != nullptr)),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                  "In this A16W16 scenarinos, antiquantScale, antiquantOffset and dequantScale "
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(),
+            "comm_quant_scale_1",
+            "not nullptr",
+            "In this A16W16 scenarinos, antiquantScale, antiquantOffset and dequantScale "
                                   "should be null."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                  "Parameter comm_quant_scale is not support in A16W16."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(),
+            "comm_quant_scale_1",
+            "unsupported value",
+            "Parameter comm_quant_scale is not support in A16W16."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -764,22 +780,27 @@ bool MatmulAllReduceTilingBase::CheckBiasShape(const uint64_t nValue) const
     if (bias != nullptr) {
         OP_TILING_CHECK(
             isPerBlock_,
-            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Do not support bias yet when inputs is perblock."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                opName_,
+                "bias",
+                "unsupported value",
+                "Do not support bias yet when inputs is perblock."),
             return false);
         const auto biasShapeSize = static_cast<size_t>(bias->GetStorageShape().GetShapeSize());
         uint64_t dimNum = bias->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             (dimNum != 1U) || (biasShapeSize != nValue),
-                        OP_LOGE_FOR_INVALID_VALUE(
-                opName_, "param", "invalid",
-                std::string("Expected shape of bias is [n] or [1, n] where n is ") +
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName_,
+                            "bias",
+                            std::to_string(nValue).c_str(),
+                            std::string("Expected shape of bias is [n] or [1, n] where n is ") +
                     std::to_string(nValue) +
                     " in current case, but got bias shape: " +
                     std::string(Ops::Base::ToString(bias->GetStorageShape()).c_str()) +
                     ", bias dim num is: " +
                     std::to_string(dimNum) +
-                    "."
-            ),
+                    "."),
             return false);
     } else {
         OP_LOGD(context_->GetNodeName(), "No Bias.");
@@ -794,32 +815,58 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
     uint64_t nValue = GetNValue();
     uint64_t kValue = GetKValue();
     OP_TILING_CHECK(!CheckBiasShape(nValue),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Bias shape is wrong."),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "bias",
+                        "unsupported shape",
+                        "Bias shape is wrong."
+                    ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckDequantScaleShape(nValue),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "DequantScale shape is wrong"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "dequant_scale",
+            "unsupported shape",
+            "DequantScale shape is wrong"
+        ),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckPertokenScaleShape(mValue, kValue),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "PertokenScale shape is wrong"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "pertoken_scale",
+            "unsupported shape",
+            "PertokenScale shape is wrong"
+        ),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((mmrCtxInfo_.antiquant_scale_shape != nullptr) || (mmrCtxInfo_.antiquant_offset_shape != nullptr)),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "When both dtype of x1 and dtype of x2 are equal to int8,"
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "comm_quant_scale",
+                        "not nullptr",
+                        "When both dtype of x1 and dtype of x2 are equal to int8,"
                                               "antiquantScale, antiquantOffset should be null"),
                     return ge::GRAPH_FAILED);
     if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) ||
         (npuArch_ == NpuArch::DAV_3510)) {
         OP_TILING_CHECK(
             !CheckCommQuantScaleShape(nValue),
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "CommQuantScale shape is wrong"),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(),
+                "comm_quant_scale",
+                "unsupported shape",
+                "CommQuantScale shape is wrong"
+            ),
             return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_2002) {
         OP_TILING_CHECK(
             ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) || (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)),
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                      "Parameter comm_quant_scale is not support 310p."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(),
+                "comm_quant_scale_1",
+                "unsupported value",
+                "Parameter comm_quant_scale is not support 310p."),
             return ge::GRAPH_FAILED);
     } else {
         OP_LOGE(context_->GetNodeName(), "Unsupported SocVersion.");
@@ -833,14 +880,14 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckEmptyTensor()
     // n为0的时候，框架拦截，走不进tiling逻辑。
     OP_TILING_CHECK(
         (mmrCtxInfo_.bias_shape != nullptr) && (mmrCtxInfo_.bias_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input bias is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "bias"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((mmrCtxInfo_.x3_shape != nullptr) && (mmrCtxInfo_.x3_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input x3 is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "x3"),
                     return ge::GRAPH_FAILED);
     // 校验过input中的batch，M，N和out中的必须相等，所以这里只校验out是否是空tensor
     OP_TILING_CHECK(mmrCtxInfo_.y_shape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Output is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "y"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -850,35 +897,32 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckQuantEmptyTensor()
 {
     OP_TILING_CHECK(
         (mmrCtxInfo_.bias_shape != nullptr) && (mmrCtxInfo_.bias_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input bias is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "bias"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((mmrCtxInfo_.x3_shape != nullptr) && (mmrCtxInfo_.x3_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input x3 is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "x3"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.dequant_scale_shape != nullptr) &&
             (mmrCtxInfo_.dequant_scale_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input dequantScale is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "dequant_scale"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.pertoken_scale_shape != nullptr) &&
             (mmrCtxInfo_.pertoken_scale_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input pertokenScale is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "pertoken_scale"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) &&
                         (mmrCtxInfo_.comm_quant_scale_1_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "Input commQuantScale1 is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "comm_quant_scale_1"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((mmrCtxInfo_.comm_quant_scale_2_shape != nullptr) &&
                         (mmrCtxInfo_.comm_quant_scale_2_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "Input commQuantScale2 is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "comm_quant_scale_2"),
                     return ge::GRAPH_FAILED);
     // 校验过input中的batch，M，N和out中的必须相等，所以这里只校验out是否是空tensor
     OP_TILING_CHECK((GetKValue() == 0) || (mmrCtxInfo_.y_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "Output is empty tensor or kvalue is 0."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "y"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -887,25 +931,24 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckQuantEmptyTensor()
 ge::graphStatus MatmulAllReduceTilingBase::CheckWeightQuantEmptyTensor()
 {
     OP_TILING_CHECK((mmrCtxInfo_.x3_shape != nullptr) && (mmrCtxInfo_.x3_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input x3 is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "x3"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.bias_shape != nullptr) && (mmrCtxInfo_.bias_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input bias is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "bias"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.antiquant_scale_shape != nullptr) &&
             (mmrCtxInfo_.antiquant_scale_shape->GetStorageShape().GetShapeSize() == 0),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Input antiquantScale is empty tensor."),
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquant_scale"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((mmrCtxInfo_.antiquant_offset_shape != nullptr) &&
                         (mmrCtxInfo_.antiquant_offset_shape->GetStorageShape().GetShapeSize() == 0),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "Input antiquantOffset is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquant_offset"),
                     return ge::GRAPH_FAILED);
     // 校验过input中的batch，M，N和out中的必须相等，所以这里只校验out是否是空tensor
     OP_TILING_CHECK(mmrCtxInfo_.y_shape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Output is empty tensor."),
+                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "y"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -916,7 +959,12 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
     uint64_t kValue = GetKValue();
     uint64_t nValue = GetNValue();
     OP_TILING_CHECK(!CheckBiasShape(nValue),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "bias shape is wrong."),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "bias",
+                        "unsupported shape",
+                        "bias shape is wrong."
+                    ),
                     return ge::GRAPH_FAILED);
     if (kValue == 0) {
         OP_LOGD(
@@ -926,8 +974,11 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
         return ge::GRAPH_SUCCESS;
     }
     OP_TILING_CHECK((!CheckAntiQuantScaleShape(kValue, nValue)) || (mmrCtxInfo_.dequant_scale_shape != nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "When antiquant , dequantScale should be null"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "dequant_scale",
+                        "not nullptr",
+                        "When antiquant , dequantScale should be null"),
                     return ge::GRAPH_FAILED);
     if (!CheckAntiQuantOffsetValid()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -936,8 +987,11 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA16W8()
     }
     OP_TILING_CHECK((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) ||
                         (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                              "Parameter comm_quant_scale is not support in A16W8"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "comm_quant_scale_1",
+                        "unsupported value",
+                        "Parameter comm_quant_scale is not support in A16W8"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1083,12 +1137,14 @@ bool MatmulAllReduceTilingBase::AnalyzeInputs()
     size_t yDimNum = mmrCtxInfo_.y_shape->GetStorageShape().GetDimNum();
     OP_LOGD(context_->GetNodeName(), "Dim of output is %lu.", yDimNum);
     OP_TILING_CHECK((yDimNum < DIM_NUM_TWO || yDimNum > DIM_NUM_THREE),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("Expect output(residual) dim to be 2 or 3, but got output dim:[") +
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            context_->GetNodeName(),
+                                            "bias",
+                                            std::to_string(yDimNum).c_str(),
+                                            std::string("Expect output(residual) dim to be 2 or 3, but got"
+                                                "output dim:[") +
                             std::to_string(yDimNum) +
-                            "]."
-                    ),
+                            "]."),
                     return false);
     return SetArgs(aType, bType, cType, biasType, isBias);
 }
@@ -1126,7 +1182,7 @@ bool MatmulAllReduceTilingBase::CalL2TilePara(
 
     OP_TILING_CHECK(
         blockBaseM == 0ull || blockBaseN == 0ull,
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "BlockBaseM or blockBaseN cannot be zero."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "param", "zero", "BlockBaseM or blockBaseN cannot be zero."),
         return false);
 
     if (totalSize >= l2CacheSize || sizeA >= singleMatrixSize || sizeB >= singleMatrixSize ||
@@ -1181,22 +1237,24 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
     const std::string scaleName = isPertoken ? "pertokenScale(x1Scale)" : "dequantScale(x2Scale)";
     OP_TILING_CHECK(
         (scaleDimNum != DIM_NUM_THREE),
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Dims of ") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "pertoken_scale",
+                    std::to_string(scaleDimNum).c_str(),
+                    std::string("Dims of ") +
                 std::string(scaleName.c_str()) +
                 " must be 3 for MXfp8/MXfp4, got dim=" +
                 std::to_string(scaleDimNum) +
-                "."
-        ),
+                "."),
         return false);
     uint64_t scaleDim3 = scaleShape->GetStorageShape().GetDim(scaleDimNum - 1U);
     OP_TILING_CHECK(scaleDim3 != 2,
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("ScaleDim[3] K must be 2, but got: ") +
-                std::to_string(scaleDim3)
-        ),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "x1",
+                    std::to_string(scaleDim3).c_str(),
+                    std::string("ScaleDim[3] K must be 2, but got: ") +
+                std::to_string(scaleDim3)),
         return false);
     // 仅支持x1非转置x2转置
     if (isPertoken) {
@@ -1218,9 +1276,11 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
     //此时只支持转置，支持非转置后拦截信息需要修改
     OP_TILING_CHECK(
         scaleMN != dimZeroValue,
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Expected dims of ") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "x2_scale",
+                    std::to_string(dimZeroValue).c_str(),
+                    std::string("Expected dims of ") +
                 std::string(scaleName.c_str()) +
                 "=[" +
                 std::string(1, dimZeroName) +
@@ -1234,29 +1294,31 @@ bool MatmulAllReduceTilingBase::CheckMXScenarioScaleShape(const uint64_t dimZero
                 std::to_string(scaleMN) +
                 ", " +
                 std::to_string(kOverMaxGroupsize) +
-                ", 2]."
-        ),
+                ", 2]."),
         return false);
     if (isMXfp4) {
         OP_TILING_CHECK((Ops::Base::CeilDiv(kValue, MX_GROUP_SIZE_K) % 2) != 0,
-                                                OP_LOGE_FOR_INVALID_VALUE(
-                            opName_, "param", "invalid",
-                            std::string("Ceil(k, 32) must be even in MXfp4 scene, but got scale K: ") +
+                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                                    opName_,
+                                                    "group_size",
+                                                    std::to_string(kValue).c_str(),
+                                                    std::string("Ceil(k, 32) must be even in MXfp4 scene, but"
+                                                        "got scale K: ") +
                                 std::to_string(kValue) +
-                                "."
-                        ),
+                                "."),
                         return false);
     }
     OP_TILING_CHECK(
         kOverMaxGroupsize != Ops::Base::CeilDiv(kValue, MX_GROUP_SIZE),
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Scale K dim must be match ceil(k:") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "dequant_scale",
+                    std::to_string(kValue).c_str(),
+                    std::string("Scale K dim must be match ceil(k:") +
                 std::to_string(kValue) +
                 ", 64) for MXfp8/MXfp4, got scale K: " +
                 std::to_string(kOverMaxGroupsize) +
-                "."
-        ),
+                "."),
         return false);
     return true;
 }
@@ -1266,7 +1328,7 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
     const auto dequantScaleShape = mmrCtxInfo_.dequant_scale_shape;
     OP_TILING_CHECK(
         dequantScaleShape == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "DequantScale(x2Scale) is nullptr."),
+            OP_LOGE_WITH_INVALID_INPUT(opName_, "dequant_scale"),
         return false);
 
     const auto x2Shape = mmrCtxInfo_.x2_shape;
@@ -1279,9 +1341,11 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
         OP_TILING_CHECK(
             (dim0Ofscale != Ops::Base::CeilDiv(dim0Ofx2, SUPPORTED_BLOCK_SIZE)) ||
                 (dim1Ofscale != Ops::Base::CeilDiv(dim1Ofx2, SUPPORTED_BLOCK_SIZE)),
-                        OP_LOGE_FOR_INVALID_VALUE(
-                opName_, "param", "invalid",
-                std::string("Expected shape of dequantScale(x2Scale) is (") +
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName_,
+                            "dequant_scale",
+                            std::to_string(Ops::Base::CeilDiv(dim0Ofx2, SUPPORTED_BLOCK_SIZE)).c_str(),
+                            std::string("Expected shape of dequantScale(x2Scale) is (") +
                     std::to_string(Ops::Base::CeilDiv(dim0Ofx2, SUPPORTED_BLOCK_SIZE)) +
                     ", " +
                     std::to_string(Ops::Base::CeilDiv(dim1Ofx2, SUPPORTED_BLOCK_SIZE)) +
@@ -1289,8 +1353,7 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
                     std::to_string(dim0Ofscale) +
                     ", " +
                     std::to_string(dim1Ofscale) +
-                    ")."
-            ),
+                    ")."),
             return false);
         return true;
     }
@@ -1304,13 +1367,15 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
     const uint64_t scaleDimNum = dequantScaleShape->GetStorageShape().GetDimNum();
     OP_LOGD(context_->GetNodeName(), "Dim of dequantScale(x2Scale) is %lu.", scaleDimNum);
     OP_TILING_CHECK(scaleDimNum > DIM_NUM_THREE,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("DequantScale(x2Scale) dim should be 1 or 2 or 3, but got dequantScale(x2Scale)"
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            opName_,
+                                            "dequant_scale",
+                                            std::to_string(scaleDimNum).c_str(),
+                                            std::string("DequantScale(x2Scale) dim should be 1 or 2 or 3, but"
+                                                "got dequantScale(x2Scale)"
                                         "dim num is: ") +
                             std::to_string(scaleDimNum) +
-                            "."
-                    ),
+                            "."),
                     return false);
     const auto scaleShapeSize = static_cast<size_t>(dequantScaleShape->GetStorageShape().GetShapeSize());
 
@@ -1322,15 +1387,17 @@ bool MatmulAllReduceTilingBase::CheckDequantScaleShape(const uint64_t nValue) co
 
     OP_TILING_CHECK(!((quantType_ == Mc2QuantType::PER_TENSOR && scaleShapeSize == 1) ||
                       (quantType_ == Mc2QuantType::PER_CHANNEL && scaleShapeSize == nValue)),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("Expected shape of dequantScale(x2Scale) to be [1] or [n] or [1,n] for "
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            opName_,
+                                            "pertoken_scale",
+                                            std::to_string(nValue).c_str(),
+                                            std::string("Expected shape of dequantScale(x2Scale) to be [1] or"
+                                                "[n] or [1,n] for "
                                         "per-tensor/per-channel. n is ") +
                             std::to_string(nValue) +
                             " in these cases, but got dequantScale(x2Scale) shape: " +
                             std::string(Ops::Base::ToString(dequantScaleShape->GetStorageShape()).c_str()) +
-                            "."
-                    ),
+                            "."),
                     return false);
     return true;
 }
@@ -1340,25 +1407,27 @@ bool MatmulAllReduceTilingBase::CheckPerblockShape(const uint64_t mValue, const 
     const auto pertokenScaleShape = mmrCtxInfo_.pertoken_scale_shape;
     const uint64_t pertokenScaleDimNum = pertokenScaleShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(pertokenScaleDimNum != mmrCtxInfo_.x1_shape->GetStorageShape().GetDimNum(),
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Expected dim num of pertokenScale(x1Scale) is ") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "pertoken_scale",
+                    std::to_string(mmrCtxInfo_.x1_shape->GetStorageShape().GetDimNum()).c_str(),
+                    std::string("Expected dim num of pertokenScale(x1Scale) is ") +
                 std::to_string(mmrCtxInfo_.x1_shape->GetStorageShape().GetDimNum()) +
                 ", actually is " +
                 std::to_string(pertokenScaleDimNum) +
-                "."
-        ),
+                "."),
         return false);
     const uint64_t bsOfScale = pertokenScaleShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((pertokenScaleDimNum == DIM_NUM_THREE) && ( bsOfScale != GetBatchValue()),
-                        OP_LOGE_FOR_INVALID_VALUE(
-                opName_, "param", "invalid",
-                std::string("Batch[") +
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            opName_,
+                            "pertoken_scale",
+                            std::to_string(bsOfScale).c_str(),
+                            std::string("Batch[") +
                     std::to_string(bsOfScale) +
                     "] of pertokenScale(x1Scale) should equal to batch[" +
                     std::to_string(GetBatchValue()) +
-                    "] of x1."
-            ),
+                    "] of x1."),
         return false);
     const auto mOfpertokenScale = pertokenScaleShape->GetStorageShape().GetDim(pertokenScaleDimNum - 2U);
     const auto kOfpertokenScale = pertokenScaleShape->GetStorageShape().GetDim(pertokenScaleDimNum - 1U);
@@ -1367,9 +1436,11 @@ bool MatmulAllReduceTilingBase::CheckPerblockShape(const uint64_t mValue, const 
     OP_TILING_CHECK(
         (mOfpertokenScale != Ops::Base::CeilDiv(mOfx1, SUPPORTED_BLOCK_SIZE)) ||
             (kOfpertokenScale != Ops::Base::CeilDiv(kOfx1, SUPPORTED_BLOCK_SIZE)),
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Expected last two dims of pertokenScale(x1Scale)=[") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "pertoken_scale",
+                    std::to_string(Ops::Base::CeilDiv(mOfx1, SUPPORTED_BLOCK_SIZE)).c_str(),
+                    std::string("Expected last two dims of pertokenScale(x1Scale)=[") +
                 std::to_string(Ops::Base::CeilDiv(mOfx1, SUPPORTED_BLOCK_SIZE)) +
                 ", " +
                 std::to_string(Ops::Base::CeilDiv(kOfx1, SUPPORTED_BLOCK_SIZE)) +
@@ -1377,8 +1448,7 @@ bool MatmulAllReduceTilingBase::CheckPerblockShape(const uint64_t mValue, const 
                 std::to_string(mOfpertokenScale) +
                 ", " +
                 std::to_string(kOfpertokenScale) +
-                "]."
-        ),
+                "]."),
         return false);
     return true;
 }
@@ -1410,25 +1480,29 @@ bool MatmulAllReduceTilingBase::CheckPertokenScaleShape(const uint64_t mValue, c
     }
 
     OP_TILING_CHECK(pertokenScaleDimNum > DIM_NUM_ONE,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("PertokenScale(x1Scale) dims should be 1 in pertoken scene, but got"
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            opName_,
+                                            "pertoken_scale",
+                                            std::to_string(pertokenScaleDimNum).c_str(),
+                                            std::string("PertokenScale(x1Scale) dims should be 1 in pertoken"
+                                                "scene, but got"
                                         "pertokenScale(x1Scale) dim num is: ") +
                             std::to_string(pertokenScaleDimNum) +
-                            "."
-                    ),
+                            "."),
                     return false);
 
     const auto pertokenScaleShapeSize = static_cast<size_t>(pertokenScaleShape->GetStorageShape().GetShapeSize());
     OP_TILING_CHECK(pertokenScaleShapeSize != mValue,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("Expected shape of pertokenScale(x1Scale) to be [m] in pertoken scene.m is ") +
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            opName_,
+                                            "comm_quant_scale_1",
+                                            std::to_string(mValue).c_str(),
+                                            std::string("Expected shape of pertokenScale(x1Scale) to be [m] in"
+                                                "pertoken scene.m is ") +
                             std::to_string(mValue) +
                             " in these cases, but got pertokenScale(x1Scale) shape: " +
                             std::string(Ops::Base::ToString(pertokenScaleShape->GetStorageShape()).c_str()) +
-                            "."
-                    ),
+                            "."),
                     return false);
     return true;
 }
@@ -1441,8 +1515,7 @@ bool MatmulAllReduceTilingBase::CheckCommQuantScaleShape(const uint64_t nValue) 
         return true;
     }
     OP_TILING_CHECK((commQuantScale1Shape == nullptr) || (commQuantScale2Shape == nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid",
-                                              "Comm_quant_scale_1 or comm_quant_scale_2 dim is nullptr."),
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_quant_scale_1"),
                     return false);
 
     uint64_t commQuantScaleOneDimNum = commQuantScale1Shape->GetStorageShape().GetDimNum();
@@ -1451,31 +1524,34 @@ bool MatmulAllReduceTilingBase::CheckCommQuantScaleShape(const uint64_t nValue) 
         opName_, "Dim of comm_quant_scale_1 and comm_quant_scale_2 is %lu and %lu.", commQuantScaleOneDimNum,
         commQuantScaleTwoDimNum);
     OP_TILING_CHECK((commQuantScaleOneDimNum > DIM_NUM_TWO) || (commQuantScaleTwoDimNum > DIM_NUM_TWO),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("Comm_quant_scale_1 and comm_quant_scale_2 dim should be 1 or 2, but got"
+                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                            opName_,
+                                            "comm_quant_scale_1",
+                                            std::to_string(commQuantScaleOneDimNum).c_str(),
+                                            std::string("Comm_quant_scale_1 and comm_quant_scale_2 dim should"
+                                                "be 1 or 2, but got"
                                         "comm_quant_scale_1 dim is: ") +
                             std::to_string(commQuantScaleOneDimNum) +
                             ", comm_quant_scale_2 dim is: " +
                             std::to_string(commQuantScaleTwoDimNum) +
-                            "."
-                    ),
+                            "."),
                     return false);
 
     const auto commQuantScaleShapeSize1 = static_cast<size_t>(commQuantScale1Shape->GetStorageShape().GetShapeSize());
     const auto commQuantScaleShapeSize2 = static_cast<size_t>(commQuantScale2Shape->GetStorageShape().GetShapeSize());
     OP_TILING_CHECK(
         (commQuantScaleShapeSize1 != nValue) || (commQuantScaleShapeSize2 != nValue),
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Comm_quant_scale_1 and comm_quant_scale_2 dim should be [n], n is ") +
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_,
+                    "comm_quant_scale_1",
+                    std::to_string(nValue).c_str(),
+                    std::string("Comm_quant_scale_1 and comm_quant_scale_2 dim should be [n], n is ") +
                 std::to_string(nValue) +
                 " in these case, but got comm_quant_scale_1 shape is: " +
                 std::string(Ops::Base::ToString(commQuantScale1Shape->GetStorageShape()).c_str()) +
                 ", comm_quant_scale_2 shape is: " +
                 std::string(Ops::Base::ToString(commQuantScale2Shape->GetStorageShape()).c_str()) +
-                "."
-        ),
+                "."),
         return false);
     return true;
 }
@@ -1492,34 +1568,45 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantScaleShape(const uint64_t kValue, 
     int32_t scaleShapeDim = scale->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
         (scaleShapeDim != 1) && (scaleShapeDim != twoDim),
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                  "Dim size of MatmulAllReduce weight quant antiquantScale param must be 1 or 2."),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "antiquant_scale",
+            "unsupported dim",
+            "Dim size of MatmulAllReduce weight quant antiquantScale param must be 1 or 2."),
         return false);
     const auto scaleShapeSize = static_cast<size_t>(scale->GetStorageShape().GetShapeSize());
     OP_LOGD(context_->GetNodeName(), "ScaleShapeSize %lu, antiGroupSize_ %lu", scaleShapeSize, antiGroupSize_);
     if (scaleShapeSize == 1) {
         OP_TILING_CHECK(antiGroupSize_ != 0,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "When scale shape size is 1, antigroupsize must be 0."),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            context_->GetNodeName(),
+                            "group_size",
+                            "unsupported shape",
+                            "When scale shape size is 1, antigroupsize must be 0."),
                         return false);
         return true;
     } else if (antiGroupSize_ > 0) {
         OP_TILING_CHECK(kValue < 33,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "In per-group, the kValue must be greater than 33."),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(),
+                            "group_size",
+                            "unsupported value",
+                            "In per-group, the kValue must be greater than 33."),
                         return false);
         return true;
     } else {
         OP_TILING_CHECK(scaleShapeSize != nValue,
-                                                OP_LOGE_FOR_INVALID_VALUE(
-                            opName_, "param", "invalid",
-                            std::string("Expected shape of antiquantScale to be [1] or [n] or [1,n] for"
+                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                                    opName_,
+                                                    "antiquant_scale",
+                                                    std::to_string(nValue).c_str(),
+                                                    std::string("Expected shape of antiquantScale to be [1] or"
+                                                        "[n] or [1,n] for"
                                             "per-tensor/per-channel. n is ") +
                                 std::to_string(nValue) +
                                 " in these cases, but got scale shape: " +
                                 std::string(Ops::Base::ToString(scale->GetStorageShape()).c_str()) +
-                                "."
-                        ),
+                                "."),
                         return false);
         return true;
     }
@@ -1540,13 +1627,11 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
     if (matrixBias != nullptr) {
         biasShapeSize = matrixBias->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(biasShapeSize != 1,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "Dim size of MatmulAllReduce weight quant bias must be 1."),
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "bias"),
                         return false);
         // 校验bias和x2最后一维是否一致
         OP_TILING_CHECK(matrixBias->GetStorageShape().GetDim(biasShapeSize - 1) != nValue,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "Bias size must be the same size of last dim of x2."),
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquant_offset"),
                         return false);
     }
     // 校验offset维度 与 scale一致
@@ -1555,16 +1640,17 @@ bool MatmulAllReduceTilingBase::CheckAntiQuantOffsetValid() const
         int32_t offsetShapeDim = antiquantOffset->GetStorageShape().GetDimNum();
         int32_t scaleShapeDim = scale->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(offsetShapeDim != scaleShapeDim,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "The offset dim must be the same of the scale dim."),
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "antiquant_offset"),
                         return false);
         // 校验offset和x2最后一维是否一致
         for (int32_t i = 0; i < offsetShapeDim; ++i) {
             int64_t offsetValue = antiquantOffset->GetStorageShape().GetDim(i);
             int64_t scaleValue = scale->GetStorageShape().GetDim(i);
             OP_TILING_CHECK(offsetValue != scaleValue,
-                            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                      "Offset shape must be the same of scale shape."),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                                context_->GetNodeName(), "antiquant_offset",
+                                std::to_string(offsetValue).c_str(),
+                                "Offset shape must be the same of scale shape."),
                             return false);
         }
     }
@@ -1575,14 +1661,15 @@ bool MatmulAllReduceTilingBase::CheckA16W4Shape(const uint64_t kValue, const uin
 {
     uint64_t innerN = (MutableRCSTilingData().isTransposeB != 0) ? kValue : nValue;
     OP_TILING_CHECK((innerN & 1) != 0,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("In the int4 scenario, the inner shaft of x2 should be an even number, k[") +
+                                        OP_LOGE(
+                                            opName_,
+                                            "%s",
+                                            (std::string("In the int4 scenario, the inner shaft of x2 should"
+                                                "be an even number, k[") +
                             std::to_string(kValue) +
                             "], n[" +
                             std::to_string(nValue) +
-                            "]."
-                    ),
+                            "].").c_str()),
                     return false);
     return true;
 }
@@ -1594,20 +1681,7 @@ bool MatmulAllReduceTilingBase::CheckPlatformInfo() const
             supportL0c2Out_ && ((args_.mValue < MIN_SHAPE_DIM) ||
                                 (args_.kValue != 0 && (args_.kValue > MAX_SHAPE_DIM || args_.kValue < MIN_SHAPE_DIM)) ||
                                 (args_.nValue > MAX_SHAPE_DIM || args_.nValue < MIN_SHAPE_DIM)),
-                        OP_LOGE_FOR_INVALID_VALUE(
-                opName_, "param", "invalid",
-                std::string("Only support MKN in range [") +
-                    std::to_string(MIN_SHAPE_DIM) +
-                    ", " +
-                    std::to_string(MAX_SHAPE_DIM) +
-                    "], get actual value[" +
-                    std::to_string(args_.mValue) +
-                    ", " +
-                    std::to_string(args_.kValue) +
-                    ", " +
-                    std::to_string(args_.nValue) +
-                    "]."
-            ),
+                        OP_LOGE_WITH_INVALID_INPUT(opName_, "antiquant_scale"),
             return false);
     }
     return true;
@@ -1657,7 +1731,7 @@ ge::graphStatus MatmulAllReduceTilingBase::AnalyzeShapeAttr()
 {
     opName_ = context_->GetNodeName();
     OP_TILING_CHECK(!AnalyzeAttrs() || !AnalyzeInputs(),
-        OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "Failed to analyze context info."),
+        OP_LOGE(opName_, "Failed to analyze context info."),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

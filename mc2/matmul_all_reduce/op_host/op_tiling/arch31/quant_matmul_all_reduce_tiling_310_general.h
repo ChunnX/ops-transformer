@@ -34,45 +34,53 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool transposeMatch = (tilingProcesser_.args_.isATrans == 0 && tilingProcesser_.args_.isBTrans == 1);
             OP_TILING_CHECK(
                 !transposeMatch,
-                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "param", "invalid",
-                                          "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
+                OP_LOGE(
+                    tilingProcesser_.opName_,
+                    "310P QuantMatmulAllReduce only support tranA = false && transB = true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !kAligned,
-                                OP_LOGE_FOR_INVALID_VALUE(
-                    tilingProcesser_.opName_, "param", "invalid",
-                    std::string("310P QuantMatmulAllReduce dim k should be 32 bytes aligned, but k is ") +
-                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.kValue))
-                ),
+                                OP_LOGE(
+                                    tilingProcesser_.opName_,
+                                    "%s",
+                                    (std::string("310P QuantMatmulAllReduce dim k should be 32 bytes aligned,"
+                                        "but k is ") +
+                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.kValue))).c_str()),
                 return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
             bool nAligned = (tilingProcesser_.args_.nValue % N_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !nAligned,
-                                OP_LOGE_FOR_INVALID_VALUE(
-                    tilingProcesser_.opName_, "param", "invalid",
-                    std::string("310P QuantMatmulAllReduce dim n should be 16 aligned, but n is ") +
-                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.nValue))
-                ),
+                                OP_LOGE(
+                                    tilingProcesser_.opName_,
+                                    "%s",
+                                    (std::string("310P QuantMatmulAllReduce dim n should be 16 aligned, but n is ") +
+                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.nValue))).c_str()),
                 return ge::GRAPH_FAILED);
             auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
             OP_TILING_CHECK(
                 weightTensor == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    context_->GetNodeName(),
+                    "x",
+                    "unsupported shape",
+                    "weight tensor is invalid"
+                ),
                 return ge::GRAPH_FAILED);
             auto format = weightTensor->GetStorageFormat();
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(
                 !isWeightNZ,
-                                OP_LOGE_FOR_INVALID_VALUE(
-                    tilingProcesser_.opName_, "param", "invalid",
-                    std::string("310P QuantMatmulAllReduce weight format should be FRACTAL_NZ, code:") +
+                                OP_LOGE(
+                                    tilingProcesser_.opName_,
+                                    "%s",
+                                    (std::string("310P QuantMatmulAllReduce weight format should be"
+                                        "FRACTAL_NZ, code:") +
                         std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)) +
                         ", but input format is " +
-                        std::to_string(static_cast<int32_t>(format))
-                ),
+                        std::to_string(static_cast<int32_t>(format))).c_str()),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }

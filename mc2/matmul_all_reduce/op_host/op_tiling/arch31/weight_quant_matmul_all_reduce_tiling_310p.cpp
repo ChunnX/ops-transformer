@@ -24,7 +24,12 @@ bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(weightTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "x",
+                        "unsupported shape",
+                        "weight tensor is invalid"
+                    ),
                     return false);
     auto format = weightTensor->GetStorageFormat();
     if (npuArch_ != NpuArch::DAV_2002 || format == ge::Format::FORMAT_ND) {
@@ -150,12 +155,12 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
 
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("tiling data size[") +
+                OP_LOGE(
+                    opName_,
+                    "%s",
+                    (std::string("tiling data size[") +
                 std::to_string(tilingDataSize) +
-                "] not aligned to 8"
-        ),
+                "] not aligned to 8").c_str()),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 

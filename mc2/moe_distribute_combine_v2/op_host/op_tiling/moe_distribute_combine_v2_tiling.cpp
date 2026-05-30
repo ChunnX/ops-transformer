@@ -2008,7 +2008,7 @@ static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *cont
     // 检查参数shape信息
     OP_TILING_CHECK(
         !CheckTensorDim(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config, isLayered),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "param", "invalid", "The shape of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "unsupported shape", "The shape of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数dataType信息
     OP_TILING_CHECK(!CheckExpertTensorDataType(context, nodeName, config),
@@ -2017,12 +2017,12 @@ static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *cont
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "param", "invalid", "The dtype of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x", "unsupported dtype", "The dtype of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数format信息
     OP_TILING_CHECK(
         !CheckTensorFormat(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config),
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "param", "invalid", "valid format"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", "unsupported format", "valid format"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2033,7 +2033,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
 
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "get workspace failed"),
+                    OP_LOGE(nodeName, "get workspace failed"),
                     return ge::GRAPH_FAILED);
     workspace[0] = SYSTEM_NEED_WORKSPACE + aivNum * MASK_CALC_NEED_WORKSPACE;
     OP_LOGD(nodeName, "workspace[0] size is %ld", workspace[0]);
@@ -2377,7 +2377,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
 
     OP_TILING_CHECK(
         SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "Tiling set workspace Failed"),
+        OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
@@ -2392,7 +2392,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
 
     OP_TILING_CHECK(
         CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "Tiling set platformInfo Failed"),
+        OP_LOGE(context->GetNodeName(), "Tiling set platformInfo Failed"),
         return ge::GRAPH_FAILED);
 
     PrintTilingDataInfo(nodeName, *tilingData);

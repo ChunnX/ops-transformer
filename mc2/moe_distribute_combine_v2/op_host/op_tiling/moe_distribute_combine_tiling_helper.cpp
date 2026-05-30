@@ -326,16 +326,18 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
     // 检查参数shape信息
     OP_TILING_CHECK(
         !CheckTensorDim(context, nodeName),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "param", "invalid", "The shape of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "unsupported shape", "The shape of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数dataType信息
     OP_TILING_CHECK(
         !CheckTensorDataType(context, nodeName),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "param", "invalid", "The dtype of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x", "unsupported dtype", "The dtype of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName),
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "param", "invalid", "valid format"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckTensorFormat(context, nodeName),
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", "unsupported format", "valid format"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -345,16 +347,18 @@ ge::graphStatus MoeDistributeCombineTilingHelper::TilingCheckMoeDistributeCombin
     // 检查参数shape信息
     OP_TILING_CHECK(
         !CheckTensorDim(context, nodeName),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "param", "invalid", "The shape of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "unsupported shape", "The shape of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数dataType信息
     OP_TILING_CHECK(
         !CheckTensorDataType(context, nodeName),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "param", "invalid", "The dtype of parameter param is invalid"),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x", "unsupported dtype", "The dtype of input x is invalid"),
         return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName),
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "param", "invalid", "valid format"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckTensorFormat(context, nodeName),
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", "unsupported format", "valid format"),
+        return ge::GRAPH_FAILED);
     // 检查ActiveMask信息
     if ((OpVersionManager::GetInstance().GetVersion() != OP_VERSION_1) && isTokenMask) {
         OP_TILING_CHECK(!CheckActiveMask(context, nodeName),

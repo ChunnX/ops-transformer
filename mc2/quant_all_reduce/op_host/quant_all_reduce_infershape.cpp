@@ -121,14 +121,12 @@ static ge::graphStatus InferShapeQuantAllReduce(gert::InferShapeContext *context
     QuantAllReduceShapeInfo shapeInfo;
     // get shape_info
     OPS_CHECK(GetShapeInfo(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
-                                        "Failed to get shape info in quant_all_reduce"),
+              OP_LOGE(context->GetNodeName(), "Failed to get shape info in quant_all_reduce"),
               return ge::GRAPH_FAILED);
 
     // get rank_size
     OPS_CHECK(GetRankSize(context, shapeInfo) != ge::GRAPH_SUCCESS,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
-                                        "Failed to get rank size in quant_all_reduce"),
+              OP_LOGE(context->GetNodeName(), "Failed to get rank size in quant_all_reduce"),
               return ge::GRAPH_FAILED);
 
     auto output_shape = context->GetOutputShape(OUTPUT_INDEX);

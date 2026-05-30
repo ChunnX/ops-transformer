@@ -77,7 +77,7 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingCheckA
         OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid", "Tiling set workspace Failed"),
+        OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
         return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineInfo.tpWorldSize;

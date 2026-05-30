@@ -654,7 +654,7 @@ ge::graphStatus MoeDistributeCombineTilingBase::SetWorkspace(gert::TilingContext
 {
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspace == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "get workspace failed"),
+                    OP_LOGE(nodeName, "get workspace failed"),
                     return ge::GRAPH_FAILED);
     workspace[0] = SYSTEM_NEED_WORKSPACE;
     OP_LOGD(nodeName, "workspace[0] size is %ld", workspace[0]);

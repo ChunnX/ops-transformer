@@ -338,7 +338,7 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     // 1. tilingData
     MoeDistributeDispatchA2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchA2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "tilingData is nullptr."),
+                    OP_LOGE(nodeName, "tilingData is nullptr."),
                     return ge::GRAPH_FAILED);
     OP_LOGI(nodeName, "MoeDistributeDispatchA2 get tilingData.");
     MoeDistributeDispatchA2Info& info = tilingData->moeDistributeDispatchInfo;
@@ -346,20 +346,16 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
 
     bool isLayered = MoeDistributeDispatchA2IsLayered();
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MoeDistributeDispatchA2 CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckAttrAndSetTiling(context, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MoeDistributeDispatchA2 CheckAttrAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeDispatchA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MoeDistributeDispatchA2 GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MoeDistributeDispatchA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "param", "invalid",
-                                              "MoeDistributeDispatchA2 CheckWinSize Failed"),
+                    OP_LOGE(context->GetNodeName(), "MoeDistributeDispatchA2 CheckWinSize Failed"),
                     return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -373,7 +369,7 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     // 2. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "param", "invalid", "workSpaces is nullptr."),
+                    OP_LOGE(nodeName, "workSpaces is nullptr."),
                     return ge::GRAPH_FAILED);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + USER_WORKSPACE_A2;
 

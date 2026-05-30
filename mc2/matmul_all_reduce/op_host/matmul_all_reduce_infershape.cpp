@@ -48,9 +48,10 @@ static ge::graphStatus CheckScaleShape(
         expect_scale = {k_value, shape.n};
     }
     OPS_CHECK(expect_scale != *scale_shape,
-                            OP_LOGE_WITH_INVALID_ATTR(
-                  kInnerDebug, "attr", "invalid",
-                  std::string("Expect antiquant scale shape to be [") +
+                            OP_LOGE(
+                                kInnerDebug,
+                                "%s",
+                                (std::string("Expect antiquant scale shape to be [") +
                       std::to_string(expect_scale[0]) +
                       "," +
                       std::to_string(expect_scale[1]) +
@@ -58,8 +59,7 @@ static ge::graphStatus CheckScaleShape(
                       std::to_string(scale_shape->GetDim(0U)) +
                       "," +
                       std::to_string(scale_shape->GetDim(1U)) +
-                      "]"
-              ),
+                      "]").c_str()),
               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -71,12 +71,12 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const size_t dim_num_x1 = shape_x1->GetDimNum();
     OPS_CHECK(
         dim_num_x1 < kMC2MinShapeSize || dim_num_x1 > kMC2MaxShapeSize,
-                OP_LOGE_WITH_INVALID_ATTR(
-            context->GetNodeName(), "attr", "invalid",
-            std::string("Invalid dim number ") +
+                OP_LOGE(
+                    context->GetNodeName(),
+                    "%s",
+                    (std::string("Invalid dim number ") +
                 std::to_string(dim_num_x1) +
-                " of x1."
-        ),
+                " of x1.").c_str()),
         return ge::GRAPH_FAILED);
 
     const auto shape_x2 = context->GetInputShape(static_cast<size_t>(MC2InputIdx::K_X2));
@@ -84,19 +84,23 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const size_t dim_num_x2 = shape_x2->GetDimNum();
     OPS_CHECK(
         dim_num_x2 != kMC2MinShapeSize,
-                OP_LOGE_WITH_INVALID_ATTR(
-            context->GetNodeName(), "attr", "invalid",
-            std::string("Invalid dim number ") +
+                OP_LOGE(
+                    context->GetNodeName(),
+                    "%s",
+                    (std::string("Invalid dim number ") +
                 std::to_string(dim_num_x2) +
-                " of x2."
-        ),
+                " of x2.").c_str()),
         return ge::GRAPH_FAILED);
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool* trans_a = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X1));
     OPS_CHECK(trans_a != nullptr && *trans_a,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid", "x1 does not support transpose."),
+              OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                  context->GetNodeName(),
+                  "is_trans_b",
+                  "unsupported value",
+                  "x1 does not support transpose."),
               return ge::GRAPH_FAILED);
     const bool* trans_b = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X2));
     const bool is_trans_b = ((trans_b != nullptr) && (*trans_b));
@@ -113,13 +117,13 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
          shape_x2->GetDim(shapeX2KIndex) == 0 || shape.k == 1 || shape_x2->GetDim(shapeX2KIndex) == 1);
     if (!is_dynamic_shape) {
         OPS_CHECK((shape.k != shape_x2->GetDim(shapeX2KIndex)),
-                                    OP_LOGE_WITH_INVALID_ATTR(
-                      context->GetNodeName(), "attr", "invalid",
-                      std::string("Invalid shape for x1(k): ") +
+                                    OP_LOGE(
+                                        context->GetNodeName(),
+                                        "%s",
+                                        (std::string("Invalid shape for x1(k): ") +
                           std::to_string(shape.k) +
                           ", x2(k): " +
-                          std::to_string(shape_x2->GetDim(shapeX2KIndex))
-                  ),
+                          std::to_string(shape_x2->GetDim(shapeX2KIndex))).c_str()),
                   return ge::GRAPH_FAILED);
         const size_t scale_idx =
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
@@ -127,8 +131,7 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
         const int64_t group_size = (p != nullptr ? *p : 0);
         OPS_CHECK(CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
                       ge::GRAPH_SUCCESS,
-                  OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
-                                            "Failed to check antiquant scale shape."),
+                  OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
                   return ge::GRAPH_FAILED);
     }
     shape.output_dim = dim_num_x1;
@@ -144,8 +147,7 @@ static ge::graphStatus InferShapeForMatmulAllReduce(gert::InferShapeContext* con
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out);
     MatmulShapeInfo shape;
     OPS_CHECK(InferShapeForMatmul(context, shape, false) != ge::GRAPH_SUCCESS,
-              OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "attr", "invalid",
-                                        "Failed to infer shape for matmul all reduce"),
+              OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce"),
               return ge::GRAPH_FAILED);
     shape_out->SetDimNum(shape.output_dim);
     if (shape.output_dim == kMC2MaxShapeSize) {

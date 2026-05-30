@@ -45,7 +45,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
 
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(
-        platformInfo == nullptr, OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "fail to get platform info"),
+        platformInfo == nullptr, OP_LOGE(opName_, "fail to get platform info"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     matmul_tiling::MultiCoreMatmulTiling mmTile(ascendcPlatform);
@@ -128,7 +128,12 @@ void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
 {
     const auto weight = context_->GetInputDesc(static_cast<size_t>(ops::MC2InputIdx::K_X2));
     OP_TILING_CHECK(weight == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Invalid weight tensor."),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "x",
+                        "unsupported shape",
+                        "Invalid weight tensor."
+                    ),
                     return);
     if (weight->GetDataType() != ge::DT_INT8) {
         OP_LOGD(context_->GetNodeName(), "No anti quant for weight data type %u.", weight->GetDataType());
@@ -162,7 +167,12 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     singleMatrixSize = SINGLE_MATRIX_SIZE_310;
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(weightTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "weight tensor is invalid"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context_->GetNodeName(),
+                        "x",
+                        "unsupported shape",
+                        "weight tensor is invalid"
+                    ),
                     return);
     if (weightTensor->GetStorageFormat() == ge::Format::FORMAT_FRACTAL_NZ) {
         constexpr uint32_t TILE_SIZE_310_NZ = 5;

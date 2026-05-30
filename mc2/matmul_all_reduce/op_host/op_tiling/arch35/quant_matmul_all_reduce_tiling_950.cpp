@@ -145,12 +145,12 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        opName_, "param", "invalid",
-                        std::string("cannot find HcclDataType according to ge datatype = ") +
+                                        OP_LOGE(
+                                            opName_,
+                                            "%s",
+                                            (std::string("cannot find HcclDataType according to ge datatype = ") +
                             std::to_string(static_cast<int32_t>(args_.geCType)) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
@@ -265,7 +265,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetDynamicQuantTempBuffSize()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     OP_TILING_CHECK(ascendcPlatform.GetCoreNumAiv() == 0,
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "GetCoreNumAiv Failed! Invalid AivNum."),
+                    OP_LOGE(opName_, "GetCoreNumAiv Failed! Invalid AivNum."),
                     return ge::GRAPH_FAILED);
     auto aivNum = ascendcPlatform.GetCoreNumAiv() > 0 ? ascendcPlatform.GetCoreNumAiv() : 1;
     int64_t procRowsRaw =
@@ -485,12 +485,12 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(QuantMatmulAllReduceTilingDataA5) % sizeof(uint64_t)) != 0,
-                OP_LOGE_FOR_INVALID_VALUE(
-            opName_, "param", "invalid",
-            std::string("Tiling data size=") +
+                OP_LOGE(
+                    opName_,
+                    "%s",
+                    (std::string("Tiling data size=") +
                 std::to_string(sizeof(QuantMatmulAllReduceTilingDataA5)) +
-                " not aligned to 8."
-        ),
+                " not aligned to 8.").c_str()),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -551,34 +551,35 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckAxisSize()
 {
     const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(m > static_cast<uint64_t>(INT32_MAX),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("The size of m-axis=") +
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("The size of m-axis=") +
                             std::to_string(m) +
                             " exceeds the upper limit=" +
                             std::to_string(INT32_MAX) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(k > static_cast<uint64_t>(UINT16_MAX),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("The size of k-axis=") +
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("The size of k-axis=") +
                             std::to_string(k) +
                             " exceeds the upper limit=" +
                             std::to_string(UINT16_MAX) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     // A2有ND2NZ指令的长度约束65535，为了兼容A2，x2最后一维限制65535
     uint64_t x2FirstDim = mmrCtxInfo_.x2_shape->GetStorageShape().GetDim(0);
     uint64_t x2LastDim = mmrCtxInfo_.x2_shape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
         (x2FirstDim > static_cast<uint64_t>(INT32_MAX)) || (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
-                OP_LOGE_FOR_INVALID_VALUE(
-            context_->GetNodeName(), "param", "invalid",
-            std::string("The size of x2 first-axis=") +
+                OP_LOGE(
+                    context_->GetNodeName(),
+                    "%s",
+                    (std::string("The size of x2 first-axis=") +
                 std::to_string(x2FirstDim) +
                 " exceeds the upper limit=" +
                 std::to_string(INT32_MAX) +
@@ -586,8 +587,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckAxisSize()
                 std::to_string(x2LastDim) +
                 " exceeds the upper limit=" +
                 std::to_string(UINT16_MAX) +
-                "."
-        ),
+                ".").c_str()),
         return ge::GRAPH_FAILED);
 
     return CheckQuantEmptyTensor();
@@ -605,21 +605,27 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckA8W8ScenarioScaleType()
         // 3. y = fp16 且 protoken 存在时，dequantScale = fp32
         if (yType == ge::DT_BF16) {
             OP_TILING_CHECK(dequantScaleType != ge::DT_BF16,
-                            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                      "In the dequant scenario, when output type is bf16, "
+                            OP_LOGE(
+                                context_->GetNodeName(),
+                                "%s",
+                                "In the dequant scenario, when output type is bf16, "
                                                       "type of dequantScale should be bf16."),
                             return ge::GRAPH_FAILED);
         } else if (pertokenScaleShape == nullptr) {
             OP_TILING_CHECK(
                 !((dequantScaleType == ge::DT_UINT64) || (dequantScaleType == ge::DT_INT64)),
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                          "In the dequant scenario, when output type is fp16, "
+                OP_LOGE(
+                    context_->GetNodeName(),
+                    "%s",
+                    "In the dequant scenario, when output type is fp16, "
                                           "type of dequantScale should be uint64 or int64 without pertoken."),
                 return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK(dequantScaleType != ge::DT_FLOAT,
-                            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                      "In the dequant scenario, when output type is fp16, "
+                            OP_LOGE(
+                                context_->GetNodeName(),
+                                "%s",
+                                "In the dequant scenario, when output type is fp16, "
                                                       "type of dequantScale should be bf16 with pertoken."),
                             return ge::GRAPH_FAILED);
         }
@@ -635,48 +641,53 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckDequantScaleType()
     OP_TILING_CHECK(!((dequantScaleType == ge::DT_UINT64) || (dequantScaleType == ge::DT_BF16) ||
                       (dequantScaleType == ge::DT_INT64) || (dequantScaleType == ge::DT_FLOAT) ||
                       (dequantScaleType == ge::DT_FLOAT8_E8M0)),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("In the dequant scenario, type of dequantScale should be uint64, int64, bf16 or"
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("In the dequant scenario, type of dequantScale should"
+                                                "be uint64, int64, bf16 or"
                                         "float32, get type=") +
                             std::string(ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str()) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     if (scenario_ == AllReduceScenario::FP8HIF8) {
         if (dequantScaleType == ge::DT_FLOAT) {
             // fp8/hif8场景下，pertoken+pertensor/perchannel场景必须提供两个scale，类型为float
             OP_TILING_CHECK(mmrCtxInfo_.pertoken_scale == nullptr,
-                            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                      "In the dequant scenario, when dequantScale type is float, "
+                            OP_LOGE(
+                                context_->GetNodeName(),
+                                "%s",
+                                "In the dequant scenario, when dequantScale type is float, "
                                                       "per_token_scale should not be null."),
                             return ge::GRAPH_FAILED);
             auto perTokenScaleType = mmrCtxInfo_.pertoken_scale->GetDataType();
             OP_TILING_CHECK(perTokenScaleType != ge::DT_FLOAT,
-                                                        OP_LOGE_FOR_INVALID_VALUE(
-                                context_->GetNodeName(), "param", "invalid",
-                                std::string("In the dequant scenario, when dequantScale type is float, type of"
+                                                        OP_LOGE(
+                                                            context_->GetNodeName(),
+                                                            "%s",
+                                                            (std::string("In the dequant scenario, when"
+                                                                "dequantScale type is float, type of"
                                                 "per_token_scale should be float, get type=") +
                                     std::string(ge::TypeUtils::DataTypeToSerialString(perTokenScaleType).c_str()) +
-                                    "."
-                            ),
+                                    ".").c_str()),
                             return ge::GRAPH_FAILED);
         } else {
             // fp8/hif8场景下，单路pertensor场景必须提供1个scale，类型为uint64
             OP_TILING_CHECK(
                 dequantScaleType != ge::DT_UINT64,
-                                OP_LOGE_FOR_INVALID_VALUE(
-                    context_->GetNodeName(), "param", "invalid",
-                    std::string("In the dequant scenario, type of dequantScale should be uint64_t, get type=") +
+                                OP_LOGE(
+                                    context_->GetNodeName(),
+                                    "%s",
+                                    (std::string("In the dequant scenario, type of dequantScale should be"
+                                        "uint64_t, get type=") +
                         std::string(ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str()) +
-                        "."
-                ),
+                        ".").c_str()),
                 return ge::GRAPH_FAILED);
         }
     }
 
     OP_TILING_CHECK(CheckMXFPScenarioScaleType() != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Check scale type failed."),
+                    OP_LOGE(context_->GetNodeName(), "Check scale type failed."),
                     return ge::GRAPH_FAILED);
     return CheckA8W8ScenarioScaleType();
 } // namespace optiling
@@ -687,20 +698,23 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckMXFPScenarioScaleType()
     if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         OP_TILING_CHECK(
             mmrCtxInfo_.pertoken_scale == nullptr,
-            OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                      "In the dequant MXfp4/MXfp8 scenario, per_token_scale should not be null."),
+            OP_LOGE(
+                context_->GetNodeName(),
+                "In the dequant MXfp4/MXfp8 scenario, per_token_scale should not be null."
+            ),
             return ge::GRAPH_FAILED);
         auto perTokenScaleType = mmrCtxInfo_.pertoken_scale->GetDataType();
         OP_TILING_CHECK((dequantScaleType != ge::DT_FLOAT8_E8M0) || (perTokenScaleType != ge::DT_FLOAT8_E8M0),
-                                                OP_LOGE_FOR_INVALID_VALUE(
-                            context_->GetNodeName(), "param", "invalid",
-                            std::string("In the dequant MXfp4/MXfp8 scenario, type of dequantScale should be"
+                                                OP_LOGE(
+                                                    context_->GetNodeName(),
+                                                    "%s",
+                                                    (std::string("In the dequant MXfp4/MXfp8 scenario, type of"
+                                                        "dequantScale should be"
                                             "float8_e8m0, get type of dequantScale=") +
                                 std::string(ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str()) +
                                 ", type of pertokenScale=" +
                                 std::string(ge::TypeUtils::DataTypeToSerialString(perTokenScaleType).c_str()) +
-                                "."
-                        ),
+                                ".").c_str()),
                         return ge::GRAPH_FAILED);
     }
 
@@ -714,25 +728,27 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckBias()
         auto biasType = mmrCtxInfo_.bias->GetDataType();
         if (isA8W8_) {
             OP_TILING_CHECK(biasType != ge::DT_INT32,
-                                                        OP_LOGE_FOR_INVALID_VALUE(
-                                context_->GetNodeName(), "param", "invalid",
-                                std::string("In the dequant scenario, type of bias should be int32, but got type of"
+                                                        OP_LOGE(
+                                                            context_->GetNodeName(),
+                                                            "%s",
+                                                            (std::string("In the dequant scenario, type of"
+                                                                "bias should be int32, but got type of"
                                                 "bias=") +
                                     std::to_string(biasType) +
-                                    "."
-                            ),
+                                    ".").c_str()),
                             return ge::GRAPH_FAILED);
         } else if (
             (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||
             (scenario_ == AllReduceScenario::MXFP8)) {
             OP_TILING_CHECK(biasType != ge::DT_FLOAT,
-                                                        OP_LOGE_FOR_INVALID_VALUE(
-                                context_->GetNodeName(), "param", "invalid",
-                                std::string("In the dequant scenario, type of bias should be float, but got type of"
+                                                        OP_LOGE(
+                                                            context_->GetNodeName(),
+                                                            "%s",
+                                                            (std::string("In the dequant scenario, type of"
+                                                                "bias should be float, but got type of"
                                                 "bias=") +
                                     std::to_string(biasType) +
-                                    "."
-                            ),
+                                    ".").c_str()),
                             return ge::GRAPH_FAILED);
         }
     }
@@ -749,16 +765,16 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckCommQuantScale()
         auto cType = mmrCtxInfo_.y->GetDataType();
         OP_TILING_CHECK(
             ((commQuantScaleType1 != cType) || (commQuantScaleType2 != cType)),
-                        OP_LOGE_FOR_INVALID_VALUE(
-                context_->GetNodeName(), "param", "invalid",
-                std::string("The type of comm_quant_scale_1 Type=") +
+                        OP_LOGE(
+                            context_->GetNodeName(),
+                            "%s",
+                            (std::string("The type of comm_quant_scale_1 Type=") +
                     std::to_string(static_cast<int32_t>(commQuantScaleType1)) +
                     " or comm_quant_scale_2 Type=" +
                     std::to_string(static_cast<int32_t>(commQuantScaleType2)) +
                     " should be same to cType=" +
                     std::to_string(static_cast<int32_t>(cType)) +
-                    "."
-            ),
+                    ".").c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -768,7 +784,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckCommQuantScale()
 ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
 {
     OP_TILING_CHECK(mmrCtxInfo_.groupSizePtr == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "param", "invalid", "The groupSize is nullptr."), return false);
+                    OP_LOGE_WITH_INVALID_INPUT(opName_, "group_size"), return false);
     auto groupSizePtr = mmrCtxInfo_.groupSizePtr;
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
@@ -785,41 +801,43 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
 
     if (isPerBlock_) {
         OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-            OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid", "Failed to execute inferGroupSize."),
+            OP_LOGE(opName_, "Failed to execute inferGroupSize."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             (groupSizeM != SUPPORTED_BLOCK_SIZE) || (groupSizeN != SUPPORTED_BLOCK_SIZE) ||
                 (groupSizeK != SUPPORTED_BLOCK_SIZE),
-                        OP_LOGE_WITH_INVALID_ATTR(
-                opName_, "attr", "invalid",
-                std::string("GroupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene, but actual is"
+                        OP_LOGE(
+                            opName_,
+                            "%s",
+                            (std::string("GroupSizeM, groupSizeN and groupSizeK should be 128 in perblock"
+                                "scene, but actual is"
                                 "[groupSizeM = ") +
                     std::to_string(groupSizeM) +
                     ", groupSizeN = " +
                     std::to_string(groupSizeN) +
                     ", groupSizeK = " +
                     std::to_string(groupSizeK) +
-                    "]."
-            ),
+                    "].").c_str()),
             return ge::GRAPH_FAILED);
     } else if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         shapeInfo.isMxfp = true;
         OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-            OP_LOGE_WITH_INVALID_ATTR(opName_, "attr", "invalid", "Failed to execute inferGroupSize."),
+            OP_LOGE(opName_, "Failed to execute inferGroupSize."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             (groupSizeM != MX_GROUP_SIZE_M) || (groupSizeN != MX_GROUP_SIZE_N) || (groupSizeK != MX_GROUP_SIZE_K),
-                        OP_LOGE_WITH_INVALID_ATTR(
-                opName_, "attr", "invalid",
-                std::string("GroupSizeM, groupSizeN and groupSizeK should be [1, 1, 32] in mxfp scene, but actual"
+                        OP_LOGE(
+                            opName_,
+                            "%s",
+                            (std::string("GroupSizeM, groupSizeN and groupSizeK should be [1, 1, 32] in mxfp"
+                                "scene, but actual"
                                 "is [groupSizeM = ") +
                     std::to_string(groupSizeM) +
                     ", groupSizeN = " +
                     std::to_string(groupSizeN) +
                     ", groupSizeK = " +
                     std::to_string(groupSizeK) +
-                    "]."
-            ),
+                    "].").c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -831,53 +849,57 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO && x2DimNum != DIM_NUM_FOUR,
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("In the dequant scenario, Expect x2 dim to be 2 or 4, but got x2 dim=") +
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("In the dequant scenario, Expect x2 dim to be 2 or 4,"
+                                                "but got x2 dim=") +
                             std::to_string(x2DimNum) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK((isA8W8_ && (x1Type != x2Type)),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("In the dequant scenario, type of x1 and x2 should be same, but got type of x1=") +
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("In the dequant scenario, type of x1 and x2 should be"
+                                                "same, but got type of x1=") +
                             std::to_string(x1Type) +
                             ", type of x2=" +
                             std::to_string(x2Type) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((scenario_ == AllReduceScenario::FP8HIF8) && (x1Type != x2Type) &&
                      ((x1Type == ge::DT_HIFLOAT8) || (x2Type == ge::DT_HIFLOAT8))),
-                                        OP_LOGE_FOR_INVALID_VALUE(
-                        context_->GetNodeName(), "param", "invalid",
-                        std::string("In the dequant scenario, when type is HIFLOAT8, type of x1 and x2 should be"
+                                        OP_LOGE(
+                                            context_->GetNodeName(),
+                                            "%s",
+                                            (std::string("In the dequant scenario, when type is HIFLOAT8, type"
+                                                "of x1 and x2 should be"
                                         "same, but got type of x1=") +
                             std::to_string(x1Type) +
                             ", type of x2=" +
                             std::to_string(x2Type) +
-                            "."
-                    ),
+                            ".").c_str()),
                     return ge::GRAPH_FAILED);
     if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         OP_TILING_CHECK(args_.isBTrans == false,
-                        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid",
-                                                  "In the dequant MXfp4/MXfp8 scenario, x2 must be transposed."),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(), "is_trans_b", "unsupported value",
+                            "In the dequant MXfp4/MXfp8 scenario, x2 must be transposed."),
                         return ge::GRAPH_FAILED);
     }
     if (scenario_ == AllReduceScenario::MXFP4) {
         uint64_t x1K = GetKValue();
         OP_TILING_CHECK(Ops::Base::CeilDiv(x1K, MX_GROUP_SIZE_K) % 2 != 0,
-                                                OP_LOGE_FOR_INVALID_VALUE(
-                            context_->GetNodeName(), "param", "invalid",
-                            std::string("In the dequant MXfp4 scenario, k=") +
+                                                OP_LOGE(
+                                                    context_->GetNodeName(),
+                                                    "%s",
+                                                    (std::string("In the dequant MXfp4 scenario, k=") +
                                 std::to_string(x1K) +
-                                " ceil dev 32 must be even."
-                        ),
+                                " ceil dev 32 must be even.").c_str()),
                         return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -887,21 +909,21 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckInput()
 {
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
     OP_TILING_CHECK(CheckX1X2() != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Check input_X failed."),
+                    OP_LOGE(context_->GetNodeName(), "Check input_X failed."),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckBias() != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Check bias failed."),
+                    OP_LOGE(context_->GetNodeName(), "Check bias failed."),
                     return ge::GRAPH_FAILED);
     // dequantScale数据类型范围
     GE_ASSERT_GRAPH_SUCCESS(CheckDequantScaleType());
     // comm_quant_scale不为空时校验数据类型
     OP_TILING_CHECK(
         CheckCommQuantScale() != ge::GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Check commQuantScale failed."),
+        OP_LOGE(context_->GetNodeName(), "Check commQuantScale failed."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckQuantGroupSize() != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "param", "invalid", "Check groupSize failed."),
+                    OP_LOGE(context_->GetNodeName(), "Check groupSize failed."),
                     return ge::GRAPH_FAILED);
 
     return CheckAxisSize();
@@ -954,12 +976,7 @@ const gert::Shape& QuantTilingTransferHelperA5::GetScaleShape(const size_t index
     (void)index;
     OP_TILING_CHECK(
         tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE(
-            tilingProcesser_.opName_, "param", "invalid",
-            std::string("") +
-                std::string(inputParams_.opName) +
-                " is quant, but has no quant shape."
-        ),
+                OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "dequant_scale"),
         return defaultShape);
     return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();
 }
