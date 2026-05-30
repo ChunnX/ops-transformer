@@ -52,8 +52,10 @@ public:
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t kMutilLoadL1Size, const BasicBlockOffsetParam &param);
-    __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
+                                           uint64_t kbL1RealSize = 0);
+    __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
+                                          uint64_t kbL1RealSize = 0);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset);
@@ -79,6 +81,7 @@ private:
     int8_t aL1DbNum_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
     static constexpr uint32_t EVENT_ID_MTE1_TO_MTE2 = 3;
+    static constexpr uint32_t EVENT_ID_WEIGHT_MTE1_TO_MTE2 = 1;
     static constexpr uint32_t EVENT_ID_SCALE_MTE1_TO_MTE2 = 5;
     static constexpr uint32_t EVENT_ID_M_TO_MTE1 = 3;
     static constexpr uint32_t EVENT_ID_MTE1_TO_M = 3;
@@ -172,21 +175,41 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(uint64_t 
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(uint64_t kaGmOffset,
-                                                                   const BasicBlockOffsetParam &offsetParam)
+                                                                   const BasicBlockOffsetParam &offsetParam,
+                                                                   uint64_t kbL1RealSize)
 {
-    if (aL1DbNum_ > SINGLE_BUFFER_NUM && kaGmOffset % offsetParam.kaL1Size == 0) {
-        WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
+    if (kbL1RealSize > 0) {
+        // Wait only at the last K iteration when the tail block is not 64-aligned
+        if (kaGmOffset + kbL1RealSize >= offsetParam.kSize && kbL1RealSize % K_ALIGNMENT64 != 0) {
+            WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2);
+        }
+    } else {
+        if (aL1DbNum_ > SINGLE_BUFFER_NUM && kaGmOffset % offsetParam.kaL1Size == 0) {
+            WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
+        }
     }
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uint64_t kaGmOffset,
-                                                                  const BasicBlockOffsetParam &offsetParam)
+                                                                  const BasicBlockOffsetParam &offsetParam,
+                                                                  uint64_t kbL1RealSize)
 {
-    if ((kaGmOffset + offsetParam.kbL1Size) % offsetParam.kaL1Size == 0 ||
-        kaGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
-        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
-        aL1BufIdx_++;
+    if (kbL1RealSize > 0) {
+        // Set at the second-to-last K iteration, only when the upcoming last block will not be 64-aligned.
+        // Condition: current is NOT the last iteration, but the next iteration IS the last,
+        // and the last block's K size is not 64-aligned.
+        if (kaGmOffset + kbL1RealSize < offsetParam.kSize &&
+            kaGmOffset + kbL1RealSize + kbL1RealSize >= offsetParam.kSize &&
+            offsetParam.kSize % K_ALIGNMENT64 != 0) {
+            SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2);
+        }
+    } else {
+        if ((kaGmOffset + offsetParam.kbL1Size) % offsetParam.kaL1Size == 0 ||
+            kaGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
+            SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + (aL1BufIdx_ & 1));
+            aL1BufIdx_++;
+        }
     }
 }
 
