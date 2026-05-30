@@ -964,12 +964,12 @@ __aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::ShouldSendToR
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if (epWorldSize_ <= 40)
-        return true; 
+        return true;
     bool inLocalGroup = (logicalRankId >= localSendGroupStart_) &&
                         (logicalRankId < localSendGroupStart_ + localSendGroupNum_);
     return (roundId == 0U) ? inLocalGroup : (!inLocalGroup);
 #else
-    return true; 
+    return true;
 #endif
 }
 
