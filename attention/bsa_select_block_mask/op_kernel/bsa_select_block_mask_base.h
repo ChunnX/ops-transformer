@@ -118,6 +118,32 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
     constInfo.softmaxTmpOffset = constInfo.attnScoreOffset + outInfo.attnScoreSize;
     constInfo.topkWorkspaceOffset = constInfo.softmaxTmpOffset + outInfo.softmaxTmpSize;
     constInfo.maskOffset = constInfo.topkWorkspaceOffset + outInfo.topkWorkspaceSize;
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0) {
+            AscendC::printf("=== BSA Tiling Parameters (core 0) ===\n");
+            AscendC::printf("batchSize=%u, numHeads=%u, maxQSeqlen=%u, maxKvSeqlen=%u\n",
+                            constInfo.batchSize, constInfo.numHeads, constInfo.maxQSeqlen, constInfo.maxKvSeqlen);
+            AscendC::printf("dSize=%u, blockShapeX=%lu, blockShapeY=%lu\n",
+                            constInfo.dSize, constInfo.blockShapeX, constInfo.blockShapeY);
+            AscendC::printf("xBlocks=%u, yBlocks=%u, topKValue=%u, sparsityMode=%u\n",
+                            constInfo.xBlocks, constInfo.yBlocks, constInfo.topKValue,
+                            static_cast<uint32_t>(constInfo.sparsityMode));
+            AscendC::printf("scaleValue=%f, sparsity=%f\n",
+                            constInfo.scaleValue, constInfo.sparsity);
+            AscendC::printf("coreNum=%u, activeCoreNum=%u, rowsPerCore=%u, extraCores=%u, totalRows=%u\n",
+                            constInfo.coreNum, constInfo.activeCoreNum, constInfo.rowsPerCore,
+                            constInfo.extraCores, constInfo.totalRows);
+            AscendC::printf("yBlocksPerCore=%u, extraYCores=%u, qChunkSize=%u, kChunkSize=%u\n",
+                            constInfo.yBlocksPerCore, constInfo.extraYCores,
+                            constInfo.qChunkSize, constInfo.kChunkSize);
+            AscendC::printf("qCmpOffset=%lu, kCmpOffset=%lu, attnScoreOffset=%lu\n",
+                            constInfo.qCmpOffset, constInfo.kCmpOffset, constInfo.attnScoreOffset);
+            AscendC::printf("softmaxTmpOffset=%lu, topkWorkspaceOffset=%lu, maskOffset=%lu\n",
+                            constInfo.softmaxTmpOffset, constInfo.topkWorkspaceOffset, constInfo.maskOffset);
+            AscendC::printf("=== End Tiling Parameters ===\n");
+        }
+    }
 }
 
 template <typename BSAT>
@@ -256,6 +282,14 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 
     uint32_t startRow, endRow;
     CalcMultiCoreOffset(startRow, endRow);
+
+    uint32_t startKBlock, endKBlock;
+    CalcKPoolingRange(startKBlock, endKBlock);
+
+    if ASCEND_IS_AIV {
+        AscendC::printf("[Core %u] startRow=%u, endRow=%u, startKBlock=%u, endKBlock=%u\n",
+                        GetBlockIdx(), startRow, endRow, startKBlock, endKBlock);
+    }
 
     for (uint32_t batchIdx = 0; batchIdx < constInfo.batchSize; batchIdx++) {
         for (uint32_t headIdx = 0; headIdx < constInfo.numHeads; headIdx++) {
