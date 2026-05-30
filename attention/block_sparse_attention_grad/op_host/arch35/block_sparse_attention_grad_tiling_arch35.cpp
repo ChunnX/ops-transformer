@@ -259,8 +259,8 @@ protected:
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
         auto cubeCoreNum = ascendcPlatform.GetCoreNumAic();
 
-        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 128;
-        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 128;
+        uint32_t baseM = blockShapeX_ <= 128 ? blockShapeX_ : 64;
+        uint32_t baseN = blockShapeY_ <= 128 ? blockShapeY_ : 64;
         uint32_t block_num_x = q_seq_len_ / blockShapeX_;
         uint32_t block_num_y = kv_seq_len_ / blockShapeY_;
 
