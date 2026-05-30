@@ -538,7 +538,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
         // 拷贝第一块归约任务
         indexValueParams.blockCount = 1;
         uint64_t wsOffsetIni = ldInfo_.workspaceIdx * s1BaseSize_ * BASE_TOPK_VALUE_IDX_SIZE +
-                            BASE_TOPK_VALUE_IDX_SIZE * (ldInfo_.mStart + j);
+                               BASE_TOPK_VALUE_IDX_SIZE * (ldInfo_.mStart + j);
         AscendC::DataCopyPad(curValueIdxUb, vec1ResGm[wsOffsetIni], indexValueParams, indexValuePadParams);
         uint64_t valueOffset = BASE_TOPK_VALUE_IDX_SIZE;
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
