@@ -307,6 +307,7 @@ private:
                        {validLenBatch_[i], validLenBatch_[i], dk_, validLenBatch_[i], validLenBatch_[i], dk_},
                        true);
         }
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xA); // 同步1
         AscendC::CrossCoreWaitFlag(0x7); // 同步2
 
         // 求逆左下角矩阵
@@ -392,6 +393,7 @@ private:
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_],
                           gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
         }
+        AscendC::CrossCoreWaitFlag(0xA);
     }
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& dstGm,
                                         const GlobalTensor<bfloat16_t>& outKgGm,
@@ -517,6 +519,9 @@ private:
 
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
         PipeBarrier<PIPE_V>();
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(eventID);
+        WaitFlag<HardEvent::V_S>(eventID);
 
         InverseAIV(subOffset_, INVERSE_SHAPE);
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
@@ -550,18 +555,25 @@ private:
             uint32_t validRows = inverseVecLen - i;
             Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], inverseGatherBuffer_, (uint32_t)0, validRows);
             PipeBarrier<PIPE_V>();
+            
             uint32_t dstShape[2] = {validRows, inverseVecLen};
             uint32_t colSrcShape[2] = {validRows, 1};
             Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
             Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_], dstShape, srcShape);
             PipeBarrier<PIPE_V>();
+            
             MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
             PipeBarrier<PIPE_V>();
+            
+            int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
+            SetFlag<HardEvent::V_S>(eventID);
+            WaitFlag<HardEvent::V_S>(eventID);
             ei.SetValue(i - 1, static_cast<float>(0.0));
             ei.SetValue(i, static_cast<float>(1.0));
             eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
             SetFlag<HardEvent::S_V>(eventID);
             WaitFlag<HardEvent::S_V>(eventID);
+            
             // xi = (I - SUM) / Lii = I - SUM
             Sub(inverseRes_[offset + i * chunkSize_], ei, yLocal[i * inverseVecLen], inverseVecLen);
             PipeBarrier<PIPE_V>();
