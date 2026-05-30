@@ -34,21 +34,19 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                                     \
-    template <typename xType, typename wType, typename weightScaleType, typename xScaleType,                           \
-              typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,                                       \
-              const VecAntiQuantConfig &vecConfig>
+    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename yType,           \
+              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS                                                                              \
-    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType,                   \
-                                      wqmmConfig, vecConfig>
+    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig,        \
+                                      vecConfig>
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMSQWeightQuantResplitController {
 public:
     __aicore__ inline GMMSQWeightQuantResplitController(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR groupList,
-                                GM_ADDR xScale, GM_ADDR y, GM_ADDR yScale,
-                                const GMMSQWeightQuantTilingData *__restrict baseTiling);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR xScale,
+                                GM_ADDR y, GM_ADDR yScale, const GMMSQWeightQuantTilingData *__restrict baseTiling);
     __aicore__ inline void Process();
 
 private:
@@ -76,8 +74,7 @@ private:
     __gm__ xScaleType *xScaleGm_;
     __gm__ yScaleType *yScaleGm_;
     GlobalTensor<int64_t> groupListGm_;
-    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType,
-                                  wqmmConfig, vecConfig>
+    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig, vecConfig>
         basicBlock_;
 
     uint64_t preOffset_ = 0;
@@ -93,8 +90,8 @@ private:
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
-                                                               GM_ADDR groupList, GM_ADDR xScale,
-                                                               GM_ADDR y, GM_ADDR yScale,
+                                                               GM_ADDR groupList, GM_ADDR xScale, GM_ADDR y,
+                                                               GM_ADDR yScale,
                                                                const GMMSQWeightQuantTilingData *__restrict baseTiling)
 {
     tiling_ = baseTiling;
