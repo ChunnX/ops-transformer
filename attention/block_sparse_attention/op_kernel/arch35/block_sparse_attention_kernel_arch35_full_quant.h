@@ -512,13 +512,13 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
         // cross core sync
-        if constexpr (SM_MM2_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID2);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID18);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID3);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID19);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID4);
-            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(FLAG_ID20);
+        if constexpr (SM_MM2_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID2);
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID18);
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID3);
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID19);
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID4);
+            AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID20);
         }
 #endif
 #ifdef __DAV_VEC__
@@ -536,13 +536,13 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-        if constexpr (MM1_SM_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(FLAG_ID0);
-            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(FLAG_ID1);
+        if constexpr (MM1_SM_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(Arch::FLAG_ID0);
+            AscendC::CrossCoreSetFlag<MM1_SM_MODE, PIPE_V>(Arch::FLAG_ID1);
         }
-        if constexpr (MM2_RE_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(FLAG_ID5);
-            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(FLAG_ID6);
+        if constexpr (MM2_RE_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(Arch::FLAG_ID5);
+            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(Arch::FLAG_ID6);
         }
 #endif
     }
@@ -566,17 +566,17 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID3);
-        if constexpr (MM1_SM_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(FLAG_ID0);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(FLAG_ID1);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(FLAG_ID16);
-            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(FLAG_ID17);
+        if constexpr (MM1_SM_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID0);
+            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID1);
+            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID16);
+            AscendC::CrossCoreWaitFlag<MM1_SM_MODE, PIPE_FIX>(Arch::FLAG_ID17);
         }
-        if constexpr (MM2_RE_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(FLAG_ID5);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(FLAG_ID21);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(FLAG_ID6);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(FLAG_ID22);
+        if constexpr (MM2_RE_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID5);
+            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID21);
+            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID6);
+            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID22);
         }
 #endif
 #ifdef __DAV_VEC__
@@ -590,10 +590,10 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-        if constexpr (SM_MM2_MODE == CROSS_CORE_SYNC_MODE_4) {
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(FLAG_ID2);
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(FLAG_ID3);
-            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(FLAG_ID4);
+        if constexpr (SM_MM2_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
+            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID2);
+            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID3);
+            AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID4);
         }
 #endif
         AscendC::PipeBarrier<PIPE_ALL>();
