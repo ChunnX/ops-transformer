@@ -525,13 +525,13 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     indexValueParams.dstStride = 0;
 
     uint32_t ldProWorkspaceNum = ldInfo_.workspaceNum;
-    uint32_t ldProcessLen = 4;     // 4: 4块归约任务做一次Merge
-    uint32_t ldProcessNum = (ldProWorkspaceNum - 1) / (ldProcessLen - 1);
-    uint32_t ldTailLen = ldProWorkspaceNum - (ldProcessNum * (ldProcessLen - 1) + 1);   // 尾块长度
-    
     if (ldProWorkspaceNum <= 0) {
         return;
     }
+
+    uint32_t ldProcessLen = 4;     // 4: 4块归约任务做一次Merge
+    uint32_t ldProcessNum = (ldProWorkspaceNum - 1) / (ldProcessLen - 1);
+    uint32_t ldTailLen = ldProWorkspaceNum - (ldProcessNum * (ldProcessLen - 1) + 1);   // 尾块长度
     
     for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
         SetWaitFlag<HardEvent::V_MTE2>(HardEvent::V_MTE2);
