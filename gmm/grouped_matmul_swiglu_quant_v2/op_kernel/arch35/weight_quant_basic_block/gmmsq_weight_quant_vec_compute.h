@@ -32,16 +32,8 @@ using AscendC::IsSameType;
 using AscendC::LocalTensor;
 using AscendC::ONE_BLK_SIZE;
 using AscendC::SetFlag;
-using AscendC::TBuf;
-using AscendC::TEventID;
 using AscendC::VECTOR_REG_WIDTH;
 using AscendC::WaitFlag;
-namespace MicroAPI = AscendC::MicroAPI;
-using AscendC::MicroAPI::AddrReg;
-using AscendC::MicroAPI::GetRound;
-using AscendC::MicroAPI::MaskReg;
-using AscendC::MicroAPI::RegTensor;
-using AscendC::MicroAPI::TypeGet;
 using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
@@ -82,8 +74,7 @@ __aicore__ constexpr GmmsqUbBufferInfo GetGMMSQMxA8W4BufferInfo()
     template <typename xType, typename wType, typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,       \
               const VecAntiQuantConfig &vecConfig>
 
-#define GMMSQ_WQ_VEC_COMPUTE_CLASS                                                                                     \
-    GMMSQWeightQuantVecCompute<xType, wType, yType, yScaleType, wqmmConfig, vecConfig>
+#define GMMSQ_WQ_VEC_COMPUTE_CLASS GMMSQWeightQuantVecCompute<xType, wType, yType, yScaleType, wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
 class GMMSQWeightQuantVecCompute {
@@ -182,8 +173,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::Init(__gm__ yType *yFp32Addr,
 }
 
 GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ wType *weight,
-                                                                    const bool weightL2Cacheable)
+__aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ wType *weight, const bool weightL2Cacheable)
 {
     wGlobal_.SetGlobalBuffer(weight);
     if (!weightL2Cacheable) {
@@ -330,12 +320,15 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeMaxExp(const LocalTens
     if (mRealSize == 0 || param.mL1Size == 0) {
         return;
     }
-    uint64_t nHalfSize = param.nL1Size / 2;
+    uint64_t nHalfSize = param.nL1Size / 2; // 2：N方向
 
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
     uint32_t totalDataInUb = static_cast<uint32_t>(mRealSize * nDstUbAligned);
     uint32_t vlForHalfNumber = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
-    uint16_t elementAfterReduce = AscendC::VECTOR_REG_WIDTH / static_cast<uint32_t>(32);
+    uint16_t elementAfterReduce =
+        AscendC::VECTOR_REG_WIDTH /
+        static_cast<uint32_t>(32); // 32：一次载入两个VECTOR_REG_WIDTH，且每32个数取一个值，所以公式为
+                                   // AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t) * 2 / 32 简化为 VECTOR_REG_WIDTH/32
     uint16_t loopDataNum = CeilDivide(static_cast<uint64_t>(totalDataInUb), static_cast<uint64_t>(vlForHalfNumber) * 2);
 
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
@@ -356,7 +349,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlock
 
     uint32_t nDstUbAligned = CeilAlign(static_cast<uint32_t>(nHalfSize), AscendC::ONE_BLK_SIZE);
     uint32_t totalDataInUb = static_cast<uint32_t>(mRealSize * nDstUbAligned);
-    uint32_t totalScaleInUb = totalDataInUb / static_cast<uint32_t>(32);
+    uint32_t totalScaleInUb = totalDataInUb / static_cast<uint32_t>(32); // 32：Mx量化的 groupSize 是32
     uint32_t vlForHalfNumber = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);
     uint16_t loopScaleNum = CeilDivide(static_cast<uint64_t>(totalScaleInUb), static_cast<uint64_t>(vlForHalfNumber));
 
@@ -367,8 +360,6 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeScale(const BasicBlock
     uint16_t fpEmax = 0;
     if constexpr (IsSameType<yType, fp8_e4m3fn_t>::value) {
         fpEmax = static_cast<uint16_t>(0x0400);
-    } else if constexpr (IsSameType<yType, fp8_e5m2_t>::value) {
-        fpEmax = static_cast<uint16_t>(0x0780);
     }
 
     ComputeScaleVf(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, totalScaleInUb, loopScaleNum, vlForHalfNumber,
@@ -396,7 +387,7 @@ __aicore__ inline void GMMSQ_WQ_VEC_COMPUTE_CLASS::ComputeDataForQuantTargetFp8(
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)halfScale_.GetPhyAddr();
     __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)yFp8Buffer_.GetPhyAddr();
 
-    if constexpr (IsSameType<yType, fp8_e4m3fn_t>::value || IsSameType<yType, fp8_e5m2_t>::value) {
+    if constexpr (IsSameType<yType, fp8_e4m3fn_t>::value) {
         ComputeDataForQuantTargetFp8Vf<yType>(gluResAddr, halfScaleLocalAddr, outLocalAddr, totalDataInUb, loopDataNum,
                                               vlForHalfNumber, elementAfterReduce);
     }
