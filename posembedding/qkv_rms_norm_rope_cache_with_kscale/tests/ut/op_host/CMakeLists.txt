@@ -11,4 +11,10 @@
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    list(FIND ASCEND_OP_NAME qkv_rms_norm_rope_cache_with_kscale QKV_KSCALE_UT_INDEX)
+    if("${ASCEND_OP_NAME}" STREQUAL "ALL" OR NOT QKV_KSCALE_UT_INDEX EQUAL -1)
+        target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/qkv_rms_norm_rope_cache_with_kscale_contract.cpp
+        )
+    endif()
 endif()

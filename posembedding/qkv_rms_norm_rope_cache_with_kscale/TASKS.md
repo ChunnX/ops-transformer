@@ -15,7 +15,7 @@
 | ID | Task | Status | Verification | Commit |
 |----|------|--------|--------------|--------|
 | S00 | Create implementation scaffold | Done | Top-level CMake configure reached this no-op directory; configure then failed in pre-existing mc2/ffn targets unrelated to this scaffold | Included in scaffold commit |
-| T00 | Host checker/tiling contract + UT | Done | Host sources compiled with CANN/opbase includes; pure contract smoke test passed; CMake reached new op_host then failed in pre-existing mc2/ffn targets; OP_HOST_UT configure failed earlier in pre-existing mc2/3rd target | Included in T00 commit |
+| T00 | Host checker/tiling contract + UT | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_kscale --soc=ascend950 -j8`; 9 host UT passed. `--noexec` host UT compile also passed | Included in T00 commit and host UT build.sh fix commit |
 | T01 | Controller and basic block skeleton | Not started | Kernel compile | |
 | T02 | AIV local slice and tail row range | Not started | Kernel compile + Host UT extension | |
 | T03 | Static buffer and tensor binding | Not started | Kernel compile | |
