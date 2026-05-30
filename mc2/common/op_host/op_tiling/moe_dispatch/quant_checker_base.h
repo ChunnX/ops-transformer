@@ -33,18 +33,26 @@ struct ScalesTensorInfo {
 
 class QuantCheckerBase {
 public:
-    explicit QuantCheckerBase(moe_dispatch_defs::QuantMode mode) : mode_(mode) {}
+    explicit QuantCheckerBase(moe_dispatch_defs::QuantMode mode) : mode_(mode)
+    {
+    }
     virtual ~QuantCheckerBase() = default;
 
     // 禁止拷贝和赋值
-    QuantCheckerBase(const QuantCheckerBase&) = delete;
-    QuantCheckerBase& operator=(const QuantCheckerBase&) = delete;
-    QuantCheckerBase(QuantCheckerBase&&) = default;
-    QuantCheckerBase& operator=(QuantCheckerBase&&) = default;
+    QuantCheckerBase(const QuantCheckerBase &) = delete;
+    QuantCheckerBase &operator=(const QuantCheckerBase &) = delete;
+    QuantCheckerBase(QuantCheckerBase &&) = default;
+    QuantCheckerBase &operator=(QuantCheckerBase &&) = default;
 
     // ========== 模式查询 ==========
-    moe_dispatch_defs::QuantMode mode() const { return mode_; }
-    uint32_t modeValue() const { return static_cast<uint32_t>(mode_); }
+    moe_dispatch_defs::QuantMode mode() const
+    {
+        return mode_;
+    }
+    uint32_t modeValue() const
+    {
+        return static_cast<uint32_t>(mode_);
+    }
 
     // ========== 各子类必须实现 ==========
 
@@ -52,18 +60,12 @@ public:
     virtual bool ShouldHaveScales(ge::DataType xDtype) const = 0;
 
     // scales 完整校验（dim + dtype + shape）
-    virtual ge::graphStatus CheckScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const = 0;
+    virtual ge::graphStatus CheckScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                        uint32_t h) const = 0;
 
     // dynamicScales 完整校验
-    virtual ge::graphStatus CheckDynamicScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const = 0;
+    virtual ge::graphStatus CheckDynamicScales(gert::TilingContext *ctx, const ScalesTensorInfo &info,
+                                               uint32_t expectedDim0, uint32_t h) const = 0;
 
     // tokenMsgSize 计算
     virtual uint32_t CalcTokenMsgSize(uint32_t h) const = 0;
@@ -73,25 +75,39 @@ public:
     // scales 维度数校验（参数化：不同模式要求不同）
     // expandXDtype: expandX 输出的 dtype，用于静态量化 hif8 特殊校验
     // 返回期望的维度数，0 表示允许多种维度（由调用方进一步校验）
-    virtual uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const {
+    virtual uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const
+    {
         (void)expandXDtype;
-        return moe_dispatch_defs::TWO_DIMS;  // 默认 2D
+        return moe_dispatch_defs::TWO_DIMS; // 默认 2D
     }
 
     // scales 是否允许多维度（静态量化特有：允许 1D 或 2D）
-    virtual bool AllowScalesMultiDim() const { return false; }
+    virtual bool AllowScalesMultiDim() const
+    {
+        return false;
+    }
 
     // dynamicScales 维度数
-    virtual uint32_t GetDynamicScalesDimNum() const { return 0U; }
+    virtual uint32_t GetDynamicScalesDimNum() const
+    {
+        return 0U;
+    }
 
     // dynamicScales dtype
-    virtual ge::DataType GetDynamicScalesDtype() const { return ge::DT_FLOAT; }
+    virtual ge::DataType GetDynamicScalesDtype() const
+    {
+        return ge::DT_FLOAT;
+    }
 
     // dynamicScales dim1 计算（仅 2D 时需要）
-    virtual uint32_t CalcDynamicScalesDim1(uint32_t h) const { return 0U; }
+    virtual uint32_t CalcDynamicScalesDim1(uint32_t h) const
+    {
+        return 0U;
+    }
 
     // dynamicScales dim0 期望值计算（通用）
-    uint32_t GetExpectedDynamicScalesDim0(uint32_t A, uint32_t tpWorldSize) const {
+    uint32_t GetExpectedDynamicScalesDim0(uint32_t A, uint32_t tpWorldSize) const
+    {
         return A * tpWorldSize;
     }
 

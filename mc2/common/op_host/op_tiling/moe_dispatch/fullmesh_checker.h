@@ -22,19 +22,19 @@ namespace fullmesh_check {
 
 // ========== 约束规则校验 ==========
 
-inline ge::graphStatus CheckConstraints(
-    const char* nodeName, uint32_t bs, uint32_t k, uint32_t tpWorldSize) {
+inline ge::graphStatus CheckConstraints(const char *nodeName, uint32_t bs, uint32_t k, uint32_t tpWorldSize)
+{
     // BS <= 256
     if (bs > static_cast<uint32_t>(moe_dispatch_defs::FULLMESH_BS_MAX)) {
         OPS_LOG_E(nodeName, "When comm_alg is fullmesh_v2, bs should be between [1, %u], but got %u.",
-            moe_dispatch_defs::FULLMESH_BS_MAX, bs);
+                  moe_dispatch_defs::FULLMESH_BS_MAX, bs);
         return ge::GRAPH_FAILED;
     }
 
     // K <= 12
     if (k > static_cast<uint32_t>(moe_dispatch_defs::FULLMESH_K_MAX)) {
         OPS_LOG_E(nodeName, "When comm_alg is fullmesh_v2, topK should be between [1, %u], but got %u.",
-            moe_dispatch_defs::FULLMESH_K_MAX, k);
+                  moe_dispatch_defs::FULLMESH_K_MAX, k);
         return ge::GRAPH_FAILED;
     }
 
@@ -49,7 +49,8 @@ inline ge::graphStatus CheckConstraints(
 
 // ========== FullMesh 标志位判断 ==========
 
-inline bool IsFullMeshV2(const char* commAlg) {
+inline bool IsFullMeshV2(const char *commAlg)
+{
     if (commAlg == nullptr) {
         return false;
     }

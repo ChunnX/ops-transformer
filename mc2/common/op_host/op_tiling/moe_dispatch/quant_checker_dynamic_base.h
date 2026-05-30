@@ -25,27 +25,28 @@ namespace moe_dispatch {
 // PerToken/PerGroup/MX 共有骨架
 class DynamicQuantCheckerBase : public QuantCheckerBase {
 public:
-    explicit DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode mode)
-        : QuantCheckerBase(mode) {}
+    explicit DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode mode) : QuantCheckerBase(mode)
+    {
+    }
 
     // scales 存在性判断 - 动态量化 scales 可选，取决于 x dtype
-    bool ShouldHaveScales(ge::DataType xDtype) const override {
+    bool ShouldHaveScales(ge::DataType xDtype) const override
+    {
         // 默认不需要，子类可 override
         return false;
     }
 
     // scales 维度数校验 - 动态量化固定 2D
-    uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const {
-        (void)expandXDtype;  // 动态量化不依赖 expandX dtype
+    uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const
+    {
+        (void)expandXDtype; // 动态量化不依赖 expandX dtype
         return moe_dispatch_defs::TWO_DIMS;
     }
 
     // scales 校验
-    ge::graphStatus CheckScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const override {
+    ge::graphStatus CheckScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                uint32_t h) const override
+    {
         // scales 可选
         if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_SUCCESS;
@@ -60,17 +61,20 @@ public:
     }
 
     // dynamicScales dim0 期望值计算（通用）
-    uint32_t GetExpectedDynamicScalesDim0(uint32_t A, uint32_t tpWorldSize) const {
+    uint32_t GetExpectedDynamicScalesDim0(uint32_t A, uint32_t tpWorldSize) const
+    {
         return A * tpWorldSize;
     }
 
     // dynamicScales 默认维度数为 2D
-    uint32_t GetDynamicScalesDimNum() const override {
+    uint32_t GetDynamicScalesDimNum() const override
+    {
         return moe_dispatch_defs::DYNAMIC_SCALE_TWO_DIM_NUM;
     }
 
     // dynamicScales 默认 dtype 为 float
-    ge::DataType GetDynamicScalesDtype() const override {
+    ge::DataType GetDynamicScalesDtype() const override
+    {
         return ge::DT_FLOAT;
     }
 };

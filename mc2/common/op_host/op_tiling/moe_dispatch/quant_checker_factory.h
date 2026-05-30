@@ -29,9 +29,9 @@ namespace moe_dispatch {
 
 // 根据 quantMode 创建对应的 checker
 // mxDynScalesDtype: MX quant 的 dynamicScales dtype（v2-A5: e8m0, teardown: float）
-inline std::unique_ptr<QuantCheckerBase> CreateQuantChecker(
-    uint32_t quantMode,
-    ge::DataType mxDynScalesDtype = ge::DT_FLOAT) {
+inline std::unique_ptr<QuantCheckerBase> CreateQuantChecker(uint32_t quantMode,
+                                                            ge::DataType mxDynScalesDtype = ge::DT_FLOAT)
+{
     switch (quantMode) {
         case static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT):
             return std::make_unique<UnquantChecker>();
@@ -49,9 +49,9 @@ inline std::unique_ptr<QuantCheckerBase> CreateQuantChecker(
 }
 
 // 重载：支持 QuantMode 枚举参数
-inline std::unique_ptr<QuantCheckerBase> CreateQuantChecker(
-    moe_dispatch_defs::QuantMode quantMode,
-    ge::DataType mxDynScalesDtype = ge::DT_FLOAT) {
+inline std::unique_ptr<QuantCheckerBase> CreateQuantChecker(moe_dispatch_defs::QuantMode quantMode,
+                                                            ge::DataType mxDynScalesDtype = ge::DT_FLOAT)
+{
     return CreateQuantChecker(static_cast<uint32_t>(quantMode), mxDynScalesDtype);
 }
 

@@ -24,8 +24,8 @@ namespace elastic_info_check {
 
 // ========== 互斥规则校验 ==========
 
-inline ge::graphStatus CheckCompatibility(
-    const char* nodeName, bool isLayered, uint32_t tpWorldSize) {
+inline ge::graphStatus CheckCompatibility(const char *nodeName, bool isLayered, uint32_t tpWorldSize)
+{
     // elastic 与 layered 互斥
     if (isLayered) {
         OPS_LOG_E(nodeName, "Cannot support elasticInfo when comm_alg is hierarchy.");
@@ -43,10 +43,10 @@ inline ge::graphStatus CheckCompatibility(
 
 // ========== shape 校验 ==========
 
-inline ge::graphStatus CheckShape(
-    gert::TilingContext* ctx, uint32_t inputIndex,
-    uint32_t epWorldSize, const char* nodeName) {
-    const gert::StorageShape* shape = ctx->GetOptionalInputShape(inputIndex);
+inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex, uint32_t epWorldSize,
+                                  const char *nodeName)
+{
+    const gert::StorageShape *shape = ctx->GetOptionalInputShape(inputIndex);
     if (shape == nullptr) {
         OPS_LOG_E(nodeName, "elasticInfo is null.");
         return ge::GRAPH_FAILED;
@@ -54,20 +54,20 @@ inline ge::graphStatus CheckShape(
 
     // dim0 = ELASTIC_INFO_OFFSET + RANK_LIST_NUM * epWorldSize
     // = 4 + 2 * epWorldSize
-    int64_t expectedDim0 = static_cast<int64_t>(
-        moe_dispatch_defs::ELASTIC_INFO_OFFSET +
-        moe_dispatch_defs::RANK_LIST_NUM * epWorldSize);
+    int64_t expectedDim0 =
+        static_cast<int64_t>(moe_dispatch_defs::ELASTIC_INFO_OFFSET + moe_dispatch_defs::RANK_LIST_NUM * epWorldSize);
 
     if (shape->GetStorageShape().GetDimNum() != moe_dispatch_defs::ONE_DIM) {
         OPS_LOG_E(nodeName, "elasticInfo dim must be 1, but current dim num is %lu.",
-            shape->GetStorageShape().GetDimNum());
+                  shape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
     if (shape->GetStorageShape().GetDim(0) != expectedDim0) {
-        OPS_LOG_E(nodeName, "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
-            "elasticInfo's dim0 is %ld, epWorldSize is %u.",
-            shape->GetStorageShape().GetDim(0), epWorldSize);
+        OPS_LOG_E(nodeName,
+                  "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
+                  "elasticInfo's dim0 is %ld, epWorldSize is %u.",
+                  shape->GetStorageShape().GetDim(0), epWorldSize);
         return ge::GRAPH_FAILED;
     }
 
@@ -76,8 +76,8 @@ inline ge::graphStatus CheckShape(
 
 // ========== dtype 校验 ==========
 
-inline ge::graphStatus CheckDtype(
-    const gert::CompileTimeTensorDesc* desc, const char* nodeName) {
+inline ge::graphStatus CheckDtype(const gert::CompileTimeTensorDesc *desc, const char *nodeName)
+{
     if (desc == nullptr) {
         OPS_LOG_E(nodeName, "elasticInfo desc is null.");
         return ge::GRAPH_FAILED;
@@ -87,7 +87,7 @@ inline ge::graphStatus CheckDtype(
     ge::DataType dtype = desc->GetDataType();
     if (dtype != ge::DT_INT32 && dtype != ge::DT_INT64) {
         OPS_LOG_E(nodeName, "elasticInfo dtype should be int32 or int64, but got %s.",
-            Ops::Base::ToString(dtype).c_str());
+                  Ops::Base::ToString(dtype).c_str());
         return ge::GRAPH_FAILED;
     }
 

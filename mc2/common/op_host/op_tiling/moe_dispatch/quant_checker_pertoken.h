@@ -24,15 +24,14 @@ namespace moe_dispatch {
 
 class PerTokenChecker : public DynamicQuantCheckerBase {
 public:
-    PerTokenChecker()
-        : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT) {}
+    PerTokenChecker() : DynamicQuantCheckerBase(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)
+    {
+    }
 
     // dynamicScales 校验
-    ge::graphStatus CheckDynamicScales(
-        gert::TilingContext* ctx,
-        const ScalesTensorInfo& info,
-        uint32_t expectedDim0,
-        uint32_t h) const override {
+    ge::graphStatus CheckDynamicScales(gert::TilingContext *ctx, const ScalesTensorInfo &info, uint32_t expectedDim0,
+                                       uint32_t h) const override
+    {
         // PerToken 必须有 dynamicScales
         if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
@@ -47,18 +46,21 @@ public:
     }
 
     // dynamicScales 维度数 - 1D
-    uint32_t GetDynamicScalesDimNum() const override {
+    uint32_t GetDynamicScalesDimNum() const override
+    {
         return moe_dispatch_defs::DYNAMIC_SCALE_ONE_DIM_NUM;
     }
 
     // dynamicScales dtype
-    ge::DataType GetDynamicScalesDtype() const override {
+    ge::DataType GetDynamicScalesDtype() const override
+    {
         return ge::DT_FLOAT;
     }
 
     // tokenMsgSize 计算
     // PerToken: AlignUp(AlignUp(h, 32) + 4, 512)
-    uint32_t CalcTokenMsgSize(uint32_t h) const override {
+    uint32_t CalcTokenMsgSize(uint32_t h) const override
+    {
         uint32_t alignedH = moe_dispatch_utils::AlignUp(h, moe_dispatch_defs::ALIGN_32);
         uint32_t totalSize = alignedH + moe_dispatch_defs::QUANT_HS_OFFSET;
         return moe_dispatch_utils::AlignUp(totalSize, moe_dispatch_defs::ALIGN_512);
