@@ -26,6 +26,7 @@ class CubeOp {
     static constexpr uint32_t ATTEN_ENABLE = SFAGT::atten_enable;
     static constexpr bool HAS_ROPE = SFAGT::has_rope;
     static constexpr bool IS_BSND = SFAGT::is_bsnd;
+    static constexpr bool IS_DETERMINISTIC = SFAGT::is_deterministic;
 
 public:
     __aicore__ inline CubeOp(){};
@@ -49,16 +50,43 @@ private:
                                                                        const int64_t queryRopeGmOffset,
                                                                        const int64_t keyGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset,
+                                                                       const int64_t outGmOffset, 
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
                                                                        const RunInfo &runInfo);
 
+    __aicore__ inline __attribute__((always_inline)) void cube1ProcessSparse(const int64_t queryGmOffset,
+                                                                       const int64_t queryRopeGmOffset,
+                                                                       const int64_t keyGmOffset,
+                                                                       const int64_t indicesGmOffset,
+                                                                       const int64_t outGmOffset, 
+                                                                       const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const int32_t lastBlockSize,
+                                                                       const bool isLastBasicBlock);
+
+    __aicore__ inline __attribute__((always_inline)) void cube1ProcessDense(const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const RunInfo &runInfo);
+
+    __aicore__ inline __attribute__((always_inline)) void cube2ProcessSparse(const int64_t dyGmOffset,
+                                                                       const int64_t valueGmOffset,
+                                                                       const int64_t indicesGmOffset,
+                                                                       const int64_t outGmOffset, 
+                                                                       const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const int32_t lastBlockSize,
+                                                                       const bool isLastBasicBlock);
+
     __aicore__ inline __attribute__((always_inline)) void cube2Process(const int64_t dyGmOffset,
                                                                        const int64_t valueGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset,
+                                                                       const int64_t outGmOffset, 
                                                                        const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const RunInfo &runInfo);
+
+    __aicore__ inline __attribute__((always_inline)) void cube2ProcessDense(const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
                                                                        const RunInfo &runInfo);
 
@@ -68,7 +96,22 @@ private:
                                                                        const int64_t outGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
-                                                                       const int64_t lastBlockSize,
+                                                                       const int64_t lastBlockSize, 
+                                                                       const bool isLastBasicBlock,
+                                                                       const RunInfo &runInfo);
+
+    __aicore__ inline __attribute__((always_inline)) void cube3ProcessSparse(const int64_t dsGmOffset,
+                                                                       const int64_t keyGmOffset,
+                                                                       const int64_t indicesGmOffset,
+                                                                       const int64_t outGmOffset,
+                                                                       const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const int64_t lastBlockSize, 
+                                                                       const bool isLastBasicBlock);
+
+    __aicore__ inline __attribute__((always_inline)) void cube3ProcessDense(const int32_t blkCntOffset,
+                                                                       const int32_t mmPingPongIdx,
+                                                                       const int64_t lastBlockSize, 
                                                                        const bool isLastBasicBlock,
                                                                        const RunInfo &runInfo);
 
@@ -84,7 +127,7 @@ private:
     __aicore__ inline __attribute__((always_inline)) void cube5Process(const int64_t pGmOffset,
                                                                        const int64_t dyGmOffset,
                                                                        const int64_t indicesGmOffset,
-                                                                       const int64_t outGmOffset,
+                                                                       const int64_t outGmOffset, 
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
                                                                        const RunInfo &runInfo);
@@ -166,8 +209,8 @@ private:
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
     GlobalTensor<float> dvWorkspaceGm;
-    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
-    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
+    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dk
+    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dv
     // workspace
     uint32_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
@@ -358,8 +401,8 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
 
     // scatter add
     int64_t mm4ResAddr = usedWorkspaceLen / sizeof(float);
-    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSizeDtotal * 2;
-    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * 2 * sizeof(float);
+    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSizeDtotal * SCATTER_BUFFER_NUM;
+    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * SCATTER_BUFFER_NUM * sizeof(float);
 
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);

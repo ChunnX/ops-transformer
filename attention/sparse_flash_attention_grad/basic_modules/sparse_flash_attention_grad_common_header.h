@@ -16,12 +16,15 @@
 #include <limits>
 #include <type_traits>
 #include "kernel_operator.h"
+#include "kernel_event.h"
 #include "kernel_tensor.h"
+#include "kernel_macros.h"
 
 namespace SFAG_BASIC {
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
 constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
+constexpr static uint64_t SCATTER_BUFFER_NUM = 3;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -32,13 +35,15 @@ constexpr static uint64_t PER_LOOP_BLOCK_SIZE = 128;
 /////////////////////////////////////////////////////
 
 template <class TILING_CLASS, typename T1, const uint32_t INPUT_LAYOUT = 0, const uint32_t ATTEN_ENABLE = 1,
-          const bool HAS_ROPE = false, const bool IS_BSND = false, typename... Args>
+          const bool HAS_ROPE = false, const bool IS_BSND = false, const bool IS_DETERMINISTIC = false,
+          typename... Args>
 struct SFAG_TYPE {
     using tiling_class = TILING_CLASS;
     using t1 = T1;
     static constexpr uint32_t atten_enable = ATTEN_ENABLE;
     static constexpr bool has_rope = HAS_ROPE;
     static constexpr bool is_bsnd = IS_BSND;
+    static constexpr bool is_deterministic = IS_DETERMINISTIC;
 };
 
 struct RunInfo {
@@ -73,6 +78,23 @@ struct RunInfo {
     bool valid = false;
     bool isSmallS2 = false;
     bool noReload = false;
+    event_t gatherMte2WaitMte3;
+    event_t gatherMte2WaitMte3Pong;
+    event_t scatterVWaitMte3;
+    event_t scatterVWaitMte3Pong;
+    event_t scatterTmpKMte2WaitV;
+    event_t scatterTmpVMte2WaitV;
+    event_t scatterTmpKMte2WaitVPong;
+    event_t scatterTmpVMte2WaitVPong;
+};
+
+struct Nz2NdInfo {
+    int64_t ndFirstAxisRealSize = 0;
+    int64_t ndFirstAxisBaseSize = 0;
+    int64_t ndFirstAxisLoopSize = 0;
+    int64_t ndLastAxis = 0;
+    int64_t loopIdx = 0;
+    int64_t vecCoreOffset = 0;
 };
 
 /////////////////////////////////////////////////////
