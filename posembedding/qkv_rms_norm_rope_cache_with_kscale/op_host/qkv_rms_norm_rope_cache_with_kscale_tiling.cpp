@@ -13,6 +13,7 @@
 #include "log/log.h"
 #include "qkv_rms_norm_rope_cache_with_kscale_contract.h"
 #include "register/op_impl_registry.h"
+#include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
 
 #include <limits>
@@ -172,30 +173,30 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
 void FillTilingData(const ContractInput &input, const ContractTiling &contractTiling, float epsilon,
     QkvRmsNormRopeCacheWithKScaleTilingData &tilingData)
 {
-    tilingData.set_totalTokens(input.totalTokens);
-    tilingData.set_batch(input.batch);
-    tilingData.set_numQHeads(input.numQHeads);
-    tilingData.set_numKHeads(input.numKHeads);
-    tilingData.set_numVHeads(input.numVHeads);
-    tilingData.set_headDim(input.headDim);
-    tilingData.set_maxSeqLen(input.maxSeqLen);
-    tilingData.set_blockNum(input.blockNum);
-    tilingData.set_blockSize(input.blockSize);
-    tilingData.set_qkvStrideT((input.numQHeads + input.numKHeads + input.numVHeads) * input.headDim);
-    tilingData.set_qkvStrideH(input.headDim);
-    tilingData.set_cacheStrideBlock(input.numKHeads * input.blockSize * input.headDim);
-    tilingData.set_cacheStrideHead(input.blockSize * input.headDim);
-    tilingData.set_cacheStrideToken(input.headDim);
-    tilingData.set_tokenTile(contractTiling.tokenTile);
-    tilingData.set_tokenTilePerAiv(contractTiling.tokenTilePerAiv);
-    tilingData.set_rowTile(contractTiling.rowTile);
-    tilingData.set_rowTileAligned(contractTiling.rowTileAligned);
-    tilingData.set_qkHeadTile(contractTiling.qkHeadTile);
-    tilingData.set_vHeadTile(contractTiling.vHeadTile);
-    tilingData.set_dimTile(contractTiling.dimTile);
-    tilingData.set_flags(QKV_RRC_FLAG_D128_FAST | QKV_RRC_FLAG_ROTATION_L1_RESIDENT |
-        QKV_RRC_FLAG_V_CACHE_WRITE_AFTER_A_READY | QKV_RRC_FLAG_TOKEN_TILE_EVEN | QKV_RRC_FLAG_L0C_DOUBLE_BUFFER);
-    tilingData.set_epsilon(epsilon);
+    tilingData.totalTokens = input.totalTokens;
+    tilingData.batch = input.batch;
+    tilingData.numQHeads = input.numQHeads;
+    tilingData.numKHeads = input.numKHeads;
+    tilingData.numVHeads = input.numVHeads;
+    tilingData.headDim = input.headDim;
+    tilingData.maxSeqLen = input.maxSeqLen;
+    tilingData.blockNum = input.blockNum;
+    tilingData.blockSize = input.blockSize;
+    tilingData.qkvStrideT = (input.numQHeads + input.numKHeads + input.numVHeads) * input.headDim;
+    tilingData.qkvStrideH = input.headDim;
+    tilingData.cacheStrideBlock = input.numKHeads * input.blockSize * input.headDim;
+    tilingData.cacheStrideHead = input.blockSize * input.headDim;
+    tilingData.cacheStrideToken = input.headDim;
+    tilingData.tokenTile = contractTiling.tokenTile;
+    tilingData.tokenTilePerAiv = contractTiling.tokenTilePerAiv;
+    tilingData.rowTile = contractTiling.rowTile;
+    tilingData.rowTileAligned = contractTiling.rowTileAligned;
+    tilingData.qkHeadTile = contractTiling.qkHeadTile;
+    tilingData.vHeadTile = contractTiling.vHeadTile;
+    tilingData.dimTile = contractTiling.dimTile;
+    tilingData.flags = QKV_RRC_FLAG_D128_FAST | QKV_RRC_FLAG_ROTATION_L1_RESIDENT |
+        QKV_RRC_FLAG_V_CACHE_WRITE_AFTER_A_READY | QKV_RRC_FLAG_TOKEN_TILE_EVEN | QKV_RRC_FLAG_L0C_DOUBLE_BUFFER;
+    tilingData.epsilon = epsilon;
 }
 
 } // namespace
@@ -226,8 +227,16 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     FillTilingData(input, contractTiling, epsilon, tilingData);
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData());
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetRawTilingData()->GetData());
-    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
+    const size_t tilingDataSize = sizeof(QkvRmsNormRopeCacheWithKScaleTilingData);
+    OP_CHECK_IF(tilingDataSize % sizeof(uint64_t) != 0,
+        OP_LOGE(context->GetNodeName(), "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
+        return ge::GRAPH_FAILED);
+    const auto ret = memcpy_s(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<const void *>(&tilingData), tilingDataSize);
+    OP_CHECK_IF(ret != EOK,
+        OP_LOGE(context->GetNodeName(), "copy QkvRmsNormRopeCacheWithKScale tiling data failed, ret=%d.", ret),
+        return ge::GRAPH_FAILED);
+    context->GetRawTilingData()->SetDataSize(tilingDataSize);
     context->SetTilingKey(kTilingKeyArch35D128);
     context->SetBlockDim(std::min(CalcTileNum(input.totalTokens, contractTiling.tokenTile), compileInfo->aicNum));
     return ge::GRAPH_SUCCESS;

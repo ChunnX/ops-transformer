@@ -216,13 +216,14 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TileRangeCoversWaveAndEmptyCoreCases)
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TilingDataDefaultsAreStable)
 {
     optiling::QkvRmsNormRopeCacheWithKScaleTilingData tilingData;
-    EXPECT_GT(tilingData.GetDataSize(), 0U);
-    EXPECT_EQ(tilingData.get_tokenTile(), 0U);
+    EXPECT_GT(sizeof(tilingData), 0U);
+    EXPECT_EQ(sizeof(tilingData) % sizeof(uint64_t), 0U);
+    EXPECT_EQ(tilingData.tokenTile, 0U);
 
-    tilingData.set_totalTokens(128);
-    tilingData.set_numQHeads(16);
-    tilingData.set_tokenTile(14);
-    EXPECT_EQ(tilingData.get_totalTokens(), 128U);
-    EXPECT_EQ(tilingData.get_numQHeads(), 16U);
-    EXPECT_EQ(tilingData.get_tokenTile(), 14U);
+    tilingData.totalTokens = 128;
+    tilingData.numQHeads = 16;
+    tilingData.tokenTile = 14;
+    EXPECT_EQ(tilingData.totalTokens, 128U);
+    EXPECT_EQ(tilingData.numQHeads, 16U);
+    EXPECT_EQ(tilingData.tokenTile, 14U);
 }

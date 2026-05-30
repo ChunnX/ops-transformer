@@ -11,38 +11,12 @@
 #ifndef QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_TILING_H_
 #define QKV_RMS_NORM_ROPE_CACHE_WITH_KSCALE_TILING_H_
 
+#include "../op_kernel/qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h"
 #include "register/op_impl_registry.h"
-#include "register/tilingdata_base.h"
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(QkvRmsNormRopeCacheWithKScaleTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, totalTokens);
-TILING_DATA_FIELD_DEF(uint32_t, batch);
-TILING_DATA_FIELD_DEF(uint32_t, numQHeads);
-TILING_DATA_FIELD_DEF(uint32_t, numKHeads);
-TILING_DATA_FIELD_DEF(uint32_t, numVHeads);
-TILING_DATA_FIELD_DEF(uint32_t, headDim);
-TILING_DATA_FIELD_DEF(uint32_t, maxSeqLen);
-TILING_DATA_FIELD_DEF(uint32_t, blockNum);
-TILING_DATA_FIELD_DEF(uint32_t, blockSize);
-TILING_DATA_FIELD_DEF(uint32_t, qkvStrideT);
-TILING_DATA_FIELD_DEF(uint32_t, qkvStrideH);
-TILING_DATA_FIELD_DEF(uint32_t, cacheStrideBlock);
-TILING_DATA_FIELD_DEF(uint32_t, cacheStrideHead);
-TILING_DATA_FIELD_DEF(uint32_t, cacheStrideToken);
-TILING_DATA_FIELD_DEF(uint32_t, tokenTile);
-TILING_DATA_FIELD_DEF(uint32_t, tokenTilePerAiv);
-TILING_DATA_FIELD_DEF(uint32_t, rowTile);
-TILING_DATA_FIELD_DEF(uint32_t, rowTileAligned);
-TILING_DATA_FIELD_DEF(uint32_t, qkHeadTile);
-TILING_DATA_FIELD_DEF(uint32_t, vHeadTile);
-TILING_DATA_FIELD_DEF(uint32_t, dimTile);
-TILING_DATA_FIELD_DEF(uint32_t, flags);
-TILING_DATA_FIELD_DEF(float, epsilon);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(QkvRmsNormRopeCacheWithKScale, QkvRmsNormRopeCacheWithKScaleTilingData)
+using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
 struct QkvRmsNormRopeCacheWithKScaleCompileInfo {
     uint32_t aicNum = 0;
