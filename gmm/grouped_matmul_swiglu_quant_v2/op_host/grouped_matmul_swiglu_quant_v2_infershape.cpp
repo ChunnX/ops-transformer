@@ -18,6 +18,8 @@
 #include "util/math_util.h"
 #include "graph/utils/type_utils.h"
 
+#include <sstream>
+
 using namespace ge;
 namespace ops {
 const int64_t X_INDEX = 0;
@@ -33,6 +35,16 @@ constexpr size_t GMMSQ_INDEX_ATTR_QUANT_DTYPE = 3UL;
 constexpr size_t GMMSQ_INDEX_ATTR_QUANT_MODE = 2UL;
 constexpr size_t QUANT_MODE_MX_TYPE = 2;
 constexpr size_t QUANT_MODE_PERTOKEN_TYPE = 0;
+
+template <typename... Args>
+std::string ListToString(const Args &...args)
+{
+    std::ostringstream oss;
+    bool isFirst = true;
+    using Expander = int[];
+    (void)Expander{0, ((void)(oss << (isFirst ? "" : ", ") << args, isFirst = false), 0)...};
+    return oss.str();
+}
 constexpr int64_t DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE = -1;
 
 static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
@@ -113,14 +125,18 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
         auto xDtype = context->GetInputDataType(X_INDEX);
         auto weightDtype = context->GetDynamicInputDataType(WEIGHT_INDEX, 0);
         OP_CHECK_IF(!isSupportedInputDtypeForDavid(xDtype) || !isSupportedInputDtypeForDavid(weightDtype),
-                OP_LOGE(context->GetNodeName(), "Invalid Input on this platform, expected FLOAT8_E4M3,"
-                            "FLOAT8_E5M2, FLOAT4_E2M1, INT_8, HIFLOAT8, but actual value of x is %s, weight is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(),
-                            ge::TypeUtils::DataTypeToSerialString(weightDtype).c_str()), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    "GroupedMatmulSwigluQuantV2", "x, weight",
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(xDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(weightDtype)),
+                    "on this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
+                    "FLOAT8_E5M2, FLOAT4_E2M1, INT_8 or HIFLOAT8"),
+                return GRAPH_FAILED);
         
         OP_CHECK_IF(*quantMode != QUANT_MODE_MX_TYPE && *quantMode != QUANT_MODE_PERTOKEN_TYPE,
-                OP_LOGE(context->GetNodeName(), "On this platform, quantMode should be 0(Pertoken) or 2(MX),"
-                            " but actual value is %ld.", *quantMode), return GRAPH_FAILED); 
+                OP_LOGE_FOR_INVALID_VALUE("GroupedMatmulSwigluQuantV2", "quant_mode", std::to_string(*quantMode),
+                                          "0(Pertoken) or 2(MX)"),
+                return GRAPH_FAILED);
     }
     auto weightScaleDtype = context->GetDynamicInputDataType(WEIGHTSCALE_INDEX, 0);
     if (*quantMode == QUANT_MODE_MX_TYPE) {

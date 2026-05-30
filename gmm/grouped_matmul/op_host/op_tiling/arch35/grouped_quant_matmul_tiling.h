@@ -15,6 +15,10 @@
 #ifndef GROUPED_QUANT_MATMUL_TILING_H
 #define GROUPED_QUANT_MATMUL_TILING_H
 
+#include <initializer_list>
+#include <sstream>
+#include <string>
+
 #include "../grouped_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "op_host/tiling_base.h"
@@ -74,6 +78,58 @@ constexpr uint64_t DB_REQUIRED_BYTES_SIZE = 14UL;
 constexpr uint32_t SYS_WORKSPACE_SIZES = 16 * 1024 * 1024U;
 constexpr uint32_t CORE_RATIO = 2U;
 } // namespace GmmConstant
+
+template <typename ShapeT>
+std::string ShapeToString(const ShapeT &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+template <typename... Args>
+std::string ListToString(const Args &...args)
+{
+    std::ostringstream oss;
+    bool isFirst = true;
+    using Expander = int[];
+    (void)Expander{0, ((void)(oss << (isFirst ? "" : ", ") << args, isFirst = false), 0)...};
+    return oss.str();
+}
+
+template <typename... Dims>
+std::string ShapeDimsToString(const Dims &...dims)
+{
+    return ListToString(dims...);
+}
+
+template <typename... Args>
+std::string StrCat(const Args &...args)
+{
+    std::ostringstream oss;
+    using Expander = int[];
+    (void)Expander{0, ((void)(oss << args), 0)...};
+    return oss.str();
+}
+
+inline std::string ShapesToString(std::initializer_list<std::string> shapes)
+{
+    std::ostringstream oss;
+    bool isFirst = true;
+    for (const auto &shape : shapes) {
+        if (!isFirst) {
+            oss << ", ";
+        }
+        oss << "[" << shape << "]";
+        isFirst = false;
+    }
+    return oss.str();
+}
 
 enum class QuantMode : uint32_t {
     DEFAULT = 0x0U,
@@ -229,7 +285,7 @@ private:
     void SetPerGroupQuantMode(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
                               const gert::Shape &wShape);
     bool CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const;
-    bool CheckFp4Shape() const;
+    bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckBiasDtype() const;
     bool CheckBiasShape(const gert::StorageShape *biasStorageShape) const;
     bool CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,

@@ -111,7 +111,7 @@ private:
     bool CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
                   const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
                   const gert::Shape &yShape) const;
-    bool CheckFp4Shape() const;
+    bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckCoreNum() const override;
 
     GMMFinalizeRoutingTilingData tilingData_;
