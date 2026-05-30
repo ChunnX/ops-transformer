@@ -113,6 +113,24 @@ void MatmulAllReduceTilingBase::Reset()
     isPerBlock_ = false;
 }
 
+void MatmulAllReduceTilingBase::CalcAllReduceSendRecvParams()
+{
+    auto&& args = MutableMc2MsgData();
+    auto columnNum = args_.orgNValue;
+    auto debugMode = mc2tiling::Mc2TilingUtils::GetDebugMode();
+    if (debugMode == MC2_DEBUG_ONLY_AICPU && args_.orgKValue < args_.orgNValue) {
+        columnNum = args_.orgKValue;
+    }
+    args.sendOff = MutableTCubeTileTilingData().M * args_.orgNValue * args_.outputDtypeSize;
+    args.recvOff = MutableTCubeTileTilingData().M * columnNum * args_.outputDtypeSize;
+    args.sendCnt = MutableTCubeTileTilingData().M * args_.orgNValue;
+    args.recvCnt = MutableTCubeTileTilingData().M * columnNum;
+    args.tailSendOff = MutableTCubeTailTilingData().M * args_.orgNValue * args_.outputDtypeSize;
+    args.tailRecvOff = MutableTCubeTailTilingData().M * columnNum * args_.outputDtypeSize;
+    args.tailSendCnt = MutableTCubeTailTilingData().M * args_.orgNValue;
+    args.tailRecvCnt = MutableTCubeTailTilingData().M * columnNum;
+}
+
 void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
 {
     auto&& args = MutableMc2MsgData();
@@ -130,23 +148,7 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
     args.commOrder = 1; // 0先AiCPU后MM;  1为先MM后AICPU
     args.reuseMode = MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt; // 数据空间被使用
 
-    // 只通信不计算模式下，如果K < N，sendOff的offset和sendCnt需要根据K计算
-    auto columnNum = args_.orgNValue;
-    if (debugMode == MC2_DEBUG_ONLY_AICPU && args_.orgKValue < args_.orgNValue) {
-        columnNum = args_.orgKValue;
-    }
-
-    // AllReduce
-    args.sendOff = MutableTCubeTileTilingData().M * args_.orgNValue * args_.outputDtypeSize;
-    args.recvOff = MutableTCubeTileTilingData().M * columnNum * args_.outputDtypeSize;
-    args.sendCnt = MutableTCubeTileTilingData().M * args_.orgNValue;
-    args.recvCnt = MutableTCubeTileTilingData().M * columnNum;
-
-    // 通信公式化Tiling计算中，可能有多个尾块
-    args.tailSendOff = MutableTCubeTailTilingData().M * args_.orgNValue * args_.outputDtypeSize;
-    args.tailRecvOff = MutableTCubeTailTilingData().M * columnNum * args_.outputDtypeSize;
-    args.tailSendCnt = MutableTCubeTailTilingData().M * args_.orgNValue;
-    args.tailRecvCnt = MutableTCubeTailTilingData().M * columnNum;
+    CalcAllReduceSendRecvParams();
 
     // 总共发送的次数
     args.totalCnt = static_cast<uint64_t>(MutableRCSTilingData().rankM) * \

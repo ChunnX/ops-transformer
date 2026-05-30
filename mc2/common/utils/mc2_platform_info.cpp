@@ -15,7 +15,7 @@
 
 #include "platform/platform_info.h"
 #include "mc2_common_log.h"
-#include "runtime/runtime/base.h"
+#include "runtime/rt_external_base.h"
 
 namespace ops {
 constexpr uint32_t VERSION_SIZE = 32;
