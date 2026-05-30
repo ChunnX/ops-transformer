@@ -40,27 +40,6 @@ struct MoeEpDispatchTilingData {
     MoeEpDispatchInfo moeEpDispatchInfo;
 };
 
-struct MoeEpDispatchA2Info {
-    MoeEpCommonTilingData cfg;
-    uint32_t doCpuSync          = 1;
-    uint32_t isCached           = 0;
-    uint32_t networkMode        = 0;
-    uint32_t numScaleupRanks    = 0;
-    uint32_t numScaleoutRanks   = 0;
-    uint32_t numAivStage1       = 0;
-    uint32_t numAivStage2       = 0;
-    uint32_t aivNum             = 0;
-    uint64_t hostPinnedCounterAddr = 0;
-    uint64_t totalWinSizeEp     = 0;
-    uint64_t totalUbSize        = 0;
-    bool reserved1              = false;
-    bool reserved2              = false;
-};
 
-struct MoeEpDispatchA2TilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling;
-    MoeEpDispatchA2Info moeEpDispatchInfo;
-};
 
 #endif  // MOE_EP_DISPATCH_TILING_DATA_H
