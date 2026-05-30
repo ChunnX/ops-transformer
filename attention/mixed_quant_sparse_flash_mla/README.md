@@ -60,9 +60,7 @@
 
 ## 约束说明
 -   该接口支持aclgraph模式。
--   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值仅支持640，支持两种组织形式：
-    -   **组织形式一（quant\_mode=1）**：按kv\_rope、kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；kv\_nope数据类型为`float8_e4m3fn`，nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
-    -   **组织形式二（quant\_mode=2）**：按kv\_rope、hif8\_kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；hif8\_kv\_nope数据类型为`hybrid float8`（HiF8），nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
+-   参数q中的D仅支持512。ori\_kv、cmp\_kv的D值仅支持640，按kv\_rope、kv\_nope及nope\_quant\_scale顺序拼接，尾部pad 128B对齐至640。其中kv\_rope数据类型为`bfloat16`，rope\_head\_dim为64；kv\_nope数据类型为`float8_e4m3fn`，nope\_head\_dim为448；nope\_quant\_scale数据类型为`float8_e8m0fnu`，nope\_quant\_scale\_dim = nope\_head\_dim \/ tile\_size = 7，整体封装为`float8_e4m3fn`。
 -   参数ori\_kv、cmp\_kv的数据类型必须保持一致，且不可同时为空。
 -   参数q中的N1当前支持64/128，ori\_kv、cmp\_kv中的KV\_N仅支持1。
 -   参数ori\_kv和cmp\_kv中的block\_size1和block\_size2需为16的倍数，最大支持1024；block\_num1及block_num2为PageAttention时block总数。
