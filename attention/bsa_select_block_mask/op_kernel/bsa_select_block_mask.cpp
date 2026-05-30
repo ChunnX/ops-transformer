@@ -26,9 +26,6 @@ __global__ __aicore__ void bsa_select_block_mask(
     __gm__ uint8_t *maskOut,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
-    AscendC::printf("[KERNEL ENTRY] BlockIdx=%u, LayoutQ=%d, LayoutKV=%d\n", 
-                    GetBlockIdx(), LayoutQ, LayoutKV);
-    
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(optiling::BSASelectBlockMaskTilingData);
     TPipe tPipe;
