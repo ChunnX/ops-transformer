@@ -32,8 +32,18 @@ these fixed L1/UB regions:
 - Q/K FP8 staging reuses the `qk_after_cube_ub` output DB buffer instead of
   allocating another static region.
 
-`bufferId = tileId & 1` only selects data buffers. It is not used to derive
-CrossCore flag ids; T04 will add fixed semantic flag ids for `A_READY`,
-`C_READY`, and `C_CONSUMED`. `a_rot_l1_nz` participates in the later
-CrossCore-protected AL1 data handoff, but it does not consume AIV intra-core
-event ids.
+T04 adds fixed semantic CrossCore flag ids and wrappers. `bufferId = tileId & 1`
+only selects data buffers; it is not used to derive CrossCore flag ids.
+
+| Edge | Direction | Producer set pipe | Consumer wait pipe | Flag |
+|------|-----------|-------------------|--------------------|------|
+| `A_READY` | AIV -> AIC | `PIPE_MTE3` | `PIPE_MTE1` | `SYNC_A_READY = 0` |
+| `C_READY` | AIC -> AIV | `PIPE_FIX` | `PIPE_V` | `SYNC_C_READY = 1` |
+| `C_CONSUMED` | AIV -> AIC | `PIPE_MTE3` | `PIPE_FIX` | `SYNC_C_CONSUMED = 2` |
+
+AIV code sets or waits only the base flag id. AIC wrappers handle both AIV0 and
+AIV1 using `flag + 16` for AIV1 and the base id for AIV0. The T04 helpers are
+defined but not yet called from the stub compute path; T06/T08/T10 will attach
+them to the real producer/consumer stages. `a_rot_l1_nz` participates in the
+later CrossCore-protected AL1 data handoff, but it does not consume AIV
+intra-core event ids.

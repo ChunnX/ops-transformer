@@ -21,7 +21,11 @@ Current state:
 4. T03 adds static GM/L1/UB tensor binding. `rotation_l1_nz` is AIC-only,
    `a_rot_l1_nz` is the Cube AL1 data slot shared by the later AIV->AIC
    protocol, and `bufferId = tileId & 1` only selects data buffers.
-5. Synchronization and real compute are left to later tasks.
-6. Implementation work must follow `TASKS.md`.
-7. After each task is coded and verified, update `TASKS.md` and commit the
+5. T04 adds fixed CrossCore flag ids and wrappers for `A_READY`, `C_READY`, and
+   `C_CONSUMED`. CrossCore flag ids are semantic constants and are not derived
+   from pingpong `bufferId` or loop generation.
+6. Real compute and the concrete synchronization call sites are left to later
+   tasks.
+7. Implementation work must follow `TASKS.md`.
+8. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.

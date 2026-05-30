@@ -25,6 +25,18 @@ constexpr uint32_t QKV_RRC_DOUBLE_BUFFER_NUM = 2U;
 constexpr uint32_t QKV_RRC_HEAD_DIM_D128 = 128U;
 constexpr uint32_t QKV_RRC_KIB = 1024U;
 
+constexpr uint8_t QKV_RRC_SYNC_MODE4 = 4U;
+constexpr uint64_t QKV_RRC_FLAG_ID_MAX = 16U;
+constexpr uint64_t SYNC_A_READY = 0U;
+constexpr uint64_t SYNC_C_READY = 1U;
+constexpr uint64_t SYNC_C_CONSUMED = 2U;
+
+static_assert(SYNC_A_READY != SYNC_C_READY && SYNC_A_READY != SYNC_C_CONSUMED &&
+        SYNC_C_READY != SYNC_C_CONSUMED,
+    "QkvRmsNormRopeCacheWithKScale CrossCore flags must keep unique semantic ids.");
+static_assert(SYNC_C_CONSUMED < QKV_RRC_FLAG_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale CrossCore base flag ids must not overlap AIV1 offset.");
+
 constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_INPUT_ONE_BUFFER_BYTES;
@@ -163,6 +175,78 @@ __aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
 __aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
 {
     return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void SetAivToAic(uint64_t syncFlag)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
+#else
+    (void)syncFlag;
+#endif
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void WaitAivToAic(uint64_t syncFlag)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
+    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
+#else
+    (void)syncFlag;
+#endif
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void SetAicToAiv(uint64_t syncFlag)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag + QKV_RRC_FLAG_ID_MAX);
+    CrossCoreSetFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
+#else
+    (void)syncFlag;
+#endif
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
+#else
+    (void)syncFlag;
+#endif
+}
+
+__aicore__ inline void NotifyAReadyToAic()
+{
+    SetAivToAic<PIPE_MTE3>(SYNC_A_READY);
+}
+
+__aicore__ inline void WaitAReadyFromAiv()
+{
+    WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
+}
+
+__aicore__ inline void NotifyCReadyToAiv()
+{
+    SetAicToAiv<PIPE_FIX>(SYNC_C_READY);
+}
+
+__aicore__ inline void WaitCReadyFromAic()
+{
+    WaitAicToAiv<PIPE_V>(SYNC_C_READY);
+}
+
+__aicore__ inline void NotifyCConsumedToAic()
+{
+    SetAivToAic<PIPE_MTE3>(SYNC_C_CONSUMED);
+}
+
+__aicore__ inline void WaitCConsumedFromAiv()
+{
+    WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
 }
 
 __aicore__ inline uint32_t GetCubeIndex()

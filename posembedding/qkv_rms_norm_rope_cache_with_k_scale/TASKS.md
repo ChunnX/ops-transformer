@@ -20,7 +20,7 @@
 | T01 | Controller and basic block skeleton | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 9 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Re-ran `--pkg` after splitting the D=128 fast-path kernel template into its own header. | 76d2f307f plus this commit |
 | T02 | AIV local slice and tail row range | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT, and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
 | T03 | Static buffer and tensor binding | Done | Direct `LocalTensor<T>(TPosition, offset, size)` binding without `TPipe`/`TBuf`; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
-| T04 | CrossCore wrappers and flag ids | Not started | Kernel compile + static review | |
+| T04 | CrossCore wrappers and flag ids | Done | Added fixed semantic flags `SYNC_A_READY/C_READY/C_CONSUMED` and AIC/AIV wrappers; static review confirmed only `flag + 16` AIV1 handling and no `bufferId`/generation-derived flags; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
 | T05 | Intra-core event constants and Init/End | Not started | Kernel compile + event id static check | |
 | T06 | AIV Q/K/V preprocess | Not started | Kernel compile + preprocess UT | |
 | T07 | AIC rotation resident and Cube matmul | Not started | Kernel compile + Cube UT | |
@@ -34,8 +34,7 @@
 
 ## Next Task
 
-T04 is the next implementation task. It should add fixed semantic CrossCore
-wrappers and flag ids for `A_READY`, `C_READY`, and `C_CONSUMED`, without
-deriving flag ids from `bufferId` or generation. Keep the T03 AL1/UB tensor
-binding unchanged: `bufferId` only selects data buffers, and `a_rot_l1_nz` is a
-CrossCore-protected Cube AL1 data slot, not an AIV intra-core event allocation.
+T05 is the next implementation task. It should add intra-core event constants
+and Init/End pairing for the live UB/L1 reuse paths while keeping every event id
+within the allowed range. Do not allocate AIV intra-core event ids for
+`a_rot_l1_nz`; it remains a CrossCore-protected Cube AL1 data slot.
