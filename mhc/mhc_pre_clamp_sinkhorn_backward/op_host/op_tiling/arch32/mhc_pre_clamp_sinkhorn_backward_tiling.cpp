@@ -60,6 +60,7 @@ using namespace AscendC;
 
 namespace optiling {
 
+namespace {
 ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int64_t seqLength, int64_t n, int64_t c)
 {
     auto opName = context->GetNodeName();
@@ -302,6 +303,7 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
 
     return ge::GRAPH_SUCCESS;
 }
+} // namespace
 
 ge::graphStatus TilingMhcPreClampSinkhornBackward(gert::TilingContext *context)
 {
