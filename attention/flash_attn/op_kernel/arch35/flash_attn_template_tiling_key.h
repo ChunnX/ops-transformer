@@ -46,7 +46,7 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
                       //    1: PA_BBND
                       //    2: PA_BNBD
                       //    3: PA_NZ
-                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2, 3),
+                      ASCENDC_TPL_UINT_DECL(KvLayoutType, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 3),
 
                       // hasAttenMask (1-bit)
                       //    0: false
