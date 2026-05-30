@@ -101,6 +101,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo) {
+    if (runInfo.taskStep != TASK_C1C2) {
+        return;
+    }
     this->vecBlock.ProcessVec1(this->constInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
