@@ -109,13 +109,23 @@ private:
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
         uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX)? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        return ctx_.GetWindAddrByRankId(ctxIdx, rankId, curRankId) + winDataSizeOffset;
+        if (ctxIdx == COMM_EP_IDX) {
+            return ctx_.GetWindAddrByRankId(rankId, curRankId) + winDataSizeOffset;
+        }
+        // TP 域已下线，本分支随 IsNeedAllgather 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindAddrByRankId(tpCtx, rankId, curRankId) + winDataSizeOffset;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
-        return ctx_.GetWindStateAddrByRankId(ctxIdx, rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
+        if (ctxIdx == COMM_EP_IDX) {
+            return ctx_.GetWindStateAddrByRankId(rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
+        }
+        // TP 域已下线，本分支随 IsNeedAllgather 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        return Mc2Kernel::GetBaseWindStateAddrByRankId(tpCtx, rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
@@ -314,10 +324,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     // 检查hcclwinsize是否越界
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
     totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
-    ctx_.Set(mc2Context);
+    ctx_.Set(mc2Context, tilingData->moeDistributeDispatchV2Info.epWorldSize);
     ctx_.InitEpAndCheck(totalWinSizeEp_, tpipe_, expandXOut);
     if constexpr (IsNeedAllgather) {
-        ctx_.InitTpAndCheck(totalWinSizeTp_, tpipe_, expandXOut);
+        // TP 域已下线，本分支随 IsNeedAllgather 一并待删
+        auto* tpCtx = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<1>();
+        CheckWindowSize(totalWinSizeTp_, Mc2Kernel::GetWinSize(tpCtx), tpipe_, expandXOut);
     }
 
     totalUbSize_ = static_cast<uint32_t>(tilingData->moeDistributeDispatchV2Info.totalUbSize);
@@ -350,8 +362,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     statusDataSpaceGm_ = ctx_.GetStatusDataSpaceGm();
-    uint32_t epRankIdHccl = ctx_.GetEpRankId(epRankIdOriginal_);
-    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize(epWorldSizeOriginal_);
+    uint32_t epRankIdHccl = ctx_.GetEpRankId();
+    uint32_t epWorldSizeHccl = ctx_.GetEpWorldSize();
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempEpRankId = 0; tempEpRankId < epWorldSize_; tempEpRankId++) {
         OOMCheckAddrRange<XOutType>((__gm__ XOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempEpRankId)),
