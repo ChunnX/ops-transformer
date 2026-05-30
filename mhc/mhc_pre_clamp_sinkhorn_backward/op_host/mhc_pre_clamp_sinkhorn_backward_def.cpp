@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_backward_def.cpp
- * \brief MhcPreSinkhornBackward operator definition
+ * \file mhc_pre_clamp_sinkhorn_backward_def.cpp
+ * \brief MhcPreClampSinkhornBackward operator definition
  */
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MhcPreSinkhornBackward : public OpDef {
+class MhcPreClampSinkhornBackward : public OpDef {
 public:
-    explicit MhcPreSinkhornBackward(const char* name) : OpDef(name)
+    explicit MhcPreClampSinkhornBackward(const char* name) : OpDef(name)
     {
         this->Input("grad_hin")
             .ParamType(REQUIRED)
@@ -114,6 +114,6 @@ public:
     }
 };
 
-OP_ADD(MhcPreSinkhornBackward);
+OP_ADD(MhcPreClampSinkhornBackward);
 
 }

@@ -10,22 +10,22 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/op_tiling/arch32/mhc_pre_sinkhorn_backward_tiling.h"
+#include "../../../op_host/op_tiling/arch32/mhc_pre_clamp_sinkhorn_backward_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
 using namespace std;
 
-class MhcPreSinkhornBackwardTiling : public testing::Test {
+class MhcPreClampSinkhornBackwardTiling : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MhcPreSinkhornBackwardTiling SetUp" << std::endl;
+        std::cout << "MhcPreClampSinkhornBackwardTiling SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MhcPreSinkhornBackwardTiling TearDown" << std::endl;
+        std::cout << "MhcPreClampSinkhornBackwardTiling TearDown" << std::endl;
     }
 };
 
@@ -42,7 +42,7 @@ static string TilingData2Str(void *buf, size_t size)
     return result;
 }
 
-TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
+TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
 {
     int64_t B = 2;
     int64_t S = 128;
@@ -58,7 +58,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
     optiling::MhcPreSinkhornBackwardCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
-        "MhcPreSinkhornBackward",
+        "MhcPreClampSinkhornBackward",
         {
             {{{B, S, C}, {B, S, C}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -95,7 +95,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B2_S128_N4_C256)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
-TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
+TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
 {
     int64_t B = 1;
     int64_t S = 512;
@@ -111,7 +111,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
     optiling::MhcPreSinkhornBackwardCompileInfo compileInfo = {};
 
     gert::TilingContextPara tilingContextPara(
-        "MhcPreSinkhornBackward",
+        "MhcPreClampSinkhornBackward",
         {
             {{{B, S, C}, {B, S, C}}, ge::DT_BF16, ge::FORMAT_ND},
             {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -148,7 +148,7 @@ TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B1_S512_N4_C128)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingDataStr, expectWorkspaces);
 }
 
-TEST_F(MhcPreSinkhornBackwardTiling, test_tiling_B4_S64_N4_C512)
+TEST_F(MhcPreClampSinkhornBackwardTiling, test_tiling_B4_S64_N4_C512)
 {
     int64_t B = 4;
     int64_t S = 64;

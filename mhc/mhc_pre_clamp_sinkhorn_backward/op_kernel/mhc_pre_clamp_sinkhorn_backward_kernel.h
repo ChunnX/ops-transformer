@@ -12,8 +12,8 @@
  * \file MhcPreGradKernel.h
  * \brief
  */
-#ifndef MHC_PRE_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_GRAD_KERNEL_H
-#define MHC_PRE_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_GRAD_KERNEL_H
+#ifndef MHC_PRE_CLAMP_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_CLAMP_SINKHORN_BACKWARD_KERNEL_H
+#define MHC_PRE_CLAMP_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_CLAMP_SINKHORN_BACKWARD_KERNEL_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -58,7 +58,7 @@ __aicore__ inline void kahanCustom(LocalTensor<T> &inputTensor, LocalTensor<T> s
 } // namespace
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-class MhcPreGradKernel {
+class MhcPreClampSinkhornBackwardKernel {
 public:
     using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
     using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
@@ -344,7 +344,7 @@ private:
 };
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::GetHcScaleAndHcBase()
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::GetHcScaleAndHcBase()
 {
     // HcBase 常驻 UB
     hcScalePre_ = hcScaleGlobal_.GetValue(0);
@@ -365,7 +365,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::GetHcScaleAnd
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(const int64_t taskOffset,
                                                                                 const int32_t tileTaskCount)
 {
     gradHResLocal_ = inputGradQueue.AllocTensor<T>();
@@ -553,7 +553,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::SinkhornGrad(
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradHHat2(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradHHat2(const int64_t taskOffset,
                                                                                     const int32_t tileTaskCount)
 {
     SinkhornGrad(taskOffset, tileTaskCount);
@@ -689,7 +689,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradHH
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradX1(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradX1(const int64_t taskOffset,
                                                                                  const int32_t tileTaskCount,
                                                                                  const int32_t innerId)
 {
@@ -776,7 +776,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradX1
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeDeterministic(GlobalTensor<float> &inputGm,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ComputeDeterministic(GlobalTensor<float> &inputGm,
                                                                                         GlobalTensor<float> &outputGm,
                                                                                         const int64_t dimR,
                                                                                         const int64_t dimA)
@@ -811,7 +811,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeDeterm
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPre(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPre(const int64_t taskOffset,
                                                                                   const int32_t tileTaskCount,
                                                                                   const int32_t innerId)
 {
@@ -935,7 +935,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeGradPr
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeScaleBias()
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ComputeScaleBias()
 {
     auto dBiasLocal = dBiasLocalList_[scalePos_];
     auto dScaleLocal = dBiasLocal[tileCoreBS_ * (n_ * n_ + PRE_POST_NUM * n_)];
@@ -994,7 +994,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ComputeScaleB
 */
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::Process()
 {
     if ASCEND_IS_AIV {
         GetHcScaleAndHcBase();
@@ -1096,7 +1096,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::Process()
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul1(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul1(const int64_t taskOffset,
                                                                                   const int32_t mm1M)
 {
     if (mm1M <= 0)
@@ -1112,7 +1112,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul
 }
 
 template <typename TYPE_X, typename T, bool DETERMINISTIC>
-__aicore__ inline void MhcPreGradKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul2(const int64_t taskOffset,
+__aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTIC>::ProcessMatmul2(const int64_t taskOffset,
                                                                                   const int32_t mm2K)
 {
     if (mm2K <= 0)

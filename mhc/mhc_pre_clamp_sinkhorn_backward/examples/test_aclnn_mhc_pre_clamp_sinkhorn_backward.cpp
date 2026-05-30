@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_mhc_pre_sinkhorn_backward.h"
+#include "aclnnop/aclnn_mhc_pre_clamp_sinkhorn_backward.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -331,7 +331,7 @@ int main()
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclnn_ret = aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
+    aclnnStatus aclnn_ret = aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize(
         tensors.grad_hin, tensors.grad_h_post, tensors.grad_h_res,
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
@@ -339,7 +339,7 @@ int main()
         hc_eps,
         tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
         &workspace_size, &executor);
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
+    CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreClampSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 
     void *workspace_addr = nullptr;
@@ -348,7 +348,7 @@ int main()
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc workspace failed, error: %d\n", ret); return -1);
     }
 
-    aclnn_ret = aclnnMhcPreSinkhornBackward(workspace_addr, workspace_size, executor, stream);
+    aclnn_ret = aclnnMhcPreClampSinkhornBackward(workspace_addr, workspace_size, executor, stream);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornBackward failed, error: %d\n", aclnn_ret); return -1);
 
     CHECK_RET(aclrtSynchronizeStream(stream) == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed\n"); return -1);

@@ -14,7 +14,7 @@
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_grad_kernel.h"
+#include "mhc_pre_clamp_sinkhorn_backward_kernel.h"
 
 using namespace AscendC;
 
