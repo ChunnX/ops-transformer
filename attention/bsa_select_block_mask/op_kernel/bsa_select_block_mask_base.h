@@ -76,6 +76,8 @@ private:
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
 {
+    AscendC::printf("[InitConstInfo] Enter, BlockIdx=%u\n", GetBlockIdx());
+    
     if ASCEND_IS_AIV {
         constInfo.aivIdx = GetBlockIdx();
         constInfo.aicIdx = constInfo.aivIdx / 2;
@@ -273,6 +275,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
 template <typename BSAT>
 __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
 {
+    AscendC::printf("[Process] Enter, BlockIdx=%u\n", GetBlockIdx());
+    
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
         radixTopKService.AllocEventID();
