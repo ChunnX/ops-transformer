@@ -42,18 +42,15 @@
 // ----- v10 Tiling 结构（host 端填充、device 端读取）-----
 //   通过 tilingGM 传给 ascendc kernel；host driver alloc + memcpy 一份到 device。
 //   host 和 device 端都 include 本头，结构对齐必须一致（POD struct + 显式字段类型）。
+// 彻底精简版：只保留 Process 实际读取的 tiling 字段。
+//   已删 device 不读的字段：epRankId / moeExpertNum / moeExpertPerRankNum /
+//     expertTokenNumsType / hiddenSize（Process 未用）/ segBytes（Process 用 segElemsCapacity 自算）。
 struct MoeDistributeDispatchCcuTeardownTilingData {
-    uint32_t epWorldSize;            // EP 通信域大小（对应 op_def epWorldSize）
-    uint32_t epRankId;                // 本卡 EP rank id
-    uint32_t moeExpertNum;            // MoE 总 expert 数
-    uint32_t moeExpertPerRankNum;     // 本卡 expert 数 = op_def 的 localExpertNum
-    uint32_t bs;                       // batch size
-    uint32_t topK;                     // topK
-    uint32_t hiddenSize;               // H
-    uint32_t expertTokenNumsType;     // 0=前缀和 / 1=数量（v10 简化版 device 不写，仅占位）
-    uint64_t tokenMsgLen;              // = Align256(H) * sizeof(YOutType)（非量化）
-    uint64_t tokenWithMetaLen;         // v15 ★ = tokenMsgLen + 32（含三元组 metadata）
-    uint64_t segBytes;                 // = bs * topK * tokenWithMetaLen，每段固定字节数（含 padding）
+    uint32_t epWorldSize;            // EP 通信域大小（WaitForAllSrcRanks + 段循环）
+    uint32_t bs;                      // batch size
+    uint32_t topK;                    // topK
+    uint64_t tokenMsgLen;            // = Align256(H)*2 [BF16] / Align32(H+H/32) [MXFP8]（metaOffsetElems 用）
+    uint64_t tokenWithMetaLen;       // = tokenMsgLen + 32（commWindow 每槽 data + metadata）
 };
 
 // ----- v13 Kernel 函数前向声明 -----
@@ -67,12 +64,12 @@ struct MoeDistributeDispatchCcuTeardownTilingData {
 #ifdef __ASCENDC_KERNEL_HEADER_AVAILABLE__   // ascendc 编译路径下定义此宏；host gcc 不定义
 #include "kernel_operator.h"
 
+// 彻底精简版签名：只保留 device 端实际读写的 GM。
+//   IN : commCmdInfo（token 数 + sentinel）/ commWindow（接收数据）
+//   OUT: expandX（紧密区）/ assistInfoForCombine（metadata 三元组）
 extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
-    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo,
-    GM_ADDR expandX, GM_ADDR dynamicScales,
-    GM_ADDR assistInfoForCombine, GM_ADDR expertTokenNums,
-    GM_ADDR commWindow,                       // v13 ★ device 端实际读的接收 window
-    GM_ADDR workspace, GM_ADDR tilingGM);
+    GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR expandX,
+    GM_ADDR assistInfoForCombine, GM_ADDR tilingGM);
 #endif
 
 #endif // MOE_DISTRIBUTE_DISPATCH_CCU_TEARDOWN_H

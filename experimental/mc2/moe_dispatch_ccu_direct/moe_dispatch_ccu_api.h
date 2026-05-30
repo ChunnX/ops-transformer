@@ -75,6 +75,30 @@ protected:
 
     // 清除本端 tag 标记的 totalCntXn 与所有 wishCntXn。
     HcclResult ClearAllPeersArriveNotify(std::string tag);
+
+    // ============ v19 ★ 标量写 GM（动态地址 + token）占位声明 ============
+    //
+    // 【为何需要】CCU 算法要把 device 端算出的标量（Variable，如 expand_idx 计数、tokenCount、
+    //   ready 状态位）写回 GM 的"运行期动态地址"（base 来自 Load，非 host 编译期立即数）。
+    //
+    // 【公开 API 缺口（亲核实 ccu_kernel.h CANN 9.1.0）】CcuKernel 公开的标量写只有一个：
+    //       void StoreVariable(const CcuRep::Variable &var, uint64_t addr);
+    //   它的 addr 是 **host 编译期立即数 uint64_t**，且 **无 token 形参**。
+    //   而 Variable / Address 都不能隐式转 uint64_t（实测编译 no known conversion），
+    //   故无法把"动态地址 Variable"喂给它 → 公开 API 写不了动态地址标量。
+    //
+    // 【底层硬件其实支持】ccu_microcode_v1.h:901
+    //       void StoreXToMem(CcuInstr*, uint16_t dst, uint16_t dstToken, uint16_t src, uint16_t len, ...);
+    //   dst / dstToken 都是寄存器号 → 微码层完全支持 (动态地址寄存器 + token)，只是上层未封装。
+    //
+    // 【本工程处理】与上面 4 个 0.5RTT API 同样的"占位 extern、链接期 SE 补全"模式：
+    //   声明一个语义精确的 helper，让算法表达正确意图、-fsyntax-only 通过；定义由 SE 在 hcomm
+    //   仓补（直接转发到 CcuV2::StoreXToMem，把 addr/token 落成寄存器号）。
+    //   ⚠️ 这是 OPEN_QUESTION：上板前必须确认 hcomm 已补此 API（或改走 AIV teardown 产出这些标量）。
+    //
+    // 语义：把 val 写到 GM 地址 addr（Variable，运行期动态）处的 4 字节，访存用 token 鉴权。
+    HcclResult StoreVariableAt(const CcuRep::Variable &val, const CcuRep::Variable &addr,
+                               const CcuRep::Variable &token);
 };
 
 } // namespace hcomm
