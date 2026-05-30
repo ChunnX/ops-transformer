@@ -27,6 +27,49 @@
 
 using namespace op;
 
+namespace MoeTokenUnpermuteCheck {
+
+static const std::initializer_list<op::DataType> MOE_DTYPE_SUPPORT_LIST_X = {DataType::DT_FLOAT16, DataType::DT_BF16,
+                                                                             DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
+
+static inline bool CheckNotNull(const aclTensor *permutedTokens, const aclTensor *sortedIndices, const aclTensor *out)
+{
+    OP_CHECK_NULL(permutedTokens, return false);
+    OP_CHECK_NULL(sortedIndices, return false);
+    OP_CHECK_NULL(out, return false);
+    return true;
+}
+
+static inline bool CheckDtypeValid(const aclTensor *permutedTokens, const aclTensor *sortedIndices,
+                                   const aclTensor *probsOptional, const aclTensor *out)
+{
+    if (permutedTokens != nullptr && permutedTokens->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokens, MOE_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (sortedIndices != nullptr && sortedIndices->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(sortedIndices, MOE_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
+    }
+    if (probsOptional != nullptr && probsOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(probsOptional, MOE_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_DTYPE_SUPPORT_LIST_X, return false);
+        OP_CHECK_DTYPE_NOT_SAME(permutedTokens, out, return false);
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor *permutedTokens, const aclTensor *sortedIndices,
+                               const aclTensor *probsOptional, const aclTensor *out)
+{
+    CHECK_RET(CheckNotNull(permutedTokens, sortedIndices, out), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckDtypeValid(permutedTokens, sortedIndices, probsOptional, out), ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace MoeTokenUnpermuteCheck
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,8 +82,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermute,
-        DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
-        DFX_OUT(out));
+                   DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
+                   DFX_OUT(out));
 
     static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2) {
@@ -49,13 +92,13 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
             executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
-    // 参数检查
-    OP_CHECK_NULL(permutedTokens, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
+
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclnnStatus ret = MoeTokenUnpermuteCheck::CheckParams(permutedTokens, sortedIndices, probsOptional, out);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // 固定写法，将输入转换成连续的tensor
     auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
     CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
