@@ -274,6 +274,11 @@ BlockEpilogueDequantFinalizeRoutingDeter<GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROU
                            LocalTensor<DataTypeOut> &yLocal)
 {
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
+    AscendC::printf("DBG_WS_WRITE gAccum=%llu offsetM=%llu vecBaseM=%u firstRow=%llu lastRow=%llu\n",
+        (unsigned long long)groupAccumM_, (unsigned long long)offsetM,
+        curVecBaseM,
+        (unsigned long long)(groupAccumM_ + offsetM),
+        (unsigned long long)(groupAccumM_ + offsetM + curVecBaseM - 1));
     for (uint32_t i = 0; i < curVecBaseM; i++) {
         uint64_t wsRow = groupAccumM_ + offsetM + i;
         uint64_t wsIdx = wsRow * n_ + yOffset;
@@ -517,6 +522,7 @@ __aicore__ inline void BlockEpilogueDequantFinalizeRoutingDeter<
     GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_FUNC_LOCAL_PARAMS>::SetWorkspaceGroupOffset(uint64_t groupAccumM)
 {
     groupAccumM_ = groupAccumM;
+    AscendC::printf("DBG_SET_OFFSET gAccum=%llu\n", (unsigned long long)groupAccumM);
 }
 
 GMM_BLOCK_EPILOGUE_DEQUANT_FINALIZE_ROUTING_DETER_CLASS_LOCAL_PARAMS

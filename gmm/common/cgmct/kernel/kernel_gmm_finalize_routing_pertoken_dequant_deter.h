@@ -306,7 +306,20 @@ public:
             // === tile-level workspace overflow check ===
             int64_t wsAccum   = static_cast<int64_t>(cumulativeGroupM_ - deterSync_.windowStartM);
             int64_t tileWsEnd = wsAccum + tileMOffset + singleM;
+            if ASCEND_IS_AIV {
+                AscendC::printf("DBG_TILE g=%u cum=%llu winStart=%llu wsAccum=%lld mOff=%lld sM=%lld wsEnd=%lld winSize=%llu\n",
+                    groupIdx, (unsigned long long)cumulativeGroupM_,
+                    (unsigned long long)deterSync_.windowStartM,
+                    (long long)wsAccum, (long long)tileMOffset,
+                    (long long)singleM, (long long)tileWsEnd,
+                    (unsigned long long)deterSync_.windowSize);
+            }
             if (tileWsEnd > static_cast<int64_t>(deterSync_.windowSize)) {
+                if ASCEND_IS_AIV {
+                    AscendC::printf("DBG_FLUSH at curGroupM=%llu winStartOld=%llu\n",
+                        (unsigned long long)(cumulativeGroupM_ + static_cast<uint64_t>(tileMOffset)),
+                        (unsigned long long)deterSync_.windowStartM);
+                }
                 deterSync_.curGroupM = cumulativeGroupM_ + static_cast<uint64_t>(tileMOffset);
                 SyncAll<false>();
                 if ASCEND_IS_AIV {
@@ -314,6 +327,11 @@ public:
                 }
                 deterSync_.windowStartM = deterSync_.curGroupM;
                 deterSync_.lowBoundM  = deterSync_.curGroupM + deterSync_.windowSize;
+                if ASCEND_IS_AIV {
+                    AscendC::printf("DBG_FLUSH_DONE newWinStart=%llu newLowBound=%llu\n",
+                        (unsigned long long)deterSync_.windowStartM,
+                        (unsigned long long)deterSync_.lowBoundM);
+                }
                 SyncAll<false>();
             }
             // === end overflow check ===
@@ -355,12 +373,20 @@ public:
         }
         uint64_t coreNumVec = params.gmmParams.coreNum * GetTaskRation();
         uint64_t n = params.gmmParams.matmulTiling->N;
-        for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-            auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
-            if (outRow % coreNumVec != GetBlockIdx())
-                continue;
-            epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
-        }
+        AscendC::printf("DBG_FR winStart=%llu curGroupM=%llu totalM=%llu n=%llu coreNumVec=%llu blockIdx=%u\n",
+            (unsigned long long)deterSync_.windowStartM,
+            (unsigned long long)deterSync_.curGroupM,
+            (unsigned long long)totalM,
+            (unsigned long long)n,
+            (unsigned long long)coreNumVec,
+            GetBlockIdx());
+        // DEBUG: skip DataCopy, only dump offsets
+        // for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
+        //     auto outRow = epilogueDequantOp_.GetRowIndex(deterSync_.windowStartM + mOffset);
+        //     if (outRow % coreNumVec != GetBlockIdx())
+        //         continue;
+        //     epilogueDequantOp_.DeterministicFlushRow(mOffset, outRow, n);
+        // }
     }
 
     __aicore__ inline void operator()(const Params &params)
@@ -397,6 +423,12 @@ public:
                 continue;
             }
             if ((cumulativeGroupM_ + (uint64_t)Get<MNK_M>(problemShape_)) > deterSync_.lowBoundM) {
+                if ASCEND_IS_AIV {
+                    AscendC::printf("DBG_INTER_FLUSH g=%u cum=%llu groupM=%lld lowBound=%llu\n",
+                        groupIdx, (unsigned long long)cumulativeGroupM_,
+                        (long long)Get<MNK_M>(problemShape_),
+                        (unsigned long long)deterSync_.lowBoundM);
+                }
                 deterSync_.curGroupM = cumulativeGroupM_;
                 SyncAll<false>();
                 if ASCEND_IS_AIV {
