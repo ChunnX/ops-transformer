@@ -72,7 +72,8 @@ public:
     __aicore__ inline SCFABlockCube() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, \
         __gm__ uint8_t *query);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, \
+        const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -85,7 +86,8 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, \
+        const ConstInfo &constInfo);
     __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm1SCFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -101,7 +103,8 @@ private:
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-    FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
+    static constexpr bool Q_WITH_ZERO_HEAD = (LAYOUT_T == QSMLA_LAYOUT::TND);
+    FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_WITH_ZERO_HEAD> queryGm;
 
     /* =====================运行时变量==================== */
     CubeCoordInfo coordInfo[3];
@@ -137,10 +140,10 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(
-    __gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo)
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, const ConstInfo &constInfo)
 {
     if ASCEND_IS_AIC {
-        InitGmTensor(cuSeqlensQ, constInfo);
+        InitGmTensor(cuSeqlensQ, sequsedQ, constInfo);
         if constexpr (IS_SPLIT_G) {
             mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
@@ -171,16 +174,23 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManag
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(
-    __gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo)
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ, const ConstInfo &constInfo)
 {
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
     } else {  // QSMLA_LAYOUT::TND
-        GlobalTensor<int32_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        GlobalTensor<int32_t> cuSeqlensQGm;
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        GlobalTensor<int32_t> sequsedQGm;
+        if (sequsedQ != nullptr) {
+            sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
+        }
+        uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
+        ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+        parser.Init(cuSeqlensQGm, sequsedQGm, constInfo.bSize, sequsedQSize);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-            actualSeqQLen, constInfo.actualSeqLenSize);
+            parser);
     }
 }
 
@@ -351,7 +361,8 @@ public:
     __aicore__ inline SCFABlockCubeDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BufferManager, \
         __gm__ uint8_t *query) {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo) {}
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+        const ConstInfo& constInfo) {}
 };
 
 template <typename T>
