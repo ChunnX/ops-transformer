@@ -217,46 +217,7 @@ __aicore__ inline GlobalTensor<INPUT_TYPE> FAGBlockCube<TEMPLATE_ARGS>::GetKVGlo
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::GetCubeVecSharedParams(FagRunInfo &runInfo)
 {
-    if (!runInfo.isSparse) {
-        return;
-    }
-    int32_t s2RealSize = 0;
-    SfagCVSharedParams sharedParams;
-    int32_t ssbufAddress1 = 0;
-    int32_t ssbufAddress2 = sizeof(SfagCVSharedParams);
-    int32_t ssbufAddress3 = 2 * sizeof(SfagCVSharedParams);
 
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15 + 16);
-    
-    auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress1);
-    auto tempTiling = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTiling = *tempTilingSSbuf;
-    s2RealSize = sharedParams.s2RealSize;
-
-    auto tempTilingSSbuf2 = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress2);
-    auto tempTiling2 = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTiling2 = *tempTilingSSbuf2;
-    s2RealSize += sharedParams.s2RealSize;
-
-    sharedParams.s2RealSize = s2RealSize;
-    auto tempTilingSSbuf3 = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress3);
-    auto tempTiling3 = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTilingSSbuf3 = *tempTiling3;
-
-    CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15 + 16);
-    runInfo.commonRunInfo.s2RealSize = s2RealSize;
-    runInfo.actualSelCntOffset = runInfo.commonRunInfo.s2RealSize;
-
-    if (runInfo.commonRunInfo.s2RealSize < 128) {
-        if (!runInfo.isOriKV) {
-            runInfo.isNextS1IdxNoChange = false;
-        } else {
-            runInfo.isNextS1IdxNoChange = runInfo.actualCmpSelectedBlockCount > 0;
-            
-        }
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT

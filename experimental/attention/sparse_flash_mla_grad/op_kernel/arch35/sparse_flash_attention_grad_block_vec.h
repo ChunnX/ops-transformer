@@ -349,7 +349,9 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
         // }
 
         int64_t kvOffset = runInfo.isSparse ? runInfo.keyOffsetWithRope : runInfo.keyOffsetWithRope + s2SrcOffset * constInfo.dTotalSize;
-        kvOffset += tilingData->baseParams.oriSparseMode == 4 ? winStart * constInfo.dTotalSize : 0;
+        if (runInfo.isOriKV) {
+            kvOffset += tilingData->baseParams.oriSparseMode == 4 ? winStart * constInfo.dTotalSize : 0;
+        }
         GlobalTensor<float> dkOutGm = dkWorkSpaceGm[kvOffset];
         // printf("this->vBlockIdx: %u, runInfo.isSparse: %d, kvOffset: %d, runInfo.keyOffsetWithRope: %d, s2SrcOffset: %d, currentMm4SrcOffset: %d, currentMm5SrcOffset: %d, maxLoops: %d\n", this->vBlockIdx, runInfo.isSparse, kvOffset, runInfo.keyOffsetWithRope, s2SrcOffset, currentMm4SrcOffset, currentMm5SrcOffset, maxLoops);
 
@@ -1057,37 +1059,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     FagRunInfo &runInfo, int32_t s2RealSize)
 {
-    if (!runInfo.isSparse) {
-        return;
-    }
-    SfagCVSharedParams sharedParams;
-    sharedParams.s2RealSize = s2RealSize;
-    // runInfo.commonRunInfo.s2RealSize = s2RealSize;
-    /* ssbuf send message */
-    if ASCEND_IS_AIV {
-        int32_t ssbufAddress = vSubBlockIdx * sizeof(SfagCVSharedParams);
-        auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress);
-        auto tempTiling = reinterpret_cast<int32_t *>(&sharedParams);
-        *tempTilingSSbuf = *tempTiling;
-        CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
 
-        int32_t ssbufAddress3 = 2 * sizeof(SfagCVSharedParams);
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-        auto tempTilingSSbuf3 = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress3);
-        auto tempTiling3 = reinterpret_cast<int32_t *>(&sharedParams);
-        *tempTiling3 = *tempTilingSSbuf3;
-        runInfo.commonRunInfo.s2RealSize = sharedParams.s2RealSize;
-        runInfo.actualSelCntOffset = runInfo.commonRunInfo.s2RealSize;
-
-        if (runInfo.commonRunInfo.s2RealSize < 128) {
-            if (!runInfo.isOriKV) {
-                runInfo.isNextS1IdxNoChange = false;
-            } else {
-                runInfo.isNextS1IdxNoChange = runInfo.actualCmpSelectedBlockCount > 0;
-                
-            }
-        }
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
