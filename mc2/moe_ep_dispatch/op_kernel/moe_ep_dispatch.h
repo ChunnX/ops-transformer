@@ -26,185 +26,476 @@ using namespace AscendC;
 static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 
-// ─── Window Slot 内存布局 ─────────────────────────────────────────────
-// 每个 slot 按 perSlotBytes 对齐布局：
-//   Offset 0                        : token_data    (hidden × sizeof(bf16),   ALIGN 16/32)
-//   Offset hidden_bytes_aligned      : scale_factors (仅 FP8 路径, bf16=0,   ALIGN 16)
-//   Offset sf_bytes_aligned          : metadata      (见下方字段,             ALIGN 16)
-//   Offset metadata_bytes_aligned    : mbarrier      (8B, hybrid PC用,        ALIGN 16→16B)
-//   total = perSlotBytes
-//
-// metadata 字段：
-//   topk_idx[K]           : K × 4B   (bf16训练 K=8 → 32B)
-//   topk_weights[K]       : K × 4B   (32B)
-//   src_rank_id           : 4B
-//   src_token_idx         : 4B
-//   target_scaleup_mask   : 4B       (仅 hybrid, bf16训练 ALIGN 后 metadata=80B)
-//
-// ─── Window 累计寻址 ─────────────────────────────────────────────────
-// Direct 模式：
-//   slot_addr = Window_base + (src_rank × nmt + slot_idx) × perSlotBytes
-// Hybrid 模式（三段）：
-//   scaleup_recv:  [src_scaleup_rank][src_scaleout_rank × nmt + slot] × perSlotBytes
-//   scaleout_send: 本 NPU Stage 1 staging
-//   scaleout_recv: [src_scaleout_rank][slot] × perSlotBytes, 每 slot 带 mbarrier
-
 template <uint32_t DO_CPU_SYNC, uint32_t IS_CACHED, uint32_t NETWORK_MODE>
 class KernelMoeEpDispatch {
 public:
     __aicore__ inline KernelMoeEpDispatch() {};
 
-    // ─── Init ──────────────────────────────────────────────────────────
-    // Pseudocode:
-    //   tpipe_ = pipe; td_ = tilingData; aivId_ = GetBlockIdx(); actualA_ = 0
-    //   绑定 GM tensor: xGm_, topkIdxGm_, topkWeightsGm_, dstSlotIdxGm_,
-    //                    recvSrcMetaInternalGm_, numRecvPerRankHpGm_, numRecvPerExpertHpGm_
-    //   IS_CACHED=1: 绑定 cachedSlotIdxGm_
-    //   读取 HCCL Window context: winContext_ = reinterpret_cast<HcclOpParam*>(workspace)
-    //   分配 UB 缓冲:
-    //     ubXIn_:    ALIGN_UP(hidden × 2, 32)     — 单 token 输入 bf16
-    //     ubSlot_[2]: ALIGN_UP(hidden × 2, 32) × 2 — RecvPhase 双缓冲
-    //     ubMeta_:   256B                           — metadata 中转
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
         GM_ADDR cachedNumPerExpert, GM_ADDR cachedSlotIdx, GM_ADDR cachedSrcMeta,
         GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
         GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
         GM_ADDR workspace, GM_ADDR tilingGM,
-        TPipe* pipe, const MoeEpDispatchInfo* tilingData);
+        TPipe* pipe, const MoeEpDispatchInfo* tilingData)
+    {
+        tpipe_ = pipe;
+        td_ = tilingData;
+        aivId_ = GetBlockIdx();
+        blockIdx_ = GetBlockIdx();
+        actualA_ = 0;
+        workspace_ = workspace;
 
-    // ─── Process ──────────────────────────────────────────────────────
-    // Pseudocode:
-    //   NETWORK_MODE==0 (Direct, ep≤128):
-    //     1. ResetCounters() → SyncAll<true>()
-    //     2. IS_CACHED==0: SendPhaseFirstTime() | IS_CACHED==1: SendPhaseCached()
-    //     3. HcclBarrier()
-    //     4. RecvPhase()
-    //     5. DO_CPU_SYNC==1: WriteActualAToHostPinned() (blockIdx=0, aivId=0)
-    //
-    //   NETWORK_MODE==1 (Hybrid, ep>128, AIV三组并发):
-    //     Group A [0, s1End):   Stage1 跨超节点 URMA
-    //       IS_CACHED==0: DedupAndSend_Hybrid_Stage1(t)
-    //       IS_CACHED==1: SendPhaseScaleoutCached
-    //     Group B [s1End, s2End): Stage2 本超节点 fan-out (proxy poll mbarrier → mask扇出)
-    //     Group C [s2End, total):  RecvPhase + metadata填表 + 计数累加
-    //     SyncAll<true>() + HcclBarrier()
-    //     DO_CPU_SYNC==1: WriteActualAToHostPinned() (单写者)
-    __aicore__ inline void Process();
+        xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)x, td_->cfg.numTokens * td_->cfg.hidden);
+        topkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)topkIdx, td_->cfg.numTokens * td_->cfg.topK);
+        topkWeightsGm_.SetGlobalBuffer((__gm__ float*)topkWeights, td_->cfg.numTokens * td_->cfg.topK);
+        dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx, td_->cfg.numTokens * td_->cfg.topK);
+        recvSrcMetaInternalGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadataInternal,
+                                                 td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank * 3);
+        numRecvPerRankHpGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRankHp, td_->cfg.epWorldSize);
+        numRecvPerExpertHpGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpertHp, td_->cfg.numLocalExperts);
+        if constexpr (IS_CACHED == 1) {
+            cachedSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)cachedSlotIdx,
+                                               td_->cfg.numTokens * td_->cfg.topK);
+        }
+
+        winContext_ = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(workspace);
+
+        uint32_t ubXInBytes    = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
+        uint32_t ubSlotBytes   = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
+        uint32_t ubMetaBytes   = 256;
+
+        tpipe_->InitBuffer(ubXBuf_,      ubXInBytes);
+        tpipe_->InitBuffer(ubSlotBuf_[0], ubSlotBytes);
+        tpipe_->InitBuffer(ubSlotBuf_[1], ubSlotBytes);
+        tpipe_->InitBuffer(ubMetaBuf_,    ubMetaBytes);
+
+        ubXIn_     = ubXBuf_.Get<bfloat16_t>();
+        ubSlot_[0] = ubSlotBuf_[0].Get<bfloat16_t>();
+        ubSlot_[1] = ubSlotBuf_[1].Get<bfloat16_t>();
+        ubMeta_    = ubMetaBuf_.Get<int32_t>();
+    }
+
+    __aicore__ inline void Process()
+    {
+        if constexpr (NETWORK_MODE == 0) {
+            Process_Direct();
+        } else {
+            Process_Hybrid();
+        }
+    }
 
 private:
-    // ─── ResetCounters ──────────────────────────────────────────────
-    // Pseudocode:
-    //   清零 workspace 中 scaleup_counter[0..ep-1] + actualA 全局累加器
-    //   for i in [aivId, ep, step=aivNum]: counter[i] = 0
-    //   aivId==0: actualABase = 0
-    __aicore__ inline void ResetCounters();
+    __aicore__ inline void Process_Direct()
+    {
+        ResetCounters();
+        SyncAll<true>();
 
-    // ─── SendPhaseFirstTime ────────────────────────────────────────
-    // Pseudocode:
-    //   tStart = aivId * numTokens / aivNum; tEnd = (aivId+1) * numTokens / aivNum
-    //   for t in [tStart, tEnd): DedupAndSendDirect(t)
-    __aicore__ inline void SendPhaseFirstTime();
+        if constexpr (IS_CACHED == 0) {
+            SendPhaseFirstTime();
+        } else {
+            SendPhaseCached();
+        }
 
-    // ─── SendPhaseCached ──────────────────────────────────────────
-    // Pseudocode:
-    //   for t in [tStart, tEnd):
-    //     读 x[t] → ubXIn_
-    //     for k in [0, topK):
-    //       slot = cachedSlotIdx[t,k]; if slot==-1: continue
-    //       dst_rank = expert / numLocalExperts
-    //       跳过 atomic! slot 已由 handle 固定
-    //       WriteSlotToRemoteWindow(dst_rank, my_rank, slot, t, k)
-    __aicore__ inline void SendPhaseCached();
+        HcclBarrier();
 
-    // ─── DedupAndSendDirect ────────────────────────────────────────
-    // Pseudocode:
-    //   核心: 按 dst_rank 去重 (scalar register seen-list, O(topK²))
-    //   同一 token 发往同一 dst_rank 只发1份 → Window 不乘 topK
-    //   读 x[t] → ubXIn_
-    //   for k in [0, topK):
-    //     expert = topkIdx[t,k]; if expert==-1: dstSlotIdx=-1; continue
-    //     dst_rank = expert / numLocalExperts
-    //     search seen_dst → hit?
-    //       YES: dstSlotIdx[t,k] = seen_slot[hit] (复用, 不发新副本)
-    //       NO:  slot = SetAtomicAdd(&counter[dst_rank], 1)
-    //            seen_dst[n_seen] = dst_rank; seen_slot[n_seen] = slot; n_seen++
-    //            dstSlotIdx[t,k] = slot
-    //            WriteSlotToRemoteWindow(dst_rank, my_rank, slot, t, k)
-    //
-    //   WriteSlotToRemoteWindow 内部:
-    //     dstWinBase = GetBaseWindAddrByRankId(winContext_, dst_rank, my_rank)
-    //     slotAddr = dstWinBase + (my_rank * nmt + slot) * perSlotBytes
-    //     写 token_data: DataCopyPad → PipeBarrier<PIPE_ALL>
-    //     写 metadata: topk_idx[K], topk_weights[K](float raw bits),
-    //                  src_rank_id=my_rank, src_token_idx=t
-    //     DataCacheCleanAndInvalid flush L2
-    __aicore__ inline void DedupAndSendDirect(uint32_t t);
+        RecvPhase();
 
-    // ─── RecvPhase (Direct 模式) ──────────────────────────────────
-    // Pseudocode:
-    //   actualA_ = 0
-    //   分核: AIV[i] 处理 src_rank ∈ [i*ep/aivNum, (i+1)*ep/aivNum)
-    //   for sr in [srStart, srEnd):
-    //     numRecvFromSrc = counter[sr]
-    //     numRecvPerRankHp[sr] = numRecvFromSrc
-    //     srcRankWinBase = localWinBase + sr * nmt * perSlotBytes
-    //     for slot in [0, numRecvFromSrc):
-    //       a = SetAtomicAdd(&actualABase, 1)  ← 全局累加分配 A 轴位置
-    //       slotAddr = srcRankWinBase + slot * perSlotBytes
-    //       读 token data: DataCopyPad(ubSlot_[0], slotAddr, hidden)
-    //       读 metadata: DataCopy(ubMeta_, metaPtr, topK*2+2)
-    //       src_rank_id    = ubMeta_[topK*2]
-    //       src_token_idx  = ubMeta_[topK*2+1]
-    //       src_token_global = src_rank_id * nmt + src_token_idx
-    //       recv_src_metadata_internal[a*3+0] = src_token_global  ← 全局ID
-    //       recv_src_metadata_internal[a*3+1] = src_rank_id
-    //       recv_src_metadata_internal[a*3+2] = slot
-    //       AtomicAdd(numRecvPerExpert[local_expert_id], 1)
-    //   SyncAll<true>()
-    __aicore__ inline void RecvPhase();
+        if constexpr (DO_CPU_SYNC == 1) {
+            if (blockIdx_ == 0 && aivId_ == 0) {
+                WriteActualAToHostPinned();
+            }
+        }
+    }
 
-    // ─── WriteActualAToHostPinned ─────────────────────────────────
-    // Pseudocode:
-    //   单写者 (blockIdx=0, aivId=0)
-    //   hpPtr = td_->hostPinnedCounterAddr
-    //   *hpPtr = actualA_
-    //   DataCacheCleanAndInvalid<int32_t> bypass L2 写入 host-pinned dev-mapped 地址
-    __aicore__ inline void WriteActualAToHostPinned();
+    __aicore__ inline void Process_Hybrid()
+    {
+        const uint32_t aiv = aivId_;
+        const uint32_t s1End = td_->numAivStage1;
+        const uint32_t s2End = s1End + td_->numAivStage2;
 
-    // ─── AIV 分核计算 ──────────────────────────────────────────────
-    // Pseudocode:
-    //   ComputePerAivTokenStart: return aivId_ * numTokens / aivNum
-    //   ComputePerAivTokenEnd:   return (aivId_+1) * numTokens / aivNum
-    __aicore__ inline uint32_t ComputePerAivTokenStart();
-    __aicore__ inline uint32_t ComputePerAivTokenEnd();
+        if (aiv < s1End) {
+            if constexpr (IS_CACHED == 0) {
+                SendPhaseScaleoutFirstTime();
+            } else {
+                SendPhaseScaleoutCached();
+            }
+        }
+        else if (aiv < s2End) {
+            SendPhaseScaleupFanout();
+        }
+        else {
+            RecvPhase();
+        }
 
-    // ─── Hybrid Stage 1: DedupAndSend_Hybrid_Stage1 ────────────────────
-    // 按 dst_scaleout_rank 去重, 每 slot 带 target_scaleup_mask 位图
-    // Pseudocode:
-    //   for k in [0, topK):
-    //     dst_rank = expert / numLocalExperts
-    //     dst_scaleout = dst_rank / numScaleupRanks  ← 超节点ID
-    //     dst_scaleup  = dst_rank % numScaleupRanks  ← 超节点内rank
-    //     search seen_so list → hit?
-    //       YES: mask |= (1<<dst_scaleup); dstSlotIdx = seen_so_slot[hit]
-    //       NO:  slot = SetAtomicAdd(&scaleout_counter[dst_scaleout], 1)
-    //            mask = (1<<dst_scaleup); n_so++
-    //   for j in [0, n_so):
-    //     URMA write-with-notify: token+meta+mask+notify 一体发送
+        SyncAll<true>();
+        HcclBarrier();
 
-    // ─── Hybrid Stage 2: proxy fan-out ──────────────────────────────────
-    // Pseudocode:
-    //   poll scaleout_recv 每 slot 的 mbarrier (细粒度 producer-consumer)
-    //   读 target_scaleup_mask → 按 mask 位图扇出:
-    //     while (mask) { dst_su = CTZ(mask); mask &= mask-1;
-    //       su_slot = SetAtomicAdd(&scaleup_counter[dst_su], 1)
-    //       HCCS write: scaleout_recv slot → 本 SN dst_su 的 scaleup_recv }
+        if constexpr (DO_CPU_SYNC == 1) {
+            if (blockIdx_ == 0 && aivId_ == 0) {
+                WriteActualAToHostPinned();
+            }
+        }
+    }
 
-    // ─── proxy_rank 计算 ────────────────────────────────────────────────
-    // proxy_rank(so) = so × num_scaleup_ranks + my_scaleup_rank_id
+    __aicore__ inline void ResetCounters()
+    {
+        GM_ADDR counterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR actualABase = counterBase + td_->cfg.epWorldSize * sizeof(int32_t);
 
-    // ─── GM tensor: 输入/输出 ──────────────────────────────────────────
+        for (uint32_t i = aivId_; i < td_->cfg.epWorldSize; i += td_->aivNum) {
+            *reinterpret_cast<__gm__ int32_t*>(counterBase + i * sizeof(int32_t)) = 0;
+        }
+        if (aivId_ == 0) {
+            *reinterpret_cast<__gm__ int32_t*>(actualABase) = 0;
+        }
+
+        if constexpr (NETWORK_MODE == 1) {
+            GM_ADDR scaleoutCounterBase = counterBase + td_->cfg.epWorldSize * sizeof(int32_t) + sizeof(int32_t);
+            for (uint32_t i = aivId_; i < td_->numScaleoutRanks; i += td_->aivNum) {
+                *reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + i * sizeof(int32_t)) = 0;
+            }
+        }
+    }
+
+    __aicore__ inline void SendPhaseFirstTime()
+    {
+        uint32_t tStart = ComputePerAivTokenStart();
+        uint32_t tEnd   = ComputePerAivTokenEnd();
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            DedupAndSendDirect(t);
+        }
+    }
+
+    __aicore__ inline void DedupAndSendDirect(uint32_t t)
+    {
+        int32_t  seen_dst[MAX_TOPK];
+        int32_t  seen_slot[MAX_TOPK];
+        uint32_t n_seen = 0;
+
+        DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+
+        for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+            int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
+            if (expert == -1) {
+                dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, -1);
+                continue;
+            }
+
+            uint32_t dst_rank = expert / td_->cfg.numLocalExperts;
+
+            int32_t hit = -1;
+            for (uint32_t j = 0; j < n_seen; ++j) {
+                if (seen_dst[j] == (int32_t)dst_rank) { hit = j; break; }
+            }
+            if (hit >= 0) {
+                dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, seen_slot[hit]);
+                continue;
+            }
+
+            uint32_t slot = SetAtomicAdd<int32_t>(
+                reinterpret_cast<__gm__ int32_t*>(
+                    workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam) + dst_rank * sizeof(int32_t)),
+                1);
+            seen_dst[n_seen]  = dst_rank;
+            seen_slot[n_seen] = slot;
+            n_seen++;
+            dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, slot);
+
+            WriteSlotToRemoteWindow(dst_rank, slot, t);
+        }
+    }
+
+    __aicore__ inline void WriteSlotToRemoteWindow(uint32_t dst_rank, uint32_t slot, uint32_t t)
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, dst_rank, my_rank);
+        GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
+
+        DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+            ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
+        PipeBarrier<PIPE_ALL>();
+
+        uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+        __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
+
+        for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
+            ubMeta_.SetValue(kk, topkIdxGm_.GetValue(t * td_->cfg.topK + kk));
+        }
+        for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
+            float w = topkWeightsGm_.GetValue(t * td_->cfg.topK + kk);
+            ubMeta_.SetValue(td_->cfg.topK + kk, *reinterpret_cast<int32_t*>(&w));
+        }
+        ubMeta_.SetValue(td_->cfg.topK * 2, my_rank);
+        ubMeta_.SetValue(td_->cfg.topK * 2 + 1, t);
+
+        DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
+                 td_->cfg.topK * 2 + 2);
+        cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(metaPtr),
+                          (td_->cfg.topK * 2 + 2) * sizeof(int32_t));
+    }
+
+    __aicore__ inline void SendPhaseCached()
+    {
+        uint32_t tStart = ComputePerAivTokenStart();
+        uint32_t tEnd   = ComputePerAivTokenEnd();
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+
+            for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+                int32_t slot = cachedSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
+                if (slot == -1) continue;
+
+                int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
+                uint32_t dst_rank = expert / td_->cfg.numLocalExperts;
+
+                WriteSlotToRemoteWindow(dst_rank, slot, t);
+            }
+        }
+    }
+
+    __aicore__ inline void RecvPhase()
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        actualA_ = 0;
+
+        uint32_t srStart = aivId_ * td_->cfg.epWorldSize / td_->aivNum;
+        uint32_t srEnd   = (aivId_ + 1) * td_->cfg.epWorldSize / td_->aivNum;
+
+        GM_ADDR actualABase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+                              + td_->cfg.epWorldSize * sizeof(int32_t);
+        GM_ADDR counterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+
+        for (uint32_t sr = srStart; sr < srEnd; ++sr) {
+            int32_t numRecvFromSrc = *reinterpret_cast<__gm__ int32_t*>(
+                counterBase + sr * sizeof(int32_t));
+
+            numRecvPerRankHpGm_.SetValue(sr, numRecvFromSrc);
+
+            GM_ADDR srcRankBase = localWinBase + sr * td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes;
+
+            for (int32_t slotIdx = 0; slotIdx < numRecvFromSrc; ++slotIdx) {
+                uint32_t a = SetAtomicAdd<int32_t>(
+                    reinterpret_cast<__gm__ int32_t*>(actualABase), 1);
+                actualA_ = a + 1;
+
+                GM_ADDR slotAddr = srcRankBase + slotIdx * td_->cfg.perSlotBytes;
+
+                DataCopyPad(ubSlot_[slotIdx % 2],
+                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                        *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                    {td_->cfg.hidden, 0, 0, 0, false});
+
+                uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+                __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
+                DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
+                         td_->cfg.topK * 2 + 2);
+
+                int32_t src_rank_id    = ubMeta_.GetValue(td_->cfg.topK * 2);
+                int32_t src_token_idx  = ubMeta_.GetValue(td_->cfg.topK * 2 + 1);
+                int32_t src_token_global = src_rank_id * td_->cfg.numMaxTokensPerRank + src_token_idx;
+
+                recvSrcMetaInternalGm_.SetValue(a * 3 + 0, src_token_global);
+                recvSrcMetaInternalGm_.SetValue(a * 3 + 1, src_rank_id);
+                recvSrcMetaInternalGm_.SetValue(a * 3 + 2, slotIdx);
+
+                int32_t expert_local_0 = ubMeta_.GetValue(0) % td_->cfg.numLocalExperts;
+                SetAtomicAdd<int64_t>(
+                    reinterpret_cast<__gm__ int64_t*>(&numRecvPerExpertHpGm_[expert_local_0]), 1);
+            }
+        }
+
+        SyncAll<true>();
+    }
+
+    __aicore__ inline void WriteActualAToHostPinned()
+    {
+        __gm__ int32_t* hpPtr = reinterpret_cast<__gm__ int32_t*>(td_->hostPinnedCounterAddr);
+        *hpPtr = static_cast<int32_t>(actualA_);
+        cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(hpPtr), sizeof(int32_t));
+    }
+
+    __aicore__ inline uint32_t ComputePerAivTokenStart()
+    {
+        return aivId_ * td_->cfg.numTokens / td_->aivNum;
+    }
+
+    __aicore__ inline uint32_t ComputePerAivTokenEnd()
+    {
+        return (aivId_ + 1) * td_->cfg.numTokens / td_->aivNum;
+    }
+
+    __aicore__ inline void SendPhaseScaleoutFirstTime()
+    {
+        uint32_t tStart = ComputePerAivTokenStart();
+        uint32_t tEnd   = ComputePerAivTokenEnd();
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            DedupAndSend_Hybrid_Stage1(t);
+        }
+    }
+
+    __aicore__ inline void DedupAndSend_Hybrid_Stage1(uint32_t t)
+    {
+        int32_t  seen_so[MAX_TOPK];
+        int32_t  seen_so_slot[MAX_TOPK];
+        uint32_t target_scaleup_mask[MAX_TOPK] = {0};
+        uint32_t n_so = 0;
+
+        DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+
+        for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+            int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
+            if (expert == -1) {
+                dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, -1);
+                continue;
+            }
+
+            uint32_t dst_rank     = expert / td_->cfg.numLocalExperts;
+            uint32_t dst_scaleout = dst_rank / td_->numScaleupRanks;
+            uint32_t dst_scaleup  = dst_rank % td_->numScaleupRanks;
+
+            int32_t hit = -1;
+            for (uint32_t j = 0; j < n_so; ++j) {
+                if (seen_so[j] == (int32_t)dst_scaleout) { hit = j; break; }
+            }
+            if (hit >= 0) {
+                target_scaleup_mask[hit] |= (1u << dst_scaleup);
+                dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, seen_so_slot[hit]);
+                continue;
+            }
+
+            GM_ADDR scaleoutCounterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+                                           + td_->cfg.epWorldSize * sizeof(int32_t)
+                                           + sizeof(int32_t);
+            uint32_t slot = SetAtomicAdd<int32_t>(
+                reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + dst_scaleout * sizeof(int32_t)),
+                1);
+            seen_so[n_so]          = dst_scaleout;
+            seen_so_slot[n_so]     = slot;
+            target_scaleup_mask[n_so] = (1u << dst_scaleup);
+            dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, slot);
+            n_so++;
+
+            uint32_t proxy_rank = dst_scaleout * td_->numScaleupRanks + (Mc2Kernel::GetRankId(winContext_) % td_->numScaleupRanks);
+            WriteSlotToRemoteScaleoutWindow(proxy_rank, slot, t, target_scaleup_mask[n_so - 1]);
+        }
+    }
+
+    __aicore__ inline void WriteSlotToRemoteScaleoutWindow(uint32_t proxy_rank, uint32_t slot, uint32_t t, uint32_t mask)
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, proxy_rank, my_rank);
+        GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
+
+        DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+            ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
+        PipeBarrier<PIPE_ALL>();
+
+        uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+        __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
+
+        for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
+            ubMeta_.SetValue(kk, topkIdxGm_.GetValue(t * td_->cfg.topK + kk));
+        }
+        for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
+            float w = topkWeightsGm_.GetValue(t * td_->cfg.topK + kk);
+            ubMeta_.SetValue(td_->cfg.topK + kk, *reinterpret_cast<int32_t*>(&w));
+        }
+        ubMeta_.SetValue(td_->cfg.topK * 2, my_rank);
+        ubMeta_.SetValue(td_->cfg.topK * 2 + 1, t);
+        ubMeta_.SetValue(td_->cfg.topK * 2 + 2, mask);
+
+        DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
+                 td_->cfg.topK * 2 + 3);
+        cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(metaPtr),
+                          (td_->cfg.topK * 2 + 3) * sizeof(int32_t));
+    }
+
+    __aicore__ inline void SendPhaseScaleoutCached()
+    {
+        uint32_t tStart = ComputePerAivTokenStart();
+        uint32_t tEnd   = ComputePerAivTokenEnd();
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+
+        for (uint32_t t = tStart; t < tEnd; ++t) {
+            DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+
+            for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
+                int32_t slot = cachedSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
+                if (slot == -1) continue;
+
+                int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
+                uint32_t dst_rank = expert / td_->cfg.numLocalExperts;
+                uint32_t dst_scaleout = dst_rank / td_->numScaleupRanks;
+                uint32_t proxy_rank = dst_scaleout * td_->numScaleupRanks + (my_rank % td_->numScaleupRanks);
+
+                WriteSlotToRemoteWindow(proxy_rank, slot, t);
+            }
+        }
+    }
+
+    __aicore__ inline void SendPhaseScaleupFanout()
+    {
+        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t my_scaleup_rank = my_rank % td_->numScaleupRanks;
+        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+
+        for (uint32_t src_so = 0; src_so < td_->numScaleoutRanks; ++src_so) {
+            GM_ADDR scaleoutRecvBase = localWinBase
+                + td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes
+                + td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes
+                + src_so * (td_->cfg.numMaxTokensPerRank + 64) * td_->cfg.perSlotBytes;
+
+            GM_ADDR scaleoutCounterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+                                           + td_->cfg.epWorldSize * sizeof(int32_t)
+                                           + sizeof(int32_t);
+            int32_t count = *reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + src_so * sizeof(int32_t));
+
+            for (int32_t slotIdx = 0; slotIdx < count; ++slotIdx) {
+                GM_ADDR slotAddr = scaleoutRecvBase + slotIdx * td_->cfg.perSlotBytes;
+
+                uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
+                __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
+
+                DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
+                         td_->cfg.topK * 2 + 3);
+
+                uint32_t mask = ubMeta_.GetValue(td_->cfg.topK * 2 + 2);
+
+                while (mask) {
+                    uint32_t dst_su = __builtin_ctz(mask);
+                    mask &= mask - 1;
+
+                    uint32_t su_slot = SetAtomicAdd<int32_t>(
+                        reinterpret_cast<__gm__ int32_t*>(
+                            workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam) + dst_su * sizeof(int32_t)),
+                        1);
+
+                    GM_ADDR scaleupRecvBase = localWinBase;
+                    GM_ADDR scaleupDstAddr = scaleupRecvBase
+                        + (dst_su * td_->numScaleoutRanks * td_->cfg.numMaxTokensPerRank + su_slot)
+                        * td_->cfg.perSlotBytes;
+
+                    DataCopyPad(ubSlot_[slotIdx % 2],
+                        reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                        {td_->cfg.hidden, 0, 0, 0, false});
+                    DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                        *reinterpret_cast<__gm__ bfloat16_t*>(scaleupDstAddr)),
+                        ubSlot_[slotIdx % 2], {td_->cfg.hidden, 0, 0, 0, false});
+                    PipeBarrier<PIPE_ALL>();
+                }
+            }
+        }
+    }
+
     TPipe* tpipe_{nullptr};
     const MoeEpDispatchInfo* td_{nullptr};
     __gm__ Mc2Kernel::HcclOpParam* winContext_{nullptr};
@@ -218,11 +509,9 @@ private:
     GlobalTensor<int64_t> numRecvPerExpertHpGm_;
     GlobalTensor<int32_t> cachedSlotIdxGm_;
 
-    // ─── UB buffer ─────────────────────────────────────────────────────
     LocalTensor<bfloat16_t> ubXIn_;
     LocalTensor<bfloat16_t> ubSlot_[2];
     LocalTensor<int32_t> ubMeta_;
-    LocalTensor<float> ubAccFp32_;
 
     TBuf<QuePosition::VECIN> ubXBuf_;
     TBuf<QuePosition::VECIN> ubSlotBuf_[2];
