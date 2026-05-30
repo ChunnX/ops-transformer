@@ -253,6 +253,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     mteComm_.ReadStatus();
     uint64_t aivId = GetBlockIdx();
 
+    // Initial ClearSum for first block (subsequent blocks clear during previous COPY_OUT)
+    ClearSumTensor();
+
     // 遍历需要处理的数据块（基于动态xPerBlock_分块）
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xPerBlock_;
@@ -270,8 +273,6 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
                 curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);
             }
         }
-
-        ClearSumTensor(); // sumTensor 清零
 
         // 遍历每张卡，读取其Win区的数据，采取错卡序读取，从自己卡上读起
         /* rank0: [0,1,2]; rank1: [1,2,0]; rank2: [2,0,1] */
@@ -292,8 +293,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
             ReadDataBlockReduceSum(curRankXOffset, curRankScaleOffset, curXNum, curScaleNum);
         }
 
-        // 将计算好的数据拷贝到输出tensor
-        mteComm_.CopyResultToOutput(curXOffset, sumTensor_, curXNum);
+        // 将计算好的数据拷贝到输出tensor，同时清零 sumTensor 供下一轮使用
+        mteComm_.CopyResultToOutputWithClear(curXOffset, sumTensor_, curXNum, sumTensor_, xPerBlock_);
     }
 }
 

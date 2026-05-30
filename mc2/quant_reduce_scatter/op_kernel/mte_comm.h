@@ -51,7 +51,8 @@ public:
     __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
-    __aicore__ inline void CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count);
+    __aicore__ inline void CopyResultToOutputWithClear(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count,
+                                                        LocalTensor<float>& sumTensorToClear, uint32_t clearCount);
     __aicore__ inline void ComputeTailAivId(uint64_t totalAivCount);
     __aicore__ inline GM_ADDR GetWinAddrGm(uint32_t rankId, uint64_t offset = 0);
     __aicore__ inline GM_ADDR GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag);
@@ -348,17 +349,11 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
 }
 
-/**
- * @brief 将计算得到的UB上的结果Tensor的数据复制到GM上的OutPutTensor，并进行类型转换（如果需要）。
- * 
- * @param outputOffset 输出OutputTensor的GM偏移量，用于指定目标位置。
- * @param sourceTensor 本地UB上计算结果Tensor，包含计算完成的数据。
- * @param count 当前每次处理数据块的元素数量
- */
 template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count)
+__aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutputWithClear(
+    uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count,
+    LocalTensor<float>& sumTensorToClear, uint32_t clearCount)
 {
-    // 将计算好的数据拷贝到输出tensor，如果是非float数据类型需要先转换成目标数据类型
     xOutTensor_ = xOutQueue_.AllocTensor<OutputType>();
     if constexpr (AscendC::IsSameType<OutputType, float>::value) {
         DataCopy(xOutTensor_, localResultTensor, count);
@@ -367,6 +362,8 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
     }
     xOutQueue_.EnQue(xOutTensor_);
     xOutTensor_ = xOutQueue_.DeQue<OutputType>();
+    // Vector (Duplicate) and MTE3 (DataCopy) can run in parallel
+    Duplicate<float>(sumTensorToClear, (float)0.0, clearCount);
     DataCopy(outputTensor_[outOffsetGM], xOutTensor_, count);
     xOutQueue_.FreeTensor(xOutTensor_);
 }
