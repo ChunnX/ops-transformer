@@ -59,61 +59,53 @@
 
 namespace hcomm {
 
-// 注册期参数（attr）：与 op_def 注册顺序一一对应
+// ============ 注册期参数（ATTR）============
+//   彻底精简版：只保留 device 端实际使用的 attr。
+//   已删 op_def 占位 attr：groupEp / expertShardType / sharedExpertNum / sharedExpertRankNum /
+//     globalBs / commType / commAlg（device 不读）。
 struct CcuKernelArgMoeDistributeCombineCcuSetup : public CcuKernelArg {
-    std::string groupEp;             // REQUIRED, op_def 第 1 个 attr
+    // ----- ATTR -----
     uint32_t epWorldSize;
     uint32_t epRankId;
-    uint32_t moeExpertNum;
-    uint32_t expertShardType;        // OPT, 默认 0
-    uint32_t sharedExpertNum;        // OPT, 默认 1
-    uint32_t sharedExpertRankNum;    // OPT, 默认 0
-    uint32_t globalBs;               // OPT, 默认 0
-    uint32_t commQuantMode;          // OPT, 默认 0（combine 用 commQuantMode 不是 dispatch 的 quantMode）
-    uint32_t commType;               // OPT, 默认 0
-    std::string commAlg;             // OPT, 默认 ""
-
-    uint32_t bs;                      // shape 派生量
+    uint32_t moeExpertNum;            // 仅用于派生 moeExpertPerRankNum
+    uint32_t commQuantMode;           // 0=BF16 / 1=MXFP8（切 tokenMsgLen 公式；注意非 dispatch 的 quantMode）
+    // ----- shape 派生量 -----
+    uint32_t bs;
     uint32_t topK;
     uint32_t hiddenSize;
-    uint64_t tokenMsgLen;             // = Align256(H) * sizeof(ExpandXType)
-    uint32_t moeExpertPerRankNum;     // = moeExpertNum / (epWorldSize - sharedExpertRankNum)
+    uint64_t tokenMsgLen;             // commQuantMode=0: Align256(H)*2；=1: Align32(H+H/32)
+    uint32_t moeExpertPerRankNum;     // = moeExpertNum / epWorldSize（段 5/7 aBound 用）
 
     CcuKernelArgMoeDistributeCombineCcuSetup(
-        const std::string &groupEp_,
         uint32_t epWorldSize_, uint32_t epRankId_, uint32_t moeExpertNum_,
         uint32_t bs_, uint32_t topK_, uint32_t hiddenSize_,
-        uint32_t expertShardType_ = 0, uint32_t sharedExpertNum_ = 1,
-        uint32_t sharedExpertRankNum_ = 0, uint32_t globalBs_ = 0,
-        uint32_t commQuantMode_ = 0, uint32_t commType_ = 0,
-        const std::string &commAlg_ = "");
+        uint32_t commQuantMode_ = 0);
 
     CcuKernelSignature GetKernelSignature() const override;
 };
 
-// 每次 launch 动态参数：字段顺序对齐 op_def Input/Output
-//   v16 ★ commWindowAddr 复用 dispatch 同一块 GM buffer（hccl 开辟的中间 buffer）
-//   combine 阶段 commWindow layout: (bs*K, tokenWithMetaLen) 单段
-//   dispatch 阶段 commWindow layout: (rankSize, bs*K, tokenWithMetaLen) 按段
-//   同一块 GM, alloc size = max(两者) = rankSize * bs * K * tokenWithMetaLen
+// ============ 每次 launch 动态参数（INPUT / OUTPUT / INTERNAL）============
+//   已删 device 不读的 op_def 占位：expertIdsAddr / assistInfoForCombineAddr（GeneArgs 从未传，
+//     metadata 自带定位）/ quantExpandXAddr（host 归零）/ routingTableAddr（Load 了但算法不用）。
 struct CcuTaskArgMoeDistributeCombineCcuSetup : public CcuTaskArg {
-    // ----- Inputs (op_def) -----
-    uint64_t expandXAddr;            // (A, tokenWithMetaLen) ← v15 紧密+metadata，dispatch_teardown 输出
-    uint64_t expertIdsAddr;          // (Bs, K) INT32 ← v16 不再使用（metadata 自带定位信息）
-    uint64_t assistInfoForCombineAddr; // INT32 ← v15 紧密三元组数组，v16 device 端不直接读（metadata 内嵌）
-    // ----- Outputs (op_def) -----
-    uint64_t quantExpandXAddr;       // INT8 ← 简化版 host 归零
-    uint64_t commCmdInfoAddr;        // INT32 ← 给 combine_teardown 用
-    // ----- Internal (v16 工程内部 scratch) -----
-    uint64_t commWindowAddr;         // v16 ★ 复用 dispatch 同一块 hccl commWindow
-                                      //   combine 写入 layout: 按 slot=srcSlot*K+dstK 直接索引（不分段）
-                                      //   bs*K 个槽（前 0..K-1 都是 token 0 副本，K..2K-1 都是 token 1 副本...）
-    uint64_t routingTableAddr;       // [Bs*K] INT32 ← v16 device 端不再使用（保留 IO 契约）
+    // ----- INPUT -----
+    uint64_t expandXAddr;            // (A, tokenWithMetaLen)：dispatch_teardown 输出（含 metadata），核心数据源
+    // ----- OUTPUT -----
+    uint64_t commCmdInfoAddr;        // INT32：段 8 写（给 combine_teardown）
+    // ----- INTERNAL -----
+    uint64_t commWindowAddr;         // 复用 dispatch 同款 hccl commWindow；按 metadata.dstByteOff 直接索引
+    // ----- TOKEN（需求2 ★，与 dispatch_setup 同款 hccl 范式：每块本地 buffer 一个 host GetTokenInfo token）-----
+    uint64_t expandXToken;           // ★ 本卡 expandX（反向数据源）token（段 7 localSrc）
+    uint64_t commWindowToken;        // 本卡 commWindow token（段 7 自反自 localDst）
+    uint64_t commCmdInfoToken;       // 本卡 commCmdInfo token（段 10 ready 写 LocalCopyNb dst.token）
+    // ----- 收口 ★ ready 写源（替代段 10 原 R 次自造 StoreVariableAt → 1 次 hccl 现役 LocalCopyNb）-----
+    uint64_t oneBufAddr;             // 收口 ★ oneBuf GM 起址（host 填 R 个 int32=1）
+    uint64_t oneBufToken;            // 收口 ★ oneBuf token
 
     CcuTaskArgMoeDistributeCombineCcuSetup(
-        uint64_t expandXAddr_, uint64_t expertIdsAddr_, uint64_t assistInfoForCombineAddr_,
-        uint64_t quantExpandXAddr_, uint64_t commCmdInfoAddr_,
-        uint64_t commWindowAddr_, uint64_t routingTableAddr_);
+        uint64_t expandXAddr_, uint64_t commCmdInfoAddr_, uint64_t commWindowAddr_,
+        uint64_t expandXToken_, uint64_t commWindowToken_, uint64_t commCmdInfoToken_,
+        uint64_t oneBufAddr_, uint64_t oneBufToken_);
 };
 
 // device 算法
@@ -128,7 +120,6 @@ protected:
 private:
     uint32_t epWorldSize_;
     uint32_t epRankId_;
-    uint32_t moeExpertNum_;
     uint32_t moeExpertPerRankNum_;
     uint32_t bs_;
     uint32_t topK_;
@@ -137,9 +128,15 @@ private:
     CcuRep::Variable expandXAddrVar_;
     CcuRep::Variable commCmdInfoAddrVar_;
     CcuRep::Variable commWindowAddrVar_;                  // v16 ★ 替代 yCombineAddrVar_
-    CcuRep::Variable routingTableAddrVar_;
     CcuRep::Variable tokenMsgLenVar_;
+    // ----- v19 ★ token 寄存器（需求2，hccl 范式）-----
+    CcuRep::Variable expandXTokenVar_;                    // 本地 expandX 数据源 token
+    CcuRep::Variable commWindowTokenVar_;                 // 本地 commWindow token
+    CcuRep::Variable commCmdInfoTokenVar_;                // 本地 commCmdInfo token（段 10 ready 写 dst.token）
+    CcuRep::Variable oneBufAddrVar_;                      // 收口 ★ oneBuf 地址（段 10 ready 写 src.addr）
+    CcuRep::Variable oneBufTokenVar_;                     // 收口 ★ oneBuf token（段 10 ready 写 src.token）
     std::vector<CcuRep::Variable> remoteCommWindowAddrs_; // v16 ★ 各对端 commWindow 起址
+    std::vector<CcuRep::Variable> remoteCommWindowTokens_;  // v19 ★ 各对端 commWindow token
     CcuRep::LocalAddr localSrc_;
     CcuRep::LocalAddr localDst_;
     CcuRep::RemoteAddr remoteDst_;

@@ -47,21 +47,16 @@
 #include <cstdint>
 
 // ----- v11 Tiling 结构（host 填充 + device 读取） -----
+// 彻底精简版：只保留 Process 实际读取的 tiling 字段。
+//   已删 device 不读的字段：epRankId / moeExpertNum / moeExpertPerRankNum /
+//     tokenMsgLen（Process 未用）/ segBytes（Process 未用）。
 struct MoeDistributeCombineCcuTeardownTilingData {
-    uint32_t epWorldSize;
-    uint32_t epRankId;
-    uint32_t moeExpertNum;
-    uint32_t moeExpertPerRankNum;
+    uint32_t epWorldSize;        // WaitForAllSrcRanks 用
     uint32_t bs;
     uint32_t topK;
-    uint32_t hiddenSize;
-    uint32_t commQuantMode;       // v17 Phase 2 ★ 0=非量化 BF16，1=MXFP8（影响 Process 拷贝字节数）
-                                  //   BF16:  每 token data 段 = hiddenSize * sizeof(BF16) = 2*H 字节
-                                  //   MXFP8: 每 token data+scale 段 = H + H/32 字节（FP8 data + E8M0 scale）
-                                  //   字节透传：xOut 在 MXFP8 模式下保留 FP8+scale 格式（不解量化）
-    uint64_t tokenMsgLen;          // = Align256(H) * sizeof(YOutType) [BF16] / Align32(H+H/32) [MXFP8]
-    uint64_t tokenWithMetaLen;     // v15 ★ = tokenMsgLen + 32（commWindow 中每槽含 token data + metadata）
-    uint64_t segBytes;             // = bs * topK * tokenWithMetaLen
+    uint32_t hiddenSize;         // Process copyElemsPerToken 用（dataBytesPerToken）
+    uint32_t commQuantMode;      // 0=BF16（2*H 字节）/ 1=MXFP8（H+H/32 字节）：切 copyLen
+    uint64_t tokenWithMetaLen;   // = tokenMsgLen + 32（commWindow 每槽 stride）
 };
 
 #endif // MOE_DISTRIBUTE_COMBINE_CCU_TEARDOWN_H
