@@ -28,6 +28,31 @@ using namespace arch35FIA;
 
 ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
 {
+    const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
+        {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {KEY_NAME,                    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT4}},
+        {VALUE_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT4}},
+        {PSE_SHIFT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16}},
+        {ATTEN_MASK_NAME,             {ge::DT_BOOL, ge::DT_INT8, ge::DT_UINT8}},
+        {DEQUANT_SCALE1_NAME,         {ge::DT_UINT64, ge::DT_FLOAT}},
+        {QUANT_SCALE1_NAME,           {ge::DT_FLOAT}},
+        {DEQUANT_SCALE2_NAME,         {ge::DT_UINT64, ge::DT_FLOAT}},
+        {QUANT_SCALE2_NAME,           {ge::DT_FLOAT, ge::DT_BF16}},
+        {QUANT_OFFSET2_NAME,          {ge::DT_FLOAT, ge::DT_BF16}},
+        {ANTIQUANT_SCALE_NAME,        {ge::DT_FLOAT16, ge::DT_BF16}},
+        {ANTIQUANT_OFFSET_NAME,       {ge::DT_FLOAT16, ge::DT_BF16}},
+        {KEY_ANTIQUANT_SCALE_NAME,    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
+        {KEY_ANTIQUANT_OFFSET_NAME,   {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
+        {VALUE_ANTIQUANT_SCALE_NAME,  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
+        {VALUE_ANTIQUANT_OFFSET_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
+        {KEY_SHARED_PREFIX_NAME,      {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {VALUE_SHARED_PREFIX_NAME,    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {QUERY_ROPE_NAME,             {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {KEY_ROPE_NAME,               {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {DEQUANT_SCALE_QUERY_NAME,    {ge::DT_FLOAT}},
+        {ATTEN_OUT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
+        {SOFTMAX_LSE_NAME,            {ge::DT_FLOAT}},
+    };
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
