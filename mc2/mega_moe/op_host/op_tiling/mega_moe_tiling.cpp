@@ -28,9 +28,9 @@
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
 #include "mega_moe.h"
-#include "../../op_kernel/mega_moe_tiling.h"
-#include "../../op_kernel/mega_moe_tiling_key.h"
-#include "../../op_kernel/mega_moe_workspace_info.h"
+#include "../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../op_kernel/arch35/mega_moe_tiling_key.h"
+#include "../../op_kernel/arch35/mega_moe_workspace_info.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -328,9 +328,9 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return 2LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return 3LL;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return 9LL;
         default: return -1LL;
     }
     return -1LL;
@@ -340,9 +340,9 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 {
     // unsupport UNQUANT, STATIC, DYNAMIC currently
     switch (opQuantMode) {
-        case DISPATCH_QUANT_OUT_TYPE_E5M2: return ge::DT_FLOAT8_E5M2;
-        case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return ge::DT_FLOAT4_E2M1;
+        case DISPATCH_QUANT_OUT_DTYPE_E5M2: return ge::DT_FLOAT8_E5M2;
+        case DISPATCH_QUANT_OUT_DTYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
+        case DISPATCH_QUANT_OUT_DTYPE_E2M1: return ge::DT_FLOAT4_E2M1;
         default: return ge::DT_UNDEFINED;
     }
     return ge::DT_UNDEFINED;
@@ -351,16 +351,16 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
 static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *context, MegaMoeConfig &config)
 {
     auto attrs = context->GetAttrs();
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
 
     int64_t opQuantMode;
-    if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
+    if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E5M2;
+    } else if (dispatchQuantOutDtype == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E4M3FN;
     } else {
-        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
+        opQuantMode = DISPATCH_QUANT_OUT_DTYPE_E2M1;
     }
 
     return opQuantMode;
@@ -409,12 +409,12 @@ static ge::graphStatus CheckInitTilingData(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN &&
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E2M1,
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_DTYPE_E4M3FN &&
+        quantMode != DISPATCH_QUANT_OUT_DTYPE_E2M1,
         OP_LOGE(nodeName,
-            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), "
-            "DISPATCH_QUANT_OUT_TYPE_E2M1(%d), but now is %ld.",
-            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, DISPATCH_QUANT_OUT_TYPE_E2M1, quantMode),
+            "only support DISPATCH_QUANT_OUT_DTYPE_E5M2(%d), DISPATCH_QUANT_OUT_DTYPE_E4M3FN(%d), "
+            "DISPATCH_QUANT_OUT_DTYPE_E2M1(%d), but now is %ld.",
+            DISPATCH_QUANT_OUT_DTYPE_E5M2, DISPATCH_QUANT_OUT_DTYPE_E4M3FN, DISPATCH_QUANT_OUT_DTYPE_E2M1, quantMode),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
@@ -792,10 +792,10 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-    auto globalBs = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE(nodeName, "moeExpertNumPtr is nullptr."), return ge::GRAPH_FAILED);
@@ -807,14 +807,14 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE(nodeName, "maxRecvTokenNumPtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
         OP_LOGE(nodeName, "dispatchQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dispatchQuantOutTypePtr == nullptr,
-        OP_LOGE(nodeName, "dispatchQuantOutTypePtr is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr,
+        OP_LOGE(nodeName, "dispatchQuantOutDtypePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(combineQuantModePtr == nullptr,
         OP_LOGE(nodeName, "combineQuantModePtr is nullptr."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr,
         OP_LOGE(nodeName, "commAlgPtr is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBs == nullptr,
-        OP_LOGE(nodeName, "globalBs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
+        OP_LOGE(nodeName, "numMaxTokensPerRankPtr is nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -893,14 +893,14 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             DISPATCH_QUANT_MODE_MXFP, dispatchQuantMode),
         return ge::GRAPH_FAILED);
 
-    auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
-    int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
-    OP_TILING_CHECK(dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
-                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>((config.attrdispatchQuantOutDtypeIndex));
+    int64_t dispatchQuantOutDtype = static_cast<int64_t>(*dispatchQuantOutDtypePtr);
+    OP_TILING_CHECK(dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    dispatchQuantOutDtype != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
-            "but now is %ld.", dispatchQuantOutType),
+            "Invalid dispatchQuantOutDtype, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
+            "but now is %ld.", dispatchQuantOutDtype),
         return ge::GRAPH_FAILED);
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
@@ -926,12 +926,12 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName, "Invalid commAlg(%s), expecting default value("").", commAlgPtr),
         return ge::GRAPH_FAILED);
 
-    auto globalBsPtr = attrs->GetAttrPointer<int64_t>((config.attrGlobalBsIndex));
-    int64_t globalBs = static_cast<int64_t>(*globalBsPtr);
-    if (globalBs != 0) {
-        OP_TILING_CHECK(globalBs < 0 || bs * epWorldSize > globalBs || globalBs % epWorldSize != 0,
-            OP_LOGE(nodeName, "globalBs(%ld) either be 0 or (maxBs * EP and mod(globalBs, EP(%ld)) == 0).",
-                globalBs, epWorldSize),
+    auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
+    if (numMaxTokensPerRank != 0) {
+        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs < numMaxTokensPerRank || numMaxTokensPerRank >= MAX_BS,
+            OP_LOGE(nodeName, "numMaxTokensPerRank(%ld) either be 0 or between bs(%ld) and MAX_BS(%ld).",
+                numMaxTokensPerRank, bs, MAX_BS),
             return ge::GRAPH_FAILED);
     }
 
