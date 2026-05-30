@@ -34,7 +34,10 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool transposeMatch = (tilingProcesser_.args_.isATrans == 0 && tilingProcesser_.args_.isBTrans == 1);
             OP_TILING_CHECK(
                 !transposeMatch,
-                OP_LOGE(tilingProcesser_.opName_, "310P QuantMatmulAllReduce only support transA=false && transB=true"),
+                OP_LOGE_FOR_INVALID_VALUE(tilingProcesser_.opName_, "transA and transB",
+                    (std::string("transA=") + std::to_string(tilingProcesser_.args_.isATrans) +
+                     ", transB=" + std::to_string(tilingProcesser_.args_.isBTrans)).c_str(),
+                    "transA=false, transB=true"),
                 return ge::GRAPH_FAILED);
             constexpr int64_t K_ALIGN_SIZE_A8W8_310 = 32;
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);

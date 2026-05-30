@@ -76,19 +76,17 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::CheckKcTensorFormat(const gert:
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     auto x1ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X1_SCALE_INDEX);
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x1Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"), return ge::GRAPH_FAILED);
     ge::Format x1ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x1ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x1Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x1ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x1Scale", Ops::Base::ToString(x1ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE(opName, "x2Scale tensor should not be null in kc quant mode."), return ge::GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"), return ge::GRAPH_FAILED);
     ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
-                    OP_LOGE(opName, "x2Scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(x2ScaleFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(opName, "x2Scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
