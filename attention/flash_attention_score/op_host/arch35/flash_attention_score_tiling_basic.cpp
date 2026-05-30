@@ -72,7 +72,9 @@ protected:
                 break;
             default:
                 dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "Query or Key dSize is not in range:(0, 768]"); 
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                    std::to_string(dBasicBlock).c_str(),
+                    "The aligned head dimension size of input query and key should be 64, 128, 192, or 256 when not greater than 256");
         }
     }
 

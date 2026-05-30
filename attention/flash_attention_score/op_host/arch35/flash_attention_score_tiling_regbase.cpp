@@ -252,16 +252,32 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
             s1Size, s2Size);
         return false;
     }
-    OP_CHECK_IF(gSize == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSize is zero"), return false);
-    OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
+    OP_CHECK_IF(gSize == 0,
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(gSize).c_str(),
+                   "The group size derived from input query and key shapes should be greater than 0"),
+               return false);
+    OP_CHECK_IF(n2Size == 0,
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(n2Size).c_str(),
+                   "The n2 size derived from input query and key shapes should be greater than 0"),
+               return false);
     OP_CHECK_IF(dSize <= 0L,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "query or key dSize is not support <= 0"), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(dSize).c_str(),
+                   "The head dimension size of input query and key should be greater than 0"),
+               return false);
     OP_CHECK_IF(dSizeV <= 0L,
-            OPS_REPORT_VECTOR_INNER_ERR(opName, "value's dSize is not support <= 0"), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                   std::to_string(dSizeV).c_str(),
+                   "The head dimension size of input value should be greater than 0"),
+               return false);
     OP_CHECK_IF(dSizeV > dSize,
             OPS_REPORT_VECTOR_INNER_ERR(opName, "value's dSize is larger than query's dSize"), return false);
     OP_CHECK_IF(n1Size % n2Size != 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "n1Size [%ld] should be a multiple of n2Size [%ld]", n1Size, n2Size),
+               OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, "head_num",
+                   (std::to_string(n1Size) + " and " + std::to_string(n2Size)).c_str(),
+                   "The value of attr head_num should be a multiple of n2 size derived from input query and key shapes"),
                return false);
     return true;
 }
@@ -427,7 +443,9 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
         }
         OP_CHECK_IF(h1 == 0 || h2 == 0 || h3 == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "H is zero."), return false);
         OP_CHECK_IF(h1 % n1Size != 0,
-                   OPS_REPORT_VECTOR_INNER_ERR(opName, "h1 [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
+                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query",
+                       std::to_string(h1).c_str(),
+                       "The H dimension size of input query should be a multiple of attr head_num"),
                    return false);
         OP_CHECK_IF(hRope % n1Size != 0,
                    OPS_REPORT_VECTOR_INNER_ERR(opName, "hRope [%ld] should be a multiple of n1Size [%ld].", h1, n1Size),
@@ -975,9 +993,15 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
 {
     OP_LOGD(context_, "try template[%s]", templateName);
     OP_CHECK_IF(dSize > HEAD_DIM_MAX_VALUE,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "query or key dSize is not in range:(0, 768]"), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "query and key",
+                   std::to_string(dSize).c_str(),
+                   "The head dimension size of input query and key should be in range (0, 768]"),
+               return ge::GRAPH_FAILED);
     OP_CHECK_IF(dSizeV > HEAD_DIM_MAX_VALUE,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "value dSize is not in range:(0, 768]"), return ge::GRAPH_FAILED);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "value",
+                   std::to_string(dSizeV).c_str(),
+                   "The head dimension size of input value should be in range (0, 768]"),
+               return ge::GRAPH_FAILED);
     CalcDBasicBlock();
     CalcDVBasicBlock();
     CalcS1S2BasicBlock();

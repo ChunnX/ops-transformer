@@ -130,8 +130,10 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
                return false);
     uint32_t kernelTypeSize = ge::GetSizeByDataType(kernelType);
     OP_CHECK_IF((kernelTypeSize <= 0),
-               OP_LOGE(context, "kernelType size is invalid, kernelType size is %u.",
-               kernelTypeSize), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "key",
+                   std::to_string(kernelTypeSize).c_str(),
+                   "The data type byte size of input key should be greater than 0"),
+               return false);
     // 计算 MIN_COPY_UINT_SIZE 块数
     emptyArgs.attentionOutBlockSize = Ceil(static_cast<uint32_t>(attentionOutShapeSize) * kernelTypeSize,
                                            MIN_COPY_UINT_SIZE);
@@ -181,7 +183,9 @@ static bool GetEmptyArgs(EmptyArgs &emptyArgs, gert::TilingContext *context, con
 
     uint32_t floatDataSize =  ge::GetSizeByDataType(ge::DT_FLOAT);
     OP_CHECK_IF((floatDataSize <= 0),
-               OP_LOGE(context, "float data size is invalid, size is %u.", floatDataSize),
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context, "softmax_max and softmax_sum",
+                   std::to_string(floatDataSize).c_str(),
+                   "The data type byte size of output softmax_max and softmax_sum should be greater than 0"),
                return false);
     // softmaxSum 和 softmaxMax 输出为 fp32
     emptyArgs.softmaxSumBlockSize = Ceil(static_cast<uint32_t>(softmaxSumShapeSize) * floatDataSize, MIN_COPY_UINT_SIZE);
