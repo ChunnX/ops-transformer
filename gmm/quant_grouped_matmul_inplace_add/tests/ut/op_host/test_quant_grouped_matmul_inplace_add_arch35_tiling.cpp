@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_tiling.h"
+#include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 #include "../../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "tiling_case_executor.h"
 #include "gmm_csv_ge_parse_utils.h"
@@ -99,8 +100,9 @@ struct QGmmInplaceAddArch35Param {
         }
 
         ASSERT_GT(tilingInfo.blockNum, 0U) << "case=" << caseName;
-        ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams))
-            << "case=" << caseName;
+        ASSERT_TRUE(tilingInfo.tilingDataSize == sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams) ||
+                    tilingInfo.tilingDataSize == sizeof(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData))
+            << "case=" << caseName << " tilingDataSize=" << tilingInfo.tilingDataSize;
         if (checkTilingKey) {
             ASSERT_EQ(tilingInfo.tilingKey, expectTilingKey) << "case=" << caseName;
         }
@@ -248,6 +250,71 @@ TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, print_quant_params_debug
             {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
             {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
             {MakeShape({12, 96, 2}), ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+
+    TilingInfo info;
+    EXPECT_TRUE(ExecuteTiling(para, info));
+}
+
+TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, basic_api_post_tiling_memcpy_fail_when_tiling_buffer_too_small)
+{
+    optiling::GMMCompileInfo compileInfo = {
+        32, 64, 262144, 524288, 134217728, 262144, 65536, 65536, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510,
+    };
+
+    gert::StorageShape xShape = MakeShape({512, 96});
+    gert::StorageShape weightShape = MakeShape({512, 128});
+    gert::StorageShape groupListShape = MakeShape({4});
+    gert::StorageShape yShape = MakeShape({4, 96, 128});
+
+    gert::TilingContextPara para(
+        "QuantGroupedMatmulInplaceAdd",
+        {
+            {xShape, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {weightShape, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {MakeShape({4}), ge::DT_FLOAT, ge::FORMAT_ND},
+            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {MakeShape({4}), ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize,
+        8);
+
+    TilingInfo info;
+    EXPECT_FALSE(ExecuteTiling(para, info));
+}
+
+TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, basic_api_print_quant_params_debug_branch_smoke)
+{
+#if defined(_WIN32)
+    _putenv_s("ASCEND_GLOBAL_LOG_LEVEL", "0");
+#else
+    setenv("ASCEND_GLOBAL_LOG_LEVEL", "0", 1);
+#endif
+
+    optiling::GMMCompileInfo compileInfo = {
+        32, 64, 262144, 524288, 134217728, 262144, 65536, 65536, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510,
+    };
+    gert::StorageShape xShape = MakeShape({512, 96});
+    gert::StorageShape weightShape = MakeShape({512, 128});
+    gert::StorageShape groupListShape = MakeShape({4});
+    gert::StorageShape yShape = MakeShape({4, 96, 128});
+    gert::TilingContextPara para(
+        "QuantGroupedMatmulInplaceAdd",
+        {
+            {xShape, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {weightShape, ge::DT_HIFLOAT8, ge::FORMAT_ND},
+            {MakeShape({4}), ge::DT_FLOAT, ge::FORMAT_ND},
+            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
+            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
+            {MakeShape({4}), ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {{yShape, ge::DT_FLOAT, ge::FORMAT_ND}},
         {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
