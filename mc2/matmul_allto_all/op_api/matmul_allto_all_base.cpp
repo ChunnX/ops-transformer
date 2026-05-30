@@ -362,6 +362,10 @@ aclnnStatus aclnnMatmulAlltoAllBaseGetWorkspaceSize(const aclTensor *x1, const a
 aclnnStatus aclnnMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                     aclrtStream stream)
 {
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER, "Param executor is nullptr.");
+        return ACLNN_ERR_INNER;
+    }
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
