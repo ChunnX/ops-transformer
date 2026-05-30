@@ -994,6 +994,24 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
 {
     SplitToCore(totalExpertNum_, aivNum_, startExpertId_, endExpertId_, sendExpertNum_);
 
+    uint32_t countCalcCnt = 0;
+    uint32_t countMaskNum = 0;
+    LocalTensor<half> expertIdsFp16Tensor = subExpBuf_.Get<half>();
+    LocalTensor<uint8_t> expertCountMaskTensor = gatherMaskTBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> selectedExpertIdsTensor = dstExpBuf_.Get<int32_t>();
+    bool needMoeExpertCount = (sendToMoeExpTokenCnt_ > 0) && (endExpertId_ > sharedExpertRankNum_);
+    if (needMoeExpertCount) {
+        countCalcCnt = Ceil(sendToMoeExpTokenCnt_ * sizeof(half), ALIGNED_LEN_256) *
+            ALIGNED_LEN_256 / sizeof(half);
+        countMaskNum = countCalcCnt / BITS_PER_BYTE / sizeof(uint32_t);
+        Duplicate<half>(expertIdsFp16Tensor, static_cast<half>(-1), countCalcCnt);
+        PipeBarrier<PIPE_V>();
+        SetDeqScale(static_cast<half>(1.0));
+        PipeBarrier<PIPE_V>();
+        Cast(expertIdsFp16Tensor, expertIdsTensor_, RoundMode::CAST_NONE, sendToMoeExpTokenCnt_);
+        PipeBarrier<PIPE_V>();
+    }
+
     for (uint32_t curExpertId = startExpertId_; curExpertId < endExpertId_; ++curExpertId) {
         int32_t curExpertCnt = 0;
         // 一个block有8个int32的元素，第一个元素为flag位，第二个为发送token数
@@ -1004,7 +1022,16 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
             }
         } else if (sendToMoeExpTokenCnt_ > 0) { // 当前处理卡为moe专家卡
             int32_t curMoeExpertId = curExpertId - sharedExpertRankNum_;
-            CalTokenSendExpertCnt(curMoeExpertId, sendToMoeExpTokenCnt_, curExpertCnt);
+            uint64_t rsvdCnt = 0;
+            Duplicate<uint32_t>(gatherMaskTensor_, 0, countMaskNum);
+            PipeBarrier<PIPE_V>();
+            CompareScalar(expertCountMaskTensor, expertIdsFp16Tensor, static_cast<half>(curMoeExpertId),
+                AscendC::CMPMODE::EQ, countCalcCnt);
+            PipeBarrier<PIPE_V>();
+            GatherMask(selectedExpertIdsTensor, expertIdsTensor_, gatherMaskTensor_, true, sendToMoeExpTokenCnt_,
+                {1, 1, 0, 0}, rsvdCnt);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            curExpertCnt = static_cast<int32_t>(rsvdCnt);
         }
         statusTensor_(cntPosIndex) = curExpertCnt;
     }
