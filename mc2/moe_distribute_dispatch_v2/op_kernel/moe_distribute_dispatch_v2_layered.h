@@ -1250,16 +1250,12 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     PipeBarrier<PIPE_ALL>();
     GM_ADDR remoteExpAddr;
     uint32_t remoteRankId;
-    if (rankId_ <= 15) {
-        remoteRankId = rankId_ + 16;
-    } else {
-        remoteRankId = rankId_ - 16;
-    }
-    remoteExpAddr = (GM_ADDR)((HcclRankRelationResV2 *)((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp;
+    remoteRankId = (rankId_ + 16 - 3) % 16;
+    remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp;
     GlobalTensor<uint32_t> selfDataStatusGMAivSend;
     selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
     selfDataStatusGMAivSend.SetValue(12, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
-    selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(sendStatusGMTensor_));
+    selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(srcFlagRdmaAddr));
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 }
@@ -1301,7 +1297,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint64_t endFlagValue = statusTensor.GetValue(0);
 
-    selfDataStatusGMAiv.SetValue(11, endFlagValue);
+    selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
+    selfDataStatusGMAiv.SetValue(14, static_cast<uint32_t>(readStatusGMTensor_));
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
 
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
