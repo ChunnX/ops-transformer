@@ -8,17 +8,17 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_ADD_HPP
-#define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_ADD_HPP
+#ifndef GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_ADD_HPP
+#define GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_ADD_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/arch/resource.hpp"
-#include "../../../gmm_infra/epilogue/dispatch_policy.hpp"
-#include "../../../gmm_infra/gemm_coord.hpp"
-#include "../../../gmm_infra/gemm/gemm_type.hpp"
-#include "../../../gmm_infra/matrix_coord.hpp"
-#include "../../../gmm_infra/layout/layout.hpp"
-#include "../../../gmm_infra/detail/callback.hpp"
+#include "../../../gmm_infra/arch/gmm_resource.hpp"
+#include "../../../gmm_infra/epilogue/gmm_epilogue_dispatch_policy.hpp"
+#include "../../../gmm_infra/gmm_gemm_coord.hpp"
+#include "../../../gmm_infra/gemm/gmm_gemm_type.hpp"
+#include "../../../gmm_infra/gmm_matrix_coord.hpp"
+#include "../../../gmm_infra/layout/gmm_layout.hpp"
+#include "../../../gmm_infra/detail/gmm_callback.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -367,4 +367,4 @@ private:
 
 }  // namespace Catlass::Epilogue::Block
 
-#endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
+#endif  // GMM_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_DEQUANT_HPP
