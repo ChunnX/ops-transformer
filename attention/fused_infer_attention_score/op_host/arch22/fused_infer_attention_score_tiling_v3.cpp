@@ -1211,7 +1211,7 @@ bool CheckSpecConditions(const gert::TilingContext *context)
             bool isFAIDSize = (tempQD <= 256 && tempKD <= 256 && tempVD <= 256) &&
                     (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
             bool blockSizeSupported = (blockSize == 128);
-            bool isFAIDSize = !(tempD == 64U || tempD == 128U);
+            isFAIDSize = !(tempD == 64U || tempD == 128U);
             if (isFAIDSize && blockSizeSupported) {
                 specConditionFlag = true;
             }
