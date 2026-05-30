@@ -64,12 +64,18 @@ struct OpAttrs {
 graphStatus MoeDistributeDispatchGetOpInput(OpExecuteContext* host_api_ctx, OpInput &opInput)
 {
     opInput.x = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
-    OP_CHECK_IF(opInput.x == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "x"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opInput.x == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "x"),
+        return ge::GRAPH_FAILED
+    );
 
     opInput.expertIds = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
-    OP_CHECK_IF(opInput.expertIds == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertIds"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opInput.expertIds == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertIds"),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -85,32 +91,53 @@ void MoeDistributeDispatchGetOpOptionalInput(OpExecuteContext* host_api_ctx, OpO
 graphStatus MoeDistributeDispatchGetOpOutput(OpExecuteContext* host_api_ctx, OpOutput &opOutput)
 {
     opOutput.expandX = host_api_ctx->GetOutputTensor(static_cast<size_t>(0));
-    OP_CHECK_IF(opOutput.expandX == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandX"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.expandX == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandX"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.dynamicScales = host_api_ctx->GetOutputTensor(static_cast<size_t>(1));
-    OP_CHECK_IF(opOutput.dynamicScales == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "dynamicScales"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.dynamicScales == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "dynamicScales"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.expandIdx = host_api_ctx->GetOutputTensor(static_cast<size_t>(2));
-    OP_CHECK_IF(opOutput.expandIdx == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandIdx"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.expandIdx == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandIdx"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.expertTokenNums = host_api_ctx->GetOutputTensor(static_cast<size_t>(3));
-    OP_CHECK_IF(opOutput.expertTokenNums == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertTokenNums"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.expertTokenNums == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertTokenNums"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.epRecvCounts = host_api_ctx->GetOutputTensor(static_cast<size_t>(4));
-    OP_CHECK_IF(opOutput.epRecvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epRecvCounts"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.epRecvCounts == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epRecvCounts"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.tpRecvCounts = host_api_ctx->GetOutputTensor(static_cast<size_t>(5));
-    OP_CHECK_IF(opOutput.tpRecvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpRecvCounts"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.tpRecvCounts == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpRecvCounts"),
+        return ge::GRAPH_FAILED
+    );
 
     opOutput.expandScales = host_api_ctx->GetOutputTensor(static_cast<size_t>(6));
-    OP_CHECK_IF(opOutput.expandScales == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandScales"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opOutput.expandScales == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expandScales"),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -118,60 +145,102 @@ graphStatus MoeDistributeDispatchGetOpOutput(OpExecuteContext* host_api_ctx, OpO
 graphStatus MoeDistributeDispatchGetOpAttrs(OpExecuteContext* host_api_ctx, OpAttrs &opAttrs)
 {
     const auto attrs = host_api_ctx->GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "attrs"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        attrs == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "attrs"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.groupEp = attrs->GetStr(static_cast<size_t>(0));
-    OP_CHECK_IF(opAttrs.groupEp == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "groupEp"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.groupEp == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "groupEp"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.epWorldSize = attrs->GetInt(static_cast<size_t>(1));
-    OP_CHECK_IF(opAttrs.epWorldSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epWorldSize"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.epWorldSize == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epWorldSize"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.epRankId = attrs->GetInt(static_cast<size_t>(2));
-    OP_CHECK_IF(opAttrs.epRankId == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epRankId"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.epRankId == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "epRankId"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.moeExpertNum = attrs->GetInt(static_cast<size_t>(3));
-    OP_CHECK_IF(opAttrs.moeExpertNum == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "moeExpertNum"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.moeExpertNum == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "moeExpertNum"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.groupTp = attrs->GetStr(static_cast<size_t>(4));
-    OP_CHECK_IF(opAttrs.groupTp == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "groupTp"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.groupTp == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "groupTp"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.tpWorldSize = attrs->GetInt(static_cast<size_t>(5));
-    OP_CHECK_IF(opAttrs.tpWorldSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpWorldSize"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.tpWorldSize == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpWorldSize"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.tpRankId = attrs->GetInt(static_cast<size_t>(6));
-    OP_CHECK_IF(opAttrs.tpRankId == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpRankId"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.tpRankId == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "tpRankId"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.expertShardType = attrs->GetInt(static_cast<size_t>(7));
-    OP_CHECK_IF(opAttrs.expertShardType == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertShardType"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.expertShardType == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertShardType"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.sharedExpertNum = attrs->GetInt(static_cast<size_t>(8));
-    OP_CHECK_IF(opAttrs.sharedExpertNum == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "sharedExpertNum"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.sharedExpertNum == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "sharedExpertNum"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.sharedExpertRankNum = attrs->GetInt(static_cast<size_t>(9));
-    OP_CHECK_IF(opAttrs.sharedExpertRankNum == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "sharedExpertRankNum"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.sharedExpertRankNum == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "sharedExpertRankNum"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.quantMode = attrs->GetInt(static_cast<size_t>(10));
-    OP_CHECK_IF(opAttrs.quantMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "quantMode"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.quantMode == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "quantMode"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.globalBs = attrs->GetInt(static_cast<size_t>(11));
-    OP_CHECK_IF(opAttrs.globalBs == nullptr, OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "globalBs"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.globalBs == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "globalBs"),
+        return ge::GRAPH_FAILED
+    );
 
     opAttrs.expertTokenNumsType = attrs->GetInt(static_cast<size_t>(12));
-    OP_CHECK_IF(opAttrs.expertTokenNumsType == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertTokenNumsType"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        opAttrs.expertTokenNumsType == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(moeDistributeDispatchInfo, "expertTokenNumsType"),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 

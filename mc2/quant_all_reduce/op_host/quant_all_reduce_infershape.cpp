@@ -96,15 +96,19 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantAllRed
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
     OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(),
                "Get rank_size failed in quant_all_reduce");
-    OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        INNER_DEBUG, "H", "invalid",
-                        std::string("Rank size must be in ") +
-                            std::string(VectorToString(SUPPORT_RANK_SIZE).c_str()) +
-                            ", but the actual value is " +
-                            std::to_string(*rankSize)
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            INNER_DEBUG,
+            "H",
+            "invalid",
+            std::string("Rank size must be in ") +
+                std::string(VectorToString(SUPPORT_RANK_SIZE).c_str()) +
+                ", but the actual value is " +
+                std::to_string(*rankSize)
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     shapeInfo.rankNum = *rankSize;
     OP_LOGD(INNER_DEBUG, "rankSize after infershape func is: %ld", shapeInfo.rankNum);

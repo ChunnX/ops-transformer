@@ -127,14 +127,16 @@ void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCore
 void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
 {
     const auto weight = context_->GetInputDesc(static_cast<size_t>(ops::MC2InputIdx::K_X2));
-    OP_TILING_CHECK(weight == nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        context_->GetNodeName(),
-                        "x",
-                        "unsupported shape",
-                        "Invalid weight tensor."
-                    ),
-                    return);
+    OP_TILING_CHECK(
+        weight == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "Invalid weight tensor."
+        ),
+        return
+    );
     if (weight->GetDataType() != ge::DT_INT8) {
         OP_LOGD(context_->GetNodeName(), "No anti quant for weight data type %u.", weight->GetDataType());
         return;
@@ -166,14 +168,16 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     constexpr uint64_t SINGLE_MATRIX_SIZE_310 = 12;
     singleMatrixSize = SINGLE_MATRIX_SIZE_310;
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-    OP_TILING_CHECK(weightTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        context_->GetNodeName(),
-                        "x",
-                        "unsupported shape",
-                        "weight tensor is invalid"
-                    ),
-                    return);
+    OP_TILING_CHECK(
+        weightTensor == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "weight tensor is invalid"
+        ),
+        return
+    );
     if (weightTensor->GetStorageFormat() == ge::Format::FORMAT_FRACTAL_NZ) {
         constexpr uint32_t TILE_SIZE_310_NZ = 5;
         tileSize = TILE_SIZE_310_NZ;

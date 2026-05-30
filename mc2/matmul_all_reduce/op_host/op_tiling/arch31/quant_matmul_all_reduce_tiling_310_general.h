@@ -67,7 +67,8 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
                     "unsupported shape",
                     "weight tensor is invalid"
                 ),
-                return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED
+            );
             auto format = weightTensor->GetStorageFormat();
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(

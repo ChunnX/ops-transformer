@@ -89,13 +89,16 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool* trans_a = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X1));
-    OPS_CHECK(trans_a != nullptr && *trans_a,
-              OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                  context->GetNodeName(),
-                  "is_trans_b",
-                  "unsupported value",
-                  "x1 does not support transpose."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(
+        trans_a != nullptr && *trans_a,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(),
+            "is_trans_b",
+            "unsupported value",
+            "x1 does not support transpose."
+        ),
+        return ge::GRAPH_FAILED
+    );
     const bool* trans_b = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X2));
     const bool is_trans_b = ((trans_b != nullptr) && (*trans_b));
     if (dim_num_x1 == kMC2MaxShapeSize) {

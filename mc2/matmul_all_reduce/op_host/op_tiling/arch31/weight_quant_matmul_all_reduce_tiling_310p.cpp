@@ -23,14 +23,16 @@ namespace optiling {
 bool WeightQuantMatmulAllReduceTiling310P::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
-    OP_TILING_CHECK(weightTensor == nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        context_->GetNodeName(),
-                        "x",
-                        "unsupported shape",
-                        "weight tensor is invalid"
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        weightTensor == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "weight tensor is invalid"
+        ),
+        return false
+    );
     auto format = weightTensor->GetStorageFormat();
     if (npuArch_ != NpuArch::DAV_2002 || format == ge::Format::FORMAT_ND) {
         OP_LOGI(opName_, "skip weight quant tiling when is not 310p or is not weight nz[%d].", format);

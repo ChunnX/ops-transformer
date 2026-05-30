@@ -144,8 +144,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
                     OP_LOGE(opName_, "cannot find HcclDataType according to ge datatype = %s.",
                         std::to_string(static_cast<int32_t>(args_.geCType)).c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        context_->GetAttrs() == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+        return ge::GRAPH_FAILED
+    );
     const char *groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
@@ -201,20 +204,30 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
     }
     // 如果1行数据就超通信数据量限制，那么任何M切分方式都无法满足
     uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * args_.rankDim;
-    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "y", std::to_string(sizeOfSingleM).c_str(),
-                        "Unsupported matmul output size. Even after splitting data "
-                        "matmul output into (1, n), the size still exceeds 256MB."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_,
+            "y",
+            std::to_string(sizeOfSingleM).c_str(),
+            "Unsupported matmul output size. Even after splitting data "
+                "matmul output into (1, n), the size still exceeds 256MB."
+        ),
+        return ge::GRAPH_FAILED
+    );
     // 如果按通信最大次数切分，能够满足通信数据量限制，那么继续做tiling
     uint64_t sizeOfSplitM =
         Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM), mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(
         sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            opName_, "x1", std::to_string(sizeOfSplitM).c_str(),
-            "Unsupported x1 size. Even after splitting data M into 16 parts, the size still exceeds 256MB."),
-        return ge::GRAPH_FAILED);
+            opName_,
+            "x1",
+            std::to_string(sizeOfSplitM).c_str(),
+            "Unsupported x1 size. Even after splitting data M into 16 parts, the size still exceeds 256MB."
+        ),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -695,8 +708,11 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckCommQuantScale()
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::CheckQuantGroupSize()
 {
-    OP_TILING_CHECK(mmrCtxInfo_.groupSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group_size"),
-                    return false);
+    OP_TILING_CHECK(
+        mmrCtxInfo_.groupSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "group_size"),
+        return false
+    );
     auto groupSizePtr = mmrCtxInfo_.groupSizePtr;
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
@@ -767,9 +783,14 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
     if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         OP_TILING_CHECK(
             args_.isBTrans == false,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "is_trans_b", "unsupported value",
-                "In the dequant MXfp4/MXfp8 scenario, x2 must be transposed."),
-            return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                context_->GetNodeName(),
+                "is_trans_b",
+                "unsupported value",
+                "In the dequant MXfp4/MXfp8 scenario, x2 must be transposed."
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
     if (scenario_ == AllReduceScenario::MXFP4) {
         uint64_t x1K = GetKValue();
@@ -848,8 +869,11 @@ const gert::Shape QuantTilingTransferHelperA5::GetX2Shape(const size_t index)
 const gert::Shape &QuantTilingTransferHelperA5::GetScaleShape(const size_t index)
 {
     (void)index;
-    OP_TILING_CHECK(tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "dequant_scale"), return defaultShape);
+    OP_TILING_CHECK(
+        tilingProcesser_.mmrCtxInfo_.dequant_scale_shape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "dequant_scale"),
+        return defaultShape
+    );
     return tilingProcesser_.mmrCtxInfo_.dequant_scale_shape->GetStorageShape();
 }
 

@@ -215,17 +215,29 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
     // x1，x2数据类型相同
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
-    OP_TILING_CHECK(x1Type != x2Type,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x1 and x2", "unsupported dtype",
-                        "In the dequant scenario, type of x1 and x2 should be same"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        x1Type != x2Type,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x1 and x2",
+            "unsupported dtype",
+            "In the dequant scenario, type of x1 and x2 should be same"
+        ),
+        return ge::GRAPH_FAILED
+    );
     // bias数据类型为int32
     if (mmrCtxInfo_.bias_shape != nullptr) {
         auto biasType = mmrCtxInfo_.bias->GetDataType();
-        OP_TILING_CHECK(biasType != ge::DT_INT32,
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "bias", "unsupported dtype",
-                            "In the dequant scenario, type of bias should be int32"),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            biasType != ge::DT_INT32,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                context_->GetNodeName(),
+                "bias",
+                "unsupported dtype",
+                "In the dequant scenario, type of bias should be int32"
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
     // dequantScale数据类型范围
     GE_ASSERT_GRAPH_SUCCESS(CheckDequantScaleType());

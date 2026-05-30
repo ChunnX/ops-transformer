@@ -97,15 +97,19 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
 
     if (winSizeData.isLayered) {
         // 校验可变bs
-        OP_TILING_CHECK((bs != maxBs),
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "maxBs", "invalid",
-                            std::string("Layered cannot support variableBs, bs is ") +
-                                std::to_string(bs) +
-                                ", maxBs is " +
-                                std::to_string(maxBs)
-                        ),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (bs != maxBs),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "maxBs",
+                "invalid",
+                std::string("Layered cannot support variableBs, bs is ") +
+                    std::to_string(bs) +
+                    ", maxBs is " +
+                    std::to_string(maxBs)
+            ),
+            return ge::GRAPH_FAILED
+        );
         // 校验buffersize
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
                         OP_LOGE(nodeName,
@@ -146,7 +150,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         OP_TILING_CHECK(
             cclBuffSizePtr == nullptr || *cclBuffSizePtr < 0,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "cclBuffSizePtr", "invalid", "cclBuffSizePtr is invalid."),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
         maxWindowSizeEp = *cclBuffSizePtr - MB_SIZE;
         hcclBufferSizeEp = *cclBuffSizePtr;
     }

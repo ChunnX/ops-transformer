@@ -140,24 +140,30 @@ bool MoeDistributeCombineTilingA5::CheckEpWorldSize(const char *nodeName, uint32
     // 检验epWorldSize是否是2的倍数
     OP_TILING_CHECK(
         epWorldSize % 2 != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "epWorldSize", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
             std::string("epWorldSize should be divisible by 2, but got epWorldSize = ") +
                 std::to_string(epWorldSize) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     OP_TILING_CHECK(
         (256 % epWorldSize != 0) && (epWorldSize % 144 != 0),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "epWorldSize", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
             std::string("epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got"
-                            "epWorldSize = ") +
+                "epWorldSize = ") +
                 std::to_string(epWorldSize) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     return true;
 }

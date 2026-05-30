@@ -152,68 +152,108 @@ static ge::graphStatus GetExpertsAttrAndSetTilingData(const gert::TilingContext 
     auto copyExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrCopyExpertNumIndex));
     auto constExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(config.attrConstExpertNumIndex));
     auto expertShardPtr = attrs->GetAttrPointer<int64_t>((config.attrExpertSharedTypeIndex));
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(zeroExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "zeroExpertNum"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(copyExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "copyExpertNum"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(constExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "constExpertNum"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertShardPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertShardType"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        moeExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        zeroExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "zeroExpertNum"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        copyExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "copyExpertNum"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        constExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "constExpertNum"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        expertShardPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertShardType"),
+        return ge::GRAPH_FAILED
+    );
     int64_t moeExpertNum = *moeExpertNumPtr;
     int64_t zeroExpertNum = *zeroExpertNumPtr;
     int64_t copyExpertNum = *copyExpertNumPtr;
     int64_t constExpertNum = *constExpertNumPtr;
-    OP_TILING_CHECK((moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum) > INT32_MAX,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "moeExpertNum", "invalid",
-                        "moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum exceeds MAX_INT32."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum) > INT32_MAX,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "moeExpertNum",
+            "invalid",
+            "moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum exceeds MAX_INT32."
+        ),
+        return ge::GRAPH_FAILED
+    );
     int64_t moeExpertMaxNum = isLayered ? MOE_EXPERT_MAX_NUM_LAYERED : MOE_EXPERT_MAX_NUM;
-    OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > moeExpertMaxNum),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "moeExpertNum", "invalid",
-                        std::string("moeExpertNum is invalid, only support (0, ") +
-                            std::to_string(moeExpertMaxNum) +
-                            "], but got moeExpertNum=" +
-                            std::to_string(moeExpertNum) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((zeroExpertNum < 0),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "expertNum", "invalid",
-                        std::string("zeroExpertNum less than 0, zeroExpertNum is ") +
-                            std::to_string(zeroExpertNum) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((copyExpertNum < 0),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "expertNum", "invalid",
-                        std::string("copyExpertNum less than 0, copyExpertNum is ") +
-                            std::to_string(copyExpertNum) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((constExpertNum < 0),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "expertNum", "invalid",
-                        std::string("constExpertNum less than 0, constExpertNum is ") +
-                            std::to_string(constExpertNum) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*expertShardPtr != 0,
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "expertShardType", "invalid",
-                        std::string("expertShardType is invalid, only support 0, but got expertShardType=") +
-                            std::to_string(*expertShardPtr) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (moeExpertNum <= 0) || (moeExpertNum > moeExpertMaxNum),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "moeExpertNum",
+            "invalid",
+            std::string("moeExpertNum is invalid, only support (0, ") +
+                std::to_string(moeExpertMaxNum) +
+                "], but got moeExpertNum=" +
+                std::to_string(moeExpertNum) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        (zeroExpertNum < 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertNum",
+            "invalid",
+            std::string("zeroExpertNum less than 0, zeroExpertNum is ") +
+                std::to_string(zeroExpertNum) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        (copyExpertNum < 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertNum",
+            "invalid",
+            std::string("copyExpertNum less than 0, copyExpertNum is ") +
+                std::to_string(copyExpertNum) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        (constExpertNum < 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertNum",
+            "invalid",
+            std::string("constExpertNum less than 0, constExpertNum is ") +
+                std::to_string(constExpertNum) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        *expertShardPtr != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertShardType",
+            "invalid",
+            std::string("expertShardType is invalid, only support 0, but got expertShardType=") +
+                std::to_string(*expertShardPtr) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     tilingData.moeDistributeCombineV2Info.moeExpertNum = static_cast<uint32_t>(moeExpertNum);
     tilingData.moeDistributeCombineV2Info.zeroExpertNum = static_cast<uint32_t>(zeroExpertNum);
     tilingData.moeDistributeCombineV2Info.copyExpertNum = static_cast<uint32_t>(copyExpertNum);
@@ -230,44 +270,61 @@ static ge::graphStatus GetSharedAttrAndSetTilingData(const gert::TilingContext *
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>((config.attrSharedExpertNumIndex)));
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>((config.attrSharedExpertRankNumIndex));
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
-    OP_TILING_CHECK(sharedExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertNum"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertRankNum"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sharedExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertNum"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        sharedExpertRankNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "sharedExpertRankNum"),
+        return ge::GRAPH_FAILED
+    );
     int64_t sharedExpertRankNum = *sharedExpertRankNumPtr;
     int64_t epWorldSize = *epWorldSizePtr;
     if (isLayered) {
         OP_TILING_CHECK(
             (sharedExpertRankNum != 0),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName, "sharedExpertRankNum", "invalid",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "sharedExpertRankNum",
+                "invalid",
                 std::string("sharedExpertNum is invalid, only support 0 in hierarchy mode, but got sharedExpertNum=") +
                     std::to_string(*sharedExpertNumPtr) +
                     ", sharedExpertRankNum=" +
                     std::to_string(sharedExpertRankNum)
             ),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
     } else {
-        OP_TILING_CHECK((*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM),
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "sharedExpertNum", "invalid",
-                            std::string("sharedExpertNum is invalid, only support [0, ") +
-                                std::to_string(MAX_SHARED_EXPERT_NUM) +
-                                "], but got sharedExpertNum=" +
-                                std::to_string(*sharedExpertNumPtr) +
-                                "."
-                        ),
-                        return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "sharedExpertRankNum", "invalid",
-                            std::string("sharedExpertRankNum is invalid, only support [0, ") +
-                                std::to_string(epWorldSize) +
-                                "), but got sharedExpertRankNum=" +
-                                std::to_string(sharedExpertRankNum) +
-                                "."
-                        ),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "sharedExpertNum",
+                "invalid",
+                std::string("sharedExpertNum is invalid, only support [0, ") +
+                    std::to_string(MAX_SHARED_EXPERT_NUM) +
+                    "], but got sharedExpertNum=" +
+                    std::to_string(*sharedExpertNumPtr) +
+                    "."
+            ),
+            return ge::GRAPH_FAILED
+        );
+        OP_TILING_CHECK(
+            (sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "sharedExpertRankNum",
+                "invalid",
+                std::string("sharedExpertRankNum is invalid, only support [0, ") +
+                    std::to_string(epWorldSize) +
+                    "), but got sharedExpertRankNum=" +
+                    std::to_string(sharedExpertRankNum) +
+                    "."
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
     tilingData.moeDistributeCombineV2Info.sharedExpertNum = static_cast<uint32_t>(*sharedExpertNumPtr);
     tilingData.moeDistributeCombineV2Info.sharedExpertRankNum = static_cast<uint32_t>(sharedExpertRankNum);
@@ -290,57 +347,78 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
     auto tpWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrTpWorldSizeIndex));
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>((config.attrEpRankIdIndex));
     auto tpRankIdPtr = attrs->GetAttrPointer<int64_t>((config.attrTpRankIdIndex));
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(tpWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpWorldSize"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        epWorldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        tpWorldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpWorldSize"),
+        return ge::GRAPH_FAILED
+    );
     int64_t epWorldSize = *epWorldSizePtr;
     int64_t maxEpworldsize = isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE;
     int64_t maxTpworldsize = isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
-    OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "epWorldSize", "invalid",
-                        std::string("epWorldSize is invalid, only support [") +
-                            std::to_string(MIN_EP_WORLD_SIZE) +
-                            ", " +
-                            std::to_string(maxEpworldsize) +
-                            "], but got epWorldSize=" +
-                            std::to_string(epWorldSize) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("epWorldSize is invalid, only support [") +
+                std::to_string(MIN_EP_WORLD_SIZE) +
+                ", " +
+                std::to_string(maxEpworldsize) +
+                "], but got epWorldSize=" +
+                std::to_string(epWorldSize) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     // 校验epWorldSize是否是16整数倍
-    OP_TILING_CHECK((isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "epWorldSize", "invalid",
-                        std::string("epWorldSize should be ") +
-                            std::to_string(RANK_NUM_PER_NODE) +
-                            " Aligned, but got " +
-                            std::to_string(epWorldSize) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("epWorldSize should be ") +
+                std::to_string(RANK_NUM_PER_NODE) +
+                " Aligned, but got " +
+                std::to_string(epWorldSize) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "epRankId", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epRankId",
+            "invalid",
             std::string("epRankId is invalid, only support [0, ") +
                 std::to_string(epWorldSize) +
                 "), but got epRankId=" +
                 std::to_string(*epRankIdPtr) +
                 "."
         ),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "tpWorldSize", "invalid",
-                        std::string("tpWorldSize is invalid, only support [0, ") +
-                            std::to_string(maxTpworldsize) +
-                            "], but got tpWorldSize=" +
-                            std::to_string(*tpWorldSizePtr) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        (*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "tpWorldSize",
+            "invalid",
+            std::string("tpWorldSize is invalid, only support [0, ") +
+                std::to_string(maxTpworldsize) +
+                "], but got tpWorldSize=" +
+                std::to_string(*tpWorldSizePtr) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epRankId"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(tpRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRankId"), return ge::GRAPH_FAILED);
 
@@ -348,39 +426,52 @@ static ge::graphStatus GetTpAndEpAttrAndSetTilingData(const gert::TilingContext 
         auto groupTpPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrGroupTpIndex));
         OP_TILING_CHECK(
             (*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName, "tpRankId", "invalid",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "tpRankId",
+                "invalid",
                 std::string("tpRankId is invalid, only support [0, ") +
                     std::to_string(*tpWorldSizePtr) +
                     "), but got tpRankId=" +
                     std::to_string(*tpRankIdPtr) +
                     "."
             ),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-            OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr"), return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
+        OP_TILING_CHECK(
+            (groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
+                (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "groupTpPtr"),
+            return ge::GRAPH_FAILED
+        );
         OP_TILING_CHECK(
             (commQuantMode != 0),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName, "tpWorldSize", "invalid",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "tpWorldSize",
+                "invalid",
                 std::string("commQuantMode only supports 0 when tpWorldSize > 1, but got commQuantMode=") +
                     std::to_string(commQuantMode) +
                     ", tpWorldSize=" +
                     std::to_string(*tpWorldSizePtr) +
                     "."
             ),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
         groupTp = std::string(groupTpPtr);
     } else {
-        OP_TILING_CHECK(*tpRankIdPtr != 0,
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "tpRankId", "invalid",
-                            std::string("tpRankId is invalid, NoTp mode only support 0, but got tpRankId=") +
-                                std::to_string(*tpRankIdPtr) +
-                                "."
-                        ),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            *tpRankIdPtr != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "tpRankId",
+                "invalid",
+                std::string("tpRankId is invalid, NoTp mode only support 0, but got tpRankId=") +
+                    std::to_string(*tpRankIdPtr) +
+                    "."
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
     tilingData.moeDistributeCombineV2Info.epWorldSize = static_cast<uint32_t>(epWorldSize);
     tilingData.moeDistributeCombineV2Info.tpWorldSize = static_cast<uint32_t>(*tpWorldSizePtr);
@@ -398,53 +489,69 @@ static ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *contex
 
     if (!config.isMc2Context) {
         auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrGroupEpIndex));
-        OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                            (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "groupEp", "invalid", "groupEp is invalid."),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
+                (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "groupEp", "invalid", "groupEp is invalid."),
+            return ge::GRAPH_FAILED
+        );
         groupEp = string(groupEpPtr);
     }
     auto commQuantModePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>((config.attrCommQuantModeIndex)));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
 
-    OP_TILING_CHECK(commQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        commQuantModePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "commQuantMode"),
+        return ge::GRAPH_FAILED
+    );
     isLayered = strcmp(commAlgPtr, "hierarchy") == 0;
     if (config.isMc2Context) {
-        OP_TILING_CHECK(isLayered,
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "commAlg", "invalid",
-                            std::string("commAlgPtr ") +
-                                std::string(commAlgPtr) +
-                                " doesn't support comm with context."
-                        ),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            isLayered,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "commAlg",
+                "invalid",
+                std::string("commAlgPtr ") +
+                    std::string(commAlgPtr) +
+                    " doesn't support comm with context."
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
 
     if (mc2tiling::GetNpuArch(context) != NpuArch::DAV_3510) {
-        OP_TILING_CHECK((*commQuantModePtr != 0) && (*commQuantModePtr != INT8_COMM_QUANT),
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "commQuantMode", "invalid",
-                            std::string("commQuantMode only support 0(default) or 2(int8 comm quant), but got"
-                                            "commQuantMode=") +
-                                std::to_string(*commQuantModePtr) +
-                                "."
-                        ),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (*commQuantModePtr != 0) && (*commQuantModePtr != INT8_COMM_QUANT),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "commQuantMode",
+                "invalid",
+                std::string("commQuantMode only support 0(default) or 2(int8 comm quant), but got"
+                    "commQuantMode=") +
+                    std::to_string(*commQuantModePtr) +
+                    "."
+            ),
+            return ge::GRAPH_FAILED
+        );
     } else {
         OP_TILING_CHECK(
             (*commQuantModePtr != 0) &&
                 (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::INT8_QUANT)) &&
                 (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E5M2_QUANT)) &&
                 (*commQuantModePtr != static_cast<CommQuantModeType>(CommQuantMode::MXFP8_E4M3_QUANT)),
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                nodeName, "commQuantMode", "invalid",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "commQuantMode",
+                "invalid",
                 std::string("commQuantMode only support 0(default) or 2(int8 comm quant)or 3(mxFp8_e5m2) or"
-                                "4(mxFp8_e4m3), but got commQuantMode=") +
+                    "4(mxFp8_e4m3), but got commQuantMode=") +
                     std::to_string(*commQuantModePtr) +
                     "."
             ),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
     }
 
     commQuantMode = static_cast<uint32_t>(*commQuantModePtr);
@@ -470,44 +577,62 @@ static ge::graphStatus CheckARNAttrAndSetTilingData(const gert::TilingContext *c
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"), return false);
 
     auto residualXDesc = context->GetInputDesc(config.residualXIndex);
-    OP_TILING_CHECK(residualXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "residualXDesc"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        residualXDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "residualXDesc"),
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(
         (residualXDesc->GetDataType() != ge::DT_BF16),
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("residualX dataType is invalid, dataType should be bfloat16, but is ") +
                 Ops::Base::ToString(static_cast<ge::DataType>(residualXDesc->GetDataType()))
         ),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     auto gammaDesc = context->GetInputDesc(config.gammaIndex);
     OP_TILING_CHECK(gammaDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "gammaDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((gammaDesc->GetDataType() != ge::DT_BF16),
-                                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "y", "invalid",
-                        std::string("gamma dataType is invalid, dataType should be bfloat16, but is ") +
-                            Ops::Base::ToString(static_cast<ge::DataType>(gammaDesc->GetDataType()))
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (gammaDesc->GetDataType() != ge::DT_BF16),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
+            std::string("gamma dataType is invalid, dataType should be bfloat16, but is ") +
+                Ops::Base::ToString(static_cast<ge::DataType>(gammaDesc->GetDataType()))
+        ),
+        return ge::GRAPH_FAILED
+    );
     auto yDesc = context->GetOutputDesc(config.outputYIndex);
     OP_TILING_CHECK(yDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "yDesc"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((yDesc->GetDataType() != expandXDesc->GetDataType()),
-                                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("yOut dataType is invalid, dataType should be equal to expandX dataType ") +
-                            Ops::Base::ToString(static_cast<ge::DataType>(expandXDesc->GetDataType())) +
-                            ", but is " +
-                            Ops::Base::ToString(static_cast<ge::DataType>(yDesc->GetDataType()))
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (yDesc->GetDataType() != expandXDesc->GetDataType()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("yOut dataType is invalid, dataType should be equal to expandX dataType ") +
+                Ops::Base::ToString(static_cast<ge::DataType>(expandXDesc->GetDataType())) +
+                ", but is " +
+                Ops::Base::ToString(static_cast<ge::DataType>(yDesc->GetDataType()))
+        ),
+        return ge::GRAPH_FAILED
+    );
     auto rstdDesc = context->GetOutputDesc(config.outputRstdIndex);
-    OP_TILING_CHECK(rstdDesc->GetDataType() != ge::DT_FLOAT,
-                                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "y", "invalid",
-                        std::string("rstdOut dataType is invalid, dataType should be float, but got ") +
-                            Ops::Base::ToString(static_cast<ge::DataType>(rstdDesc->GetDataType()))
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        rstdDesc->GetDataType() != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
+            std::string("rstdOut dataType is invalid, dataType should be float, but got ") +
+                Ops::Base::ToString(static_cast<ge::DataType>(rstdDesc->GetDataType()))
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     return ge::GRAPH_SUCCESS;
 }
@@ -517,19 +642,29 @@ static bool CheckInputTensorDimARN(const gert::TilingContext *context, const cha
 {
     const gert::StorageShape *residualXStorageShape = context->GetInputShape(config.residualXIndex);
     OP_TILING_CHECK(residualXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "residualX"), return false);
-    OP_TILING_CHECK(residualXStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "residualX",
-                        (std::to_string(residualXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
-                    return false);
+    OP_TILING_CHECK(
+        residualXStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "residualX",
+            (std::to_string(residualXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "3D"
+        ),
+        return false
+    );
 
     const gert::StorageShape *gammaStorageShape = context->GetInputShape(config.gammaIndex);
     OP_TILING_CHECK(gammaStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "gamma"), return false);
     OP_TILING_CHECK(
         gammaStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            nodeName, "gamma", (std::to_string(gammaStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
-        return false);
+            nodeName,
+            "gamma",
+            (std::to_string(gammaStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "1D"
+        ),
+        return false
+    );
 
     return true;
 }
@@ -538,54 +673,88 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
 {
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(config.expandXIndex);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandX"), return false);
-    OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "expandX",
-                        (std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-                    return false);
+    OP_TILING_CHECK(
+        expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "expandX",
+            (std::to_string(expandXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "2D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "expandX dim0 = %ld", expandXStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expandX dim1 = %ld", expandXStorageShape->GetStorageShape().GetDim(1));
 
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(config.expertIdsIndex);
     OP_TILING_CHECK(expertIdsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIds"), return false);
-    OP_TILING_CHECK(expertIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "expertIds",
-                        (std::to_string(expertIdsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-                    return false);
+    OP_TILING_CHECK(
+        expertIdsStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "expertIds",
+            (std::to_string(expertIdsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "2D"
+        ),
+        return false
+    );
     int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
     int64_t expertIdsDim1 = expertIdsStorageShape->GetStorageShape().GetDim(1);
     OP_LOGD(nodeName, "expertIds dim0 = %ld", expertIdsDim0);
     OP_LOGD(nodeName, "expertIds dim1 = %ld", expertIdsDim1);
 
     const gert::StorageShape *assistInfoStorageShape = context->GetInputShape(config.assistInfoIndex);
-    OP_TILING_CHECK(assistInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "assistInfoForCombine"),
-                    return false);
-    OP_TILING_CHECK(assistInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "assistInfoForCombine",
-                        (std::to_string(assistInfoStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
-                    return false);
+    OP_TILING_CHECK(
+        assistInfoStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "assistInfoForCombine"),
+        return false
+    );
+    OP_TILING_CHECK(
+        assistInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "assistInfoForCombine",
+            (std::to_string(assistInfoStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "1D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "assistInfoForCombine dim0 = %ld", assistInfoStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *epSendCountsStorageShape = context->GetInputShape(config.epSendCountIndex);
-    OP_TILING_CHECK(epSendCountsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCounts"),
-                    return false);
-    OP_TILING_CHECK(epSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "epSendCounts",
-                        (std::to_string(epSendCountsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
-                    return false);
+    OP_TILING_CHECK(
+        epSendCountsStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCounts"),
+        return false
+    );
+    OP_TILING_CHECK(
+        epSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "epSendCounts",
+            (std::to_string(epSendCountsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "1D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "epSendCounts dim0 = %ld", epSendCountsStorageShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
-                    return false);
-    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(
-                        nodeName, "expertScales",
-                        (std::to_string(expertScalesStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-                    return false);
+    OP_TILING_CHECK(
+        expertScalesStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            nodeName,
+            "expertScales",
+            (std::to_string(expertScalesStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "2D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(1));
 
@@ -598,12 +767,21 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
         const int64_t expandScaleDim = expandScaleStorageShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(expandScaleStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
-                        return false);
-        OP_TILING_CHECK(expandScaleDim != ONE_DIM,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "expandScales",
-                                                     (std::to_string(expandScaleDim) + "D").c_str(), "1D"),
-                        return false);
+        OP_TILING_CHECK(
+            expandScaleStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandScales"),
+            return false
+        );
+        OP_TILING_CHECK(
+            expandScaleDim != ONE_DIM,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                nodeName,
+                "expandScales",
+                (std::to_string(expandScaleDim) + "D").c_str(),
+                "1D"
+            ),
+            return false
+        );
         OP_LOGD(nodeName, "expandScales dim0 = %ld", expandScaleStorageShape->GetStorageShape().GetDim(0));
     }
 
@@ -613,9 +791,13 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
         OP_TILING_CHECK(
             constExpertAlpha1StorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
             OP_LOGE_FOR_INVALID_SHAPEDIM(
-                nodeName, "const_expert_alpha_1",
-                (std::to_string(constExpertAlpha1StorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-            return false);
+                nodeName,
+                "const_expert_alpha_1",
+                (std::to_string(constExpertAlpha1StorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "2D"
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape *constExpertAlpha2StorageShape =
@@ -624,51 +806,71 @@ static bool CheckOptionalScalesTensorDim(const gert::TilingContext *context, con
         OP_TILING_CHECK(
             constExpertAlpha2StorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
             OP_LOGE_FOR_INVALID_SHAPEDIM(
-                nodeName, "const_expert_alpha_2",
-                (std::to_string(constExpertAlpha2StorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-            return false);
+                nodeName,
+                "const_expert_alpha_2",
+                (std::to_string(constExpertAlpha2StorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "2D"
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape* constExpertVStorageShape = context->GetOptionalInputShape(config.constExpertVIndex);
     if (constExpertVStorageShape != nullptr) {
-        OP_TILING_CHECK(constExpertVStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(
-                            nodeName, "const_expert_v",
-                            (std::to_string(constExpertVStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                            "2D"),
-                        return false);
+        OP_TILING_CHECK(
+            constExpertVStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                nodeName,
+                "const_expert_v",
+                (std::to_string(constExpertVStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "2D"
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape *activationScaleStorageShape = context->GetOptionalInputShape(config.activationScaleIndex);
     OP_TILING_CHECK(
         activationScaleStorageShape != nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "activationScale", "invalid", "activationScale is not null."),
-        return false);
+        return false
+    );
 
     const gert::StorageShape *weightScaleStorageShape = context->GetOptionalInputShape(config.weightScaleIndex);
-    OP_TILING_CHECK(weightScaleStorageShape != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "H", "invalid", "weightScale is not null."),
-                    return false);
+    OP_TILING_CHECK(
+        weightScaleStorageShape != nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "H", "invalid", "weightScale is not null."),
+        return false
+    );
 
     const gert::StorageShape *sharedExpertX = context->GetOptionalInputShape(config.sharedExpertXIndex);
     if (sharedExpertX != nullptr) {
         auto attrs = context->GetAttrs();
         auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>((config.attrSharedExpertRankNumIndex));
-        OP_TILING_CHECK(*sharedExpertRankNumPtr != 0,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "sharedExpertRankNum", "invalid",
-                                                              "sharedExpertX only support input None "
-                                                              "when sharedExpertRankNum is non-zero."),
-                        return false);
+        OP_TILING_CHECK(
+            *sharedExpertRankNumPtr != 0,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "sharedExpertRankNum",
+                "invalid",
+                "sharedExpertX only support input None "
+                    "when sharedExpertRankNum is non-zero."
+            ),
+            return false
+        );
         OP_TILING_CHECK(
             ((sharedExpertX->GetStorageShape().GetDimNum() != TWO_DIMS) &&
-             (sharedExpertX->GetStorageShape().GetDimNum() != THREE_DIMS)),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "x", "invalid",
+                (sharedExpertX->GetStorageShape().GetDimNum() != THREE_DIMS)),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("sharedExpertX must be 2-dimension or 3-dimension, but got ") +
                     std::to_string(sharedExpertX->GetStorageShape().GetDimNum()) +
                     " dim"
             ),
-            return false);
+            return false
+        );
     }
 
     return true;
@@ -680,82 +882,121 @@ static bool CheckOptionalInputTensorDim(const gert::TilingContext *context, cons
 {
     const gert::StorageShape* oriXStorageShape = context->GetOptionalInputShape(config.oriXIndex);
     if (oriXStorageShape != nullptr) {
-        OP_TILING_CHECK(oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(
-                            nodeName, "ori_x",
-                            (std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-                        return false);
+        OP_TILING_CHECK(
+            oriXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                nodeName,
+                "ori_x",
+                (std::to_string(oriXStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "2D"
+            ),
+            return false
+        );
     }
 
-    OP_TILING_CHECK(!CheckOptionalScalesTensorDim(context, nodeName, config, isLayered),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "scales", "invalid",
-                                                          "Param shape of optional scales input tensor is invalid"),
-                    return false);
+    OP_TILING_CHECK(
+        !CheckOptionalScalesTensorDim(context, nodeName, config, isLayered),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "scales",
+            "invalid",
+            "Param shape of optional scales input tensor is invalid"
+        ),
+        return false
+    );
 
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCounts"),
-                        return false);
-        OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(
-                            nodeName, "tpSendCounts",
-                            (std::to_string(tpSendCountsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                            "1D"),
-                        return false);
+        OP_TILING_CHECK(
+            tpSendCountsStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCounts"),
+            return false
+        );
+        OP_TILING_CHECK(
+            tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                nodeName,
+                "tpSendCounts",
+                (std::to_string(tpSendCountsStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                "1D"
+            ),
+            return false
+        );
         OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
     }
 
     if (isActiveMask) {
         const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
-        OP_TILING_CHECK(xActiveMaskStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMask"),
-                        return false);
+        OP_TILING_CHECK(
+            xActiveMaskStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMask"),
+            return false
+        );
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             ((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("xActiveMask must be 1-dimension or 2-dimension, but got ") +
                     std::to_string(xActiveMaskDimNums) +
                     " dim"
             ),
-            return false);
+            return false
+        );
     }
     if (hasElasticInfo) {
         const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
-        OP_TILING_CHECK(elasticInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfo"),
-                        return false);
-        OP_TILING_CHECK(elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "elasticInfo", "invalid",
-                            std::string("elasticInfo dim must be 1, but current dim num is ") +
-                                std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            elasticInfoStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfo"),
+            return false
+        );
+        OP_TILING_CHECK(
+            elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "elasticInfo",
+                "invalid",
+                std::string("elasticInfo dim must be 1, but current dim num is ") +
+                    std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()) +
+                    "."
+            ),
+            return false
+        );
         OP_LOGD(nodeName, "elasticInfo dim0 = %ld", elasticInfoStorageShape->GetStorageShape().GetDim(0));
     }
 
     if (isPerformance) {
         const gert::StorageShape *performanceInfoStorageShape =
             context->GetOptionalInputShape(config.performanceInfoIndex);
-        OP_TILING_CHECK(performanceInfoStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "performanceInfo"),
-                        return false);
+        OP_TILING_CHECK(
+            performanceInfoStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "performanceInfo"),
+            return false
+        );
         OP_TILING_CHECK(
             performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "performanceInfo", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "performanceInfo",
+                "invalid",
                 std::string("performanceInfo dim must be 1, but current dim num is ") +
                     std::to_string(performanceInfoStorageShape->GetStorageShape().GetDimNum()) +
                     "."
             ),
-            return false);
+            return false
+        );
         OP_LOGD(nodeName, "performanceInfo dim0 = %ld", performanceInfoStorageShape->GetStorageShape().GetDim(0));
     }
 
     const gert::StorageShape *groupListStorageShape = context->GetOptionalInputShape(config.groupListIndex);
-    OP_TILING_CHECK(groupListStorageShape != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "groupList", "invalid", "groupList is not null."),
-                    return false);
+    OP_TILING_CHECK(
+        groupListStorageShape != nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "groupList", "invalid", "groupList is not null."),
+        return false
+    );
 
     return true;
 }
@@ -768,8 +1009,13 @@ static bool CheckOutputTensorDimARN(const gert::TilingContext *context, const ch
     OP_TILING_CHECK(
         yStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            nodeName, "yOut", (std::to_string(yStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
-        return false);
+            nodeName,
+            "yOut",
+            (std::to_string(yStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "3D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "yOut dim0 = %ld", yStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "yOut dim1 = %ld", yStorageShape->GetStorageShape().GetDim(1));
     OP_LOGD(nodeName, "yOut dim2 = %ld", yStorageShape->GetStorageShape().GetDim(TWO_DIMS));
@@ -779,8 +1025,13 @@ static bool CheckOutputTensorDimARN(const gert::TilingContext *context, const ch
     OP_TILING_CHECK(
         rstdStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            nodeName, "rstdOut", (std::to_string(rstdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
-        return false);
+            nodeName,
+            "rstdOut",
+            (std::to_string(rstdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "3D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "rstdOut dim0 = %ld", rstdStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "rstdOut dim1 = %ld", rstdStorageShape->GetStorageShape().GetDim(1));
     OP_LOGD(nodeName, "rstdOut dim2 = %ld", rstdStorageShape->GetStorageShape().GetDim(TWO_DIMS));
@@ -790,8 +1041,13 @@ static bool CheckOutputTensorDimARN(const gert::TilingContext *context, const ch
     OP_TILING_CHECK(
         xStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            nodeName, "xOut", (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
-        return false);
+            nodeName,
+            "xOut",
+            (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "3D"
+        ),
+        return false
+    );
     OP_LOGD(nodeName, "xOut dim0 = %ld", xStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "xOut dim1 = %ld", xStorageShape->GetStorageShape().GetDim(1));
     OP_LOGD(nodeName, "xOut dim2 = %ld", xStorageShape->GetStorageShape().GetDim(TWO_DIMS));
@@ -807,28 +1063,41 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, const char 
     OP_TILING_CHECK(
         xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            nodeName, "x", (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"),
-        return false);
+            nodeName,
+            "x",
+            (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "2D"
+        ),
+        return false
+    );
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(xDim0 != expertIdsDim0,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("x's dim0 not equal to bs, bs = ") +
-                            std::to_string(expertIdsDim0) +
-                            ", x's dim0 = " +
-                            std::to_string(xDim0)
-                    ),
-                    return false);
-    OP_TILING_CHECK(xDim1 != expandXDim1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("x's dim1 not equal to h, x's dim1 = ") +
-                            std::to_string(xDim1) +
-                            ", h = " +
-                            std::to_string(expandXDim1)
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        xDim0 != expertIdsDim0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("x's dim0 not equal to bs, bs = ") +
+                std::to_string(expertIdsDim0) +
+                ", x's dim0 = " +
+                std::to_string(xDim0)
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        xDim1 != expandXDim1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("x's dim1 not equal to h, x's dim1 = ") +
+                std::to_string(xDim1) +
+                ", h = " +
+                std::to_string(expandXDim1)
+        ),
+        return false
+    );
 
     return true;
 }
@@ -840,13 +1109,20 @@ static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, c
     OP_TILING_CHECK(
         !CheckInputTensorDim(context, nodeName, config),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "H", "invalid", "param shape of input tensor is invalid"),
-        return false);
+        return false
+    );
 
-    OP_TILING_CHECK(!CheckOptionalInputTensorDim(context, nodeName, isActiveMask, hasElasticInfo, isPerformance,
-                                                 tpWorldSize, config, isLayered),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "H", "invalid",
-                                                          "param shape of optional input tensor is invalid"),
-                    return false);
+    OP_TILING_CHECK(
+        !CheckOptionalInputTensorDim(context, nodeName, isActiveMask, hasElasticInfo, isPerformance,
+            tpWorldSize, config, isLayered),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "H",
+            "invalid",
+            "param shape of optional input tensor is invalid"
+        ),
+        return false
+    );
 
     return true;
 }
@@ -859,90 +1135,119 @@ static bool CheckExpertTensorDataType(const gert::TilingContext *context, const 
     if (oriXDesc != nullptr) {
         OP_TILING_CHECK(
             (oriXDesc->GetDataType() != expandXDesc->GetDataType()),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("ori_x dataType is invalid, dataType should be same as expandX dataType as ") +
                     std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
                     ", but now is " +
                     std::string(Ops::Base::ToString(oriXDesc->GetDataType()).c_str())
             ),
-            return false);
+            return false
+        );
     }
 
     auto constExpertAlpha1Desc = context->GetOptionalInputDesc(config.constExpertAlpha1Index);
     if (constExpertAlpha1Desc != nullptr) {
         OP_TILING_CHECK(
             (constExpertAlpha1Desc->GetDataType() != expandXDesc->GetDataType()),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("const_expert_alpha_1 dataType is invalid, dataType should be same as expandX dataType"
-                                "as ") +
+                    "as ") +
                     std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
                     ", but now is " +
                     std::string(Ops::Base::ToString(constExpertAlpha1Desc->GetDataType()).c_str())
             ),
-            return false);
+            return false
+        );
     }
 
     auto constExpertAlpha2Desc = context->GetOptionalInputDesc(config.constExpertAlpha2Index);
     if (constExpertAlpha2Desc != nullptr) {
         OP_TILING_CHECK(
             (constExpertAlpha2Desc->GetDataType() != expandXDesc->GetDataType()),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("const_expert_alpha_2 dataType is invalid, dataType should be same as expandX dataType"
-                                "as ") +
+                    "as ") +
                     std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
                     ", but now is " +
                     std::string(Ops::Base::ToString(constExpertAlpha2Desc->GetDataType()).c_str())
             ),
-            return false);
+            return false
+        );
     }
 
     auto constExpertVDesc = context->GetOptionalInputDesc(config.constExpertVIndex);
     if (constExpertVDesc != nullptr) {
         OP_TILING_CHECK(
             (constExpertVDesc->GetDataType() != expandXDesc->GetDataType()),
-                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("const_expert_v dataType is invalid, dataType should be same as expandX dataType as ") +
                     std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
                     ", but now is " +
                     std::string(Ops::Base::ToString(constExpertVDesc->GetDataType()).c_str())
             ),
-            return false);
+            return false
+        );
     }
 
     auto expertIdsDesc = context->GetInputDesc(config.expertIdsIndex);
     OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdsDesc"), return false);
-    OP_TILING_CHECK((expertIdsDesc->GetDataType() != ge::DT_INT32),
-                                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("expertIds dataType is invalid, dataType should be int32, but is ") +
-                            std::string(Ops::Base::ToString(expertIdsDesc->GetDataType()).c_str())
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (expertIdsDesc->GetDataType() != ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("expertIds dataType is invalid, dataType should be int32, but is ") +
+                std::string(Ops::Base::ToString(expertIdsDesc->GetDataType()).c_str())
+        ),
+        return false
+    );
     auto sharedExpertXDesc = context->GetOptionalInputDesc(config.sharedExpertXIndex);
     if (sharedExpertXDesc != nullptr) {
-        OP_TILING_CHECK(sharedExpertXDesc->GetDataType() != expandXDesc->GetDataType(),
-                                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("sharedExpertX dataType should be the same as expandX dataType, but got"
-                                            "sharedExpertXdataType ") +
-                                std::string(Ops::Base::ToString(sharedExpertXDesc->GetDataType()).c_str()) +
-                                ", expandX dataType " +
-                                std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            sharedExpertXDesc->GetDataType() != expandXDesc->GetDataType(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("sharedExpertX dataType should be the same as expandX dataType, but got"
+                    "sharedExpertXdataType ") +
+                    std::string(Ops::Base::ToString(sharedExpertXDesc->GetDataType()).c_str()) +
+                    ", expandX dataType " +
+                    std::string(Ops::Base::ToString(expandXDesc->GetDataType()).c_str()) +
+                    "."
+            ),
+            return false
+        );
     }
     auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
-                    return false);
-    OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expertScales",
-                                              Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str(), "float"),
-                    return false);
+    OP_TILING_CHECK(
+        expertScalesDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        (expertScalesDesc->GetDataType() != ge::DT_FLOAT),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName,
+            "expertScales",
+            Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str(),
+            "float"
+        ),
+        return false
+    );
     return true;
 }
 
@@ -953,74 +1258,127 @@ static bool CheckTensorDataType(const gert::TilingContext *context, const char *
 {
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"), return false);
-    OP_TILING_CHECK((expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX",
-                                              Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
-                                              "bf16 or float16"),
-                    return false);
+    OP_TILING_CHECK(
+        (expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName,
+            "expandX",
+            Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
+            "bf16 or float16"
+        ),
+        return false
+    );
     auto assistInfoDesc = context->GetInputDesc(config.assistInfoIndex);
     OP_TILING_CHECK(assistInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "assistInfoDesc"), return false);
-    OP_TILING_CHECK((assistInfoDesc->GetDataType() != ge::DT_INT32),
-                                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        nodeName, "y", "invalid",
-                        std::string("assistInfoForCombine dataType is invalid, dataType should be int32, but is ") +
-                            std::string(Ops::Base::ToString(assistInfoDesc->GetDataType()).c_str())
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (assistInfoDesc->GetDataType() != ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
+            std::string("assistInfoForCombine dataType is invalid, dataType should be int32, but is ") +
+                std::string(Ops::Base::ToString(assistInfoDesc->GetDataType()).c_str())
+        ),
+        return false
+    );
     auto epSendCountsDesc = context->GetInputDesc(config.epSendCountIndex);
-    OP_TILING_CHECK(epSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCountsDesc"),
-                    return false);
-    OP_TILING_CHECK((epSendCountsDesc->GetDataType() != ge::DT_INT32),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "epSendCounts",
-                                              Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        epSendCountsDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCountsDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        (epSendCountsDesc->GetDataType() != ge::DT_INT32),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName,
+            "epSendCounts",
+            Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         auto tpSendCountsDesc = context->GetOptionalInputDesc(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCountsDesc"),
-                        return false);
-        OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "tpSendCounts",
-                                                  Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str(),
-                                                  "int32"),
-                        return false);
+        OP_TILING_CHECK(
+            tpSendCountsDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCountsDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            (tpSendCountsDesc->GetDataType() != ge::DT_INT32),
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "tpSendCounts",
+                Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str(),
+                "int32"
+            ),
+            return false
+        );
     }
 
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
-        OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"),
-                        return false);
-        OP_TILING_CHECK(xActiveMaskDesc->GetDataType() != ge::DT_BOOL,
-                                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("xActiveMask dataType is invalid, dataType should be bool, but is ") +
-                                std::string(Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str()) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            xActiveMaskDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            xActiveMaskDesc->GetDataType() != ge::DT_BOOL,
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("xActiveMask dataType is invalid, dataType should be bool, but is ") +
+                    std::string(Ops::Base::ToString(xActiveMaskDesc->GetDataType()).c_str()) +
+                    "."
+            ),
+            return false
+        );
     }
     if (hasElasticInfo) {
         auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
-        OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"),
-                        return false);
-        OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "elasticInfoDesc",
-                                                  Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str(), "int32"),
-                        return false);
+        OP_TILING_CHECK(
+            elasticInfoDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            elasticInfoDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "elasticInfoDesc",
+                Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str(),
+                "int32"
+            ),
+            return false
+        );
     }
     if (isPerformance) {
         auto performanceInfoDesc = context->GetOptionalInputDesc(config.performanceInfoIndex);
-        OP_TILING_CHECK(performanceInfoDesc->GetDataType() != ge::DT_INT64,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "performanceInfoDesc",
-                                                  Ops::Base::ToString(performanceInfoDesc->GetDataType()).c_str(),
-                                                  "int64"),
-                        return false);
+        OP_TILING_CHECK(
+            performanceInfoDesc->GetDataType() != ge::DT_INT64,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "performanceInfoDesc",
+                Ops::Base::ToString(performanceInfoDesc->GetDataType()).c_str(),
+                "int64"
+            ),
+            return false
+        );
     }
     auto xDesc = context->GetOutputDesc(config.outputXIndex);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
-    OP_TILING_CHECK((xDesc->GetDataType() != expandXDesc->GetDataType()),
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x", Ops::Base::ToString(xDesc->GetDataType()).c_str(),
-                                              Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
-                    return false);
+    OP_TILING_CHECK(
+        (xDesc->GetDataType() != expandXDesc->GetDataType()),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName,
+            "x",
+            Ops::Base::ToString(xDesc->GetDataType()).c_str(),
+            Ops::Base::ToString(expandXDesc->GetDataType()).c_str()
+        ),
+        return false
+    );
     return true;
 }
 
@@ -1031,7 +1389,9 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
     if (oriXDesc != nullptr) {
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(oriXDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "ori_x", "invalid", "valid format"), return false);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "ori_x", "invalid", "valid format"),
+            return false
+        );
     }
 
     auto constExpertAlpha1Desc = context->GetOptionalInputDesc(config.constExpertAlpha1Index);
@@ -1039,7 +1399,9 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(constExpertAlpha1Desc->GetStorageFormat())) ==
                 ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_alpha_1", "invalid", "valid format"), return false);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_alpha_1", "invalid", "valid format"),
+            return false
+        );
     }
 
     auto constExpertAlpha2Desc = context->GetOptionalInputDesc(config.constExpertAlpha2Index);
@@ -1047,7 +1409,9 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(constExpertAlpha2Desc->GetStorageFormat())) ==
                 ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_alpha_2", "invalid", "valid format"), return false);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_alpha_2", "invalid", "valid format"),
+            return false
+        );
     }
 
     auto constExpertVDesc = context->GetOptionalInputDesc(config.constExpertVIndex);
@@ -1055,7 +1419,9 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(constExpertVDesc->GetStorageFormat())) ==
                 ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_v", "invalid", "valid format"), return false);
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "const_expert_v", "invalid", "valid format"),
+            return false
+        );
     }
     return true;
 }
@@ -1067,47 +1433,78 @@ static bool CheckInputTensorFormat(const gert::TilingContext *context, const cha
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"), return false);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expandX", Ops::Base::ToString(expandXDesc->GetStorageFormat()).c_str(),
-                                   "not FORMAT_FRACTAL_NZ"),
-        return false);
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "expandX",
+            Ops::Base::ToString(expandXDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto expertIdsDesc = context->GetInputDesc(config.expertIdsIndex);
     OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertIdsDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertIds",
-                                               Ops::Base::ToString(expertIdsDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "expertIds",
+            Ops::Base::ToString(expertIdsDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto assistInfoDesc = context->GetInputDesc(config.assistInfoIndex);
     OP_TILING_CHECK(assistInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "assistInfoDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "assistInfo",
-                                               Ops::Base::ToString(assistInfoDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "assistInfo",
+            Ops::Base::ToString(assistInfoDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto epSendCountsDesc = context->GetInputDesc(config.epSendCountIndex);
-    OP_TILING_CHECK(epSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCountsDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epSendCounts",
-                                               Ops::Base::ToString(epSendCountsDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        epSendCountsDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "epSendCountsDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "epSendCounts",
+            Ops::Base::ToString(epSendCountsDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales",
-                                               Ops::Base::ToString(expertScalesDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        expertScalesDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "expertScales",
+            Ops::Base::ToString(expertScalesDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     return true;
 }
@@ -1116,70 +1513,114 @@ static bool CheckTensorFormat(const gert::TilingContext *context, const char *no
                               const bool hasElasticInfo, const bool isPerformance, const uint32_t tpWorldSize,
                               const CombineV2Config& config)
 {
-    OP_TILING_CHECK(!CheckZeroComputeExpertTensorFormat(context, nodeName, config),
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "Zero_compute_expert", "invalid", "valid format"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckInputTensorFormat(context, nodeName, config),
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "Input Tensor", "invalid", "valid format"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckZeroComputeExpertTensorFormat(context, nodeName, config),
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "Zero_compute_expert", "invalid", "valid format"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        !CheckInputTensorFormat(context, nodeName, config),
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "Input Tensor", "invalid", "valid format"),
+        return ge::GRAPH_FAILED
+    );
     // 除特殊专家外的可选输入Format check
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         auto tpSendCountsDesc = context->GetOptionalInputDesc(config.tpSendCountsIndex);
-        OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCountsDesc"),
-                        return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpSendCounts",
-                                                   Ops::Base::ToString(tpSendCountsDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            tpSendCountsDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpSendCountsDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                nodeName,
+                "tpSendCounts",
+                Ops::Base::ToString(tpSendCountsDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
     if (isActiveMask) {
         auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
-        OP_TILING_CHECK(xActiveMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"),
-                        return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "xActiveMask",
-                                                   Ops::Base::ToString(xActiveMaskDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            xActiveMaskDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "xActiveMaskDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(xActiveMaskDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                nodeName,
+                "xActiveMask",
+                Ops::Base::ToString(xActiveMaskDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
     if (hasElasticInfo) {
         auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
-        OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"),
-                        return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elasticInfo",
-                                                   Ops::Base::ToString(elasticInfoDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            elasticInfoDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "elasticInfoDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                nodeName,
+                "elasticInfo",
+                Ops::Base::ToString(elasticInfoDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
     if (isPerformance) {
         auto performanceInfoDesc = context->GetOptionalInputDesc(config.performanceInfoIndex);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "performanceInfoDesc",
-                                                   Ops::Base::ToString(performanceInfoDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(performanceInfoDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                nodeName,
+                "performanceInfoDesc",
+                Ops::Base::ToString(performanceInfoDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
     auto sharedExpertXDesc = context->GetOptionalInputDesc(config.sharedExpertXIndex);
-    OP_TILING_CHECK((sharedExpertXDesc != nullptr) &&
-                        (static_cast<ge::Format>(ge::GetPrimaryFormat(sharedExpertXDesc->GetStorageFormat())) ==
-                         ge::FORMAT_FRACTAL_NZ),
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "sharedExpertX",
-                                               Ops::Base::ToString(sharedExpertXDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        (sharedExpertXDesc != nullptr) &&
+            (static_cast<ge::Format>(ge::GetPrimaryFormat(sharedExpertXDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ),
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "sharedExpertX",
+            Ops::Base::ToString(sharedExpertXDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
     //输出Format check
     auto xDesc = context->GetOutputDesc(config.outputXIndex);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "x",
+            Ops::Base::ToString(xDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     return true;
 }
@@ -1193,39 +1634,47 @@ static bool CheckTensorShapeARN(const gert::TilingContext *context,
         int64_t residualXDimBs = residualXShape->GetStorageShape().GetDim(0);
         int64_t residualXDim1 = residualXShape->GetStorageShape().GetDim(1);
         int64_t residualXDimH = residualXShape->GetStorageShape().GetDim(TWO_DIMS);
-        OP_TILING_CHECK(residualXDimBs != expertIdsDim0 || residualXDim1 != RESIDUAL_X_DIM2_SIZE ||
-                            residualXDimH != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("Shape mismatch: residualX's dim0=") +
-                                std::to_string(residualXDimBs) +
-                                " (bs=" +
-                                std::to_string(expertIdsDim0) +
-                                "), dim1=" +
-                                std::to_string(residualXDim1) +
-                                " (expected=" +
-                                std::to_string(RESIDUAL_X_DIM2_SIZE) +
-                                "), dim2=" +
-                                std::to_string(residualXDimH) +
-                                " (h=" +
-                                std::to_string(expandXDim1) +
-                                ")"
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            residualXDimBs != expertIdsDim0 || residualXDim1 != RESIDUAL_X_DIM2_SIZE ||
+                residualXDimH != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("Shape mismatch: residualX's dim0=") +
+                    std::to_string(residualXDimBs) +
+                    " (bs=" +
+                    std::to_string(expertIdsDim0) +
+                    "), dim1=" +
+                    std::to_string(residualXDim1) +
+                    " (expected=" +
+                    std::to_string(RESIDUAL_X_DIM2_SIZE) +
+                    "), dim2=" +
+                    std::to_string(residualXDimH) +
+                    " (h=" +
+                    std::to_string(expandXDim1) +
+                    ")"
+            ),
+            return false
+        );
     }
     // 校验gamma的维度
     const gert::StorageShape *gammaShape = context->GetOptionalInputShape(config.gammaIndex);
     if (gammaShape != nullptr) {
         int64_t gammaDimH = gammaShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(gammaDimH != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "H", "invalid",
-                            std::string("gamma's dim0 not equal to h, gamma's dim0 = ") +
-                                std::to_string(gammaDimH) +
-                                ", h = " +
-                                std::to_string(expandXDim1)
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            gammaDimH != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "H",
+                "invalid",
+                std::string("gamma's dim0 not equal to h, gamma's dim0 = ") +
+                    std::to_string(gammaDimH) +
+                    ", h = " +
+                    std::to_string(expandXDim1)
+            ),
+            return false
+        );
     }
     // 校验y的维度
     const gert::StorageShape *yStorageShape = context->GetOutputShape(config.outputYIndex);
@@ -1234,8 +1683,10 @@ static bool CheckTensorShapeARN(const gert::TilingContext *context,
     int64_t yDim2 = yStorageShape->GetStorageShape().GetDim(TWO_DIMS);
     OP_TILING_CHECK(
         yDim0 != expertIdsDim0 || yDim1 != 1 || yDim2 != expandXDim1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("Shape mismatch: y's dim0=") +
                 std::to_string(yDim0) +
                 " (bs=" +
@@ -1248,26 +1699,31 @@ static bool CheckTensorShapeARN(const gert::TilingContext *context,
                 std::to_string(expandXDim1) +
                 ")"
         ),
-        return false);
+        return false
+    );
     // 校验rstd的维度
     const gert::StorageShape *rstdStorageShape = context->GetOutputShape(config.outputRstdIndex);
     int64_t rstdDim0 = rstdStorageShape->GetStorageShape().GetDim(0);
     int64_t rstdDim1 = rstdStorageShape->GetStorageShape().GetDim(1);
     int64_t rstdDim2 = rstdStorageShape->GetStorageShape().GetDim(TWO_DIMS);
-    OP_TILING_CHECK(rstdDim0 != expertIdsDim0 || rstdDim1 != 1 || rstdDim2 != 1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("Shape mismatch: rstd's dim0=") +
-                            std::to_string(rstdDim0) +
-                            " (bs=" +
-                            std::to_string(expertIdsDim0) +
-                            "), dim1=" +
-                            std::to_string(rstdDim1) +
-                            " (expected=1), dim2=" +
-                            std::to_string(rstdDim2) +
-                            " (expected=1)"
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        rstdDim0 != expertIdsDim0 || rstdDim1 != 1 || rstdDim2 != 1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("Shape mismatch: rstd's dim0=") +
+                std::to_string(rstdDim0) +
+                " (bs=" +
+                std::to_string(expertIdsDim0) +
+                "), dim1=" +
+                std::to_string(rstdDim1) +
+                " (expected=1), dim2=" +
+                std::to_string(rstdDim2) +
+                " (expected=1)"
+        ),
+        return false
+    );
     // 校验x的维度
     const gert::StorageShape *xStorageShape = context->GetOutputShape(config.outputXIndex);
     int64_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
@@ -1275,8 +1731,10 @@ static bool CheckTensorShapeARN(const gert::TilingContext *context,
     int64_t xDim2 = xStorageShape->GetStorageShape().GetDim(TWO_DIMS);
     OP_TILING_CHECK(
         xDim0 != expertIdsDim0 || xDim1 != 1 || xDim2 != expandXDim1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("Shape mismatch: x's dim0=") +
                 std::to_string(xDim0) +
                 " (bs=" +
@@ -1289,7 +1747,8 @@ static bool CheckTensorShapeARN(const gert::TilingContext *context,
                 std::to_string(expandXDim1) +
                 ")"
         ),
-        return false);
+        return false
+    );
     return true;
 }
 
@@ -1302,24 +1761,32 @@ static bool CheckZeroComputeExpertsTensorShape(const gert::TilingContext *contex
     if (oriXShape != nullptr) {
         int64_t oriXDim0 = oriXShape->GetStorageShape().GetDim(0);
         int64_t oriXDim1 = oriXShape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(oriXDim0 != expertIdsDim0,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("ori_x's dim0 not equal to bs, ori_x's dim0 = ") +
-                                std::to_string(oriXDim0) +
-                                ", bs = " +
-                                std::to_string(expertIdsDim0)
-                        ),
-                        return false);
-        OP_TILING_CHECK(oriXDim1 != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("ori_x's dim1 not equal to h, ori_x's dim1 = ") +
-                                std::to_string(oriXDim1) +
-                                ", h = " +
-                                std::to_string(expandXDim1)
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            oriXDim0 != expertIdsDim0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("ori_x's dim0 not equal to bs, ori_x's dim0 = ") +
+                    std::to_string(oriXDim0) +
+                    ", bs = " +
+                    std::to_string(expertIdsDim0)
+            ),
+            return false
+        );
+        OP_TILING_CHECK(
+            oriXDim1 != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("ori_x's dim1 not equal to h, ori_x's dim1 = ") +
+                    std::to_string(oriXDim1) +
+                    ", h = " +
+                    std::to_string(expandXDim1)
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape* constExpertAlpha1Shape = context->GetOptionalInputShape(config.constExpertAlpha1Index);
@@ -1328,24 +1795,31 @@ static bool CheckZeroComputeExpertsTensorShape(const gert::TilingContext *contex
         int64_t constExpertAlpha1Dim1 = constExpertAlpha1Shape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(
             constExpertAlpha1Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("const_expert_alpha_1's dim0 not equal to const_expert_num,const_expert_alpha_1's dim0"
-                                "= ") +
+                    "= ") +
                     std::to_string(constExpertAlpha1Dim0) +
                     ", const_expert_num = " +
                     std::to_string(tilingData.moeDistributeCombineV2Info.constExpertNum)
             ),
-            return false);
-        OP_TILING_CHECK(constExpertAlpha1Dim1 != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("const_expert_alpha_1's dim1 not equal to h,const_expert_alpha_1's dim1 = ") +
-                                std::to_string(constExpertAlpha1Dim1) +
-                                ", h = " +
-                                std::to_string(expandXDim1)
-                        ),
-                        return false);
+            return false
+        );
+        OP_TILING_CHECK(
+            constExpertAlpha1Dim1 != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("const_expert_alpha_1's dim1 not equal to h,const_expert_alpha_1's dim1 = ") +
+                    std::to_string(constExpertAlpha1Dim1) +
+                    ", h = " +
+                    std::to_string(expandXDim1)
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape* constExpertAlpha2Shape = context->GetOptionalInputShape(config.constExpertAlpha2Index);
@@ -1354,50 +1828,65 @@ static bool CheckZeroComputeExpertsTensorShape(const gert::TilingContext *contex
         int64_t constExpertAlpha2Dim1 = constExpertAlpha2Shape->GetStorageShape().GetDim(1);
         OP_TILING_CHECK(
             constExpertAlpha2Dim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("const_expert_alpha_2's dim0 not equal to const_expert_numconst_expert_alpha_2's dim0 =") +
                     std::to_string(constExpertAlpha2Dim0) +
                     ", const_expert_num = " +
                     std::to_string(tilingData.moeDistributeCombineV2Info.constExpertNum)
             ),
-            return false);
-        OP_TILING_CHECK(constExpertAlpha2Dim1 != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("const_expert_alpha_2's dim1 not equal to h, const_expert_alpha_2's dim1 = ") +
-                                std::to_string(constExpertAlpha2Dim1) +
-                                ", h = " +
-                                std::to_string(expandXDim1)
-                        ),
-                        return false);
+            return false
+        );
+        OP_TILING_CHECK(
+            constExpertAlpha2Dim1 != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("const_expert_alpha_2's dim1 not equal to h, const_expert_alpha_2's dim1 = ") +
+                    std::to_string(constExpertAlpha2Dim1) +
+                    ", h = " +
+                    std::to_string(expandXDim1)
+            ),
+            return false
+        );
     }
 
     const gert::StorageShape* constExpertVShape = context->GetOptionalInputShape(config.constExpertVIndex);
     if (constExpertVShape != nullptr) {
         int64_t constExpertVDim0 = constExpertVShape->GetStorageShape().GetDim(0);
         int64_t constExpertVDim1 = constExpertVShape->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(constExpertVDim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("const_expert_v's dim0 not equal to const_expert_num, const_expert_v's dim0"
-                                            "= ") +
-                                std::to_string(constExpertVDim0) +
-                                ", const_expert_num = " +
-                                std::to_string(tilingData.moeDistributeCombineV2Info.constExpertNum) +
-                                "."
-                        ),
-                        return false);
-        OP_TILING_CHECK(constExpertVDim1 != expandXDim1,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("const_expert_v's dim1 not equal to h, const_expert_v's dim1 = ") +
-                                std::to_string(constExpertVDim1) +
-                                ", h = " +
-                                std::to_string(expandXDim1) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            constExpertVDim0 != static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.constExpertNum),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("const_expert_v's dim0 not equal to const_expert_num, const_expert_v's dim0"
+                    "= ") +
+                    std::to_string(constExpertVDim0) +
+                    ", const_expert_num = " +
+                    std::to_string(tilingData.moeDistributeCombineV2Info.constExpertNum) +
+                    "."
+            ),
+            return false
+        );
+        OP_TILING_CHECK(
+            constExpertVDim1 != expandXDim1,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("const_expert_v's dim1 not equal to h, const_expert_v's dim1 = ") +
+                    std::to_string(constExpertVDim1) +
+                    ", h = " +
+                    std::to_string(expandXDim1) +
+                    "."
+            ),
+            return false
+        );
     }
     return true;
 }
@@ -1412,18 +1901,21 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
     OP_TILING_CHECK(
         (expertIdsDim1 <= 0) ||
             (expertIdsDim1 > K_MAX || (expertIdsDim1 > moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum)),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "moeExpertNum", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "moeExpertNum",
+            "invalid",
             std::string("expertIds's dim1(K) should be in (0, min(") +
                 std::to_string(K_MAX) +
                 ", moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum = " +
                 std::to_string(moeExpertNum
-        + zeroExpertNum + copyExpertNum + constExpertNum) +
+                + zeroExpertNum + copyExpertNum + constExpertNum) +
                 ")], but got expertIds's dim1=" +
                 std::to_string(expertIdsDim1) +
                 "."
         ),
-        return false);
+        return false
+    );
     tilingData.moeDistributeCombineV2Info.k = static_cast<uint32_t>(expertIdsDim1);
 
     // 校验expertScales的维度
@@ -1432,24 +1924,30 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
     int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
         expertScalesDim0 != expertIdsDim0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("expertScales's dim0 not equal to bs, expertScales's dim0 = ") +
                 std::to_string(expertScalesDim0) +
                 ", bs = " +
                 std::to_string(expertIdsDim0)
         ),
-        return false);
+        return false
+    );
     OP_TILING_CHECK(
         expertScalesDim1 != expertIdsDim1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("expertScales's dim1 not equal to k, expertScales's dim1 = ") +
                 std::to_string(expertScalesDim1) +
                 ", k = " +
                 std::to_string(expertIdsDim1)
         ),
-        return false);
+        return false
+    );
 
     // 校验sharedExpertX的维度
     const gert::StorageShape *sharedExpertXShape = context->GetOptionalInputShape(config.sharedExpertXIndex);
@@ -1459,46 +1957,61 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
         int64_t sharedExpertXDim1 = sharedExpertXShape->GetStorageShape().GetDim(1);
         int64_t expandXDim1 = (context->GetInputShape(config.expandXIndex))->GetStorageShape().GetDim(1);
         if (sharedExpertXShape->GetStorageShape().GetDimNum() == TWO_DIMS) {
-            OP_TILING_CHECK(sharedExpertXDim0 != expertIdsDim0,
-                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                nodeName, "x", "invalid",
-                                std::string("sharedExpertX's dim0 not equal to bs, sharedExpertX's dim0 = ") +
-                                    std::to_string(sharedExpertXDim0) +
-                                    ", bs = " +
-                                    std::to_string(expertIdsDim0)
-                            ),
-                            return false);
-            OP_TILING_CHECK(sharedExpertXDim1 != expandXDim1,
-                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                nodeName, "x", "invalid",
-                                std::string("sharedExpertX's dim1 not equal to h, sharedExpertX's dim1 = ") +
-                                    std::to_string(sharedExpertXDim1) +
-                                    ", h = " +
-                                    std::to_string(expandXDim1)
-                            ),
-                            return false);
+            OP_TILING_CHECK(
+                sharedExpertXDim0 != expertIdsDim0,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName,
+                    "x",
+                    "invalid",
+                    std::string("sharedExpertX's dim0 not equal to bs, sharedExpertX's dim0 = ") +
+                        std::to_string(sharedExpertXDim0) +
+                        ", bs = " +
+                        std::to_string(expertIdsDim0)
+                ),
+                return false
+            );
+            OP_TILING_CHECK(
+                sharedExpertXDim1 != expandXDim1,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName,
+                    "x",
+                    "invalid",
+                    std::string("sharedExpertX's dim1 not equal to h, sharedExpertX's dim1 = ") +
+                        std::to_string(sharedExpertXDim1) +
+                        ", h = " +
+                        std::to_string(expandXDim1)
+                ),
+                return false
+            );
         } else {
             int64_t sharedExpertXDim2 = sharedExpertXShape->GetStorageShape().GetDim(TWO_DIMS);
             OP_TILING_CHECK(
                 sharedExpertXDim0 * sharedExpertXDim1 != expertIdsDim0,
-                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    nodeName, "x", "invalid",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName,
+                    "x",
+                    "invalid",
                     std::string("sharedExpertX's dim0 * sharedExpertX's dim1 not equal to bs, sharedExpertX's dim0"
-                                    "* sharedExpertX's dim1 = ") +
+                        "* sharedExpertX's dim1 = ") +
                         std::to_string(sharedExpertXDim0 * sharedExpertXDim1) +
                         ", bs = " +
                         std::to_string(expertIdsDim0)
                 ),
-                return false);
-            OP_TILING_CHECK(sharedExpertXDim2 != expandXDim1,
-                                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                                nodeName, "x", "invalid",
-                                std::string("sharedExpertX's dim2 not equal to h, sharedExpertX's dim2 = ") +
-                                    std::to_string(sharedExpertXDim2) +
-                                    ", h = " +
-                                    std::to_string(expandXDim1)
-                            ),
-                            return false);
+                return false
+            );
+            OP_TILING_CHECK(
+                sharedExpertXDim2 != expandXDim1,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    nodeName,
+                    "x",
+                    "invalid",
+                    std::string("sharedExpertX's dim2 not equal to h, sharedExpertX's dim2 = ") +
+                        std::to_string(sharedExpertXDim2) +
+                        ", h = " +
+                        std::to_string(expandXDim1)
+                ),
+                return false
+            );
         }
     }
 
@@ -1517,8 +2030,10 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
     int64_t expandXDim1 = expandXStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
         expandXDim0 < static_cast<int64_t>(A) * tpWorldSize,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "tpWorldSize", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "tpWorldSize",
+            "invalid",
             std::string("expandX's dim0 not greater than or equal to A * tpWorldSize, expandX's dim0 = ") +
                 std::to_string(expandXDim0) +
                 ", A = " +
@@ -1526,31 +2041,40 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
                 ", tpWorldSize = " +
                 std::to_string(tpWorldSize)
         ),
-        return false);
+        return false
+    );
     int64_t hMax = isLayered ? H_MAX_LAYERED : H_MAX;
     int64_t hMin = isLayered ? 0 : H_MIN;
-    OP_TILING_CHECK((isLayered && (expandXDim1 % H_BASIC_BLOCK_LAYERED != 0)),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("xShape dims1(H) should be ") +
-                            std::to_string(H_BASIC_BLOCK_LAYERED) +
-                            " Aligned, but got " +
-                            std::to_string(expandXDim1) +
-                            "."
-                    ),
-                    return false);
-    OP_TILING_CHECK((expandXDim1 < hMin) || (expandXDim1 > hMax),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("expandX's dim1(H) should be in [") +
-                            std::to_string(hMin) +
-                            ", " +
-                            std::to_string(hMax) +
-                            "], but got " +
-                            std::to_string(expandXDim1) +
-                            "."
-                    ),
-                    return false); // 32对齐
+    OP_TILING_CHECK(
+        (isLayered && (expandXDim1 % H_BASIC_BLOCK_LAYERED != 0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("xShape dims1(H) should be ") +
+                std::to_string(H_BASIC_BLOCK_LAYERED) +
+                " Aligned, but got " +
+                std::to_string(expandXDim1) +
+                "."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (expandXDim1 < hMin) || (expandXDim1 > hMax),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("expandX's dim1(H) should be in [") +
+                std::to_string(hMin) +
+                ", " +
+                std::to_string(hMax) +
+                "], but got " +
+                std::to_string(expandXDim1) +
+                "."
+        ),
+        return false
+    ); // 32对齐
     tilingData.moeDistributeCombineV2Info.h = static_cast<uint32_t>(expandXDim1);
     if (expandXDim1 != 0) {tilingData.moeDistributeCombineV2Info.armAvgFactor = 1.0f / expandXDim1;}
 
@@ -1558,33 +2082,41 @@ static bool CheckFromDispatchTensorShape(const gert::TilingContext *context,
     const gert::StorageShape *assistInfoStorageShape = context->GetInputShape(config.assistInfoIndex);
     int64_t assistInfoDim0 = assistInfoStorageShape->GetStorageShape().GetDim(0);
     int64_t minAssistInfoDim0 = static_cast<int64_t>(A * ASSIST_NUM_PER_A);
-    OP_TILING_CHECK(assistInfoDim0 < minAssistInfoDim0,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "assistInfoForCombine", "invalid",
-                        std::string("assistInfoForCombine's dim0 < minAssistInfoDim0, assistInfoForCombine's dim0"
-                                        "is ") +
-                            std::to_string(assistInfoDim0) +
-                            ", minAssistInfoDim0 is " +
-                            std::to_string(minAssistInfoDim0) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        assistInfoDim0 < minAssistInfoDim0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "assistInfoForCombine",
+            "invalid",
+            std::string("assistInfoForCombine's dim0 < minAssistInfoDim0, assistInfoForCombine's dim0"
+                "is ") +
+                std::to_string(assistInfoDim0) +
+                ", minAssistInfoDim0 is " +
+                std::to_string(minAssistInfoDim0) +
+                "."
+        ),
+        return false
+    );
 
     // 校验expandScales的维度
     if (isLayered) {
         const gert::StorageShape *expandScaleStorageShape = context->GetOptionalInputShape(EXPAND_SCALES_INDEX);
         int64_t expandScalesDim0 = expandScaleStorageShape->GetStorageShape().GetDim(0);
         int64_t minexpandScalesDim0 = static_cast<int64_t>(A);
-        OP_TILING_CHECK(expandScalesDim0 < minexpandScalesDim0,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("expandScales's dim0 must >= minexpandScales's dim0, expandScales's dim0 is") +
-                                std::to_string(expandScalesDim0) +
-                                ", minexpandScales's dim0 is " +
-                                std::to_string(minexpandScalesDim0) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            expandScalesDim0 < minexpandScalesDim0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("expandScales's dim0 must >= minexpandScales's dim0, expandScales's dim0 is") +
+                    std::to_string(expandScalesDim0) +
+                    ", minexpandScales's dim0 is " +
+                    std::to_string(minexpandScalesDim0) +
+                    "."
+            ),
+            return false
+        );
     }
 
     return true;
@@ -1640,10 +2172,12 @@ static bool CheckSendCountTensorShape(const gert::TilingContext *context, MoeDis
     }
     OP_TILING_CHECK(
         epSendCountDim0 < localEpSendCountSize * tpWorldSize,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            nodeName, "tpWorldSize", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "tpWorldSize",
+            "invalid",
             std::string("epSendCount's dim0 not greater than or equal to localEpSendCountSize * tpWorldSize,"
-                            "epSendCount's dim0 is ") +
+                "epSendCount's dim0 is ") +
                 std::to_string(epSendCountDim0) +
                 ", localEpSendCountSize is " +
                 std::to_string(localEpSendCountSize) +
@@ -1651,20 +2185,25 @@ static bool CheckSendCountTensorShape(const gert::TilingContext *context, MoeDis
                 std::to_string(tpWorldSize) +
                 "."
         ),
-        return false);
+        return false
+    );
     if (tpWorldSize == TP_WORLD_SIZE_TWO) {
         const gert::StorageShape *tpSendCountStorageShape = context->GetOptionalInputShape(config.tpSendCountsIndex);
         const int64_t tpSendCountDim0 = tpSendCountStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(tpSendCountDim0 != tpWorldSize,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "tpWorldSize", "invalid",
-                            std::string("tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is ") +
-                                std::to_string(tpSendCountDim0) +
-                                ", tpWorldSize is " +
-                                std::to_string(tpWorldSize) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            tpSendCountDim0 != tpWorldSize,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "tpWorldSize",
+                "invalid",
+                std::string("tpSendCount's dim0 not equal to tpWorldSize, tpSendCount's dim0 is ") +
+                    std::to_string(tpSendCountDim0) +
+                    ", tpWorldSize is " +
+                    std::to_string(tpWorldSize) +
+                    "."
+            ),
+            return false
+        );
     }
     return true;
 }
@@ -1683,16 +2222,20 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
         const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
         const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
 
-        OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * epWorldSize),
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "epWorldSize", "invalid",
-                            std::string("elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, elasticInfo's dim0 is") +
-                                std::to_string(elasticInfoDim0) +
-                                ", epWorldSize is " +
-                                std::to_string(epWorldSize) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * epWorldSize),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "epWorldSize",
+                "invalid",
+                std::string("elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, elasticInfo's dim0 is") +
+                    std::to_string(elasticInfoDim0) +
+                    ", epWorldSize is " +
+                    std::to_string(epWorldSize) +
+                    "."
+            ),
+            return false
+        );
     }
     uint32_t A = CalA(tilingData, isShared, localMoeExpertNum, hasElasticInfo, expertIdsDim1);
 
@@ -1701,41 +2244,53 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
             context->GetOptionalInputShape(config.performanceInfoIndex);
         const int64_t performanceInfoDim0 = performanceInfoStorageShape->GetStorageShape().GetDim(0);
 
-        OP_TILING_CHECK(performanceInfoDim0 != epWorldSize,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "epWorldSize", "invalid",
-                            std::string("performanceInfo's dim0 not equal to epWorldSize, performanceInfo's dim0 is") +
-                                std::to_string(performanceInfoDim0) +
-                                ", epWorldSize is " +
-                                std::to_string(epWorldSize) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            performanceInfoDim0 != epWorldSize,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "epWorldSize",
+                "invalid",
+                std::string("performanceInfo's dim0 not equal to epWorldSize, performanceInfo's dim0 is") +
+                    std::to_string(performanceInfoDim0) +
+                    ", epWorldSize is " +
+                    std::to_string(epWorldSize) +
+                    "."
+            ),
+            return false
+        );
     }
 
     // 校验activeMask的维度
     if (isActiveMask) {
         const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(xActiveMaskDim0 != expertIdsDim0,
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
-                                std::to_string(xActiveMaskDim0) +
-                                ", expertIds's dim0 is " +
-                                std::to_string(expertIdsDim0)
-                        ),
-                        return false);
-        OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
-                         (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != expertIdsDim1)),
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
-                                std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
-                                ", expertIds's dim1 is " +
-                                std::to_string(expertIdsDim1)
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            xActiveMaskDim0 != expertIdsDim0,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
+                    std::to_string(xActiveMaskDim0) +
+                    ", expertIds's dim0 is " +
+                    std::to_string(expertIdsDim0)
+            ),
+            return false
+        );
+        OP_TILING_CHECK(
+            ((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
+                (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != expertIdsDim1)),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
+                    std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
+                    ", expertIds's dim1 is " +
+                    std::to_string(expertIdsDim1)
+            ),
+            return false
+        );
     }
 
     OP_TILING_CHECK(!CheckZeroComputeExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0),
@@ -1757,32 +2312,53 @@ static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char 
     const CombineV2Config &config)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
-    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextShape"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("contextShape dims must be 1, but current dim num is ") +
-                            std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        contextStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextShape"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("contextShape dims must be 1, but current dim num is ") +
+                std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
 
     auto contextDesc = context->GetInputDesc(config.contextIndex);
-    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextDesc"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "context",
-                                              Ops::Base::ToString(contextDesc->GetDataType()).c_str(), "int32"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        contextDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "contextDesc"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        contextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            nodeName,
+            "context",
+            Ops::Base::ToString(contextDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "context", Ops::Base::ToString(contextDesc->GetStorageFormat()).c_str(),
-                                   "not FORMAT_FRACTAL_NZ"),
-        return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT(
+            nodeName,
+            "context",
+            Ops::Base::ToString(contextDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1793,38 +2369,50 @@ static bool CheckSharedAttrs(const char *nodeName, const MoeDistributeCombineV2T
     uint32_t sharedExpertRankNum = tilingData.moeDistributeCombineV2Info.sharedExpertRankNum;
 
     // 校验共享专家卡数和共享专家数是否只有一个为0
-    OP_TILING_CHECK((sharedExpertNum == 0U) && (sharedExpertRankNum > 0U),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "sharedExpertRankNum", "invalid",
-                        std::string("sharedExpertRankNum is invalid, only support 0 when sharedExpertNum is 0, but"
-                                        "got ") +
-                            std::to_string(sharedExpertRankNum) +
-                            "."
-                    ),
-                    return false);
-    OP_TILING_CHECK((sharedExpertNum > 0U) && (sharedExpertRankNum == 0U),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "sharedExpertRankNum", "invalid",
-                        std::string("sharedExpertNum is invalid, only support 0 when sharedExpertRankNum is 0, but"
-                                        "got ") +
-                            std::to_string(sharedExpertNum) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (sharedExpertNum == 0U) && (sharedExpertRankNum > 0U),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "sharedExpertRankNum",
+            "invalid",
+            std::string("sharedExpertRankNum is invalid, only support 0 when sharedExpertNum is 0, but"
+                "got ") +
+                std::to_string(sharedExpertRankNum) +
+                "."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (sharedExpertNum > 0U) && (sharedExpertRankNum == 0U),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "sharedExpertRankNum",
+            "invalid",
+            std::string("sharedExpertNum is invalid, only support 0 when sharedExpertRankNum is 0, but"
+                "got ") +
+                std::to_string(sharedExpertNum) +
+                "."
+        ),
+        return false
+    );
 
     if ((sharedExpertNum > 0U) && (sharedExpertRankNum > 0U)) {
         // 校验共享专家卡数能否整除共享专家数
-        OP_TILING_CHECK(((sharedExpertRankNum % sharedExpertNum) != 0U),
-                                                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            nodeName, "sharedExpertRankNum", "invalid",
-                            std::string("sharedExpertRankNum should be divisible by sharedExpertNum, but"
-                                            "sharedExpertRankNum=") +
-                                std::to_string(sharedExpertRankNum) +
-                                ", sharedExpertNum=" +
-                                std::to_string(sharedExpertNum) +
-                                "."
-                        ),
-                        return false);
+        OP_TILING_CHECK(
+            ((sharedExpertRankNum % sharedExpertNum) != 0U),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                nodeName,
+                "sharedExpertRankNum",
+                "invalid",
+                std::string("sharedExpertRankNum should be divisible by sharedExpertNum, but"
+                    "sharedExpertRankNum=") +
+                    std::to_string(sharedExpertRankNum) +
+                    ", sharedExpertNum=" +
+                    std::to_string(sharedExpertNum) +
+                    "."
+            ),
+            return false
+        );
     }
 
     return true;
@@ -1841,25 +2429,49 @@ static bool CheckCommAlgAttrs(const char *nodeName, const MoeDistributeCombineV2
     bool isPerformance = tilingData.moeDistributeCombineV2Info.isPerformance;
 
     // 校验动态缩容和分层不能同时启用
-    OP_TILING_CHECK((isLayered && hasElasticInfo),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "y", "invalid",
-                                                          "Cannot support elasticInfo when comm_alg = hierarchy"),
-                    return false);
+    OP_TILING_CHECK(
+        (isLayered && hasElasticInfo),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
+            "Cannot support elasticInfo when comm_alg = hierarchy"
+        ),
+        return false
+    );
     // 校验特殊专家和分层不能同时启用
-    OP_TILING_CHECK((isLayered && (zeroComputeExpertNum > 0)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "Cannot support zeroComputeExpert when comm_alg = hierarchy"),
-                    return false);
+    OP_TILING_CHECK(
+        (isLayered && (zeroComputeExpertNum > 0)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            "Cannot support zeroComputeExpert when comm_alg = hierarchy"
+        ),
+        return false
+    );
     // 校验二维Mask和分层不能同时启用
-    OP_TILING_CHECK((isLayered && isExpertMask),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "x", "invalid",
-                                                          "Cannot support 2D xActiveMask when comm_alg = hierarchy"),
-                    return false);
+    OP_TILING_CHECK(
+        (isLayered && isExpertMask),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            "Cannot support 2D xActiveMask when comm_alg = hierarchy"
+        ),
+        return false
+    );
     // 校验isPerformance和分层不能同时启用
-    OP_TILING_CHECK((isLayered && isPerformance),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "y", "invalid",
-                                                          "Cannot support isPerformance when comm_alg = hierarchy"),
-                    return false);
+    OP_TILING_CHECK(
+        (isLayered && isPerformance),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
+            "Cannot support isPerformance when comm_alg = hierarchy"
+        ),
+        return false
+    );
 
     return true;
 }
@@ -1877,16 +2489,28 @@ static bool CheckZeroComputeExpert(const gert::TilingContext *context, MoeDistri
         context->GetOptionalInputShape(config.constExpertAlpha2Index);
     const gert::StorageShape *constExpertVStorageShape = context->GetOptionalInputShape(config.constExpertVIndex);
 
-    OP_TILING_CHECK(copyExpertNum > 0 && oriXStorageShape == nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "expertNum", "invalid",
-                                                          "oriX must exist when copyExpertNum > 0"),
-                    return false);
-    OP_TILING_CHECK(constExpertNum > 0 &&
-                        (oriXStorageShape == nullptr || constExpertAlpha1StorageShape == nullptr ||
-                         constExpertAlpha2StorageShape == nullptr || constExpertVStorageShape == nullptr),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "expertNum", "invalid",
-                                                          "oriX、alpha1、alpha2、V must exist when constExpertNum > 0"),
-                    return false);
+    OP_TILING_CHECK(
+        copyExpertNum > 0 && oriXStorageShape == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertNum",
+            "invalid",
+            "oriX must exist when copyExpertNum > 0"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        constExpertNum > 0 &&
+            (oriXStorageShape == nullptr || constExpertAlpha1StorageShape == nullptr ||
+            constExpertAlpha2StorageShape == nullptr || constExpertVStorageShape == nullptr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "expertNum",
+            "invalid",
+            "oriX、alpha1、alpha2、V must exist when constExpertNum > 0"
+        ),
+        return false
+    );
     return true;
 }
 
@@ -1903,67 +2527,86 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     OP_TILING_CHECK(!CheckCommAlgAttrs(nodeName, tilingData, isLayered),
         OP_LOGE(nodeName, "Check comm_alg related attributes failed."), return false);
     // 校验moe专家数量能否均分给多机
-    OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "epWorldSize", "invalid",
-                        std::string("moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), but"
-                                        "got moeExpertNum=") +
-                            std::to_string(moeExpertNum) +
-                            ", epWorldSize=" +
-                            std::to_string(epWorldSize) +
-                            ", sharedExpertRankNum=" +
-                            std::to_string(sharedExpertRankNum) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), but"
+                "got moeExpertNum=") +
+                std::to_string(moeExpertNum) +
+                ", epWorldSize=" +
+                std::to_string(epWorldSize) +
+                ", sharedExpertRankNum=" +
+                std::to_string(sharedExpertRankNum) +
+                "."
+        ),
+        return false
+    );
     localMoeExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum);
     OP_TILING_CHECK(
         (localMoeExpertNum <= 0) || (localMoeExpertNum * epWorldSize > LOCAL_EXPERT_MAX_SIZE),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "epWorldSize", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
             std::string("localMoeExpertNum is invalid, localMoeExpertNum * epWorldSize must be less than or equal"
-                            "to 2048, and localMoeExpertNum must be greater than 0, but got localMoeExpertNum *"
-                            "epWorldSize = ") +
+                "to 2048, and localMoeExpertNum must be greater than 0, but got localMoeExpertNum *"
+                "epWorldSize = ") +
                 std::to_string(localMoeExpertNum * epWorldSize) +
                 ", localMoeExpertNum = " +
                 std::to_string(localMoeExpertNum)
         ),
-        return false);
+        return false
+    );
     // 校验tp=2时单个moe卡上专家数是否等于1
-    OP_TILING_CHECK((localMoeExpertNum > 1) && (tpWorldSize > 1),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "tpWorldSize", "invalid",
-                        std::string("Cannot support multi-moeExpert ") +
-                            std::to_string(localMoeExpertNum) +
-                            " in a rank when tpWorldSize = " +
-                            std::to_string(tpWorldSize) +
-                            " > 1"
-                    ),
-                    return false);
-    OP_TILING_CHECK((tpWorldSize > 1) && (tilingData.moeDistributeCombineV2Info.hasElasticInfo),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "tpWorldSize", "invalid",
-                        std::string("Cannot support elasticInfo when tpWorldSize = ") +
-                            std::to_string(tpWorldSize) +
-                            " > 1"
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (localMoeExpertNum > 1) && (tpWorldSize > 1),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "tpWorldSize",
+            "invalid",
+            std::string("Cannot support multi-moeExpert ") +
+                std::to_string(localMoeExpertNum) +
+                " in a rank when tpWorldSize = " +
+                std::to_string(tpWorldSize) +
+                " > 1"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (tpWorldSize > 1) && (tilingData.moeDistributeCombineV2Info.hasElasticInfo),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "tpWorldSize",
+            "invalid",
+            std::string("Cannot support elasticInfo when tpWorldSize = ") +
+                std::to_string(tpWorldSize) +
+                " > 1"
+        ),
+        return false
+    );
     tilingData.moeDistributeCombineV2Info.moeExpertPerRankNum = localMoeExpertNum;
 
     // 校验输入expertIds的维度0并设bs
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(config.expertIdsIndex);
     int64_t expertIdsDim0 = expertIdsStorageShape->GetStorageShape().GetDim(0);
     int64_t bsUpperBound = isLayered ? BS_UPPER_BOUND_LAYERED : BS_UPPER_BOUND;
-    OP_TILING_CHECK((expertIdsDim0 <= 0) || (expertIdsDim0 > bsUpperBound),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        nodeName, "x", "invalid",
-                        std::string("Invalid expertIds dims0(BS) ") +
-                            std::to_string(expertIdsDim0) +
-                            ". Should be between [1, " +
-                            std::to_string(bsUpperBound) +
-                            "]."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (expertIdsDim0 <= 0) || (expertIdsDim0 > bsUpperBound),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
+            std::string("Invalid expertIds dims0(BS) ") +
+                std::to_string(expertIdsDim0) +
+                ". Should be between [1, " +
+                std::to_string(bsUpperBound) +
+                "]."
+        ),
+        return false
+    );
     tilingData.moeDistributeCombineV2Info.bs = static_cast<uint32_t>(expertIdsDim0);
 
     // 校验globalBS
@@ -1974,20 +2617,24 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     OP_LOGD(nodeName, "MoeDistributeCombineV2 *globalBsPtr = %ld, bs = %ld, epWorldSize = %u\n",
         *globalBsPtr, expertIdsDim0, epWorldSize);
 
-    OP_TILING_CHECK((*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * expertIdsDim0) ||
-                                            ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "epWorldSize", "invalid",
-                        std::string("globalBS is invalid, only support 0 or maxBs(maxBs is the largest bs on all"
-                                        "ranks) * epWorldSize, but got globalBS=") +
-                            std::to_string(*globalBsPtr) +
-                            ", bs=" +
-                            std::to_string(expertIdsDim0) +
-                            ", epWorldSize=" +
-                            std::to_string(epWorldSize) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * expertIdsDim0) ||
+            ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "epWorldSize",
+            "invalid",
+            std::string("globalBS is invalid, only support 0 or maxBs(maxBs is the largest bs on all"
+                "ranks) * epWorldSize, but got globalBS=") +
+                std::to_string(*globalBsPtr) +
+                ", bs=" +
+                std::to_string(expertIdsDim0) +
+                ", epWorldSize=" +
+                std::to_string(epWorldSize) +
+                "."
+        ),
+        return false
+    );
     OP_TILING_CHECK(((*globalBsPtr > (expertIdsDim0 * static_cast<int64_t>(epWorldSize))) && isActiveMask),
         OP_LOGE(nodeName, "Different bs on different rank cannot work when isActiveMask=true, globalBS=%ld, "
         "bs=%ld, epWorldSize=%u.", *globalBsPtr, expertIdsDim0, epWorldSize), return false);
@@ -2009,20 +2656,30 @@ static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *cont
     OP_TILING_CHECK(
         !CheckTensorDim(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config, isLayered),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "x", "unsupported shape", "The shape of input x is invalid"),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     // 检查参数dataType信息
-    OP_TILING_CHECK(!CheckExpertTensorDataType(context, nodeName, config),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "Experts param", "invalid",
-                                                          "The dtype of parameter Experts param is invalid"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckExpertTensorDataType(context, nodeName, config),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "Experts param",
+            "invalid",
+            "The dtype of parameter Experts param is invalid"
+        ),
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(
         !CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "x", "unsupported dtype", "The dtype of input x is invalid"),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     // 检查参数format信息
     OP_TILING_CHECK(
         !CheckTensorFormat(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, tpWorldSize, config),
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", "unsupported format", "valid format"), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", "unsupported format", "valid format"),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2238,13 +2895,15 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext *context, MoeDistri
         OP_TILING_CHECK(
             !CheckOutputTensorDimARN(context, nodeName, config),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "H", "invalid", "param shape of output tensor is invalid"),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
     } else {
         // 校验combine输出的维数与shape
         OP_TILING_CHECK(
             !CheckOutputTensorDim(context, nodeName, config, expertIdsDim0, expandXDim1),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "H", "invalid", "param shape of output tensor is invalid"),
-            return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED
+        );
     }
 
     return ge::GRAPH_SUCCESS;
@@ -2314,12 +2973,15 @@ ge::graphStatus CheckAndSetPlatformInfo(gert::TilingContext* context, MoeDistrib
     uint32_t serverNum = epWorldSize / RANK_NUM_PER_NODE;
     OP_TILING_CHECK(
         (isLayered && ((aivNum < RANK_NUM_PER_NODE) || (aivNum <= 2 * serverNum))),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "y", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "y",
+            "invalid",
             std::string("Layered should use aiv num greater than 16 and 2 * serverNum, now is ") +
                 std::to_string(aivNum)
         ),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
@@ -2406,17 +3068,23 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2Tili
     // 不支持 expandX数据类型为int32 type
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     const char *nodeName = context->GetNodeName();
-    OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        expandXDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"),
+        return ge::GRAPH_FAILED
+    );
     // 检查expandX数据类型为DT_INT32
     OP_TILING_CHECK(
         (expandXDesc->GetDataType() == ge::DT_INT32),
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            nodeName, "x", "invalid",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName,
+            "x",
+            "invalid",
             std::string("expandX dataType is invalid, dataType should be bf16 or float16, but is ") +
                 Ops::Base::ToString(static_cast<ge::DataType>(expandXDesc->GetDataType()))
         ),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     ge::graphStatus ret;
 
     ret = MoeDistributeCombineTilingFuncImpl(context, config);

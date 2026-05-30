@@ -42,7 +42,10 @@ ge::graphStatus MatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* groupN
     const uint32_t opType = static_cast<uint32_t>(HcclCMDType::HCCL_CMD_ALLREDUCE);
     const uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     OP_TILING_CHECK(
-        context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
+        context_->GetAttrs() == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+        return ge::GRAPH_FAILED
+    );
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();

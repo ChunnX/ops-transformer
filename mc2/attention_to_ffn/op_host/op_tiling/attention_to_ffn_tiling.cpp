@@ -135,92 +135,136 @@ static bool CheckAndSetShapeAttrs(gert::TilingContext* context, AttentionToFFNTi
 
     OP_TILING_CHECK(
         ffnTokenInfoTableDimNum != DIM3,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                                              "the input of ffn_token_info_table_shape dims is not equal 3!"),
-        return false);
-    OP_TILING_CHECK(ffnTokenDataDimNum != DIM5,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                                                          "the input of ffn_token_data_shape dims is not equal 5!"),
-                    return false);
-    OP_TILING_CHECK(attnTokenDataDimNum != DIM3,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                                                          "the input of attn_token_data_shape dims is not equal 3!"),
-                    return false);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            "the input of ffn_token_info_table_shape dims is not equal 3!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        ffnTokenDataDimNum != DIM5,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            "the input of ffn_token_data_shape dims is not equal 5!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        attnTokenDataDimNum != DIM3,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            "the input of attn_token_data_shape dims is not equal 3!"
+        ),
+        return false
+    );
 
-    OP_TILING_CHECK(ffnTokenInfoTableShape[0] != ffnTokenDataShape[0],
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                        std::string("ffn_token_info_table_shape dims0=") +
-                            std::to_string(ffnTokenInfoTableShape[0]) +
-                            " is not equal ffn_token_data_shape dims0=" +
-                            std::to_string(ffnTokenDataShape[0]) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(ffnTokenInfoTableShape[1] != ffnTokenDataShape[1],
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                        std::string("ffn_token_info_table_shape dims1=") +
-                            std::to_string(ffnTokenInfoTableShape[1]) +
-                            " is not equal ffn_token_data_shape dims1=" +
-                            std::to_string(ffnTokenDataShape[1]) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(ffnTokenDataShape[DIM2] != bs,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "BS", "invalid",
-                        std::string("ffn_token_data_shape dims2=") +
-                            std::to_string(ffnTokenDataShape[DIM2]) +
-                            " is not equal bs=" +
-                            std::to_string(bs) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(attnTokenDataShape[0] != ffnTokenInfoTableShape[1],
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                        std::string("attn_token_data_shape dims0=") +
-                            std::to_string(attnTokenDataShape[0]) +
-                            " is not equal ffn_token_data_shape dims1=" +
-                            std::to_string(ffnTokenInfoTableShape[1]) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(attnTokenDataShape[1] != bs,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("attn_token_data_shape dims1=") +
-                            std::to_string(attnTokenDataShape[1]) +
-                            " is not equal xDim1=" +
-                            std::to_string(bs) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(attnTokenDataShape[DIM2] != ffnTokenDataShape[DIM3],
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "H", "invalid",
-                        std::string("attn_token_data_shape dims2=") +
-                            std::to_string(attnTokenDataShape[DIM2]) +
-                            " is not equal ffn_token_data_shape dims3=" +
-                            std::to_string(ffnTokenDataShape[DIM3]) +
-                            "!"
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        ffnTokenInfoTableShape[0] != ffnTokenDataShape[0],
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            std::string("ffn_token_info_table_shape dims0=") +
+                std::to_string(ffnTokenInfoTableShape[0]) +
+                " is not equal ffn_token_data_shape dims0=" +
+                std::to_string(ffnTokenDataShape[0]) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        ffnTokenInfoTableShape[1] != ffnTokenDataShape[1],
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            std::string("ffn_token_info_table_shape dims1=") +
+                std::to_string(ffnTokenInfoTableShape[1]) +
+                " is not equal ffn_token_data_shape dims1=" +
+                std::to_string(ffnTokenDataShape[1]) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        ffnTokenDataShape[DIM2] != bs,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "BS",
+            "invalid",
+            std::string("ffn_token_data_shape dims2=") +
+                std::to_string(ffnTokenDataShape[DIM2]) +
+                " is not equal bs=" +
+                std::to_string(bs) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        attnTokenDataShape[0] != ffnTokenInfoTableShape[1],
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            std::string("attn_token_data_shape dims0=") +
+                std::to_string(attnTokenDataShape[0]) +
+                " is not equal ffn_token_data_shape dims1=" +
+                std::to_string(ffnTokenInfoTableShape[1]) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        attnTokenDataShape[1] != bs,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("attn_token_data_shape dims1=") +
+                std::to_string(attnTokenDataShape[1]) +
+                " is not equal xDim1=" +
+                std::to_string(bs) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        attnTokenDataShape[DIM2] != ffnTokenDataShape[DIM3],
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "H",
+            "invalid",
+            std::string("attn_token_data_shape dims2=") +
+                std::to_string(attnTokenDataShape[DIM2]) +
+                " is not equal ffn_token_data_shape dims3=" +
+                std::to_string(ffnTokenDataShape[DIM3]) +
+                "!"
+        ),
+        return false
+    );
 
     // 校验 attentionWorkerNum 的值
     uint32_t attentionWorkerNum = ffnTokenDataShape[0];
     OP_TILING_CHECK(
         attentionWorkerNum <= 0 || attentionWorkerNum >= *worldSizePtr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "y", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "y",
+            "invalid",
             std::string("attentionWorkerNum is invalid, only support (0, worldSize = ") +
                 std::to_string(*worldSizePtr) +
                 "), but got attentionWorkerNum=" +
                 std::to_string(attentionWorkerNum) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     tilingData.attentionToFFNInfo.attentionWorkerNum = attentionWorkerNum;
     tilingData.attentionToFFNInfo.microBatchNum = ffnTokenDataShape[1];
@@ -244,60 +288,88 @@ static bool CheckAndSetAttrs(gert::TilingContext* context, AttentionToFFNTilingD
     uint32_t worldSize = *worldSizePtr;
 
     OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "group"), return false);
-    OP_TILING_CHECK(worldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "worldSize"),
-                    return false);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "moeExpertNum"),
-                    return false);
-    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "quantMode"),
-                    return false);
+    OP_TILING_CHECK(
+        worldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "worldSize"),
+        return false
+    );
+    OP_TILING_CHECK(
+        moeExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "moeExpertNum"),
+        return false
+    );
+    OP_TILING_CHECK(
+        quantModePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "quantMode"),
+        return false
+    );
     OP_TILING_CHECK(syncFlagPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "syncFlag"), return false);
-    OP_TILING_CHECK(ffnStartRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "ffnStartRankId"),
-                    return false);
+    OP_TILING_CHECK(
+        ffnStartRankIdPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "ffnStartRankId"),
+        return false
+    );
 
-    OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "moeExpertNum", "invalid",
-                        std::string("moeExpertNum is invalid, only support (0, ") +
-                            std::to_string(MOE_EXPERT_MAX_NUM) +
-                            "], but got moeExpertNum=" +
-                            std::to_string(moeExpertNum) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        (moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "moeExpertNum",
+            "invalid",
+            std::string("moeExpertNum is invalid, only support (0, ") +
+                std::to_string(MOE_EXPERT_MAX_NUM) +
+                "], but got moeExpertNum=" +
+                std::to_string(moeExpertNum) +
+                "."
+        ),
+        return false
+    );
     OP_TILING_CHECK(
         (*quantModePtr < static_cast<int64_t>(NO_SCALES)) || (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "quantMode", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "quantMode",
+            "invalid",
             std::string("quantMode is invalid, only support [0, ") +
                 std::to_string(DYNAMIC_SCALES) +
                 "], but got quantMode=" +
                 std::to_string(*quantModePtr) +
                 "."
         ),
-        return false);
+        return false
+    );
     OP_TILING_CHECK(
         (*syncFlagPtr != 0) && (*syncFlagPtr != 1),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "y", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "y",
+            "invalid",
             std::string("syncFlag is invalid, only support 0 and 1, but got syncFlag=") +
                 std::to_string(*syncFlagPtr) +
                 "."
         ),
-        return false);
-    OP_TILING_CHECK((*ffnStartRankIdPtr >= *worldSizePtr) || (*ffnStartRankIdPtr < 0),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "y", "invalid",
-                        std::string("ffnStartRankId is invalid, only support (0, ") +
-                            std::to_string(*worldSizePtr) +
-                            "], but ffn_start_rank_id=" +
-                            std::to_string(*ffnStartRankIdPtr) +
-                            "!"
-                    ),
-                    return false);
+        return false
+    );
+    OP_TILING_CHECK(
+        (*ffnStartRankIdPtr >= *worldSizePtr) || (*ffnStartRankIdPtr < 0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "y",
+            "invalid",
+            std::string("ffnStartRankId is invalid, only support (0, ") +
+                std::to_string(*worldSizePtr) +
+                "], but ffn_start_rank_id=" +
+                std::to_string(*ffnStartRankIdPtr) +
+                "!"
+        ),
+        return false
+    );
     OP_TILING_CHECK(
         (worldSize < MIN_WORLD_SIZE) || (worldSize > MAX_WORLD_SIZE),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "y", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "y",
+            "invalid",
             std::string("worldSize is invalid, only support [") +
                 std::to_string(MIN_WORLD_SIZE) +
                 ", " +
@@ -306,7 +378,8 @@ static bool CheckAndSetAttrs(gert::TilingContext* context, AttentionToFFNTilingD
                 std::to_string(worldSize) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     OP_TILING_CHECK(!CheckAndSetShapeAttrs(context, tilingData),
         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check and set shape list attrs failed!"), return false);
@@ -332,34 +405,43 @@ static bool CheckInputForScales(const gert::StorageShape* scalesShape, const int
 
     OP_TILING_CHECK(
         scalesDim0 != expertRankTableDim0,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
             std::string("scales dim0 not equal to expertRankTable dim0, cur scalesDim0 is ") +
                 std::to_string(scalesDim0) +
                 ", expertRankTableDim0 is " +
                 std::to_string(expertRankTableDim0)
         ),
-        return false);
+        return false
+    );
     OP_TILING_CHECK(
         scalesDim1 != expertRankTableDim1,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
             std::string("scales dim1 not equal to expertRankTable dim1, cur scalesDim1 is ") +
                 std::to_string(scalesDim1) +
                 ", expertRankTableDim1 is " +
                 std::to_string(expertRankTableDim1)
         ),
-        return false);
+        return false
+    );
     OP_TILING_CHECK(
         scalesDim2 != xDim2,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
             std::string("scales dim2 not equal to x dim2, cur scalesDim2 is ") +
                 std::to_string(scalesDim2) +
                 ", xDim2 is " +
                 std::to_string(xDim2)
         ),
-        return false);
+        return false
+    );
 
     return true;
 }
@@ -369,24 +451,32 @@ static bool CheckInputForActiveMask(const gert::StorageShape* activeMaskShape, c
     int32_t activeMaskDim0 = activeMaskShape->GetStorageShape().GetDim(0);
     int32_t activeMaskDim1 = activeMaskShape->GetStorageShape().GetDim(1);
 
-    OP_TILING_CHECK(activeMaskDim0 != xDim0,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("active_mask dim0 not equal x dim0, cur activeMaskDim0 is ") +
-                            std::to_string(activeMaskDim0) +
-                            ", xDim0 is " +
-                            std::to_string(xDim0)
-                    ),
-                    return false);
-    OP_TILING_CHECK(activeMaskDim1 != xDim1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("active_mask dim1 not equal to x dim1, cur activeMaskDim1 is ") +
-                            std::to_string(activeMaskDim1) +
-                            ", xDim1 is " +
-                            std::to_string(xDim1)
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        activeMaskDim0 != xDim0,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("active_mask dim0 not equal x dim0, cur activeMaskDim0 is ") +
+                std::to_string(activeMaskDim0) +
+                ", xDim0 is " +
+                std::to_string(xDim0)
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        activeMaskDim1 != xDim1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("active_mask dim1 not equal to x dim1, cur activeMaskDim1 is ") +
+                std::to_string(activeMaskDim1) +
+                ", xDim1 is " +
+                std::to_string(xDim1)
+        ),
+        return false
+    );
 
     return true;
 }
@@ -413,69 +503,138 @@ static bool CheckTensorDataType(gert::TilingContext* context, const bool isScale
 {
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "xDesc"), return false);
-    OP_TILING_CHECK((xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "x",
-                                              Ops::Base::ToString(xDesc->GetDataType()).c_str(), "bf16 or float16"),
-                    return false);
+    OP_TILING_CHECK(
+        (xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            Ops::Base::ToString(xDesc->GetDataType()).c_str(),
+            "bf16 or float16"
+        ),
+        return false
+    );
 
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
-    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"),
-                    return false);
-    OP_TILING_CHECK(sessionIdDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "sessionId",
-                                              Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        sessionIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        sessionIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "sessionId",
+            Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
 
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
-    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"),
-                    return false);
-    OP_TILING_CHECK(microBatchIdDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "microBatchId",
-                                              Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        microBatchIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        microBatchIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "microBatchId",
+            Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
 
     auto layerIdDesc = context->GetInputDesc(INPUT_LAYER_IDS_INDEX);
-    OP_TILING_CHECK(layerIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"),
-                    return false);
-    OP_TILING_CHECK(layerIdDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "layerId",
-                                              Ops::Base::ToString(layerIdDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        layerIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        layerIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "layerId",
+            Ops::Base::ToString(layerIdDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
 
     auto expertIdDesc = context->GetInputDesc(INPUT_EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"),
-                    return false);
-    OP_TILING_CHECK(expertIdDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "expertId",
-                                              Ops::Base::ToString(expertIdDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        expertIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "expertId",
+            Ops::Base::ToString(expertIdDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
 
     auto expertRankTableDesc = context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX);
-    OP_TILING_CHECK(expertRankTableDesc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"), return false);
-    OP_TILING_CHECK(expertRankTableDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "expertRankTable",
-                                              Ops::Base::ToString(expertRankTableDesc->GetDataType()).c_str(), "int32"),
-                    return false);
+    OP_TILING_CHECK(
+        expertRankTableDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertRankTableDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(
+            ATTN_FFN_INNER_DEBUG,
+            "expertRankTable",
+            Ops::Base::ToString(expertRankTableDesc->GetDataType()).c_str(),
+            "int32"
+        ),
+        return false
+    );
 
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(INPUT_SCALES_INDEX);
-        OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"),
-                        return false);
-        OP_TILING_CHECK(scalesDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "scales",
-                                                  Ops::Base::ToString(scalesDesc->GetDataType()).c_str(), "float"),
-                        return false);
+        OP_TILING_CHECK(
+            scalesDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            scalesDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                ATTN_FFN_INNER_DEBUG,
+                "scales",
+                Ops::Base::ToString(scalesDesc->GetDataType()).c_str(),
+                "float"
+            ),
+            return false
+        );
     }
 
     if (isActiveMask) {
         auto activeMaskDesc = context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX);
-        OP_TILING_CHECK(activeMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"),
-                        return false);
-        OP_TILING_CHECK(activeMaskDesc->GetDataType() != ge::DT_BOOL,
-                        OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "activeMask",
-                                                  Ops::Base::ToString(activeMaskDesc->GetDataType()).c_str(), "bool"),
-                        return false);
+        OP_TILING_CHECK(
+            activeMaskDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            activeMaskDesc->GetDataType() != ge::DT_BOOL,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                ATTN_FFN_INNER_DEBUG,
+                "activeMask",
+                Ops::Base::ToString(activeMaskDesc->GetDataType()).c_str(),
+                "bool"
+            ),
+            return false
+        );
     }
 
     return true;
@@ -485,84 +644,145 @@ static bool CheckTensorFormat(gert::TilingContext* context, const bool isScales,
 {
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "xDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "x",
-                                               Ops::Base::ToString(xDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            Ops::Base::ToString(xDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
-    OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "sessionId",
-                                               Ops::Base::ToString(sessionIdDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        sessionIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "sessionId",
+            Ops::Base::ToString(sessionIdDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
-    OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "microBatchId",
-                                               Ops::Base::ToString(microBatchIdDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        microBatchIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "microBatchId",
+            Ops::Base::ToString(microBatchIdDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto layerIdDesc = context->GetInputDesc(INPUT_LAYER_IDS_INDEX);
-    OP_TILING_CHECK(layerIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "layerId",
-                                               Ops::Base::ToString(layerIdDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        layerIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "layerId",
+            Ops::Base::ToString(layerIdDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto expertIdDesc = context->GetInputDesc(INPUT_EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "expertId",
-                                               Ops::Base::ToString(expertIdDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        expertIdDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "expertId",
+            Ops::Base::ToString(expertIdDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     auto expertRankTableDesc = context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX);
-    OP_TILING_CHECK(expertRankTableDesc == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertRankTableDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "expertRankTable",
-                                               Ops::Base::ToString(expertRankTableDesc->GetStorageFormat()).c_str(),
-                                               "not FORMAT_FRACTAL_NZ"),
-                    return false);
+    OP_TILING_CHECK(
+        expertRankTableDesc == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"),
+        return false
+    );
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertRankTableDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG,
+            "expertRankTable",
+            Ops::Base::ToString(expertRankTableDesc->GetStorageFormat()).c_str(),
+            "not FORMAT_FRACTAL_NZ"
+        ),
+        return false
+    );
 
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(INPUT_SCALES_INDEX);
-        OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"),
-                        return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "scales",
-                                                   Ops::Base::ToString(scalesDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            scalesDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                ATTN_FFN_INNER_DEBUG,
+                "scales",
+                Ops::Base::ToString(scalesDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
 
     if (isActiveMask) {
         auto activeMaskDesc = context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX);
-        OP_TILING_CHECK(activeMaskDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"),
-                        return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(activeMaskDesc->GetStorageFormat())) ==
-                            ge::FORMAT_FRACTAL_NZ,
-                        OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "activeMask",
-                                                   Ops::Base::ToString(activeMaskDesc->GetStorageFormat()).c_str(),
-                                                   "not FORMAT_FRACTAL_NZ"),
-                        return false);
+        OP_TILING_CHECK(
+            activeMaskDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            static_cast<ge::Format>(ge::GetPrimaryFormat(activeMaskDesc->GetStorageFormat())) ==
+                ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(
+                ATTN_FFN_INNER_DEBUG,
+                "activeMask",
+                Ops::Base::ToString(activeMaskDesc->GetStorageFormat()).c_str(),
+                "not FORMAT_FRACTAL_NZ"
+            ),
+            return false
+        );
     }
 
     return true;
@@ -572,105 +792,154 @@ static bool CheckTensorDim(gert::TilingContext* context, const bool isScales, co
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "xShape"), return false);
-    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("xShape dims must be 3, but current dim num is ") +
-                            std::to_string(xStorageShape->GetStorageShape().GetDimNum()) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        xStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("xShape dims must be 3, but current dim num is ") +
+                std::to_string(xStorageShape->GetStorageShape().GetDimNum()) +
+                "."
+        ),
+        return false
+    );
 
     const gert::StorageShape *sessionIdStorageShape = context->GetInputShape(INPUT_SESSION_IDS_INDEX);
-    OP_TILING_CHECK(sessionIdStorageShape == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdShape"), return false);
-    OP_TILING_CHECK(sessionIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "sessionId", "invalid",
-                        std::string("sessionIdShape dim must be 1, but current dim num is ") +
-                            std::to_string(sessionIdStorageShape->GetStorageShape().GetDimNum()) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        sessionIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdShape"),
+        return false
+    );
+    OP_TILING_CHECK(
+        sessionIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "sessionId",
+            "invalid",
+            std::string("sessionIdShape dim must be 1, but current dim num is ") +
+                std::to_string(sessionIdStorageShape->GetStorageShape().GetDimNum()) +
+                "."
+        ),
+        return false
+    );
 
     const gert::StorageShape *microBatchIdStorageShape = context->GetInputShape(INPUT_MICRO_BATCH_IDS_INDEX);
-    OP_TILING_CHECK(microBatchIdStorageShape == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdShape"), return false);
+    OP_TILING_CHECK(
+        microBatchIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdShape"),
+        return false
+    );
     OP_TILING_CHECK(
         microBatchIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "microBatchId", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "microBatchId",
+            "invalid",
             std::string("microBatchIdShape dim must be 1, but current dim num is ") +
                 std::to_string(microBatchIdStorageShape->GetStorageShape().GetDimNum()) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     const gert::StorageShape *layerIdStorageShape = context->GetInputShape(INPUT_LAYER_IDS_INDEX);
-    OP_TILING_CHECK(layerIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdShape"),
-                    return false);
-    OP_TILING_CHECK(layerIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "y", "invalid",
-                        std::string("layerIdShape dim must be 1, but current dim num is ") +
-                            std::to_string(layerIdStorageShape->GetStorageShape().GetDimNum()) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        layerIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdShape"),
+        return false
+    );
+    OP_TILING_CHECK(
+        layerIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "y",
+            "invalid",
+            std::string("layerIdShape dim must be 1, but current dim num is ") +
+                std::to_string(layerIdStorageShape->GetStorageShape().GetDimNum()) +
+                "."
+        ),
+        return false
+    );
 
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(INPUT_EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdShape"),
-                    return false);
-    OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("expertIdShape dims must be 3, but current dim num is ") +
-                            std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()) +
-                            "."
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        expertIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdShape"),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertIdStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("expertIdShape dims must be 3, but current dim num is ") +
+                std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()) +
+                "."
+        ),
+        return false
+    );
 
     const gert::StorageShape *expertRankTableStorageShape = context->GetInputShape(INPUT_EXPERT_RANK_TABLE_INDEX);
-    OP_TILING_CHECK(expertRankTableStorageShape == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableShape"), return false);
+    OP_TILING_CHECK(
+        expertRankTableStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableShape"),
+        return false
+    );
     OP_TILING_CHECK(
         expertRankTableStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "x", "invalid",
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
             std::string("expertRankTableShape dims must be 3, but current dim num is ") +
                 std::to_string(expertRankTableStorageShape->GetStorageShape().GetDimNum()) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     if (isScales) {
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(INPUT_SCALES_INDEX);
-        OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesShape"),
-                        return false);
+        OP_TILING_CHECK(
+            scalesStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesShape"),
+            return false
+        );
         OP_TILING_CHECK(
             scalesStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                ATTN_FFN_INNER_DEBUG, "H", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                ATTN_FFN_INNER_DEBUG,
+                "H",
+                "invalid",
                 std::string("scale shape dims must be 3, but current dim num is ") +
                     std::to_string(scalesStorageShape->GetStorageShape().GetDimNum()) +
                     "."
             ),
-            return false);
+            return false
+        );
     }
 
     if (isActiveMask) {
         const gert::StorageShape *activeMaskStorageShape = context->GetOptionalInputShape(INPUT_ACTIVE_MASK_INDEX);
-        OP_TILING_CHECK(activeMaskStorageShape == nullptr,
-                        OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskShape"), return false);
+        OP_TILING_CHECK(
+            activeMaskStorageShape == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskShape"),
+            return false
+        );
         OP_TILING_CHECK(
             activeMaskStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                ATTN_FFN_INNER_DEBUG, "activeMask", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                ATTN_FFN_INNER_DEBUG,
+                "activeMask",
+                "invalid",
                 std::string("activeMask shape dims must be 2, but current dim num is ") +
                     std::to_string(activeMaskStorageShape->GetStorageShape().GetDimNum()) +
                     "."
             ),
-            return false);
+            return false
+        );
     }
 
     return true;
@@ -699,95 +968,127 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext* context, Att
     const int32_t expertRankTableDim2 = expertRankTableStorageShape->GetStorageShape().GetDim(DIM2);
     int64_t moeExpertNum = static_cast<int64_t>(tilingData.attentionToFFNInfo.moeExpertNum);
 
-    OP_TILING_CHECK(xDim0 != 1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("x's dims0(X) only support 1, cur is ") +
-                            std::to_string(xDim0) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > BS_MAX),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("xShape dims1(BS) should be in (0, ") +
-                            std::to_string(BS_MAX) +
-                            "], but got " +
-                            std::to_string(xDim1) +
-                            "."
-                    ),
-                    return false);
-    OP_TILING_CHECK((xDim2 < H_MIN) || (xDim2 > H_MAX),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("xShape dims2(H) should be in [") +
-                            std::to_string(H_MIN) +
-                            ", " +
-                            std::to_string(H_MAX) +
-                            "], but got " +
-                            std::to_string(xDim2) +
-                            "."
-                    ),
-                    return false);
-    OP_TILING_CHECK((xDim0 != sessionIdDim0) || (xDim0 != microBatchIdDim0) || (xDim0 != layerIdDim0) ||
-                        (xDim0 != expertIdsDim0),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("sessionId's dims0, microBatchId's dims0, layerId's dims0 and expertIds's dims0"
-                                        "only support 1,but cur is ") +
-                            std::to_string(sessionIdDim0) +
-                            ", " +
-                            std::to_string(microBatchIdDim0) +
-                            ", " +
-                            std::to_string(layerIdDim0) +
-                            ", " +
-                            std::to_string(expertIdsDim0) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK(expertIdsDim1 != xDim1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("expertIdsDim1=") +
-                            std::to_string(expertIdsDim1) +
-                            " not equal xDim1=" +
-                            std::to_string(xDim1) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK((expertIdsDim2 <= 0) || (expertIdsDim2 > K_MAX) || (expertIdsDim2 > moeExpertNum),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "moeExpertNum", "invalid",
-                        std::string("expertIdShape's dim2(k) should be in (0, min(") +
-                            std::to_string(K_MAX) +
-                            ", moeExpertNum = " +
-                            std::to_string(moeExpertNum) +
-                            ")], but got expertIdShape's dim2=" +
-                            std::to_string(expertIdsDim2) +
-                            "."
-                    ),
-                    return false);
-    OP_TILING_CHECK(expertRankTableDim0 != 1,
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "x", "invalid",
-                        std::string("expertRankTable dim0(L) only support 1, cur is ") +
-                            std::to_string(expertRankTableDim0) +
-                            "!"
-                    ),
-                    return false);
-    OP_TILING_CHECK((expertRankTableDim1 < moeExpertNum) ||
-                        (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
-                                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        ATTN_FFN_INNER_DEBUG, "moeExpertNum", "invalid",
-                        std::string("expertRankTable dim1 should be in [moeExpertNum = ") +
-                            std::to_string(moeExpertNum) +
-                            ", moeExpertNum + 4 = " +
-                            std::to_string(moeExpertNum + 4) +
-                            "],but cur is " +
-                            std::to_string(expertRankTableDim1) +
-                            "!"
-                    ),
-                    return false);
+    OP_TILING_CHECK(
+        xDim0 != 1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("x's dims0(X) only support 1, cur is ") +
+                std::to_string(xDim0) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (xDim1 <= 0) || (xDim1 > BS_MAX),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("xShape dims1(BS) should be in (0, ") +
+                std::to_string(BS_MAX) +
+                "], but got " +
+                std::to_string(xDim1) +
+                "."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (xDim2 < H_MIN) || (xDim2 > H_MAX),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("xShape dims2(H) should be in [") +
+                std::to_string(H_MIN) +
+                ", " +
+                std::to_string(H_MAX) +
+                "], but got " +
+                std::to_string(xDim2) +
+                "."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (xDim0 != sessionIdDim0) || (xDim0 != microBatchIdDim0) || (xDim0 != layerIdDim0) ||
+            (xDim0 != expertIdsDim0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("sessionId's dims0, microBatchId's dims0, layerId's dims0 and expertIds's dims0"
+                "only support 1,but cur is ") +
+                std::to_string(sessionIdDim0) +
+                ", " +
+                std::to_string(microBatchIdDim0) +
+                ", " +
+                std::to_string(layerIdDim0) +
+                ", " +
+                std::to_string(expertIdsDim0) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertIdsDim1 != xDim1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("expertIdsDim1=") +
+                std::to_string(expertIdsDim1) +
+                " not equal xDim1=" +
+                std::to_string(xDim1) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (expertIdsDim2 <= 0) || (expertIdsDim2 > K_MAX) || (expertIdsDim2 > moeExpertNum),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "moeExpertNum",
+            "invalid",
+            std::string("expertIdShape's dim2(k) should be in (0, min(") +
+                std::to_string(K_MAX) +
+                ", moeExpertNum = " +
+                std::to_string(moeExpertNum) +
+                ")], but got expertIdShape's dim2=" +
+                std::to_string(expertIdsDim2) +
+                "."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        expertRankTableDim0 != 1,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "x",
+            "invalid",
+            std::string("expertRankTable dim0(L) only support 1, cur is ") +
+                std::to_string(expertRankTableDim0) +
+                "!"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        (expertRankTableDim1 < moeExpertNum) ||
+            (expertRankTableDim1 > moeExpertNum + SHARED_EXPERT_MAX_NUM),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "moeExpertNum",
+            "invalid",
+            std::string("expertRankTable dim1 should be in [moeExpertNum = ") +
+                std::to_string(moeExpertNum) +
+                ", moeExpertNum + 4 = " +
+                std::to_string(moeExpertNum + 4) +
+                "],but cur is " +
+                std::to_string(expertRankTableDim1) +
+                "!"
+        ),
+        return false
+    );
 
     if (isScales) {
         const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(INPUT_SCALES_INDEX);
@@ -815,39 +1116,64 @@ static bool CheckInputAndSetTilingData(gert::TilingContext* context, AttentionTo
 
     // 校验quantMode和scale是否匹配
     uint32_t quantMode = tilingData.attentionToFFNInfo.quantMode;
-    OP_TILING_CHECK(quantMode == STATIC_SCALES,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "now", "invalid",
-                                                          "cannot support static quant now."),
-                    return false);
+    OP_TILING_CHECK(
+        quantMode == STATIC_SCALES,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "now",
+            "invalid",
+            "cannot support static quant now."
+        ),
+        return false
+    );
     OP_TILING_CHECK(
         (isScales && (quantMode == NO_SCALES)) || ((!isScales) && (quantMode == STATIC_SCALES)),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ATTN_FFN_INNER_DEBUG, "quantMode", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "quantMode",
+            "invalid",
             std::string("quant mode and scales not match, isScales is ") +
                 std::to_string(static_cast<int32_t>(isScales)) +
                 ", quantMode is " +
                 std::to_string(quantMode) +
                 "."
         ),
-        return false);
+        return false
+    );
 
     // 校验输入数据dim、format、dataType
-    OP_TILING_CHECK(!CheckTensorDim(context, isScales, isActiveMask),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "tensor", "invalid",
-                                                          "input tensor dim is invalid."),
-                    return false);
-    OP_TILING_CHECK(!CheckTensorDataType(context, isScales, isActiveMask),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(ATTN_FFN_INNER_DEBUG, "input tensor", "invalid",
-                                                          "The dtype of parameter input tensor is invalid"),
-                    return false);
-    OP_TILING_CHECK(!CheckTensorFormat(context, isScales, isActiveMask),
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "input tensor", "invalid", "valid format"),
-                    return false);
+    OP_TILING_CHECK(
+        !CheckTensorDim(context, isScales, isActiveMask),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "tensor",
+            "invalid",
+            "input tensor dim is invalid."
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        !CheckTensorDataType(context, isScales, isActiveMask),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            ATTN_FFN_INNER_DEBUG,
+            "input tensor",
+            "invalid",
+            "The dtype of parameter input tensor is invalid"
+        ),
+        return false
+    );
+    OP_TILING_CHECK(
+        !CheckTensorFormat(context, isScales, isActiveMask),
+        OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "input tensor", "invalid", "valid format"),
+        return false
+    );
 
     // 校验输入数据维度值
-    OP_TILING_CHECK(!CheckTensorShapeAndSetTinglingData(context, tilingData, isScales, isActiveMask),
-                    OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "input tensor", "invalid", "valid format"),
-                    return false);
+    OP_TILING_CHECK(
+        !CheckTensorShapeAndSetTinglingData(context, tilingData, isScales, isActiveMask),
+        OP_LOGE_FOR_INVALID_FORMAT(ATTN_FFN_INNER_DEBUG, "input tensor", "invalid", "valid format"),
+        return false
+    );
 
     tilingData.attentionToFFNInfo.isScales = isScales;
     tilingData.attentionToFFNInfo.isActiveMask = isActiveMask;

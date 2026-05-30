@@ -236,21 +236,27 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
-    OP_TILING_CHECK(x1ScaleShape != nullptr,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName_,
-                        "x1_scale",
-                        "not nullptr",
-                        "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        x1ScaleShape != nullptr,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            opName_,
+            "x1_scale",
+            "not nullptr",
+            "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"
+        ),
+        return ge::GRAPH_FAILED
+    );
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
-    OP_TILING_CHECK(x2ScaleShape != nullptr,
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName_,
-                        "x1_scale",
-                        "not nullptr",
-                        "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        x2ScaleShape != nullptr,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            opName_,
+            "x1_scale",
+            "not nullptr",
+            "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"
+        ),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 

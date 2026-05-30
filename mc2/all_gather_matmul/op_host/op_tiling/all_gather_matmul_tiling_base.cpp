@@ -142,16 +142,19 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
 
-    OP_TILING_CHECK(outputDim0 != mValue,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        context->GetNodeName(),
-                        "rank_size",
-                        std::to_string(mValue).c_str(),
-                        std::string("m-axis should be ") +
-                        std::to_string(mValue) +
-                        ", but output's m-axis is " +
-                        std::to_string(outputDim0)),
-                    return false);
+    OP_TILING_CHECK(
+        outputDim0 != mValue,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context->GetNodeName(),
+            "rank_size",
+            std::to_string(mValue).c_str(),
+            std::string("m-axis should be ") +
+                std::to_string(mValue) +
+                ", but output's m-axis is " +
+                std::to_string(outputDim0)
+        ),
+        return false
+    );
 
     return true;
 }
@@ -173,8 +176,13 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
     OP_TILING_CHECK(
         !CheckOutputParamDim0(const_cast<gert::TilingContext *>(context)),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            context->GetNodeName(), "y", "unsupported dim", "the output's dim0 is invalid"),
-        return ge::GRAPH_FAILED);
+            context->GetNodeName(),
+            "y",
+            "unsupported dim",
+            "the output's dim0 is invalid"
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     if (context->GetAttrs() == nullptr) {
         OP_LOGE(context->GetNodeName(), "get attrs failed");
@@ -201,9 +209,11 @@ static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
                         return ge::GRAPH_FAILED);
     }
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(GROUP_IDX));
-    OP_TILING_CHECK(group == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        group == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"),
+        return ge::GRAPH_FAILED
+    );
 
     return ge::GRAPH_SUCCESS;
 }

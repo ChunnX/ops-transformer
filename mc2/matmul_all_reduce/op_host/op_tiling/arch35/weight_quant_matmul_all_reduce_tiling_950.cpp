@@ -119,8 +119,10 @@ ge::graphStatus WeightQuantAsTilingTransferHelper::GetShapeAttrsInfo()
             matmulInfoPtr_->opName,
             "x2",
             "unsupported value",
-            "Nz weight input is not supported in fp8/hif8 weight per-channel quant scene."),
-        return ge::GRAPH_FAILED);
+            "Nz weight input is not supported in fp8/hif8 weight per-channel quant scene."
+        ),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -485,7 +487,10 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
                     ),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        context_->GetAttrs() == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
+        context_->GetAttrs() == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"),
+        return ge::GRAPH_FAILED
+    );
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
@@ -553,7 +558,8 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckAxisSize()
     OP_TILING_CHECK(
         n > static_cast<uint64_t>(UINT16_MAX),
         OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "<= UINT16_MAX"),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(isA16W8_ && (antiQuantType_ == AntiQuantType::PER_GROUP) &&
                         ((n % alignDim != 0) || (k % alignDim != 0)),
                     OP_LOGE(
@@ -654,8 +660,10 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
                 context_->GetNodeName(),
                 "antiquant_scale",
                 "unsupported dtype",
-                "AntiquantOffset is not supported when dataType of x1 is fp8e4m3/hif8."),
-            return ge::GRAPH_FAILED);
+                "AntiquantOffset is not supported when dataType of x1 is fp8e4m3/hif8."
+            ),
+            return ge::GRAPH_FAILED
+        );
     }
     OP_TILING_CHECK(
         CheckBiasInput(), OP_LOGE(context_->GetNodeName(), "Check bias failed."),
@@ -705,36 +713,42 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
             return ge::GRAPH_FAILED);
     }
     // pergroup场景下不支持fp8和hif8,增加校验
-    OP_TILING_CHECK((antiQuantType_ == AntiQuantType::PER_GROUP) &&
-                        ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        context_->GetNodeName(),
-                        "x2",
-                        std::string("X2 dtype ") +
-                        std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
-                        " is not supported in per-group scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
-                        "DT_HIFLOAT8.",
-                        std::string("X2 dtype ") +
-                        std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
-                        " is not supported in per-group scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
-                        "DT_HIFLOAT8."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (antiQuantType_ == AntiQuantType::PER_GROUP) &&
+            ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x2",
+            std::string("X2 dtype ") +
+                std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
+                " is not supported in per-group scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
+                "DT_HIFLOAT8.",
+            std::string("X2 dtype ") +
+                std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
+                " is not supported in per-group scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
+                "DT_HIFLOAT8."
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     // pertensor场景下不支持fp8和hif8,增加校验
-    OP_TILING_CHECK((antiQuantType_ == AntiQuantType::PER_TENSOR) &&
-                        ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        context_->GetNodeName(),
-                        "x2",
-                        std::string("X2 dtype ") +
-                        std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
-                        " is not supported in per-tensor scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
-                        "DT_HIFLOAT8.",
-                        std::string("X2 dtype ") +
-                        std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
-                        " is not supported in per-tensor scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
-                        "DT_HIFLOAT8."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (antiQuantType_ == AntiQuantType::PER_TENSOR) &&
+            ((x2Type == ge::DT_FLOAT8_E4M3FN) || (x2Type == ge::DT_HIFLOAT8)),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x2",
+            std::string("X2 dtype ") +
+                std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
+                " is not supported in per-tensor scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
+                "DT_HIFLOAT8.",
+            std::string("X2 dtype ") +
+                std::string(ge::TypeUtils::DataTypeToSerialString(x2Type).c_str()) +
+                " is not supported in per-tensor scenario, unsupported types include DT_FLOAT8_E4M3FN, and"
+                "DT_HIFLOAT8."
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     return CheckAxisSize();
 }

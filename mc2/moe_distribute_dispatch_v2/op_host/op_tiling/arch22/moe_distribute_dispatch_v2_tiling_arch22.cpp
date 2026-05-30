@@ -235,14 +235,19 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
     auto constExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_CONST_EXPERT_NUM_INDEX));
 
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(EXPERT_IDS_INDEX);
-    OP_TILING_CHECK(expertIdStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertIdShape"), return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        expertIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertIdShape"),
+        return GRAPH_FAILED
+    );
     int32_t bs = expertIdStorageShape->GetStorageShape().GetDim(0);
 
-    OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                        (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "groupEp", "invalid", "groupEp is invalid."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
+            (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "groupEp", "invalid", "groupEp is invalid."),
+        return ge::GRAPH_FAILED
+    );
     int32_t maxEpWorldSizeA2 = MAX_EP_WORLD_SIZE_A2;
     if (isLayered) {
         maxEpWorldSizeA2 = MAX_EP_WORLD_SIZE_A2_LAYERED;
@@ -251,44 +256,86 @@ static ge::graphStatus MoeDistributeDispatchA2CheckAttrAndSetTiling(
         epWorldSizePtr == nullptr || *epWorldSizePtr <= 0 || *epWorldSizePtr > maxEpWorldSizeA2 ||
             ((*epWorldSizePtr > RANK_NUM_PER_NODE_A2) && (*epWorldSizePtr % RANK_NUM_PER_NODE_A2 != 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epWorldSize", "invalid", "epWorldSize is invalid."),
-        return GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "epRankId", "invalid",
-                                                          "epRankId is invalid."),
-                    return GRAPH_FAILED);
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "epRankId",
+            "invalid",
+            "epRankId is invalid."
+        ),
+        return GRAPH_FAILED
+    );
     int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
     OP_TILING_CHECK(
         moeExpertNumPtr == nullptr || *moeExpertNumPtr % *epWorldSizePtr != 0 || *moeExpertNumPtr <= 0 ||
             *moeExpertNumPtr > maxMoeExpertNums,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "moeExpertNum", "invalid", "moeExpertNum is invalid."),
-        return GRAPH_FAILED);
-    OP_TILING_CHECK(tpWorldSizePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"), return GRAPH_FAILED);
-    OP_TILING_CHECK(tpRankIdPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"), return GRAPH_FAILED);
-    OP_TILING_CHECK(expertSharedTypePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"), return GRAPH_FAILED);
-    OP_TILING_CHECK(sharedExpertRankNumPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "sharedExpertRankNum"), return GRAPH_FAILED);
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        tpWorldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpWorldSize"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        tpRankIdPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "tpRankId"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        expertSharedTypePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertSharedType"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        sharedExpertRankNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "sharedExpertRankNum"),
+        return GRAPH_FAILED
+    );
     OP_TILING_CHECK(
         quantModePtr == nullptr || (*quantModePtr != static_cast<uint64_t>(QuantModeA5::NON_QUANT) &&
-                                    *quantModePtr != static_cast<uint64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
+            *quantModePtr != static_cast<uint64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "quantMode", "invalid", "quantMode is invalid."),
-        return GRAPH_FAILED);
-    OP_TILING_CHECK(globalBsPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "globalBs"), return GRAPH_FAILED);
-    OP_TILING_CHECK(expertTokenNumsTypePtr == nullptr || *expertTokenNumsTypePtr < 0 || *expertTokenNumsTypePtr > 1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "x", "invalid",
-                                                          "expertTokenNumsType is invalid. Must be 0 or 1. "),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(zeroExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "zeroExpertNumPtr"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(copyExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "copyExpertNumPtr"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(constExpertNumPtr == nullptr || *constExpertNumPtr != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "expertNum", "invalid",
-                                                          "constExpertNum is invalid. Must be 0."),
-                    return ge::GRAPH_FAILED);
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        globalBsPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "globalBs"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        expertTokenNumsTypePtr == nullptr || *expertTokenNumsTypePtr < 0 || *expertTokenNumsTypePtr > 1,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "x",
+            "invalid",
+            "expertTokenNumsType is invalid. Must be 0 or 1. "
+        ),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        zeroExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "zeroExpertNumPtr"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        copyExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "copyExpertNumPtr"),
+        return ge::GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        constExpertNumPtr == nullptr || *constExpertNumPtr != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "expertNum",
+            "invalid",
+            "constExpertNum is invalid. Must be 0."
+        ),
+        return ge::GRAPH_FAILED
+    );
 
     // 判断是否满足uint32_t及其他限制
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
@@ -352,24 +399,46 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     const gert::StorageShape *performanceInfoStorageShape = context->GetOptionalInputShape(PERFORMANCE_INFO_INDEX);
     const gert::StorageShape *expandScalesStorageShape = context->GetOutputShape(OUTPUT_EXPAND_SCALES_INDEX);
 
-    OP_TILING_CHECK(xStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "xShape"), return GRAPH_FAILED);
-    OP_TILING_CHECK(expertIdStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertIdShape"), return GRAPH_FAILED);
-    OP_TILING_CHECK(isLayered && expertScalesStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertScales"), return GRAPH_FAILED);
-    OP_TILING_CHECK(isLayered && expandScalesStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expandScales"), return GRAPH_FAILED);
-    OP_TILING_CHECK(elasticInfoStorageShape != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "elasticInfo", "invalid",
-                                                          "current does not support elasticInfo as input"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid", "x dims is invalid."),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid", "expertId dims is invalid."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        xStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "xShape"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        expertIdStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertIdShape"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        isLayered && expertScalesStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expertScales"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        isLayered && expandScalesStorageShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "expandScales"),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        elasticInfoStorageShape != nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "elasticInfo",
+            "invalid",
+            "current does not support elasticInfo as input"
+        ),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        xStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid", "x dims is invalid."),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "x", "invalid", "expertId dims is invalid."),
+        return GRAPH_FAILED
+    );
     OP_LOGD(nodeName, "X dim0 = %ld", xStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "X dim1 = %ld", xStorageShape->GetStorageShape().GetDim(1));
     OP_LOGD(nodeName, "expertId dim0 = %ld", expertIdStorageShape->GetStorageShape().GetDim(0));
@@ -382,13 +451,17 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "attrs"), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    OP_TILING_CHECK(h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "hiddensize is invalid."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "hiddensize is invalid."),
+        return GRAPH_FAILED
+    );
     uint32_t maxBatchSizeA2 = isLayered ? LAYERED_MAX_BATCH_SIZE_A2 : MAX_BATCH_SIZE_A2;
-    OP_TILING_CHECK(bs == 0 || bs > maxBatchSizeA2,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "batchsize is invalid."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        bs == 0 || bs > maxBatchSizeA2,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "H", "invalid", "batchsize is invalid."),
+        return GRAPH_FAILED
+    );
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto zeroExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_ZERO_EXPERT_NUM_INDEX));
@@ -399,68 +472,97 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     int32_t copyExpertNum = static_cast<int32_t>(*copyExpertNumPtr);
     int32_t constExpertNum = 0;
     int32_t zeroComputeExpertNum = zeroExpertNum + copyExpertNum + constExpertNum;
-    OP_TILING_CHECK(k == 0 || k > MAX_K_VALUE_A2 || k > moeExpertNum + zeroComputeExpertNum,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "K", "invalid", "k is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(*quantModePtr == static_cast<uint64_t>(QuantModeA5::NON_QUANT) && isScales,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "quantMode", "invalid",
-                                                          "scales should be null when quantMode is unQuant."),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        k == 0 || k > MAX_K_VALUE_A2 || k > moeExpertNum + zeroComputeExpertNum,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(K_INNER_DEBUG, "K", "invalid", "k is invalid."),
+        return GRAPH_FAILED
+    );
+    OP_TILING_CHECK(
+        *quantModePtr == static_cast<uint64_t>(QuantModeA5::NON_QUANT) && isScales,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "quantMode",
+            "invalid",
+            "scales should be null when quantMode is unQuant."
+        ),
+        return GRAPH_FAILED
+    );
 
     bool isActiveMask = (xActiveMaskStorageShape != nullptr);
     if (isActiveMask) {
         const int64_t xActiveMaskDimNums = xActiveMaskStorageShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(
             ((xActiveMaskDimNums != ONE_DIM) && (xActiveMaskDimNums != TWO_DIMS)),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                nodeName, "x", "invalid",
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
                 std::string("xActiveMask must be 1-dimension or 2-dimension, but got ") +
                     std::to_string(xActiveMaskDimNums) +
                     " dim"
             ),
-            return GRAPH_FAILED);
+            return GRAPH_FAILED
+        );
 
         int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(xActiveMaskDim0 != static_cast<int64_t>(bs),
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
-                                std::to_string(xActiveMaskDim0) +
-                                ", expertIds's dim0 is " +
-                                std::to_string(bs)
-                        ),
-                        return GRAPH_FAILED);
+        OP_TILING_CHECK(
+            xActiveMaskDim0 != static_cast<int64_t>(bs),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("xActiveMask's dim0 not equal to expertIds's dim0, xActiveMask's dim0 is ") +
+                    std::to_string(xActiveMaskDim0) +
+                    ", expertIds's dim0 is " +
+                    std::to_string(bs)
+            ),
+            return GRAPH_FAILED
+        );
 
-        OP_TILING_CHECK(((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
-                         (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
-                                                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                            nodeName, "x", "invalid",
-                            std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
-                                std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
-                                ", expertIds's dim1 is " +
-                                std::to_string(k)
-                        ),
-                        return GRAPH_FAILED);
+        OP_TILING_CHECK(
+            ((xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS) &&
+                (xActiveMaskStorageShape->GetStorageShape().GetDim(1) != static_cast<int64_t>(k))),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                nodeName,
+                "x",
+                "invalid",
+                std::string("xActiveMask's dim1 not equal to expertIds's dim1, xActiveMask's dim1 is ") +
+                    std::to_string(xActiveMaskStorageShape->GetStorageShape().GetDim(1)) +
+                    ", expertIds's dim1 is " +
+                    std::to_string(k)
+            ),
+            return GRAPH_FAILED
+        );
     }
 
     OP_TILING_CHECK(
         performanceInfoStorageShape != nullptr &&
             performanceInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(K_INNER_DEBUG, "H", "invalid",
-                                              "When performanceInfo is not null, it needs to be one-dimensional."),
-        return GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            K_INNER_DEBUG,
+            "H",
+            "invalid",
+            "When performanceInfo is not null, it needs to be one-dimensional."
+        ),
+        return GRAPH_FAILED
+    );
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    OP_TILING_CHECK(performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(
-                                                                  0) != static_cast<int64_t>(*epWorldSizePtr),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        K_INNER_DEBUG, "epWorldSize", "invalid",
-                        std::string("The Size of performanceInfo should be equal to epWorldSize when"
-                                        "performanceInfo is not null,but performanceInfo Size is ") +
-                            std::to_string(performanceInfoStorageShape->GetStorageShape().GetDim(0)) +
-                            " and epWorldSize is " +
-                            std::to_string(*epWorldSizePtr) +
-                            "."
-                    ),
-                    return GRAPH_FAILED);
+    OP_TILING_CHECK(
+        performanceInfoStorageShape != nullptr && performanceInfoStorageShape->GetStorageShape().GetDim(
+            0) != static_cast<int64_t>(*epWorldSizePtr),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            K_INNER_DEBUG,
+            "epWorldSize",
+            "invalid",
+            std::string("The Size of performanceInfo should be equal to epWorldSize when"
+                "performanceInfo is not null,but performanceInfo Size is ") +
+                std::to_string(performanceInfoStorageShape->GetStorageShape().GetDim(0)) +
+                " and epWorldSize is " +
+                std::to_string(*epWorldSizePtr) +
+                "."
+        ),
+        return GRAPH_FAILED
+    );
 
     info.isTokenMask = ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == ONE_DIM));
     info.isExpertMask = ((isActiveMask) && (xActiveMaskStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS));
@@ -596,37 +698,63 @@ bool MoeDistributeDispatchV2TilingFuncA2A3::CheckTensorDataType(
     OP_TILING_CHECK(
         (xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x", Ops::Base::ToString(xDesc->GetDataType()).c_str(), "bf16 or float16"),
-        return false);
+        return false
+    );
 
     if (quantMode == static_cast<uint32_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) {
         auto dynamicScalesDesc = context->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX);
-        OP_TILING_CHECK(dynamicScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesDesc"),
-            return false);
-        OP_TILING_CHECK(dynamicScalesDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "dynamicScales",
-                                                  Ops::Base::ToString(dynamicScalesDesc->GetDataType()).c_str(),
-                                                  "float"),
-                        return false);
+        OP_TILING_CHECK(
+            dynamicScalesDesc == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT(nodeName, "dynamicScalesDesc"),
+            return false
+        );
+        OP_TILING_CHECK(
+            dynamicScalesDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "dynamicScales",
+                Ops::Base::ToString(dynamicScalesDesc->GetDataType()).c_str(),
+                "float"
+            ),
+            return false
+        );
     }
     if (isScales) {
         auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
-        OP_TILING_CHECK(scalesDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "scales",
-                                                  Ops::Base::ToString(scalesDesc->GetDataType()).c_str(), "float"),
-                        return false);
+        OP_TILING_CHECK(
+            scalesDesc->GetDataType() != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "scales",
+                Ops::Base::ToString(scalesDesc->GetDataType()).c_str(),
+                "float"
+            ),
+            return false
+        );
     }
     auto expandXDesc = context->GetOutputDesc(OUTPUT_EXPAND_X_INDEX);
     if (quantMode != static_cast<uint32_t>(QuantModeA5::NON_QUANT)) {
-        OP_TILING_CHECK(expandXDesc->GetDataType() != ge::DT_INT8,
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX",
-                                                  Ops::Base::ToString(expandXDesc->GetDataType()).c_str(), "int8"),
-                        return false);
+        OP_TILING_CHECK(
+            expandXDesc->GetDataType() != ge::DT_INT8,
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "expandX",
+                Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
+                "int8"
+            ),
+            return false
+        );
     } else {
-        OP_TILING_CHECK(expandXDesc->GetDataType() != xDesc->GetDataType(),
-                        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expandX",
-                                                  Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
-                                                  Ops::Base::ToString(xDesc->GetDataType()).c_str()),
-                        return false);
+        OP_TILING_CHECK(
+            expandXDesc->GetDataType() != xDesc->GetDataType(),
+            OP_LOGE_FOR_INVALID_DTYPE(
+                nodeName,
+                "expandX",
+                Ops::Base::ToString(expandXDesc->GetDataType()).c_str(),
+                Ops::Base::ToString(xDesc->GetDataType()).c_str()
+            ),
+            return false
+        );
     }
 
     OP_TILING_CHECK(!CheckCommomOtherInputTensorDataType(context, nodeName, isActiveMask,
@@ -681,36 +809,45 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModeMatchScales
     gert::TilingContext *context, const char *nodeName, bool isScales,
     uint32_t quantMode, DispatchV2Config &config)
 {
-    OP_TILING_CHECK(quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT),
+    OP_TILING_CHECK(
+        quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "now", "invalid", "cannot support static quant now."),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     OP_TILING_CHECK(
         (isScales && (quantMode == static_cast<uint32_t>(QuantModeA5::NON_QUANT))) ||
             ((!isScales) && (quantMode == static_cast<uint32_t>(QuantModeA5::STATIC_QUANT))),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "quantMode", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "quantMode",
+            "invalid",
             std::string("quant mode and scales not match, isScales is ") +
                 std::to_string(static_cast<int32_t>(isScales)) +
                 ", quantMode is " +
                 std::to_string(quantMode) +
                 "."
         ),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckCommAlgPtr(const char* commAlgPtr, const char *nodeName)
 {
-    OP_TILING_CHECK(((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
-                     (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)),
-                                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        nodeName, "commAlg", "invalid",
-                        std::string("Attr commAlg is invalid, current only support hierarchy, fullmesh_v1 and"
-                                        "fullmesh_v2, but got commAlg = ") +
-                            std::string(commAlgPtr) +
-                            "."
-                    ),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        ((strlen(commAlgPtr) != 0) && (strcmp(commAlgPtr, "fullmesh_v1") != 0) &&
+            (strcmp(commAlgPtr, "fullmesh_v2") != 0) && (strcmp(commAlgPtr, "hierarchy") != 0)),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "commAlg",
+            "invalid",
+            std::string("Attr commAlg is invalid, current only support hierarchy, fullmesh_v1 and"
+                "fullmesh_v2, but got commAlg = ") +
+                std::string(commAlgPtr) +
+                "."
+        ),
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
@@ -720,15 +857,18 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::CheckQuantModePtr(const i
     OP_TILING_CHECK(
         (*quantModePtr < static_cast<int64_t>(QuantModeA5::NON_QUANT)) ||
             (*quantModePtr > static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            nodeName, "quantMode", "invalid",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            nodeName,
+            "quantMode",
+            "invalid",
             std::string("quantMode is invalid, only support [0, ") +
                 std::to_string(static_cast<int64_t>(QuantModeA5::PERTOKEN_DYNAMIC_QUANT)) +
                 "], but got quantMode=" +
                 std::to_string(*quantModePtr) +
                 "."
         ),
-        return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED
+    );
     return ge::GRAPH_SUCCESS;
 }
 
