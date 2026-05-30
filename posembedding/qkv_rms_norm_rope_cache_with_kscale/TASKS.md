@@ -16,6 +16,7 @@
 |----|------|--------|--------------|--------|
 | S00 | Create implementation scaffold | Done | Top-level CMake configure reached this no-op directory; configure then failed in pre-existing mc2/ffn targets unrelated to this scaffold | Included in scaffold commit |
 | T00 | Host checker/tiling contract + UT | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_kscale --soc=ascend950 -j8`; 9 host UT passed. `--noexec` host UT compile also passed | Included in T00 commit and host UT build.sh fix commit |
+| P01 | Empty kernel package precheck | Done | Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh` and passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_kscale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
 | T01 | Controller and basic block skeleton | Not started | Kernel compile | |
 | T02 | AIV local slice and tail row range | Not started | Kernel compile + Host UT extension | |
 | T03 | Static buffer and tensor binding | Not started | Kernel compile | |
@@ -33,6 +34,6 @@
 
 ## Next Task
 
-T01 is the next implementation task. It should add the kernel controller and
-basic block skeleton that consume the T00 tiling contract without adding the
-full compute body yet.
+T01 is the next implementation task. It should replace the empty packaging stub
+with the kernel controller and basic block skeleton that consume the T00 tiling
+contract without adding the full compute body yet.
