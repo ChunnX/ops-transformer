@@ -48,9 +48,7 @@ public:
     __aicore__ inline void Process(GM_ADDR profBufGm = 0);
 private:
     __aicore__ inline void ClearSumTensor();
-    __aicore__ inline void ReadDataBlockReduceSum(GlobalTensor<XType>& remoteXTensor,
-                                                    GlobalTensor<ScalesType>& remoteScaleTensor,
-                                                    uint64_t curXOffset, uint64_t curScaleOffset,
+    __aicore__ inline void ReadDataBlockReduceSum(uint64_t curXOffset, uint64_t curScaleOffset,
                                                     uint32_t xNum, uint32_t scaleNum,
                                                     GM_ADDR profBufGm = 0);
     __aicore__ inline void ExecuteReduceScatter();
@@ -62,10 +60,9 @@ private:
     MTECommunication<TemplateType> mteComm_; // MTE 通信相关实现
     VectorCompute<TemplateType> vecComp_; // vector 计算相关实现
 
+    GlobalTensor<XType> remoteWinXTensor_;
+    GlobalTensor<ScalesType> remoteWinScaleTensor_;
     LocalTensor<float> sumTensor_;
-
-    GlobalTensor<XType> cachedXTensors_[4];
-    GlobalTensor<ScalesType> cachedScaleTensors_[4];
 
     TQue<QuePosition::VECIN, 1> xInQueue_, scaleInQue_; // 用于读数据和反量化求和的通算并行
     TBuf<> sumBuf_; // 用于Reduce_sum 求和
@@ -220,11 +217,10 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::InitSubModules(
 
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceSum(
-    GlobalTensor<XType>& remoteXTensor, GlobalTensor<ScalesType>& remoteScaleTensor,
     uint64_t curXOffset, uint64_t curScaleOffset, uint32_t xNum, uint32_t scaleNum, GM_ADDR profBufGm)
 {
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor, remoteXTensor[curXOffset], xNum);
+    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], xNum);
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
@@ -233,7 +229,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
     scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
     scaleCopyParams.blockCount = 1;
     DataCopyPadParams scalePadParams;
-    DataCopyPad(scaleTmpTensor, remoteScaleTensor[curScaleOffset], scaleCopyParams, scalePadParams);
+    DataCopyPad(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], scaleCopyParams, scalePadParams);
     scaleInQue_.EnQue(scaleTmpTensor);
     scaleTmpTensor = scaleInQue_.DeQue<ScalesType>();
 
@@ -257,22 +253,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     mteComm_.ReadStatus();
     uint64_t aivId = GetBlockIdx();
 
-    // Cache per-rank GlobalTensor addresses (constant across all blocks)
-    // Eliminates repeated GetWinDataAddrGm (GM reads) and SetGlobalBuffer per block
     uint32_t selfRankId = mteComm_.hcclContext_->rankId;
     uint32_t rankDim = mteComm_.hcclContext_->rankDim;
     uint64_t selfRankXSliceOffset = selfRankId * xSliceSizeNums_;
     uint64_t selfRankScaleSliceOffset = selfRankId * scaleSliceNums_;
     uint32_t startRankId = selfRankId;
 
-    for (uint32_t i = 0; i < rankDim && i < 4; ++i) {
-        uint32_t remoteRankId = (startRankId + i) % rankDim;
-        GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);
-        cachedXTensors_[i].SetGlobalBuffer((__gm__ XType*)remoteDataSpaceGm);
-        cachedScaleTensors_[i].SetGlobalBuffer((__gm__ ScalesType*)(remoteDataSpaceGm + xSize_));
-    }
-
-    // Initial ClearSum for first block (subsequent blocks clear during previous COPY_OUT)
     PROF_MARK(mteComm_.profBufGm_, EVT_CLEAR_SUM_BEGIN, 0);
     ClearSumTensor();
     PROF_MARK(mteComm_.profBufGm_, EVT_CLEAR_SUM_END, 0);
@@ -295,10 +281,14 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 
         PROF_MARK(mteComm_.profBufGm_, EVT_RANK_LOOP_BEGIN, 0);
         for (uint32_t i = 0; i < rankDim; ++i) {
+            uint32_t remoteRankId = (startRankId + i) % rankDim;
+            GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);
+            remoteWinXTensor_.SetGlobalBuffer((__gm__ XType*)remoteDataSpaceGm);
+            remoteWinScaleTensor_.SetGlobalBuffer((__gm__ ScalesType*)(remoteDataSpaceGm + xSize_));
+
             uint64_t curRankXOffset = curXOffset + selfRankXSliceOffset;
             uint64_t curRankScaleOffset = curScaleOffset + selfRankScaleSliceOffset;
-            ReadDataBlockReduceSum(cachedXTensors_[i], cachedScaleTensors_[i],
-                                   curRankXOffset, curRankScaleOffset, curXNum, curScaleNum,
+            ReadDataBlockReduceSum(curRankXOffset, curRankScaleOffset, curXNum, curScaleNum,
                                    mteComm_.profBufGm_);
         }
         PROF_MARK(mteComm_.profBufGm_, EVT_RANK_LOOP_END, 0);
