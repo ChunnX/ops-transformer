@@ -47,12 +47,16 @@ static ge::graphStatus CheckScaleShape(
     } else {
         expect_scale = {k_value, shape.n};
     }
-    OPS_CHECK(
-        expect_scale != *scale_shape,
-        CUBE_INNER_ERR_REPORT(
-            kInnerDebug, "Expect antiquant scale shape to be [%ld,%ld], but actually [%ld,%ld]", expect_scale[0],
-            expect_scale[1], scale_shape->GetDim(0U), scale_shape->GetDim(1U)),
-        return ge::GRAPH_FAILED);
+    OPS_CHECK(expect_scale != *scale_shape,
+                            OP_LOGE(
+                                kInnerDebug,
+                                "Expect antiquant scale shape to be [%s,%s], but actually [%s,%s]",
+                                std::to_string(expect_scale[0]).c_str(),
+                                std::to_string(expect_scale[1]).c_str(),
+                                std::to_string(scale_shape->GetDim(0U)).c_str(),
+                                std::to_string(scale_shape->GetDim(1U)).c_str()
+                            ),
+              return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -63,7 +67,11 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const size_t dim_num_x1 = shape_x1->GetDimNum();
     OPS_CHECK(
         dim_num_x1 < kMC2MinShapeSize || dim_num_x1 > kMC2MaxShapeSize,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Invalid dim number %zu of x1.", dim_num_x1),
+                OP_LOGE(
+                    context->GetNodeName(),
+                    "Invalid dim number %s of x1.",
+                    std::to_string(dim_num_x1).c_str()
+                ),
         return ge::GRAPH_FAILED);
 
     const auto shape_x2 = context->GetInputShape(static_cast<size_t>(MC2InputIdx::K_X2));
@@ -71,15 +79,26 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
     const size_t dim_num_x2 = shape_x2->GetDimNum();
     OPS_CHECK(
         dim_num_x2 != kMC2MinShapeSize,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Invalid dim number %zu of x2.", dim_num_x2),
+                OP_LOGE(
+                    context->GetNodeName(),
+                    "Invalid dim number %s of x2.",
+                    std::to_string(dim_num_x2).c_str()
+                ),
         return ge::GRAPH_FAILED);
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool* trans_a = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X1));
     OPS_CHECK(
-        trans_a != nullptr && *trans_a, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "x1 does not support transpose."),
-        return ge::GRAPH_FAILED);
+        trans_a != nullptr && *trans_a,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(),
+            "is_trans_b",
+            "unsupported value",
+            "x1 does not support transpose."
+        ),
+        return ge::GRAPH_FAILED
+    );
     const bool* trans_b = attrs->GetAttrPointer<bool>(static_cast<size_t>(MmAllReduceAttrIdx::K_TRANS_X2));
     const bool is_trans_b = ((trans_b != nullptr) && (*trans_b));
     if (dim_num_x1 == kMC2MaxShapeSize) {
@@ -94,21 +113,22 @@ static ge::graphStatus InferShapeForMatmul(const gert::InferShapeContext* contex
         (shape.k == -1 || shape_x2->GetDim(shapeX2KIndex) == -1 || shape.k == 0 ||
          shape_x2->GetDim(shapeX2KIndex) == 0 || shape.k == 1 || shape_x2->GetDim(shapeX2KIndex) == 1);
     if (!is_dynamic_shape) {
-        OPS_CHECK(
-            (shape.k != shape_x2->GetDim(shapeX2KIndex)),
-            CUBE_INNER_ERR_REPORT(
-                context->GetNodeName(), "Invalid shape for x1(k): %ld, x2(k): %ld", shape.k,
-                shape_x2->GetDim(shapeX2KIndex)),
-            return ge::GRAPH_FAILED);
+        OPS_CHECK((shape.k != shape_x2->GetDim(shapeX2KIndex)),
+                  OP_LOGE(
+                      context->GetNodeName(),
+                      "Invalid shape for x1(k): %s, x2(k): %s",
+                      std::to_string(shape.k).c_str(),
+                      std::to_string(shape_x2->GetDim(shapeX2KIndex)).c_str()
+                  ),
+                  return ge::GRAPH_FAILED);
         const size_t scale_idx =
             is_arn ? static_cast<size_t>(MC2AddRmsNormInputIdx::K_SCALE) : static_cast<size_t>(MC2InputIdx::K_SCALE);
         const int64_t* p = attrs->GetInt(static_cast<size_t>(MmAllReduceAttrIdx::K_ANTIQUANT_GROUP_SIZE));
         const int64_t group_size = (p != nullptr ? *p : 0);
-        OPS_CHECK(
-            CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
-                ge::GRAPH_SUCCESS,
-            CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check antiquant scale shape."),
-            return ge::GRAPH_FAILED);
+        OPS_CHECK(CheckScaleShape(context->GetOptionalInputShape(scale_idx), group_size, shape, is_trans_b) !=
+                      ge::GRAPH_SUCCESS,
+                  OP_LOGE(context->GetNodeName(), "Failed to check antiquant scale shape."),
+                  return ge::GRAPH_FAILED);
     }
     shape.output_dim = dim_num_x1;
     OP_LOGD(kInnerDebug, "Matmul x1 dim %zu s %ld m %ld n %ld k %ld.", dim_num_x1, shape.s, shape.m, shape.n, shape.k);
@@ -122,10 +142,9 @@ static ge::graphStatus InferShapeForMatmulAllReduce(gert::InferShapeContext* con
     auto shape_out = context->GetOutputShape(static_cast<size_t>(MC2OutputIdx::K_Y));
     OPS_CHECK_NULL_WITH_CONTEXT(context, shape_out);
     MatmulShapeInfo shape;
-    OPS_CHECK(
-        InferShapeForMatmul(context, shape, false) != ge::GRAPH_SUCCESS,
-        CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to infer shape for matmul all reduce"),
-        return ge::GRAPH_FAILED);
+    OPS_CHECK(InferShapeForMatmul(context, shape, false) != ge::GRAPH_SUCCESS,
+              OP_LOGE(context->GetNodeName(), "Failed to infer shape for matmul all reduce"),
+              return ge::GRAPH_FAILED);
     shape_out->SetDimNum(shape.output_dim);
     if (shape.output_dim == kMC2MaxShapeSize) {
         shape_out->SetDim(0U, shape.s);

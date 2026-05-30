@@ -45,7 +45,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
 
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(
-        platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
+        platformInfo == nullptr, OP_LOGE(opName_, "fail to get platform info"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     matmul_tiling::MultiCoreMatmulTiling mmTile(ascendcPlatform);
@@ -106,9 +106,12 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
         static_cast<uint64_t>(isTransB_),
         static_cast<uint64_t>(FORMAT_B_ND));
 
-    OP_LOGI(opName_, "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, hasAntiQuantOffset_ %lu, isTransB_ %lu,     \
-        enableL2Cache_ %lu, isWeightQuant_ %lu, isKZero_ %lu", tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_,\
-        isWeightQuant_, isKZero_);
+    OP_LOGI(
+        opName_,
+        "MatmulAllReduceTiling310General get tilingKey %lu. antiQuantT_ %lu, "
+        "hasAntiQuantOffset_ %lu, isTransB_ %lu, enableL2Cache_ %lu, "
+        "isWeightQuant_ %lu, isKZero_ %lu",
+        tilingKey, antiQuantT_, hasAntiQuantOffset_, isTransB_, enableL2Cache_, isWeightQuant_, isKZero_);
     return tilingKey;
 }
 
@@ -125,7 +128,15 @@ void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
 {
     const auto weight = context_->GetInputDesc(static_cast<size_t>(ops::MC2InputIdx::K_X2));
     OP_TILING_CHECK(
-        weight == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Invalid weight tensor."), return );
+        weight == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "Invalid weight tensor."
+        ),
+        return
+    );
     if (weight->GetDataType() != ge::DT_INT8) {
         OP_LOGD(context_->GetNodeName(), "No anti quant for weight data type %u.", weight->GetDataType());
         return;
@@ -158,8 +169,15 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     singleMatrixSize = SINGLE_MATRIX_SIZE_310;
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(
-        weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
-        return );
+        weightTensor == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "weight tensor is invalid"
+        ),
+        return
+    );
     if (weightTensor->GetStorageFormat() == ge::Format::FORMAT_FRACTAL_NZ) {
         constexpr uint32_t TILE_SIZE_310_NZ = 5;
         tileSize = TILE_SIZE_310_NZ;

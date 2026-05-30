@@ -24,8 +24,15 @@ bool UnQuantMatmulAllReduceTiling310::IsCapable()
 {
     auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
     OP_TILING_CHECK(
-        weightTensor == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "weight tensor is invalid"),
-        return false);
+        weightTensor == nullptr,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(),
+            "x",
+            "unsupported shape",
+            "weight tensor is invalid"
+        ),
+        return false
+    );
     auto format = weightTensor->GetStorageFormat();
     if ((npuArch_ != NpuArch::DAV_2002) || (format == ge::Format::FORMAT_ND)) {
         OP_LOGI(opName_, "skip normalized unquant tiling when is not 310p or not weight nz[%d].", format);
@@ -94,7 +101,8 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
         static_cast<uint64_t>(SET_NOT_USE_PARAM),
         static_cast<uint64_t>(FORMAT_B_NZ));
 
-    OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. disableMixNd2nz %lu", tilingKey, matmulTPLParam_.disableMixNd2nz);
+    OP_LOGI(opName_, "UnQuantMatmulAllReduceTiling310 get tilingKey %lu. disableMixNd2nz %lu", tilingKey,
+            matmulTPLParam_.disableMixNd2nz);
     return tilingKey;
 }
 
@@ -116,8 +124,11 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
         tilingDataSize, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+        OP_LOGE(
+            opName_,
+            "tiling data size[%s] not aligned to 8",
+            std::to_string(tilingDataSize).c_str()
+        ),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
