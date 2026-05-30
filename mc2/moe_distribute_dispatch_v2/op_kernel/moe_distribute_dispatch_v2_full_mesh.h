@@ -2521,7 +2521,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
                     continue;
                 }
                 aclshmemx_udma_put_nbi(
-                    aclshmem_ptr(custom_ptr + my_pe * message_length, pe), custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
+                    custom_ptr + my_pe * message_length, custom_ptr + my_pe * message_length, (__ubuf__ uint8_t*)ubLocal.GetPhyAddr(),
                     message_length, pe);
                 aclshmemx_udma_quiet(pe);
             }
