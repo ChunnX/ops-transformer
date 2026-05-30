@@ -153,7 +153,7 @@ __aicore__ inline void LoadBAndScaleL1ToL0(const LocalTensor<DstType> &bL0Tensor
 }
 
 /**
- * @brief 不带Bias的Mmad计算
+ * @brief Mmad计算
  *
  * @param cL0Tensor L0C tensor
  * @param aL0Tensor L0A tensor
@@ -174,31 +174,6 @@ __aicore__ inline void MmadCompute(const LocalTensor<DstType> &cL0Tensor, const 
     mmadParams.disableGemv = true;
     mmadParams.unitFlag = l0CopyAndCalcParams.isLastKLoop ? UNIT_FLAG_UPDATE : UNIT_FLAG_CHECK_ONLY;
     AscendC::Mmad(cL0Tensor, aL0Tensor, bL0Tensor, mmadParams);
-}
-
-/**
- * @brief 带Bias的Mmad计算
- *
- * @param cL0Tensor L0C tensor
- * @param aL0Tensor L0A tensor
- * @param bL0Tensor L0B tensor
- * @param biasTable biasTable tensor
- * @param l0CopyAndCalcParams 搬运和计算参数
- */
-
-template <typename DstType, typename SrcAType, typename SrcBType, typename BiasType>
-__aicore__ inline void MmadCompute(const LocalTensor<DstType> &cL0Tensor, const LocalTensor<SrcAType> &aL0Tensor,
-                                   const LocalTensor<SrcBType> &bL0Tensor, const LocalTensor<BiasType> &biasTable,
-                                   const L0CopyAndCalcParams &l0CopyAndCalcParams)
-{
-    AscendC::MmadParams mmadParams;
-    mmadParams.m = Ops::Base::CeilAlign(l0CopyAndCalcParams.mL0Size, 2UL);
-    mmadParams.n = l0CopyAndCalcParams.nL0Size;
-    mmadParams.k = Ops::Base::CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGNMENT64);
-    mmadParams.disableGemv = true;
-    mmadParams.cmatrixInitVal = false;
-    mmadParams.unitFlag = l0CopyAndCalcParams.isLastKLoop ? UNIT_FLAG_UPDATE : UNIT_FLAG_CHECK_ONLY;
-    AscendC::Mmad(cL0Tensor, aL0Tensor, bL0Tensor, biasTable, mmadParams);
 }
 
 /**
@@ -228,13 +203,6 @@ __aicore__ inline void FixL0CToDst(const LocalTensor<DstType> &outTensor, const 
     AscendC::Fixpipe<DstType, SrcType, CFG_ROW_MAJOR_UB>(outTensor, cL0Tensor, fixParams);
 }
 
-template <typename DstType, typename SrcType>
-__aicore__ inline void LoadBiasToBt(const LocalTensor<DstType> &biasTable, const LocalTensor<SrcType> &biasL1,
-                                    const L0CopyAndCalcParams &l0CopyAndCalcParams)
-{
-    AscendC::DataCopy(biasTable, biasL1,
-                      {1, static_cast<uint16_t>(CeilDivide(l0CopyAndCalcParams.nL0Size * sizeof(float), 64UL)), 0, 0});
-}
 
 } // namespace GMMSQWeightQuant
 #endif

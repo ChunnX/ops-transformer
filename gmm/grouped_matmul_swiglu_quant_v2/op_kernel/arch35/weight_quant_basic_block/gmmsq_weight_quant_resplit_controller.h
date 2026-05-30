@@ -34,19 +34,19 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                                     \
-    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename biasType,        \
-              typename yType, typename yScaleType, bool hasBias, const WqmmConfig &wqmmConfig,                         \
+    template <typename xType, typename wType, typename weightScaleType, typename xScaleType,                           \
+              typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,                                       \
               const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS                                                                              \
-    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, biasType, yType, yScaleType, hasBias, \
+    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType,                   \
                                       wqmmConfig, vecConfig>
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMSQWeightQuantResplitController {
 public:
     __aicore__ inline GMMSQWeightQuantResplitController(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR bias, GM_ADDR groupList,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR groupList,
                                 GM_ADDR xScale, GM_ADDR y, GM_ADDR yScale,
                                 const GMMSQWeightQuantTilingData *__restrict baseTiling);
     __aicore__ inline void Process();
@@ -72,12 +72,11 @@ private:
     __gm__ xType *xGm_;
     __gm__ wType *weightGm_;
     __gm__ weightScaleType *weightScaleGm_;
-    __gm__ biasType *biasGm_;
     __gm__ yType *yGm_;
     __gm__ xScaleType *xScaleGm_;
     __gm__ yScaleType *yScaleGm_;
     GlobalTensor<int64_t> groupListGm_;
-    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, biasType, yType, yScaleType, hasBias,
+    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType,
                                   wqmmConfig, vecConfig>
         basicBlock_;
 
@@ -86,17 +85,15 @@ private:
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 = 256;
-    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
     static constexpr uint64_t M_L1 = 256;
     static constexpr uint64_t KB_L1_SIZE = 256;
     static constexpr uint64_t N_L1 = 256;
-    static constexpr uint64_t L1K_DYNAMIC_CONFIG_M_THRESHOLD =
-        hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 : MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+    static constexpr uint64_t L1K_DYNAMIC_CONFIG_M_THRESHOLD = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
 };
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
-                                                               GM_ADDR bias, GM_ADDR groupList, GM_ADDR xScale,
+                                                               GM_ADDR groupList, GM_ADDR xScale,
                                                                GM_ADDR y, GM_ADDR yScale,
                                                                const GMMSQWeightQuantTilingData *__restrict baseTiling)
 {
@@ -104,7 +101,6 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADD
 
     xGm_ = reinterpret_cast<__gm__ xType *>(x);
     weightGm_ = GetTensorAddr<wType>(0, weight);
-    biasGm_ = reinterpret_cast<__gm__ biasType *>(bias);
     weightScaleGm_ = GetTensorAddr<weightScaleType>(0, weightScale);
     xScaleGm_ = reinterpret_cast<__gm__ xScaleType *>(xScale);
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
@@ -138,7 +134,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
-            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, weightScaleGm_, biasGm_, xScaleGm_, yGm_, yScaleGm_,
+            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, weightScaleGm_, xScaleGm_, yGm_, yScaleGm_,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
             ctrlParam.curBasicBlockId =
                 cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + tiling_->coreNum;
@@ -228,7 +224,6 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t 
 
     xScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
 
-    biasGm_ += nSize;
     yGm_ += mSize * (nSize / 2);
 
     yScaleGm_ +=

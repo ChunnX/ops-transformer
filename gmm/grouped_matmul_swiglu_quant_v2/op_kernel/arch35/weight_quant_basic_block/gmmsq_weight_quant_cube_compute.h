@@ -38,34 +38,30 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM                                                                           \
-    template <typename xType, typename biasType, typename weightScaleType, typename xScaleType, typename yType,        \
-              bool hasBias, const WqmmConfig &wqmmConfig>
+    template <typename xType, typename weightScaleType, typename xScaleType, typename yType,                           \
+              const WqmmConfig &wqmmConfig>
 
 #define GMMSQ_WQ_CUBE_COMPUTE_CLASS                                                                                    \
-    GMMSQWeightQuantCubeCompute<xType, biasType, weightScaleType, xScaleType, yType, hasBias, wqmmConfig>
+    GMMSQWeightQuantCubeCompute<xType, weightScaleType, xScaleType, yType, wqmmConfig>
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 class GMMSQWeightQuantCubeCompute {
 public:
     __aicore__ inline GMMSQWeightQuantCubeCompute(){};
-    __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias,
+    __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y,
                                             __gm__ weightScaleType *weightScale, __gm__ xScaleType *xScale);
-    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
-                                      const LocalTensor<biasType> &biasL1);
+    __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
-                                        uint64_t kMutilLoadL1Size, uint64_t cvLoopIdx,
-                                        const BasicBlockOffsetParam &param);
+                                        uint64_t kMutilLoadL1Size, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
-                                              uint64_t cvLoopIdx);
+    __aicore__ inline void CopyAGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset);
     __aicore__ inline void CopyMxScaleGmToL1(const BasicBlockOffsetParam &param, uint64_t kbL1Offset);
     __aicore__ inline void GetTensorC(LocalTensor<yType> &yUb, const BasicBlockOffsetParam &param);
     __aicore__ inline void EndSync();
-    __aicore__ inline void DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
-                                         const L0CopyAndCalcParams &l0CopyAndCalcParams);
+    __aicore__ inline void DoMmadCompute(uint64_t loopId, const L0CopyAndCalcParams &l0CopyAndCalcParams);
     __aicore__ inline void PadL1IfNotAlign(const LocalTensor<xType> &l1Buf, uint64_t dbOffset, uint64_t dbIdx,
                                            uint64_t realSize, uint64_t dimSize);
 
@@ -77,7 +73,6 @@ private:
 
     static constexpr uint64_t L0_BUF_NUM = 2;
     static constexpr uint64_t L0_BUF_OFFSET_B8 = 32 * 1024;
-    static constexpr uint64_t BIAS_TABLE_OFFSET_B32 = 512;
     static constexpr uint64_t L0C_BUF_SIZE = 256 * 256;
 
     static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
@@ -97,7 +92,6 @@ private:
     AscendC::TEventID cubeEventIdsMxScaleMte1ToMte2_[DOUBLE_BUFFER_NUM];
     AscendC::TEventID cubeEventIdsMte1ToMte2_[DOUBLE_BUFFER_NUM];
     GlobalTensor<xType> xGlobal_;
-    GlobalTensor<biasType> biasGlobal_;
     GlobalTensor<fp8_e8m0_t> xScaleGlobal_;
     GlobalTensor<fp8_e8m0_t> weightScaleGlobal_;
     GlobalTensor<yType> yGlobal_;
@@ -107,13 +101,9 @@ private:
     LocalTensor<L0DataType> l0a_{TPosition::A2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
     LocalTensor<L0DataType> l0b_{TPosition::B2, 0, 64 * GetKBUnit<int8_t>() / sizeof(L0DataType)};
     LocalTensor<float> l0c_{TPosition::CO1, 0, 256 * GetKBUnit<int8_t>() / sizeof(float)};
-    LocalTensor<float> biasTable_{TPosition::C2, 0, 4 * GetKBUnit<int8_t>() / sizeof(float)};
 
     LocalTensor<xType> aL1_;
     uint64_t aL1DbOffset_;
-
-    LocalTensor<biasType> biasL1_;
-    uint64_t biasL1DbOffset_;
 
     LocalTensor<fp8_e8m0_t> xScaleAL1_;
     uint64_t xScaleAL1DbOffset_;
@@ -125,12 +115,8 @@ private:
 };
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
-                                                               uint64_t mxBiasL1DbOffset,
-                                                               const LocalTensor<biasType> &biasL1)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize)
 {
-    biasL1_ = biasL1;
-    biasL1DbOffset_ = mxBiasL1DbOffset;
     aL1Count_ = 0;
     aL1MaxHalfCount_ = 0;
     aL1DbNum_ = DOUBLE_BUFFER_NUM;
@@ -157,16 +143,11 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1Remain
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y,
-                                                                     __gm__ biasType *bias,
                                                                      __gm__ weightScaleType *weightScale,
                                                                      __gm__ xScaleType *xScale)
 {
     xGlobal_.SetGlobalBuffer(x);
     yGlobal_.SetGlobalBuffer(y);
-    if constexpr (hasBias) {
-        biasGlobal_.SetGlobalBuffer(bias);
-    }
-
     xScaleGlobal_.SetGlobalBuffer(xScale);
     weightScaleGlobal_.SetGlobalBuffer(weightScale);
 }
@@ -263,8 +244,8 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param,
-                                                                       int64_t kaGmOffset, uint64_t cvLoopIdx)
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAGmToL1(const BasicBlockOffsetParam &param,
+                                                                       int64_t kaGmOffset)
 {
     if (kaGmOffset % param.kaL1Size != 0) {
         return;
@@ -290,7 +271,7 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL1(const Bas
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset,
                                                                  uint64_t kbL1RealSize, uint64_t kMutilLoadL1Size,
-                                                                 uint64_t cvLoopIdx, const BasicBlockOffsetParam &param)
+                                                                 const BasicBlockOffsetParam &param)
 {
     SetFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
     WaitFlag<HardEvent::MTE2_MTE1>(EVENT_ID_MTE2_TO_MTE1);
@@ -334,34 +315,18 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTens
                                             BLOCK_CUBE * ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE / MX_GROUPSIZE)],
                             l0CopyAndCalcParams);
 
-        DoMmadCompute(loopId, cvLoopIdx, l0CopyAndCalcParams);
+        DoMmadCompute(loopId, l0CopyAndCalcParams);
     }
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::DoMmadCompute(uint64_t loopId,
                                                                   const L0CopyAndCalcParams &l0CopyAndCalcParams)
 {
-    if constexpr (hasBias) {
-        if (l0CopyAndCalcParams.isFirstKLoop) {
-            LoadBiasToBt(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
-                         l0CopyAndCalcParams);
-        }
-    }
     SetFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
     WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
-    if constexpr (hasBias) {
-        if (l0CopyAndCalcParams.isFirstKLoop) {
-            MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                        biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
-        } else {
-            MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                        l0CopyAndCalcParams);
-        }
-    } else {
-        MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                    l0CopyAndCalcParams);
-    }
+    MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                l0CopyAndCalcParams);
     SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
     l0LoopIdx_++;
 }

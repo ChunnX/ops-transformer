@@ -34,12 +34,12 @@ using namespace WeightQuantBatchMatmulV2::Arch35;
 namespace GMMSQWeightQuant {
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                                                        \
-    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename biasType,        \
-              typename yType, typename yScaleType, bool hasBias, const WqmmConfig &wqmmConfig,                         \
+    template <typename xType, typename wType, typename weightScaleType, typename xScaleType,                           \
+              typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,                                       \
               const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS                                                                                 \
-    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, biasType, yType, yScaleType, hasBias,     \
+    GMMSQWeightQuantVcvBasicBlock<xType, wType, weightScaleType, xScaleType, yType, yScaleType,                       \
                                   wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
@@ -48,8 +48,8 @@ public:
     __aicore__ inline GMMSQWeightQuantVcvBasicBlock() = default;
     __aicore__ inline void Init(uint64_t antiQuantGroupSize, __gm__ yType *y, __gm__ yScaleType *yScale);
     __aicore__ inline void UpdateGlobalAddr(__gm__ xType *x, __gm__ wType *weight, __gm__ weightScaleType *weightScale,
-                                            __gm__ biasType *bias, __gm__ xScaleType *xScale, __gm__ yType *y,
-                                            __gm__ yScaleType *yScale, const bool weightL2Cacheable);
+                                            __gm__ xScaleType *xScale, __gm__ yType *y, __gm__ yScaleType *yScale,
+                                            const bool weightL2Cacheable);
     __aicore__ inline void ComputeBasicBlock(const BasicBlockOffsetParam &curOffsetParam,
                                              const BasicBlockOffsetParam &lastOffsetParam);
     __aicore__ inline void End(const BasicBlockOffsetParam &curOffsetParam);
@@ -96,15 +96,13 @@ protected:
 #endif
     };
 
-    GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType, hasBias, wqmmConfig, vecConfig> vecCompute_;
-    GMMSQWeightQuantCubeCompute<xType, biasType, weightScaleType, xScaleType, float, hasBias, wqmmConfig> cubeCompute_;
+    GMMSQWeightQuantVecCompute<xType, wType, yType, yScaleType, wqmmConfig, vecConfig> vecCompute_;
+    GMMSQWeightQuantCubeCompute<xType, weightScaleType, xScaleType, float, wqmmConfig> cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
     uint64_t weightL1DbOffset_ = 0;
-    uint64_t biasL1DbOffset_ = 0;
 
     LocalTensor<xType> weightL1_;
-    LocalTensor<biasType> biasL1_;
     LocalTensor<float> yF32Buffer_;
 };
 
@@ -112,7 +110,6 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGroupSize, __gm__ yType *y,
                                                             __gm__ yScaleType *yScale)
 {
-    biasL1DbOffset_ = 0;
     weightL1_ = LocalTensor<xType>(TPosition::TSCM, 0, L1_SIZE_BYTE / sizeof(xType));
 
     static constexpr uint64_t MXA8W4_WEIGHT_SIZE = 256 * 256;
@@ -121,14 +118,12 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGr
     uint64_t l1RemainSize = L1_SIZE_BYTE - MXA8W4_WEIGHT_SIZE * DOUBLE_BUFFER_NUM;
     uint64_t l1StartSize = MXA8W4_WEIGHT_SIZE;
 
-    biasL1_ = LocalTensor<biasType>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(biasType));
-
     constexpr uint64_t ubOffset = GetGMMSQMxA8W4BufferInfo<vecConfig>().weightLowbitTotalSize;
     constexpr uint64_t highBitSize = GetGMMSQMxA8W4BufferInfo<vecConfig>().weightHighBitTotalSize;
     yF32Buffer_ = LocalTensor<float>(TPosition::LCM, ubOffset, highBitSize);
 
     if ASCEND_IS_AIC {
-        cubeCompute_.MxA8W4Init(l1RemainSize, l1StartSize, biasL1DbOffset_, biasL1_);
+        cubeCompute_.MxA8W4Init(l1RemainSize, l1StartSize);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
     } else {
@@ -139,14 +134,13 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::Init(uint64_t antiQuantGr
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::UpdateGlobalAddr(
-    __gm__ xType *x, __gm__ wType *weight, __gm__ weightScaleType *weightScale, __gm__ biasType *bias,
-    __gm__ xScaleType *xScale, __gm__ yType *y, __gm__ yScaleType *yScale, const bool weightL2Cacheable)
+    __gm__ xType *x, __gm__ wType *weight, __gm__ weightScaleType *weightScale, __gm__ xScaleType *xScale,
+    __gm__ yType *y, __gm__ yScaleType *yScale, const bool weightL2Cacheable)
 {
     if ASCEND_IS_AIC {
-        cubeCompute_.UpdateGlobalAddr(x, reinterpret_cast<__gm__ float *>(y), reinterpret_cast<__gm__ biasType *>(bias),
-                                      weightScale, xScale);
+        cubeCompute_.UpdateGlobalAddr(x, reinterpret_cast<__gm__ float *>(y), weightScale, xScale);
     } else {
-        vecCompute_.UpdateGlobalAddr(weight, bias, weightL2Cacheable);
+        vecCompute_.UpdateGlobalAddr(weight, weightL2Cacheable);
     }
 }
 
@@ -197,27 +191,21 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offs
 
     for (; kMte2Offset < kMte2Limit; kMte2Offset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
         vecCompute_.WaitVToMTE2();
-        uint64_t biasL1Offset = GetSubBlockIdx() * MX_BIAS_SINGLE_VECTOR_SIZE;
-        uint64_t biasGmOffset = curOffsetParam.nOffset + biasL1Offset;
-        uint64_t biasRealSize = biasL1Offset >= curOffsetParam.nL1Size ? 0 :
-                                biasGmOffset + MX_BIAS_SINGLE_VECTOR_SIZE >= curOffsetParam.nSize ?
-                                                                         curOffsetParam.nSize - biasGmOffset :
-                                                                         MX_BIAS_SINGLE_VECTOR_SIZE;
         uint64_t kL1Offset = GetSubBlockIdx() * kMte2BaseSize;
         uint64_t mte2RealK = kMte2Offset + kL1Offset >= kMte2Limit ? 0 :
                              kMte2Offset + kL1Offset + kMte2BaseSize >= kMte2Limit ?
                                                                      kMte2Limit - kMte2Offset - kL1Offset :
                                                                      kMte2BaseSize;
 
-        vecCompute_.CopyGmToUb(mte2RealK, kMte2Offset, kL1Offset, biasGmOffset, biasRealSize, curOffsetParam);
+        vecCompute_.CopyGmToUb(mte2RealK, kMte2Offset, kL1Offset, curOffsetParam);
 
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
 
         vecCompute_.WeightAntiQuantComputeNzNk(
-            mte2RealK, biasRealSize, kMte2Offset,
+            mte2RealK, kMte2Offset,
             weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ +
                       CeilAlign(curOffsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
-            biasL1_[(cvLoopIdx_ & 1) * biasL1DbOffset_ + biasL1Offset], curOffsetParam);
+            curOffsetParam);
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
         vecCompute_.SetVToMTE2();
     }
@@ -246,11 +234,11 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const
         cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset);
         cubeCompute_.CopyMxScaleGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
-        cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
+        cubeCompute_.CopyAGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.PadL1IfNotAlign(weightL1_, weightL1DbOffset_, cvLoopIdx_, kbL1RealSize, curOffsetParam.nL1Size);
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize,
-                                  kMutilLoadL1Size, cvLoopIdx_, curOffsetParam);
+                                  kMutilLoadL1Size, curOffsetParam);
         cubeCompute_.SetMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.SetScaleMTE1ToMTE2(kbL1Offset, curOffsetParam);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);

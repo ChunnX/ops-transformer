@@ -74,13 +74,11 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
-        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE,
-        DTYPE_X_SCALE, float, DTYPE_Y, DTYPE_Y_SCALE, false,
-        GMMSQWeightQuant::MXA8W4_NZNK,
-        GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC>
+        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE,
+        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
 
-    controller.Init(x, weight, weightScale, nullptr, groupList, xScale, y, yScale, &tilingDataIn);
+    controller.Init(x, weight, weightScale, groupList, xScale, y, yScale, &tilingDataIn);
     controller.Process();
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #else

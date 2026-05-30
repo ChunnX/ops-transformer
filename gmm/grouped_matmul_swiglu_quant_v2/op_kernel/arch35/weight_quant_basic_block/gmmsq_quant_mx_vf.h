@@ -163,12 +163,12 @@ __simd_vf__ inline void ComputeScaleVf(__ubuf__ uint16_t *maxExpAddr, __ubuf__ u
                                        uint32_t totalScaleInUB, uint16_t loopNumScale,
                                        uint32_t vlForHalfNumber, uint16_t fpEmax)
 {
-    AscendC::MicroAPI::RegTensor<uint16_t> expMask, sharedExp, scaleValue, scaleBias, halfScale, fp8NanRegTensor;
+    AscendC::MicroAPI::RegTensor<uint16_t> expMask, sharedExp, scaleValue, scaleOffset, halfScale, fp8NanRegTensor;
     AscendC::MicroAPI::MaskReg cmpResult, zeroMask, invalidDataMask, specialDataMask, preMaskScale;
     AscendC::MicroAPI::RegTensor<uint16_t> vdMaxExp;
     AscendC::MicroAPI::RegTensor<uint16_t> maxExpValue, zeroRegTensor, nanRegTensor, specialExpRegTensor;
     AscendC::MicroAPI::Duplicate(maxExpValue, fpEmax);
-    AscendC::MicroAPI::Duplicate(scaleBias, static_cast<uint16_t>(0x7f00));
+    AscendC::MicroAPI::Duplicate(scaleOffset, static_cast<uint16_t>(0x7f00));
     AscendC::MicroAPI::Duplicate(fp8NanRegTensor, static_cast<uint16_t>(0x00ff));
     AscendC::MicroAPI::Duplicate(zeroRegTensor, static_cast<uint16_t>(0));
     AscendC::MicroAPI::Duplicate(nanRegTensor, static_cast<uint16_t>(0x7f81));
@@ -200,9 +200,9 @@ __simd_vf__ inline void ComputeScaleVf(__ubuf__ uint16_t *maxExpAddr, __ubuf__ u
             mxScaleLocalAddr, scaleValue, vlForHalfNumber >> 1, preMaskScale);
 
         AscendC::MicroAPI::Compare<uint16_t, AscendC::CMPMODE::EQ>(
-            specialDataMask, sharedExp, scaleBias, preMaskScale);
+            specialDataMask, sharedExp, scaleOffset, preMaskScale);
 
-        AscendC::MicroAPI::Sub(halfScale, scaleBias, sharedExp, preMaskScale);
+        AscendC::MicroAPI::Sub(halfScale, scaleOffset, sharedExp, preMaskScale);
         AscendC::MicroAPI::Select<uint16_t>(halfScale, halfScale, nanRegTensor, cmpResult);
         AscendC::MicroAPI::Select<uint16_t>(halfScale, halfScale, zeroRegTensor, zeroMask);
         AscendC::MicroAPI::Select<uint16_t>(halfScale, specialExpRegTensor, halfScale, specialDataMask);
@@ -336,32 +336,9 @@ __simd_vf__ inline void ComputeDataForQuantTargetFp8Vf(__ubuf__ bfloat16_t *srcA
     }
 }
 
-template <typename biasType>
-__simd_callee__ inline void GmmsqMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr,
-                                                   __ubuf__ biasType *biasOutUbAddr)
+template <typename xType, typename wType>
+__simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType> mxA8W4NzParams)
 {
-    static constexpr biasType MX_BIAS_FACTOR = static_cast<biasType>(0.015625f);
-    MicroAPI::RegTensor<biasType> biasVreg, biasFactorVreg;
-    MicroAPI::MaskReg maskBiasAll = MicroAPI::CreateMask<biasType, AscendC::MicroAPI::MaskPattern::ALL>();
-    MicroAPI::Duplicate<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasFactorVreg, MX_BIAS_FACTOR,
-                                                                             maskBiasAll);
-    for (uint16_t loopBiasIdx = 0; loopBiasIdx < biasLoopNum; ++loopBiasIdx) {
-        MicroAPI::AddrReg biasAreg = MicroAPI::CreateAddrReg<biasType>(loopBiasIdx, VEC_MAX_ELEM_B16);
-        MicroAPI::LoadAlign<biasType, MicroAPI::LoadDist::DIST_NORM>(biasVreg, biasInUbAddr, biasAreg);
-        MicroAPI::Mul<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg,
-                                                                           maskBiasAll);
-        MicroAPI::StoreAlign<biasType, MicroAPI::StoreDist::DIST_NORM_B16>(biasOutUbAddr, biasVreg, biasAreg,
-                                                                           maskBiasAll);
-    }
-}
-
-template <typename xType, typename wType, typename biasType, bool hasBias>
-__simd_vf__ inline void GmmsqAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams)
-{
-    if constexpr (hasBias) {
-        GmmsqMxA8W4BiasCompute<biasType>(mxA8W4NzParams.biasLoopNum, mxA8W4NzParams.biasInUbAddr,
-                                         mxA8W4NzParams.biasOutUbAddr);
-    }
     MicroAPI::RegTensor<int8_t> wShrReg, wShlReg, wAndReg, wLoad, wShl, wShr0, wShr1, wSel, wAnd;
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregVsel = MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
