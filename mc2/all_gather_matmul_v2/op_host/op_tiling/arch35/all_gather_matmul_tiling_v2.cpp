@@ -115,12 +115,11 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                                        OP_LOGE(
-                                            opName_,
-                                            "%s",
-                                            (std::string("Tiling data size[") +
-                            std::to_string(sizeof(AllGatherMatmulTilingDataV2)) +
-                            "] not aligned to 8.").c_str()),
+                    OP_LOGE(
+                        opName_,
+                        "Tiling data size[%s] not aligned to 8.",
+                        std::to_string(sizeof(AllGatherMatmulTilingDataV2)).c_str()
+                    ),
                     return ge::GRAPH_FAILED);
     PrintAllTilingData();
     context_->SetBlockDim(args_.aicCoreNum);
@@ -225,9 +224,11 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
     mc2CcTilingConfig.SetSkipBufferWindowCopy(skipBufferWindowCopy);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2InitTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(allGatherMatmulTilingDataV2_->mc2CcTiling) != 0,
-        OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

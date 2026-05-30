@@ -155,12 +155,11 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
 
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-                OP_LOGE(
-                    opName_,
-                    "%s",
-                    (std::string("tiling data size[") +
-                std::to_string(tilingDataSize) +
-                "] not aligned to 8").c_str()),
+        OP_LOGE(
+            opName_,
+            "tiling data size[%s] not aligned to 8",
+            std::to_string(tilingDataSize).c_str()
+        ),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 

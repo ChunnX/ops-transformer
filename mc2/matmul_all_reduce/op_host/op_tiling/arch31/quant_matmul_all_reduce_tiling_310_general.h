@@ -42,22 +42,21 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool kAligned = (tilingProcesser_.args_.kValue % K_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !kAligned,
-                                OP_LOGE(
-                                    tilingProcesser_.opName_,
-                                    "%s",
-                                    (std::string("310P QuantMatmulAllReduce dim k should be 32 bytes aligned,"
-                                        "but k is ") +
-                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.kValue))).c_str()),
+                OP_LOGE(
+                    tilingProcesser_.opName_,
+                    "310P QuantMatmulAllReduce dim k should be 32 bytes aligned,but k is %s",
+                    std::to_string(static_cast<int32_t>(tilingProcesser_.args_.kValue)).c_str()
+                ),
                 return ge::GRAPH_FAILED);
             constexpr int64_t N_ALIGN_SIZE_A8W8_310 = 16;
             bool nAligned = (tilingProcesser_.args_.nValue % N_ALIGN_SIZE_A8W8_310 == 0);
             OP_TILING_CHECK(
                 !nAligned,
-                                OP_LOGE(
-                                    tilingProcesser_.opName_,
-                                    "%s",
-                                    (std::string("310P QuantMatmulAllReduce dim n should be 16 aligned, but n is ") +
-                        std::to_string(static_cast<int32_t>(tilingProcesser_.args_.nValue))).c_str()),
+                OP_LOGE(
+                    tilingProcesser_.opName_,
+                    "310P QuantMatmulAllReduce dim n should be 16 aligned, but n is %s",
+                    std::to_string(static_cast<int32_t>(tilingProcesser_.args_.nValue)).c_str()
+                ),
                 return ge::GRAPH_FAILED);
             auto weightTensor = context_->GetInputDesc(static_cast<size_t>(ParamValue::WEIGHT));
             OP_TILING_CHECK(
@@ -73,14 +72,13 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
             bool isWeightNZ = GetPrimaryFormat(format) == ge::Format::FORMAT_FRACTAL_NZ;
             OP_TILING_CHECK(
                 !isWeightNZ,
-                                OP_LOGE(
-                                    tilingProcesser_.opName_,
-                                    "%s",
-                                    (std::string("310P QuantMatmulAllReduce weight format should be"
-                                        "FRACTAL_NZ, code:") +
-                        std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)) +
-                        ", but input format is " +
-                        std::to_string(static_cast<int32_t>(format))).c_str()),
+                OP_LOGE(
+                    tilingProcesser_.opName_,
+                    "310P QuantMatmulAllReduce weight format should beFRACTAL_NZ, code:%s, but"
+                    " input format is %s",
+                    std::to_string(static_cast<int32_t>(ge::Format::FORMAT_FRACTAL_NZ)).c_str(),
+                    std::to_string(static_cast<int32_t>(format)).c_str()
+                ),
                 return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }
