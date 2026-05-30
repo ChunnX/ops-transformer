@@ -16,7 +16,7 @@
 #include <gtest/gtest.h>
 #include "acl/acl.h"
 #include "../../../../../mhc_pre_sinkhorn_backward/op_host/op_api/aclnn_mhc_pre_sinkhorn_backward.h"
-#include "../../../../op_host/op_api/aclnn_mhc_pre_clamp_sinkhorn_backward.h"
+#include <aclnn_mhc_pre_clamp_sinkhorn_backward.h>
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
