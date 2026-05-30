@@ -124,8 +124,8 @@ void SetBatchWriteCfg(
     gert::TilingContext* ctx,
     const std::string& groupEp,
     uint32_t aivNum,
-    uint32_t sdmaUsedStreamPerCore) {
-
+    uint32_t sdmaUsedStreamPerCore)
+{
     if (ctx == nullptr) {
         return;
     }

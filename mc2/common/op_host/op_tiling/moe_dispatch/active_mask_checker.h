@@ -50,9 +50,8 @@ inline ge::graphStatus CheckShape(gert::TilingContext *ctx, uint32_t inputIndex,
     }
 
     uint32_t dimNum = static_cast<uint32_t>(shape->GetStorageShape().GetDimNum());
-    int64_t dim0 = shape->GetStorageShape().GetDim(0);
-
     // dim0 必须等于 bs
+    int64_t dim0 = shape->GetStorageShape().GetDim(0);
     if (dim0 != static_cast<int64_t>(bs)) {
         OPS_LOG_E(nodeName, "The input of xActiveMask dim0 = %ld is not equal to x dim0 = %u.", dim0, bs);
         return ge::GRAPH_FAILED;
