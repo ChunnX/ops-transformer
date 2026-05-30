@@ -1476,6 +1476,8 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::DoCastTiling()
     td_->postTilingData.set_s1(td_->opInfo.get_S1());
     td_->postTilingData.set_s2(td_->opInfo.get_S2());
     td_->postTilingData.set_d(td_->opInfo.get_D());
+    td_->postTilingData.set_t1(tmpData_.t1);
+    td_->postTilingData.set_t2(tmpData_.t2);
 
     return ge::GRAPH_SUCCESS;
 }
