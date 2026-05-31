@@ -23,6 +23,7 @@
 
 #include "grouped_matmul_antiquant_a16w8_msd.h"
 #include "grouped_matmul_antiquant_a8w4_msd_pre.h"
+#include "grouped_matmul_antiquant_a8w4_msd_pre_nz.h"
 #include "grouped_matmul_antiquant_a8w4_msd.h"
 #include "grouped_matmul_antiquant_a8w4_pre.h"
 #include "grouped_matmul_antiquant_a8w4.h"
@@ -41,6 +42,7 @@
 using namespace AscendC;
 using namespace matmul;
 using namespace GROUPED_MATMUL;
+
 
 #ifndef FORMAT_FRACTAL_NZ
     #define FORMAT_FRACTAL_NZ
@@ -253,29 +255,55 @@ namespace {
     do {                                                                                                           \
         GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);                              \
         if ASCEND_IS_AIV {                                                                                         \
-            GMMA8W4PreProcess op1;                                                                                 \
-            op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                              \
-            op1.Process();                                                                                         \
+            if (gmmBaseParams_.isA8W4MSDPreNZ == 1) {                                                              \
+                GMMA8W4PreProcessNZ op1;                                                                           \
+                op1.Init(x, user1, groupList, user1, gmmBaseParams_, &tPipe);                                      \
+                op1.Process();                                                                                     \
+            } else{                                                                                                \
+                GMMA8W4PreProcess op1;                                                                             \
+                op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                          \
+                op1.Process();                                                                                     \
+            }                                                                                                      \
             tPipe.Reset();                                                                                         \
             tPipe.Destroy();                                                                                       \
             tPipe.Init();                                                                                          \
         }                                                                                                          \
-        using aT = MatmulType<TPosition::GM, CubeFormat::ND, DTYPE_X_DEV_A8W4MSD, false>;                          \
-        using bT = MatmulType<TPosition::GM, wFormat, DTYPE_WEIGHT_DEV_A8W4MSD, false>;                            \
-        using biasT = MatmulType<TPosition::GM, CubeFormat::ND, int32_t, false>;                                   \
-        using cT = MatmulType<TPosition::GM, CubeFormat::ND, half, false>;                                         \
-        using matmulType = MMImplType<aT, bT, cT, biasT, cfg>;                                                     \
-        matmulType::MT mm;                                                                                         \
-        GET_TILING_DATA_MEMBER(GMMTilingData, mmTilingData, mmTilingData_, tiling);                                \
-        GET_TILING_DATA_MEMBER_ADDR(GMMTilingData, gmmArray, gmmArrayAddr_, tiling);                               \
-        if ASCEND_IS_AIC {                                                                                         \
-            mm.SetSubBlockIdx(0);                                                                                  \
-            mm.Init(&mmTilingData_, &tPipe);                                                                       \
-        }                                                                                                          \
-        computeClass<matmulType> op(mm);                                                                           \
-        op.Init(x, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,               \
-                y, user1, &gmmBaseParams_, &mmTilingData_, &tPipe);                                                \
-        op.Process();                                                                                              \
+        if (gmmBaseParams_.isA8W4MSDPreNZ == 1) {                                                                  \
+            using aT = MatmulType<TPosition::GM, CubeFormat::NZ, DTYPE_X_DEV_A8W4MSD, false>;                      \
+            using bT = MatmulType<TPosition::GM, wFormat, int4b_t, false>;                                         \
+            using biasT = MatmulType<TPosition::GM, CubeFormat::ND, int32_t, false>;                                   \
+            using cT = MatmulType<TPosition::GM, CubeFormat::ND, half, false>;                                         \
+            using matmulType = MMImplType<aT, bT, cT, biasT, cfg>;                                                     \
+            matmulType::MT mm;                                                                                         \
+            GET_TILING_DATA_MEMBER(GMMTilingData, mmTilingData, mmTilingData_, tiling);                                \
+            GET_TILING_DATA_MEMBER_ADDR(GMMTilingData, gmmArray, gmmArrayAddr_, tiling);                               \
+            if ASCEND_IS_AIC {                                                                                         \
+                mm.SetSubBlockIdx(0);                                                                                  \
+                mm.Init(&mmTilingData_, &tPipe);                                                                       \
+            }                                                                                                          \
+            computeClass<matmulType> op(mm);                                                                           \
+            auto userCV = user1 + AlignUp<8>(gmmBaseParams_.m) * gmmBaseParams_.k ;                                    \
+            op.Init(user1, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,           \
+                    y, userCV, &gmmBaseParams_, &mmTilingData_, &tPipe);                                               \
+            op.Process();                                                                                              \
+        } else {                                                                                                       \
+            using aT = MatmulType<TPosition::GM, CubeFormat::ND, DTYPE_X_DEV_A8W4MSD, false>;                          \
+            using bT = MatmulType<TPosition::GM, wFormat, DTYPE_WEIGHT_DEV_A8W4MSD, false>;                                             \
+            using biasT = MatmulType<TPosition::GM, CubeFormat::ND, int32_t, false>;                                   \
+            using cT = MatmulType<TPosition::GM, CubeFormat::ND, half, false>;                                         \
+            using matmulType = MMImplType<aT, bT, cT, biasT, cfg>;                                                     \
+            matmulType::MT mm;                                                                                         \
+            GET_TILING_DATA_MEMBER(GMMTilingData, mmTilingData, mmTilingData_, tiling);                                \
+            GET_TILING_DATA_MEMBER_ADDR(GMMTilingData, gmmArray, gmmArrayAddr_, tiling);                               \
+            if ASCEND_IS_AIC {                                                                                         \
+                mm.SetSubBlockIdx(0);                                                                                  \
+                mm.Init(&mmTilingData_, &tPipe);                                                                       \
+            }                                                                                                          \
+            computeClass<matmulType> op(mm);                                                                           \
+            op.Init(x, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,               \
+                    y, user1, &gmmBaseParams_, &mmTilingData_, &tPipe);                                                \
+            op.Process();                                                                                              \
+        }                                                                                              \
     } while (0)
 
 #define GMM_CV_SPLIT_IMP_A8W4(computeClass, cfg)                                                                   \

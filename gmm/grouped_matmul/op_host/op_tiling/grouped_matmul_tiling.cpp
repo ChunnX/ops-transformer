@@ -1832,6 +1832,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       constexpr uint32_t FIVE = 5;
       constexpr uint32_t FOUR = 4;
       constexpr uint32_t ONE = 1;
+      constexpr int64_t TUNINGCONFIG_WORKSPACE_UNLIMIT = -1;
+      constexpr uint32_t WS_ALIGN_8 = 8;
+      constexpr size_t kNZInt4Alignment = 64; 
 
       uint32_t singleN = 256;
       uint32_t singleM = 128;
@@ -2180,21 +2183,18 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
             a8w4KernelTemplate = static_cast<uint32_t>(GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT);
           }
           if (enableCV11){
-			context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
-                                                   GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
-                                                   a8w4KernelTemplate,
-                                                   GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                   GROUPED_MATMUL_AIV_AIC_RATIO_1, 0));
-		  } else {
-			context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
-                                                   GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
-                                                   a8w4KernelTemplate,
-                                                   GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                   GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
-		  }
-          tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-          context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
-
+            context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
+                                                        GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
+                                                        a8w4KernelTemplate,
+                                                        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
+                                                        GROUPED_MATMUL_AIV_AIC_RATIO_1, 0));
+            } else {
+            context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
+                                                        GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
+                                                        a8w4KernelTemplate,
+                                                        GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
+                                                        GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
+            }
           size_t* workspaces = context->GetWorkspaceSizes(1);  // get second variable
           OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);  // check workspaces is not null
           workspaces[0] = SYS_WORKSPACE_SIZE;  // default size
@@ -2203,6 +2203,30 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           } else {
             workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
           }
+
+          // --------------nz前处理优化------------
+          if (a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_API_DEQUANT || a8w4KernelTemplate == GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_MSD_VECTOR_DEQUANT){
+            uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
+
+            tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
+                      (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
+
+            bool isWorkspaceValid = 
+                (static_cast<int64_t>(preProcessWorkspaceSize) + workspaces[0] <= tuningConfigWorkspace_) || 
+                (tuningConfigWorkspace_ == TUNINGCONFIG_WORKSPACE_UNLIMIT);
+            // 空间足够 → 开启前处理 反之走原路径
+            uint32_t isA8W4MSDPreNZ = 0;
+
+            // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
+            if (isWorkspaceValid && k % kNZInt4Alignment  == 0) {
+                isA8W4MSDPreNZ = 1;
+                workspaces[0] += preProcessWorkspaceSize ;                
+            }
+            tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
+          }
+
+          tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+          context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
           return ge::GRAPH_SUCCESS;
         }
       }
@@ -2271,6 +2295,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMM(gert::TilingParseContext* c
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
 
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+
   compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
   compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
   compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
