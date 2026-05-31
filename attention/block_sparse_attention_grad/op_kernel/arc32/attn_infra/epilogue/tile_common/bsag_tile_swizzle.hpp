@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_TILE_TILE_SWIZZLE_HPP
-#define EPILOGUE_TILE_TILE_SWIZZLE_HPP
+#ifndef BSAG_TILE_SWIZZLE_HPP
+#define BSAG_TILE_SWIZZLE_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/detail/alignment.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/detail/bsag_alignment.hpp"
+#include "../../../attn_infra/bsag_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_DISPATCH_POLICY_HPP
-#define EPILOGUE_DISPATCH_POLICY_HPP
+#ifndef BSAG_EPILOGUE_DISPATCH_POLICY_HPP
+#define BSAG_EPILOGUE_DISPATCH_POLICY_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/arch/arch.hpp"
+#include "../../attn_infra/bsag_base_defs.hpp"
+#include "../../attn_infra/arch/bsag_arch.hpp"
 
 namespace NpuArch::Epilogue 
 {

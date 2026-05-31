@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef INCLUDE_ARCH_RESOURCE_HPP
-#define INCLUDE_ARCH_RESOURCE_HPP
+#ifndef BSAG_RESOURCE_HPP
+#define BSAG_RESOURCE_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/arch/local_tensor_buffer.hpp"
+#include "../../attn_infra/bsag_base_defs.hpp"
+#include "../../attn_infra/arch/bsag_local_tensor_buffer.hpp"
 
-namespace NpuArch::Arch 
+namespace NpuArch::Arch
 {
 
 template<class ArchTag>

@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ALIGNMENT_HPP
-#define ALIGNMENT_HPP
+#ifndef BSAG_ALIGNMENT_HPP
+#define BSAG_ALIGNMENT_HPP
 
 #include <limits>
 
-#include "../../attn_infra/detail/macros.hpp"
+#include "../../attn_infra/detail/bsag_macros.hpp"
 
 template <uint32_t ALIGN, typename T>
 HOST_DEVICE

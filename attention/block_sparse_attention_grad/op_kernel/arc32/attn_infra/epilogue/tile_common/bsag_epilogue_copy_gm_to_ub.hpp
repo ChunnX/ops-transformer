@@ -8,13 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
-#define EPILOGUE_TILE_TILE_COPY_GM_TO_UB_HPP
+#ifndef BSAG_EPILOGUE_COPY_GM_TO_UB_HPP
+#define BSAG_EPILOGUE_COPY_GM_TO_UB_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
-#include "../../../attn_infra/layout/layout.hpp"
-#include "../../../attn_infra/gemm/gemm_type.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/arch/bsag_arch.hpp"
+#include "../../../attn_infra/layout/bsag_layout.hpp"
+#include "../../../attn_infra/gemm/bsag_gemm_type.hpp"
 
 namespace NpuArch::Epilogue::Tile 
 {

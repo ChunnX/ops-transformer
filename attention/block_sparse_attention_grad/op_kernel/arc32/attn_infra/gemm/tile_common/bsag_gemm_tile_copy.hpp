@@ -8,19 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_TILE_COPY_HPP
-#define GEMM_TILE_TILE_COPY_HPP
+#ifndef BSAG_TILE_COPY_HPP
+#define BSAG_TILE_COPY_HPP
 
 #include <type_traits>
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_gm_to_l1.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l0c_to_gm.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0a.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0b.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_l1_to_bt.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_gm_to_ub.hpp"
-#include "../../../attn_infra/gemm/tile_common/copy_ub_to_gm.hpp"
-#include "../../../attn_infra/gemm/helper.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_copy_gm_to_l1.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_copy_l0c_to_gm.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_copy_l1_to_l0a.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_copy_l1_to_l0b.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_copy_l1_to_bt.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_gemm_copy_gm_to_ub.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_gemm_copy_ub_to_gm.hpp"
+#include "../../../attn_infra/gemm/bsag_helper.hpp"
 
 
 namespace NpuArch::Gemm::Tile {

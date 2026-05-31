@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef DETAIL_DEPENDENT_FALSE_HPP
-#define DETAIL_DEPENDENT_FALSE_HPP
+#ifndef BSAG_DEPENDENT_FALSE_HPP
+#define BSAG_DEPENDENT_FALSE_HPP
 
 template <bool VALUE, class... Args>
 constexpr bool DEPENDENT_BOOL_VALUE = VALUE;

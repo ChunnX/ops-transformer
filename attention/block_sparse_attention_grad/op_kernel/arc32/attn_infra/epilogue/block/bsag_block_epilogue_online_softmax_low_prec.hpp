@@ -8,16 +8,16 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
+#ifndef BSAG_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
+#define BSAG_BLOCK_EPILOGUE_ONLINE_SOFTMAX_LOW_PREC_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/cross_core_sync.hpp"
-#include "../../../attn_infra/arch/resource.hpp"
-#include "../../../attn_infra/epilogue/dispatch_policy.hpp"
-#include "../../../attn_infra/epilogue/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm_coord.hpp"
-#include "../../../attn_infra/matrix_coord.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/arch/bsag_cross_core_sync.hpp"
+#include "../../../attn_infra/arch/bsag_resource.hpp"
+#include "../../../attn_infra/epilogue/bsag_epilogue_dispatch_policy.hpp"
+#include "../../../attn_infra/epilogue/tile_common/bsag_epilogue_tile_copy.hpp"
+#include "../../../attn_infra/bsag_gemm_coord.hpp"
+#include "../../../attn_infra/bsag_matrix_coord.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
