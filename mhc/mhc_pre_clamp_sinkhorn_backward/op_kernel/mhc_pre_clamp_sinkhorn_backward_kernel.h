@@ -148,6 +148,8 @@ protected:
     GlobalTensor<T> xWorkspaceGlobal_;
     GlobalTensor<T> gradXCubeGlobal_;
     GlobalTensor<T> reduceOutGlobal_;
+    float minVal_ = 0.0f;
+    float maxVal_ = 0.0f;
 
 private:
     __aicore__ inline void InitTiling(const MhcPreClampSinkhornBackwardTilingData *tilingData)
@@ -170,6 +172,8 @@ private:
         skIterCount_ = tilingData->skIterCount;
         ubSize_ = tilingData->ubSize;
         eps_ = tilingData->eps;
+        minVal_ = tilingData->minVal;
+        maxVal_ = tilingData->maxVal;
         tileCoreBS_ = tilingData->tileSize;
 
         c0RepeatTime_ = c0_ / ELEMENTS_SIZE_PER_REPEAT;
@@ -542,6 +546,58 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     PipeBarrier<PIPE_V>();
     Mul(gradHResLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
+
+    // clamp backward: mask = (reduceOut >= min) && (reduceOut <= max)
+    auto reduceOutLocal = inputGradQueue.AllocTensor<T>();
+    DataCopyPad(reduceOutLocal, reduceOutGlobal_[taskOffset * n_ * n_],
+                {static_cast<uint16_t>(tileTaskCount * n_), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0},
+                {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+    inputGradQueue.EnQue(reduceOutLocal);
+    inputGradQueue.DeQue();
+
+    auto maskMinLocal = inputGradQueue.AllocTensor<int16_t>();
+    auto maskMaxLocal = inputGradQueue.AllocTensor<int16_t>();
+    auto clampMaskLocal = inputGradQueue.AllocTensor<int16_t>();
+    auto clampMaskFloatLocal = inputGradQueue.AllocTensor<float>();
+    auto minScalarLocal = inputGradQueue.AllocTensor<T>();
+    auto maxScalarLocal = inputGradQueue.AllocTensor<T>();
+
+    const uint32_t compareRepeatTimes = CeilDiv(tileTaskCount * n_, ELEMENTS_SIZE_PER_REPEAT / sizeof(T));
+    const uint64_t compareMask = static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT / sizeof(int16_t));
+    BinaryRepeatParams compareParams;
+    compareParams.dstBlkStride = 1;
+    compareParams.src0BlkStride = 1;
+    compareParams.src1BlkStride = 1;
+    compareParams.dstRepStride = 1;
+    compareParams.src0RepStride = 1;
+    compareParams.src1RepStride = 1;
+
+    Duplicate(minScalarLocal, static_cast<T>(minVal_), 1);
+    Duplicate(maxScalarLocal, static_cast<T>(maxVal_), 1);
+
+    PipeBarrier<PIPE_V>();
+    AscendC::Compare(maskMinLocal, reduceOutLocal, minScalarLocal, CMPMODE::GE, compareMask,
+                     compareRepeatTimes, compareParams);
+    PipeBarrier<PIPE_V>();
+    AscendC::Compare(maskMaxLocal, reduceOutLocal, maxScalarLocal, CMPMODE::LE, compareMask,
+                     compareRepeatTimes, compareParams);
+    PipeBarrier<PIPE_V>();
+    AscendC::And(clampMaskLocal, maskMinLocal, maskMaxLocal, compareMask, compareRepeatTimes, compareParams);
+    PipeBarrier<PIPE_V>();
+    Cast(clampMaskFloatLocal, clampMaskLocal, RoundMode::CAST_NONE,
+         tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+    Mul(gradHResLocal_, gradHResLocal_, clampMaskFloatLocal, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+
+    inputGradQueue.FreeTensor(reduceOutLocal);
+    inputGradQueue.FreeTensor(maskMinLocal);
+    inputGradQueue.FreeTensor(maskMaxLocal);
+    inputGradQueue.FreeTensor(clampMaskLocal);
+    inputGradQueue.FreeTensor(clampMaskFloatLocal);
+    inputGradQueue.FreeTensor(minScalarLocal);
+    inputGradQueue.FreeTensor(maxScalarLocal);
+
     // 4v 4o 4v 40 -> 4v 4v
     Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(),
          RoundMode::CAST_NONE, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
