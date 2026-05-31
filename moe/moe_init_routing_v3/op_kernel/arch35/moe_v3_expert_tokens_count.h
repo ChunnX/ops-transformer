@@ -26,9 +26,6 @@ constexpr int64_t CUMSUM_MODE = 0LL;
 constexpr int64_t COUNT_MODE = 1LL;
 constexpr int64_t KEY_VALUE_MODE = 2LL;
 constexpr int64_t KEY_VALUE_MODE_DIM_NUM = 2LL;
-constexpr int64_t EXPERT_ID_VALUE_NUM = 2LL;
-constexpr int64_t DROP_LESS = 0LL;
-constexpr int64_t DROP_PAD = 1LL;
 
 class ExpertTokensCount {
 public:
@@ -194,7 +191,7 @@ __aicore__ inline void ExpertTokensCount::Process()
 
         expertCountOutToTempQueue_.EnQue<int32_t>(expertCountOutLocal);
 
-        if (dropPadMode_ == DROP_PAD && curCoreElements_ > 0) {
+        if (dropPadMode_ == DROP_PAD_MODE && curCoreElements_ > 0) {
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             finalExpertId_ = sortedExpertIdxGm_.GetValue(curCoreElements_ - 1);
             if (finalExpertId_ >= expertStart_ && finalExpertId_ < expertEnd_) {
@@ -203,7 +200,7 @@ __aicore__ inline void ExpertTokensCount::Process()
         }
 
         CopyOut();
-        if (dropPadMode_ == DROP_PAD) {
+        if (dropPadMode_ == DROP_PAD_MODE) {
             CopyOutExpertIdxValue();
         }
     }
