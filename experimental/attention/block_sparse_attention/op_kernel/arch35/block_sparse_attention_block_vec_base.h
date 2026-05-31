@@ -12,7 +12,7 @@
 // TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * \file bsa_block_vec_base.h
+ * ile block_sparse_attention_block_vec_base.h
  * \brief
  */
 #ifndef BLOCK_SPARSE_ATTENTION_BLOCK_VEC_BASE_H_
@@ -26,7 +26,6 @@
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
 #include "vf/vf_flashupdate_new.h"
 #include "vf/vf_div_cast.h"
-#include "vf/vf_flash_decode.h"
 #include "common/flash_attention_score_tiling_regbase.h"
 
 using namespace AscendC;
@@ -61,8 +60,6 @@ public:
                                        s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
-    static constexpr bool hasPseOuter = (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) ||
-                                        (pseMode == PseTypeEnum::PSE_OUTER_MUL_ADD_TYPE);
     static constexpr bool containAllOptionalInput = hasPse && hasAtten && hasDrop;
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     static constexpr TPosition bmm2OutPos = GetC2Position(
@@ -96,7 +93,7 @@ public:
         }
     }
     __aicore__ inline void InitCommonGlobalBuffer(
-        __gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
         __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
         __gm__ uint8_t * learnableSink, __gm__ uint8_t *&workspace, ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo<isInfer, hasRope> &constInfo);
@@ -116,9 +113,6 @@ public:
     GlobalTensor<half> attentionOutInitGm;
 
     /* =====================可选GM变量==================== */
-    __gm__ uint8_t *pseSlope;
-    using pseGmType = typename std::conditional<hasPse, GlobalTensor<pseShiftType>, int8_t>::type;
-    pseGmType pseGm;
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
     attenMaskGmType attenMaskGmInt;
     using quantGmType = typename std::conditional<(isFp8 || isInt8), GlobalTensor<float>, int8_t>::type;
@@ -134,7 +128,6 @@ public:
     TBuf<> commonTBuf; // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
-    TQue<QuePosition::VECIN, 1> pseInQue;
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
@@ -213,15 +206,11 @@ private:
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuffer(
-    __gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
     __gm__ uint8_t *learnableSink, __gm__ uint8_t *&workspace, ConstInfo<isInfer, hasRope> &constInfo)
 {
     if ASCEND_IS_AIV {
-        if constexpr (hasPse) {
-            pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
-            pseSlope = pse;
-        }
         if constexpr (isFp8 || isInt8) {
             deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
             deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
@@ -678,7 +667,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::MlaAttenMaskCopyIn(
 {
     if constexpr (hasAtten && isMlaFullQuant) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
         this->MlaBoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
@@ -775,23 +764,8 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
 {
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<pseShiftType> pseUb;
-    if constexpr (hasPseOuter == true) {
-        PseCopyIn<T, pseShiftType, hasPseOuter>(this->pseInQue, this->pseGm, runInfo, constInfo, *pseInfoPtr);
-        pseUb = this->pseInQue.template DeQue<pseShiftType>();
-    }
     float slopes = 0.0f;
     float posShift = 0.0f;
-    if constexpr (pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                  pseMode == PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE) {
-        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
-            if (this->tilingData->inputParamsRegbase.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL) &&
-                runInfo.boIdx != 0) {
-                pseInfoPtr->qStartIdx = 0;
-                pseInfoPtr->kvStartIdx = 0;
-            }
-        }
-        ComputeInnerPseOffset<T, INPUT_T, hasPse>(slopes, posShift, runInfo, constInfo, *pseInfoPtr, this->pseSlope);
-    }
 
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
@@ -799,7 +773,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
             this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         } else {
-            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+            AttenMaskCopyIn<hasAtten, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         }
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
@@ -983,9 +957,6 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     bmm1ResBuf.SetCrossCore();
     if constexpr (hasAtten) {
         this->attenMaskInQue[runInfo.taskIdMod2].template FreeTensor(attenMaskUb);
-    }
-    if constexpr (hasPseOuter) {
-        this->pseInQue.template FreeTensor(pseUb);
     }
 
     // ===================DataCopy to L1 ====================
@@ -1717,10 +1688,8 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
-    if constexpr (isFd) {
-        tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
-        tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
-    }
+    tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
+    tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
     tPipe->InitBuffer(softmaxMaxBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxMaxBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxMaxBuf[2], 256); // [64, 1]
@@ -1764,21 +1733,11 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPip
                 tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
                 tPipe->InitBuffer(attenMaskInQue[1], 1, 8192);
             }
-            if constexpr (hasPseOuter) {
-                tPipe->InitBuffer(pseInQue, 1, 16384);
-            }
         }
     } else { 
         SoftmaxInitBuffer();
         if constexpr (isMlaFullQuant) {
             if constexpr (!useDn) {
-                if constexpr (hasPseOuter) {
-                    if constexpr (IsSameType<INPUT_T, float>::value) {
-                        tPipe->InitBuffer(pseInQue, 1, 32768);
-                    } else {
-                        tPipe->InitBuffer(pseInQue, 1, 16384);
-                    }
-                }
 
                 if constexpr (hasAtten) {
                     tPipe->InitBuffer(attenMaskInQue[0], 1, 4096); // 4096: GS1方向需要循环处理，一个vector计算softmax的数据量最大为32*128，对应mask(bool/int8/uint8)的数据量为4096Bytes
@@ -1808,13 +1767,6 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitLocalBuffer(TPip
             }
         } else {
             if constexpr (!useDn) {
-                if constexpr (hasPseOuter) {
-                    if constexpr (IsSameType<INPUT_T, float>::value) {
-                        tPipe->InitBuffer(pseInQue, 1, 32768);
-                    } else {
-                        tPipe->InitBuffer(pseInQue, 1, 16384);
-                    }
-                }
 
                 if constexpr (hasAtten) {
                     tPipe->InitBuffer(attenMaskInQue[0], 1, 8192);
@@ -1945,7 +1897,7 @@ public:
         AttenMaskInfo &attenMaskInfo, PseInfo &pseInfo) {};
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace) {}
     __aicore__ inline void InitGlobalBuffer(
-        __gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+        __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
         __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,__gm__ uint8_t *prefix,
         __gm__ uint8_t *attenMask, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink, 
         __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset,
