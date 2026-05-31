@@ -273,8 +273,8 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
-        // TODO 测试非全载场景用，全量测试后改回
-        return false;
+        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
+                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
     }
 
     bool IsInt4DynamicQuantCase() const
