@@ -73,7 +73,8 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
         shapeInfo.bs = x_shape->GetDim(0) * x_shape->GetDim(1);
         shapeInfo.hiddenSize = x_shape->GetDim(AXIS_TWO);
     } else {
-        OP_LOGE(context->GetNodeName(), "x dim must be 2 or 3, but actual value is: %zu", x_dim);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x",
+            (std::to_string(x_dim) + "D").c_str(), "2D or 3D");
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -92,8 +93,9 @@ static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantAllRed
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
     OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get rank_size failed in quant_all_reduce");
     OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
-                    OP_LOGE(INNER_DEBUG, "Rank size must be in %s, but the actual value is %ld",
-                    VectorToString(SUPPORT_RANK_SIZE).c_str(), *rankSize),
+                    OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "rankSize",
+                        std::to_string(*rankSize).c_str(),
+                        VectorToString(SUPPORT_RANK_SIZE).c_str()),
                     return ge::GRAPH_FAILED);
 
     shapeInfo.rankNum = *rankSize;

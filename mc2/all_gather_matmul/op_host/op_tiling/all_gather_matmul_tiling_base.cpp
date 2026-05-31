@@ -144,7 +144,7 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
     uint64_t mValue = x1Dim0 * static_cast<uint64_t>(rankSize);
 
     OP_TILING_CHECK(outputDim0 != mValue,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        OP_LOGE(context->GetNodeName(),
         "m-axis should be %lu, but output's m-axis is %lu", mValue, outputDim0),
         return false);
 
@@ -154,37 +154,37 @@ static bool CheckOutputParamDim0(gert::TilingContext* context)
 static ge::graphStatus AllGatherParamsCheck(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
 
     const gert::StorageShape* aShape = context->GetInputShape(INPUT_X1_IDX);
     uint64_t valueOne = aShape->GetStorageShape().GetDim(DIM0_IDX);
     uint64_t valueTwo = aShape->GetStorageShape().GetDim(DIM1_IDX);
 
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the value is invalid"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "the value is invalid"), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK(!CheckOutputParamDim0(const_cast<gert::TilingContext*>(context)),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        OP_LOGE(context->GetNodeName(),
             "the output's dim0 is invalid"), return ge::GRAPH_FAILED);
 
     if (context->GetAttrs() == nullptr) {
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get attrs failed");
+        OP_LOGE(context->GetNodeName(), "get attrs failed");
     } else {
         auto gatherIndex = context->GetAttrs()->GetAttrPointer<int64_t>(GATHER_IDX);
         OP_TILING_CHECK(*gatherIndex != 0,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+            OP_LOGE(context->GetNodeName(),
         "the gatherIndex should be 0, but real value is %d", *gatherIndex), return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_A_IDX);
         OP_TILING_CHECK(*isTransA != false,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+            OP_LOGE(context->GetNodeName(),
             "the isTransA should be false, but real value is 1"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK((valueTwo < KVALUE_MIN || valueTwo >= KVALUE_MAX),
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+            OP_LOGE(context->GetNodeName(),
             "The k-axis should be in range[256, 65535), but it is: %lu.", valueTwo), return ge::GRAPH_FAILED);
     }
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(GROUP_IDX));
-    OP_TILING_CHECK(group == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "group is nullptr. "),
+    OP_TILING_CHECK(group == nullptr, OP_LOGE(context->GetNodeName(), "group is nullptr. "),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -488,7 +488,7 @@ static ge::graphStatus MC2SetWorkspace(gert::TilingContext* context, Mc2Tiling::
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"),
+        OP_LOGE(context->GetNodeName(), "get workspace failed"),
         return ge::GRAPH_FAILED);
     uint64_t storageA = GetStorage_a(tilingData, args);
 
@@ -563,7 +563,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     mc2tiling::TilingArgs args;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
     OP_TILING_CHECK(AllGatherParamsCheck(context) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "param is invalid"), return ge::GRAPH_FAILED);
 
     auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto isTransB = context->GetAttrs()->GetAttrPointer<bool>(index++);
@@ -572,7 +572,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
 
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     OP_TILING_CHECK(commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        OP_LOGE(context->GetNodeName(),
             "commTurn should be 0, but the actual value is %d.", commTurn),
         return ge::GRAPH_FAILED);
 
@@ -589,7 +589,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AllGatherMatmulTilingFunc(gert::Tilin
     SetSocParam(tilingData, group);
 
     OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), " Set comm algorithm failed."),
+        OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."),
         return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
 

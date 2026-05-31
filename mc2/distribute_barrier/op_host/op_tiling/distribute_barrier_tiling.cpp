@@ -61,19 +61,23 @@ static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBar
     const char *nodeName = context->GetNodeName();
     const gert::StorageShape *timeOutStorageShape = context->GetOptionalInputShape(config.timeOutIndex);
     OP_TILING_CHECK(timeOutStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "timeOut dim must be 1, but current dim num is %lu.",
-                    timeOutStorageShape->GetStorageShape().GetDimNum()), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "timeOut",
+                        (std::to_string(timeOutStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
+                    return false);
     auto timeOutDesc = context->GetOptionalInputDesc(config.timeOutIndex);
     OP_TILING_CHECK(timeOutDesc == nullptr, OP_LOGE(nodeName, "timeOutDesc is null."), return false);
-    OP_TILING_CHECK(timeOutDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
-                    "timeOutDesc dataType is invalid, dataType should be int32, but is %s.",
-                    Ops::Base::ToString(timeOutDesc->GetDataType()).c_str()), return false);
+    OP_TILING_CHECK(timeOutDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "timeOut",
+            Ops::Base::ToString(timeOutDesc->GetDataType()).c_str(), "INT32"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(timeOutDesc->GetStorageFormat())) ==
-                    ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "timeOut format is invalid."), return false);
+                    ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "timeOut",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(timeOutDesc->GetStorageFormat()))).c_str(),
+            "non-FRACTAL_NZ"), return false);
     const int64_t timeOutDim0 = timeOutStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(timeOutDim0 != 1,
-                    OP_LOGE(nodeName, "timeOut's dim0 should be 1, current timeOut's dim0 is %ld.",
-                    timeOutDim0), return false);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "timeOut",
+            (std::string("dim0=") + std::to_string(timeOutDim0)).c_str(), "dim0=1"), return false);
     return true;
 }
 static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t worldsize,
@@ -82,20 +86,25 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
     const char *nodeName = context->GetNodeName();
     const gert::StorageShape *elasticInfoStorageShape = context->GetOptionalInputShape(config.elasticInfoIndex);
     OP_TILING_CHECK(elasticInfoStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "elasticInfo dim must be 1, but current dim num is %lu.",
-                    elasticInfoStorageShape->GetStorageShape().GetDimNum()), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "elasticInfo",
+                        (std::to_string(elasticInfoStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
+                    return false);
     auto elasticInfoDesc = context->GetOptionalInputDesc(config.elasticInfoIndex);
     OP_TILING_CHECK(elasticInfoDesc == nullptr, OP_LOGE(nodeName, "elasticInfoDesc is null."), return false);
-    OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
-                    "elasticInfoDesc dataType is invalid, dataType should be int32, but is %s.",
-                    Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str()), return false);
+    OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "elasticInfo",
+            Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str(), "INT32"), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat())) ==
-                    ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "elasticInfo format is invalid."), return false);
+                    ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elasticInfo",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                elasticInfoDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
     const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * worldsize),
-                    OP_LOGE(nodeName, "elasticInfo's dim0 not equal to 4 + 2 * epWorldSize, "
-                    "elasticInfo's dim0 is %ld, epWorldSize is %u.",
-                    elasticInfoDim0, worldsize), return false);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "elasticInfo",
+            (std::string("dim0=") + std::to_string(elasticInfoDim0)).c_str(),
+            (std::string("dim0=") + std::to_string(ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * worldsize)).c_str()),
+        return false);
     return true;
 }
 static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarrierTilingData &tilingData,
@@ -189,20 +198,23 @@ static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const
     OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName, "contextShape is null."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "contextShape dims must be 1, but current dim num is %lu.",
-        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "context",
+            (std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
+        return ge::GRAPH_FAILED);
     int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
 
     auto contextDesc = context->GetInputDesc(config.contextIndex);
     OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE(nodeName, "contextDesc is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "context dataType is invalid, dataType should be int32, but is %s.",
-        Ops::Base::ToString(contextDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "context",
+            Ops::Base::ToString(contextDesc->GetDataType()).c_str(), "INT32"), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "context format is invalid."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "context",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                contextDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
