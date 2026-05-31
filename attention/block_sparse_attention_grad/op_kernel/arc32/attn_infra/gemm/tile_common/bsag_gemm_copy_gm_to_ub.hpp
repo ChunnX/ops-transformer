@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_TILE_COPY_GM_TO_UB_HPP
-#define GEMM_TILE_COPY_GM_TO_UB_HPP
+#ifndef BSAG_COPY_GM_TO_UB_HPP
+#define BSAG_COPY_GM_TO_UB_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/arch/arch.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy_tla.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/arch/bsag_arch.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_tile_copy_tla.hpp"
 namespace NpuArch::Gemm::Tile {
 
 

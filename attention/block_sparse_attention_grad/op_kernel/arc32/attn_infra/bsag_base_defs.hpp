@@ -13,16 +13,16 @@
  * \brief
  */
 
-#ifndef HPP_HPP
-#define HPP_HPP
+#ifndef BSAG_BASE_DEFS_HPP
+#define BSAG_BASE_DEFS_HPP
 
 #include <cstdint>
 
 #include <kernel_operator.h>
 
-#include "../attn_infra/detail/alignment.hpp"
-#include "../attn_infra/detail/dependent_false.hpp"
-#include "../attn_infra/detail/macros.hpp"
+#include "../attn_infra/detail/bsag_alignment.hpp"
+#include "../attn_infra/detail/bsag_dependent_false.hpp"
+#include "../attn_infra/detail/bsag_macros.hpp"
 
 namespace NpuArch {
 

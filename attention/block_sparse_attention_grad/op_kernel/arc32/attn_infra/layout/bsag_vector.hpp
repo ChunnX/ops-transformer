@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef LAYOUT_VECTOR_HPP
-#define LAYOUT_VECTOR_HPP
+#ifndef BSAG_VECTOR_HPP
+#define BSAG_VECTOR_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/coord.hpp"
+#include "../../attn_infra/bsag_base_defs.hpp"
+#include "../../attn_infra/bsag_coord.hpp"
 
 namespace NpuArch::layout 
 {

@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ARCH_ARCH_HPP
-#define ARCH_ARCH_HPP
+#ifndef BSAG_ARCH_HPP
+#define BSAG_ARCH_HPP
 
-#include "../../attn_infra/base_defs.hpp"
+#include "../../attn_infra/bsag_base_defs.hpp"
 
-namespace NpuArch::Arch 
+namespace NpuArch::Arch
 {
 
 struct AtlasA2 {

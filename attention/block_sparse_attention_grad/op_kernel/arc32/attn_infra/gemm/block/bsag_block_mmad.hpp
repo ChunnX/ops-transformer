@@ -8,12 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef GEMM_BLOCK_BLOCK_MMAD_HPP
-#define GEMM_BLOCK_BLOCK_MMAD_HPP
+#ifndef BSAG_BLOCK_MMAD_HPP
+#define BSAG_BLOCK_MMAD_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_copy.hpp"
-#include "../../../attn_infra/gemm/tile_common/tile_mmad.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_gemm_tile_copy.hpp"
+#include "../../../attn_infra/gemm/tile_common/bsag_tile_mmad.hpp"
 
 namespace NpuArch::Gemm::Block {
 

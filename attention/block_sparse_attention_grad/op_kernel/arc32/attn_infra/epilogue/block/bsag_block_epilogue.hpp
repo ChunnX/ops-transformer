@@ -8,10 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
-#define EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
+#ifndef BSAG_BLOCK_EPILOGUE_HPP
+#define BSAG_BLOCK_EPILOGUE_HPP
 
-#include "../../../attn_infra/base_defs.hpp"
+#include "../../../attn_infra/bsag_base_defs.hpp"
 
 namespace NpuArch::Epilogue::Block {
 
@@ -25,9 +25,9 @@ class BlockEpilogue {
 
 }  // namespace NpuArch::Epilogue::Block
 
-#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax.hpp"
-#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
-#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o.hpp"
-#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/bsag_block_epilogue_online_softmax.hpp"
+#include "../../../attn_infra/epilogue/block/bsag_block_epilogue_online_softmax_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/bsag_block_epilogue_rescale_o.hpp"
+#include "../../../attn_infra/epilogue/block/bsag_block_epilogue_rescale_o_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_fag_pre.hpp"
 #endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
