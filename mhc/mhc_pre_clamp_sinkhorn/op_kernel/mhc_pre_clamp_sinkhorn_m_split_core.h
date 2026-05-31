@@ -463,6 +463,15 @@ public:
                     CopyOut(mxies02ReduceLocal, reduceOutGm[reduceOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
                     MTE3ToVSync();
                 }
+                if (tilingData->min != 0.0f || tilingData->max != 0.0f) {
+                    PipeBarrier<PIPE_V>();
+                    Maxs(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->min,
+                         curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
+                    PipeBarrier<PIPE_V>();
+                    Mins(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->max,
+                         curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
+                    PipeBarrier<PIPE_V>();
+                }
                 SoftmaxFP32Perf(mxies02ReduceLocal, mxies02ReduceLocal, reduceLocal, hcBrcbLocal1, curRowFactor * tilingData->hcMult,
                                 tilingData->hcMult, tilingData->hcEps);
                 
