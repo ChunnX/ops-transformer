@@ -984,8 +984,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     FillQuadruple(sendTokenTensor, startTokenIndex, tokenIndex);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     PipeBarrier<PIPE_V>();
-    GM_ADDR rankGM = (GetSendAddrBetweenServer(dstServerId) +
-                                                                 SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
+    GM_ADDR rankGM = (GetSendAddrBetweenServer(dstServerId) + SERVER_STATE_ALIGN + cnt * sendTokenLengthAlign_);
     WriteDataToWinOut(sendTokenTensor, rankGM, blockCntPerToken_);
 }
 

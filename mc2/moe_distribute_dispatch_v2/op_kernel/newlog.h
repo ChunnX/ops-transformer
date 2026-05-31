@@ -1,4 +1,4 @@
-#include<ccelib/print/print.h>
+// #include<ccelib/print/print.h>
 namespace MoeDispatchLog_NEW {
 
 template<typename T>
