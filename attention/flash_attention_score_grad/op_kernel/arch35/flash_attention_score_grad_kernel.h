@@ -71,7 +71,9 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         this->isLastLoop = (blockInnerIdx == -1);
         if (taskId > 0) {
             prevRunInfo = runInfos[(taskId + 1) & 1];
-            this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
+            if (likely(!this->constInfo.enablePreSfmg)) {
+                this->vecBlock.ProcessVec1(this->constInfo, prevRunInfo); // v1: softmaxGrad
+            }
             // wait mm1 and mm2 result
             if ASCEND_IS_AIV {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_V>(SYNC_C1_TO_V2_FLAG[(taskId + 1) & 1]);
@@ -405,6 +407,5 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     }
 } 
 } // namespace FagBaseApi
- 
- 
+
 #endif

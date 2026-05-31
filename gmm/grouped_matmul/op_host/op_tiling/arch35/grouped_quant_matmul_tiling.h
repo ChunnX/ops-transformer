@@ -17,7 +17,7 @@
 
 #include "../grouped_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 namespace optiling {
 namespace GmmConstant {
 constexpr uint64_t MX_GROUP_SIZE = 32UL;
@@ -64,10 +64,9 @@ constexpr size_t WEIGHTNZ_THIRD_DIM = 2;
 constexpr size_t WEIGHTNZ_FORTH_DIM = 3;
 constexpr size_t WEIGHTNZ_FIFTH_DIM = 4;
 
-constexpr uint32_t WEIGHTNZ_K0_16 = 16U;
-constexpr uint32_t WEIGHTNZ_N0_16 = 16U;
-constexpr uint32_t WEIGHTNZ_K0_32 = 32U;
-constexpr uint32_t WEIGHTNZ_N0_32 = 32U;
+constexpr uint32_t WEIGHTNZ_16 = 16U;
+constexpr uint32_t WEIGHTNZ_32 = 32U;
+constexpr uint32_t WEIGHTNZ_64 = 64U;
 constexpr uint8_t BF16_VALUE = 27;
 constexpr uint32_t BF16_WORKSIZE = 2;
 constexpr uint32_t FP32_WORKSIZE = 4;

@@ -6,7 +6,7 @@
 
 - profiling数据：在整网运行中,通常会调用多个算子进行联跑，通常会出现部分卡耗时过长的情况，该现象通常是由于卡中某个算子出现异常耗时导致的快慢卡现象，需要开发profiling数据分析工具排查可能出现异常耗时的算子以及对应的卡号，完成分析后需输出csv文件,并打屏输出对应的异常点。
 
-- graph图文件：当调用cache_compile接口时，会在指定路径下生成graph图文件，该文件中包含每一张卡在每一轮执行的算子次数以及名称，可用于定位因执行序不一致导致的卡死现象。
+- graph图文件：当调用cache_compile接口时(调用方式可查看https://www.hiascend.com/document/detail/zh/Pytorch/730/modthirdparty/torchairuseguide/torchair_00099.html)，会在指定路径下生成graph图文件，该文件中包含每一张卡在每一轮执行的算子次数以及名称，可用于定位因执行序不一致导致的卡死现象。
 
 - plog日志：当设置环境变量ASCEND_SLOG_PRINT_TO_STDOUT=1时，会在/root/ascend/log下生成对应的plog日志，可以通过plog日志查看对应的报错信息以及错误码。
 
@@ -94,6 +94,12 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
     <td>INT</td>
   </tr>
   <tr>
+    <td>START_A2_CLUSTER</td>
+    <td>可选输入</td>
+    <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：解析dump数据时,区分是否开始分析多机数据，未输入时默认值为0，输入为1时开启多机分析，需先得到各机解析结果再执行，如:START_A2_CLUSTER=1</td>
+    <td>INT</td>
+  </tr>
+  <tr>
     <td>PROFILING_PATH</td>
     <td>可选输入</td>
     <td>指定profiling数据的存放路径,未输入时默认在TARGET_DIR下查找，如:PROFILING_PATH=xxx</td>
@@ -108,7 +114,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
     <tr>
     <td>GRAPH_PATH</td>
     <td>可选输入</td>
-    <td>指定graph图文件的存放路径, 如:PROFILING_PATH=xxx, 该参数分析graph图文件时必填</td>
+    <td>指定graph图文件的存放路径, 如:GRAPH_PATH=xxx, 该参数分析graph图文件时必填，该参数需要指定到对应模型的graph图文件路径</td>
     <td>INT</td>
   </tr>
   <tr>
@@ -180,6 +186,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
 | dump_analysis.sh脚本直调 | bash dump_analysis.sh TARGET_DIR=xxx TOOL_PATH=xxx PROFILING_PATH=xxx SP_MOE_NUM=0 TP_WORLDSIZE=1 SOC_VERSION=950 SHARE_EXPERT_CARD_COUNT=1 SHARE_EXPERT_NUM=1 GRAPH_PATH=xxx PLOG_PATH=xxx| 通过对sh脚本进行入参对指定的TARGET_DIR路径下的dump数据进行dump数据解析、对PROFILING_PATH下的profiling数据进行分析、对GRAPH_PATH下的图文件数据进行分析以及对PLOG_PATH下的plog日志进行分析。 |
+| dump_analysis.sh脚本直调 | bash dump_analysis.sh SOC_VERSION=910B START_A2_CLUSTER=1 | 将START_A2_CLUSTER=0时解析的结果放在同一台设备相同路径后执行,通过sh脚本对各机进行解析多机数据, A2 Dispatch和Combine Fullmesh方案建议使用 |
 
 ## 样例代码结果说明
 
@@ -283,7 +290,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 [INFO] 7. 卡1的算子执行流程并未卡死在combine算子上，不进行异常分析<br>
 [INFO] 7. 各卡的expertids、dump数据中读取的expandidx、本卡专家数、该卡算子执行流程卡死在哪个算子上已归档至win_all_card_expandidx.csv<br>
 [INFO] 7. 所有卡的expandidx对比完成<br>
-<b>上述结果为多卡间的dispatch&combine的expandidx、epsendcnt输入校验，该功能会计算出所有专家对应的expertidx以及每张卡的epsnedcnt，当该卡挂在combine算子上时，对该卡的输入expertidx、epsnedcnt与计算的expertidx、epsnedcnt进行对比，如果不同，将该异常以ERROR的形式输出，并将各卡的输入expertids、dump数据中读取的expandidx、epsnedcnt(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，五项数据存储至win_all_card_expandidx.csv。</b>
+<b>上述结果为多卡间的dispatch&combine的expandidx、epsendcnt输入校验，该功能会计算出所有专家对应的expertidx以及每张卡的epsendcnt，当该卡挂在combine算子上时，对该卡的输入expertidx、epsendcnt与计算的expertidx、epsendcnt进行对比，如果不同，将该异常以ERROR的形式输出，并将各卡的输入expertids、dump数据中读取的expandidx、epsendcnt(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，五项数据存储至win_all_card_expandidx.csv。</b>
 
 -----------------------<br>
 在指定的路径: xxxxxx/xxx/xxx/xx 下找到 16 张卡的profiling数据<br>

@@ -142,7 +142,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
     <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、INT4</td>
     <td>ND</td>
     <td>2维，shape为(H*rankSize, N)</td>
-    <td>√</td>
+    <td>不同设备型号支持情况不同，参见<a href="#约束说明">约束说明</a>。</td>
     </tr>
     <tr>
     <td>biasOptional</td>
@@ -531,7 +531,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
       * 输入输出支持的数据类型组合有：
         * K-C动态量化： 
 
-          | x1 | x2 | biasOptional | output | x1QuantDtype | x2QuantDtype | x1ScaleOptional | x2Scale |
+          | x1 | x2 | biasOptional | output | x1QuantMode | x2QuantMode | x1ScaleOptional | x2Scale |
           | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
           | FLOAT16 | FLOAT8_E4M3FN | FLOAT32 | FLOAT16 | 7 | 2 | - | FLOAT32 |
           | FLOAT16 | FLOAT8_E4M3FN | FLOAT32 | BFLOAT16 | 7 | 2 | - | FLOAT32 |
@@ -548,7 +548,7 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
 
         * mx量化：
 
-          | x1 | x2 | biasOptional | output | x1QuantDtype | x2QuantDtype | x1ScaleOptional | x2Scale |
+          | x1 | x2 | biasOptional | output | x1QuantMode | x2QuantMode | x1ScaleOptional | x2Scale |
           | :------: | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
           | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT32 | FLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
           | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT32 | BFLOAT16 | 6 | 6 | FLOAT8_E8M0 | FLOAT8_E8M0 |
@@ -572,6 +572,9 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
       * mx量化场景下，x2必须转置，shape为(H*rankSize, N)，transposeX2为True。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
+* 通信引擎约束：
+   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
 
 ## 调用示例
 

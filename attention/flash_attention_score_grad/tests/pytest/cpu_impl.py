@@ -65,7 +65,7 @@ def attentionScoreWithGrad(ctx: CalculationContext):
         is_skip_invalid_row = S > Skv
     if ctx.input_case["sparse_mode"] == 4:
         is_skip_invalid_row = pre_tockens < 0 or next_tockens + Skv < S
-    if ctx.input_case["sparse_mode"] == 0 and atten_masks != None:
+    if ctx.input_case["sparse_mode"] == 0 and atten_masks is not None:
         is_skip_invalid_row = pre_tockens < S or next_tockens < Skv
     if ctx.input_case["sparse_mode"] in (5, 6):
         is_skip_invalid_row = True if 0 in prefix else False
@@ -410,7 +410,7 @@ def run_unpad(ctx: CalculationContext):
         is_skip_invalid_row = S > Skv
     if ctx.input_case["sparse_mode"] == 4:
         is_skip_invalid_row = pre_tocken < 0 or next_tocken + Skv < S
-    if ctx.input_case["sparse_mode"] == 0 and atten_mask != None:
+    if ctx.input_case["sparse_mode"] == 0 and atten_mask is not None:
         is_skip_invalid_row = pre_tocken < 0 or next_tocken < 0
     if ctx.input_case["sparse_mode"] in (5, 6):
         is_skip_invalid_row = True if 0 in prefix else False
@@ -1041,7 +1041,7 @@ def tforward_i(q, k, v, drop_mask, atten_mask, pse, scale, keep_prob, is_skip_in
         qk = torch.matmul(q, k.permute(0, 1, 3, 2)).add(pse).mul(scale)
     else:
         qk = torch.matmul(q, k.permute(0, 1, 3, 2)).mul(scale).add(pse)
-    if atten_mask != None:
+    if atten_mask is not None:
         # qk = qk + atten_mask * (-40000.0)
         qk = qk.masked_fill(atten_mask.bool(), value=torch.tensor(-40000.0))
 
@@ -1312,7 +1312,7 @@ def tforward(case, q, k, v, drop_mask, atten_mask, pse, scale, keep_prob, is_ski
             qk = torch.matmul(q, k.permute(0, 1, 2, 4, 3)).add(pse).mul(scale)
         else:
             qk = torch.matmul(q, k.permute(0, 1, 2, 4, 3)).mul(scale).add(pse)
-        if atten_mask != None:
+        if atten_mask is not None:
             # qk = qk + atten_mask * (-40000.0)
             qk = qk.masked_fill(atten_mask.bool(),
                                 value=torch.tensor(-40000.0))
@@ -1368,7 +1368,7 @@ def tforward(case, q, k, v, drop_mask, atten_mask, pse, scale, keep_prob, is_ski
             qk = qk.add(pse).mul(scale)
         else:
             qk = qk.mul(scale).add(pse)
-        if atten_mask != None:
+        if atten_mask is not None:
             # qk = qk + atten_mask * (-40000.0)
             qk = qk.masked_fill(atten_mask.bool(),
                                 value=torch.tensor(-40000.0))

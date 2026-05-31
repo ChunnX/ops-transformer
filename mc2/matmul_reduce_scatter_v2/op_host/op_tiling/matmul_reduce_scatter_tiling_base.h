@@ -17,7 +17,7 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
@@ -79,8 +79,8 @@ protected:
     inline mc2tiling::TilingArgs GetMc2tilingArgs() { return args_; };
     void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
                          ::TCubeTiling &tailTiling, uint32_t& debugMode, uint32_t& dataType);
-    void SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
-                        ::TCubeTiling &tailTiling, uint32_t debugMode);
+    void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,
+                        const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
     ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
 

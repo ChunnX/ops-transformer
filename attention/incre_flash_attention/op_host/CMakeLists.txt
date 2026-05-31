@@ -16,6 +16,8 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+set(incre_flash_attention_mc62cm12a_arch_directory arch38 CACHE INTERNAL "incre_flash_attention mc62cm12a arch")
+
 add_ops_compile_options(
     OP_NAME IncreFlashAttention
     OPTIONS --cce-auto-sync=off

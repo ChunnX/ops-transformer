@@ -25,7 +25,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "../allto_allv_quant_grouped_mat_mul_tiling_base.h"
 

@@ -14,13 +14,13 @@
  */
 #include "platform/platform_info.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "tiling/tiling_api.h"
 #include "moe_gating_top_k_softmax_tiling_base.h"
 #include "log/log.h"
 #include "../op_kernel/arch35/moe_gating_top_k_softmax_tiling_def.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
@@ -112,7 +112,8 @@ void MoeGatingTopKSoftmaxRegbaseTiling::SplitRowInUb(int64_t &perLoopRowCount, i
 ge::graphStatus MoeGatingTopKSoftmaxRegbaseTiling::DoOpTiling()
 {
     OP_CHECK_IF((col > MAX_EXPERT_NUM),
-                OP_LOGE(context_->GetNodeName(), "expert count (=%u) is too large, please check.", col),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expert_count", std::to_string(col),
+                                          std::string("no more than ") + std::to_string(MAX_EXPERT_NUM)),
                 return ge::GRAPH_FAILED);
     rows_ = static_cast<int64_t>(row);
     perCoreRowCount_ = static_cast<int64_t>((rows_ + aivNum - 1) / aivNum);

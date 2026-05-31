@@ -12,7 +12,7 @@
  * \file moe_token_permute_with_routing_map_tiling.cpp
  * \brief
  */
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "moe_token_permute_with_routing_map_tiling.h"
 
 namespace {

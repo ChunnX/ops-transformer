@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file test_norm_rope_concat.cpp
-* \brief
-*/
+ * \file test_norm_rope_concat.cpp
+ * \brief
+ */
 
 #include <algorithm>
 #include <cstdint>
@@ -129,7 +129,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
     // 调用aclCreateTensor接口创建aclTensor
     *result = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -296,82 +296,82 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor(encoderQueryHostData, encoderQueryShape, &encoderQueryDeviceAddr, aclDataType::ACL_FLOAT,
-                        &encoderQuery);
+                          &encoderQuery);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(encoderKeyHostData, encoderKeyShape, &encoderKeyDeviceAddr, aclDataType::ACL_FLOAT,
-                        &encoderKey);
+                          &encoderKey);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(encoderValueHostData, encoderValueShape, &encoderValueDeviceAddr, aclDataType::ACL_FLOAT,
-                        &encoderValue);
+                          &encoderValue);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     ret = CreateAclTensor(normQueryWeightHostData, normQueryWeightShape, &normQueryWeightDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normQueryWeight);
+                          aclDataType::ACL_FLOAT, &normQueryWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normQueryBiasHostData, normQueryBiasShape, &normQueryBiasDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normQueryBias);
+                          &normQueryBias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normKeyWeightHostData, normKeyWeightShape, &normKeyWeightDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normKeyWeight);
+                          &normKeyWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normKeyBiasHostData, normKeyBiasShape, &normKeyBiasDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normKeyBias);
+                          &normKeyBias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedQueryWeightHostData, normAddedQueryWeightShape, &normAddedQueryWeightDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedQueryWeight);
+                          aclDataType::ACL_FLOAT, &normAddedQueryWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedQueryBiasHostData, normAddedQueryBiasShape, &normAddedQueryBiasDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedQueryBias);
+                          aclDataType::ACL_FLOAT, &normAddedQueryBias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedKeyWeightHostData, normAddedKeyWeightShape, &normAddedKeyWeightDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedKeyWeight);
+                          aclDataType::ACL_FLOAT, &normAddedKeyWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedKeyBiasHostData, normAddedKeyBiasShape, &normAddedKeyBiasDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedKeyBias);
+                          aclDataType::ACL_FLOAT, &normAddedKeyBias);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(ropeSinHostData, ropeSinShape, &ropeSinDeviceAddr, aclDataType::ACL_FLOAT, &ropeSin);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(ropeCosHostData, ropeCosShape, &ropeCosDeviceAddr, aclDataType::ACL_FLOAT, &ropeCos);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(queryOutputHostData, queryOutputShape, &queryOutputDeviceAddr, aclDataType::ACL_FLOAT,
-                        &queryOutput);
+                          &queryOutput);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(keyOutputHostData, keyOutputShape, &keyOutputDeviceAddr, aclDataType::ACL_FLOAT, &keyOutput);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(valueOutputHostData, valueOutputShape, &valueOutputDeviceAddr, aclDataType::ACL_FLOAT,
-                        &valueOutput);
+                          &valueOutput);
     ret = CreateAclTensor(normQueryMeanHostData, normQueryMeanShape, &normQueryMeanDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normQueryMean);
+                          &normQueryMean);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normQueryRstdHostData, normQueryRstdShape, &normQueryRstdDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normQueryRstd);
+                          &normQueryRstd);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normKeyWeightHostData, normKeyWeightShape, &normKeyWeightDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normKeyWeight);
+                          &normKeyWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normKeyMeanHostData, normKeyMeanShape, &normKeyMeanDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normKeyMean);
+                          &normKeyMean);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normKeyRstdHostData, normKeyRstdShape, &normKeyRstdDeviceAddr, aclDataType::ACL_FLOAT,
-                        &normKeyRstd);
+                          &normKeyRstd);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedQueryWeightHostData, normAddedQueryWeightShape, &normAddedQueryWeightDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedQueryWeight);
+                          aclDataType::ACL_FLOAT, &normAddedQueryWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedQueryMeanHostData, normAddedQueryMeanShape, &normAddedQueryMeanDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedQueryMean);
+                          aclDataType::ACL_FLOAT, &normAddedQueryMean);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedQueryRstdHostData, normAddedQueryRstdShape, &normAddedQueryRstdDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedQueryRstd);
+                          aclDataType::ACL_FLOAT, &normAddedQueryRstd);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedKeyWeightHostData, normAddedKeyWeightShape, &normAddedKeyWeightDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedKeyWeight);
+                          aclDataType::ACL_FLOAT, &normAddedKeyWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedKeyMeanHostData, normAddedKeyMeanShape, &normAddedKeyMeanDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedKeyMean);
+                          aclDataType::ACL_FLOAT, &normAddedKeyMean);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(normAddedKeyRstdHostData, normAddedKeyRstdShape, &normAddedKeyRstdDeviceAddr,
-                        aclDataType::ACL_FLOAT, &normAddedKeyRstd);
+                          aclDataType::ACL_FLOAT, &normAddedKeyRstd);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
@@ -386,7 +386,7 @@ int main()
         normQueryMean, normQueryRstd, normKeyMean, normKeyRstd, normAddedQueryMean, normAddedQueryRstd,
         normAddedKeyMean, normAddedKeyRstd, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcatGetWorkspaceSize failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
@@ -405,63 +405,63 @@ int main()
     auto size = GetShapeSize(queryOutputShape);
     std::vector<float> queryOutputData(size, 0);
     ret = aclrtMemcpy(queryOutputData.data(), queryOutputData.size() * sizeof(queryOutputData[0]),
-                    queryOutputDeviceAddr, size * sizeof(queryOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      queryOutputDeviceAddr, size * sizeof(queryOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy queryOutput result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("queryOutput result[%ld] is: %f\n", i, queryOutputData[i]);
     }
     size = GetShapeSize(keyOutputShape);
     std::vector<float> keyOutputData(size, 0);
     ret = aclrtMemcpy(keyOutputData.data(), keyOutputData.size() * sizeof(keyOutputData[0]), keyOutputDeviceAddr,
-                    size * sizeof(keyOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      size * sizeof(keyOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy keyOutput result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("keyOutput result[%ld] is: %f\n", i, keyOutputData[i]);
     }
     size = GetShapeSize(valueOutputShape);
     std::vector<float> valueOutputData(size, 0);
     ret = aclrtMemcpy(valueOutputData.data(), valueOutputData.size() * sizeof(valueOutputData[0]),
-                    valueOutputDeviceAddr, size * sizeof(valueOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      valueOutputDeviceAddr, size * sizeof(valueOutputData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy valueOutput result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("valueOutput result[%ld] is: %f\n", i, valueOutputData[i]);
     }
     size = GetShapeSize(normQueryMeanShape);
     std::vector<float> normQueryMeanData(size, 0);
     ret = aclrtMemcpy(normQueryMeanData.data(), normQueryMeanData.size() * sizeof(normQueryMeanData[0]),
-                    normQueryMeanDeviceAddr, size * sizeof(normQueryMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normQueryMeanDeviceAddr, size * sizeof(normQueryMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy normQueryMean result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normQueryMean result[%ld] is: %f\n", i, normQueryMeanData[i]);
     }
     size = GetShapeSize(normQueryRstdShape);
     std::vector<float> normQueryRstdData(size, 0);
     ret = aclrtMemcpy(normQueryRstdData.data(), normQueryRstdData.size() * sizeof(normQueryRstdData[0]),
-                    normQueryRstdDeviceAddr, size * sizeof(normQueryRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normQueryRstdDeviceAddr, size * sizeof(normQueryRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy normQueryRstd result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normQueryRstd result[%ld] is: %f\n", i, normQueryRstdData[i]);
     }
     size = GetShapeSize(normKeyMeanShape);
     std::vector<float> normKeyMeanData(size, 0);
     ret = aclrtMemcpy(normKeyMeanData.data(), normKeyMeanData.size() * sizeof(normKeyMeanData[0]),
-                    normKeyMeanDeviceAddr, size * sizeof(normKeyMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normKeyMeanDeviceAddr, size * sizeof(normKeyMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy normKeyMean result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normKeyMean result[%ld] is: %f\n", i, normKeyMeanData[i]);
     }
     size = GetShapeSize(normKeyRstdShape);
     std::vector<float> normKeyRstdData(size, 0);
     ret = aclrtMemcpy(normKeyRstdData.data(), normKeyRstdData.size() * sizeof(normKeyRstdData[0]),
-                    normKeyRstdDeviceAddr, size * sizeof(normKeyRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normKeyRstdDeviceAddr, size * sizeof(normKeyRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy normKeyRstd result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normKeyRstd result[%ld] is: %f\n", i, normKeyRstdData[i]);
     }
@@ -471,8 +471,8 @@ int main()
         aclrtMemcpy(normAddedQueryMeanData.data(), normAddedQueryMeanData.size() * sizeof(normAddedQueryMeanData[0]),
                     normAddedQueryMeanDeviceAddr, size * sizeof(normAddedQueryMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("copy normAddedQueryMean result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              LOG_PRINT("copy normAddedQueryMean result from device to host failed. ERROR: %d\n", ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normAddedQueryMean result[%ld] is: %f\n", i, normAddedQueryMeanData[i]);
     }
@@ -482,28 +482,28 @@ int main()
         aclrtMemcpy(normAddedQueryRstdData.data(), normAddedQueryRstdData.size() * sizeof(normAddedQueryRstdData[0]),
                     normAddedQueryRstdDeviceAddr, size * sizeof(normAddedQueryRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("copy normAddedQueryRstd result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              LOG_PRINT("copy normAddedQueryRstd result from device to host failed. ERROR: %d\n", ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normAddedQueryRstd result[%ld] is: %f\n", i, normAddedQueryRstdData[i]);
     }
     size = GetShapeSize(normAddedKeyMeanShape);
     std::vector<float> normAddedKeyMeanData(size, 0);
     ret = aclrtMemcpy(normAddedKeyMeanData.data(), normAddedKeyMeanData.size() * sizeof(normAddedKeyMeanData[0]),
-                    normAddedKeyMeanDeviceAddr, size * sizeof(normAddedKeyMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normAddedKeyMeanDeviceAddr, size * sizeof(normAddedKeyMeanData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("copy normAddedKeyMean result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              LOG_PRINT("copy normAddedKeyMean result from device to host failed. ERROR: %d\n", ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normAddedKeyMean result[%ld] is: %f\n", i, normAddedKeyMeanData[i]);
     }
     size = GetShapeSize(normAddedKeyRstdShape);
     std::vector<float> normAddedKeyRstdData(size, 0);
     ret = aclrtMemcpy(normAddedKeyRstdData.data(), normAddedKeyRstdData.size() * sizeof(normAddedKeyRstdData[0]),
-                    normAddedKeyRstdDeviceAddr, size * sizeof(normAddedKeyRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+                      normAddedKeyRstdDeviceAddr, size * sizeof(normAddedKeyRstdData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("copy normAddedKeyRstd result from device to host failed. ERROR: %d\n", ret);
-            return ret);
+              LOG_PRINT("copy normAddedKeyRstd result from device to host failed. ERROR: %d\n", ret);
+              return ret);
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("normAddedKeyRstd result[%ld] is: %f\n", i, normAddedKeyRstdData[i]);
     }
@@ -569,7 +569,7 @@ int main()
 
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
-    }f
+    }
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
     aclrtResetDevice(deviceId);

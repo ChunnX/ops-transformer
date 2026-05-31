@@ -16,7 +16,7 @@
 #include "mc2_log.h"
 #include "moe_distribute_combine_teardown_tiling_arch35.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 namespace {
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;

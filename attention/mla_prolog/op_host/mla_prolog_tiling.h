@@ -27,7 +27,7 @@
 #include <unordered_set>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
@@ -331,6 +331,7 @@ private:
     ge::graphStatus SetShapeInfo();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();
+    ge::graphStatus FillTilingCoreParams();
     ge::graphStatus FillMatmul1Tiling();
     ge::graphStatus FillMatmul2Tiling();
     ge::graphStatus FillMatmul3Tiling();

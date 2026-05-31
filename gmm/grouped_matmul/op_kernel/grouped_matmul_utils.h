@@ -38,14 +38,12 @@
        (ORIG_DTYPE_X == DT_HIFLOAT8 && ORIG_DTYPE_WEIGHT == DT_HIFLOAT8) || \
        ((ORIG_DTYPE_X == DT_FLOAT8_E5M2 || ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && \
         (ORIG_DTYPE_WEIGHT == DT_FLOAT8_E5M2 || ORIG_DTYPE_WEIGHT == DT_FLOAT8_E4M3FN)) || \
-       (ORIG_DTYPE_X == DT_FLOAT4_E2M1 && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1) || \
+       ((ORIG_DTYPE_X == DT_FLOAT4_E2M1 || ORIG_DTYPE_X == DT_FLOAT4_E1M2) && \
+       (ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1 || ORIG_DTYPE_WEIGHT == DT_FLOAT4_E1M2)) || \
        (ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4))
     #define V310_GMM_QUANT
     #if defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E8M0) && ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0
       #define V310_GMM_QUANT_MX
-      #if ORIG_DTYPE_X == DT_FLOAT8_E4M3FN || ORIG_DTYPE_X == DT_FLOAT8_E5M2
-         #define V310_MXFP8_LOW_API
-      #endif
     #elif defined(ORIG_DTYPE_SCALE) && defined(DT_UINT64) && defined(DT_INT64) && \
         (ORIG_DTYPE_SCALE != DT_UINT64 && ORIG_DTYPE_SCALE != DT_INT64)
       #define V310_GMM_QUANT_MIX
@@ -181,6 +179,8 @@ constexpr int32_t STATIC_TILING_STEP_KA_KB = 4;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint32_t STATIC_TILING_MAX_K = 8192;
 constexpr uint32_t STATIC_TILING_MAX_SINGLE_N = 1024;
+constexpr uint32_t GROUP_LIST_TYPE_SPARSE = 2;
+constexpr uint32_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1;
 
 template<class AT_, class BT_, class CT_, class BiasT_, const auto& MM_CFG = CFG_MDL>
 struct MMType {
@@ -309,6 +309,8 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
             int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
             splitValue = offset - preOffset;
             preOffset = offset;
+        } else if (gmmBaseParams->groupListType == GROUP_LIST_TYPE_SPARSE) {
+            splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
         } else {
             splitValue = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
         }

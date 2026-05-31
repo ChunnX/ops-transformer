@@ -351,6 +351,8 @@ private:
 
     void CalcBlockDim();
 
+    uint32_t GetTypeSize(ge::DataType dtype) const;
+
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
 
@@ -437,7 +439,6 @@ private:
     void SetQSFAShapeCompare();
     ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
-    uint32_t GetTypeSize(ge::DataType dtype) const;
     ge::graphStatus CheckKVShapeForPageAttention();
     ge::graphStatus CheckKVShape();
     ge::graphStatus CheckKV();

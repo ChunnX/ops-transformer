@@ -21,28 +21,29 @@ namespace ge {
 /**
  * @brief Backwards calculation of RotaryPositionEmbedding.
  * @par Inputs:
- * @li dy: A 4D tensor which represents the gradient of output "y" in RotaryPositionEmbedding, format supports ND, and
- * data type must be float16, float or bfloat16.
- * @li cos: A 4D tensor which is input "cos" in RotaryPositionEmbedding, format supports ND, data type must be the same
- * as "dy", and shape must be the same as "sin".
- * @li sin: A 4D tensor which is input "sin" in RotaryPositionEmbedding, format supports ND, data type must be the same
- * as "dy", and shape must be the same as "cos".
- * @li x: An optional 4D tensor which is input "x" in RotaryPositionEmbedding, format supports ND, data type must be the
- * same as "dy", and shape must be the same as "dy". If "x" is nullptr, the output "dcos" and "dsin" is meaningless.
+ * @li dy: A 3D or 4D tensor which represents the gradient of output "y" in RotaryPositionEmbedding, format
+ * supports ND, and data type must be float16, float or bfloat16.
+ * @li cos: A 3D or 4D tensor which is input "cos" in RotaryPositionEmbedding, format supports ND, data type must be
+ * the same as "dy", and shape must be the same as "sin".
+ * @li sin: A 3D or 4D tensor which is input "sin" in RotaryPositionEmbedding, format supports ND, data type must be
+ * the same as "dy", and shape must be the same as "cos".
+ * @li x: An optional 3D or 4D tensor which is input "x" in RotaryPositionEmbedding, format supports ND, data type
+ * must be the same as "dy", and shape must be the same as "dy".
+ * If "x" is nullptr, the output "dcos" and "dsin" is meaningless.
  * @par Outputs:
- * @li dx: A 4D Tensor which is the grad of input "x" in RotaryPositionEmbedding, format supports ND, data type must be
- * the same as "dy", and shape must be the same as "dy".
- * @li dcos: A 4D Tensor which is the grad of input "cos" in RotaryPositionEmbedding, format supports ND, data type must
- * be the same as "dy", and shape must be the same as "cos".
- * @li dsin: A 4D Tensor which is the grad of input "sin" in RotaryPositionEmbedding, format supports ND, data type must
- * be the same as "dy", and shape must be the same as "sin".
+ * @li dx: A 3D or 4D Tensor which is the grad of input "x" in RotaryPositionEmbedding, format supports ND, data type
+ * must be the same as "dy", and shape must be the same as "dy".
+ * @li dcos: A 3D or 4D Tensor which is the grad of input "cos" in RotaryPositionEmbedding, format supports ND,
+ * data type must be the same as "dy", and shape must be the same as "cos".
+ * @li dsin: A 3D or 4D Tensor which is the grad of input "sin" in RotaryPositionEmbedding, format supports ND,
+ * data type must be the same as "dy", and shape must be the same as "sin".
  * @par Attributes:
  * mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
  * 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0. Atlas A2 Training Series Product/ Atlas 800I A2
  * Inference Product and Atlas A3 Training Series Product only support 0-"half" and 1-"interleave".
  * @attention Constraints:
- * Let (B, S, N, D) represents the shape of the 4-D input "dy". Under this representation, the shape constraints of each
- * parameter can be described as follows:
+ * Let (B, S, N, D) represents the shape of the input "dy" (4D) or (T, N, D) for 3D TND layout. Under this
+ * representation, the shape constraints of each parameter can be described as follows:
  * @li The D of "dy", "cos", "sin", "x", "dx", "dcos" and "dsin" must be equal. For Ascend 950 AI Processor, D should
  * be less or equal to 1024. For Atlas A2 Training Series Product/ Atlas 800I A2 Inference Product and Atlas A3 Training
  * Series Product, D should be less or equal to 896.

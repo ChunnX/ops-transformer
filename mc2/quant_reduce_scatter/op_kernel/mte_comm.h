@@ -45,7 +45,8 @@ public:
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
     __aicore__ inline void InitBuffer(TPipe *tPipe);
-    __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum);
+    __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum,
+                                        uint64_t scaleNumsPerBlock = 0);
      template <bool isReduceScatter = false>
     __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
     __aicore__ inline void WriteStatusToWin();
@@ -62,7 +63,7 @@ public:
     uint32_t round_{0};
     uint32_t tailBlockNums_{0};
     uint32_t assignedBlockNums_{0};
-    uint64_t scaleNumsPerBlcok_{0};
+    uint64_t scaleNumsPerBlock_{0};
     uint64_t xOffset_{0};  
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
@@ -104,11 +105,11 @@ template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 {
     aivId_ = GetBlockIdx(); // 获取当前核Id
-    scaleNumsPerBlcok_ = SCALE_BLCOK_BYTES / sizeof(ScalesType); // 一块scale固定32B, 计算包含多少个数据
+    // scaleNumsPerBlock_ 由 SetBlockSize 设置（与 xNumPerBlock_ 配套），此处不再覆盖
     assignedBlockNums_ = aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
     uint64_t blockIdx = aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
     xOffset_ = blockIdx * xNumPerBlock_; // 块数 * 一块有多少数据，得到要搬第几个x数据
-    scaleOffset_ = blockIdx * scaleNumsPerBlcok_; // 计算要搬第几个 scale
+    scaleOffset_ = blockIdx * scaleNumsPerBlock_; // 计算要搬第几个 scale
 }
 
 template <TemplateTypeClass>
@@ -148,8 +149,13 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 {
-    tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);    
-    tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES);     
+    // xQueue_/scaleQueue_ 与 xNumPerBlock_/scaleNumsPerBlock_ 配套（SetBlockSize 设定）
+    tPipe->InitBuffer(xQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(XType));
+    uint64_t scaleQueueBytes = scaleNumsPerBlock_ * sizeof(ScalesType);
+    if (scaleQueueBytes < UB_ALIGN_BYTES) {
+        scaleQueueBytes = UB_ALIGN_BYTES; // 至少 32B（DataCopy 对齐要求）
+    }
+    tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, scaleQueueBytes);
     tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES); // 用于读取0/1分区的标志位
     tPipe->InitBuffer(writeStateBuf_, UB_ALIGN_BYTES); // 状态位每一个按32B对齐
@@ -168,11 +174,14 @@ __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
  * @param lastBlockNum 最后一个核处理的尾部数据块元素数量
  */
 template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum)
+__aicore__ inline void MTECommunication<TemplateType>::SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum,
+    uint64_t lastBlockNum, uint64_t scaleNumsPerBlock)
 {
     xNumPerBlock_ = elementsPerBlock;
     aivNum_ = aivNum;
     tailXNums_ = lastBlockNum;
+    // scaleNumsPerBlock 为 0 时按默认逻辑（SCALE_BLCOK_BYTES/sizeof(ScalesType)）计算，与旧接口兼容
+    scaleNumsPerBlock_ = (scaleNumsPerBlock != 0) ? scaleNumsPerBlock : (SCALE_BLCOK_BYTES / sizeof(ScalesType));
 }
 
 /**
@@ -218,12 +227,19 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 
-    /* scale 从 GM -> UB -> Win */
+    /* scale 从 GM -> UB -> Win（DataCopyPad 处理 sub-32B 对齐） */
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
+    DataCopyParams scaleGmToUbParams;
+    scaleGmToUbParams.blockLen = scaleNumsPerBlock_ * sizeof(ScalesType);
+    scaleGmToUbParams.blockCount = 1;
+    DataCopyPadParams scaleGmToUbPadParams;
+    DataCopyPad(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleGmToUbParams, scaleGmToUbPadParams);
     scaleQueue_.EnQue(scaleTmpTensor_);
     scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
-    DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    DataCopyParams scaleUbToWinParams;
+    scaleUbToWinParams.blockLen = scaleNumsPerBlock_ * sizeof(ScalesType);
+    scaleUbToWinParams.blockCount = 1;
+    DataCopyPad(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleUbToWinParams);
     scaleQueue_.FreeTensor<ScalesType>(scaleTmpTensor_);
 }
 
@@ -246,7 +262,7 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_; // 计算现在搬第几个scale
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlock_; // 计算现在搬第几个scale
         uint32_t copyBlockNum = xNumPerBlock_;
         if ((aivId_ ==  lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运

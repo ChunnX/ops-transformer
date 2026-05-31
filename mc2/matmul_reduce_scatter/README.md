@@ -288,6 +288,11 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 ## 约束说明
 
+- 通信引擎约束：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持AICPU通信。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持AICPU通信。
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持CCU通信。
+
 - 参数说明中shape涉及的变量说明：
   - m为卡数rank_size的整数倍。
   - k的取值范围为[256, 65535)。

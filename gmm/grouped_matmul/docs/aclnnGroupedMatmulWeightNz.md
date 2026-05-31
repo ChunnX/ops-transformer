@@ -66,11 +66,11 @@
           y_i=(x_i \times weight_i) * scale_i * per\_token\_scale_i  + bias_i
           $$
 
-      - **量化场景 (mx量化，当前无bias无激活层)：**
-
+      - **量化场景（mx量化）：**
         $$
-        y_i=(x_i * per\_token\_scale_i) \times (weight_i * scale_i)
+        y_i[m,n] = \sum_{j=0}^{kLoops-1} ((\sum_{k=0}^{gsK-1} (xSlice_i * weightSlice_i)) * (per\_token\_scale_i[m/gsM, j] * scale_i[j, n/gsN])) + bias_i[n]
         $$
+        其中，gsM,gsN和gsK分别代表M/N/K轴的量化的block size，$xSlice_i$代表$x_i$第m行长度为gsK的向量，$weightSlice_i$代表$weight_i$第n列长度为gsK的向量，K轴均从j * gsK起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
 
       <a id="反量化场景"></a>
 
@@ -110,7 +110,7 @@
 
         其中antiquant\_scale_i为weight矩阵pergroup量化参数，scale_i为weight矩阵perchannel量化参数，per\_token\_scale_i为
         pertoken量化参数。
-        
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulWeightNzGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulWeightNz”接口执行计算。
@@ -183,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -193,7 +193,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。支持昇腾亲和数据排布格式(nz)。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1、FLOAT8_E4M3FN<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup>、
+    FLOAT8_E4M3FN<sup>2</sup></td>
     <td>FRACTAL_NZ</td>
     <td>-</td>
     <td>-</td>
@@ -213,7 +214,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>可选输入</td>
     <td>公式中的<code>scale</code>，代表量化参数中的缩放因子。</td>
     <td>一般情况下，长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
-    <td>UINT64<sup>1</sup>、BFLOAT16<sup>1</sup>、FLOAT32、FLOAT8_E8M0</td>
+    <td>UINT64、INT64、BFLOAT16、FLOAT32、FLOAT8_E8M0<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -243,7 +244,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>可选输入</td>
     <td>公式中的<code>antiquant_offset</code>，代表伪量化参数中的偏移量。</td>
     <td>长度与weight相同。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
-    <td>FLOAT16、BFLOAT16<sup>1</sup></td>
+    <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -417,19 +418,20 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - 上表数据类型列中的角标“1”代表该系列支持的数据类型，角标“2”代表该系列不支持的数据类型。
-        - `weight`可使用`aclnnCalculateMatmulWeightSizeV2`及`aclnnTransMatmulWeight`完成ND到NZ转换。当传入INT32时，接口内部将每个INT32识别成8个INT4。
-        - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - 上表数据类型列中的角标“2”代表该系列支持的数据类型。
-        - `x`支持FLOAT16、BFLOAT16、FLOAT8_E4M3FN、INT8。
-        - `weight`支持FLOAT16、BFLOAT16、FLOAT4_E2M1、INT8、INT4、FLOAT8_E4M3FN。支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
-        - `scaleOptional`支持UINT64/INT64/BFLOAT16/FLOAT32/FLOAT8_E8M0。`offsetOptional`、`antiquantOffsetOptional`暂不支持。
-        - `groupType`支持m轴分组，仅非量化支持不分组。
-        - `quantGroupSize`暂不支持。
-        - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
-        - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在全量化场景最多支持1个tensor。
+      - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
+      - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
+      - `offsetOptional`、`antiquantOffsetOptional`暂不支持。
+      - `groupType`支持m轴分组，仅非量化支持不分组。
+      - `quantGroupSize`暂不支持。
+      - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
+      - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在全量化场景最多支持1个tensor。
+
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+      - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
+      - `weight`可使用`aclnnCalculateMatmulWeightSizeV2`及`aclnnTransMatmulWeight`完成ND到NZ转换。当传入INT32时，接口内部将每个INT32识别成8个INT4。
+      - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
+
 
   - **返回值：**
 
@@ -536,7 +538,11 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
-    - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。此场景支持对称量化和非对称量化：
+    - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+
+      - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
+
+      - 此场景支持对称量化和非对称量化：
 
       - 对称量化场景：
 
@@ -661,12 +667,12 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:---------:| :------ |
       |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
   - 动态量化（mx量化）场景支持的输入类型与shape为：
-    - 以下入参为空：offsetOptional、biasOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
-        |groupType| x       | weight  | scaleOptional |  perTokenScaleOptional |out     |
-        |:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
-        |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
-
+        |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
+        |:-------:|:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
+        |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN| null|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
+        |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2 | FLOAT32/null |   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |

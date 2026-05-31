@@ -23,11 +23,12 @@
 using namespace AscendC;
 namespace optiling {
 
+constexpr int64_t BUFFER_NUM = 3;
 constexpr int64_t DOUBLE_SIZE = 2;
 constexpr int64_t VL_SIZE = 256;
 constexpr int64_t MASK_BUFFER = 64;
-constexpr int64_t MAX_BUFFER_BACKWARD = 256;
-constexpr int64_t MAX_BUFFER_FORWARD = 256 * DOUBLE_SIZE;
+constexpr int64_t MAX_BUFFER_BACKWARD = 256 * BUFFER_NUM;
+constexpr int64_t MAX_BUFFER_FORWARD = 256 * BUFFER_NUM;
 
 
 MhcSinkhornSplitCoreInfo MhcSinkhornBaseTiling::BaseSplitCores(int64_t tSize, int64_t nSize,

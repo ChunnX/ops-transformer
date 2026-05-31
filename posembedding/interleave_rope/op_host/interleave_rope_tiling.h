@@ -15,12 +15,12 @@
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_INTERLEAVE_ROPE_H_
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_INTERLEAVE_ROPE_H_
 
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"
 #include "platform/platform_infos_def.h"

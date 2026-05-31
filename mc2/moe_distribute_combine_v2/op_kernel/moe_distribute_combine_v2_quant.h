@@ -38,7 +38,7 @@ using namespace MoeDistributeV2Base;
 
 template <typename ExpandXType, typename XType, typename ExpandIdxType, bool IsNeedReduceScatter,
     uint8_t QuantMode, bool HasAddRmsNorm>
-class MoeDistributeCombineQuant{
+class MoeDistributeCombineQuant {
 public:
     float scaleValFloat_;
     LocalTensor<half> fp16CastTensor_;
@@ -79,7 +79,7 @@ public:
         scaleDivFloatTensor_ = scaleDivFloatTensor;
     }
 
-     __aicore__ inline void QuantInit(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_, uint32_t &hExpandXAlignSize_,
+    __aicore__ inline void QuantInit(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_, uint32_t &hExpandXAlignSize_,
         uint32_t &scaleNumAlignSize_, uint32_t &hFloatAlign256Size_, uint32_t &tokenScaleCnt_, uint32_t axisH)
     {
         axisH_ = axisH;
@@ -88,6 +88,10 @@ public:
             scaleValFloat_ = static_cast<float>(1.0f / SCALE_PARAM);
             uint32_t scaleGranu = static_cast<uint32_t>(UB_ALIGN / sizeof(float)); // 计算每个block得到的reducemax结果数量
             quantScaleNum_ = (hExpandXAlign32Size_ / sizeof(ExpandXType)) / scaleGranu; // 得到有效scale的个数
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            // A5 INT8融合反量化按512B覆盖尾段，scale数量需与Brcb的repeat覆盖范围一致
+            quantScaleNum_ = (hFloatAlign256Size_ / sizeof(float)) / scaleGranu;
+#endif
             scaleNum_ = quantScaleNum_;
             hExpandXAlignSize_ = hExpandXAlign32Size_;
             scaleNumAlignSize_ = Ceil(scaleNum_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
@@ -95,7 +99,7 @@ public:
             mask_ = static_cast<uint32_t>(ALIGNED_LEN / sizeof(float));
             tokenScaleCnt_ = hAlign32Size_ / sizeof(ExpandXType) + quantScaleNum_; // int8_align + scale有效个数
         }
-        #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr(QuantMode == MXFP8_E5M2_COMM_QUANT || QuantMode == MXFP8_E4M3_COMM_QUANT) {
             hExpandXAlignSize_ = Align128(axisH) * sizeof(ExpandXType);
             quantScaleNum_ = Align2(Ceil32(axisH));
@@ -103,7 +107,7 @@ public:
             scaleNumAlignSize_ = Align128(scaleNum_) * sizeof(ExpandXType) * BUFFER_NUM; // 双搬
             tokenScaleCnt_ = Align256(axisH) / sizeof(ExpandXType) + scaleNum_;
         }
-        #endif
+#endif
     }
 
     __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &outLocal, LocalTensor<ExpandXType> &inLocal)
@@ -132,7 +136,7 @@ public:
         SyncFunc<AscendC::HardEvent::V_MTE3>();
     }
 
-    __aicore__ inline void Int8DequantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType> &outLocal)
+    __aicore__ inline void Int8DequantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType>& outLocal)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = inLocal.template ReinterpretCast<int8_t>();
@@ -151,6 +155,111 @@ public:
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    __aicore__ inline void Int8DequantProcessA5(LocalTensor<XType>& inLocal,
+        LocalTensor<float>& sumFinalTensor, float scaleVal)
+    {
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        LocalTensor<int8_t> tokenInt8Tensor = inLocal.template ReinterpretCast<int8_t>();
+        scaleDivTensor_ = inLocal[hAlign32Size_ / INT8_DIVIVE];
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Cast(scaleDivFloatTensor_, scaleDivTensor_, RoundMode::CAST_NONE, quantScaleNum_);
+        PipeBarrier<PIPE_V>();
+        Brcb(scaleDupLocalTensor_, scaleDivFloatTensor_, repeatNum_, {1, BLOCK_NUM});
+        PipeBarrier<PIPE_V>();
+
+        __ubuf__ int8_t* tokenPtr0 = (__ubuf__ int8_t*)tokenInt8Tensor.GetPhyAddr();
+        __ubuf__ float* dyScaleFp32Ptr = (__ubuf__ float*)scaleDupLocalTensor_.GetPhyAddr();
+        __ubuf__ float* sumFinalDstPtr = (__ubuf__ float*)sumFinalTensor.GetPhyAddr();
+
+        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float);
+        uint32_t elementsPerRepeat = fp32RepeatSize * INT8_DIVIVE;
+        uint16_t fp32RepeatTimes = Ceil(axisH_, elementsPerRepeat);
+        uint32_t tailElements = axisH_ % elementsPerRepeat;
+        bool hasTail = tailElements != 0U;
+
+        __VEC_SCOPE__
+        {
+            AscendC::MicroAPI::RegTensor<int8_t> tokenSrcReg;
+            AscendC::MicroAPI::RegTensor<half>   tokenHalfReg;
+            AscendC::MicroAPI::RegTensor<float>  tokFp32_1;
+            AscendC::MicroAPI::RegTensor<float>  tokFp32_2;
+            AscendC::MicroAPI::RegTensor<float>  dyScaleFp32_1;
+            AscendC::MicroAPI::RegTensor<float>  dyScaleFp32_2;
+            AscendC::MicroAPI::RegTensor<float>  deqFp32_1;
+            AscendC::MicroAPI::RegTensor<float>  deqFp32_2;
+            AscendC::MicroAPI::RegTensor<XType>  deqXType_1;
+            AscendC::MicroAPI::RegTensor<XType>  deqXType_2;
+            AscendC::MicroAPI::RegTensor<float>  sumLocal_1;
+            AscendC::MicroAPI::RegTensor<float>  sumLocal_2;
+            AscendC::MicroAPI::RegTensor<float>  sumFinal_1;
+            AscendC::MicroAPI::RegTensor<float>  sumFinal_2;
+
+            static constexpr AscendC::MicroAPI::CastTrait castZero = {
+                AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+                AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+            static constexpr AscendC::MicroAPI::CastTrait castOne = {
+                AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN,
+                AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::UNKNOWN};
+            static constexpr AscendC::MicroAPI::CastTrait castRint = {
+                AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
+                AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+
+            AscendC::MicroAPI::MaskReg maskF32All = AscendC::MicroAPI::CreateMask<float,
+                AscendC::MicroAPI::MaskPattern::ALL>();
+            AscendC::MicroAPI::MaskReg maskF16All = AscendC::MicroAPI::CreateMask<half,
+                AscendC::MicroAPI::MaskPattern::ALL>();
+            AscendC::MicroAPI::MaskReg maskF32Tail;
+            AscendC::MicroAPI::MaskReg maskF16Tail;
+            if (hasTail) {
+                uint32_t tailF32Elements = Ceil(tailElements, INT8_DIVIVE);
+                maskF32Tail = AscendC::MicroAPI::UpdateMask<float>(tailF32Elements);
+                maskF16Tail = AscendC::MicroAPI::UpdateMask<half>(tailElements);
+            }
+            AscendC::MicroAPI::MaskReg maskF32;
+            AscendC::MicroAPI::MaskReg maskF16;
+
+            for (uint16_t i = 0; i < fp32RepeatTimes; ++i) {
+                bool isTailRepeat = hasTail && (i == fp32RepeatTimes - 1U);
+                if (isTailRepeat) {
+                    maskF32 = maskF32Tail;
+                    maskF16 = maskF16Tail;
+                } else {
+                    maskF32 = maskF32All;
+                    maskF16 = maskF16All;
+                }
+
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    dyScaleFp32_1, dyScaleFp32_2,
+                    dyScaleFp32Ptr + INT8_DIVIVE * i * fp32RepeatSize);
+                MicroAPI::DataCopy<int8_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+                    tokenSrcReg, tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    sumFinal_1, sumFinal_2,
+                    sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
+
+                MicroAPI::Cast<half, int8_t, castZero>(tokenHalfReg, tokenSrcReg, maskF16);
+                MicroAPI::Cast<float, half, castZero>(tokFp32_1, tokenHalfReg, maskF16);
+                MicroAPI::Cast<float, half, castOne>(tokFp32_2, tokenHalfReg, maskF16);
+
+                MicroAPI::Mul(deqFp32_1, dyScaleFp32_1, tokFp32_1, maskF32);
+                MicroAPI::Mul(deqFp32_2, dyScaleFp32_2, tokFp32_2, maskF32);
+
+                MicroAPI::Cast<XType, float, castRint>(deqXType_1, deqFp32_1, maskF32);
+                MicroAPI::Cast<XType, float, castRint>(deqXType_2, deqFp32_2, maskF32);
+                MicroAPI::Cast<float, XType, castZero>(deqFp32_1, deqXType_1, maskF32);
+                MicroAPI::Cast<float, XType, castZero>(deqFp32_2, deqXType_2, maskF32);
+
+                MicroAPI::Muls(sumLocal_1, deqFp32_1, scaleVal, maskF32);
+                MicroAPI::Muls(sumLocal_2, deqFp32_2, scaleVal, maskF32);
+                MicroAPI::Add(sumFinal_1, sumFinal_1, sumLocal_1, maskF32);
+                MicroAPI::Add(sumFinal_2, sumFinal_2, sumLocal_2, maskF32);
+
+                MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
+                    sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE,
+                    sumFinal_1, sumFinal_2, maskF32);
+            }
+        }
+    }
     __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType>& outLocal, LocalTensor<ExpandXType>& inLocal)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -176,77 +285,85 @@ public:
                 srcAddr, halfScaleLocalAddr, outLocalAddr, axisH_); // 计算量化后的expandx并填充
         }
     }
-    
+
     template <typename T>
-    __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<float>& sumTensor)
+    __aicore__ inline void DeQuantMxFp8(LocalTensor<XType>& inLocal, LocalTensor<float>& sumTensor,
+        LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
         LocalTensor<T> castFp8LocalTensor_ = inLocal.template ReinterpretCast<T>();
         // bf16/fp16量化为mxfp8后，字节差2倍
         LocalTensor<fp8_e8m0_t> scaleDivFp8Tensor_ =
             inLocal[Align256<uint32_t>(axisH_) / INT8_DIVIVE].template ReinterpretCast<fp8_e8m0_t>();
-        __ubuf__ bfloat16_t *dyScaleBf16Ptr = (__ubuf__ bfloat16_t *)scaleDivFloatTensor_.GetPhyAddr();
-        __ubuf__ float *dyScaleFp32Ptr = (__ubuf__ float *)scaleDupLocalTensor_.GetPhyAddr(); // 大小是h*4字节
-        __ubuf__ fp8_e8m0_t *srcPtr0 = (__ubuf__ fp8_e8m0_t *)scaleDivFp8Tensor_.GetPhyAddr();
-        __ubuf__ T *tokenPtr0 = (__ubuf__ T *)castFp8LocalTensor_.GetPhyAddr();
-        __ubuf__ float *sumDstPtr = (__ubuf__ float *)sumTensor.GetPhyAddr();
-        uint32_t bf16RepeatSize = quant::GetVRegSizeDispatch() / sizeof(bfloat16_t);
-        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float);
-        uint16_t repeatTimes = Ceil(quantScaleNum_, bf16RepeatSize);
-        uint16_t fp32RepeatTimes = Ceil(axisH_, fp32RepeatSize);
-        uint16_t repeatTimes2 = Ceil(quantScaleNum_ * INT8_DIVIVE, fp32RepeatSize);
-        uint32_t quantCount2 = quantScaleNum_ * INT8_DIVIVE;
+        __ubuf__ float* dyScaleFp32Ptr = (__ubuf__ float*)scaleDupLocalTensor_.GetPhyAddr(); // 大小是h*2字节
+        __ubuf__ fp8_e8m0_t* srcPtr0 = (__ubuf__ fp8_e8m0_t*)scaleDivFp8Tensor_.GetPhyAddr();
+        __ubuf__ T* tokenPtr0 = (__ubuf__ T*)castFp8LocalTensor_.GetPhyAddr();
+        __ubuf__ float* sumFinalDstPtr = (__ubuf__ float*)sumFinalTensor.GetPhyAddr();
+        uint32_t fp32RepeatSize = quant::GetVRegSizeDispatch() / sizeof(float); // 64
+        uint16_t repeatTimes = Ceil(quantScaleNum_, fp32RepeatSize);
+        uint16_t fp32RepeatTimes = Ceil(axisH_, fp32RepeatSize * INT8_DIVIVE);
+        uint32_t axisHx4 = 4 * axisH_; // 4为fp32与fp8字节数比例，用于换算fp8 mask粒度
+        const int16_t expShift = 23; // fp32指数字段起始位，e8m0指数左移到该字段
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<fp8_e8m0_t> vSrcReg;
             AscendC::MicroAPI::RegTensor<T> tokenSrcReg;
-            AscendC::MicroAPI::RegTensor<float> tokenFp32SrcReg;
-            AscendC::MicroAPI::RegTensor<bfloat16_t> vDstReg;
-            AscendC::MicroAPI::RegTensor<bfloat16_t> dyScaleBf16Reg;
+            AscendC::MicroAPI::RegTensor<float> tokenFp32SrcReg_1;
+            AscendC::MicroAPI::RegTensor<float> tokenFp32SrcReg_2;
             AscendC::MicroAPI::RegTensor<float> dyScaleFp32Reg;
-            AscendC::MicroAPI::RegTensor<float> sumDstReg;
-            AscendC::MicroAPI::RegTensor<float> sumLocalDstReg;
-            static constexpr AscendC::MicroAPI::CastTrait FP82BF16CastTraitZero = {
-            AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-            AscendC::MicroAPI::MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN};
-            static constexpr AscendC::MicroAPI::CastTrait FP162FP32CastTraitZero = {
-            AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
-            AscendC::MicroAPI::MaskMergeMode::ZEROING,
-            AscendC::RoundMode::UNKNOWN};
+            AscendC::MicroAPI::RegTensor<float> sumLocalDstReg_1;
+            AscendC::MicroAPI::RegTensor<float> sumLocalDstReg_2;
+            AscendC::MicroAPI::RegTensor<float> sumFinalDstReg_1;
+            AscendC::MicroAPI::RegTensor<float> sumFinalDstReg_2;
+            static constexpr AscendC::MicroAPI::CastTrait castTrait0 = {
+                AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN,
+                AscendC::MicroAPI::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
+            static constexpr AscendC::MicroAPI::CastTrait castTrait2 = {
+                AscendC::MicroAPI::RegLayout::TWO, AscendC::MicroAPI::SatMode::UNKNOWN,
+                AscendC::MicroAPI::MaskMergeMode::ZEROING,
+                AscendC::RoundMode::UNKNOWN};
+
             AscendC::MicroAPI::MaskReg maskReg;
-            AscendC::MicroAPI::MaskReg maskReg1;
             AscendC::MicroAPI::MaskReg maskReg2;
-
-            for (uint16_t i = 0; i < repeatTimes; i++) {
-                maskReg = AscendC::MicroAPI::UpdateMask<bfloat16_t>(quantScaleNum_);
-                // 一次搬128个u8 unpack成128个u16
-                MicroAPI::DataCopy<fp8_e8m0_t, MicroAPI::LoadDist::DIST_UNPACK_B8>(vSrcReg,
-                    srcPtr0 + i * bf16RepeatSize);
-                MicroAPI::Cast<bfloat16_t, fp8_e8m0_t, FP82BF16CastTraitZero>(vDstReg, vSrcReg, maskReg);
-                MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_INTLV_B16>(
-                    dyScaleBf16Ptr + i * bf16RepeatSize * INT8_DIVIVE, vDstReg, vDstReg, maskReg); // bf16，双搬出元素
-            }
-            MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            for (uint16_t i = 0; i < repeatTimes2; i++) {
-                maskReg1 = AscendC::MicroAPI::UpdateMask<float>(quantCount2);
-                MicroAPI::DataCopy<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(dyScaleBf16Reg,
-                    dyScaleBf16Ptr + i * fp32RepeatSize); // 128/2=64 搬入64个u16 unpack成64个u32
-                MicroAPI::Cast<float, bfloat16_t, FP162FP32CastTraitZero>(dyScaleFp32Reg, dyScaleBf16Reg, maskReg1);
+            AscendC::MicroAPI::MaskReg maskReg3;
+            // read all the scales, cast all the e8m0 scale to FP32, store them
+            for (uint16_t i = 0; i < repeatTimes; ++i) {
+                maskReg = AscendC::MicroAPI::UpdateMask<float>(quantScaleNum_);
+                MicroAPI::DataCopy<fp8_e8m0_t, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
+                    vSrcReg, srcPtr0 + i * fp32RepeatSize);
+                // cast e8m0 to FP32
+                MicroAPI::ShiftLefts((AscendC::MicroAPI::RegTensor<uint32_t>&)dyScaleFp32Reg,
+                    (AscendC::MicroAPI::RegTensor<uint32_t>&)vSrcReg, expShift, maskReg);
                 MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
-                    dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE, dyScaleFp32Reg, dyScaleFp32Reg, maskReg1);
+                    dyScaleFp32Ptr + i * fp32RepeatSize * INT8_DIVIVE, dyScaleFp32Reg, dyScaleFp32Reg, maskReg);
             }
 
-            MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
-            for (uint16_t i = 0; i < fp32RepeatTimes; i++) {
+            MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE,
+                AscendC::MicroAPI::MemType::VEC_LOAD>();
+            for (uint16_t i = 0; i < fp32RepeatTimes; ++i) {
                 maskReg2 = AscendC::MicroAPI::UpdateMask<float>(axisH_);
+                maskReg3 = AscendC::MicroAPI::UpdateMask<T>(axisHx4);
                 // 广播4B->32B，8倍
-                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(dyScaleFp32Reg, dyScaleFp32Ptr + i * 8);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(
+                    dyScaleFp32Reg, dyScaleFp32Ptr + i * 8);
                 // 接收到的token float8_e5m2_t
-                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_UNPACK4_B8>(tokenSrcReg,
-                    tokenPtr0 + i * fp32RepeatSize);
-                MicroAPI::Cast<float, T, FP82BF16CastTraitZero>(tokenFp32SrcReg, tokenSrcReg, maskReg2);
-                MicroAPI::Mul(sumLocalDstReg, dyScaleFp32Reg, tokenFp32SrcReg, maskReg2); // token与量化参数相乘
-                MicroAPI::DataCopy(sumDstPtr + i * fp32RepeatSize, sumLocalDstReg, maskReg2); // 最后搬出 float类型
+                MicroAPI::DataCopy<T, MicroAPI::LoadDist::DIST_UNPACK_B8>(
+                    tokenSrcReg, tokenPtr0 + INT8_DIVIVE * i * fp32RepeatSize);
+                MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    sumFinalDstReg_1, sumFinalDstReg_2,
+                    sumFinalDstPtr + INT8_DIVIVE * i * fp32RepeatSize);
+                MicroAPI::Cast<float, T, castTrait0>(tokenFp32SrcReg_1, tokenSrcReg, maskReg3);
+                MicroAPI::Cast<float, T, castTrait2>(tokenFp32SrcReg_2, tokenSrcReg, maskReg3);
+                // token与量化参数相乘
+                MicroAPI::Mul(sumLocalDstReg_1, dyScaleFp32Reg, tokenFp32SrcReg_1, maskReg2);
+                MicroAPI::Mul(sumLocalDstReg_2, dyScaleFp32Reg, tokenFp32SrcReg_2, maskReg2);
+                MicroAPI::Muls(sumLocalDstReg_1, sumLocalDstReg_1, scaleVal, maskReg2); // token与专家scale相乘
+                MicroAPI::Muls(sumLocalDstReg_2, sumLocalDstReg_2, scaleVal, maskReg2); // token与专家scale相乘
+                MicroAPI::Add(sumFinalDstReg_1, sumFinalDstReg_1, sumLocalDstReg_1, maskReg2); // combine累加
+                MicroAPI::Add(sumFinalDstReg_2, sumFinalDstReg_2, sumLocalDstReg_2, maskReg2); // combine累加
+                MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_INTLV_B32>(
+                    sumFinalDstPtr + i * fp32RepeatSize * INT8_DIVIVE, sumFinalDstReg_1, sumFinalDstReg_2,
+                    maskReg2); // 最后搬出 float类型
             }
         }
     }
@@ -256,25 +373,30 @@ public:
         if constexpr (QuantMode == INT8_COMM_QUANT) {
             Int8QuantProcess(outLocal, inLocal);
         }
-        #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT || QuantMode == MXFP8_E4M3_COMM_QUANT) {
             QuantMxFp8(outLocal, inLocal);
         }
-        #endif
+#endif
     }
     __aicore__ inline void DeQuantProcess(LocalTensor<XType>& inLocal, LocalTensor<XType>& outLocal,
-        LocalTensor<float>& sumTensor)
+        LocalTensor<float>& sumTensor, LocalTensor<float>& sumFinalTensor, float scaleVal)
     {
         if constexpr (QuantMode == INT8_COMM_QUANT) {
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            // A5 走反量化及加权求和融合
+            Int8DequantProcessA5(inLocal, sumFinalTensor, scaleVal);
+#else
             Int8DequantProcess(inLocal, outLocal);
+#endif
         }
-        #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         else if constexpr (QuantMode == MXFP8_E5M2_COMM_QUANT) {
-            DeQuantMxFp8<fp8_e5m2_t>(inLocal, sumTensor);
+            DeQuantMxFp8<fp8_e5m2_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
         } else if constexpr (QuantMode == MXFP8_E4M3_COMM_QUANT) {
-            DeQuantMxFp8<fp8_e4m3fn_t>(inLocal, sumTensor);
+            DeQuantMxFp8<fp8_e4m3fn_t>(inLocal, sumTensor, sumFinalTensor, scaleVal);
         }
-        #endif
+#endif
     }
 };
 }

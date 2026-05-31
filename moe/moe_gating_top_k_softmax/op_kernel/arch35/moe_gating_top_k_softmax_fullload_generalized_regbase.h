@@ -242,6 +242,7 @@ __aicore__ inline void MoeGatingTopKSoftmaxFullloadGenerlized<T, hasFinished, ne
     LocalTensor<float> tmpTensor =
         calcTmpBuf_.Get<float>()[(rowCount + B32_BLOCK_COUNT - 1) / B32_BLOCK_COUNT * B32_BLOCK_COUNT];
 
+    Duplicate(softmaxTensor, 0.0f, rowCount * expertCountAlign_);
     uint16_t rowLoops = static_cast<uint32_t>(rowCount);
     __VEC_SCOPE__
     {

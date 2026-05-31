@@ -10,18 +10,18 @@
 #ifndef BSA_ARCH35_KERNEL_UTILS
 #define BSA_ARCH35_KERNEL_UTILS
 
-#include "../attn_infra/base_defs.hpp"
-#include "../attn_infra/arch/arch.hpp"
-#include "../attn_infra/layout/layout.hpp"
+#include "../attn_infra/bsa_base_defs.hpp"
+#include "../attn_infra/arch/bsa_arch.hpp"
+#include "../attn_infra/layout/bsa_layout.hpp"
 
-#include "../attn_infra/gemm/block/block_mmad.hpp"
-#include "../attn_infra/gemm/dispatch_policy.hpp"
-#include "../attn_infra/gemm/gemm_type.hpp"
+#include "../attn_infra/gemm/block/bsa_block_mmad.hpp"
+#include "../attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
+#include "../attn_infra/gemm/bsa_gemm_type.hpp"
 
-#include "../attn_infra/arch/cross_core_sync.hpp"
-#include "../attn_infra/arch/resource.hpp"
-#include "../attn_infra/epilogue/block/block_epilogue.hpp"
-#include "../attn_infra/epilogue/dispatch_policy.hpp"
+#include "../attn_infra/arch/bsa_cross_core_sync.hpp"
+#include "../attn_infra/arch/bsa_resource.hpp"
+#include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
+#include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "../tla/tensor.hpp"
 #include "../tla/layout.hpp"
 #include "kernel_operator.h"

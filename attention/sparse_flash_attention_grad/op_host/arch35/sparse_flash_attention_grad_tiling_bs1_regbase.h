@@ -18,8 +18,8 @@
 #include "../sparse_flash_attention_grad_tiling_common.h"
 #include "../../op_kernel/arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "../../op_kernel/arch35/sparse_flash_attention_grad_template_tiling_key.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 
 namespace optiling {
 namespace sfag {

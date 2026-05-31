@@ -16,6 +16,7 @@
 #include "acl/acl_rt.h"
 #include "acl/acl_dump.h"
 #include "../op_kernel/moe_distribute_comm_ctx.h"
+#include "../op_kernel/mc2_moe_context.h"
 #include "mc2_log.h"
 #include "mc2_tiling_utils.h"
 #include <chrono>
@@ -26,10 +27,17 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <vector>
+#include <map>
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
+#include <dlfcn.h>
+#include <cstring>
+#include <mutex>
+#include "./mc2_hcom_topo_info.h"
 
-#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
+// 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
+// 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
+#define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
 
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 namespace Mc2Exception {
@@ -39,6 +47,90 @@ const uint32_t WIN_SIZE = 1024U * 1024U;
 const uint32_t MS_WIDTH = 3U;
 const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
+
+const std::map<std::string, std::string> MC2_OP_CONTEXT = {
+    {"MoeDistributeDispatchV3", "Mc2MoeContext"},
+    {"MoeDistributeCombineV3", "Mc2MoeContext"},
+    {"MoeDistributeDispatchV2", "HcclCombinOpParam"},
+    {"MoeDistributeCombineV2", "HcclCombinOpParam"}
+};
+
+class MC2GroupNameManager {
+public:
+    static MC2GroupNameManager& GetInstance()
+    {
+        static MC2GroupNameManager instance;
+        return instance;
+    }
+    void SetGroupName(const char* groupName)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
+            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
+            OP_LOGE(OP_NAME, "groupName is invalid.");
+            return;
+        }
+        groupName_ = std::string(groupName);
+    }
+    const char* GetGroupName()
+    {
+        return groupName_.empty() ? nullptr : groupName_.c_str();
+    }
+
+private:
+    MC2GroupNameManager() = default;
+    std::string groupName_;
+    std::mutex mutex_;
+};
+
+// 函数指针类型定义
+typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
+typedef const char* (*acldumpGetPath_t)(acldumpType dumpType);
+
+// 动态加载clrtGetArgsFromExceptionInfo函数
+inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
+{
+    static aclrtGetArgsFromExceptionInfo_t func = nullptr;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        // 直接从 libacl_rt.so 加载符号
+        void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
+        if (handle != nullptr) {
+            func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror());
+        }
+    }
+    return func;
+}
+
+// 动态加载acldumpGetPath函数
+inline acldumpGetPath_t GetAcldumpGetPathFunc()
+{
+    static acldumpGetPath_t func = nullptr;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        // 尝试加载ascend_dump.so
+        void *handle = dlopen("libascend_dump.so", RTLD_NOLOAD | RTLD_LAZY);
+        if (handle != nullptr) {
+            func = (acldumpGetPath_t)dlsym(handle, "acldumpGetPath");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym acldumpGetPath failed: %s", dlerror());
+            } else {
+                OP_LOGD(OP_NAME, "Successfully loaded acldumpGetPath function");
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen libascend_dump.so failed: %s", dlerror());
+        }
+    }
+    return func;
+}
 
 inline std::string GetTimestampWithMilliseconds()
 {
@@ -108,24 +200,66 @@ inline int DumpToFile(std::string dir, std::string name, uint32_t id, void *buf)
     return 0;
 }
 
-inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
+inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, const char *op)
 {
     // Get hccl context from its addr
-    std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
-    auto ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
-                           ACL_MEMCPY_DEVICE_TO_HOST);
-    if (ret != ACL_SUCCESS) {
-        OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
+    if (op == nullptr) {
+        OP_LOGE(OP_NAME, "op parameter is null.");
         return -1;
     }
-    HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
-    if (winContext == nullptr) {
-        OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+    void* winAddr = nullptr;
+    aclError ret = ACL_SUCCESS;
+    auto is_support_op = MC2_OP_CONTEXT.find(op);
+    if (is_support_op == MC2_OP_CONTEXT.end()) {
+        // 不支持的算子
+        OP_LOGE(OP_NAME, "Get winarr does not support this operator, op_name = %s", op);
         return -1;
     }
-    OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
-
-    void* winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
+    const std::string& context_type = is_support_op->second;
+    // V2分支
+    if (context_type == "HcclCombinOpParam") {
+        std::vector<uint8_t> hcclArgs(sizeof(HcclCombinOpParam), 0);
+        ret = aclrtMemcpy(hcclArgs.data(), sizeof(HcclCombinOpParam), (void *)argsAddr, sizeof(HcclCombinOpParam),
+            ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy HcclCombinOpParam from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        HcclCombinOpParam* winContext = reinterpret_cast<HcclCombinOpParam *>(hcclArgs.data());
+        if (winContext == nullptr) {
+            OP_LOGE(OP_NAME, "Cast to winContext failed. HcclCombinOpParam is null.");
+            return -1;
+        }
+        OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u, rankDim=%u", winContext->rankId, winContext->rankDim);
+        if (winContext->rankId >= HCCL_MTE_MAX_RANK_NUM) {
+            OP_LOGE(OP_NAME, "rankId %u exceeds array bound %u.", winContext->rankId, HCCL_MTE_MAX_RANK_NUM);
+            return -1;
+        }
+        winAddr = reinterpret_cast<void *>(winContext->windowsIn[winContext->rankId]);
+    } else if (context_type == "Mc2MoeContext") {
+        // V3分支
+        std::vector<uint8_t> hcclArgs(sizeof(Mc2Aclnn::Mc2MoeContext), 0);
+        ret = aclrtMemcpy(hcclArgs.data(), sizeof(Mc2Aclnn::Mc2MoeContext), (void *)argsAddr,
+            sizeof(Mc2Aclnn::Mc2MoeContext), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy Mc2MoeContext from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        Mc2Aclnn::Mc2MoeContext* winContext = reinterpret_cast<Mc2Aclnn::Mc2MoeContext *>(hcclArgs.data());
+        if (winContext == nullptr) {
+            OP_LOGE(OP_NAME, "Cast to winContext failed. Mc2MoeContext is null.");
+            return -1;
+        }
+        OP_LOGD(OP_NAME, "Get winContext from args. rankId=%u", winContext->epRankId);
+        if (winContext->epRankId >= Mc2Aclnn::HCCL_MAX_RANK_SIZE) {
+            OP_LOGE(OP_NAME, "epRankId %u exceeds array bound %u.", winContext->epRankId, Mc2Aclnn::HCCL_MAX_RANK_SIZE);
+            return -1;
+        }
+        winAddr = reinterpret_cast<void *>(winContext->epHcclBuffer_[winContext->epRankId]);
+    } else {
+        OP_LOGE(OP_NAME, "Unknown context type: %s", context_type.c_str());
+        return -1;
+    }
     if (winAddr == nullptr) {
         OP_LOGE(OP_NAME, "Get winaddr failed.");
         return -1;
@@ -171,10 +305,34 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
     return 0;
 }
 
+inline int ProcessArgsForA2(const char* groupName, std::vector<uint8_t> &winBuf)
+{
+    if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
+        strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
+        OP_LOGE(OP_NAME, "groupName is invalid.");
+        return -1;
+    }
+    uint64_t size;
+    void* winAddr = nullptr;
+    Mc2Hcom::MC2HcomTopology::CommGetHcclBufferByGroup(groupName, &winAddr, &size);
+    if (winAddr == nullptr) {
+        OP_LOGE(OP_NAME, "Get win addr failed.");
+        return -1;
+    }
+    OP_LOGE(OP_NAME, "HCCL BUFFER SIZE=%luMB. WindowInAddr=%p.", size / (1 * 1024 * 1024) / 2, winAddr);
+    auto ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, winAddr, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_SUCCESS) {
+        OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+        return -1;
+    }
+    return 0;
+}
+
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
-    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)) {
+    if ((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr) &&
+        (std::strstr(socName, "Ascend910B") == nullptr)) {
         OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
         return;
     }
@@ -184,11 +342,19 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     // Get addr of hccl context from ExceptionInfo
     void* devArgsPtr = nullptr;
     uint32_t devArgsLen = 0;
-    auto ret = aclrtGetArgsFromExceptionInfo(args, &devArgsPtr, &devArgsLen);
+
+    auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
         return;
     }
+
     uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetDeviceIdFromExceptionInfo failed. ret=%d", ret);
@@ -217,14 +383,34 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     } else if (std::strstr(socName, "Ascend950") != nullptr) {
-        if (ProcessArgsForA5(argsAddr, winContent) != 0) {
+        if (ProcessArgsForA5(argsAddr, winContent, op) != 0) {
+            OP_LOGE(OP_NAME, "Failed to get win content.");
+            return;
+        }
+    } else if (std::strstr(socName, "Ascend910B") != nullptr) {
+        const char *groupName = MC2GroupNameManager::GetInstance().GetGroupName();
+        if (ProcessArgsForA2(groupName, winContent) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
     }
 
+    // 获取acldumpGetPath函数指针
+    auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
+    if (acldumpGetPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function, skip dump");
+        return;
+    }
+    
+    // 获取dump路径
+    const char* dumpPath = acldumpGetPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL");
+        return;
+    }
+
     // Write to bin file
-    if (DumpToFile(std::string(acldumpGetPath(acldumpType::AIC_ERR_BRIEF_DUMP)), GenDumpFileName(args, op), deviceId,
+    if (DumpToFile(std::string(dumpPath), GenDumpFileName(args, op), deviceId,
                    winContent.data()) != 0) {
         OP_LOGE(OP_NAME, "Failed to get win content.");
     }

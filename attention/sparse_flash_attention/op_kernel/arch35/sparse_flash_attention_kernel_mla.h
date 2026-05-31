@@ -54,11 +54,12 @@ public:
 
     __aicore__ inline SparseFlashAttentionKernelMla(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-        __gm__ uint8_t *sparseIndices, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-        __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-        __gm__ uint8_t *gmTiling, TPipe *tPipe);
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *actualSeqLengthsQ,
+                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+                                const SparseFlashAttentionTilingDataMla *__restrict tiling,
+                                __gm__ uint8_t *gmTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -66,7 +67,8 @@ private:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
+        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+        const SparseFlashAttentionTilingDataMla *__restrict tiling,
         TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
@@ -121,6 +123,8 @@ private:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+
+    uint32_t crossCoreSyncBufId = 0;
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -137,10 +141,12 @@ template <typename CubeBlockType, typename VecBlockType>
     constInfo.subBlockIdx = GetSubBlockIdx();
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
+        constInfo.aicIdx = this->aicIdx;
         constInfo.aivIdx = 0;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
+        constInfo.aicIdx = this->aicIdx;
         this->tilingData = tiling;
     }
 
@@ -156,12 +162,13 @@ template <typename CubeBlockType, typename VecBlockType>
         constInfo.s1Size = this->sharedParams.s1Size;
         constInfo.dSizeV = 512;
         constInfo.needInit = this->sharedParams.needInit;
+        constInfo.returnSoftmaxLse = this->sharedParams.returnSoftmaxLse;
     }
-    vecBlock.CleanOutput(attentionOut, constInfo);
+    vecBlock.CleanOutput(attentionOut, softmaxMax, softmaxSum, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, queryRope);
+        cubeBlock.InitCubeBlock(pipe, l1BufferManager, query, queryRope);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -173,7 +180,7 @@ template <typename CubeBlockType, typename VecBlockType>
     }
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, queryRope, keyRope, sparseIndices, \
-        blockTable, actualSeqLengthsQ, actualSeqLengths, \
+        blockTable, actualSeqLengthsQ, actualSeqLengths, softmaxMax, softmaxSum, \
         workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
@@ -216,7 +223,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitCalcParamsE
     }
 
     if constexpr (IS_SPLIT_G) {
-        maxS2LoopCnt = avgBaseNum * (constInfo.s2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+        maxS2LoopCnt = avgBaseNum * (constInfo.sparseBlockCount + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
 
     if (aicIdx >= usedCoreNum) {
@@ -288,8 +295,6 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::GetBalanceActualSeqL
     } else {
         if (constInfo.isActualLenDimsNull == 1) {
             return constInfo.s1Size;
-        } else if (constInfo.isActualLenDimsNull == 0) {
-            return actualSeqQlenAddr[0];
         } else {
             return actualSeqQlenAddr[bIdx];
         }
@@ -303,7 +308,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 {
     uint32_t bEndPrev = bN2EndPrev / constInfo.n2Size;
     uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bEndPrev);
-    uint32_t s1GPrevBaseNum = (actualSeqQPrev * constInfo.gSize + constInfo.s1BaseSize - 1) / constInfo.s1BaseSize;
+    uint32_t s1GPrevBaseNum = actualSeqQPrev;
     constInfo.bN2Start = bN2EndPrev;
     constInfo.gS1Start = s1GEndPrev;
     
@@ -321,6 +326,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
     __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
@@ -330,7 +336,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum);
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, constInfo);
 }
 
@@ -345,6 +351,12 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
         l1RightBuffers.Get().SetCrossCore();
         l1RightBuffers.Get().SetCrossCore();
@@ -352,10 +364,16 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     }
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
@@ -370,6 +388,12 @@ SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitMMResBuf(__gm__ 
     }
     gmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -409,17 +433,21 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
     constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2GD = constInfo.n2Size * constInfo.gD;
-
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
     constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
     constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
+    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
+    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
     constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
+
+    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
+    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
 
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // (BS)ND
@@ -451,7 +479,6 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // bsize + 1-> bsize
     this->constInfo.actualSeqLenSize = this->sharedParams.bSize;
     this->constInfo.actualSeqLenKVSize = this->sharedParams.bSize;
-    this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -484,7 +511,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // 适配分核左闭右开
     uint32_t bIdx = constInfo.bN2End / constInfo.n2Size;
     uint32_t actS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-    uint32_t gS1max = (actS1Size * constInfo.gSize + (constInfo.s1BaseSize - 1)) / constInfo.s1BaseSize;
+    uint32_t gS1max = actS1Size;
     if (constInfo.gS1End + 1 < gS1max) {
         /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         constInfo.gS1End = constInfo.gS1End + 1;
@@ -496,11 +523,11 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
 
     // 分核信息
     uint32_t bN2StartIdx = constInfo.bN2Start;
-    uint32_t gS1StartIdx = constInfo.gS1Start;
-    uint32_t s2StartIdx = constInfo.s2Start;
     uint32_t bN2EndIdx = constInfo.bN2End;
+    uint32_t gS1StartIdx = constInfo.gS1Start;
     uint32_t nextGs1Idx = constInfo.gS1End;
-    uint32_t s2EndIdx = constInfo.s2End;
+    uint32_t s2StartIdx = 0;
+    uint32_t s2EndIdx = 0;
     uint32_t s2LoopLimit = 0;
 
     if (nextGs1Idx != 0) {
@@ -544,7 +571,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
                     runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 bool s2NoNeedCalc =
-                        ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo);
+                    ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo);
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
@@ -617,7 +644,8 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64; // N1=128场景，相邻cube核处理一个s1，第一个cube核承担0-63行g，第二个cube核承担后64行g
+        uint32_t firstHalfG = (constInfo.gSize + 1) >> 1;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : firstHalfG; // N1>64场景，相邻cube核处理一个s1，第一个cube核承担前一半，第二个cube核承担后一半
     } else {
         runParam.goIdx = 0;
     }
@@ -628,12 +656,9 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
     int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
-    if (s2LoopCount < runParam.oriKvLoopEndIdx) {
+    if (s2LoopCount < runParam.kvLoopEndIdx) {
         runInfo.s2StartIdx = runParam.s2LineStartIdx;
         runInfo.s2EndIdx = runParam.s2LineEndIdx;
-    } else {
-        runInfo.s2StartIdx = 0;
-        runInfo.s2EndIdx = runParam.s2CmpLineEndIdx;
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
@@ -685,8 +710,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = constInfo.s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
-    int64_t curS2LoopCnt = (runInfo.s2LoopCount >= runParam.oriKvLoopEndIdx) ? \
-        (runInfo.s2LoopCount - runParam.oriKvLoopEndIdx) : runInfo.s2LoopCount;
+    int64_t curS2LoopCnt = runInfo.s2LoopCount;
     if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
         runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
         runInfo.s2AlignedSize = Align(runInfo.s2RealSize);

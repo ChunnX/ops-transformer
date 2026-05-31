@@ -83,4 +83,11 @@ TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExpertTailor)
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
+
+TEST_F(L2AclnnMoeUpdateExpertTest, TestMoeUpdateExpertExecuteEntry)
+{
+    aclnnStatus ret = aclnnMoeUpdateExpert(nullptr, 0, nullptr, nullptr);
+    EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                    testing::Eq(ACLNN_ERR_PARAM_INVALID), testing::Eq(ACLNN_ERR_INNER)));
+}
 } // MoeUpdateExpert

@@ -28,15 +28,18 @@ class MoeReRoutingReRegbase {
 public:
     __aicore__ inline MoeReRoutingReRegbase(TPipe *pipe, const MoeReRoutingReTilingData *tiling)
         : pipe_(pipe), tilingData_(tiling)
-    {}
+    {
+    }
     __aicore__ inline void Init(GM_ADDR tokens, GM_ADDR expertTokenNumPerRank, GM_ADDR perTokenScales,
-        GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx, GM_ADDR expertTokenNum);
+                                GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx,
+                                GM_ADDR expertTokenNum);
     __aicore__ inline void Process();
 
 protected:
     __aicore__ inline void PrepareParams();
     __aicore__ inline void CalSrcOffSet(const int64_t rIdx, const int64_t eIdx);
     __aicore__ inline void CalDstOffSet(const int64_t rIdx, const int64_t eIdx);
+    __aicore__ inline int64_t CalTokenOffset(const int64_t tokenOffset) const;
     __aicore__ inline void ProcessTokenScale(const int64_t currTokenNum, const int64_t tokSclSize, const bool isScale);
     __aicore__ inline void CalcExpertTokenNum();
     __aicore__ inline void CopyIn(const int64_t blockLen, const int64_t offset, const bool isScale);
@@ -60,9 +63,10 @@ protected:
     int64_t blockIdx_ = 0;
     int64_t rIdx_ = 0;
     int64_t eIdx_ = 0;
-    int64_t rNum_ = 0;  // 当前核处理多少个rank
-    int64_t eNum_ = 0;  // 当前核处理多少个expert
+    int64_t rNum_ = 0; // 当前核处理多少个rank
+    int64_t eNum_ = 0; // 当前核处理多少个expert
     int64_t tokenSize_ = 0;
+    int64_t tokenSizeOrigin_ = 0;
     int64_t scaleSize_ = 0;
     int64_t rankNum_ = 0;
     int64_t expertNum_ = 0;
@@ -71,12 +75,13 @@ protected:
 };
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init(GM_ADDR tokens,
-    GM_ADDR expertTokenNumPerRank, GM_ADDR perTokenScales, GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales,
-    GM_ADDR permuteTokenIdx, GM_ADDR expertTokenNum)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init(
+    GM_ADDR tokens, GM_ADDR expertTokenNumPerRank, GM_ADDR perTokenScales, GM_ADDR permuteTokens,
+    GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx, GM_ADDR expertTokenNum)
 {
     blockIdx_ = GetBlockIdx();
     tokenSize_ = tilingData_->tokenSize;
+    tokenSizeOrigin_ = tilingData_->tokenSizeOrigin;
     scaleSize_ = tilingData_->scaleSize;
     rankNum_ = tilingData_->rankNum;
     expertNum_ = tilingData_->expertNum;
@@ -89,10 +94,23 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
         srcScaleGm_.SetGlobalBuffer((__gm__ TScale *)perTokenScales);
         dstScaleGm_.SetGlobalBuffer((__gm__ TScale *)permutePerTokenScales);
     }
-    this->pipe_->InitBuffer(
-        queBind_, DOUBLE_BUFFER, Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));
-    this->pipe_->InitBuffer(
-        idxOutQue_, DOUBLE_BUFFER, Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
+    this->pipe_->InitBuffer(queBind_, DOUBLE_BUFFER,
+                            Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));
+    this->pipe_->InitBuffer(idxOutQue_, DOUBLE_BUFFER,
+                            Ops::Base::CeilAlign(INDEX_UB_SIZE * sizeof(TIndex), BLOCK_SIZE / sizeof(TIndex)));
+}
+
+template <typename T, typename TIndex, typename TScale, bool hasScales>
+__aicore__ inline int64_t
+MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalTokenOffset(const int64_t tokenOffset) const
+{
+    if constexpr (IsSameType<T, int8_t>::value) {
+        if (tokenSizeOrigin_ > 0) {
+            // GM中 int8_t 采用了 2:1 压缩存储
+            return (tokenOffset * tokenSizeOrigin_) / 2;
+        }
+    }
+    return tokenOffset * tokenSize_;
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
@@ -112,8 +130,8 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Prep
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalSrcOffSet(
-    const int64_t rIdx, const int64_t eIdx)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalSrcOffSet(const int64_t rIdx,
+                                                                                         const int64_t eIdx)
 {
     tokensSrc_ = 0;
     for (int64_t r = 0; r < rIdx; r++) {
@@ -127,8 +145,8 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalS
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalDstOffSet(
-    const int64_t rIdx, const int64_t eIdx)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CalDstOffSet(const int64_t rIdx,
+                                                                                         const int64_t eIdx)
 {
     tokensDst_ = 0;
     for (int64_t e = 0; e < eIdx; e++) {
@@ -166,8 +184,9 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::ProcessTokenScale(
-    const int64_t currTokenNum, const int64_t tokSclSize, const bool isScale)
+__aicore__ inline void
+MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::ProcessTokenScale(const int64_t currTokenNum,
+                                                                       const int64_t tokSclSize, const bool isScale)
 {
     int64_t ubFactor = 0;
     if (isScale) {
@@ -186,22 +205,33 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Proc
                 if (loopIdx == ubLoopCnt - 1 && tokSclSize % ubFactor != 0) {
                     subTokSclSize = tokSclSize % ubFactor;
                 }
-                int64_t currTokenSrc = (tokensSrc_ + tIdx) * tokSclSize + loopIdx * ubFactor;
-                int64_t currTokenDst = (tokensDst_ + tIdx) * tokSclSize + loopIdx * ubFactor;
+                int64_t currTokenSrc =
+                    (isScale ? (tokensSrc_ + tIdx) * tokSclSize : CalTokenOffset(tokensSrc_ + tIdx)) +
+                    loopIdx * ubFactor;
+                int64_t currTokenDst =
+                    (isScale ? (tokensDst_ + tIdx) * tokSclSize : CalTokenOffset(tokensDst_ + tIdx)) +
+                    loopIdx * ubFactor;
                 CopyIn(subTokSclSize, currTokenSrc, isScale);
                 CopyOut(subTokSclSize, currTokenDst, isScale);
             }
         }
     } else {
         int64_t tokenFactor = Ops::Base::FloorDiv(ubFactor, tokSclSize);
+        if constexpr (IsSameType<T, int8_t>::value) {
+            if (!isScale && tokenSizeOrigin_ > 0 && tokenSizeOrigin_ % 2 != 0) {
+                tokenFactor = 1;
+            }
+        }
         int64_t ubLoopCnt = Ops::Base::CeilDiv(currTokenNum, tokenFactor);
         int64_t currTokenFactor = tokenFactor;
         for (int64_t loopIdx = 0; loopIdx < ubLoopCnt; loopIdx++) {
             if (loopIdx == ubLoopCnt - 1 && currTokenNum % tokenFactor != 0) {
                 currTokenFactor = currTokenNum % tokenFactor;
             }
-            int64_t currTokenSrc = (tokensSrc_ + loopIdx * tokenFactor) * tokSclSize;
-            int64_t currTokenDst = (tokensDst_ + loopIdx * tokenFactor) * tokSclSize;
+            int64_t currTokenSrc = isScale ? (tokensSrc_ + loopIdx * tokenFactor) * tokSclSize :
+                                             CalTokenOffset(tokensSrc_ + loopIdx * tokenFactor);
+            int64_t currTokenDst = isScale ? (tokensDst_ + loopIdx * tokenFactor) * tokSclSize :
+                                             CalTokenOffset(tokensDst_ + loopIdx * tokenFactor);
             CopyIn(currTokenFactor * tokSclSize, currTokenSrc, isScale);
             if (!isScale) {
                 CopyOutIndex(currTokenFactor, tokensSrc_ + loopIdx * tokenFactor, tokensDst_ + loopIdx * tokenFactor);
@@ -230,8 +260,9 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Calc
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyIn(
-    const int64_t blockLen, const int64_t offset, const bool isScale)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyIn(const int64_t blockLen,
+                                                                                   const int64_t offset,
+                                                                                   const bool isScale)
 {
     if (isScale) {
         LocalTensor<TScale> srcLocal = queBind_.AllocTensor<TScale>();
@@ -249,8 +280,9 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyOut(
-    const int64_t blockLen, const int64_t offset, const bool isScale)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyOut(const int64_t blockLen,
+                                                                                    const int64_t offset,
+                                                                                    const bool isScale)
 {
     if (isScale) {
         LocalTensor<TScale> dstLocal = queBind_.DeQue<TScale>();
@@ -266,8 +298,9 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
 }
 
 template <typename T, typename TIndex, typename TScale, bool hasScales>
-__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyOutIndex(
-    const int64_t rows, const int64_t srcOffset, const int64_t dstOffset)
+__aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::CopyOutIndex(const int64_t rows,
+                                                                                         const int64_t srcOffset,
+                                                                                         const int64_t dstOffset)
 {
     int64_t head = srcOffset;
     int64_t offset = dstOffset;
@@ -291,6 +324,6 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Copy
     }
 }
 
-}  // end namespace MoeReRouting
+} // end namespace MoeReRouting
 
-#endif  // MOE_RE_ROUTING_RE_REGBASE_H
+#endif // MOE_RE_ROUTING_RE_REGBASE_H

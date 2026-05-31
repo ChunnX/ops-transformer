@@ -57,6 +57,7 @@ static constexpr int SCALE_DIM = 2;
 static constexpr int W4A8_SCALE_DIM = 3;
 static constexpr int MX_SCALE_DIM = 4;
 static constexpr int MX_PERTOKEN_SCALE_DIM = 3;
+static constexpr int MX_SCALE_LAST_DIM_SIZE = 2;
 static constexpr size_t MM_DIM = 2;
 
 static const int ONE_DIM_NUM = 1;
@@ -605,9 +606,11 @@ static bool IsTransposeForMxScale(const aclTensor *tensor)
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 2; // 倒数第二维
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 3; // 倒数第三维
     // 在Mx量化的场景下，最后一维固定的维度为2
-    if (tensor->GetViewStrides()[dim2] == 2 &&
-        tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2) * 2) {
-        int64_t tmpNxD = tensor->GetViewShape().GetDim(dim1) * tensor->GetViewShape().GetDim(dim2) * 2;
+    if (tensor->GetViewStrides()[dim2] == MX_SCALE_LAST_DIM_SIZE &&
+        tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2) * MX_SCALE_LAST_DIM_SIZE) {
+        int64_t tmpNxD = tensor->GetViewShape().GetDim(dim1) *
+                         tensor->GetViewShape().GetDim(dim2) *
+                         MX_SCALE_LAST_DIM_SIZE;
         // 从倒数第四维开始，检查前面的维度是否连续
         for (int64_t batchDim = tensor->GetViewShape().GetDimNum() - 4; batchDim >= 0; batchDim--) {
             if (tensor->GetViewStrides()[batchDim] != tmpNxD) {

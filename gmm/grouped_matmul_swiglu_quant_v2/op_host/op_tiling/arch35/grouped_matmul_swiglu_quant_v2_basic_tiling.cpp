@@ -16,8 +16,8 @@
 #include <alog_pub.h>
 #include <climits>
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
@@ -155,7 +155,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
-    const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    const gert::Shape &wShape = wStorageShape->GetOriginShape();
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
@@ -163,6 +163,16 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
+    auto weightFormat = wDesc->GetFormat().GetStorageFormat();
+    if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
+        const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
+
+        OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
+                    inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
+                    OP_LOGE(context_->GetNodeName(),
+                            "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN."),
+                    return false);
+    }
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return CheckDtypePertoken();
     }

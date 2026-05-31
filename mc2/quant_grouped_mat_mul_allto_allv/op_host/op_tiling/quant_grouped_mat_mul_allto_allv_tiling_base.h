@@ -16,7 +16,7 @@
 #define MC2_GROUPED_MATMUL_ALLTO_ALLV_TILING_H
 
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
@@ -131,6 +131,8 @@ constexpr uint64_t MAX_K_VALUE = 8;
 constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
+inline constexpr int64_t RANK_DEFAULT_NUM = -1;
+inline const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128};
 
 class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {

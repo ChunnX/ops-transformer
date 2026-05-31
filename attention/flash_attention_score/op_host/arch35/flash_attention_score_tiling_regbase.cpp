@@ -593,14 +593,19 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
-            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                        pseDim2Size, pseDim3Size);
+            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld], "
+                    "expected Sq[%ld] should be greater than %ld",
+                    pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, s1Size, pseDim2Size);
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                    pseDim2Size, pseDim3Size);
+        OP_LOGE(opName, "unsupported pse shape[%ld, %ld, %ld, %ld], expected [%ld, %ld, %ld, %ld] or "
+            "[%ld, %ld, 1, %ld] or [%ld, %ld, %ld, %ld]",
+            pseBSize, pseDim1Size, pseDim2Size, pseDim3Size,
+            pseBSize, n1Size, s1Size, s2Size,
+            pseBSize, n1Size, s2Size,
+            pseBSize, n1Size, static_cast<int64_t>(PSE_ALIBI_S_SIZE), s2Size);
         return false;
     }
     return true;
@@ -992,6 +997,7 @@ ge::graphStatus FlashAttentionScoreTilingRegbase::DoOpTiling()
     SetOutputDtype();
     multiCoreParamsRegbase_->set_s1OuterSize(CeilDivision(s1Size, s1BasicBlock));
     int64_t totalSize = CalcTotalSize();
+    AnalyzeOptionalDn();
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     SetSplitCoreModeParam();
     SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
@@ -1624,9 +1630,18 @@ void FlashAttentionScoreTilingRegbase::PrintSparseMaxMinLoadPerCore(const std::v
 SparseEnum FlashAttentionScoreTilingRegbase::GetPrefixNList(std::ostringstream &failReason)
 {
     auto prefixN = context_->GetOptionalInputTensor(PREFIX_INPUT_INDEX);
-    if (prefixN == nullptr) {
-        OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
-        failReason << "prefixN is null pointer while sparse mode is prefix";
+    bool isPrefixNullptr = true;
+    if (prefixN != nullptr) {
+        isPrefixNullptr = prefixN->GetShape().GetStorageShape().GetDimNum() == 0 ? true : false;
+    }
+    if (isPrefixNullptr) {
+        if (sparseMode == static_cast<int64_t>(SparseMode::PREFIX_COMPRESS)) {
+            OP_LOGE(context_, "[%s] prefixN must be provided when sparseMode=6.", templateName);
+            failReason << "prefixN must be provided when sparseMode=6";
+        } else {
+            OP_LOGW(context_, "[%s]prefixN is null pointer while sparse mode is prefix", templateName);
+            failReason << "prefixN is null pointer while sparse mode is prefix";
+        }
         return SparseEnum::ALL;
     }
 

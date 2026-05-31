@@ -260,7 +260,8 @@ void SFAMlaTiling::GenTilingKey()
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV,
-        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaInfo_->gSize > 64));
+        perfMode_ == SFAPerfMode::V_TEMPLATE_MODE,
+        static_cast<uint32_t>(sfaInfo_->gSize > 64)); // N1 > 128时核间切G; 64: 触发核间并行切分G维度的性能阈值
 
     OP_LOGI(sfaInfo_->opName, "SFA tilingKey_: %lu.", tilingKey_);
 }
@@ -368,6 +369,8 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockCount(sfaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_attentionMode(sfaInfo_->attentionMode);
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -417,9 +420,6 @@ void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         accumOutSize = FDParamNums * headDimAlign_;
         logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaInfo_->blockTypeSize);  // log和sum的存储空间一致，共需要2份内存
         workspaceSize_ += (accumOutSize + logSumExpSize) * sfaInfo_->blockTypeSize;
-        if (sfaInfo_->socVersion == platform_ascendc::SocVersion::ASCEND310P) {
-            workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
-        }
     }
 }
 
@@ -430,40 +430,48 @@ void SFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
 
 void SFAMlaTiling::GetWorkspaceSize()
 {
-#if (__CCE_AICORE__ == 310)
-    constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
-    constexpr uint32_t D_SIZE = 576;
-    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaInfo_->platformInfo);
-    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    workspaceSize_ += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
-#else
-    uint32_t mmResElemSize = 4;         // 4:fp32
-    uint32_t vec1ResElemSize = 2;       // 2:fp16/bf16
-    uint32_t bmm2ResElemSize = 4;       // 4:fp32
-    uint32_t qPreProcResElemSize = 0;   // 普通场景不涉及Q预处理
-    uint32_t nUpdateElemSize = 4;   // 4:int32
-    uint32_t softmaxSumElemSize = 4;   // 4:int32
-    float kvDtypeRatio = 1.0;
-
-    workspaceSize_ = libapiSize_;
-    uint32_t preLoadNum = 1;
     uint32_t actCoreNum = coreNum_;
-    preLoadNum = PRE_LOAD_NUM;
+    if (sfaInfo_->isA5) {
+        workspaceSize_ = libapiSize_;
+        constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
+        constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
+        constexpr uint32_t D_SIZE = 576;
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaInfo_->platformInfo);
+        uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+        if (sfaInfo_->gSize > 64) { // N1大于64时切G，相邻两个cube核处理同一个s2Base
+            aicNum = aicNum >> 1;
+        }
+        workspaceSize_ += (S2_BASE_SIZE * D_SIZE * GetTypeSize(sfaInfo_->inputQType) \
+            * TRIPLE_BUFFER_NUM * aicNum);
+    } else {
+        uint32_t mmResElemSize = 4;         // 4:fp32
+        uint32_t vec1ResElemSize = 2;       // 2:fp16/bf16
+        uint32_t bmm2ResElemSize = 4;       // 4:fp32
+        uint32_t qPreProcResElemSize = 0;   // 普通场景不涉及Q预处理
+        uint32_t nUpdateElemSize = 4;   // 4:int32
+        uint32_t softmaxSumElemSize = 4;   // 4:int32
+        float kvDtypeRatio = 1.0;
 
-    workspaceSize_ += preLoadNum * (mmResUbSize_ * actCoreNum * mmResElemSize);
-    workspaceSize_ += preLoadNum * static_cast<size_t>(static_cast<float>(mmResUbSize_ * actCoreNum * vec1ResElemSize) * kvDtypeRatio);
-    workspaceSize_ += preLoadNum * bmm2ResUbSize_ * actCoreNum * bmm2ResElemSize;
-    workspaceSize_ += preLoadNum * static_cast<size_t>(static_cast<float>(qPreSizeMla_ * actCoreNum * qPreProcResElemSize) * kvDtypeRatio);
-    workspaceSize_ += preLoadNum * mBaseSize_ * actCoreNum * nUpdateElemSize;
-    workspaceSize_ += preLoadNum * mBaseSize_ * actCoreNum * softmaxSumElemSize;
-    // topk BlkSize == 1场景, 需要额外空间缓存离散聚合的值
-    //              bufNum  s2Base   D   dRope  sizeOf(half)
-    workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum; // 4:bufNum  512:s2Base  512:D  64:dRope  2:sizeOf(half)
-    // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
-    workspaceSize_ += 4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
-#endif
+        workspaceSize_ = libapiSize_;
+        uint32_t preLoadNum = 1;
+        preLoadNum = PRE_LOAD_NUM;
+
+        workspaceSize_ += preLoadNum * (mmResUbSize_ * actCoreNum * mmResElemSize);
+        workspaceSize_ += preLoadNum * static_cast<size_t>(static_cast<float>(mmResUbSize_ * \
+            actCoreNum * vec1ResElemSize) * kvDtypeRatio);
+        workspaceSize_ += preLoadNum * bmm2ResUbSize_ * actCoreNum * bmm2ResElemSize;
+        workspaceSize_ += preLoadNum * static_cast<size_t>(static_cast<float>(qPreSizeMla_ * \
+            actCoreNum * qPreProcResElemSize) * kvDtypeRatio);
+        workspaceSize_ += preLoadNum * mBaseSize_ * actCoreNum * nUpdateElemSize;
+        workspaceSize_ += preLoadNum * mBaseSize_ * actCoreNum * softmaxSumElemSize;
+        // topk BlkSize == 1场景, 需要额外空间缓存离散聚合的值
+        //              bufNum  s2Base   D   dRope  sizeOf(half)
+        // 4:bufNum  512:s2Base  512:D  64:dRope  2:sizeOf(half)
+        workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum;
+        // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
+        workspaceSize_ += 4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
+    }
+
     CalcFDWorkSpace(actCoreNum);
 }
 
@@ -731,6 +739,10 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
         OP_LOGE(opName_, "sparseBlockSize should be be in range [1, 128] and be a power of 2, but got: %ld.",
             *opParamInfo_.sparseBlockSize),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
+        OP_LOGE(opName_, "when soc version is Ascend950, sparse_block_size only support 1, but now is %d.",
+        *opParamInfo_.sparseBlockSize), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1050,11 +1062,11 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         // type类型校验
         OP_CHECK_IF(opParamInfo_.softmaxMax.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
+            OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
         // shape和维度校验
         if (ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
@@ -1072,13 +1084,13 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
+            OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
-        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
+        if (opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0) {
             OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
         }
     }
@@ -1127,7 +1139,7 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForBatchContinuous()
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t SFATilingCheck::GetTypeSize(ge::DataType dtype) const
+uint32_t SFAMlaTiling::GetTypeSize(ge::DataType dtype) const
 {
     uint32_t typeSize = NUM_BYTES_FLOAT16;
     switch (dtype) {
@@ -1326,9 +1338,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
 
-    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
-    OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-        OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+    OP_CHECK_IF(gSize_ < 1 || gSize_ > 128,
+        OP_LOGE(opName_, "group num should be in 1 ~ 128, but got %u", gSize_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != 512,
@@ -1415,7 +1426,8 @@ void SFATilingCheck::Init()
     opName_ = sfaInfo_.opName;
     platformInfo_ = sfaInfo_.platformInfo;
     opParamInfo_ = sfaInfo_.opParamInfo;
-    socVersion_ = sfaInfo_.socVersion;
+    npuArch_ = sfaInfo_.npuArch;
+    isA5_ = sfaInfo_.isA5;
 
     bSize_ = sfaInfo_.bSize;
     n1Size_ = sfaInfo_.n1Size;
@@ -1601,10 +1613,10 @@ ge::graphStatus SFAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B &&
-        socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    isA5_ = (npuArch_ == NpuArch::DAV_3510);
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -1782,8 +1794,8 @@ ge::graphStatus SFAInfoParser::GetKvLayout()
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(*opParamInfo_.returnSoftmaxLse && kvLayout_ == SFALayout::PA_BSND,
-            OP_LOGE(opName_, "when return_softmax_lse is true, key layout do not support PA_BSND."),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "when return_softmax_lse is true, key layout do not support PA_BSND."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1954,7 +1966,8 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.opName = opName_;
     sfaInfo.platformInfo = platformInfo_;
     sfaInfo.opParamInfo = opParamInfo_;
-    sfaInfo.socVersion = socVersion_;
+    sfaInfo.npuArch = npuArch_;
+    sfaInfo.isA5 = isA5_;
 
     sfaInfo.bSize = bSize_;
     sfaInfo.n1Size = n1Size_;
@@ -1989,9 +2002,11 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaInfo.maxActualseq = maxActualseq_;
-    sfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
     sfaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaInfo.isSameActualseq = isSameActualseq_;
+
+    sfaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
+    sfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
 
     sfaInfo.sparseMode = *opParamInfo_.sparseMode;
     sfaInfo.preTokens = *opParamInfo_.preTokens;

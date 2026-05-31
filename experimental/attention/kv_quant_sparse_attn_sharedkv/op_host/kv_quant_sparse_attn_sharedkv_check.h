@@ -187,7 +187,9 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
     {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // dt_variant type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // dt_variant type
 };
 
 const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {

@@ -28,6 +28,7 @@ namespace Gemm {
 constexpr int64_t MATRIX_INNER_DIM_LIMIT_SIZE = 65536LL;
 constexpr int32_t MATMUL_MNK_ALIGN = 16;
 constexpr int32_t MATMUL_MNK_ALIGN_INT8 = 32;
+constexpr int32_t MATMUL_MNK_ALIGN_INT4 = 64;
 constexpr int64_t DOUBLE_BUFFER_COUNT = 2LL;
 constexpr int64_t UB_FLOAT_ALIGN_NUM = 8LL;
 constexpr int64_t L1_EVENT_ID_OFFSET = 2LL;
@@ -48,6 +49,15 @@ constexpr static int64_t PER_BLOCK_SIZE = 128LL;
 constexpr static uint64_t MXFP_GROUP_SIZE = 32UL;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
+
+// Bitwise alignment utilities for power-of-2 alignments
+// Align to 64: ((x + 63) & ~63)
+// Align to 32: ((x + 31) & ~31)
+// Align to 16: ((x + 15) & ~15)
+constexpr uint64_t ALIGN_MASK_64 = 63UL;
+constexpr uint64_t ALIGN_MASK_32 = 31UL;
+constexpr uint64_t ALIGN_MASK_16 = 15UL;
+
 // Set unitflag state: 3 = final accumulation, 2 = non-final accumulation
 constexpr static uint32_t FINAL_ACCUMULATION = 3U;
 constexpr static uint32_t NON_FINAL_ACCUMULATION = 2U;
@@ -101,6 +111,21 @@ __aicore__ inline uint64_t Align(uint64_t a, uint64_t b)
         return a;
     }
     return (a + b - 1) / b * b;
+}
+
+__aicore__ inline uint64_t Align64(uint64_t x)
+{
+    return (x + ALIGN_MASK_64) & ~ALIGN_MASK_64;
+}
+
+__aicore__ inline uint64_t Align32(uint64_t x)
+{
+    return (x + ALIGN_MASK_32) & ~ALIGN_MASK_32;
+}
+
+__aicore__ inline uint64_t Align16(uint64_t x)
+{
+    return (x + ALIGN_MASK_16) & ~ALIGN_MASK_16;
 }
 
 /**

@@ -19,11 +19,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_setup_tiling.h"
-#if __has_include("../../moe_distribute_combine_setup/moe_distribute_base.h")
-#include "../../moe_distribute_combine_setup/moe_distribute_base.h"
-#else
-#include "../../moe_distribute_combine_setup/op_kernel/moe_distribute_base.h"
-#endif
+#include "../moe_distribute_base.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else

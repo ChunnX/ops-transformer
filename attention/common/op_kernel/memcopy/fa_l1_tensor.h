@@ -24,9 +24,14 @@
 
 using AscendC::LocalTensor;
 
-enum class L1Format
-{
+enum class L1Format {
     NZ = 0
+};
+
+enum class ScaleTrans {
+    NO_TRANS = 0,
+    ND2NZ = 1,
+    DN2NZ = 2
 };
 
 template <typename Q_T, L1Format FORMAT>

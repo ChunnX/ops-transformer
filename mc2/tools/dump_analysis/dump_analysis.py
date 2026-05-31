@@ -20,9 +20,13 @@ from collections import Counter
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
+import dump_analysis_A2 as A2
 
 SOC_VERSION_950 = "950"
 SOC_VERSION_910_93 = "910_93"
+SOC_VERSION_910B = "910B"
+
+csv.field_size_limit(sys.maxsize)
 
 logging.basicConfig(
     level=logging.NOTSET,
@@ -43,19 +47,24 @@ class WinData:
 
 
 #根据文件名判断挂在dispatch还是combine
-def check_dis_com(target_path: str) -> str:
+def check_dis_com_version(target_path: str) -> str:
+    dis_com_func = 'None'
+    dis_com_version_func = 'None'
     for filename_func in os.listdir(os.path.join(target_path)):
         if filename_func.lower().endswith('host.o'):
+            if 'V3' in filename_func:
+                logging.info('1.1 根据文件名%s,识别版本为 V3', filename_func)
+                dis_com_version_func = 'V3'
             if 'dispatch' in filename_func.lower():
-                logging.info('1.2 根据dump数据文件名%s,判断该卡挂在dispatch', filename_func)
-                return 'dispatch'
+                logging.info('1.1 根据dump数据文件名%s,判断该卡挂在dispatch', filename_func)
+                dis_com_func = 'dispatch'
             elif 'combine' in filename_func.lower():
-                logging.info('1.2 根据dump数据文件名%s,判断该卡挂在combine', filename_func)
-                return 'combine'
+                logging.info('1.1 根据dump数据文件名%s,判断该卡挂在combine', filename_func)
+                dis_com_func = 'combine'
             else:
-                logging.warning('1.2 根据dump数据文件名%s,该卡没有挂在dispatch/combine算子上', filename_func)
-                return filename_func
-    return 'None'
+                logging.warning('1.1 根据dump数据文件名%s,该卡没有挂在dispatch/combine算子上', filename_func)
+                break
+    return dis_com_func, dis_com_version_func
 
 
 def check_mask(mask, moe_num_func: int, expert_ids_reshape):
@@ -66,14 +75,43 @@ def check_mask(mask, moe_num_func: int, expert_ids_reshape):
         for r, c in zip(row_func, col_func):
             logging.error('1.3 expertids中下标[%d,%d]的值:%d超范围', r, c, expert_ids_reshape[r][c])
     else:
-        logging.info('1.3 未检测到expertids中有异常输入')
+        logging.info('1.3 未检测到expertids中有超范围的异常输入')
+
+
+def check_duplicate_per_row(expert_ids_reshape_func):
+    has_duplicate = False
+    batch_size, topk = expert_ids_reshape_func.shape
+
+    for row_idx in range(batch_size):
+        per_expertids = expert_ids_reshape_func[row_idx]
+        # 检查这一行是否有重复数字
+        if len(np.unique(per_expertids)) == len(per_expertids):
+            continue  # 无重复，直接跳过
+
+        # 有重复
+        has_duplicate = True
+        seen = set()
+        duplicates = set()
+        for num in per_expertids:
+            if num in seen:
+                duplicates.add(num)
+            seen.add(num)
+        logging.error("1.3 第[%s]行出现重复expert_id: %s, 重复的值=%s", row_idx, list(per_expertids), list(duplicates))
+    
+    if not has_duplicate:
+        logging.info('1.3 所有行均无重复expert_id')
 
 
 #判断topk是否超范围(<0 or >moe专家数)
-def check_topk(target_path: str, moe_num_func: int, bs_func: int, sp_moe_num_func: int):
+def check_topk(target_path: str, moe_num_func: int, bs_func: int, sp_moe_num_func: int, dis_com_version_func: str):
     k_func = 0
+    if dis_com_version_func == 'V3':
+        target_filie_num = 'input.2.bin'
+    else:
+        target_filie_num = 'input.1.bin'
+
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.1.bin' in filename_func:
+        if target_filie_num in filename_func:
             file_path_func = os.path.join(target_path, filename_func)
             expert_ids = np.fromfile(file_path_func, dtype=np.int32)
             k_func = int(expert_ids.shape[0] / bs_func)
@@ -81,16 +119,22 @@ def check_topk(target_path: str, moe_num_func: int, bs_func: int, sp_moe_num_fun
             logging.info('1.3 该卡的输入expertids为%s\n', expert_ids_reshape)
             mask = (expert_ids_reshape < 0) | (expert_ids_reshape >= (moe_num_func + sp_moe_num_func))
             check_mask(mask, moe_num_func, expert_ids_reshape)
+            check_duplicate_per_row(expert_ids_reshape)
             return k_func, expert_ids_reshape
-    logging.warning('1.3 该卡未发现输入expertids对应的input.1.bin文件, 无法分析输入expertids')
+    logging.warning('1.3 该卡未发现输入expertids对应的%s文件, 无法分析输入expertids', target_filie_num)
     return k_func, np.array([])
 
 
 #获取a
-def get_a(target_path: str):
+def get_a(target_path: str, dis_com_version_func: str):
     a_func = 0
+    if dis_com_version_func == 'V3':
+        target_filie_num = 'input.3.bin'
+    else:
+        target_filie_num = 'input.2.bin'
+
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.2.bin' in filename_func:
+        if target_filie_num in filename_func:
             assist_info_for_combine_path = os.path.join(target_path, filename_func)
             assist_info_for_combine = np.fromfile(assist_info_for_combine_path, dtype=np.int32)
             a_func = int(assist_info_for_combine.shape[0] / 128)
@@ -99,10 +143,15 @@ def get_a(target_path: str):
 
 
 #获取h
-def get_h(target_path: str, a_func: int, tp_worldsize_func: int):
+def get_h(target_path: str, a_func: int, tp_worldsize_func: int, dis_com_version_func: str):
     h_func = 0
+    if dis_com_version_func == 'V3':
+        target_filie_num = 'input.1.bin'
+    else:
+        target_filie_num = 'input.0.bin'
+
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.0.bin' in filename_func:
+        if target_filie_num in filename_func:
             expands_path = os.path.join(target_path, filename_func)
             expands = np.fromfile(expands_path, dtype=np.int16)
             h_func = int(expands.shape[0] / (tp_worldsize_func * a_func))
@@ -159,20 +208,25 @@ def check_epsendcnt(epsendcnt_count_func, epsendcnt_dump_func):
         logging.info("卡%s 计算得出的epsendcnt为:%s", card, epsendcnt_count_func[card])
         logging.info("卡%s dump数据获取的epsendcnt为:%s", card, epsendcnt_dump_func[card])
         if len(epsendcnt_count_func[card]) != len(epsendcnt_dump_func[card]):
-            logging.error('7. 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
+            logging.error('7. 该卡根据输入expertids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
                 len(epsendcnt_count_func[card]), len(epsendcnt_dump_func[card]))
             continue
         if epsendcnt_count_func[card] != epsendcnt_dump_func[card]:
-            logging.error('7 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
+            logging.error('7 该卡根据输入expertids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
         else:
-            logging.info('7. 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
+            logging.info('7. 该卡根据输入expertids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
 
 
 #从input.3.bin中获取epsendcnt
-def get_dump_epsendcnt(target_path: str):
+def get_dump_epsendcnt(target_path: str, dis_com_version_func: str):
+    if dis_com_version_func == 'V3':
+        target_filie_num = 'input.4.bin'
+    else:
+        target_filie_num = 'input.3.bin'
+
     epsendcnt_input = np.array([], dtype=np.int32)
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.3.bin' in filename_func:
+        if target_filie_num in filename_func:
             file_path_func = os.path.join(target_path, filename_func)
             epsendcnt_input = np.fromfile(file_path_func, dtype=np.int32)
             return epsendcnt_input
@@ -180,10 +234,15 @@ def get_dump_epsendcnt(target_path: str):
 
 
 #获取该卡dump数据的从input.2.bin中获取expandidx
-def get_dump_expandidx(target_path: str):
+def get_dump_expandidx(target_path: str, dis_com_version_func: str):
     expandidx = []
+    if dis_com_version_func == 'V3':
+        target_filie_num = 'input.3.bin'
+    else:
+        target_filie_num = 'input.2.bin'
+
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.2.bin' in filename_func:
+        if target_filie_num in filename_func:
             file_path_func = os.path.join(target_path, filename_func)
             expandidx_dump = np.fromfile(file_path_func, dtype=np.int32).tolist()
             expandidx_dump_reshape = [expandidx_dump[i:i + 3] for i in range(0, len(expandidx_dump), 3)]
@@ -191,7 +250,7 @@ def get_dump_expandidx(target_path: str):
     return expandidx
 
 
-# 识别使用了多少个核,通过查看没512B的前9*4B的位置是否全为0来判断
+# 识别使用了多少个核,通过查看每512B的前9*4B的位置是否全为0来判断
 def analysis_core_num(arr_func: np.ndarray) -> int:
     per_core = 128 # 512B转为int32
     judge_arr = [0, 0, 0, 0, 0, 0, 0, 0, 0] # 标识区内全为0,识别是否走到最后一个核
@@ -443,7 +502,10 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
         if (dis_status_list_func[i] != 1):
             continue
         for core_num_func in range(dis_status_core[i]):
-            if int32_status_data[(sum(dis_status_core[:i + 1]) - dis_status_core[i] + core_num_func) * 8] == 0:
+            index_status = (sum(dis_status_core[:i + 1]) - dis_status_core[i] + core_num_func) * 8
+            if index_status >= len(int32_status_data):
+                break
+            if int32_status_data[index_status] == 0:
                 dis_status_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}状态位_dispatch{dis_0_1_func}"] = (
                                                     f"状态位未等到")
     return dis_status_error_dict
@@ -482,7 +544,10 @@ def com_status_analysis(parms: WinData, com_core_num_func: int, share_expert_num
         if (com_status_list_func[i] != 1):
             continue
         for core_num_func in range(com_status_core[i]):
-            if int32_status_data[(sum(com_status_core[:i + 1]) - com_status_core[i] + core_num_func) * 8] == 0:
+            index_status = (sum(com_status_core[:i + 1]) - com_status_core[i] + core_num_func) * 8
+            if index_status >= len(int32_status_data):
+                break
+            if int32_status_data[index_status] == 0:
                 com_statu_error_dict[f"d{card_num_func}_第{i}个核_第{core_num_func}个状态位_combine{com_0_1_func}区"] = (
                                                     f"状态位未等到")
     return com_statu_error_dict
@@ -520,8 +585,10 @@ expertids = np.array([])
 dump_expandidx = []
 dump_epsendcnt = []
 start_idx = 0
+dis_com_version = 'None'
+dis_com = 'None'
 
-if (soc_version == SOC_VERSION_950):
+if (soc_version == SOC_VERSION_950) or (soc_version == SOC_VERSION_910B):
     perfix = "mc2_"
     endfix = ""
 elif (soc_version == SOC_VERSION_910_93):
@@ -559,6 +626,7 @@ for filename in os.listdir(os.path.join(floder_path)):
         dis_core_num = analysis_core_num(int32_dis_win_data)
         com_core_num = analysis_core_num(int32_com_win_data)
         error_dict.update(compare_core_num(dis_core_num, com_core_num, card_num))
+        dis_com, dis_com_version = check_dis_com_version(floder_path)
         #输入错误分析
         if dis_core_num != 0:
             dis_rankid_list, dis_rankid, dis_epworldsize_list, dis_epworldsize = get_rankid_ep(
@@ -602,6 +670,11 @@ for filename in os.listdir(os.path.join(floder_path)):
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
+        if soc_version == SOC_VERSION_910B:
+            if dis_core_num != 0:
+                all_card_num = dis_epworldsize
+            elif com_core_num != 0:
+                all_card_num = com_epworldsize
         if dis_moe_num != 0 and com_moe_num != 0:
             if dis_moe_num != com_moe_num:
                 logging.error("1.2 dispatch得出的moe专家数:%d与combine得出的moe专家数:%d不同", dis_moe_num, com_moe_num)
@@ -625,19 +698,18 @@ for filename in os.listdir(os.path.join(floder_path)):
             else:
                 logging.error("1.2 根据dispatch输入计算得出的bs:%d与根据combine输入计算得出的bs:%d不同", dis_bs, com_bs)
 
-        dis_com = check_dis_com(floder_path)
         if dis_com == 'dispatch' and dis_core_num != 0:
-            k, expertids = check_topk(floder_path, dis_moe_num, dis_bs, sp_moe_num)
+            k, expertids = check_topk(floder_path, dis_moe_num, dis_bs, sp_moe_num, dis_com_version)
         if dis_com == 'combine' and com_core_num != 0:
-            k, expertids = check_topk(floder_path, com_moe_num, com_bs, sp_moe_num)
+            k, expertids = check_topk(floder_path, com_moe_num, com_bs, sp_moe_num, dis_com_version)
         logging.info('1.3 根据计算得出该卡的k为:%d', k)
 
         if dis_com == 'combine' and com_core_num != 0:
-            a = get_a(floder_path)
-            h = get_h(floder_path, a, tp_worldsize)
+            a = get_a(floder_path, dis_com_version)
+            h = get_h(floder_path, a, tp_worldsize, dis_com_version)
             logging.info("1.4 根据combine输入计算得出的A:%d, 根据combine输入计算得出的H:%d", a, h)
-            dump_epsendcnt = get_dump_epsendcnt(floder_path)
-            dump_expandidx = get_dump_expandidx(floder_path)
+            dump_epsendcnt = get_dump_epsendcnt(floder_path, dis_com_version)
+            dump_expandidx = get_dump_expandidx(floder_path, dis_com_version)
         logging.info('1.5 输入异常分析完成\n')
 
         # 执行序分析
@@ -656,7 +728,6 @@ for filename in os.listdir(os.path.join(floder_path)):
             logging.info("2. 执行序分析完成\n")
         else:
             logging.info("2. 单个算子的调用场景不进行执行序分析\n")
-        
         # 状态位分析
         if (dis_core_num != 0):
             logging.info("3. 开始dispatch状态位分析")
@@ -723,6 +794,29 @@ for filename in os.listdir(os.path.join(floder_path)):
                 logging.error("4. combine 0/1标识位 should be 0/1 but got %d\n", com_0_1)
         else:
             logging.info("4. 未调用com,不进行com状态区分析\n")
+        if soc_version == SOC_VERSION_910B:
+            if dis_com == 'dispatch':
+                A2_ep_rankid = dis_rankid
+                A2_ep_worldsize = dis_epworldsize
+                A2_moe_expert_num = dis_moe_num
+                A2_run_num_list = dis_status_list
+                buffer_id = dis_0_1
+            else:
+                A2_ep_rankid = com_rankid
+                A2_ep_worldsize = com_epworldsize
+                A2_moe_expert_num = com_moe_num
+                A2_run_num_list = com_status_list
+                buffer_id = com_0_1
+            A2.analyze_single_card(
+                arr_func_dis=int32_dis_win_data, arr_func_com=int32_com_win_data,
+                core_num=max(dis_core_num, com_core_num),
+                ep_rankid=A2_ep_rankid, d_c=dis_com, ep_worldsize=A2_ep_worldsize, runpos=A2_run_num_list,
+                moe_expert_num=A2_moe_expert_num, k=k, buffer_id=buffer_id,
+                target_path=floder_path, expertids=expertids,
+                dis_status=dis_0_status, com_status=com_0_status,
+                dis_run_cnts=max_dis_run_num, com_run_cnts=max_com_run_num
+            )
+            break
 
         # 输出
         logging.info("5. 数据归档")

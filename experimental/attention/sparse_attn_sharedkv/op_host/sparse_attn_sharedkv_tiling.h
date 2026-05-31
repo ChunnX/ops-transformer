@@ -77,7 +77,7 @@ constexpr uint32_t CMP_SPARSE_INDICES_INDEX = 4;
 constexpr uint32_t ORI_BLOCK_TABLE_INDEX = 5;
 constexpr uint32_t CMP_BLOCK_TABLE_INDEX = 6;
 constexpr uint32_t CU_SEQLENS_Q_INDEX = 7;
-constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
+constexpr uint32_t CU_SEQLENS_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
 constexpr uint32_t SEQUSED_KV_INDEX = 11;
@@ -91,10 +91,13 @@ constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;
 constexpr uint32_t ATTR_CMP_RATIO_INDEX = 1;
 constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 2;
 constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 3;
-constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 4;
-constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
+constexpr uint32_t ATTR_ORI_KV_STRIDE_INDEX = 4;
+constexpr uint32_t ATTR_CMP_KV_STRIDE_INDEX = 5;
+constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 6;
+constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 7;
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE = 10;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -122,7 +125,7 @@ constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t METADATA_LIMIT = 1024;
 constexpr uint32_t DIM_LIMIT = 512;
-constexpr uint32_t TOPK_LIMIT = 512;
+constexpr uint32_t TOPK_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
@@ -141,6 +144,7 @@ TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
 TILING_DATA_FIELD_DEF(float, softmaxScale) // 即 scaleValue
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint64_t, oriMaskMode)
+TILING_DATA_FIELD_DEF(int64_t, oriKvStride0)
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft)
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
@@ -152,6 +156,7 @@ TILING_DATA_FIELD_DEF(uint32_t, bmm2ResUbSize);
 
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
+TILING_DATA_FIELD_DEF(bool, returnSoftmaxLse)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseAttnSharedkvSwaParamsOp, SparseAttnSharedkvSwaParams)
 
@@ -161,6 +166,7 @@ TILING_DATA_FIELD_DEF(uint32_t, cmpMaxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint64_t, cmpMaskMode)
+TILING_DATA_FIELD_DEF(int64_t, cmpKvStride0)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseAttnSharedkvCmpParamsOp, SparseAttnSharedkvCmpParams)
 
@@ -180,9 +186,9 @@ struct SASParaInfo {
     SASTilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
     SASTilingOptionalParaInfo cmpBlockTable = {nullptr, nullptr};
     SASTilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensOriKv = {nullptr, nullptr};
-    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
     SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
@@ -192,10 +198,13 @@ struct SASParaInfo {
     const uint32_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
+    const uint32_t *oriKvStride0 = nullptr;
+    const uint32_t *cmpKvStride0 = nullptr;
     const uint32_t *oriWinLeft = nullptr;
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 static std::string SASDataTypeToSerialString(ge::DataType type);
@@ -232,6 +241,8 @@ public:
     int64_t cmpRatio = 1;
     uint64_t oriMaskMode = 0;
     uint64_t cmpMaskMode = 0;
+    uint64_t oriKvStride0 = 0;
+    uint64_t cmpKvStride0 = 0;
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
@@ -240,7 +251,8 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
-    
+
+    bool returnSoftmaxLse = false;
     // PageAttention
     uint32_t blockTypeSize = 0;
     uint32_t oriMaxBlockNumPerBatch = 0;
@@ -283,7 +295,7 @@ private:
     template <typename T>
     void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
-    template <typename T> 
+    template <typename T>
     void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name, const std::string subName) const;
     ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
@@ -307,6 +319,8 @@ private:
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaOriMaskMode() const;
     ge::graphStatus CheckSingleParaCmpMaskMode() const;
+    ge::graphStatus CheckSingleParaOriKvStride0() const;
+    ge::graphStatus CheckSingleParaCmpKvStride0() const;
     ge::graphStatus CheckSingleParaOriWinLeft() const;
     ge::graphStatus CheckSingleParaOriWinRight() const;
     ge::graphStatus CheckSingleParaOriBlockTable() const;
@@ -328,7 +342,7 @@ private:
 
     ge::graphStatus CheckMultiParaConsistency();
     void SetSASShapeCompare();
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, 
+    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype,
         const ge::DataType &expectDtype, const std::string &name) const;
     ge::graphStatus CheckOriAndCmpKv() const;
     ge::graphStatus CheckAttenOut() const;
@@ -430,8 +444,10 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetBatchSize();
     ge::graphStatus GetQTSize();
+    ge::graphStatus GetKVTSize();
     ge::graphStatus GetS1Size();
     ge::graphStatus GetS2SizeForPageAttention();
+    ge::graphStatus GetS2SizeForTND();
     ge::graphStatus GetS2Size();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
@@ -463,6 +479,8 @@ public:
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
     uint32_t qTSize_ = 0;
+    uint32_t orikvTSize_ = 0;
+    uint32_t cmpkvTSize_ = 0;
     uint32_t qHeadDim_ = 0;
     uint32_t oriKvHeadDim_ = 0;
     uint32_t cmpKvHeadDim_ = 0;
@@ -536,7 +554,7 @@ private:
     uint32_t sInnerSize_ = 512; // s2固定切分512
     uint32_t sInnerSizeAlign_ = 0;
     uint32_t usedCoreNum_ = 0;
-    
+
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 64;
 };

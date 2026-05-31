@@ -8,11 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef LAYOUT_LAYOUT_HPP
-#define LAYOUT_LAYOUT_HPP
+#ifndef FUSED_MACROS_HPP
+#define FUSED_MACROS_HPP
 
-#include "../../attn_infra/base_defs.hpp"
-#include "../../attn_infra/layout/matrix.hpp"
-#include "../../attn_infra/layout/vector.hpp"
+#define HOST_DEVICE __host_aicore__ inline
 
-#endif  // LAYOUT_LAYOUT_HPP
+#endif  // DETAIL_MACROS_HPP

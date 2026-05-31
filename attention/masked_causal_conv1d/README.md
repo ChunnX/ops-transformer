@@ -23,7 +23,7 @@
   y[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
+  其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 ## 参数说明
 
@@ -60,7 +60,7 @@
       <tr>
         <td>mask</td>
         <td>可选输入</td>
-        <td>布尔掩码，shape为[B, S]，对应公式中mask。为None时等价于全True。支持空Tensor。</td>
+        <td>布尔掩码，shape为[B, S]，对应公式中mask。默认值是None，为None时等价于全True。不支持空Tensor。</td>
         <td>BOOL</td>
         <td>ND</td>
       </tr>
@@ -80,6 +80,8 @@
   - B * S：取值范围为1~512K。
   - H（hiddenSize）：取值范围384~24576（64的整数倍）。
   - W：当前只支持3。
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子输入不支持有±inf和nan的情况。
 
 ## 调用说明
 

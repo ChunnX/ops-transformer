@@ -49,6 +49,8 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       tiling_api
       runtime
       acl_rt
+      ascendalog
+      dl
   )
 
   ## add ophost ut exe:  transformer_op_host_ut
@@ -68,6 +70,8 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
       ${OPHOST_NAME}_ut
+      ascendalog
+      dl
       $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
       $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
@@ -76,6 +80,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
           ${OP_TILING_MODULE_NAME}_cases
           ${OP_INFERSHAPE_MODULE_NAME}_cases
       -Wl,--no-whole-archive
+      tiling_api
       -Wl,--no-as-needed
           metadef
       -Wl,--as-needed

@@ -166,12 +166,12 @@ int main() {
   aclTensor* output_tensor = nullptr;
 
   // 可选输出：norm_out（out_flag=1时有效）
-  std::vector<int64_t> norm_out_shape = {40, 4, 4, 1024};  // 2*20=40, n=4, T=1024
+  std::vector<int64_t> norm_out_shape = {40 * 1024 * 4 * 8};  // 2*20=40, T=1024, n=4, n_align=8
   void* norm_out_device_addr = nullptr;
   aclTensor* norm_out_tensor = nullptr;
 
   // 可选输出：sum_out（out_flag=1时有效）
-  std::vector<int64_t> sum_out_shape = {40, 4, 1024};  // 2*20=40, n=4, T=1024
+  std::vector<int64_t> sum_out_shape = {40 * 1024 * 8};  // 2*20=40, n_align=8, T=1024
   void* sum_out_device_addr = nullptr;
   aclTensor* sum_out_tensor = nullptr;
 

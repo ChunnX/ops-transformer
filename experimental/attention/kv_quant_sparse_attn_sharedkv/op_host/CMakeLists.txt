@@ -25,18 +25,14 @@ add_ops_compile_options(
             -mllvm -cce-aicore-hoist-movemask=false
 )
 
-if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE kv_quant_sparse_attn_sharedkv ACLNNTYPE aclnn)
-endif()
+add_modules_sources(OPTYPE kv_quant_sparse_attn_sharedkv ACLNNTYPE aclnn)
 
-if (NOT BUILD_OPS_RTY_KERNEL)
-    add_tiling_modules()
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        kv_quant_sparse_attn_sharedkv_check_consistancy.cpp
-        kv_quant_sparse_attn_sharedkv_check_existance.cpp
-        kv_quant_sparse_attn_sharedkv_check_feature.cpp
-        kv_quant_sparse_attn_sharedkv_check_single_para.cpp
-        kv_quant_sparse_attn_sharedkv_check.cpp
-        kv_quant_sparse_attn_sharedkv_tiling.cpp
-    )
-endif()
+add_tiling_modules()
+target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+    kv_quant_sparse_attn_sharedkv_check_consistancy.cpp
+    kv_quant_sparse_attn_sharedkv_check_existance.cpp
+    kv_quant_sparse_attn_sharedkv_check_feature.cpp
+    kv_quant_sparse_attn_sharedkv_check_single_para.cpp
+    kv_quant_sparse_attn_sharedkv_check.cpp
+    kv_quant_sparse_attn_sharedkv_tiling.cpp
+)
