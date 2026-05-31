@@ -305,19 +305,15 @@ public:
         scale_ = tiling_->scale;
 
         pipe_.InitBuffer(yDataBuf_, STA_OUTPUT_ROW_CHUNK * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(outTileFloatBuf_, GetSubBlockRows(tiling_->maxQueryRows, GetTaskRatioValue()) *
-                                               tiling_->headDimAlign * sizeof(float));
+        pipe_.InitBuffer(outTileFloatBuf_, STA_OUTPUT_ROW_CHUNK * tiling_->headDimAlign * sizeof(float));
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(accTileFloatBuf_, GetSubBlockRows(tiling_->maxQueryRows, GetTaskRatioValue()) *
                                                tiling_->headDimAlign * sizeof(float));
         pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * tiling_->maxVisibleKvTokens * sizeof(float));
         if (IsFirstBlock2DSoftmaxEnabled(tiling_)) {
-            pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens *
-                                               sizeof(DataType));
-            pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens *
-                                                   sizeof(float));
-            pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens *
-                                                sizeof(float));
+            pipe_.InitBuffer(probDataBuf_, STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens * sizeof(DataType));
+            pipe_.InitBuffer(reduceWorkBuf_, STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens * sizeof(float));
+            pipe_.InitBuffer(scoreFloatBuf_, STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens * sizeof(float));
             pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * tiling_->maxVisibleKvTokens * sizeof(float));
         } else {
             pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * tiling_->maxVisibleKvTokens * sizeof(DataType));
@@ -584,9 +580,7 @@ private:
     __aicore__ inline void StoreProbBlock(LocalTensor<float> &weightLocal, uint32_t copyCount,
                                           uint32_t rowInSubBlock, uint32_t bufferIdx)
     {
-        const int64_t softmaxTileElems = STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens;
-        LocalTensor<DataType> probLocal =
-            probDataBuf_.Get<DataType>()[static_cast<int64_t>(bufferIdx) * softmaxTileElems];
+        LocalTensor<DataType> probLocal = probDataBuf_.Get<DataType>();
         if constexpr (IS_BF16) {
             Cast(probLocal, weightLocal, RoundMode::CAST_RINT, copyCount);
         } else {
@@ -599,6 +593,29 @@ private:
         DataCopy(probWorkspace, probLocal, copyCount);
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
+    }
+
+    __aicore__ inline void AddOutWorkspaceToAcc(uint32_t rowBegin, uint32_t validRowCount,
+                                                uint32_t alignedHeadDim, uint32_t bufferIdx)
+    {
+        if (validRowCount == 0) {
+            return;
+        }
+        LocalTensor<float> outTileLocal = outTileFloatBuf_.Get<float>();
+        LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
+        for (uint32_t rowOffset = 0; rowOffset < validRowCount;
+             rowOffset += static_cast<uint32_t>(STA_OUTPUT_ROW_CHUNK)) {
+            const uint32_t rowCount =
+                MinUint32(static_cast<uint32_t>(STA_OUTPUT_ROW_CHUNK), validRowCount - rowOffset);
+            const uint32_t outElemCount = rowCount * alignedHeadDim;
+            GlobalTensor<float> outWorkspace = GetOutWorkspaceRow(rowOffset, bufferIdx);
+            DataCopy(outTileLocal, outWorkspace, outElemCount);
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
+            Add(accTile[(rowBegin + rowOffset) * alignedHeadDim],
+                accTile[(rowBegin + rowOffset) * alignedHeadDim], outTileLocal, outElemCount);
+            PipeBarrier<PIPE_V>();
+        }
     }
 
     __aicore__ inline LocalTensor<float> GetAccTileRow(uint32_t rowInBlock)
@@ -710,11 +727,8 @@ private:
                                                         LocalTensor<float> &maxLocal,
                                                         LocalTensor<float> &denomLocal)
     {
-        const int64_t softmaxTileElems = STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens;
-        LocalTensor<float> scoreTile =
-            scoreFloatBuf_.Get<float>()[static_cast<int64_t>(bufferIdx) * softmaxTileElems];
-        LocalTensor<float> reduceTile =
-            reduceWorkBuf_.Get<float>()[static_cast<int64_t>(bufferIdx) * softmaxTileElems];
+        LocalTensor<float> scoreTile = scoreFloatBuf_.Get<float>();
+        LocalTensor<float> reduceTile = reduceWorkBuf_.Get<float>();
         LocalTensor<float> rowReduceLocal = GetKvTokenSlice<float>(reduceFloatBuf_, bufferIdx);
         const uint32_t columnCount = static_cast<uint32_t>(tiling_->maxVisibleKvTokens);
         for (uint32_t rowBase = rowBegin; rowBase < validRowEnd;
@@ -766,11 +780,8 @@ private:
             return false;
         }
 
-        const int64_t softmaxTileElems = STA_SOFTMAX_ROW_CHUNK * tiling_->maxVisibleKvTokens;
-        LocalTensor<float> scoreTile =
-            scoreFloatBuf_.Get<float>()[static_cast<int64_t>(bufferIdx) * softmaxTileElems];
-        LocalTensor<float> reduceTile =
-            reduceWorkBuf_.Get<float>()[static_cast<int64_t>(bufferIdx) * softmaxTileElems];
+        LocalTensor<float> scoreTile = scoreFloatBuf_.Get<float>();
+        LocalTensor<float> reduceTile = reduceWorkBuf_.Get<float>();
         LocalTensor<float> rowReduceLocal = GetKvTokenSlice<float>(reduceFloatBuf_, bufferIdx);
         LocalTensor<float> oldScaleLocal = oldScaleFloatBuf_.Get<float>();
         LocalTensor<float> blockSumLocal = blockSumFloatBuf_.Get<float>();
@@ -885,18 +896,7 @@ private:
                                                 denomLocal)) {
                 CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx, subBlock));
                 CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx, subBlock));
-                if (validRowCount > 0) {
-                    LocalTensor<float> outTileLocal = outTileFloatBuf_.Get<float>();
-                    GlobalTensor<float> outWorkspace = GetOutWorkspaceRow(0, bufferIdx);
-                    const uint32_t outElemCount = static_cast<uint32_t>(validRowCount * alignedHeadDim);
-                    DataCopy(outTileLocal, outWorkspace, outElemCount);
-                    SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-                    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-                    LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-                    Add(accTile[rowBegin * alignedHeadDim], accTile[rowBegin * alignedHeadDim], outTileLocal,
-                        outElemCount);
-                    PipeBarrier<PIPE_V>();
-                }
+                AddOutWorkspaceToAcc(rowBegin, validRowCount, alignedHeadDim, bufferIdx);
                 CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx, subBlock));
                 ++tileLoop;
                 return;
@@ -933,17 +933,7 @@ private:
         }
         CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx, subBlock));
         CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx, subBlock));
-        if (validRowCount > 0) {
-            LocalTensor<float> outTileLocal = outTileFloatBuf_.Get<float>();
-            GlobalTensor<float> outWorkspace = GetOutWorkspaceRow(0, bufferIdx);
-            const uint32_t outElemCount = static_cast<uint32_t>(validRowCount * alignedHeadDim);
-            DataCopy(outTileLocal, outWorkspace, outElemCount);
-            SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
-            LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
-            Add(accTile[rowBegin * alignedHeadDim], accTile[rowBegin * alignedHeadDim], outTileLocal, outElemCount);
-            PipeBarrier<PIPE_V>();
-        }
+        AddOutWorkspaceToAcc(rowBegin, validRowCount, alignedHeadDim, bufferIdx);
         CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx, subBlock));
         ++tileLoop;
     }
