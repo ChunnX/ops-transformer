@@ -39,11 +39,11 @@ enum SparseMode : uint8_t {
 struct MaskInfo {
     uint32_t gs1StartIdx;
     uint32_t gs1dealNum;
-    uint32_t s1Size;
+    uint64_t s1Size;
     uint32_t gSize;
     uint32_t s2StartIdx;
     uint32_t s2dealNum;
-    uint32_t s2Size;
+    uint64_t s2Size;
     uint32_t nBaseSize;
 
     int64_t preToken = 0;
@@ -469,7 +469,7 @@ __aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, Global
         dataCopyParams.blockLen = info.gs1dealNum >> 1;
         dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum >> 1);
         dataCopyParams.dstStride = info.attenMaskDstStride;
-        DataCopyPadExtParams<T> padParams;
+        DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
 
