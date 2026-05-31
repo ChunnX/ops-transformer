@@ -640,7 +640,7 @@ __aicore__ inline void SoftmaxFP32Perf(const LocalTensor<float> &output, const L
     LastDimReduceSumPerf(tmpReduceBuffer, output, curRowNum, curColNum);
     DivABLastDimBrcInline<float, true>(output, output, tmpReduceBuffer, tmpBrcbBuffer, curRowNum, curColNum);
     // 新版下面这个eps不要加了
-    Adds(output, output, eps, curRowNum * curColNumAlign);
+    // Adds(output, output, eps, curRowNum * curColNumAlign);
     PipeBarrier<PIPE_V>();
 }
 
