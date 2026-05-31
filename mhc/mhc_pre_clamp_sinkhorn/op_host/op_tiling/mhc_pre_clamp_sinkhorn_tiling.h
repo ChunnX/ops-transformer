@@ -188,7 +188,7 @@ private:
     float hcEps_ = 0.0;
     float normEps_ = 0.0;
     float minVal_ = 0.0f;
-    float maxVal_ = 1.0f;
+    float maxVal_ = 0.0f;
     bool needGrad_ = true;
     int64_t bsLoop_ = 1;
     int64_t tailBs_ = 0;
@@ -255,7 +255,7 @@ private:
     double hcEps_ = 0.0;
     double normEps_ = 0.0;
     float minVal_ = 0.0f;
-    float maxVal_ = 1.0f;
+    float maxVal_ = 0.0f;
     bool needGrad_ = false;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
 };

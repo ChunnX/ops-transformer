@@ -108,7 +108,7 @@ ge::graphStatus MhcPreClampSinkhornTiling::GetAttr()
     minVal_ = minValAttr == nullptr ? 0.0f : *minValAttr;
 
     auto maxValAttr = attrs->GetAttrPointer<float>(MAX_VAL_ATTR_IDX);
-    maxVal_ = maxValAttr == nullptr ? 1.0f : *maxValAttr;
+    maxVal_ = maxValAttr == nullptr ? 0.0f : *maxValAttr;
     return ge::GRAPH_SUCCESS;
 }
 
