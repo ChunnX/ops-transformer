@@ -12,14 +12,13 @@
 // TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * \file bsa_kernel.h
+ * ile block_sparse_attention_kernel.h
  * \brief
  */
 
 #ifndef BLOCK_SPARSE_ATTENTION_KERNEL_H_
 #define BLOCK_SPARSE_ATTENTION_KERNEL_H_
-#include "bsa_kernel_base.h"
-#include "./vf/vf_flash_decode.h"
+#include "block_sparse_attention_kernel_base.h"
 #include "common/infer_flash_attention_comm.h"
 #include "common/infer_flash_attention_kvcache.h"
 #include "common/infer_flash_attention_sparse.h"
@@ -47,10 +46,6 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
 {
-    if constexpr (isFd) {
-        this->constInfo.splitKVNum = this->sharedParams.splitKVNum;
-        this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
-    }
     if constexpr (POST_QUANT) {
         this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
         this->constInfo.isPostQuantBF16 = this->sharedParams.isPostQuantBF16;
@@ -103,10 +98,6 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if constexpr (isFd) {
-        actualCoreNums = this->sharedParams.bSize * this->constInfo.n2Size *
-                         this->constInfo.splitKVNum; // b * n2 * splitkv
-    }
     if (this->aicIdx >= actualCoreNums) {
         return;
     }
@@ -116,23 +107,16 @@ __aicore__ inline void BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::
     uint32_t bnEndIdx;
     int64_t s2LoopLimit;
     int64_t nextGs1Idx = this->sharedParams.multiCoreInnerLimit;
-    if constexpr (!isFd) {
-        bnStartIdx = this->sharedParams.bnStartIdx;
-        gS1StartIdx = this->sharedParams.multiCoreInnerOffset;
-        if (likely((this->sharedParams.coreNum - 1) > this->aicIdx)) {
-            bnEndIdx = this->sharedParams.bnEndIdx;
-            if (nextGs1Idx != 0) {
-                bnEndIdx++;
-            }
-        } else {
-            bnEndIdx = this->sharedParams.bSize * this->constInfo.n2Size *
-                this->constInfo.headNumRatio;
+    bnStartIdx = this->sharedParams.bnStartIdx;
+    gS1StartIdx = this->sharedParams.multiCoreInnerOffset;
+    if (likely((this->sharedParams.coreNum - 1) > this->aicIdx)) {
+        bnEndIdx = this->sharedParams.bnEndIdx;
+        if (nextGs1Idx != 0) {
+            bnEndIdx++;
         }
     } else {
-        gS1StartIdx = 0;
-        bnStartIdx = 0;
-        bnEndIdx = 1;
-        s2LoopLimit = 0;
+        bnEndIdx = this->sharedParams.bSize * this->constInfo.n2Size *
+            this->constInfo.headNumRatio;
     }
     int64_t taskId = 0;
     bool notLast = true;
@@ -141,39 +125,17 @@ __aicore__ inline void BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::
     RunInfo<isInfer> runInfo[4];
     RunParamStr<isInfer> runParam;
 
-    if constexpr (isFd) {
-        runParam.boIdx = this->aicIdx / (this->constInfo.n2Size * this->constInfo.splitKVNum);
-        runParam.n2oIdx = (this->aicIdx / this->constInfo.splitKVNum) % this->constInfo.n2Size;
-        bnStartIdx = runParam.boIdx * this->constInfo.n2Size + runParam.n2oIdx;
-        bnEndIdx = bnStartIdx + 1;
-    }
     // 注意这里不等于0是因为，推理的在SetRunInfo中第一次也需要赋值runInfo.s1oIdx，boIdx，n2oIdx，goIdx
     // 训练这些值在multiCoreInnerIdx = 0的时候都是0，两边不统一
     int64_t multiCoreInnerIdx = 1;
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; ++bnIdx) {
         bool lastBN = (bnIdx == bnEndIdx - 1);
-        if constexpr (!isFd) {
-            runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
-            runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
-        }
+        runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
+        runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, this->attenMaskInfo,
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, lastBN,
                                                                       nextGs1Idx);
-        if constexpr (isFd) {
-            if (this->constInfo.sInnerLoopSize * (this->aicIdx % this->constInfo.splitKVNum) >
-                runParam.actualS2Size) {
-                runParam.s2LineEndIdx = 0;
-            } else {
-                int64_t tailSInnerLoopSize =
-                    runParam.actualS2Size -
-                    this->constInfo.sInnerLoopSize * (this->aicIdx % this->constInfo.splitKVNum);
-                runParam.s2LineEndIdx = tailSInnerLoopSize > this->constInfo.sInnerLoopSize ?
-                                        this->constInfo.sInnerLoopSize :
-                                        tailSInnerLoopSize;
-            }
-            runParam.s1LoopTimes = 1;
-        }
         int64_t tempGS1End = lastBN ? (runParam.s1LoopTimes + 3) : runParam.s1LoopTimes;
         for (int64_t gS1Index = gS1StartIdx; gS1Index < tempGS1End; ++gS1Index) {
             bool notLastThreeLoop = true;
@@ -268,13 +230,6 @@ __aicore__ inline void BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::
         SyncAll<false>();
     }
     ProcessMainLoop();
-    if constexpr (isFd) {
-        if ASCEND_IS_AIV {
-            SyncAll();
-            this->vecBlock.InitFDBuffers(this->constInfo);
-            this->vecBlock.FlashDecodeCompute(this->constInfo, this->keyGm, this->actualSeqKvlenAddr);
-        }
-    }
 }
 
 // =========================================== private functions ===========================================
