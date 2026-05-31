@@ -12,21 +12,21 @@
 // TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * \file bsa_kernel_base.h
+ * ile block_sparse_attention_kernel_base.h
  * \brief
  */
 
 #ifndef BLOCK_SPARSE_ATTENTION_KERNEL_BASE_H_
 #define BLOCK_SPARSE_ATTENTION_KERNEL_BASE_H_
-#include "bsa_block_cube.h"
-#include "bsa_block_vec.h"
+#include "block_sparse_attention_block_cube.h"
+#include "block_sparse_attention_block_vec.h"
 #include "common/flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "bsa_attenmask.h"
+#include "block_sparse_attention_attenmask.h"
 
 // 线上编包
 #include "common/matmul.h"
@@ -62,7 +62,7 @@ public:
     ARGS_TRAITS;
     __aicore__ inline BlockSparseAttentionKernelBase() {};
 
-    __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+    __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
                             __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
@@ -74,7 +74,7 @@ public:
                             __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
                             __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
                             __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
@@ -160,7 +160,7 @@ public:
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitBaseAPI(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
@@ -199,7 +199,7 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
 
     this->InitActualKVPrefixLen(actualSharedPrefixLen);
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
+    this->InitGlobalBuffer(query, key, value, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
         actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
         kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
@@ -224,7 +224,7 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitGlobalBuffer(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
@@ -287,7 +287,7 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
         bmm2ResGmBuffers.Init(gmBufferManager, mm2Offset);
         workspace += (totalOffset + mm2Offset * 3);
     }
-    vecBlock.InitGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
+    vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
         prefix, attenMask, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum, workspace, singleCoreOffset,
         this->aicIdx, constInfo);
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
@@ -528,21 +528,6 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
 
     if ASCEND_IS_AIV {
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
-        if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
-            pseInfo.pseLayoutType = inputParamsRegbase.pseShapeType;
-            pseInfo.pseType = inputParamsRegbase.pseType;
-            pseInfo.pseBSize = inputParamsRegbase.pseBSize;
-            pseInfo.pseS1Size = inputParamsRegbase.pseS1Size;
-            pseInfo.pseS2Size = inputParamsRegbase.pseS2Size;
-            pseInfo.pseEncodeType = (uint32_t)inputParamsRegbase.pseEncodeType;
-            pseInfo.pseStride = (pseInfo.pseLayoutType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) ? 0 : s2BaseSize;
-            pseInfo.qStartIdx = inputParamsRegbase.qStartIdx;
-            pseInfo.kvStartIdx = inputParamsRegbase.kvStartIdx;
-            if (inputParamsRegbase.pseShapeType == (uint32_t)PseLayoutTypeEnum::PSE_1S2) {
-                constInfo.gS2 = constInfo.gSize * constInfo.s2Size;
-            }
-        }
-
         if constexpr (hasAtten) {
             attenMaskInfo.preTokens = sharedParams.preTokens;
             attenMaskInfo.nextTokens = sharedParams.nextTokens;
@@ -662,9 +647,6 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
-    if constexpr (isFd) {
-        runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
-    }
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;

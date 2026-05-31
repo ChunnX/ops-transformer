@@ -206,9 +206,6 @@ struct RunInfo<true> {
     // lse 输出offset
     int64_t softmaxLseOffset;
 
-    // FD相关
-    int64_t flashDecodeS2Idx;
-
     // tensorlist相关
     int64_t s2InCurrentBatch;
 
@@ -357,10 +354,6 @@ struct RunInfo<false> {
     bool isKVHasLeftPadding; \
     int64_t queryRightPaddingSize; \
     int64_t kvRightPaddingSize; \
-    /* FD */ \
-    int64_t sInnerLoopSize; /* FD s2总大小 */ \
-    int64_t actualCombineLoopSize; /* 实际规约块数 */ \
-    int64_t splitKVNum; \
     /* 后量化 */ \
     bool isPostQuantPerChnl; \
     bool isPostQuantBF16; \
@@ -473,7 +466,6 @@ struct CVSharedParams<true, false> {
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
-    uint32_t splitKVNum;
 
     uint32_t bnStartIdx;
     uint32_t bnEndIdx;
@@ -508,7 +500,6 @@ struct CVSharedParams<true, true> {
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
     uint32_t actualSeqLengthsKVSize;
-    uint32_t splitKVNum;
 
     uint32_t bnStartIdx;
     uint32_t bnEndIdx;

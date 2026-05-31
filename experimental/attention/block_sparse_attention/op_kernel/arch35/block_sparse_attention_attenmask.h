@@ -12,7 +12,7 @@
 // TODO: 待实现 - 当前已完成自包含迁移和命名/include 适配；sparseSeqLen/sparseIndices 流水、per-token qScale、vScale、空 sparse 输出和 mask sparse offset 仍需按 BSA 方案 2.4 实现。
 
 /*!
- * \file bsa_attenmask.h
+ * ile block_sparse_attention_attenmask.h
  * \brief
  */
 
@@ -519,18 +519,15 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
     }
 }
 
-template <bool hasAtten, bool enableKVPrefix = false, bool isFd = false, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
+template <bool hasAtten, bool enableKVPrefix = false, bool hasRope = false, bool isInfer = false, DTemplateType dTemplateType = DTemplateType::Aligned128, bool isMxfp8FullQuant = false>
 __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
     AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
 {
     auto result = ComputeAttenMaskInnerOffset<hasAtten, hasRope, isInfer, dTemplateType, enableKVPrefix, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
-    if constexpr (isFd) {
-        result += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
-    }
     return result;
 }
 
-template <bool hasAtten, bool isFd = false, bool hasRope = false, bool isInfer = false>
+template <bool hasAtten, bool hasRope = false, bool isInfer = false>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue, GlobalTensor<uint8_t> &srcTensor,
                                        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo,
                                        bool isPre = false)
@@ -545,14 +542,14 @@ __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQ
     }
 }
 
-template <bool hasAtten, bool isFd = false, bool enableKVPrefix = false, bool hasRope = false, bool isInfer = false>
+template <bool hasAtten, bool enableKVPrefix = false, bool hasRope = false, bool isInfer = false>
 __aicore__ inline void AttenMaskCopyIn(TQue<QuePosition::VECIN, 1> &attenMaskInQue,
                                        TQue<QuePosition::VECIN, 1> &attenMaskInQuePre, GlobalTensor<uint8_t> &srcTensor,
                                        RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, AttenMaskInfo &attenMaskInfo)
 {
     if constexpr (hasAtten == true) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd>(runInfo, constInfo, attenMaskInfo);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix>(runInfo, constInfo, attenMaskInfo);
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::PREFIX_MODE)) {
             if (attenMaskInfo.computeMode == AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
                 maskOffset = 4194304; // 2048*2048
@@ -609,7 +606,7 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
 {
     if constexpr (hasAtten) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, false, false, isInfer, DTemplateType::Aligned128, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, true, subLoop);
         if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
             int32_t s2RealSize = runInfo.s2RealSize;
             if constexpr (isMxfp8FullQuant) {
