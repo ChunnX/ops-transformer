@@ -30,10 +30,10 @@ inline ge::graphStatus GetMatmulPara(
     const gert::OpExecuteContext* host_api_ctx, size_t x1_idx, size_t x2_idx, size_t bias_idx, MatmulParas& para)
 {
     const auto x1 = host_api_ctx->GetInputTensor(x1_idx);
-    OPS_CHECK(x1 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1 is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x1 == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x1"), return ge::GRAPH_FAILED);
 
     const auto x2 = host_api_ctx->GetInputTensor(x2_idx);
-    OPS_CHECK(x2 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2 is null"), return ge::GRAPH_FAILED);
+    OPS_CHECK(x2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(host_api_ctx->GetNodeName(), "x2"), return ge::GRAPH_FAILED);
 
     para.bias = host_api_ctx->GetOptionalInputTensor(bias_idx);
 
