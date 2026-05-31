@@ -104,8 +104,8 @@ private:
     FusedInferAttentionScoreFullQuantTilingData tilingData_;
     FiaTilingKeyInfo tilingKeyInfo_;
     FiaPlatFormInfo platformInfo_;
-    uint32_t sOuterFactor_;
-    uint32_t sInnerFactor_;
+    uint32_t sOuterFactor_ = 0;
+    uint32_t sInnerFactor_ = 0;
     bool flashDecodeFlag_ = false;
     bool actualSeqLenQFlag_ = false;
     bool actualSeqLenKVFlag_ = false;

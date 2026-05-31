@@ -143,6 +143,9 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
 
 ge::graphStatus FiaTilingFullQuantMxArch35::SetPlatMemoryInfo()
 {
+    if (context_ == nullptr) {
+        return ge::GRAPH_FAILED
+    }
     auto platformInfoPtr = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(fiaInfo_->opName, "The platformInfoPtr is null!"),
                 return ge::GRAPH_FAILED);
@@ -399,7 +402,12 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
         baseInfo.actualSeqS1Size.reserve(baseInfo.bSize);
         const int64_t *s1Ptr = actSeqLenData->GetData<int64_t>();
         for (uint32_t i = 0; i < baseInfo.bSize; i++) {
-            baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
+            if (fiaInfo_->actualLenQDims == 1) {
+                baseInfo.actualSeqS1Size.emplace_back(s1Ptr[0]);
+            } else {
+                baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
+            }
+            
         }
     }
     if (actSeqLenDataKV != nullptr) {
@@ -463,8 +471,10 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
     AdjustSinnerAndSouter(); // 确定tiling切块
 
     // decode场景qscale shape为[N2, T, G, D//64, 2]；prefill qscale shape为[T, N, D//64, 2]
-    decodeS1GMerge_ = (fiaInfo_->opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() == 5);
-
+    if (fiaInfo_->opParamInfo.dequantScaleQuery.tensor != nullptr) {
+        decodeS1GMerge_ = (fiaInfo_->opParamInfo.dequantScaleQuery.tensor->GetStorageShape().GetDimNum() == 5);
+    }
+    
     split_core_v2::BaseInfo baseInfo{};
     split_core_v2::SplitParam splitParam{};
     CreateSplitInput(baseInfo, splitParam);
@@ -822,6 +832,9 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
 
 ge::graphStatus FiaTilingFullQuantMxArch35::SetTilingData(FusedInferAttentionScoreFullQuantTilingData &tilingData)
 {
+    if (context_ == nullptr) {
+        return ge::GRAPH_FAILED
+    }
     FusedInferAttentionScoreFullQuantTilingData *tiling =
         context_->GetTilingData<FusedInferAttentionScoreFullQuantTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
@@ -896,8 +909,10 @@ void FiaTilingFullQuantMxArch35::PrintAllTilingData()
                 fiaMetaData.FDMetadata[aivIdx][7]);
     }
 
-    int64_t cap = context_->GetRawTilingData()->GetCapacity();
-    OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);
+    if (context_->GetRawTilingData() != nullptr) {
+        int64_t cap = context_->GetRawTilingData()->GetCapacity();
+        OP_LOGD(fiaInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);
+    }
 }
 
 // 值越小表示优先级越高. 对于FIA, 使用3位数表示优先级, 优先级编码含义为:
