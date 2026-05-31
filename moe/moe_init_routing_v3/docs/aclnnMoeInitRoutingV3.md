@@ -110,6 +110,8 @@
             $$
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
+
+        - 当expandedXOut数据类型为INT4时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
   
   5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
     - 非量化场景
@@ -234,7 +236,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>如果不输入表示计算时不使用scale;</li>
         <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2), 类型为FLOAT8_E8M0;</li>
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-        <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
+        <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；当quantMode为1且expandedXOut为INT4时，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
@@ -352,7 +354,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>activeExpertRangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>表示活跃的expert范围</td>
-      <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum </td>
+      <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -378,9 +380,9 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>Dropless场景shape为[NUM_ROWS * K, H]。</li>
         <li>Active场景shape为[min(activeNum, NUM_ROWS * K), H]。</li>
         <li>Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</li>
-        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
+        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为1且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</li>
       </ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>2</td>
       <td>-</td>
@@ -406,6 +408,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>在expertTokensNumType为0时，表示activeExpertRangeOptional范围内expert在排序后处理token总数的前缀和。</li>
         <li>在expertTokensNumType为1时，表示activeExpertRangeOptional范围内expert对应的处理token的总数。</li>
         <li>在expertTokensNumType为2时，表示activeExpertRangeOptional范围内token总数为非0的expert，以及对应expert处理token的总数。</li>
+        <li>在expertTokensNumType为0或1时，输出shape为[expertEnd-expertStart]；在expertTokensNumType为2时，输出shape为[expertNum, 2]。</li>
       </ul></td>
       <td>INT64</td>
       <td>ND</td>
@@ -504,6 +507,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - dropPadMode仅支持取值为0。
     - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
+  - <term>Ascend 950PR/Ascend 950DT</term>支持quantMode为1且expandedXOut为INT4的动态量化场景，需同时满足：
+    - x数据类型为FLOAT32或BFLOAT16，expandedXOut数据类型为INT4。
+    - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
+    - activeNum等于NUM_ROWS*K。
+    - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
+    - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
     
 ## aclnnMoeInitRoutingV3
 
