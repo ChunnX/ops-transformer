@@ -258,8 +258,8 @@ int main() {
         LOG_PRINT("  dQ index %lu: %f\n", i, static_cast<float>(dqData[i]));
     }
 
-    // // 13. 释放所有资源
-    // LOG_PRINT("Cleaning up resources...\n");
+    // 13. 释放所有资源
+    LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) aclrtFree(workspaceAddr);
     
     aclrtFree(qAddr); aclrtFree(kAddr); aclrtFree(vAddr);
