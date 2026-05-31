@@ -9,3 +9,4 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.posembedding.interleave_rope.op_graph.CMakeLists.txt ")
+add_graph_plugin_sources()

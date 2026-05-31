@@ -28,6 +28,7 @@
 #include "graph/utils/type_utils.h"
 #include "ops_utils.h"
 #include "register/op_def_registry.h"
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "matmul_reduce_scatter_tiling_base.h"
 #include "../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
@@ -120,33 +121,34 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
+ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
+    Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode)
 {
     if (tileMValue_ * args_.nValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
     OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
      " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld].",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
-    
+        tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
+
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
+        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."),
         return ge::GRAPH_FAILED);
-    
+
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
     tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
-    rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
-    rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
-    tailMValue_ = rcfCfg.tailM;
+    rcsCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
+    rcsCfg.tailM = args_.mValue - rcsCfg.tileCnt * tileMValue_;
+    tailMValue_ = rcsCfg.tailM;
     if (tailMValue_ == 0) {
-        rcfCfg.tailCnt = 0;
+        rcsCfg.tailCnt = 0;
     } else {
-        rcfCfg.tailCnt = 1;
+        rcsCfg.tailCnt = 1;
     }
     longTileLen_ = tileMValue_;
     OPS_LOG_I(opName_, "Because the result of formulaic tiling result does not meet the hccl restriction,"
      " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+        tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -186,10 +188,10 @@ void MatmulReduceScatterTilingBase::SetStorageAWorkSpaceSize(Mc2Tiling::RCSTilin
         mmResultLen_ = static_cast<uint64_t>(rcsCfg.rankM) * static_cast<uint64_t>(rcsCfg.rankN) *
                                              static_cast<uint64_t>(args_.outputDtypeSize);
         mmResultLen_ = mc2tiling::AlignUp<uint64_t>(mmResultLen_, 512); // 512 is used to get gm
-        OP_LOGD("MatmulReduceScatter", " reduce scatter gmcFloat size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter gmcFloat size %lu", mmResultLen_);
         rcsCfg.nd2NzWorkLen = 0;
         rcsCfg.cToFloatLen = mmResultLen_;
-        OP_LOGD("MatmulReduceScatter", " reduce scatter storage_a size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter storage_a size %lu", mmResultLen_);
     }
 
     rcsCfg.biasLen = 0;
@@ -247,7 +249,8 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     }
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
+        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
+        Mc2Comm::GetCommModeFromEnv());
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;
@@ -268,6 +271,10 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
+    // AICPU时不走All2All + Vec Reduce通路
+    if (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) {
+        isA2APath_ = false;
+    }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 };
@@ -538,8 +545,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, 
-                                                   ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
+void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg,
+                                                   const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
                                                    uint32_t debugMode)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算

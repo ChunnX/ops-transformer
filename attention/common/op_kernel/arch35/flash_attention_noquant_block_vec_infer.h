@@ -220,14 +220,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.totalSize = multiCoreParamsRegbase.totalSize;
 
     if ASCEND_IS_AIV {
-        if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTilingSSbuf = *tempTiling;
+        if constexpr (!isMlaNoQuant) { // mla模板c侧会拷贝tiling data,无需使用 sharedParams
+            if (subBlockIdx == 0) {
+                auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+                auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+                #pragma unroll
+                for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
+                    *tempTilingSSbuf = *tempTiling;
+                }
+                CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
             }
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
     }
 
@@ -414,7 +416,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut
         return;
     }
     if (constInfo.learnableSinkFlag) {
-        if (constInfo.isGqa) {
+        if (constInfo.isGqa && constInfo.gSize > 1) {
             this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxUb);
         } else {
             this->Vec1SinkCompute(runInfo, constInfo, sumUb, maxUb);
@@ -450,15 +452,53 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::CopySinkIn(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
-    int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + constInfo.subBlockIdx * runInfo.halfS1RealSize;
     DataCopyExtParams sinkCopyParams;
-    sinkCopyParams.blockCount = 1; // 进行一次连续拷贝
-    sinkCopyParams.blockLen = runInfo.halfS1RealSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
-    sinkCopyParams.srcStride = 0; // 源地址连续
-    sinkCopyParams.dstStride = 0; // 目的地址连续
-
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
+    uint32_t copyOffset = 0;
+    uint32_t dealCount = runInfo.halfS1RealSize;
+    int64_t sinkBaseOffset = runInfo.n2oIdx * constInfo.gSize;
+
+    sinkCopyParams.blockCount = 1;
+    sinkCopyParams.srcStride = 0;
+    sinkCopyParams.dstStride = 0;
+
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_BSH ||
+                  layout == LayOutTypeEnum::LAYOUT_SBH) {
+        uint32_t gOffset = static_cast<uint32_t>(runInfo.sOuterOffset % constInfo.gSize);
+        while (copyOffset < dealCount) {
+            uint32_t copyLen = dealCount - copyOffset;
+            uint32_t gRemain = constInfo.gSize - gOffset;
+            copyLen = copyLen < gRemain ? copyLen : gRemain;
+            sinkCopyParams.blockLen = copyLen * sizeof(INPUT_T);
+            DataCopyPad(sinkUbBf16[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
+                        sinkCopyPadParams);
+            copyOffset += copyLen;
+            gOffset = 0;
+        }
+    } else if (runInfo.actualS1Size == 1) {
+        uint32_t gOffset = static_cast<uint32_t>(runInfo.sOuterOffset % constInfo.gSize);
+        while (copyOffset < dealCount) {
+            uint32_t copyLen = dealCount - copyOffset;
+            uint32_t gRemain = constInfo.gSize - gOffset;
+            copyLen = copyLen < gRemain ? copyLen : gRemain;
+            sinkCopyParams.blockLen = copyLen * sizeof(INPUT_T);
+            DataCopyPad(sinkUbBf16[copyOffset], this->sinkGm[sinkBaseOffset + gOffset], sinkCopyParams,
+                        sinkCopyPadParams);
+            copyOffset += copyLen;
+            gOffset = 0;
+        }
+    } else {
+        while (copyOffset < dealCount) {
+            int64_t gs1Offset = runInfo.sOuterOffset + copyOffset;
+            uint32_t gOffset = static_cast<uint32_t>((gs1Offset / runInfo.actualS1Size) % constInfo.gSize);
+            uint32_t s1Remain = static_cast<uint32_t>(runInfo.actualS1Size - gs1Offset % runInfo.actualS1Size);
+            uint32_t copyLen = dealCount - copyOffset;
+            copyLen = copyLen < s1Remain ? copyLen : s1Remain;
+            auto sinkRaw = this->sinkGm.GetValue(sinkBaseOffset + gOffset);
+            Duplicate(sinkUbBf16[copyOffset], sinkRaw, copyLen);
+            copyOffset += copyLen;
+        }
+    }
     sinkQue.EnQue(sinkUbBf16);
 }
 
@@ -494,8 +534,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::GetActualSeqLenKV(
     if (constInfo.isActualLenDimsKVNull) {
         actualSeqLen = s2InCurrentBatch;
     } else {
-        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] :
-                                                             actualSeqKvlenAddr[boIdx];
+        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
+            if (boIdx > 0) {
+                actualSeqLen -= actualSeqKvlenAddr[boIdx - 1];
+            }
+        }
     }
     if (constInfo.isKVHasLeftPadding) {
         int64_t kvLeftPaddingSize = constInfo.s2Size - actualSeqLen - constInfo.kvRightPaddingSize;
@@ -516,7 +560,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.halfS1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
                                        
     int64_t startOffset = 0;             // gm起始位置偏移
@@ -539,8 +583,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
             startOffsetOfUb += constInfo.s1Size * 8; // 8：fp32对齐
             dealedCount += constInfo.s1Size;
         }
-        if (runInfo.vec2S1RealSize - dealedCount > 0) {
-            int64_t tmpBlockCount = runInfo.vec2S1RealSize - dealedCount;
+        if (runInfo.halfS1RealSize - dealedCount > 0) {
+            int64_t tmpBlockCount = runInfo.halfS1RealSize - dealedCount;
             tmpBlockCount = tmpBlockCount < runInfo.actualSeqLengthOfMlaPerBatch ?
                 tmpBlockCount : runInfo.actualSeqLengthOfMlaPerBatch;
             if (tmpBlockCount > 0) {
@@ -606,7 +650,19 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
         if (isMlaNoQuant && layout == LayOutTypeEnum::LAYOUT_BNSD && !constInfo.isActualLenDimsNull) {
             MlaBnsdWithActqLseCopyOut(lseUb, runInfo, constInfo, intriParams1);
         } else {
-            DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+            if (constInfo.isPfaGS1Merge && (layout == LayOutTypeEnum::LAYOUT_BSH ||
+                layout == LayOutTypeEnum::LAYOUT_TND)) {
+                for (int64_t i = 0; i < runInfo.halfS1RealSize / constInfo.gSize; i++) {
+                    int64_t lseGmOffset = i * constInfo.gSize * constInfo.n2Size;
+                    int64_t lseUboffset = i * constInfo.gSize * 8; // 8：fp32对齐
+                    intriParams1.blockCount = constInfo.gSize;
+                    intriParams1.dstStride = 0;
+                    DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset + lseGmOffset],
+                        lseUb[lseUboffset], intriParams1);
+                }
+            } else {
+                DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+            }
         }
     }
     softmaxLseQueue.FreeTensor(lseUb);
@@ -762,9 +818,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::Bmm2FDOut(LocalTen
     if constexpr (BaseClass::splitD){
         dSizeAligned64 = constInfo.dBasicBlock;
     }
-    SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-    WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-    attenOut = vec2ResUb;
+    if (constInfo.isRowInvalid) {
+        this->RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
+        attenOut = vec2ResUb;
+        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
+    } else {
+        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+        attenOut = vec2ResUb;
+    }
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;

@@ -311,16 +311,16 @@ def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_leng
                          beta_datarange=[0, 1], state_datarange=[-10, 10]):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
-    block_num = B * mtp if block_num == None else block_num
-    if scale_value == None:
+    block_num = B * mtp if block_num is None else block_num
+    if scale_value is None:
         scale_value = dk ** -0.5
-    if actual_seq_lengths == None:
+    if actual_seq_lengths is None:
         actual_seq_lengths = [mtp] * B
-    if has_num_accepted_tokens == True and num_accepted_tokens == None:
+    if has_num_accepted_tokens == True and num_accepted_tokens is None:
         num_accepted_tokens = torch.tensor([torch.randint(0, h, (1,)) for h in actual_seq_lengths]) + 1
     T = int(sum(actual_seq_lengths))
     actual_seq_lengths = torch.tensor(actual_seq_lengths)
-    if ssm_state_indices == None:
+    if ssm_state_indices is None:
         ssm_state_indices = torch.arange(T, dtype=torch.int32)
     # ======================== set input params finish ========================
     # ======================== check input params start ========================

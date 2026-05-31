@@ -46,7 +46,7 @@
 | ori\_win\_left        | 可选属性  | 表示`q`和`ori_kv`计算中q对过去token计算的数量，仅支持输入默认值127。      | INT32               | - |
 | ori\_win\_right       | 可选属性  | 表示`q`和`ori_kv`计算中q对未来token计算的数量，仅支持输入默认值0。        | INT32               | - |
 | layout\_q             | 可选属性  | 用于标识输入`q`的数据排布格式，支持输入"TND"和"BSND"，默认值为"BSND"。     | STRING               | - |
-| layout\_kv            | 可选属性  | 用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，仅支持输入"PA_ND"。         | STRING               | - |
+| layout\_kv            | 可选属性  | 用于标识输入`ori_kv`和`cmp_kv`的数据排布格式，支持输入"PA_ND"和"BSND"。   | STRING               | - |
 | return\_softmax_lse   | 可选属性  | 表示是否返回`softmax_lse`。True表示返回，False表示不返回，默认值为False。 | BOOL                | -  |
 | attention\_out        | 输出      | 公式中的输出。                                                          | BFLOAT16、FLOAT16   | ND |
 | softmax\_lse          | 输出      | 返回的`softmax_lse`。                                                 | FLOAT32             | ND |
@@ -71,7 +71,9 @@
   - `ori_kv`和`cmp_kv`的shape分别为[ori\_block\_num, ori\_block\_size, KV\_N, D]和[cmp\_block\_num, cmp\_block\_size, KV\_N, D]，其中ori\_block\_num和cmp\_block\_num为PageAttention时block总数，ori\_block\_size和cmp\_block\_size为一个block的token数，ori\_block\_size和cmp\_block\_size取值为16的倍数，最大支持1024，KV_N仅支持1。
   - `ori_block_table`和`cmp_block_table`的shape为2维，其中第一维长度为B，第二维长度不小于所有batch中最大的S2和S3对应的block数量，即S2\_max / block\_size和S3\_max / block\_size向上取整。
 - `metadata`为算子实际需要使用的分核结果，目前该参数必传，shape大小固定为[1024]。
-- `layout_kv`仅支持输入PA_ND，故设置`cu_seqlens_ori_kv`和`cu_seqlens_cmp_kv`无效。
+- `layout_kv`仅支持输入"PA_ND"和"BSND"。
+  - 当输入为PA_ND时，设置`cu_seqlens_ori_kv`和`cu_seqlens_cmp_kv`无效。
+  - 当输入为BSND时，`ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2,D]，cmp_kv的shape为[B, S3, N2,D]。
 - 目前暂不支持返回`softmax_lse`，`return_softmax_lse`仅支持输入False，返回值`softmax_lse`为无效值。
 - ori_mask_mode及cmp_mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../docs/zh/context/sparse_mode参数说明.md)。
 - 目前暂不支持指定`q`中参与运算的token数，因此设置`seqused_q`无效。

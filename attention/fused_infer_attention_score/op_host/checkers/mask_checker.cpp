@@ -143,6 +143,24 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
+{
+    enableMXFP8 = (*fiaInfo.opParamInfo.queryQuantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.keyAntiquantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.valueAntiquantMode == PER_CHANNEL_GROUP_MODE);
+    if (!enableMXFP8) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
+                ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "Only support sparse 0 without mask or sparse 3 with mask in MXFP8 fullquant scenario, " 
+                            "now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo)
 {
     // Only support sparse mode 0/2/3 when query and key headdim is not equal to value headdim.
@@ -172,7 +190,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
                     "In %s situation, when sparse is %d, query_padding_size or kv_padding_size should be not exist.",
                     QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode),
             return ge::GRAPH_FAILED);
-
+        // 不支持PSE
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
             OP_LOGE(fiaInfo.opName,
                     "In %s situation, when sparse is %d, pse_shift should be not exist.",
@@ -191,7 +209,6 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
                     QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode,
                     static_cast<int32_t>(fiaInfo.outputType)),
             return ge::GRAPH_FAILED);
-
         // s2 >= s1拦截
         // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
         if (fiaInfo.isMaxWorkspace) {
@@ -499,6 +516,9 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
         }
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFullQuantIFAMLA(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != CheckMXFP8FullQuant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     } else if (enableAntiQuant_) {

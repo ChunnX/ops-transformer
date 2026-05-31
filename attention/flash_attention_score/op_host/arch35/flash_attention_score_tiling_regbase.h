@@ -14,9 +14,9 @@
 #include <numeric>
 #include <alog_pub.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "err/ops_err.h"
@@ -42,6 +42,7 @@ static const int64_t NUM_448 = 448L;
 static const int64_t NUM_512 = 512L;
 static const int64_t NUM_768 = 768L;
 static const int64_t NUM_1024 = 1024L;
+static const int64_t NUM_1536 = 1536L;
 static const int64_t MIN_DN_S2 = 256L;
 static const int64_t MIN_D_TO_USE_WORKSPACE = 128L;
 static const int64_t DN_MIN_D_TO_USE_WORKSPACE = 192L;
@@ -394,7 +395,7 @@ protected:
     virtual void CalcDBasicBlock() = 0;
     virtual void CalcDVBasicBlock();
     virtual int64_t CalcTotalSize();
-
+    virtual void AnalyzeOptionalDn() {}
     virtual ge::graphStatus SetQKVStartIdx();
     virtual void SetOutputDtype();
     virtual void SetSplitCoreModeParam();
@@ -495,6 +496,7 @@ protected:
     bool regbase = false;
     bool hasRope = false;
     bool hasSink = false;
+    bool optionalDn = false;
 
     DTemplateType dTemplateType = DTemplateType::DTEMPLATEBOTTOM;
     DTemplateType dVTemplateType = DTemplateType::DTEMPLATEBOTTOM;

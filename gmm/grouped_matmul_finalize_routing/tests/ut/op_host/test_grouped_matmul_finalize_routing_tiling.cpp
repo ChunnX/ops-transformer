@@ -1,664 +1,317 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file test_grouped_matmul_finalize_routing.cpp
- * \brief
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
-#include <vector>
+/*!
+ * \file test_grouped_matmul_finalize_routing_tiling.cpp
+ * \brief CSV-driven unit tests for grouped_matmul_finalize_routing tiling.
+ */
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "../../../op_host/grouped_matmul_finalize_routing_base_tiling.h"
 #include "../../../op_host/grouped_matmul_finalize_routing_tiling.h"
-#include "tiling_context_faker.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
+#include "tiling_context_faker.h"
 
 using namespace std;
 using namespace ge;
 using namespace optiling;
 
-namespace optiling
-{
-extern void DisablePatternCache();
-extern void EnablePatternCache();
-}  // namespace optiling
+namespace {
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
-class GroupedMatmulFinalizeRoutingTiling : public testing::Test
+constexpr size_t kCsvColumnCount = 48;
+
+uint64_t ParseU64(const string &value)
 {
-protected:
-    static void SetUpTestCase()
+    const string trimmed = Trim(value);
+    return trimmed.empty() ? 0UL : static_cast<uint64_t>(stoull(trimmed));
+}
+
+float ParseFloat(const string &value)
+{
+    const string trimmed = Trim(value);
+    return trimmed.empty() ? 0.0F : stof(trimmed);
+}
+
+vector<int64_t> ParseDims(const string &value)
+{
+    return ops::ut::ParseDims(value);
+}
+
+ge::DataType ParseDtype(const string &dtype)
+{
+    return ops::ut::ParseGeDtype(dtype);
+}
+
+ge::Format ParseFormat(const string &format)
+{
+    return ops::ut::ParseGeFormat(format);
+}
+
+ge::graphStatus ParseGraphStatus(const string &status)
+{
+    return Trim(status) == "SUCCESS" ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
+}
+
+platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
+{
+    const string trimmed = Trim(socVersion);
+    if (trimmed == "Ascend910B") {
+        return platform_ascendc::SocVersion::ASCEND910B;
+    }
+    if (trimmed == "Ascend950") {
+        return platform_ascendc::SocVersion::ASCEND950;
+    }
+    return static_cast<platform_ascendc::SocVersion>(0);
+}
+
+NpuArch ParseNpuArch(const string &npuArch)
+{
+    return Trim(npuArch) == "DAV_3510" ? NpuArch::DAV_3510 : static_cast<NpuArch>(0);
+}
+
+struct GroupedMatmulFinalizeRoutingTilingCase {
+    void Run() const
     {
-        std::cout << "GroupedMatmulFinalizeRoutingTiling SetUp" << std::endl;
+        optiling::GroupedMatmulFinalizeRoutingCompileInfo compileInfo;
+        compileInfo.aicNum = ParseU64(aicNum);
+        compileInfo.aivNum = ParseU64(aivNum);
+        compileInfo.ubSize = ParseU64(ubSize);
+        compileInfo.l1Size = ParseU64(l1Size);
+        compileInfo.l2Size = ParseU64(l2Size);
+        compileInfo.l0CSize = ParseU64(l0CSize);
+        compileInfo.l0ASize = ParseU64(l0ASize);
+        compileInfo.l0BSize = ParseU64(l0BSize);
+        compileInfo.btSize = ParseU64(btSize);
+        compileInfo.cubeFreq = ParseFloat(cubeFreq);
+        compileInfo.socVersion = ParseSocVersion(socVersion);
+        compileInfo.supportL0c2out = ParseBool(supportL0c2out);
+        compileInfo.supportL12BtBf16 = ParseBool(supportL12BtBf16);
+        compileInfo.npuArch = ParseNpuArch(npuArch);
+
+        gert::TilingContextPara tilingContextPara(
+            "GroupedMatmulFinalizeRouting",
+            {
+                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
+                 ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
+                 ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ge::FORMAT_ND},
+                {ops::ut::MakeGertStorageShape(ParseDims(rowindexShape)), ParseDtype(rowindexDtype), ge::FORMAT_ND},
+            },
+            {
+                {ops::ut::MakeGertStorageShape(ParseDims(yShape)), ParseDtype(yDtype), ge::FORMAT_ND},
+            },
+            {
+                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(dtypeAttr)))},
+                {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(ParseFloat(sharedInputWeight))},
+                {"shared_input_offset",
+                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(sharedInputOffset)))},
+                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(ParseBool(transposeX))},
+                {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(ParseBool(transposeW))},
+                {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(outputBs)))},
+                {"group_list_type",
+                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(groupListType)))},
+                {"tuning_config",
+                 Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(stoll(tuningConfig)))},
+            },
+            &compileInfo);
+
+        const ge::graphStatus expectStatus = ParseGraphStatus(expectResult);
+        if (expectStatus == ge::GRAPH_SUCCESS) {
+            TilingInfo tilingInfo;
+            bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
+            ASSERT_TRUE(tilingResult) << "prefix=" << prefix << ", case=" << caseName;
+            EXPECT_EQ(static_cast<uint64_t>(tilingInfo.tilingKey), ParseU64(expectTilingKey))
+                << "prefix=" << prefix << ", case=" << caseName;
+            return;
+        }
+
+        ExecuteTestCase(tilingContextPara, expectStatus);
     }
 
-    static void TearDownTestCase()
-    {
-        std::cout << "GroupedMatmulFinalizeRoutingTiling TearDown" << std::endl;
-    }
+    string caseName;
+    bool enable = true;
+    string prefix;
+    string aicNum;
+    string aivNum;
+    string ubSize;
+    string l1Size;
+    string l2Size;
+    string l0CSize;
+    string l0ASize;
+    string l0BSize;
+    string btSize;
+    string cubeFreq;
+    string socVersion;
+    string supportL0c2out;
+    string supportL12BtBf16;
+    string npuArch;
+    string xShape;
+    string wShape;
+    string scaleShape;
+    string biasShape;
+    string pertokenScaleShape;
+    string groupListShape;
+    string sharedInputShape;
+    string logitShape;
+    string rowindexShape;
+    string yShape;
+    string xDtype;
+    string wDtype;
+    string scaleDtype;
+    string biasDtype;
+    string pertokenScaleDtype;
+    string groupListDtype;
+    string sharedInputDtype;
+    string logitDtype;
+    string rowindexDtype;
+    string yDtype;
+    string wFormat;
+    string dtypeAttr;
+    string sharedInputWeight;
+    string sharedInputOffset;
+    string transposeX;
+    string transposeW;
+    string outputBs;
+    string groupListType;
+    string tuningConfig;
+    string expectResult;
+    string expectTilingKey;
 };
 
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestW8A8NormalCase)
+vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
 {
+    vector<GroupedMatmulFinalizeRoutingTilingCase> cases;
+    ifstream csvData(csvPath, ios::in);
+    if (!csvData.is_open()) {
+        ADD_FAILURE() << "cannot open case file " << csvPath;
+        return cases;
+    }
 
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20, 48, 196608, 524288, 33554432, 131072, 65536, 65536, 131072};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
+    string line;
+    while (getline(csvData, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
 
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k / 32, n / 16, 16, 32}, {e, k / 32, n / 16, 16, 32}};
-    gert::StorageShape scaleShape = {{e, n}, {e, n}};
-    gert::StorageShape pertoken_scaleShape = {{m}, {m}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
+        vector<string> items;
+        SplitStr2Vec(line, ",", items);
+        if (items.empty() || items[0] == "caseName") {
+            continue;
+        }
+        if (items.size() != kCsvColumnCount) {
+            ADD_FAILURE() << "Bad csv row column count in " << csvPath << ": " << line;
+            continue;
+        }
 
+        GroupedMatmulFinalizeRoutingTilingCase testCase;
+        size_t idx = 0;
+        testCase.caseName = Trim(items[idx++]);
+        testCase.enable = ParseBool(items[idx++]);
+        if (!testCase.enable) {
+            continue;
+        }
+        testCase.prefix = Trim(items[idx++]);
+        testCase.aicNum = Trim(items[idx++]);
+        testCase.aivNum = Trim(items[idx++]);
+        testCase.ubSize = Trim(items[idx++]);
+        testCase.l1Size = Trim(items[idx++]);
+        testCase.l2Size = Trim(items[idx++]);
+        testCase.l0CSize = Trim(items[idx++]);
+        testCase.l0ASize = Trim(items[idx++]);
+        testCase.l0BSize = Trim(items[idx++]);
+        testCase.btSize = Trim(items[idx++]);
+        testCase.cubeFreq = Trim(items[idx++]);
+        testCase.socVersion = Trim(items[idx++]);
+        testCase.supportL0c2out = Trim(items[idx++]);
+        testCase.supportL12BtBf16 = Trim(items[idx++]);
+        testCase.npuArch = Trim(items[idx++]);
+        testCase.xShape = Trim(items[idx++]);
+        testCase.wShape = Trim(items[idx++]);
+        testCase.scaleShape = Trim(items[idx++]);
+        testCase.biasShape = Trim(items[idx++]);
+        testCase.pertokenScaleShape = Trim(items[idx++]);
+        testCase.groupListShape = Trim(items[idx++]);
+        testCase.sharedInputShape = Trim(items[idx++]);
+        testCase.logitShape = Trim(items[idx++]);
+        testCase.rowindexShape = Trim(items[idx++]);
+        testCase.yShape = Trim(items[idx++]);
+        testCase.xDtype = Trim(items[idx++]);
+        testCase.wDtype = Trim(items[idx++]);
+        testCase.scaleDtype = Trim(items[idx++]);
+        testCase.biasDtype = Trim(items[idx++]);
+        testCase.pertokenScaleDtype = Trim(items[idx++]);
+        testCase.groupListDtype = Trim(items[idx++]);
+        testCase.sharedInputDtype = Trim(items[idx++]);
+        testCase.logitDtype = Trim(items[idx++]);
+        testCase.rowindexDtype = Trim(items[idx++]);
+        testCase.yDtype = Trim(items[idx++]);
+        testCase.wFormat = Trim(items[idx++]);
+        testCase.dtypeAttr = Trim(items[idx++]);
+        testCase.sharedInputWeight = Trim(items[idx++]);
+        testCase.sharedInputOffset = Trim(items[idx++]);
+        testCase.transposeX = Trim(items[idx++]);
+        testCase.transposeW = Trim(items[idx++]);
+        testCase.outputBs = Trim(items[idx++]);
+        testCase.groupListType = Trim(items[idx++]);
+        testCase.tuningConfig = Trim(items[idx++]);
+        testCase.expectResult = Trim(items[idx++]);
+        testCase.expectTilingKey = Trim(items[idx++]);
+        cases.emplace_back(testCase);
+    }
 
-    gert::TilingContextPara tilingContextPara("GroupedMatmulFinalizeRouting", 
-        {
-            {xShape, ge::DT_INT8, ge::FORMAT_ND},
-            {wShape, ge::DT_INT8, ge::FORMAT_FRACTAL_NZ},
-            {scaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {pertoken_scaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-            {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-            {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo
-    );
-
-    int64_t expectTilingKey = 10000000000000000001UL;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    EXPECT_FALSE(cases.empty()) << "No cases loaded from " << csvPath;
+    return cases;
 }
 
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestW4A8NormalCase)
+const vector<GroupedMatmulFinalizeRoutingTilingCase> &GetCases()
 {
-
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20, 48, 196608, 524288, 33554432, 131072, 65536, 65536, 131072};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k / 32, n / 16, 16, 32}, {e, k / 32, n / 16, 16, 32}};
-    gert::StorageShape scaleShape = {{e, n}, {e, n}};
-    gert::StorageShape pertoken_scaleShape = {{m}, {m}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-
-    gert::TilingContextPara tilingContextPara("GroupedMatmulFinalizeRouting", 
-        {
-            {xShape, ge::DT_INT8, ge::FORMAT_ND},
-            {wShape, ge::DT_INT4, ge::FORMAT_ND},
-            {scaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {pertoken_scaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-            {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-            {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo
-    );
-
-    int64_t expectTilingKey = 11000000000000000011UL;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    static const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
+                                                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
+                                                                __FILE__));
+    return cases;
 }
 
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8NormalCaseTransposeWeightFalse)
+string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingTilingCase> &info)
 {
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {24,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    int64_t expectTilingKey = 0UL;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8NormalCaseTransposeWeightTrue)
+}  // namespace
+
+namespace GroupedMatmulFinalizeRoutingTilingUT {
+
+class TestGroupedMatmulFinalizeRoutingTiling
+    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingTilingCase> {};
+
+TEST_P(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
 {
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {24,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    int64_t expectTilingKey = 4UL;
-
-    TilingInfo tilingInfo;
-    ExecuteTiling(tilingContextPara, tilingInfo);
-    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    GetParam().Run();
 }
 
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseSharedOffset)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
+INSTANTIATE_TEST_SUITE_P(GMMFR_TILING_CSV, TestGroupedMatmulFinalizeRoutingTiling,
+                         testing::ValuesIn(GetCases()), MakeParamName);
 
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1023)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseNullRowindex)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{}, {}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseWrongxDtype)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestMXFP8IllegalCaseWrongScaleDtype)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20,
-                                                                     48,
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT16, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestCoreNumCheckFailNonZero)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20, // aicNum
-                                                                     50, // aivNum
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    int64_t expectTilingKey = 4UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(GroupedMatmulFinalizeRoutingTiling, TestCoreNumCheckFailZero)
-{
-    optiling::GroupedMatmulFinalizeRoutingCompileInfo compileinfo = {20, // aicNum
-                                                                     0, // aivNum
-                                                                     196608,
-                                                                     524288,
-                                                                     33554432,
-                                                                     131072,
-                                                                     65536,
-                                                                     65536,
-                                                                     131072,
-                                                                     0,
-                                                                     platform_ascendc::SocVersion::ASCEND950,
-                                                                     false,
-                                                                     true,
-                                                                     NpuArch::DAV_3510};
-    int m = 1024;
-    int k = 2048;
-    int n = 7168;
-    int e = 16;
-    int bs = 64;
-
-    gert::StorageShape xShape = {{m, k}, {m, k}};
-    gert::StorageShape wShape{{e, k, n}, {e, k, n}};
-    gert::StorageShape scaleShape = {{e, k / 64, n, 2}, {e, k / 64, n, 2}};
-    gert::StorageShape pertoken_scaleShape = {{m, k / 64, 2}, {m, k / 64, 2}};
-    gert::StorageShape groupListShape = {{e}, {e}};
-    gert::StorageShape shared_inputShape = {{bs, n}, {bs, n}};
-    gert::StorageShape logitShape = {{m}, {m}};
-    gert::StorageShape rowindexShape = {{m}, {m}};
-
-    gert::StorageShape yShape = {{m, n}, {m, n}};
-
-    gert::TilingContextPara tilingContextPara(
-        "GroupedMatmulFinalizeRouting",
-        {{xShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {wShape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-         {scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-         {pertoken_scaleShape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-         {groupListShape, ge::DT_INT64, ge::FORMAT_ND},
-         {shared_inputShape, ge::DT_BF16, ge::FORMAT_ND},
-         {logitShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {rowindexShape, ge::DT_INT64, ge::FORMAT_ND}},
-        {
-            {yShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-            {"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"output_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(bs)},
-            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-        },
-        &compileinfo);
-
-    int64_t expectTilingKey = 4UL;
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
+}  // namespace GroupedMatmulFinalizeRoutingTilingUT

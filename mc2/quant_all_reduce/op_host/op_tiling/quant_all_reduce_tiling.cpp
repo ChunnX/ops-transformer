@@ -28,7 +28,7 @@ using namespace ge;
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static void PrintTilingDataInfo(gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
+static void PrintTilingDataInfo(const gert::TilingContext *context, QuantAllReduceTilingData &tilingData)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "bs is %lu in quant_all_reduce.", tilingData.quantAllReduceTilingInfo.bs);
@@ -90,6 +90,22 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
+static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
+{
+    constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
+    constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
+    constexpr uint32_t ALIGN_BLOCK = 1024U;
+    uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;
+    uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
+    uint64_t perCoreElem = (xNums + aivNum - 1U) / aivNum;
+    uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
+    xPerBlock = std::max<uint64_t>(xPerBlock, MIN_BLOCK);
+    xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
+    tilingData.quantAllReduceTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
+    tilingData.quantAllReduceTilingInfo.alignBlock = ALIGN_BLOCK;
+}
+
 /**
  * @brief 设置tilingKey
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
@@ -130,6 +146,7 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
+    SetXPerBlock(*tilingData);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
     return ge::GRAPH_SUCCESS;
@@ -137,9 +154,10 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
 
 struct QuantAllReduceCompileInfo {};
 
-ge::graphStatus TilingParseForQuantAllReduce(gert::TilingParseContext *context) { 
+ge::graphStatus TilingParseForQuantAllReduce(gert::TilingParseContext *context)
+{
     (void)context;
- 	return ge::GRAPH_SUCCESS; 
+    return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(QuantAllReduce)

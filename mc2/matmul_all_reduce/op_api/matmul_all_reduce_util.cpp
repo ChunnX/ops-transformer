@@ -16,6 +16,7 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/op_api/mc2_aclnn_util.h"
+#include "mc2_comm_utils.h"
 
 using namespace op;
 
@@ -66,9 +67,9 @@ bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* 
     }
     int64_t dim1 = x2->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = x2->GetViewShape().GetDimNum() - 2;
-    uint64_t m = x1->GetViewShape().GetDim(dim1);
-    uint64_t k = x2->GetViewShape().GetDim(dim1);
-    uint64_t n = x2->GetViewShape().GetDim(dim2);
+    int64_t m = x1->GetViewShape().GetDim(dim1);
+    int64_t k = x2->GetViewShape().GetDim(dim1);
+    int64_t n = x2->GetViewShape().GetDim(dim2);
     // 空tensor放行
     if (m == 0 || k == 0 || n == 0) {
         return true;
@@ -536,7 +537,12 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     }
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());

@@ -18,10 +18,10 @@
 
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_util.h"
 #include "platform/platform_info.h"
 #include "util/math_util.h"
 namespace optiling {
@@ -311,6 +311,7 @@ protected:
     int64_t blockSize_;
     int64_t dSplitCoef_;
     bool is1snd_ = false;
+    bool isTndLayout_ = false;
 };
 
 } // namespace optiling

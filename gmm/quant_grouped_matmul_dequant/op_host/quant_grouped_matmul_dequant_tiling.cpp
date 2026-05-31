@@ -18,7 +18,7 @@
 #include "register/op_impl_registry.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"

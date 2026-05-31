@@ -256,6 +256,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>支持per-tensor。 </li>
+            <li>支持MxFP8。 </li>
+            <li>支持范围应满足[1, 448]。 </li>
             <li>不使用该功能时可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -391,7 +393,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
+            <li>支持per-tensor，per-channel，per-token，per-token-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -409,7 +411,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持空Tensor。</li>
             <li>使用时，shape必须与keyAntiquantScaleOptional保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset。</li>
+            <li>支持per-tensor，per-channel，per-token，per-channel-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -565,7 +567,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
-            <li>全量化场景涉及。量化模式支持per-token叠加per-head模式。</li>
+            <li>全量化场景涉及。量化模式支持per-token-group，per-token叠加per-head模式。</li>
             <li>不使用该功能时可传入nullptr。</li>
         </ul>
         </td>
@@ -1005,57 +1007,272 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
 ### 特性参数组
 
-|      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
-| :-------------------: | :-------------------: | :-------------: | :--------: |
-|      公共参数组      |         query         |      INPUT      |   Tensor   |
-|                      |          key          |      INPUT      | TensorList |
-|                      |         value         |      INPUT      | TensorList |
-|                      |       numHeads       |      ATTR      |   int64   |
-|                      |      scaleValue      | ATTR(OPTIONAL) |   double   |
-|                      |      inputLayout      | ATTR(OPTIONAL) |   string   |
-|                      |   numKeyValueHeads   | ATTR(OPTIONAL) |   int64   |
-|                      |     innerPrecise     | ATTR(OPTIONAL) |   int64   |
-|                      |     attentionOut     |     OUTPUT     |   Tensor   |
-|       PSE参数组       |       pseShift       | INPUT(OPTIONAL) |   Tensor   |
-|                      |       qStartIdx       | INPUT(OPTIONAL) |   Tensor   |
-|                      |      kvStartIdx      | INPUT(OPTIONAL) |   Tensor   |
-|                      |        pseType        | ATTR(OPTIONAL) |   int64   |
-|      Mask参数组      |       attenMask       | INPUT(OPTIONAL) |   Tensor   |
-|                      |       preTokens       | ATTR(OPTIONAL) |   int64   |
-|                      |      nextTokens      | ATTR(OPTIONAL) |   int64   |
-|                      |      sparseMode      | ATTR(OPTIONAL) |   int64   |
-|  ActualSeqLens参数组  |   actualSeqLengths   | INPUT(OPTIONAL) |  IntArray  |
-|                      |  actualSeqLengthsKv  | INPUT(OPTIONAL) |  IntArray  |
-|  伪量化&全量化参数组  |       deqScale1       | INPUT(OPTIONAL) |   Tensor   |
-|                      |      quantScale1      | INPUT(OPTIONAL) |   Tensor   |
-|                      |       deqScale2       | INPUT(OPTIONAL) |   Tensor   |
-|                      |    antiquantScale    | INPUT(OPTIONAL) |   Tensor   |
-|                      |    antiquantOffset    | INPUT(OPTIONAL) |   Tensor   |
-|                      |   keyAntiquantScale   | INPUT(OPTIONAL) |   Tensor   |
-|                      |  keyAntiquantOffset  | INPUT(OPTIONAL) |   Tensor   |
-|                      |  valueAntiquantScale  | INPUT(OPTIONAL) |   Tensor   |
-|                      | valueAntiquantOffset | INPUT(OPTIONAL) |   Tensor   |
-|                      |   dequantScaleQuery   | INPUT(OPTIONAL) |   Tensor   |
-|                      |     antiquantMode     | ATTR(OPTIONAL) |   int64   |
-|                      |   keyAntiquantMode   | ATTR(OPTIONAL) |   int64   |
-|                      |  valueAntiquantMode  | ATTR(OPTIONAL) |   int64   |
-|                      |    queryQuantMode    | ATTR(OPTIONAL) |   int64   |
-|    PostQuant参数组    |      quantScale2      | INPUT(OPTIONAL) |   Tensor   |
-|                      |     quantOffset2     | INPUT(OPTIONAL) |   Tensor   |
-|                      |        outType        | ATTR(OPTIONAL) |   int64   |
-| Paged Attention参数组 |      blockTable      | INPUT(OPTIONAL) |   Tensor   |
-|                      |       blockSize       | ATTR(OPTIONAL) |   int64   |
-|   LeftPadding参数组   |   queryPaddingSize   | INPUT(OPTIONAL) |   Tensor   |
-|                      |     kvPaddingSize     | INPUT(OPTIONAL) |   Tensor   |
-|  SystemPrefix参数组  |    keySharedPrefix    | INPUT(OPTIONAL) |   Tensor   |
-|                      |   valueSharedPrefix   | INPUT(OPTIONAL) |   Tensor   |
-|                      | actualSharedPrefixLen | INPUT(OPTIONAL) |   Tensor   |
-|      Rope参数组      |      query_rope      | INPUT(OPTIONAL) |   Tensor   |
-|                      |       key_rope       | INPUT(OPTIONAL) |   Tensor   |
-|                      | keyRopeAntiquantScale | INPUT(OPTIONAL) |   Tensor   |
-|  LearnableSink参数组  |     learnableSink     | INPUT(OPTIONAL) |   Tensor   |
-|   SoftmaxLSE参数组   |    softmaxLseFlag    | ATTR(OPTIONAL) |    bool    |
-|                      |      softmaxLse      |     OUTPUT     |   Tensor   |
+<table><thead>
+  <tr>
+    <th>特性参数组</th>
+    <th>参数字段名称</th>
+    <th>字段分组</th>
+    <th>字段类型</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td rowspan="9">公共参数组</td>
+    <td>query</td>
+    <td>INPUT</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>key</td>
+    <td>INPUT</td>
+    <td>TensorList</td>
+  </tr>
+  <tr>
+    <td>value</td>
+    <td>INPUT</td>
+    <td>TensorList</td>
+  </tr>
+  <tr>
+    <td>numHeads</td>
+    <td>ATTR</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>scaleValue</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>double</td>
+  </tr>
+  <tr>
+    <td>inputLayout</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>string</td>
+  </tr>
+  <tr>
+    <td>numKeyValueHeads</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>innerPrecise</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>attentionOut</td>
+    <td>OUTPUT</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td rowspan="4">PSE参数组</td>
+    <td>pseShift</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>qStartIdxOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>IntArray</td>
+  </tr>
+  <tr>
+    <td>kvStartIdxOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>IntArray</td>
+  </tr>
+  <tr>
+    <td>pseType</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td rowspan="4">Mask参数组</td>
+    <td>attenMaskOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>preTokens</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>nextTokens</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>sparseMode</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td rowspan="2">ActualSeqLens参数组</td>
+    <td>actualSeqLengthsOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>IntArray</td>
+  </tr>
+  <tr>
+    <td>actualSeqLengthsKvOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>IntArray</td>
+  </tr>
+  <tr>
+    <td rowspan="14">伪量化&amp;全量化参数组</td>
+    <td>deqScale1Optional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>quantScale1Optional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>deqScale2Optional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>antiquantScaleOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>antiquantOffsetOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>keyAntiquantScaleOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>keyAntiquantOffsetOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>valueAntiquantScaleOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>valueAntiquantOffsetOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>dequantScaleQueryOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>antiquantMode</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>keyAntiquantMode</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>valueAntiquantMode</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td>queryQuantMode</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td rowspan="3">PostQuant参数组</td>
+    <td>quantScale2Optional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>quantOffset2Optional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>outType</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td rowspan="2">Paged Attention参数组</td>
+    <td>blockTableOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>blockSize</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>int64</td>
+  </tr>
+  <tr>
+    <td rowspan="2">LeftPadding参数组</td>
+    <td>queryPaddingSizeOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>kvPaddingSizeOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td rowspan="3">SystemPrefix参数组</td>
+    <td>keySharedPrefixOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>valueSharedPrefixOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>actualSharedPrefixLenOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>IntArray</td>
+  </tr>
+  <tr>
+    <td rowspan="3">Rope参数组</td>
+    <td>queryRopeOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>keyRopeOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>keyRopeAntiquantScaleOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td>LearnableSink参数组</td>
+    <td>learnableSinkOptional</td>
+    <td>INPUT(OPTIONAL)</td>
+    <td>Tensor</td>
+  </tr>
+  <tr>
+    <td rowspan="2">SoftmaxLSE参数组</td>
+    <td>softmaxLseFlag</td>
+    <td>ATTR(OPTIONAL)</td>
+    <td>bool</td>
+  </tr>
+  <tr>
+    <td>softmaxLse</td>
+    <td>OUTPUT</td>
+    <td>Tensor</td>
+  </tr>
+</tbody></table>
 
 ### 基准信息说明
 
@@ -1113,12 +1330,12 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                                     <li>数据格式均仅支持ND</li>
                                 </ul>
                 </td>
-                <td>无限制</td>
+                <td>须为整数，小于2的32次方</td>
                 <td>支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND</td>
             </tr>
             <tr>
                 <td>Prefill MLA</td>
-                <td>无限制</td>
+                <td>须为整数，小于2的32次方</td>
                 <td>支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND</td>
             </tr>
             <tr>
@@ -1194,6 +1411,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>支持D轴小于等于512</li>
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
+                        <li>MxFP8场景下，HeadDim仅支持128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
                         <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
@@ -1362,6 +1580,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
     - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 不为 TND/TND_NTD 时，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵；Q_S 等于 1 时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
     - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
+    - MxFP8场景下，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
 
 #### ActualSeqLen参数组
 
@@ -1446,11 +1665,11 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT32类型
       - 入参 keyAntiquantScale、valueAntiquantScale 的shape为（1）
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
-    - per-tensor 全量化
-      - 入参 deqScale1、deqScale2 的dtype支持 UINT64、FLOAT32
-      - 入参 quantScale1 的dtype支持FLOAT32
-      - 入参 deqScale1、quantScale1、deqScale2 的shape为（1）
-      - 入参 queryQuantMode、keyAntiquantMode、valueAntiquantMode 为0
+    - MxFP8 全量化
+      - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT8_E8M0类型
+      - 入参 dequantScaleQuery 的shape为（Q_T, Q_N, D/64, 2）、keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2）、valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）
+      - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group模式）
+      - 入参 quantScale1 的shape为（1），dtype支持FLOAT32，复用 quantScale1 作为 pScale
 - 存在性约束
   - 伪量化场景
     - 入参 keyAntiquantScale 和 valueAntiquantScale 应满足以下条件：
@@ -1468,10 +1687,10 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持传入 deqScale1、quantScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
-    - per-tensor 全量化
-      - deqScale1、quantScale1、deqScale2 需同时存在
-      - 不支持传入 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale
+    - MxFP8 全量化
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
+      - 不支持传入 deqScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
 - 一致性约束
@@ -1480,7 +1699,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 伪量化场景
     - inputLayout 仅支持 BSH, BNSD, BSND, BNSD_BSND, TND
     - key/value 的数据类型为 INT8 时，inputLayout 不支持 TND
-    - 当 Q_S 等于 1 时，inputLayout 不支持 BNSD_BSND
+    - Q_S = 1 时：
+      - inputLayout 不支持 BNSD_BSND
+      - 当 key/value 的数据类型为 INT8, keyAntiquantMode = 0 且 valueAntiquantMode = 1 时，query 和 output 的数据类型仅支持FLOAT16
     - Q_S > 1 时：
       - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
       - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
@@ -1506,13 +1727,13 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景
       - 当 query/key/value 类型为 INT8 时，仅支持 PagedAttention场景，且kv cache排布为NZ格式
-    - per-tensor 全量化
-      - query、key、value 的dtype为INT8
+    - MxFP8 全量化
+      - query、key、value 的dtype为FLOAT8_E4M3FN
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
-      - Q_S 不能为1
-      - Q_N 支持 [1, 256]；KV_N 支持 [1, 256]；G 支持 [1,64]；D 支持 [1,512]
-      - inputLayout 支持 BSH、BNSD、BSND、BNSD_BSND
-      - 不支持PagedAttention场景、不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+      - Q_S、KV_S 仅支持64对齐
+      - inputLayout 仅支持 TND
+      - 仅支持PagedAttention场景
+      - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
@@ -1558,6 +1779,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参 blockSize 需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN 时，blockSize 需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1 时，blockSize 需要64对齐
   - 全量化
     - Decode MLA 全量化场景下，仅支持blockSize取值128
+    - MxFP8 全量化场景下，仅支持blockSize取值512
 - 存在性约束
   - 公共
     - PagedAttention 使能情况下，必须传入 actualSeqLengthsKv
@@ -1577,7 +1799,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BNSD、TND、BNSD_NBSD、TND_NTD时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为 (blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope 最后一维D0是16
-    - GQA全量化场景不支持PagedAttention
+    - GQA全量化场景除开MxFP8均不支持PagedAttention
+    - MxFP8全量化仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
 
 #### 左padding参数组
 

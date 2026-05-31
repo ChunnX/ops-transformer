@@ -81,7 +81,41 @@ TEST_PARAMS = {
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
     },
+    "decode_first_hif8":{
+        "Testcase_Name": [None],
+        "layout_q": ["TND"],
+        "layout_kv": ["PA_ND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.uint8],
+        "cmp_kv_type": [torch.uint8],
+        "B": [1],
+        "S1": [1],
+        "S2": [8193],
+        "N1": [64],
+        "N2": [1],
+        "D": [512],
+        "K": [512],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [128],
+        "block_size2": [128],
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [1],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "kv_quant_mode": [10],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": ["SWA"], # SWA SCFA CFA
+        "actlen_mode":["full"],       # random full
+        "S1EQS2":[False]
+    },
 }
 
 # 填入启用的测试参数
 ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
+#ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

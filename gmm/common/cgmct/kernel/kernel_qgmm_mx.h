@@ -77,6 +77,9 @@ public:
     using BiasType = typename BlockMmad::BiasType;
     using LayoutB = typename BlockMmad::LayoutB;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
+    static constexpr bool IS_FP4 =
+        AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
 
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -133,13 +136,14 @@ public:
 private:
     __aicore__ inline void SetMNK(uint32_t groupIdx);
     __aicore__ inline void BaseMBalance(BlockSchedulerOp &bs, int64_t m, int64_t baseM);
+    template <bool isLastGroupAndNeedSplit>
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx);
-    __aicore__ inline void UpdateOffset(uint32_t loopIdx, uint32_t groupIdx);
+    __aicore__ inline void UpdateOffset(uint32_t groupIdx);
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx);
     __aicore__ inline void UpdateMMGlobalAddr();
     __aicore__ inline void Iterate(int64_t singleCoreM, int64_t singleCoreN);
-    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx);
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM_);
+    __aicore__ inline bool IfNeedSplit(const BlockSchedulerOp &bs);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM, int64_t baseN);
 
 private:
     BlockMmad mmadOp_;
@@ -163,12 +167,14 @@ private:
     GM_ADDR biasTensorPtr_;
     GM_ADDR yTensorPtr_;
 
-    int32_t preOffset_ = 0;
+    int64_t perGroupBOffset_;
+    int32_t preOffset_ = 0; // cumsum of group list
     uint32_t groupNum_;
     uint32_t curBaseM_;
     int8_t groupType_;
     uint8_t groupListType_;
     bool isBias_{false};
+    bool initSingleGroup_{true};
 };
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
@@ -176,19 +182,19 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
 {
     Init(params);
     BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
-    if constexpr (formatB == CubeFormat::NZ) {
+    if constexpr (!transA) {
         if constexpr (transB) {
             bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
         } else {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            bs.SetTailAlign(1, c0Size);
         }
     }
-    for (uint32_t loopIdx = 0; loopIdx < groupNum_; ++loopIdx) {
+    // Process all groups except the last one
+    for (uint32_t loopIdx = 0; loopIdx < groupNum_ - 1; ++loopIdx) {
         uint32_t groupIdx = loopIdx;
         if (groupListType_ == GROUP_LIST_TYPE_SPARSE) {
             groupIdx = static_cast<uint32_t>(groupListGlobal_.GetValue(loopIdx * SPARSE_GROUP_LIST_ITEM_STRIDE));
         }
-        UpdateOffset(loopIdx, groupIdx);
         // Update the group-specific M/N/K values.
         SetMNK(loopIdx);
         if (Get<MNK_M>(problemShape_) <= 0 || Get<MNK_K>(problemShape_) <= 0) {
@@ -197,65 +203,108 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
             }
             continue;
         }
-        if ASCEND_IS_AIC {
-            mmadOp_.UpdateParamsForNextProblem(problemShape_);
-        }
 
-        AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> bsProblemShape{
-            Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_), 0L};
         BaseMBalance(bs, Get<MNK_M>(problemShape_), params.gmmParams.baseM);
-        bs.UpdateNextProblem(bsProblemShape);
+        bs.UpdateNextProblem(problemShape_);
+        initSingleGroup_ = true;
+        ProcessSingleGroup<false>(params, bs, groupIdx);
+    }
+
+    // Process the last group
+    initSingleGroup_ = true;
+    uint32_t loopIdx = groupNum_ - 1; // groupNum_ must be greater than 0
+    uint32_t groupIdx = loopIdx;
+    if (groupListType_ == GROUP_LIST_TYPE_SPARSE) {
+        groupIdx = static_cast<uint32_t>(groupListGlobal_.GetValue(loopIdx * SPARSE_GROUP_LIST_ITEM_STRIDE));
+    }
+    // Update the group-specific M/N/K values.
+    SetMNK(loopIdx);
+    if (Get<MNK_M>(problemShape_) > 0 && Get<MNK_K>(problemShape_) > 0) {
+        BaseMBalance(bs, Get<MNK_M>(problemShape_), params.gmmParams.baseM);
+        bs.UpdateNextProblem(problemShape_);
         // Further split the tail tiles of the last group to use more cores when possible.
-        if (IsLastGroupAndNeedSplit(bs, loopIdx)) {
+        if (IfNeedSplit(bs)) {
             bs.UpdateTailTile();
+            ProcessSingleGroup<true>(params, bs, groupIdx);
         } else {
-            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_));
+            ProcessSingleGroup<false>(params, bs, groupIdx);
         }
-        UpdateMMGlobalAddr();
-        ProcessSingleGroup(params, bs, groupIdx);
     }
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const Params &params)
 {
-    xTensorPtr_ = params.mmadParams.aGmAddr;
-    wTensorPtr_ = params.mmadParams.bGmAddr;
-    x1ScaleTensorPtr_ = params.mmadParams.x1ScaleGmAddr;
-    x2ScaleTensorPtr_ = params.mmadParams.x2ScaleGmAddr;
-    biasTensorPtr_ = params.mmadParams.biasGmAddr;
-    groupListPtr_ = params.mmadParams.groupListGmAddr;
-    yTensorPtr_ = params.mmadParams.cGmAddr;
+    const auto &mmadParams = params.mmadParams;
+    const auto &gmmParams = params.gmmParams;
 
-    groupNum_ = params.gmmParams.groupNum;
-    curBaseM_ = params.gmmParams.baseM;
-    groupType_ = params.gmmParams.groupType;
-    groupListType_ = params.gmmParams.groupListType;
-    isBias_ = params.gmmParams.isBias == 1;
-    Get<MNK_M>(problemShape_) = params.gmmParams.m;
-    Get<MNK_N>(problemShape_) = params.gmmParams.n;
-    Get<MNK_K>(problemShape_) = params.gmmParams.k;
+    xTensorPtr_ = mmadParams.aGmAddr;
+    wTensorPtr_ = mmadParams.bGmAddr;
+    x1ScaleTensorPtr_ = mmadParams.x1ScaleGmAddr;
+    x2ScaleTensorPtr_ = mmadParams.x2ScaleGmAddr;
+    biasTensorPtr_ = mmadParams.biasGmAddr;
+    groupListPtr_ = mmadParams.groupListGmAddr;
+    yTensorPtr_ = mmadParams.cGmAddr;
+
+    groupNum_ = gmmParams.groupNum;
+    curBaseM_ = gmmParams.baseM;
+    groupListType_ = gmmParams.groupListType;
+    isBias_ = gmmParams.isBias == 1;
+    Get<MNK_M>(problemShape_) = gmmParams.m;
+    Get<MNK_N>(problemShape_) = gmmParams.n;
+    Get<MNK_K>(problemShape_) = gmmParams.k;
+    if constexpr (!transA) {
+        if constexpr (formatB == CubeFormat::ND) {
+            perGroupBOffset_ = gmmParams.n * gmmParams.k;
+        } else {
+            if constexpr (transB) {
+                perGroupBOffset_ = Align16(gmmParams.n) * (IS_FP4 ? Align64(gmmParams.k) : Align32(gmmParams.k));
+            } else {
+                perGroupBOffset_ = (IS_FP4 ? Align64(gmmParams.n) : Align32(gmmParams.n)) * Align16(gmmParams.k);
+            }
+        }
+    }
 
     if (groupListPtr_ != nullptr) {
         groupListGlobal_.SetGlobalBuffer((__gm__ int64_t *)groupListPtr_);
     }
-    TupleShape l0Shape{static_cast<int64_t>(params.gmmParams.baseM), static_cast<int64_t>(params.gmmParams.baseN),
-                       static_cast<int64_t>(params.gmmParams.baseK)};
-    L1Params l1Params{static_cast<uint64_t>(params.gmmParams.kAL1), static_cast<uint64_t>(params.gmmParams.kBL1),
-                      static_cast<uint64_t>(params.gmmParams.scaleKAL1), 2UL}; // Enable double buffering by default.
-    mmadOp_.Init(problemShape_, l0Shape, l1Params, isBias_, params.gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
+    TupleShape l0Shape{static_cast<int64_t>(gmmParams.baseM), static_cast<int64_t>(gmmParams.baseN),
+                       static_cast<int64_t>(gmmParams.baseK)};
+    L1Params l1Params{static_cast<uint64_t>(gmmParams.kAL1), static_cast<uint64_t>(gmmParams.kBL1),
+                      static_cast<uint64_t>(gmmParams.scaleKAL1), 2UL};
+    mmadOp_.Init(problemShape_, l0Shape, l1Params, isBias_, gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int64_t mSize,
-                                                                                              int64_t curBaseM)
+__aicore__ inline void
+KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM, int64_t baseN)
 {
-    if (curBaseM >= mSize) {
-        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    if constexpr (formatB != CubeFormat::ND) {
+        if (curBaseM >= mSize) {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        }
     } else {
-        bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        if constexpr (transB) {
+            if (curBaseM >= mSize && (Get<MNK_K>(problemShape_) & 0xff) == 0) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        } else {
+            if (curBaseM >= mSize && (Get<MNK_N>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
+        }
     }
 }
 
@@ -265,99 +314,57 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::BaseMBalance
 {
     if constexpr (!transA) {
         int64_t mCnt = CeilDiv(m, baseM);
-        curBaseM_ = CeilAlign(CeilDiv(m, mCnt), AscendC::BLOCK_CUBE);
+        curBaseM_ = Align16(CeilDiv(m, mCnt)); // align to BLOCK_CUBE
         bs.UpdateBaseM(curBaseM_);
     }
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline bool KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs,
-                                                                                            uint32_t groupIdx)
+__aicore__ inline bool KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::IfNeedSplit(const BlockSchedulerOp &bs)
 {
     // Consider tail split only when at least half of the cores are still available.
-    return groupIdx == groupNum_ - 1 && (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
+    return (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset(uint32_t loopIdx, uint32_t groupIdx)
+__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset(uint32_t groupIdx)
 {
-    // sparse split-M may start from non-zero real group index.
-    // The first loop should not advance token-side(A/C), but weight/scale-side(B/X2Scale)
-    // still needs to jump to the mapped sparse group directly.
+    // offset is 0 when groupIdx = 0
     if (groupIdx == 0) {
-        return;
-    }
-    if (loopIdx == 0 && groupListType_ == GROUP_LIST_TYPE_SPARSE && groupType_ == GROUP_TYPE_M) {
-        int64_t n = Get<MNK_N>(problemShape_);
-        int64_t k = Get<MNK_K>(problemShape_);
-        if constexpr (formatB == CubeFormat::ND) {
-            Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
-        } else {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-            if constexpr (transB) {
-                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
-        }
-        int64_t scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
         return;
     }
     int64_t m = Get<MNK_M>(problemShape_);
     int64_t n = Get<MNK_N>(problemShape_);
     int64_t k = Get<MNK_K>(problemShape_);
-    // aBaseOffset += m * k
-    Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-    if (groupType_ == GROUP_TYPE_M) {
-        if constexpr (formatB == CubeFormat::ND) {
-            Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
+    if constexpr (!transA) { // split m, weight ND/NZ
+        if constexpr (IS_FP4) {
+            Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k >> 1;
+            Get<IDX_B_OFFSET>(baseOffset_) = perGroupBOffset_ * static_cast<int64_t>(groupIdx) >> 1;
         } else {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-            if constexpr (transB) {
-                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+            Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k;
+            Get<IDX_B_OFFSET>(baseOffset_) = perGroupBOffset_ * static_cast<int64_t>(groupIdx);
         }
-    } else {
-        if constexpr (formatB == CubeFormat::ND) {
-            // bBaseOffset += n * k
-            Get<IDX_B_OFFSET>(baseOffset_) += n * k;
-        } else {
-            if constexpr (transB) {
-                int64_t nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                int64_t kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-                Get<IDX_B_OFFSET>(baseOffset_) += nAlign * kAlign;
-            } else {
-                int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-                int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                Get<IDX_B_OFFSET>(baseOffset_) += nAlign * kAlign;
-            }
-        }
-    }
-
-    if constexpr (transA) { // split k, x1Scale:(k/64+g, m, 2) x2Scale:(k/64+g, n, 2)
-        int64_t scaleK = (Get<IDX_B_OFFSET>(baseOffset_) / n / MXFP_DIVISOR_SIZE + groupIdx) * MXFP_MULTI_BASE_SIZE;
+        // x1Scale:(m, ceil(k/64), 2) x2Scale:(g, n, ceil(k/64), 2) or (g, ceil(k/64), n, 2)
+        int64_t scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_X1SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
+        // y:(m, n)
+        Get<IDX_C_OFFSET>(baseOffset_) = (preOffset_ - m) * n;
+    } else { // split k, weight ND only
+        Get<IDX_A_OFFSET>(baseOffset_) = m * (preOffset_ - k);
+        Get<IDX_B_OFFSET>(baseOffset_) = n * (preOffset_ - k);
+        // x1Scale:(k/64+g, m, 2) x2Scale:(k/64+g, n, 2)
+        int64_t scaleK = ((preOffset_ - k) / MXFP_DIVISOR_SIZE + groupIdx) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_X1SCALE_OFFSET>(baseOffset_) = m * scaleK;
         Get<IDX_X2SCALE_OFFSET>(baseOffset_) = n * scaleK;
-    } else { // split m, x1Scale:(m, ceil(k/64), 2) x2Scale:(g, n, ceil(k/64), 2) or (g, ceil(k/64), n, 2)
-        int64_t scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
-        if (groupType_ == GROUP_TYPE_M) {
-            Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
-        } else {
-            Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
-        }
+        // y:(g, m, n)
+        Get<IDX_C_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * m * n;
     }
-    // yBaseOffset += m * n
-    Get<IDX_C_OFFSET>(baseOffset_) += m * n;
-    Get<IDX_BIAS_OFFSET>(baseOffset_) += n;
+    Get<IDX_BIAS_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n;
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
+template <bool isLastGroupAndNeedSplit>
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingleGroup(const Params &params,
                                                                                        BlockSchedulerOp &bs,
                                                                                        uint32_t groupIdx)
@@ -370,7 +377,19 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingl
         if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
             return;
         }
-        blockOffset_ = coord.template GetQuantOffset<QuantMode::MX_PERGROUP_MODE>(
+        if (initSingleGroup_) {
+            UpdateOffset(groupIdx);
+            if ASCEND_IS_AIC {
+                mmadOp_.UpdateParamsForNextProblem(problemShape_);
+            }
+            UpdateMMGlobalAddr();
+            if constexpr (!isLastGroupAndNeedSplit) {
+                SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(curBaseM_),
+                                          static_cast<int64_t>(params.gmmParams.baseN));
+            }
+            initSingleGroup_ = false;
+        }
+        blockOffset_ = coord.template GetQuantOffset<QuantMode::MX_PERGROUP_MODE, c0Size>(
             Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
             Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
         Iterate(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
@@ -382,24 +401,17 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Iterate(int6
 {
     AscendC::Std::tuple<int64_t, int64_t, int64_t> blockShape{singleCoreM, singleCoreN,
                                                               static_cast<int64_t>(Get<MNK_K>(problemShape_))};
-    if (isBias_) {
-        mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
-                x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)],
-                yGlobal_[Get<IDX_C_OFFSET>(blockOffset_)], blockShape);
-    } else {
-        mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
-                x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], yGlobal_[Get<IDX_C_OFFSET>(blockOffset_)],
-                blockShape);
-    }
+    mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
+            x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
+            x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)],
+            yGlobal_[Get<IDX_C_OFFSET>(blockOffset_)], blockShape);
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetMNK(uint32_t groupIdx)
 {
     int32_t splitValue = GetSplitValueFromGroupList(groupIdx);
-    if (groupType_ == GMM_SPLIT_M) {
+    if constexpr (!transA) {
         Get<MNK_M>(problemShape_) = splitValue;
     } else {
         Get<MNK_K>(problemShape_) = splitValue;
@@ -432,9 +444,11 @@ __aicore__ inline int32_t KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::GetSplitV
         preOffset_ = offset;
     } else if (groupListType_ == 1) {
         splitValue = static_cast<int32_t>(groupListGlobal_.GetValue(groupIdx));
+        preOffset_ += splitValue;
     } else {
-        splitValue = static_cast<int32_t>(groupListGlobal_.GetValue(groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE +
-                                                                    SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
+        splitValue = static_cast<int32_t>(
+            groupListGlobal_.GetValue(groupIdx * SPARSE_GROUP_LIST_ITEM_STRIDE + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
+        preOffset_ += splitValue;
     }
     return splitValue;
 }

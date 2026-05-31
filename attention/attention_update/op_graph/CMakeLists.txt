@@ -8,3 +8,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 message(STATUS "=== Debug: start attention_update.op_graph.CMakeLists.txt ")
+add_graph_plugin_sources()

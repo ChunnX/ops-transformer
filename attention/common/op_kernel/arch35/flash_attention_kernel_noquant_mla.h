@@ -396,6 +396,10 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process()
 {
     int32_t actualCoreNums = this->tilingData->multiCoreParamsRegbase.coreNum;
+    // SyncAll Cube和Vector都需要调用
+    if (this->tilingData->initOutputParams.needInit) {
+        SyncAll<false>();
+    }
     if (aicIdx >= actualCoreNums) {
         return;
     }
@@ -439,6 +443,9 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
             this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1]);
 
         gS1EndIdx = runParam.s1LoopTimes;
+        if (lastBN && runParam.s1LoopTimes == 0) {
+            runParam.s1LoopTimes += 1;
+        }
         for (int64_t gS1Index = gS1StartIdx; gS1Index <runParam.s1LoopTimes; gS1Index++) {
             s2LoopLimit = 0;
             this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, multiCoreInnerIdx, runParam);
@@ -446,7 +453,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
                 gS1Index, actualSeqQlenAddr, this->pseInfo);
             bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo);
             bool lastLoopThisCore = lastBN && (gS1Index == runParam.s1LoopTimes - 1);
-            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam,
+            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo,
                 actualSeqQlenAddr);
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
@@ -608,7 +615,9 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         } else {
             for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
                 uint32_t boIdx = bnIdx / constInfo.n2Size;
-                if (actualSeqQlenAddr[boIdx] != 0) {
+                if (constInfo.actualSeqLenSize == 1 && actualSeqQlenAddr[0] != 0) {
+                    return false;
+                } else if (actualSeqQlenAddr[boIdx] != 0) {
                     return false;
                 }
             }

@@ -86,6 +86,8 @@ public:
     using BlockScheduler = BlockScheduler_;
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr auto formatA = BlockMmadBuilder::formatA;
+    static constexpr auto formatB = BlockMmadBuilder::formatB;
     static constexpr int64_t l1M = BlockMmadBuilder::l1M;
     static constexpr int64_t l1N = BlockMmadBuilder::l1N;
     static constexpr int64_t l1K = BlockMmadBuilder::l1K;
@@ -104,14 +106,14 @@ public:
     using AType = typename BlockMmadBuilder::AType;
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
     using BlockOffset = AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
     // coordinate
     using CoordClass =
-        Coordinate<transA, transB, BlockMmadBuilder::formatA, BlockMmadBuilder::formatB, BlockMmadBuilder::formatC>;
+        Coordinate<transA, transB, formatA, formatB, BlockMmadBuilder::formatC>;
 
     // attribute
     AscendC::GlobalTensor<AType> aGlobal_;
@@ -188,14 +190,34 @@ public:
         }
     }
 
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM)
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM, int64_t baseN)
     {
-        if (curBaseM >= mSize) {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        if constexpr (formatB != CubeFormat::ND) {
+            if (curBaseM >= mSize) {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            } else {
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            }
         } else {
-            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            if constexpr (transB) {
+                if (curBaseM >= mSize && (Get<K_VALUE>(problemShape_) & 0xff) == 0) {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                } else {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                }
+            } else {
+                if (curBaseM >= mSize && (Get<N_VALUE>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                } else {
+                    bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                    x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                }
+            }
         }
     }
 
@@ -236,14 +258,29 @@ public:
         uint64_t m = Get<M_VALUE>(problemShape_);
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
+        
         if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
-            Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-            Get<IDX_B_OFFSET>(baseOffset_) += n * k;
         }
-        // only splitM
+
+        if constexpr (formatB == CubeFormat::NZ) {
+            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+            if constexpr (transB) {
+                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+            }
+            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
+        } else {
+            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
+            } else {
+                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+            }
+        }
+
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         // scaleAAxisBaseOffset (m, ceil(k,64), 2)
         Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
@@ -279,12 +316,25 @@ public:
 
     __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
     {
-        int64_t resN = n / 2; // 2: glu, n->n/2
+        int64_t resN = n / 2; // SwiGLU: N -> N/2
+
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
+            } else {
+                bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+            }
+        } else {
+            if constexpr (transB) {
+                bRightOffset += resN * k;
+            } else {
+                bRightOffset += resN;
+            }
+        }
+
         if constexpr (transB) {
-            bRightOffset += resN * k;
             x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
-            bRightOffset += resN;
             x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
         }
     }
@@ -294,8 +344,8 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        TupleShape resProblemShape {Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) / 2,
-                                    Get<K_VALUE>(problemShape_), 0};
+        TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
+                                   Get<K_VALUE>(problemShape_)};
         bs.UpdateNextProblem(resProblemShape);
         epilogueOp_.UpdateNextProblem(resProblemShape);
         UpdateGlobalBuffer(params);
@@ -357,7 +407,8 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
+            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
+                                      static_cast<int64_t>(params.gmmParams.baseN));
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();

@@ -174,7 +174,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel, preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel_unroll, preg_all);
+                (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel_unroll, preg_all);  
             Max(vreg_max_tmp, vreg_sel, vreg_sel_unroll, preg_all);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(

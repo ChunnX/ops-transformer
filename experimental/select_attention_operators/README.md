@@ -60,7 +60,7 @@ The kernels are deployed with a very neat built in documentation:
 
 ```python
 import torch_npu
-from select_attn_decoding_ops import quest_block_select_paged_in_out_w
+from select_attn_ops import quest_block_select_paged_in_out_w
 help(quest_block_select_paged_in_out_w)
 ```
 

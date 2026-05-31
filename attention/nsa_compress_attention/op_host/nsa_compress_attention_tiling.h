@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
 
 namespace optiling {
 

@@ -27,7 +27,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
@@ -63,6 +63,14 @@ TILING_DATA_FIELD_DEF(int64_t, kStride);
 TILING_DATA_FIELD_DEF(int64_t, vStride);
 TILING_DATA_FIELD_DEF(int64_t, kOffset);
 TILING_DATA_FIELD_DEF(int64_t, vOffset);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride0);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride1);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride2);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride3);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride0);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride1);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride2);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride3);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ScatterPaKvCache, ScatterPaKvCacheTilingData)
@@ -93,17 +101,27 @@ protected:
     ge::graphStatus TemplateNormal();
     ge::graphStatus TemplateRope();
     ge::graphStatus TemplateAlibi();
+    ge::graphStatus TemplateOmni();
+    ge::graphStatus TemplateNZ();
     ge::graphStatus GetIndexDtype();
     ge::graphStatus GetInputDtype();
     ge::graphStatus CheckDimValid();
     ge::graphStatus CheckNormal();
     ge::graphStatus CheckRope();
     ge::graphStatus CheckAlibi();
+    ge::graphStatus CheckNz();
+    ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    void GetNonContigousStrideInfo();
+    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
     int64_t RoundUp(int64_t x, int64_t dtypeSize);
     void GenTilingKey();
+    bool IsNonContiguous();
+    bool IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape, int64_t startAxis, int64_t endAxis);
+    bool IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape);
 
 private:
     platform_ascendc::SocVersion socVersion_;
@@ -122,12 +140,21 @@ private:
     int64_t vTailHandleNum_ = 0;
     int64_t numTokens_ = 0;
     int64_t dtypeByteSize_ = 0;
-    int64_t keyStride0_;
-    int64_t keyStride1_;
-    int64_t keyStride2_;
-    int64_t valueStride0_;
-    int64_t valueStride1_;
-    int64_t valueStride2_;
+    int64_t valueDtypeByteSize_ = 0;
+    int64_t keyStride0_ = 0;
+    int64_t keyStride1_ = 0;
+    int64_t keyStride2_ = 0;
+    int64_t valueStride0_ = 0;
+    int64_t valueStride1_ = 0;
+    int64_t valueStride2_ = 0;
+    int64_t keyCacheStride0_ = 0;
+    int64_t keyCacheStride1_ = 0;
+    int64_t keyCacheStride2_ = 0;
+    int64_t keyCacheStride3_ = 0;
+    int64_t valueCacheStride0_ = 0;
+    int64_t valueCacheStride1_ = 0;
+    int64_t valueCacheStride2_ = 0;
+    int64_t valueCacheStride3_ = 0;
     int64_t kHeadSize_;
     int64_t vHeadSize_;
     int64_t batch_;
@@ -148,6 +175,10 @@ private:
     int64_t inputCompressLens_;
     int64_t inputCompressSeqOffset_;
     int64_t inputSeqLens_;
+    int64_t kStride_ = 0;
+    int64_t vStride_ = 0;
+    int64_t kOffset_ = 0;
+    int64_t vOffset_ = 0;
 
     gert::Shape inputKeyShape_;
     gert::Shape inputKeyCacheInShape_;
@@ -158,7 +189,13 @@ private:
     gert::Shape compressSeqOffsetShape_;
     gert::Shape seqLensShape_;
 
+    gert::Stride keyStride_;
+    gert::Stride valueStride_;
+    gert::Stride keyCacheStride_;
+    gert::Stride valueCacheStride_;
+
     ge::DataType inputDtype_;
+    ge::DataType valueDtype_;
     ScatterPaKvCacheTilingData tilingData_;
 };
 

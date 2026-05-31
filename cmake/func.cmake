@@ -11,13 +11,18 @@
 function(filter_copy_files SELECTED_FILES SELECTED_DIRS)
     set(_selected_files "")
     set(_selected_dirs "")
+    set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
+    foreach (_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
+        if (DEFINED ${_op_name}_${_COMPUTE_UNIT}_arch_directory)
+            list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${_COMPUTE_UNIT}_arch_directory})
+        endif()
+    endforeach ()
+    list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
     foreach(item ${KERNEL_SUB_DIRS})
         set(path "${CURRENT_KERNEL_DIR}/${item}")
         if(IS_DIRECTORY "${path}")
-            if(_op_name STREQUAL "apply_rotary_pos_emb" AND ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a" AND item MATCHES "^arch")
-                set(path "${CURRENT_KERNEL_DIR}/arch35")
-            elseif(item MATCHES "^arch")
-                list(FIND ARCH_DIRECTORY "${item}" idx)
+            if(item MATCHES "^arch")
+                list(FIND OP_ARCH_DIRECTORY "${item}" idx)
                 if(idx EQUAL -1)
                     continue()
                 endif()
@@ -292,7 +297,7 @@ function(add_ops_info_target)
 
     if (ENABLE_BUILT_IN)
         install(FILES ${OPS_INFO_JSON}
-                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
+                DESTINATION opp/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
         )
     else()
         install(FILES ${OPS_INFO_JSON}
@@ -377,7 +382,8 @@ function(add_opc_config)
 
     if(ENABLE_OOM)
         list(APPEND _OPC_CONFIG "--oom")
-        list(APPEND _OPC_CONFIG "-ffunction-sections -fdata-sections")
+        list(APPEND _OPC_CONFIG "-ffunction-sections")
+        list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
     if(_OPC_CONFIG)
@@ -400,12 +406,14 @@ function(add_ops_src_copy)
             file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
                 ${OPS_ADV_UTILS_KERNEL_INC}/* 
                 ${OPS_CGMCT}/*
+                ${OPS_GMM_COMMON_KERNEL_INC}/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
@@ -427,6 +435,7 @@ function(add_ops_src_copy)
         "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
+        "distribute_barrier_extend;"
         "moe_distribute_combine_add_rms_norm;"
         "moe_distribute_dispatch;"
         "moe_distribute_combine;"
@@ -507,7 +516,7 @@ function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
     if (ENABLE_BUILT_IN)
-        set(_INSTALL_DIR ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
+        set(_INSTALL_DIR opp/built-in/op_impl/ai_core/tbe/kernel)
     else()
         set(_INSTALL_DIR packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel)
     endif()
@@ -576,6 +585,9 @@ function(add_bin_compile_target)
  	                endif()
                     get_filename_component(_depend_op_name "${depend_info}" NAME)
                     set(_depend_op_target ${_depend_op_name}_${BINARY_COMPUTE_UNIT}_src_copy)
+                    if("${_depend_op_name}" STREQUAL "common")
+                        continue()
+                    endif()
                     add_ops_src_copy(
                             TARGET_NAME
                             ${_depend_op_target}
@@ -702,6 +714,9 @@ function(add_bin_compile_target)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
             add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
+            if(TARGET common_src_copy)
+                add_dependencies(${OP_TARGET_NAME}_${op_index} common_src_copy)
+            endif()
             add_dependencies(${OP_TARGET_NAME} ${OP_TARGET_NAME}_${op_index})
         endif ()
     endforeach()
@@ -847,7 +862,7 @@ function(pack_tiling_sink)
 
   if(ENABLE_BUILT_IN)
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)
-    set(INSTALL_DIR "ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
+    set(INSTALL_DIR "opp/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
   else()
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libcust_opmaster.so)
     set(INSTALL_DIR "packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/op_master_device/lib")
@@ -932,85 +947,4 @@ function(concat_op_names)
             CACHE STRING "AclnnInner Extra Sources" FORCE
         )
     endif()
-endfunction()
-
-macro(replace_cur_major_minor_ver)
-    string(REPLACE CUR_MAJOR_MINOR_VER "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_VERSION_MAJOR_MINOR}" depend "${depend}")
-endmacro()
- 	 
-# 设置包和版本号
-function(set_package name)
-    cmake_parse_arguments(VERSION "" "VERSION" "" ${ARGN})
-    set(VERSION "${VERSION_VERSION}")
-    if(NOT name)
-        message(FATAL_ERROR "The name parameter is not set in set_package.")
-    endif()
-    if(NOT VERSION)
-        message(FATAL_ERROR "The VERSION parameter is not set in set_package(${name}).")
-    endif()
-    string(REGEX MATCH "^([0-9]+\\.[0-9]+)" VERSION_MAJOR_MINOR "${VERSION}")
-    list(APPEND CANN_VERSION_PACKAGES "${name}")
-    set(CANN_VERSION_PACKAGES "${CANN_VERSION_PACKAGES}" PARENT_SCOPE)
-    set(CANN_VERSION_CURRENT_PACKAGE "${name}" PARENT_SCOPE)
-    set(CANN_VERSION_${name}_VERSION "${VERSION}" PARENT_SCOPE)
-    set(CANN_VERSION_${name}_VERSION_MAJOR_MINOR "${VERSION_MAJOR_MINOR}" PARENT_SCOPE)
-    set(CANN_VERSION_${name}_BUILD_DEPS PARENT_SCOPE)
-    set(CANN_VERSION_${name}_RUN_DEPS PARENT_SCOPE)
-endfunction()
- 	 
-# 设置构建依赖
-function(set_build_dependencies pkg_name depend)
-    if(NOT CANN_VERSION_CURRENT_PACKAGE)
-        message(FATAL_ERROR "The set_package must be invoked first.")
-    endif()
-    if(NOT pkg_name)
-        message(FATAL_ERROR "The pkg_name parameter is not set in set_build_dependencies.")
-    endif()
-    if(NOT depend)
-        message(FATAL_ERROR "The depend parameter is not set in set_build_dependencies.")
-    endif()
-    replace_cur_major_minor_ver()
-    list(APPEND CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS "${pkg_name}" "${depend}")
-    set(CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_BUILD_DEPS}" PARENT_SCOPE)
-endfunction()
- 	 
-# 设置运行依赖
-function(set_run_dependencies pkg_name depend)
-    if(NOT CANN_VERSION_CURRENT_PACKAGE)
-        message(FATAL_ERROR "The set_package must be invoked first.")
-    endif()
-    if(NOT pkg_name)
-        message(FATAL_ERROR "The pkg_name parameter is not set in set_run_dependencies.")
-    endif()
-    if(NOT depend)
-        message(FATAL_ERROR "The depend parameter is not set in set_run_dependencies.")
-    endif()
-    replace_cur_major_minor_ver()
-    list(APPEND CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS "${pkg_name}" "${depend}")
-    set(CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS "${CANN_VERSION_${CANN_VERSION_CURRENT_PACKAGE}_RUN_DEPS}" PARENT_SCOPE)
-endfunction()
- 	 
-# 检查构建依赖
-function(check_pkg_build_deps pkg_name)
-    execute_process(
-        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_build_dependencies.py "${ASCEND_CANN_PACKAGE_PATH}" ${CANN_VERSION_${pkg_name}_BUILD_DEPS}
-        RESULT_VARIABLE result
-    )
-    if(result)
-        message(FATAL_ERROR "Check ${pkg_name} build dependencies failed!")
-    endif()
-endfunction()
- 	 
-# 添加生成version.info的目标
-# 目标名格式为：version_${包名}_info
-function(add_version_info_targets)
-    foreach(pkg_name ${CANN_VERSION_PACKAGES})
-        add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/version.${pkg_name}.info
-            COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_version_info.py --output ${CMAKE_BINARY_DIR}/version.${pkg_name}.info
-                    "${CANN_VERSION_${pkg_name}_VERSION}" ${CANN_VERSION_${pkg_name}_RUN_DEPS}
-            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/version.cmake ${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_version_info.py
-            VERBATIM
-        )
-        add_custom_target(version_${pkg_name}_info ALL DEPENDS ${CMAKE_BINARY_DIR}/version.${pkg_name}.info)
-    endforeach()
 endfunction()

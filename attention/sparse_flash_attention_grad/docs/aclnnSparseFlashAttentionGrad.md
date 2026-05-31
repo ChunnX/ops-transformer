@@ -142,9 +142,10 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)<br>
-            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1
+            B：支持泛化；S1：支持泛化；N1：支持128、64、32、16、8、4、2、1；D：512；T1：B × S1<br>
+            <term>Ascend 950PR/Ascend 950DT</term>的N1额外还支持48、24、12、6、3
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>key</td>
@@ -156,7 +157,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S2,N2,D)、(T2,N2,D)<br>
             N2：1；T2：B × S2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>value</td>
@@ -169,7 +170,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,D)、(T2,N2,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>sparseIndices</td>
@@ -178,12 +179,12 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>
             -
             </td>
-            <td>INT64</td>
+            <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,N2,K)、(T1,N2,K)<br>
             K：1024、2048、3072、4096、5120、6144、7168、8192
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>dOut</td>
@@ -196,7 +197,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>out</td>
@@ -209,7 +210,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S1,N1,D)、(T1,N1,D)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxMax</td>
@@ -221,7 +222,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,N2,S1,G)、(N2,T1,G)<br>
             G：N1/N2
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>softmaxSum</td>
@@ -232,7 +233,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
   <tr>
             <td>actualSeqLengthsQueryOptional</td>
@@ -249,7 +250,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>actualSeqLengthskvOptional</td>
@@ -265,7 +266,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT32</td>
             <td>ND</td>
             <td>(B,)</td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>queryRopeOptional</td>
@@ -279,7 +280,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>(B,S1,N1,Dr)、(T1,N1,Dr)<br>
             Dr：64
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>keyRopeOptional</td>
@@ -292,7 +293,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>ND</td>
             <td>(B,S2,N2,Dr)、(T2,N2,Dr)
             </td>
-            <td>x</td>
+            <td>√</td>
         </tr>
         <tr>
             <td>scaleValue</td>
@@ -300,9 +301,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>缩放系数。</td>
             <td>建议值：公式中d开根号的倒数。</td>
             <td>FLOAT32</td>
-            <td>N/A</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>sparseBlockSize</td>
@@ -312,10 +313,10 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1、8、16、32、64<br>
             <term>Ascend 950PR/Ascend 950DT</term>支持1
             </td>
-            <td>INT32</td>
-            <td>N/A</td>
+            <td>INT64</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>layout</td>
@@ -325,9 +326,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             支持BSND、TND。
             </td>
             <td>STRING</td>
-            <td>N/A</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>sparseMode</td>
@@ -340,9 +341,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
               </ul>
         </td>
         <td>INT64</td>
-        <td>N/A</td>
         <td>-</td>
-        <td>x</td>
+        <td>-</td>
+        <td>-</td>
         </tr>
         <tr>
         <td>preTokens</td>
@@ -357,7 +358,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
         <td>nextTokens</td>
@@ -372,7 +373,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>INT64</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
         <td>deterministic</td>
@@ -384,7 +385,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>BOOL</td>
             <td>-</td>
             <td>-</td>
-            <td>x</td>
+            <td>-</td>
         </tr>
         <tr>
             <td>dQuery</td>
@@ -628,8 +629,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            支持确定性计算
             </td>
         </tr>
         <tr>
@@ -644,7 +644,9 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         </tr>
         <tr>
             <td>N1</td>
-            <td>1、2、4、8、16、32、64、128</td>
+            <td>1、2、4、8、16、32、64、128<br>
+            <term>Ascend 950PR/Ascend 950DT</term>额外还支持48、24、12、6、3
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
@@ -665,7 +667,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>K</td>
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
+            <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
             <td>layout</td>

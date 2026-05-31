@@ -797,7 +797,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
         }
         LocalTensor<INPUT_TYPE> pL1Tensor = pL1Buf.Get().GetTensor<INPUT_TYPE>();
         if (runInfo.quantRunInfo.s2Idx < runInfo.quantRunInfo.innerS2LoopNum && runInfo.quantRunInfo.s1Idx < runInfo.quantRunInfo.innerS1LoopNum) {
-            LocalTensor<INPUT_TYPE> dsL1Tensor = L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2).Get().GetTensor<INPUT_TYPE>();
+            LocalTensor<INPUT_TYPE> dsL1Tensor =
+                L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2)
+                    .Get()
+                    .template GetTensor<INPUT_TYPE>();
             this->vecBlock.ProcessPDs(pL1Tensor, dsL1Tensor, spTensor[sdpId], dpdsTensor[sdpId], sdpId, this->constInfo, runInfo);
         }
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(sdpId);
@@ -828,8 +831,14 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
         } else {
             if (runInfo.quantRunInfo.s2Idx < runInfo.quantRunInfo.innerS2LoopNum && runInfo.quantRunInfo.s1Idx < runInfo.quantRunInfo.innerS1LoopNum) {
                 runInfo.quantRunInfo.isDkFixOut = sdpId == 2;
-                LocalTensor<INPUT_TYPE> dsL1Tensor0 = L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2).Get().GetTensor<INPUT_TYPE>();
-                LocalTensor<INPUT_TYPE> dsL1Tensor1 = L1DS(runInfo.quantRunInfo.s1Idx + 1, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2).Get().GetTensor<INPUT_TYPE>();
+                LocalTensor<INPUT_TYPE> dsL1Tensor0 =
+                    L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2)
+                        .Get()
+                        .template GetTensor<INPUT_TYPE>();
+                LocalTensor<INPUT_TYPE> dsL1Tensor1 =
+                    L1DS(runInfo.quantRunInfo.s1Idx + 1, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2)
+                        .Get()
+                        .template GetTensor<INPUT_TYPE>();
                 this->cubeBlock.IterateMmDsQ(dkTensor, dsL1Tensor0, dsL1Tensor1, this->constInfo, runInfo);
             }
             if (sdpId == 0 && runInfo.quantRunInfo.s2Idx == 3) {
@@ -864,8 +873,14 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBlockType>::ProcessDQ(FagRunInfo &runInfo, int8_t sdpId)
 {
     if ASCEND_IS_AIC {
-        LocalTensor<INPUT_TYPE> dsL1Tensor0 = L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2).Get().GetTensor<INPUT_TYPE>();
-        LocalTensor<INPUT_TYPE> dsL1Tensor1 = L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx + 1, runInfo.commonRunInfo.taskIdMod2).Get().GetTensor<INPUT_TYPE>();
+        LocalTensor<INPUT_TYPE> dsL1Tensor0 =
+            L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx, runInfo.commonRunInfo.taskIdMod2)
+                .Get()
+                .template GetTensor<INPUT_TYPE>();
+        LocalTensor<INPUT_TYPE> dsL1Tensor1 =
+            L1DS(runInfo.quantRunInfo.s1Idx, runInfo.quantRunInfo.s2Idx + 1, runInfo.commonRunInfo.taskIdMod2)
+                .Get()
+                .template GetTensor<INPUT_TYPE>();
         runInfo.quantRunInfo.isDqFixOut = sdpId == 2;
         if (runInfo.quantRunInfo.s2Idx < runInfo.quantRunInfo.innerS2LoopNum && runInfo.quantRunInfo.s1Idx < runInfo.quantRunInfo.innerS1LoopNum) {
             this->cubeBlock.IterateMmDsK(dqTensor, dsL1Tensor0, dsL1Tensor1, this->constInfo, runInfo);
@@ -900,6 +915,5 @@ __aicore__ inline void FlashAttentionScoreGradKernelQuant<CubeBlockType, VecBloc
 }
 
 } // namespace FagBaseApi
- 
- 
+
 #endif

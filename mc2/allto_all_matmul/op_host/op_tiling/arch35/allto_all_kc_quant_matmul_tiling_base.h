@@ -26,8 +26,10 @@
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_key.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "./allto_all_matmul_fit_balance_tiling.h"
 
 namespace MC2Tiling {
+using QuantType = MC2Tiling::AlltoAllMatmulFitBalanceTiling::QuantType;
 using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 constexpr size_t X1_QUANTMODE_VALUES = 7;
@@ -45,6 +47,7 @@ protected:
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
+    CutResult GetCutResOfCommAndCompute() override;
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoKcQuantMMTiling();
@@ -59,6 +62,7 @@ protected:
 private:
     AlltoAllQuantMatmulTilingData localTilingData_;
     uint64_t mm_mvalue_len = 0;
+    QuantType matmulQuantType_ = QuantType::KC_QUANT;
     void PrintAlltoAllKcQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintKcQuantMMV3TilingData(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
     void PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
@@ -81,6 +85,7 @@ public:
 private:
     uint64_t mm_len = 0;
     AllToAllKcQuantMatmulTilingBase& tilingProcesser_;
+    QuantType matmulQuantType_ = QuantType::KC_QUANT;
 };
 } // namespace MC2Tiling
 #endif

@@ -12,17 +12,16 @@
 
 import torch
 
-# 当前由于torchair拦截的原因，kv_dtype为float8_e4m3fn时只能传None
+# 当前由于torchair拦截的原因，kv_type为float8_e4m3fn时只能传None
 TEST_PARAMS = {
     "TND_PA": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],
-        "kv_dtype": ["hifloat8"],
+        "kv_type": ["hifloat8"],
         "B": [22],
-        "T": [22],
+        "T1": [22],
         "S1": [1],
         "S2": [128],
         "N1": [48],
@@ -44,11 +43,10 @@ TEST_PARAMS = {
     },
     "BSND_BSND": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
-        "kv_dtype": [None],
+        "kv_type": [None],
         "B": [1],
         "S1": [1],
         "S2": [4096],
@@ -71,13 +69,12 @@ TEST_PARAMS = {
     },
     "BSND_PA": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["BSND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],
-        "kv_dtype": [None],
+        "kv_type": [None],
         "B": [18],
-        "T": [54],
+        "T1": [54],
         "S1": [3],
         "S2": [3072],
         "N1": [64],
@@ -99,13 +96,12 @@ TEST_PARAMS = {
     },
     "TND_TND": {
         "Testcase_Prefix": ["runpy_style"],
-        "Testcase_Number": [1],
         "layout_query": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
-        "kv_dtype": [None],
+        "kv_type": [None],
         "B": [22],
-        "T": [22],
+        "T1": [22],
         "T2": [128],
         "S1": [1],
         "S2": [128],

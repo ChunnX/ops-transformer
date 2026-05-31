@@ -60,6 +60,25 @@ protected:
         OP_LOGD("CalcleTNDDeterParam", "TND deterMaxRound is %ld.", fBaseParams.deterMaxRound);
     }
 
+    void CalcTNDSwizzleParam()
+    {
+        if (fBaseParams.b >= TND_SWIZZLE_PREFIX_NUM) {
+            return;
+        }
+        for (int64_t bIdx = 0; bIdx < fBaseParams.b; bIdx++) {
+            int64_t s1OuterTmp = (fBaseParams.actualSeqQlen[bIdx] + fBaseParams.s1Inner * S1CV_RATIO_DEFAULT - 1) /
+                                 (fBaseParams.s1Inner * S1CV_RATIO_DEFAULT);
+            int64_t s2OuterTmp = (fBaseParams.actualSeqKvlen[bIdx] + fBaseParams.s2Inner * S2CV_RATIO_DEFAULT - 1) /
+                                 (fBaseParams.s2Inner * S2CV_RATIO_DEFAULT);
+            tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] =
+                tndBaseInfo.tndS2BlockPrefixSum[bIdx] +
+                CeilDivideBy(fBaseParams.n2 * fBaseParams.g * s2OuterTmp, static_cast<int64_t>(fBaseParams.aicNum)) *
+                    s1OuterTmp;
+            OP_LOGD("CalcTNDSwizzleParam", " bIdx = %ld: tndS2BlockPrefixSum = %ld", bIdx + 1,
+                    tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1]);
+        }
+    }
+
     void CalcleTNDDenseDeterParam()
     {
         if (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) {

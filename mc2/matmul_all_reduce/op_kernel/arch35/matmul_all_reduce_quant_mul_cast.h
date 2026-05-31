@@ -98,9 +98,10 @@ public:
         }
     }
 
+    template <int commMode>
     __aicore__ inline void MulCastSplitMAndN(
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, int32_t& quantUbSize, uint32_t& needAivCoreNum, uint32_t& tileBlockCnt,
-        uint32_t& tailBlockCnt, uint32_t& aivLoopNum, uint32_t& blockNumPerRow)
+        typename HcclTypeSelector<commMode>::type& hccl, int32_t& quantUbSize, uint32_t& needAivCoreNum,
+        uint32_t& tileBlockCnt, uint32_t& tailBlockCnt, uint32_t& aivLoopNum, uint32_t& blockNumPerRow)
     {
         quantUbSize = TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 /
                       (BUF_CNT_SPLIT_MN_MATMUL_ALLREDUCE_INT8 * static_cast<int32_t>(sizeof(T)));
@@ -125,8 +126,9 @@ public:
         }
     }
 
+    template <int commMode>
     __aicore__ inline void InitInner(
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, uint32_t loopIdx, int64_t blockAddrOffsetSplitM,
+        typename HcclTypeSelector<commMode>::type& hccl, uint32_t loopIdx, int64_t blockAddrOffsetSplitM,
         int64_t blockAddrOffsetSplitMN, int64_t scaleAddrOffsetSplitMN, uint32_t blockCntSpiltMN)
     {
         uint64_t curScaleCnt = 0;
@@ -239,11 +241,12 @@ public:
         queueZ_.FreeTensor(zInt8Local);
     }
 
+    template <int commMode>
     __aicore__ inline void SetParams(
         GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, uint32_t aivCoreNum, uint32_t& tileBlockCnt, uint32_t& tailBlockCnt,
-        uint32_t& aivLoopNum, int64_t& blockAddrOffset, uint32_t& tailCalCntM, uint32_t& tileCalCntM,
-        uint32_t& needAivCoreNum, uint32_t& blockNumPerRow, int32_t& nowQuantUbSize)
+        typename HcclTypeSelector<commMode>::type& hccl, uint32_t aivCoreNum, uint32_t& tileBlockCnt,
+        uint32_t& tailBlockCnt, uint32_t& aivLoopNum, int64_t& blockAddrOffset, uint32_t& tailCalCntM,
+        uint32_t& tileCalCntM, uint32_t& needAivCoreNum, uint32_t& blockNumPerRow, int32_t& nowQuantUbSize)
     {
         int32_t nowAlginN = Ceil(N * sizeof(float), BYTE512_MATMUL_ALLREDUCE_INT8) * BYTE512_MATMUL_ALLREDUCE_INT8;
         nowQuantUbSize =
@@ -270,7 +273,7 @@ public:
             this->MulCastSplitM(nowQuantUbSize, blockAddrOffset, tileCalCntM, tailCalCntM, aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode_ = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-            this->MulCastSplitMAndN(
+            this->template MulCastSplitMAndN<commMode>(
                 hccl, nowQuantUbSize, needAivCoreNum, tileBlockCnt, tailBlockCnt, aivLoopNum, blockNumPerRow);
         }
     }
@@ -304,10 +307,10 @@ public:
     LocalTensor<T> scale2Local_;
 };
 
-template <class T>
+template <class T, int commMode>
 __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
     GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
-    TPipe* tPipe, Hccl<HCCL_SERVER_TYPE_CCU>& hccl)
+    TPipe* tPipe, typename HcclTypeSelector<commMode>::type& hccl)
 {
     uint32_t aivCoreNum = GetBlockNum() * GetTaskRation();
     if ((g_coreType == AIC) || (GetBlockIdx() >= aivCoreNum)) {
@@ -325,7 +328,7 @@ __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
 
     tPipe->Reset();
     MatmulAllReduceQuantMulCast<T> op;
-    op.SetParams(
+    op.template SetParams<commMode>(
         inputGM, quantScale1GM, quantScale2GM, outputGM, M, N, hccl, aivCoreNum, tileBlockCnt, tailBlockCnt, aivLoopNum,
         blockAddrOffset, tailCalCntM, tileCalCntM, needAivCoreNum, blockNumPerRow, nowQuantUbSize);
 
@@ -360,7 +363,7 @@ __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
             scaleAddrOffsetSplitMN =
                 static_cast<int64_t>(globalBlockIdx % blockNumPerRow) * static_cast<int64_t>(tileBlockCnt);
         }
-        op.InitInner(
+        op.template InitInner<commMode>(
             hccl, loopIdx, blockAddrOffsetSplitM, blockAddrOffsetSplitMN, scaleAddrOffsetSplitMN, blockCntSpiltMN);
         op.Process(loopIdx, aivLoopNum, blockCntM, blockCntSpiltMN);
     }
