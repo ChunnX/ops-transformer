@@ -19,26 +19,26 @@ SeqLen = 115328
 
 Image tile = 6 x 8 x 8 = 384 tokens
 Image tile grid = 5 x 6 x 10 = 300 tiles
-
-qBlock = 16
-image kv block = 384
-text kv block = 128
 ```
 
-## Query Blocks
+## Query Groups
+
+The GM-workspace pipeline schedules natural query groups instead of synthetic query blocks:
 
 ```text
-qBlockNum per head = 115328 / 16 = 7208
-image qBlocks per head = 115200 / 16 = 7200
-text qBlocks per head = 128 / 16 = 8
-total qBlock tasks = 1 * 8 * 7208 = 57664
+image query groups per head = 300
+text query groups per head = 1
+query groups per head = 301
+total query-group tasks = 1 * 8 * 301 = 2408
 ```
 
-## Per-Head Image Window Blocks
+Each image query group contains one full 384-token image tile. The text query group contains the whole text span.
 
-For image queries, each qBlock processes visible image tiles plus one text kv block.
+## Per-Head Visible Ranges
 
-| Head | Window | Image tiles per image qBlock | Total kv blocks per image qBlock |
+For image queries, each image query group processes visible image tiles plus one full text range.
+
+| Head | Window | Image ranges per image query group | Total KV ranges per image query group |
 |---:|---:|---:|---:|
 | 0 | `1x1x1` | 1 | 2 |
 | 1 | `3x3x3` | 27 | 28 |
@@ -51,99 +51,74 @@ For image queries, each qBlock processes visible image tiles plus one text kv bl
 
 Head 7 is clamped by the tile grid `5x6x10`, so `7x7x7` becomes `5x6x7 = 210`.
 
-## Text Query Blocks
-
-For text queries, each qBlock attends to all image tiles plus one text kv block:
+For text queries, the text query group attends to all image tiles plus one full text range:
 
 ```text
-image tile blocks = 300
-text kv blocks = 1
-total kv blocks per text qBlock = 301
+image tile ranges = 300
+text range = 1
+total KV ranges for the text query group = 301
 ```
 
-## Total QK/PV Tile Calls
+## Total QK/PV Calls
 
 Per head:
 
-| Head | Image qBlock calls | Text qBlock calls | Total calls |
+| Head | Image query-group calls | Text query-group calls | Total calls |
 |---:|---:|---:|---:|
-| 0 | `7200 * 2 = 14400` | `8 * 301 = 2408` | 16808 |
-| 1 | `7200 * 28 = 201600` | 2408 | 204008 |
-| 2 | `7200 * 76 = 547200` | 2408 | 549608 |
-| 3 | `7200 * 126 = 907200` | 2408 | 909608 |
-| 4 | `7200 * 10 = 72000` | 2408 | 74408 |
-| 5 | `7200 * 46 = 331200` | 2408 | 333608 |
-| 6 | `7200 * 176 = 1267200` | 2408 | 1269608 |
-| 7 | `7200 * 211 = 1519200` | 2408 | 1521608 |
+| 0 | `300 * 2 = 600` | 301 | 901 |
+| 1 | `300 * 28 = 8400` | 301 | 8701 |
+| 2 | `300 * 76 = 22800` | 301 | 23101 |
+| 3 | `300 * 126 = 37800` | 301 | 38101 |
+| 4 | `300 * 10 = 3000` | 301 | 3301 |
+| 5 | `300 * 46 = 13800` | 301 | 14101 |
+| 6 | `300 * 176 = 52800` | 301 | 53101 |
+| 7 | `300 * 211 = 63300` | 301 | 63601 |
 
 Totals:
 
 ```text
-image-tile 384-token blocks = 4802400 + 19200 = 4821600
-text 128-token blocks = 57600 + 64 = 57664
-total kv blocks = 4879264
+total visible KV ranges = 204908
+QK matmul calls = 204908
+PV matmul calls = 204908
 ```
 
-So AIC runs approximately:
+## Per-Range Compute
+
+For one image-tile range with image queries:
 
 ```text
-QK matmul calls = 4879264
-PV matmul calls = 4879264
+QK: [384, 64] x [384, 64]^T
+PV: [384, 384] x [384, 64]
+
+QK MAC = 384 * 384 * 64 = 9437184
+PV MAC = 384 * 384 * 64 = 9437184
+Total = 18874368 MAC
 ```
 
-AIV runs one softmax stage per kv block:
+For one text range with image queries:
 
 ```text
-softmax row-block count = 4879264 * 16 = 78068224 rows
+QK: [384, 64] x [128, 64]^T
+PV: [384, 128] x [128, 64]
+
+QK MAC = 384 * 128 * 64 = 3145728
+PV MAC = 384 * 128 * 64 = 3145728
+Total = 6291456 MAC
 ```
 
-With task ratio 2, each AIV subblock handles about 8 rows, but the aggregate is still 16 rows per qBlock.
-
-## Per-Block Compute
-
-For one image 384-token block:
+For one image-tile range with text queries:
 
 ```text
-QK: [16, 64] x [384, 64]^T
-PV: [16, 384] x [384, 64]
+QK: [128, 64] x [384, 64]^T
+PV: [128, 384] x [384, 64]
 
-QK MAC = 16 * 384 * 64 = 393216
-PV MAC = 16 * 384 * 64 = 393216
-Total = 786432 MAC
+QK MAC = 128 * 384 * 64 = 3145728
+PV MAC = 128 * 384 * 64 = 3145728
+Total = 6291456 MAC
 ```
 
-For one text 128-token block:
-
-```text
-QK MAC = 16 * 128 * 64 = 131072
-PV MAC = 16 * 128 * 64 = 131072
-Total = 262144 MAC
-```
-
-## Total Rough MAC Count
-
-```text
-image blocks MAC = 4821600 * 786432 = 3794486476800
-text blocks MAC = 57664 * 262144 = 15116271616
-total MAC = 3809602748416
-```
-
-That is about:
-
-```text
-3.81e12 MAC
-```
+The arithmetic volume stays close to the prior smaller-row schedule, but the scheduler now launches far fewer AIC/AIV handoff rounds.
 
 ## Current Main Observation
 
-The 384-token image block reduces the previous three 128-token image blocks into one block. This keeps the arithmetic count similar, but reduces:
-
-```text
-AIC/AIV sync count
-AIV softmax block count
-prob write transactions
-out read transactions
-per-block scalar scheduling overhead
-```
-
-This is why the profile improved by roughly 2.8x on the large image cases.
+The natural query-group schedule removes the synthetic query and text-KV block loops. Intermediate score, probability, and output ranges are handed off through GM workspace with pingpong slots, so the remaining fragmentation mostly follows real image tiles and the single text span.

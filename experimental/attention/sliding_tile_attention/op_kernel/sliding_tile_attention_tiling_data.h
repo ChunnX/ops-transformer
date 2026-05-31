@@ -16,9 +16,9 @@ struct SlidingTileAttentionTilingData {
     int64_t seqLen;
     int64_t headDim;
     float scale;
-    int64_t qBlock;
-    int64_t kvBlock;
-    int64_t maxKvBlock;
+    int64_t maxQueryRows;
+    int64_t maxVisibleKvTokens;
+    int64_t queryTaskNum;
     int64_t headDimAlign;
     int64_t cubeTaskNum;
     int64_t cubeWorkspacePerCore;
@@ -46,7 +46,6 @@ struct SlidingTileAttentionTilingData {
     int64_t tileNumHW;
     int64_t imageTileNum;
     int64_t validSeqLen;
-    int64_t seqBlockNum;
     int64_t totalQueryNum;
     int64_t windowT[SLIDING_TILE_ATTENTION_MAX_HEAD_NUM];
     int64_t windowH[SLIDING_TILE_ATTENTION_MAX_HEAD_NUM];
