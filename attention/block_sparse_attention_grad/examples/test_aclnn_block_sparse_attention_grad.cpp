@@ -253,13 +253,13 @@ int main() {
     ret = aclrtMemcpy(dqData.data(), qSize * sizeof(op::fp16_t), dqAddr, qSize * sizeof(op::fp16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n"); return ret);
 
-    // LOG_PRINT("Execution Success! Output results (first 10 elements of dQ):\n");
-    // for (uint64_t i = 0; i < 10 && i < dqData.size(); i++) {
-    //     LOG_PRINT("  dQ index %lu: %f\n", i, static_cast<float>(dqData[i]));
-    // }
+    LOG_PRINT("Execution Success! Output results (first 10 elements of dQ):\n");
+    for (uint64_t i = 0; i < 10 && i < dqData.size(); i++) {
+        LOG_PRINT("  dQ index %lu: %f\n", i, static_cast<float>(dqData[i]));
+    }
 
-    // // 13. 释放所有资源
-    // LOG_PRINT("Cleaning up resources...\n");
+    // 13. 释放所有资源
+    LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) aclrtFree(workspaceAddr);
     
     aclrtFree(qAddr); aclrtFree(kAddr); aclrtFree(vAddr);
