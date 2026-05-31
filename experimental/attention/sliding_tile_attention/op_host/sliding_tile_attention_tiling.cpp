@@ -30,6 +30,8 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t SUPPORTED_HEAD_DIM = 64;
 constexpr int64_t CUBE_Q_BLOCK = 64;
 constexpr int64_t CUBE_KV_BLOCK = 128;
+constexpr int64_t STA_BUFFER_NUM = 2;
+constexpr size_t GM_WORKSPACE_ALIGN_BYTES = 512U;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
 struct SlidingTileAttentionCompileInfo {
@@ -94,6 +96,11 @@ static ge::graphStatus FillWindow(const gert::RuntimeAttrs *attrs, gert::TilingC
         tiling->windowW[i] = winW;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+static size_t AlignUpSize(size_t value, size_t align)
+{
+    return ((value + align - 1U) / align) * align;
 }
 } // namespace
 
@@ -185,7 +192,20 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->tileW = DEFAULT_TILE_W;
     tiling->tileTokenNum = DEFAULT_TILE_T * DEFAULT_TILE_H * DEFAULT_TILE_W;
     tiling->maxKvBlock = std::max(CUBE_KV_BLOCK, tiling->tileTokenNum);
-    tiling->cubeWorkspacePerCore = 0;
+    tiling->scoreWorkspaceElems = tiling->qBlock * tiling->maxKvBlock;
+    tiling->probWorkspaceElems = tiling->qBlock * tiling->maxKvBlock;
+    tiling->outWorkspaceElems = tiling->qBlock * tiling->headDimAlign;
+    tiling->scoreWorkspaceBytes = static_cast<int64_t>(
+        AlignUpSize(static_cast<size_t>(STA_BUFFER_NUM * tiling->scoreWorkspaceElems * sizeof(float)),
+                    GM_WORKSPACE_ALIGN_BYTES));
+    tiling->probWorkspaceBytes = static_cast<int64_t>(
+        AlignUpSize(static_cast<size_t>(STA_BUFFER_NUM * tiling->probWorkspaceElems * sizeof(uint16_t)),
+                    GM_WORKSPACE_ALIGN_BYTES));
+    tiling->outWorkspaceBytes = static_cast<int64_t>(
+        AlignUpSize(static_cast<size_t>(STA_BUFFER_NUM * tiling->outWorkspaceElems * sizeof(float)),
+                    GM_WORKSPACE_ALIGN_BYTES));
+    tiling->cubeWorkspacePerCore =
+        tiling->scoreWorkspaceBytes + tiling->probWorkspaceBytes + tiling->outWorkspaceBytes;
     tiling->tileNumT = seqT / DEFAULT_TILE_T;
     tiling->tileNumH = seqH / DEFAULT_TILE_H;
     tiling->tileNumW = seqW / DEFAULT_TILE_W;
@@ -199,7 +219,8 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
 
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspace);
-    workspace[0] = WS_SYS_SIZE + static_cast<size_t>(aicCoreNum * tiling->cubeWorkspacePerCore);
+    workspace[0] = WS_SYS_SIZE + static_cast<size_t>(aicCoreNum) *
+                                     static_cast<size_t>(tiling->cubeWorkspacePerCore);
 
     context->SetBlockDim(taskBlockDim);
 
