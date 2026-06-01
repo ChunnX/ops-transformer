@@ -373,7 +373,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHist(int32_t roundId)
             Sub(tileHist, tileHist[boundaryBin * tileNumAlign_],
                 tileHist[boundaryBinPrev * tileNumAlign_], tileNum_);
         } else {
-            Copy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNum_);
+            Copy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNum_, 1, {1, 1, 8, 8});
         }
     }
 
