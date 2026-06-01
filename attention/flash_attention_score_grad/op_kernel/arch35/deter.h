@@ -660,7 +660,7 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     // 按照相邻B或者N拼接成一个完整S1S2
     int64_t nNew = n + 1;
     if (m != n) {
-        nNew = (n - m + 2) + (n + 1);
+        nNew = (n - m + NUM_TWO) + (n + 1);
     }
     int64_t bNew = b >> 1;
     CalDenseSwizzleIndex(k, m, nNew, bNew, j, r, coordinate);
@@ -673,16 +673,15 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     int64_t y = coordinate.s2Idx;
     if (m == n) {
         if (y >= x + 1) {
-            y = (n << 1) - m - y + 2;
+            y = (n << 1) - m - y + NUM_TWO;
             x = m + 1 - x;
             w = (w << 1);
         } else {
             w = (w << 1) - 1;
         }
     } else {
-        // n = n + 1;
         if (y >= x + (n + 1) - m + 1) {
-            y = ((n + 1) << 1) - m - y + 2;
+            y = ((n + 1) << 1) - m - y + NUM_TWO;
             x = m + 1 - x;
             w = (w << 1);
         } else {
