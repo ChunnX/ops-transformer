@@ -36,7 +36,6 @@ private:
     __aicore__ inline void CopyOutHistToWs();
     __aicore__ inline bool Update(int32_t roundId);
     __aicore__ inline void ClearHist(int32_t roundId);
-    __aicore__ inline void InitMask();
     __aicore__ inline void TopKPerTile(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void SubTopKAndWriteMask(LocalTensor<float> &xLocalFp32, float boundaryNumber,
                                                 uint64_t curTileLen, uint64_t tileGmOffset,
@@ -95,8 +94,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->numValue_ = RADIX_NUM_BINS;
     this->round_ = RADIX_ROUNDS_FP16;
 
-    // TODO: 根据 UB 容量计算 tileLen 和 tileNum
-    this->tileLen_ = 7168;
+    this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), sortLen_);
     this->tileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
 }
@@ -114,7 +112,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(tempBuf_, tempBufSize);
 
     pipe->InitBuffer(globalHistBuf_, numValue_ * sizeof(int32_t));
-    pipe->InitBuffer(maskLocalBuf_, tileLen_ * sizeof(int32_t));
+    pipe->InitBuffer(maskLocalBuf_, tileLen_ * sizeof(int32_t) + tileLen_ * sizeof(int16_t) + tileLen_ * sizeof(uint8_t));
 }
 
 template <typename BSAT>
@@ -175,8 +173,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         NegateAttnScore();
     }
-
-    InitMask();
 
     // TODO: Phase 1 + Phase 2 完整实现
 }
@@ -244,13 +240,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ClearHist(int32_t roundId)
     // TODO: 初始化/重置直方图
     // 第一轮: tileHist[bin0] = tileLen, globalHist[0] = 总元素数
     // 后续轮: tileHist[bin0] = 上轮boundaryBin内元素数
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::InitMask()
-{
-    // TODO: 实现 mask 初始化
-    // 暂时为空函数，避免 507015 错误
 }
 
 template <typename BSAT>
