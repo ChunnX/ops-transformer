@@ -160,7 +160,7 @@ aclnnStatus CheckExistenceLiV2(int64_t maskMode, int64_t cmpRatio, const aclTens
     // cmp_residual_k 存在性校验
     if (cmpRatio != LI_CMP_RATIO_LOWER_BOUND && maskMode == LI_CAUSAL_MASK_MODE) {
         CHECK_COND(IsTensorExistLiV2(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
-            "When cmp_ratio is not 1 and mask_mode is 3, cmp_residual_k must be provided!");
+            "When cmp_ratio is not 1 and mask_mode is CAUSAL, cmp_residual_k must be provided!");
     }
     // metadata 存在性校验
     CHECK_COND(IsTensorExistLiV2(metadata), ACLNN_ERR_PARAM_INVALID,

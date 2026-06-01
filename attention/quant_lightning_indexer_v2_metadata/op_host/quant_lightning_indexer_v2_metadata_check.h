@@ -166,7 +166,7 @@ aclnnStatus CheckExistenceQliV2(int64_t maskMode, int64_t cmpRatio, const aclTen
     // cmp_residual_k 存在性校验
     if (cmpRatio != QLI_CMP_RATIO_LOWER_BOUND && maskMode == QLI_CAUSAL_MASK_MODE) {
         CHECK_COND(IsTensorExistQliV2(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
-            "When cmp_ratio is not 1 and mask_mode is 3, cmp_residual_k must be provided!");
+            "When cmp_ratio is not 1 and mask_mode is CAUSAL, cmp_residual_k must be provided!");
     }
     // metadata 存在性校验
     CHECK_COND(IsTensorExistQliV2(metadata), ACLNN_ERR_PARAM_INVALID,
@@ -179,7 +179,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
     const aclTensor *cmpResidualKOptional, const char *layoutQOptional, const char *layoutKOptional,
     const aclTensor *metadata)
 {
-int64_t dimNum = -1;
+    int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
 
     int64_t batch = GetQueryBatchSizeQliV2(batchSize, cuSeqlensQOptional, sequsedQOptional,
