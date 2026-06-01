@@ -75,14 +75,23 @@ public:
     using T = typename CubeBlockType::MM_T;
     using ConstInfoX = typename CubeBlockType::ConstInfoX;
 
-    // CV buffers
-    BufferManager<BufferType::GM> gmBufferManager;
-    BufferManager<BufferType::UB> ubBufferManager;
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    // ===== 核间共享 buffer slots（静态 LocalTensor，无 BufferManager / BuffersPolicy）=====
+    LocalTensor<uint8_t> bmm1UbSlot[2];   // bmm1 双缓冲 (UB, AIC→AIV, BOTH)
+    LocalTensor<uint8_t> bmm2UbSlot[2];   // bmm2 双缓冲 (UB, AIC→AIV, BOTH)，仅 BMM2_TOUB
+    LocalTensor<uint8_t> l1PSlot[3];      // l1P 三缓冲 (L1, AIV→AIC, FORWARD)
+    GlobalTensor<T>      bmm2GmSlot[3];   // bmm2 三缓冲 (GM, AIC→AIV, FORWARD)，仅 !BMM2_TOUB
+
+    // ===== 静态 cross-core 事件 ID（避开 6、7，Set/Wait 对称）=====
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
+    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    static constexpr uint32_t CC_BMM1_0 = 0U;   // bmm1 ping（BOTH 双向）
+    static constexpr uint32_t CC_BMM1_1 = 1U;   // bmm1 pong
+    static constexpr uint32_t CC_BMM2_0 = 2U;   // bmm2 slot0 / ping
+    static constexpr uint32_t CC_BMM2_1 = 3U;   // bmm2 slot1 / pong
+    static constexpr uint32_t CC_BMM2_2 = 4U;   // bmm2 slot2（仅 GM 三缓冲）
+    static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
+    static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
+    static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -244,34 +253,34 @@ public:
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
-        uint32_t mm1OutDtype = sizeof(T);
+        constexpr uint32_t mm1SlotSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
+        constexpr uint32_t mm2SlotSize = BMM2_TOUB ?
+            (mBaseSize / CV_RATIO * dVBaseSize * sizeof(T)) : 0U;
+        constexpr uint32_t l1PSlotSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t bmm1UbBase  = 2U * mm2SlotSize; // bmm2 在前，bmm1 在后
 
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
-        constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
-        // l1PBuffers 为3buff，实际占用 3*mm2LeftSize；用 LocalTensor(A1, 0, size) 直接指向L1起始
-        l1BufferManager.InitStatic(3U * mm2LeftSize);
-        // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        // bmm2 双缓冲（仅 BMM2_TOUB）
         if constexpr (BMM2_TOUB) {
-            // bmm2(DB)+bmm1(DB) 共占 2*mm2ResultSize + 2*mm1ResultSize
-            ubBufferManager.InitStatic(2U * mm2ResultSize + 2U * mm1ResultSize);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        } else {
-            // 仅 bmm1(DB) 占 2*mm1ResultSize
-            ubBufferManager.InitStatic(2U * mm1ResultSize);
+            bmm2UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, 0U,          mm2SlotSize);
+            bmm2UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, mm2SlotSize, mm2SlotSize);
         }
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+        // bmm1 双缓冲
+        bmm1UbSlot[0] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase,               mm1SlotSize);
+        bmm1UbSlot[1] = LocalTensor<uint8_t>(TPosition::VECIN, bmm1UbBase + mm1SlotSize, mm1SlotSize);
 
-        // GM Buffer
+        // l1P 三缓冲
+        l1PSlot[0] = LocalTensor<uint8_t>(TPosition::A1, 0U,               l1PSlotSize);
+        l1PSlot[1] = LocalTensor<uint8_t>(TPosition::A1, l1PSlotSize,      l1PSlotSize);
+        l1PSlot[2] = LocalTensor<uint8_t>(TPosition::A1, 2U * l1PSlotSize, l1PSlotSize);
+
+        // bmm2 GM 三缓冲（仅 !BMM2_TOUB）
         if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
-            // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
-            gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
-            bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
+            int64_t mm2GmSlotElems = mBaseSize * constInfo.dBasicBlock;
+            int64_t prevCoreOffset = constInfo.aicIdx * 3 * mm2GmSlotElems;
+            bmm2GmSlot[0].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset);
+            bmm2GmSlot[1].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + mm2GmSlotElems);
+            bmm2GmSlot[2].SetGlobalBuffer((__gm__ T *)workspace + prevCoreOffset + 2 * mm2GmSlotElems);
+            workspace = workspace + constInfo.coreNum * 3 * mm2GmSlotElems * sizeof(T);
         }
     }
 
@@ -357,28 +366,32 @@ public:
 
     __aicore__ inline void CrossCoreBufferInit()
     {
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIV {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
-        }
         if ASCEND_IS_AIV {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
+            if constexpr (BMM2_TOUB) {
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
+                CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
+            }
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
         }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
         if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-        }
-        if constexpr (BMM2_TOUB) {
-            if ASCEND_IS_AIC {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_0 + AIV0_AIV1_OFFSET);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM1_1 + AIV0_AIV1_OFFSET);
+            if constexpr (BMM2_TOUB) {
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_0 + AIV0_AIV1_OFFSET);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1);
+                CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(CC_BMM2_1 + AIV0_AIV1_OFFSET);
             }
         }
     }
@@ -627,29 +640,47 @@ public:
 
     __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        uint32_t slotIdx = runInfo.loop % 2U;
+        auto bmm1Tensor = bmm1UbSlot[slotIdx].template ReinterpretCast<T>();
+        cubeBlock.IterateBmm1(bmm1Tensor, CC_BMM1_0 + slotIdx, CC_BMM1_0 + slotIdx, runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
+        uint32_t l1PIdx  = runInfo.loop % 3U;
+        uint32_t l1PCcId = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor   = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
         if constexpr (BMM2_TOUB) {
-            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            cubeBlock.IterateBmm2(bmm2Tensor, CC_BMM2_0 + outSlot, CC_BMM2_0 + outSlot,
+                                  l1PTensor, l1PCcId, runInfo);
         } else {
-            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
+            cubeBlock.IterateBmm2(bmm2GmSlot[runInfo.loop % 3U],
+                                  CC_BMM2_0 + (runInfo.loop % 3U), 0U,
+                                  l1PTensor, l1PCcId, runInfo);
         }
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        uint32_t bmm1Slot = runInfo.loop % 2U;
+        uint32_t l1PIdx   = runInfo.loop % 3U;
+        uint32_t l1PCcId  = (l1PIdx == 0U) ? CC_L1P_0 : (l1PIdx == 1U) ? CC_L1P_1 : CC_L1P_2;
+        auto l1PTensor    = l1PSlot[l1PIdx].template ReinterpretCast<INPUT_T>();
+        auto bmm1Tensor   = bmm1UbSlot[bmm1Slot].template ReinterpretCast<T>();
+        vecFaBlock.ProcessVec1(l1PTensor, l1PCcId, bmm1Tensor, CC_BMM1_0 + bmm1Slot, runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
+        uint32_t outSlot = runInfo.loop % 2U;
         if constexpr (BMM2_TOUB) {
-            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
+            auto bmm2Tensor = bmm2UbSlot[outSlot].template ReinterpretCast<T>();
+            vecFaBlock.ProcessVec2(bmm2Tensor, CC_BMM2_0 + outSlot, runInfo);
         } else {
-            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
+            vecFaBlock.ProcessVec2(bmm2GmSlot[runInfo.loop % 3U],
+                                   CC_BMM2_0 + (runInfo.loop % 3U), runInfo);
         }
     }
 
