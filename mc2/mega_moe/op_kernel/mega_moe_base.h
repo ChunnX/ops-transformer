@@ -136,7 +136,7 @@ __aicore__ constexpr inline decltype(auto) Get(T&& t)
 //   3) 精度对比会 FAIL（y 是 trace，不是 unpermute 结果）—— 这是预期行为；
 //   4) host 侧需把 y2GmAddr 内容 dump 到 csv（保持与 parse_trace.py 表头一致）。
 //
-#define MEGA_MOE_TRACE_ENABLE
+// #define MEGA_MOE_TRACE_ENABLE
 
 // ============================================================================
 // MegaMoeTrace: 时间戳打点（写到 y2GmAddr，bs>=64 时 y 足够大）
