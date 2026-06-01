@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_3_H_
-#define ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_3_H_
+#ifndef ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_H_
+#define ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_H_
 
 #include <limits>
 #include "kernel_operator.h"
@@ -29,8 +29,7 @@ static constexpr uint32_t NUM1 = 1;
 static constexpr uint32_t NUM2 = 2;
 static constexpr uint32_t NUM7 = 7;
 static constexpr uint32_t NUM8 = 8;
-static constexpr uint32_t NUM15 = 15;
-static constexpr uint32_t NUM16 = 16;
+    static constexpr uint32_t NUM16 = 16;
 static constexpr uint32_t NUM32 = 32;
 static constexpr uint32_t NUM64 = 64;
 static constexpr uint32_t NUM255 = 255;
@@ -39,7 +38,7 @@ static constexpr uint32_t MAX_EFFECTIVE_SP = 16;
 static constexpr float POS_INF = std::numeric_limits<float>::infinity();
 static constexpr float NEG_INF = -std::numeric_limits<float>::infinity();
 static constexpr float DUMMY_LSE = -1e38f;
-static constexpr uint32_t MAX_UB_SIZE = 188 * 1024;
+static constexpr uint32_t MAX_UB_SIZE = 188 * 1024; //  double buffer, 每块94KB共188KB
 static const uint16_t ALIGNED_TO_8 = 8;
 static const int32_t ALIGNED_TO_2 = 2;
 static const uint32_t SPLIT_TO_2 = 2;
@@ -55,33 +54,34 @@ public:
         this->inPtr = GetTensorPtr(in);
         ParseTilingData(tdata);
         CalcTileLength();
+        // 设置全局变量的起始地址与总长度: BLOCK_LENGTH; sp, B*s*hc in1 sp; B*s*hc, hd in2
         outGm.SetGlobalBuffer((__gm__ outType *)out, totalLength * hDim);
         lseoutGm.SetGlobalBuffer((__gm__ lseType *)lesout, totalLength);
         InitBuffers();
     }
     __aicore__ inline void Process()
     {
-        for (int32_t i = 0; i < this->loopCount; i++) {
+        for (uint32_t i = 0; i < this->loopCount; i++) {
             if (lastLength && i == this->loopCount - 1) {
                 curLength = lastLength;
             }
-            if (spLoopCount == NUM1) {
+            if (spLoopCount == 1) {
                 CopyInSp(i, 0, spFirstLoop, spFirstLoop);
                 Compute(spFirstLoop);
                 CopyOut(i);
             } else {
                 LocalTensor<float> outAccLocal = lseexpBroadcastBuffer.Get<float>();
-                for (int32_t spLoop = 0; spLoop < spLoopCount; spLoop++) {
+                for (uint32_t spLoop = 0; spLoop < spLoopCount; spLoop++) {
                     uint32_t currentSp, effectiveSp;
                     if (spLoop == 0) {
                         currentSp = spFirstLoop;
-                        effectiveSp = NUM1 + currentSp;
+                        effectiveSp = 1 + currentSp;
                     } else {
                         uint32_t remainingSp = sp - spFirstLoop;
-                        uint32_t processedNewSp = (spLoop - NUM1) * spNextLoop;
+                        uint32_t processedNewSp = (spLoop - 1) * spNextLoop;
                         uint32_t remainingNewSp = remainingSp > processedNewSp ? remainingSp - processedNewSp : 0;
                         currentSp = remainingNewSp < spNextLoop ? remainingNewSp : spNextLoop;
-                        effectiveSp = NUM1 + currentSp;
+                        effectiveSp = 1 + currentSp;
                     }
                     CopyInSp(i, spLoop, currentSp, effectiveSp);
                     Compute(effectiveSp);
@@ -96,7 +96,8 @@ public:
 private:
     __aicore__ inline __gm__ uint64_t* GetTensorPtr(GM_ADDR gmAddr) {
         __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(gmAddr);
-        uint64_t tensorPtrOffset = *dataAddr;
+        uint64_t tensorPtrOffset = *dataAddr; // The offset of the data address from the first address.
+        // Moving 3 bits to the right means dividing by sizeof(uint64 t).
         __gm__ uint64_t* tensorPtr = dataAddr + (tensorPtrOffset >> 3);
         return tensorPtr;
     }
@@ -117,14 +118,14 @@ private:
         }
         
         if (sp <= MAX_EFFECTIVE_SP) {
-            this->spLoopCount = NUM1;
+            this->spLoopCount = 1;
             this->spFirstLoop = sp;
-            this->spNextLoop = NUM0;
+            this->spNextLoop = 0;
             this->spAlloc = sp;
         } else {
-            this->spFirstLoop = MAX_EFFECTIVE_SP - NUM1;
-            this->spNextLoop = MAX_EFFECTIVE_SP - NUM1;
-            this->spLoopCount = NUM1 + (sp - spFirstLoop + spNextLoop - NUM1) / spNextLoop;
+            this->spFirstLoop = MAX_EFFECTIVE_SP - 1;
+            this->spNextLoop = MAX_EFFECTIVE_SP - 1;
+            this->spLoopCount = 1 + (sp - spFirstLoop + spNextLoop - 1) / spNextLoop;
             this->spAlloc = MAX_EFFECTIVE_SP;
         }
     }
@@ -132,14 +133,15 @@ private:
     __aicore__ inline void CalcTileLength()
     {
         uint32_t spAligned = (spAlloc + NUM7) / NUM8 * NUM8;
-        uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - NUM1) * (sizeof(float) + sizeof(uint8_t))) /
+        // 用24K的UB大小推算出tileLength 最大能设置到多少
+        uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
                                 (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
                                 hDim * spAligned * sizeof(float) * NUM2 +
                                 sizeof(float) * BUFFER_NUM +
                                 sizeof(float) * NUM2 +
                                 sizeof(uint8_t) * spAligned);
         if constexpr (!std::is_same<outType, float>::value) {
-            maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - NUM1) * (sizeof(float) + sizeof(uint8_t))) /
+            maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
                                     (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
                                     hDim * spAligned * sizeof(float) * NUM2 +
                                     sizeof(float) * BUFFER_NUM +
@@ -149,11 +151,11 @@ private:
         if (sp >= NUM8) {
             maxTileLength = maxTileLength / SPLIT_TO_2;
         }
-        maxTileLength = maxTileLength < NUM1 ? NUM1 : maxTileLength;
+        maxTileLength = maxTileLength < 1 ? 1 : maxTileLength;
         this->tileLength = maxTileLength < blockLength ? maxTileLength : blockLength;
         this->curLength = this->tileLength;
         this->lastLength = blockLength % tileLength;
-        this->loopCount = blockLength / tileLength + (lastLength == NUM0 ? NUM0 : NUM1);
+        this->loopCount = blockLength / tileLength + (lastLength == 0 ? 0 : 1);
         this->tileLengthAlig = ((tileLength + NUM7) / NUM8) * NUM8;
         this->lastLengthAlig = ((lastLength + NUM7) / NUM8) * NUM8;
     }
@@ -206,7 +208,7 @@ private:
         }
     }
 
-    __aicore__ inline void CopyInInPerSp(LocalTensor<float>& inLocal, LocalTensor<outType>& inLocalFp16,
+    __aicore__ inline void CopyInOPerSp(LocalTensor<float>& inLocal, LocalTensor<outType>& inLocalFp16,
                                          uint32_t posIdx, uint32_t gmSpIdx, int32_t progress)
     {
         inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)), totalLength * hDim);
@@ -233,12 +235,13 @@ private:
 
     __aicore__ inline void CopyInSp(int32_t progress, int32_t spLoopIdx, uint32_t currentSp, uint32_t effectiveSp)
     {
+        // 按照逻辑队列初始化的buffer数量和每块大小，分配对应大小的内存
         LocalTensor<float> lseLocal = inQueueLse.AllocTensor<float>();
         LocalTensor<float> inLocal = inQueueIn.AllocTensor<float>();
         
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
-        uint32_t posOffset = (spLoopIdx == 0 && sp > MAX_EFFECTIVE_SP) ? NUM1 : (spLoopIdx > 0 ? NUM1 : 0);
-        uint32_t gmSpBase = (spLoopIdx == 0) ? 0 : (spFirstLoop + (spLoopIdx - NUM1) * spNextLoop);
+        uint32_t posOffset = (spLoopIdx == 0 && sp > MAX_EFFECTIVE_SP) ? 1 : (spLoopIdx > 0 ? 1 : 0);
+        uint32_t gmSpBase = (spLoopIdx == 0) ? 0 : (spFirstLoop + (spLoopIdx - 1) * spNextLoop);
 
         if (spLoopIdx == 0 && sp > MAX_EFFECTIVE_SP) {
             Duplicate<float>(lseLocal, DUMMY_LSE, static_cast<int32_t>(curLengthPad));
@@ -259,7 +262,7 @@ private:
             uint32_t posIdx = posOffset + i;
             uint32_t gmSpIdx = gmSpBase + i;
             CopyInLsePerSp(lseLocal, posIdx, gmSpIdx, progress, curLengthPad);
-            CopyInInPerSp(inLocal, inLocalFp16, posIdx, gmSpIdx, progress);
+            CopyInOPerSp(inLocal, inLocalFp16, posIdx, gmSpIdx, progress);
         }
 
         if constexpr (!std::is_same<outType, float>::value) {
@@ -311,7 +314,7 @@ private:
     {
         LocalTensor<uint8_t> selMask = selMaskBuffer.Get<uint8_t>();
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
-        uint32_t alignedCount = ((curLengthPad * effectiveSp + ELEM_PER_256B - NUM1) / ELEM_PER_256B) * ELEM_PER_256B;
+        uint32_t alignedCount = ((curLengthPad * effectiveSp + ELEM_PER_256B - 1) / ELEM_PER_256B) * ELEM_PER_256B;
 
         CompareScalar(selMask, lseLocal, POS_INF, CMPMODE::EQ, alignedCount);
         PipeBarrier<PIPE_V>();
@@ -337,8 +340,9 @@ private:
 
         ProcessLseInfReplacement(lseLocal, effectiveSp);
 
+        // broad to 8
         uint32_t curLengthPad = ((curLength + NUM7) / NUM8) * NUM8;
-        const uint32_t srcShape[2] = {effectiveSp * curLengthPad, NUM1};
+        const uint32_t srcShape[2] = {effectiveSp * curLengthPad, 1};
         uint32_t dstShape[2] = {effectiveSp * curLengthPad, hDim};
         if (hDim > NUM256 && spAlloc >= NUM8) {
             dstShape[1] = NUM64;
@@ -347,7 +351,7 @@ private:
         DataCopy(lsemaxLocal, lseLocal, curLengthPad);
         PipeBarrier<PIPE_V>();
 
-        for (uint32_t i = NUM1; i < effectiveSp; i++) {
+        for (uint32_t i = 1; i < effectiveSp; i++) {
             Max(lsemaxLocal, lsemaxLocal, lseLocal[i * curLengthPad], curLengthPad);
             PipeBarrier<PIPE_V>();
         }
@@ -363,7 +367,7 @@ private:
 
         DataCopy(lseexpsumLocal, lseexpLocal, curLengthPad);
         PipeBarrier<PIPE_V>();
-        for (uint32_t i = NUM1; i < effectiveSp; i++) {
+        for (uint32_t i = 1; i < effectiveSp; i++) {
             Add(lseexpsumLocal, lseexpsumLocal, lseexpLocal[i * curLengthPad], curLengthPad);
             PipeBarrier<PIPE_V>();
         }
@@ -381,13 +385,13 @@ private:
 
         Exp(lseexpLocal, lseexpLocal, curLengthPad * effectiveSp);
         PipeBarrier<PIPE_V>();
-        BroadCast<float, ALIGNED_TO_2, NUM1>(lseexpBroadcastLocal, lseexpLocal, dstShape, srcShape);
+        BroadCast<float, ALIGNED_TO_2, 1>(lseexpBroadcastLocal, lseexpLocal, dstShape, srcShape);
         PipeBarrier<PIPE_V>();
         if (hDim > NUM256 && spAlloc >= NUM8) {
             int64_t tmpTailLength = hDim % NUM64;
             int64_t tmpTailStart = hDim - tmpTailLength;
             for (uint32_t i = 0; i < effectiveSp; i++) {
-                for (int32_t k = 0; k < curLength; k++) {
+                for (uint32_t k = 0; k < curLength; k++) {
                     Mul(inLocal[i * curLength * hDim + k * hDim], 
                                 inLocal[i * curLength * hDim + k * hDim], 
                                 lseexpBroadcastLocal[i * curLengthPad * NUM64 + k * NUM64],
@@ -410,7 +414,7 @@ private:
 
         DataCopy(outLocal, inLocal, curLength * hDim);
         PipeBarrier<PIPE_V>();
-        for (uint32_t i = NUM1; i < effectiveSp; i++) {
+        for (uint32_t i = 1; i < effectiveSp; i++) {
             Add(outLocal, outLocal, inLocal[i * curLength * hDim], curLength * hDim);
             PipeBarrier<PIPE_V>();
         }
@@ -425,9 +429,9 @@ private:
     __aicore__ inline void CopyOut(int32_t progress)
     {
         LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
-        if constexpr (std::is_same<outType, float>::value) {
+        if constexpr (std::is_same<outType, float>::value) { // fp32直接搬运
             DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
-        } else if constexpr (std::is_same<outType, bfloat16_t>::value){
+        } else if constexpr (std::is_same<outType, bfloat16_t>::value) { // 先转fp32，再搬运
             LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
             Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
             PipeBarrier<PIPE_V>();
@@ -443,7 +447,7 @@ private:
         outQueueOut.FreeTensor(outLocal);
         LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
         if (updateType == 1) {
-            uint32_t lseoutGmStart = gmStartOffset + progress * tileLength;
+            uint32_t lseoutGmStart = gmStartOffset + progress * tileLength; // lseout无hDim维度，直接按长度偏移
             uint32_t validBytes = static_cast<uint32_t>(curLength * sizeof(float));
             DataCopyExtParams copyParams{1, validBytes, 0, 0, 0};
             DataCopyPad(lseoutGm[lseoutGmStart], lseoutLocal, copyParams);
@@ -471,12 +475,12 @@ private:
     __gm__ uint64_t* lsePtr;
     __gm__ uint64_t* inPtr;
 
-    uint32_t blockLength;
-    uint16_t tileLength;
-    uint16_t curLength;
-    uint16_t lastLength;
-    uint32_t loopCount;
-    uint32_t hDim;
+    uint32_t blockLength; // 单核上数据总长度
+    uint16_t tileLength;  // 单核循环的非最后一轮数据长度
+    uint16_t curLength; // Tiling循环数据长度为curLength，最后一轮为lastLength，内存申请使用tileLength，数据量用curLength
+    uint16_t lastLength; // 单核循环的最后一轮数据长度
+    uint32_t loopCount;  // 单核循环次数
+    uint32_t hDim;       // head dimension
     uint32_t sp;
     uint32_t tileLengthAlig;
     uint32_t lastLengthAlig;
@@ -490,4 +494,4 @@ private:
 };
 } // namespace AttentionUpdate
 
-#endif // ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_3_H_
+#endif // ASCENDC_ATTENTION_UPDATE_DECODE_UPDATE_H_
