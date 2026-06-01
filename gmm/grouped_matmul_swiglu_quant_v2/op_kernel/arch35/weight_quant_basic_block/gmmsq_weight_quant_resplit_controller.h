@@ -118,6 +118,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM];
     InitOffsetParam(offsetParam);
 
+    // cacheline 128 B对齐，b4为 256 个元素
     bool isCacheLineUnaligned = offsetParam[0].kSize % 128 != 0;
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                   IsSameType<wType, fp4x2_e1m2_t>::value) {
@@ -186,7 +187,11 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(BasicBlockOffsetParam offse
         offsetParam[ctrlParam.processId].nOffset =
             ctrlParam.nOffset +
             ((ctrlParam.curBasicBlockId - ctrlParam.basicBlockLimit) % basicBlockCount) * basicBlockSize;
+
+        // GMM输出前N/2为激活值，后N/2为gate值，因此weight和weightScale分两次、各载入nL1Size/2
+        // halfNRemaining: nOffset为前N/2的N方向偏移 尾块大小基于前N/2计算得到
         uint64_t halfNRemaining = offsetParam[ctrlParam.processId].nSize / 2 - offsetParam[ctrlParam.processId].nOffset;
+        // 根据一半的尾块大小计算出nL1完整大小
         offsetParam[ctrlParam.processId].nL1Size =
             halfNRemaining >= basicBlockSize ? basicBlockSize * 2 : halfNRemaining * 2;
         offsetParam[ctrlParam.processId].yGmAddr = reinterpret_cast<GM_ADDR>(yGm_);
@@ -217,10 +222,12 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize)
 {
     xGm_ += mSize * kSize;
+    // weight 为fp4, 大小除2
     weightGm_ += (nSize * kSize) >> 1;
     uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
     weightScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
     xScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
+    // 输出为 N / 2
     yGm_ += mSize * (nSize / 2);
     yScaleGm_ +=
         mSize * CeilDivide(CeilAlign(nSize / 2, static_cast<uint64_t>(64)), static_cast<uint64_t>(tiling_->groupSize));

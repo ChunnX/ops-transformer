@@ -28,9 +28,7 @@ using AscendC::GlobalTensor;
 using AscendC::HardEvent;
 using AscendC::IsSameType;
 using AscendC::LocalTensor;
-using AscendC::PipeBarrier;
 using AscendC::SetFlag;
-using AscendC::TBuf;
 using AscendC::TPosition;
 using AscendC::WaitFlag;
 using namespace WeightQuantBatchMatmulV2::Arch35;
@@ -262,7 +260,6 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     auto f16ScaleBGateLocal =
         weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + (nHalfSize * scaleKL1RealSize)]
             .template ReinterpretCast<half>();
-
     DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
 }
 
