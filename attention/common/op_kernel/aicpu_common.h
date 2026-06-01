@@ -33,7 +33,7 @@ namespace aicpu {
 
     template <typename T>
     inline typename std::enable_if<std::is_integral_v<T>, bool>::type GetAttrValue(CpuKernelContext &ctx,
-                                                                                   const std::string &name, T &value)
+                                                                                const std::string &name, T &value)
     {
         auto attr = ctx.GetAttr(name);
         if (!attr) {
@@ -68,7 +68,7 @@ namespace aicpu {
 
     template <typename T>
     inline typename std::enable_if<std::is_integral_v<T>, void>::type GetAttrValueOpt(CpuKernelContext &ctx,
-                                                                                      const std::string &name, T &value)
+                                                                                    const std::string &name, T &value)
     {
         auto attr = ctx.GetAttr(name);
         if (attr != nullptr) {
