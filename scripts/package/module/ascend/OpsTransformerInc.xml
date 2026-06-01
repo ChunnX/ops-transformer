@@ -49,6 +49,6 @@
     <file_info value="ophost_const_folding_lib" copy_type="delivery"
         src_path="" dst_path="built-in/op_impl/host_cpu/"
         install_path="opp/built-in/op_impl/host_cpu/" optional="true">
-        <file value="libtransformer_constant_folding_ops.so" install_mod="555"/>
+        <file value="libopconstant_folding_transformer.so" install_mod="555"/>
     </file_info>
 </block>
