@@ -69,6 +69,7 @@ __aicore__ inline void CombineTileOptimize(
 {
     GlobalTensor<ElementMMadOut2> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
+    gmm2OutGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 
     uint32_t rowCount = Get<M_VALUE>(actualBlockShape);
     uint32_t colCount = Get<N_VALUE>(actualBlockShape);
