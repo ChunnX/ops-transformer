@@ -467,7 +467,20 @@ attention:
       ut: True
     options:
       - recurrent_gated_delta_rule
-
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
@@ -674,6 +687,23 @@ moe:
       - moe/moe_gating_top_k
     options:
       - moe_gating_top_k
+
+  moe_gating_top_k_backward:
+    module: True
+    src:
+      - moe/moe_gating_top_k_backward
+    exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/README.md
+    ut_cov_exclude:
+      - moe/moe_gating_top_k_backward/docs
+      - moe/moe_gating_top_k_backward/examples
+      - moe/moe_gating_top_k_backward/tests
+    test:
+      examples: True
+      ut: True
+    options:
+      - moe_gating_top_k_backward
 
   moe_gating_top_k_softmax:
     module: True

@@ -26,7 +26,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "mla_common.h"
+#include "prompt_flash_attention_mla_common.h"
 
 template <typename INPUT_T, typename T, bool pageAttention = false>
 class PfaMatmulKvNd {

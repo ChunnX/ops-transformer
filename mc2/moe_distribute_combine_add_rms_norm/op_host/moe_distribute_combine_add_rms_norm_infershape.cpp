@@ -31,16 +31,19 @@ static ge::graphStatus InferShapeCheck(gert::InferShapeContext* context) {
         return GRAPH_FAILED;
     }
  
+    static const char* OUTPUT_NAMES[] = {"y", "rstdOut", "x"};
     for (uint32_t i = 0; i < IDX_THREE; ++i) {
         if (context->GetOutputShape(i) == nullptr) {
-            OP_LOGE(context->GetNodeName(), "infer shape check output %u is nullptr", i);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), OUTPUT_NAMES[i]);
             return GRAPH_FAILED;
         }
     }
- 
+
+    static const char* INPUT_NAMES[] = {"expand_x", "expert_ids", "assist_info_for_combine",
+        "ep_send_counts", "expert_scales", "residual_x", "gamma", "tp_send_counts"};
     for (uint32_t i = 0; i < IDX_EIGHT; ++i) {
         if (context->GetInputShape(i) == nullptr) {
-            OP_LOGE(context->GetNodeName(), "infer shape check input %u is nullptr", i);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), INPUT_NAMES[i]);
             return GRAPH_FAILED;
         }
     }

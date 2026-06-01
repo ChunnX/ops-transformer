@@ -51,6 +51,8 @@ TILING_DATA_FIELD_DEF(uint64_t, isPreTiling);
 TILING_DATA_FIELD_DEF(uint32_t, withOffset);
 TILING_DATA_FIELD_DEF(uint32_t, isOutputDisableL2Cache);
 TILING_DATA_FIELD_DEF(uint64_t, isA4W4Optimize);
+TILING_DATA_FIELD_DEF(int64_t, isSingleTensor);
+TILING_DATA_FIELD_DEF(uint64_t, isA8W4MSDPreNZ);       // for A8->A4 <ND>
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMBaseParamsOp, GMMBaseParams)
 
@@ -202,7 +204,7 @@ private:
     bool hasBias_ = false;
     int64_t groupType_ = 0;
     int64_t splitItem_ = 0L;
-    uint32_t groupListType_ = 0;
+    int64_t groupListType_ = 0;
     uint32_t xKDim_ = 0;
     uint32_t weightNDim_ = 0;
     uint32_t weightKDim_ = 0;
@@ -216,6 +218,10 @@ private:
     bool isA4W4_ = false;
     bool isA16W16_ = false;
     bool isA8W4FakeA8W8_ = false;
+    uint64_t A8W4N_ = 0;
+    uint64_t A8W4K_ = 0;
+    uint64_t A8W4GroupNum_ = 0;
+    uint64_t A8W4QuantGroupNum_ = 0;
     bool isFixedAxisMove_ = false;
     uint64_t A8W4noMsdSpace_ = 0;
 

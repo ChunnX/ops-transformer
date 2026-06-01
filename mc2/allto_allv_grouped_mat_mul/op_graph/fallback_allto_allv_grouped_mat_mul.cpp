@@ -27,15 +27,15 @@ static ge::graphStatus CheckInputsAndAttrs(
     const bool* transGmmWeight)
 {
     OPS_ERR_IF(gmmX == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "gmmX is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "gmmX"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(gmmWeight == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "gmmWeight is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "gmmWeight"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(group == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "group is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "group"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(epWorldSize == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "epWorldSize is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "epWorldSize"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(transGmmWeight == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "transGmmWeight is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "transGmmWeight"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -48,9 +48,9 @@ static ge::graphStatus ParseSendRecvCounts(
     std::vector<int64_t>& actRecvCountsSeqArray)
 {
     OPS_ERR_IF(sendCounts == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "sendCounts is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "sendCounts"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(recvCounts == nullptr,
-        OP_LOGE("AlltoAllvGroupedMatMulFallback", "recvCounts is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "recvCounts"), return ge::GRAPH_FAILED);
 
     const int64_t* actSendSeqData = sendCounts->GetData();
     const size_t sendLen = static_cast<size_t>(sendCounts->GetSize());
@@ -73,7 +73,7 @@ static ge::graphStatus CheckOutputTensors(
     const gert::Tensor*& mmY,
     const gert::Tensor*& permuteOut)
 {
-    OPS_ERR_IF(gmmY == nullptr, OP_LOGE("AlltoAllvGroupedMatMulFallback", "gmmY is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(gmmY == nullptr, OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "gmmY"), return ge::GRAPH_FAILED);
     if ((permuteOut != nullptr) && (permuteOut->GetStorageShape().GetDimNum() == 0)) {
         permuteOut = nullptr;
     }
@@ -88,7 +88,7 @@ static ge::graphStatus CheckOutputTensors(
 static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
     OPS_LOG_D("AlltoAllvGroupedMatMulFallback", "Start AlltoAllvGroupedMatMulFallback.");
-    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("AlltoAllvGroupedMatMulFallback", "host_api_ctx is null"),
+    OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "host_api_ctx"),
                return ge::GRAPH_FAILED);
 
     // 获取输入参数
@@ -107,7 +107,7 @@ static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*
 
     // 获取属性
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr, OP_LOGE("AlltoAllvGroupedMatMulFallback", "attrs is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT("AlltoAllvGroupedMatMulFallback", "attrs"), return ge::GRAPH_FAILED);
     const char* group = attrs->GetStr(static_cast<size_t>(ops::AlltoAllvGroupedMatMulAttrIdx::K_GROUP));
     const int64_t* epWorldSize = attrs->
         GetInt(static_cast<size_t>(ops::AlltoAllvGroupedMatMulAttrIdx::K_EP_WORLD_SIZE));

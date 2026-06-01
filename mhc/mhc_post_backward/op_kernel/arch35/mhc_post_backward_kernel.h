@@ -601,15 +601,10 @@ __aicore__ inline void MhcPostBackwardKernel<T>::SetMMParaAndCompute(
     uint32_t outputBase = globalItemIdx * n_ * n_;
     uint32_t curSingleCoreK = singleCoreK_;
 
-    for (uint32_t offsetK = 0; offsetK < D_; offsetK += singleCoreK_) {
-        if (offsetK + singleCoreK_ > D_) {
-            curSingleCoreK = D_ - offsetK;
-        }
-        mm.SetSingleShape(n_, n_, curSingleCoreK);
-        mm.SetTensorA(xGm_[inputBase + offsetK]);
-        mm.SetTensorB(gradOutputGm_[inputBase + offsetK], true);
-        mm.IterateAll(gradHResGm_[outputBase], offsetK == 0 ? 0 : 1);
-    }
+    mm.SetSingleShape(n_, n_, curSingleCoreK);
+    mm.SetTensorA(xGm_[inputBase]);
+    mm.SetTensorB(gradOutputGm_[inputBase], true);
+    mm.IterateAll(gradHResGm_[outputBase]);
     mm.End();
 }
 

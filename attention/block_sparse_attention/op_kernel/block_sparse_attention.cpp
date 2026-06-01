@@ -13,10 +13,13 @@
 #include "block_sparse_attention_tilingkey.h"
 #include "block_sparse_attention_kernel_interface.cpp"
 
-extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
-                                                            __gm__ uint8_t* blockSparseMask, __gm__ uint8_t* mask, __gm__ uint8_t* blockShape,
-                                                            __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable,
-                                                            __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
+extern "C" __global__ __aicore__ void block_sparse_attention(
+                       __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                       __gm__ uint8_t* blockSparseMask, __gm__ uint8_t* mask, __gm__ uint8_t* blockShape,
+                       __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable,
+                       __gm__ uint8_t* qDequantScale, __gm__ uint8_t* kDequantScale, __gm__ uint8_t* vDequantScale,
+                       __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
+                       __gm__ uint8_t* tiling)
 {
     if (TILING_KEY_VAR >= RFA_BASE_TILING) {
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
@@ -100,6 +103,12 @@ extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* que
     TILING_KEY_IS(QF16_KVF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
     TILING_KEY_IS(QBF16_KVBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY);
 
+    // 全量化FP8场景
+    TILING_KEY_IS(QF8_KVF8_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY);
+
     #if TILING_KEY_VAR == QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
             half, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
@@ -120,6 +129,27 @@ extern "C" __global__ __aicore__ void block_sparse_attention(__gm__ uint8_t* que
             bfloat16_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, mask, blockTable, attentionOut,
                 actualSeqLengths, actualSeqLengthsKv, blockSparseMask, user, tiling);
+    // 全量化FP8场景
+    #elif TILING_KEY_VAR == QF8_KVF8_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
+        BsaInferInterfaceFullQuant<
+            fp8_e4m3fn_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+                query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
+                qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
+    #elif TILING_KEY_VAR == QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
+        BsaInferInterfaceFullQuant<
+            fp8_e4m3fn_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+                query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
+                qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
+    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY
+        BsaInferInterfaceFullQuant<
+            fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+                query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
+                qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
+    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY
+        BsaInferInterfaceFullQuant<
+            fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+                query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
+                qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
     #endif
 #endif
     }

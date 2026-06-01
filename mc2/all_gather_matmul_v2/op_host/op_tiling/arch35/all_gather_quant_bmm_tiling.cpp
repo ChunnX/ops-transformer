@@ -75,8 +75,10 @@ bool AllGatherQuantBmmTiling::IsCapable()
         OP_LOGI(opName_, "amaxShapeDim0 is %lu", amaxShape->GetStorageShape().GetDim(0));
     }
     OP_TILING_CHECK((amaxShape != nullptr) && (amaxShape->GetStorageShape().GetDim(0) != 0),
-        CUBE_INNER_ERR_REPORT(opName_, "Skip quant tiling when amax is not null, but amax is %lu", 
-                              amaxShape->GetStorageShape().GetDim(0)), return false);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "amaxOut",
+            std::to_string(amaxShape->GetStorageShape().GetDim(0)).c_str(),
+            "should be nullptr or empty tensor when input is fp8/hif8"),
+        return false);
     // geAType 和 geBType 为fp8/hif8时做tiling
     if (mc2tiling::CheckDataTypeVaild(args_.geAType, mc2tiling::FP8DTYPE_SUPPORT_LIST) &&
         mc2tiling::CheckDataTypeVaild(args_.geBType, mc2tiling::FP8DTYPE_SUPPORT_LIST)) {
@@ -108,29 +110,30 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckGroupSize()
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT)) {
         OP_TILING_CHECK(
             groupSize != 0,
-            CUBE_INNER_ERR_REPORT(opName_, "groupSize 0 in pertensor scene,"
-            " but actual is groupSize = %ld", groupSize), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
+                std::to_string(groupSize).c_str(), "should be 0 in pertensor scene"),
+            return ge::GRAPH_FAILED);
     } else if ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         shapeInfo.isMxfp = true;
         OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize in mx scene."),
+            OP_LOGE(opName_, "Failed to execute inferGroupSize in mx scene."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) ||
              (groupSizeK != MX_SCALE_BLOCK_K),
-            CUBE_INNER_ERR_REPORT(opName_, "[groupSizeM, groupSizeN, groupSizeK] should be [1, 1, 32] in mx scene,"
-                " but actual is [groupSizeM=%lu, groupSizeN=%lu, groupSizeK=%lu]",
-                groupSizeM, groupSizeN, groupSizeK),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
+                (std::string("[") + std::to_string(groupSizeM) + ", " + std::to_string(groupSizeN) + ", " + std::to_string(groupSizeK) + "]").c_str(),
+                "[1, 1, 32] in mx scene"),
             return ge::GRAPH_FAILED);
     } else if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
-            CUBE_INNER_ERR_REPORT(opName_, "Failed to execute inferGroupSize in perblock scene."),
+            OP_LOGE(opName_, "Failed to execute inferGroupSize in perblock scene."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK((groupSizeM != PERBLOCK_SCALE_SIZE) || (groupSizeN != PERBLOCK_SCALE_SIZE) ||
              (groupSizeK != PERBLOCK_SCALE_SIZE),
-            CUBE_INNER_ERR_REPORT(opName_, "groupSizeM, groupSizeN and groupSizeK should be 128 in perblock scene,"
-                " but actual is [groupSizeM = %lu, groupSizeN = %lu, groupSizeK = %lu]",
-                groupSizeM, groupSizeN, groupSizeK),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
+                (std::string("[") + std::to_string(groupSizeM) + ", " + std::to_string(groupSizeN) + ", " + std::to_string(groupSizeK) + "]").c_str(),
+                "[128, 128, 128] in perblock scene"),
              return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -140,9 +143,9 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckX1Input()
 {
     OP_TILING_CHECK(
         (args_.mValue % PERBLOCK_SCALE_SIZE != 0) && (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        CUBE_INNER_ERR_REPORT(opName_,
-                              "In perblock scene, mValue mod 128 should be equal to 0. current args_.mValue=%lu",
-                              args_.mValue),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Dim0",
+            std::to_string(args_.mValue).c_str(),
+            "mValue mod 128 should be 0 in perblock scene"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -176,13 +179,15 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckPerBlockScaleInput()
     OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
 
     OP_TILING_CHECK((scale1FirstDim != ceilMValue) || (scale1SecondDim != ceilKValue),
-        CUBE_INNER_ERR_REPORT(opName_,
-        "Wrong shape of scaleInv1Shape! x1Scale shape is [%lu, %lu], while the expected x1Scale shape is [%lu, %lu].",
-        scale1FirstDim, scale1SecondDim, ceilMValue, ceilKValue), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
+            (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) + "]").c_str(),
+            (std::string("[") + std::to_string(ceilMValue) + ", " + std::to_string(ceilKValue) + "] as expected").c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK((scale2FirstDim != ceilKValue) || (scale2SecondDim != ceilNValue),
-        CUBE_INNER_ERR_REPORT(opName_,
-        "Wrong shape of scaleInv2Shape! x2Scale shape is [%lu, %lu], while the expected x2Scale shape is [%lu, %lu].",
-        scale2FirstDim, scale2SecondDim, ceilKValue, ceilNValue), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
+            (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + "]").c_str(),
+            (std::string("[") + std::to_string(ceilKValue) + ", " + std::to_string(ceilNValue) + "] as expected").c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -209,10 +214,9 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         args_.mValue, ceilKAlign, args_.nValue);
     OP_TILING_CHECK(
         (scale1FirstDim != args_.mValue) || (scale1SecondDim != ceilKAlign) || (scale1ThirdDim != EVEN_ALIGN),
-        CUBE_INNER_ERR_REPORT(
-            opName_, "Wrong shape of scaleInv1Shape! "
-            "Expected scaleInv1Shape: [x1Dim0, Ceil(x1Dim1, 64), 2] = [%ld, %ld, %ld], actual: [%ld, %ld, %ld]",
-            args_.mValue, ceilKAlign, EVEN_ALIGN, scale1FirstDim, scale1SecondDim, scale1ThirdDim),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale",
+            (std::string("[") + std::to_string(scale1FirstDim) + ", " + std::to_string(scale1SecondDim) + ", " + std::to_string(scale1ThirdDim) + "]").c_str(),
+            (std::string("[") + std::to_string(args_.mValue) + ", " + std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "] as expected in mx scene").c_str()),
             return ge::GRAPH_FAILED);
     bool isTransB = *context_->GetAttrs()->GetAttrPointer<bool>(IS_TRANS_B);
     bool nIsOne = (isTransB) ? (x2Dim0 == 1) : (x2Dim1 == 1);
@@ -220,20 +224,18 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckMXFPScaleInput()
         if (isTransB) {
             OP_TILING_CHECK(
                 (scale2FirstDim != args_.nValue) || (scale2SecondDim != ceilKAlign) || (scale2ThirdDim != EVEN_ALIGN),
-                CUBE_INNER_ERR_REPORT(
-                    opName_, "Wrong shape of scaleInv2Shape! "
-                    "Expected scaleInv2Shape: [x2Dim0, Ceil(x2Dim1, 64), 2] = [%ld, %ld, %ld], actual: [%ld, %ld, %ld]",
-                    args_.nValue, ceilKAlign, EVEN_ALIGN, scale2FirstDim, scale2SecondDim, scale2ThirdDim),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
+                    (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]").c_str(),
+                    (std::string("[") + std::to_string(args_.nValue) + ", " + std::to_string(ceilKAlign) + ", " + std::to_string(EVEN_ALIGN) + "] as expected in mx scene").c_str()),
                     return ge::GRAPH_FAILED);
             scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
             OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
         } else {
             OP_TILING_CHECK(
                 (scale2FirstDim != ceilKAlign) || (scale2SecondDim != args_.nValue) || (scale2ThirdDim != EVEN_ALIGN),
-                CUBE_INNER_ERR_REPORT(
-                    opName_, "Wrong shape of scaleInv2Shape! "
-                    "Expected scaleInv2Shape: [Ceil(x2Dim0, 64), x2Dim1, 2] = [%ld, %ld, %ld], actual: [%ld, %ld, %ld]",
-                    ceilKAlign, args_.nValue, EVEN_ALIGN, scale2FirstDim, scale2SecondDim, scale2ThirdDim),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2Scale",
+                    (std::string("[") + std::to_string(scale2FirstDim) + ", " + std::to_string(scale2SecondDim) + ", " + std::to_string(scale2ThirdDim) + "]").c_str(),
+                    (std::string("[") + std::to_string(ceilKAlign) + ", " + std::to_string(args_.nValue) + ", " + std::to_string(EVEN_ALIGN) + "] as expected in mx scene").c_str()),
                     return ge::GRAPH_FAILED);
             scale1kSpaceSize_ = args_.rankDim * scale1FirstDim * scale1SecondDim * sizeof(ge::DT_FLOAT8_E8M0);
             OP_LOGI(opName_, "scale1kSpaceSize_=%lu.", scale1kSpaceSize_);
@@ -249,10 +251,10 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckPerTensorScaleInput()
     OP_TILING_CHECK(
         (scaleInv1Shape->GetStorageShape().GetDim(0) != DIM_IS_ONE) ||
             (scaleInv2Shape->GetStorageShape().GetDim(0) != DIM_IS_ONE),
-        CUBE_INNER_ERR_REPORT(
-            opName_,
-            "ScaleInv1Shape and scaleInv2Shape should be scalar! scaleInv1Shape dim=%ld, scaleInv2Shape dim=%ld",
-            scaleInv1Shape->GetStorageShape().GetDim(0), scaleInv2Shape->GetStorageShape().GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1Scale or x2Scale",
+            (std::string("scaleInv1Shape dim=") + std::to_string(scaleInv1Shape->GetStorageShape().GetDim(0)) +
+             " and scaleInv2Shape dim=" + std::to_string(scaleInv2Shape->GetStorageShape().GetDim(0))).c_str(),
+            "scale shapes should be scalar in pertensor scene"),
         return ge::GRAPH_FAILED);
 
     // pertensor模式：每个卡有1个scale值，需要通信scale1
@@ -269,8 +271,10 @@ ge::graphStatus AllGatherQuantBmmTiling::SetQuantScene()
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
     OP_TILING_CHECK((scaleInv1Shape->GetStorageShape().GetDimNum() != scaleInv2Shape->GetStorageShape().GetDimNum()),
-                    CUBE_INNER_ERR_REPORT(opName_, "Expected both scale shapes to be equal, but got x1Scale is %ld and x2Scale is %ld",
-                    scaleInv1Shape->GetStorageShape().GetDimNum(), scaleInv2Shape->GetStorageShape().GetDimNum()),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale and x2Scale",
+                        (std::to_string(scaleInv1Shape->GetStorageShape().GetDimNum()) + "D and " +
+                         std::to_string(scaleInv2Shape->GetStorageShape().GetDimNum()) + "D").c_str(),
+                        "both scale shape dims should be equal"),
                     return ge::GRAPH_FAILED);
     if ((scaleInv1Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_ONE) &&
         (scaleInv2Shape->GetStorageShape().GetDimNum() == DIM_NUM_IS_ONE)) {
@@ -307,16 +311,16 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT)) {
         OP_LOGI(opName_, "Check pertensor scale input!");
         OP_TILING_CHECK(CheckPerTensorScaleInput() == ge::GRAPH_FAILED,
-                        CUBE_INNER_ERR_REPORT(opName_, "Check pertensor scale input failed"), return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "Check pertensor scale input failed."), return ge::GRAPH_FAILED);
     } else if ((quantMmMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) &&
         (scaleInv1Desc->GetDataType() == ge::DataType::DT_FLOAT8_E8M0)) {
         OP_LOGI(opName_, "Check mxfp scale input!");
         OP_TILING_CHECK(CheckMXFPScaleInput() == ge::GRAPH_FAILED,
-                        CUBE_INNER_ERR_REPORT(opName_, "Check mxfp scale input failed"), return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "Check mxfp scale input failed."), return ge::GRAPH_FAILED);
     } else if (quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) {
         OP_LOGI(opName_, "Check perblock scale input!");
         OP_TILING_CHECK(CheckPerBlockScaleInput() == ge::GRAPH_FAILED,
-                        CUBE_INNER_ERR_REPORT(opName_, "Check perblock scale input failed"), return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "Check perblock scale input failed."), return ge::GRAPH_FAILED);
     } else {
         OP_LOGE(opName_, "Quant mode should be pertensor or mxfp or perblock!");
         return ge::GRAPH_FAILED;
@@ -328,41 +332,46 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckScaleInvShape()
 ge::graphStatus AllGatherQuantBmmTiling::CheckInputValid()
 {
     OP_TILING_CHECK((args_.geAType == ge::DataType::DT_HIFLOAT8) && (args_.geAType != args_.geBType),
-                    CUBE_INNER_ERR_REPORT(opName_, "BType must equal AType when AType is hifp8"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "BType",
+                        Ops::Base::ToString(args_.geBType).c_str(),
+                        "BType must equal AType when AType is hifp8"),
                     return ge::GRAPH_FAILED);
 
     auto scaleInv1Desc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto scaleInv2Desc = context_->GetOptionalInputDesc(SCALE_INV2);
     OP_TILING_CHECK(
         (scaleInv1Desc == nullptr) || (scaleInv2Desc == nullptr),
-        CUBE_INNER_ERR_REPORT(opName_, "Both of scale1 and scale2 can't be nullptr!"),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "scale1 or scale2"),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         scaleInv1Desc->GetDataType() != scaleInv2Desc->GetDataType(),
-        CUBE_INNER_ERR_REPORT(
-            opName_,
-            "The type of scaleInv1Dtype and scaleInv2Dtype should be equal!"
-            "Current scaleInv1Dtype=%s, scaleInv2Dtype=%s.",
-            Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(), Ops::Base::ToString(scaleInv2Desc->GetDataType()).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            opName_, "scale1 and scale2",
+            (Ops::Base::ToString(scaleInv1Desc->GetDataType()) + " and " +
+             Ops::Base::ToString(scaleInv2Desc->GetDataType())).c_str(),
+            "scale1 and scale2 dtypes should be equal"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (args_.geAType == ge::DataType::DT_HIFLOAT8) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT),
-        CUBE_INNER_ERR_REPORT(
-            opName_, "The type of scaleInv1Dtype and scaleInv2Dtype should be float32 when AType is hifp8!"),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "scale1",
+            Ops::Base::ToString(scaleInv1Desc->GetDataType()).c_str(),
+            "dtype should be float32 when AType is hifp8"),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) || 
+    OP_TILING_CHECK((((scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT) && (scaleInv1Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0)) ||
         ((scaleInv2Desc->GetDataType() != ge::DataType::DT_FLOAT) && (scaleInv2Desc->GetDataType() != ge::DataType::DT_FLOAT8_E8M0))),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the datatype of scale should both be fp32 or fp8_e8m0,"
-            " but scale1_type:%d, scale2_type:%d",
-            scaleInv1Desc->GetDataType(), scaleInv2Desc->GetDataType()), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "scale1 and scale2",
+            (Ops::Base::ToString(scaleInv1Desc->GetDataType()) + " and " +
+             Ops::Base::ToString(scaleInv2Desc->GetDataType())).c_str(),
+            "scale dtypes should both be float32 or fp8_e8m0"),
+        return ge::GRAPH_FAILED);
 
     auto scaleInv1Shape = context_->GetOptionalInputShape(SCALE_INV1);
     auto scaleInv2Shape = context_->GetOptionalInputShape(SCALE_INV2);
     OP_TILING_CHECK(
         (scaleInv1Shape == nullptr) || (scaleInv2Shape == nullptr),
-        CUBE_INNER_ERR_REPORT(opName_, "Both of scaleInv1Shape and scaleInv2Shape can't be nullptr"),
+        OP_LOGE_WITH_INVALID_INPUT(opName_, "scale1Shape or scale2Shape"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -372,33 +381,36 @@ ge::graphStatus AllGatherQuantBmmTiling::CheckBiasInput()
 {
     auto biasShape = context_->GetOptionalInputShape(BIAS);
     OP_TILING_CHECK((quantMmMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (biasShape != nullptr),
-                    CUBE_INNER_ERR_REPORT(opName_, "Perblock scene input bias should be nullptr!"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "bias",
+                        "not nullptr", "should be nullptr in perblock scene"),
                     return ge::GRAPH_FAILED);
     auto biasDesc = context_->GetOptionalInputDesc(BIAS);
     OP_TILING_CHECK((biasDesc != nullptr) && (biasDesc->GetDataType() != ge::DataType::DT_FLOAT),
-                    CUBE_INNER_ERR_REPORT(opName_, "The biasDtype should be float32!"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPE(opName_, "bias",
+                        Ops::Base::ToString(biasDesc->GetDataType()).c_str(), "FLOAT"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AllGatherQuantBmmTiling::CheckInput()
 {
-    OP_TILING_CHECK(CheckInputValid() == ge::GRAPH_FAILED, CUBE_INNER_ERR_REPORT(opName_, "Check input valid failed!"),
+    OP_TILING_CHECK(CheckInputValid() == ge::GRAPH_FAILED, OP_LOGE(opName_, "Check input valid failed."),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(SetQuantScene() == ge::GRAPH_FAILED, CUBE_INNER_ERR_REPORT(opName_, "Fail to set quant scene!"),
+    OP_TILING_CHECK(SetQuantScene() == ge::GRAPH_FAILED, OP_LOGE(opName_, "Fail to set quant scene."),
                     return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckBiasInput() == ge::GRAPH_FAILED, CUBE_INNER_ERR_REPORT(opName_, "Check input bias failed!"),
+    OP_TILING_CHECK(CheckBiasInput() == ge::GRAPH_FAILED, OP_LOGE(opName_, "Check input bias failed."),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckScaleInvShape() == ge::GRAPH_FAILED,
-                    CUBE_INNER_ERR_REPORT(opName_, "check scale inv shape failed!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "check scale inv shape failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckX1Input() == ge::GRAPH_FAILED, CUBE_INNER_ERR_REPORT(opName_, "Check x1 input failed!"),
+    OP_TILING_CHECK(CheckX1Input() == ge::GRAPH_FAILED, OP_LOGE(opName_, "Check x1 input failed."),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckGroupSize() == ge::GRAPH_FAILED,
-                    CUBE_INNER_ERR_REPORT(opName_, "Check block size and axis failed!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Check block size and axis failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -572,8 +584,8 @@ ge::graphStatus AllGatherQuantBmmTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataFp8));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataFp8) % sizeof(uint64_t) != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "The tiling data size[%zu] is not aligned to 8",
-                                                    sizeof(AllGatherMatmulTilingDataFp8)),
+                    OP_LOGE(opName_, "The tiling data size[%zu] is not aligned to 8.",
+                            sizeof(AllGatherMatmulTilingDataFp8)),
                     return ge::GRAPH_FAILED);
     if (MutableRCSTilingDataA5().rankID == 0) {
         PrintRCSTilingData(context_->GetNodeName(), MutableRCSTilingDataA5());
@@ -832,10 +844,10 @@ ge::graphStatus AllGatherQuantBmmHelper::GetShapeAttrsInfo()
     auto scaleTensorDesc = context_->GetOptionalInputDesc(SCALE_INV1);
     auto perTokenScaleTensorDesc = context_->GetOptionalInputDesc(SCALE_INV2);
     OP_TILING_CHECK((scaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "scale"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((perTokenScaleTensorDesc == nullptr),
-                    VECTOR_INNER_ERR_REPORT_TILING(tilingProcesser_.opName_, "the pertoken scale tensor is invalid"),
+                    OP_LOGE_WITH_INVALID_INPUT(tilingProcesser_.opName_, "pertokenScale"),
                     return ge::GRAPH_FAILED);
     inputParams_.scaleDtype = scaleTensorDesc->GetDataType();
     inputParams_.perTokenScaleDtype = perTokenScaleTensorDesc->GetDataType();

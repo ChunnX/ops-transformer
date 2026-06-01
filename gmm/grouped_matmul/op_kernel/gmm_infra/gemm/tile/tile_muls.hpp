@@ -9,11 +9,11 @@
  */
 
 
-#ifndef CATLASS_GEMM_TILE_TILE_MULS_HPP
-#define CATLASS_GEMM_TILE_TILE_MULS_HPP
+#ifndef GMM_GEMM_TILE_TILE_MULS_HPP
+#define GMM_GEMM_TILE_TILE_MULS_HPP
 
 #include "../../../gmm_infra/base_defs.hpp"
-#include "../../../gmm_infra/gemm/helper.hpp"
+#include "../../../gmm_infra/gemm/gmm_helper.hpp"
 namespace Catlass::Gemm::Tile {
 
 ///////////////////////////////////////////////////////
@@ -49,4 +49,4 @@ struct TileMuls {
 ///////////////////////////////////////////////////////
 } // namespace Catlass::Gemm::Tile
 
-#endif // CATLASS_GEMM_TILE_TILE_MULS_HPP
+#endif // GMM_GEMM_TILE_TILE_MULS_HPP

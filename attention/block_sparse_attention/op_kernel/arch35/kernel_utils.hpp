@@ -10,18 +10,18 @@
 #ifndef BSA_ARCH35_KERNEL_UTILS
 #define BSA_ARCH35_KERNEL_UTILS
 
-#include "../attn_infra/base_defs.hpp"
-#include "../attn_infra/arch/arch.hpp"
-#include "../attn_infra/layout/layout.hpp"
+#include "../attn_infra/bsa_base_defs.hpp"
+#include "../attn_infra/arch/bsa_arch.hpp"
+#include "../attn_infra/layout/bsa_layout.hpp"
 
-#include "../attn_infra/gemm/block/block_mmad.hpp"
-#include "../attn_infra/gemm/dispatch_policy.hpp"
-#include "../attn_infra/gemm/gemm_type.hpp"
+#include "../attn_infra/gemm/block/bsa_block_mmad.hpp"
+#include "../attn_infra/gemm/bsa_gemm_dispatch_policy.hpp"
+#include "../attn_infra/gemm/bsa_gemm_type.hpp"
 
-#include "../attn_infra/arch/cross_core_sync.hpp"
-#include "../attn_infra/arch/resource.hpp"
-#include "../attn_infra/epilogue/block/block_epilogue.hpp"
-#include "../attn_infra/epilogue/dispatch_policy.hpp"
+#include "../attn_infra/arch/bsa_cross_core_sync.hpp"
+#include "../attn_infra/arch/bsa_resource.hpp"
+#include "../attn_infra/epilogue/block/bsa_block_epilogue.hpp"
+#include "../attn_infra/epilogue/bsa_epilogue_dispatch_policy.hpp"
 #include "../tla/tensor.hpp"
 #include "../tla/layout.hpp"
 #include "kernel_operator.h"
@@ -58,6 +58,36 @@ struct BsaKernelParamsArch35 {
         : q(q_), k(k_), v(v_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
         actualKvseqlen(actualKvseqlen_), blockSparseMask(blockSparseMask_), o(o_),
         workSpace(workSpace_), tiling(tiling_) {}
+};
+
+struct BsaFullQuantKernelParamsArch35 {
+    GM_ADDR query;
+    GM_ADDR key;
+    GM_ADDR value;
+    GM_ADDR blockSparseMask;
+    GM_ADDR attenMask;
+    GM_ADDR blockTable;
+    GM_ADDR actualSeqLengths;
+    GM_ADDR actualSeqLengthsKv;
+    GM_ADDR qDequantScale;
+    GM_ADDR kDequantScale;
+    GM_ADDR vDequantScale;
+    GM_ADDR attentionOut;
+    GM_ADDR workSpace;
+    GM_ADDR tiling;
+
+    // Methods
+    __aicore__ inline BsaFullQuantKernelParamsArch35() {}
+    __aicore__ inline BsaFullQuantKernelParamsArch35(GM_ADDR query_, GM_ADDR key_, GM_ADDR value_,
+                                                     GM_ADDR blockSparseMask_, GM_ADDR attenMask_, GM_ADDR blockTable_,
+                                                     GM_ADDR actualSeqLengths_, GM_ADDR actualSeqLengthsKv_,
+                                                     GM_ADDR qDequantScale_, GM_ADDR kDequantScale_,
+                                                     GM_ADDR vDequantScale_, GM_ADDR attentionOut_,
+                                                     GM_ADDR workSpace_, GM_ADDR tiling_)
+        : query(query_), key(key_), value(value_), blockSparseMask(blockSparseMask_), attenMask(attenMask_),
+          blockTable(blockTable_), actualSeqLengths(actualSeqLengths_), actualSeqLengthsKv(actualSeqLengthsKv_),
+          qDequantScale(qDequantScale_), kDequantScale(kDequantScale_), vDequantScale(vDequantScale_),
+          attentionOut(attentionOut_), workSpace(workSpace_), tiling(tiling_) {}
 };
 
 __aicore__ inline

@@ -14,7 +14,7 @@
  */
 #ifndef _VEC_ADDR_H_
 #define _VEC_ADDR_H_
-#include "../common_header.h"
+#include "../flash_attention_score_grad_common_header.h"
 
 namespace VEC_ADDR {
 class VecAddr {

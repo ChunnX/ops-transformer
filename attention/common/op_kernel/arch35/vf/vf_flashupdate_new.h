@@ -491,7 +491,8 @@ __aicore__ inline void InvalidLineUpdate(const LocalTensor<T>& dstTensor, const 
 }
 
 template <typename T>
-__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb, const uint32_t dealCount)
+__simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *srcMaxUb, __ubuf__ T *dstUb,
+    const uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
 {
     MicroAPI::RegTensor<T> vregSum;
     MicroAPI::RegTensor<T> vregMax;
@@ -503,8 +504,7 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
     constexpr uint32_t dealRows = 8;
     constexpr uint32_t  floatRepSize = 64; // 64: 一个寄存器存64个float
     constexpr float infValue = 3e+99; // 3e+99 for float inf
-    constexpr uint32_t tmpMin = 0xFF7FFFFF;
-    float minValue = *((float*)&tmpMin);
+    const float minValue = *((float*)&min);
     uint16_t updateLoops = dealCount / dealRows;
     uint16_t tailLSize = dealCount % dealRows * 8;
     uint32_t pltTail = static_cast<uint32_t>(tailLSize);
@@ -543,13 +543,13 @@ __simd_vf__ inline void ComputeLseOutputVF(__ubuf__ T *srcSumUb, __ubuf__ T *src
 
 template <typename T>
 __aicore__ inline void ComputeLseOutputVF(const LocalTensor<T>& dstTensor, const LocalTensor<T>& softmaxSumTensor,
-    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount)
+    const LocalTensor<T>& softmaxMaxTensor, uint32_t dealCount, const uint32_t min = 0xFF7FFFFF)
 {
     __ubuf__ T * srcSumUb = (__ubuf__ T *)softmaxSumTensor.GetPhyAddr();
     __ubuf__ T * srcMaxUb = (__ubuf__ T *)softmaxMaxTensor.GetPhyAddr();
     __ubuf__ T * dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
 
-    ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount);
+    ComputeLseOutputVF<T>(srcSumUb, srcMaxUb, dstUb, dealCount, min);
 }
 
 template <typename T>
