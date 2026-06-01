@@ -986,6 +986,15 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
         transMmWeight_ = false;
     }
 
+    constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
+    constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "sendCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "recvCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
     OP_TILING_CHECK(gmmXDesc == nullptr || gmmXDesc->GetStorageFormat() != ge::FORMAT_ND,
         OP_LOGE(A_INNER_DEBUG, "gmmX storage format should be ND."), return ge::GRAPH_FAILED);
