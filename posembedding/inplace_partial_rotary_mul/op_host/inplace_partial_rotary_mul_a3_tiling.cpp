@@ -291,7 +291,11 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
 
     headDim_ = end_ - start_;
     xdim3_ = headDim_;
-    OP_CHECK_IF(headDim_ <= 0,
+    // 空切片（sliceStart==sliceEnd）：无需对x做操作，跳过后续cos/sin校验
+    if (headDim_ == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(headDim_ < 0,
         OP_LOGE(context_->GetNodeName(), "slice not right"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(allHeadDim_ > D_LIMIT,
@@ -521,6 +525,18 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
         CheckInput() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "CheckInputShapes is failed"),
         return ge::GRAPH_FAILED);
+    // No-op: empty slice (sliceStart==sliceEnd), nothing to compute
+    if (headDim_ == 0) {
+        FillTilingData();
+        context_->SetBlockDim(1);
+        context_->SetTilingKey(tilingKey_);
+        size_t* workspaces = context_->GetWorkspaceSizes(1);
+        workspaces[0] = static_cast<size_t>(16 * 1024 * 1024);
+        tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+        OP_LOGI(context_->GetNodeName(), "InplacePartialRotaryMulTiling no-op: sliceStart==sliceEnd, return directly");
+        return ge::GRAPH_SUCCESS;
+    }
     if (CalTilingData() == ge::GRAPH_SUCCESS) {
         FillTilingData();
         PrintTilingData();

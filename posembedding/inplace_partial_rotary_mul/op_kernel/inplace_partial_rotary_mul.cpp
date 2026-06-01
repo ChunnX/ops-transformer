@@ -66,7 +66,14 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul(GM_ADDR x, GM_A
                                                                  GM_ADDR workspace, GM_ADDR tiling)
 {
     AscendC::TPipe pipe;
-    #if defined(__DAV_C310__) 
+    #if defined(__DAV_C310__)
+        // No-op: empty slice (sliceStart==sliceEnd), return directly
+        {
+            GET_TILING_DATA_WITH_STRUCT(RopeRegbaseTilingData, _noop, tiling);
+            if (_noop.sliceLength == 0) {
+                return;
+            }
+        }
         if (TILING_KEY_IS(TILING_KEY_ABA))
         {
             GET_TILING_DATA_WITH_STRUCT(RopeRegbaseTilingData, tiling_data_in, tiling);
@@ -218,6 +225,10 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul(GM_ADDR x, GM_A
     #else
         GET_TILING_DATA_WITH_STRUCT(RopeRegbaseTilingData, tilingData, tiling);
         const RopeRegbaseTilingData* __restrict__ tilingData1 = &tilingData;
+        // No-op: empty slice (sliceStart==sliceEnd), return directly
+        if (tilingData1->headDim == 0) {
+            return;
+        }
         if (TILING_KEY_IS(TILING_KEY1)) {
             InplacePartialRotaryMul::InplacePartialRotaryMulABA<DTYPE_X, true> op;
             op.Init(x, cos, sin, y, workspace, tilingData1, &pipe);
