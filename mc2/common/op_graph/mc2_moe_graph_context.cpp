@@ -368,40 +368,31 @@ ge::graphStatus Mc2MoeGraphContext::GetHcclCommResource(const HcclComm &hcclHand
 
 ge::graphStatus Mc2MoeGraphContext::CreatMc2Context(const ContextCreateParams &params, Mc2MoeContext *context)
 {
-    OPS_LOG_D(LOG_TAG, "Start to create HCCL context");
     void *ctx = nullptr;
     uint64_t ctxSize = sizeof(Mc2MoeContext);
-
     auto hcclRet = HcclEngineCtxCreate(params.hcclHandle, params.mc2ContextTag.c_str(), params.engine, ctxSize, &ctx);
     if (hcclRet != HCCL_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "Create HCCL context memory failed");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "Create HCCL context success, ctx: %p", ctx);
-
-    // RAII-style cleanup: release ctx on any error path after successful CtxCreate
     auto cleanup = [&]() {
         if (ctx != nullptr) {
             HcclEngineCtxDestroy(params.hcclHandle, params.mc2ContextTag.c_str(), params.engine);
-            OPS_LOG_D(LOG_TAG, "HcclEngineCtxDestroy called on error path");
         }
     };
 
     hcclRet = HcclGetRankId(params.hcclHandle, &context->epRankId);
     if (hcclRet != HCCL_SUCCESS || context->epRankId >= MAX_EP_RANK_SIZE) {
+        OPS_LOG_E(LOG_TAG, "Get rank ID failed, rankId=%u", context->epRankId);
         cleanup();
-        OPS_LOG_E(LOG_TAG, "Get rank ID failed or rank ID is invalid, rankId is: %u", context->epRankId);
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "Get rank ID success, rankId is: %u", context->epRankId);
-
     hcclRet = HcclGetRankSize(params.hcclHandle, &epRankSize_);
     if (hcclRet != HCCL_SUCCESS || epRankSize_ == 0 || epRankSize_ >= MAX_EP_RANK_SIZE) {
+        OPS_LOG_E(LOG_TAG, "Get rank size failed, rankSize=%u", epRankSize_);
         cleanup();
-        OPS_LOG_E(LOG_TAG, "Get rank size failed or rank size is invalid, rankSize is: %u", epRankSize_);
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "Get rank size success, rankSize is: %u", epRankSize_);
 
     auto status = GetHcclCommResource(params.hcclHandle, params.engine, params.protocol, context);
     if (status != ge::GRAPH_SUCCESS) {
@@ -409,7 +400,6 @@ ge::graphStatus Mc2MoeGraphContext::CreatMc2Context(const ContextCreateParams &p
         OPS_LOG_E(LOG_TAG, "Get HCCL communication resource failed");
         return status;
     }
-
     hcclRet = HcclEngineCtxCopy(params.hcclHandle, params.engine, params.mc2ContextTag.c_str(), context, ctxSize,
                                 CTX_COPY_DEFAULT_OFFSET);
     if (hcclRet != HCCL_SUCCESS) {
@@ -417,9 +407,6 @@ ge::graphStatus Mc2MoeGraphContext::CreatMc2Context(const ContextCreateParams &p
         OPS_LOG_E(LOG_TAG, "Copy context from host to device failed");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "Copy context from host to device success");
-    // CtxCopy transfers ownership to device; HcclEngineCtxDestroy is called
-    // by HCCL runtime when the comm is destroyed, not here.
     return ge::GRAPH_SUCCESS;
 }
 
@@ -638,7 +625,6 @@ ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
         OPS_LOG_E(LOG_TAG, "Context tag or ep name is empty");
         return ge::GRAPH_FAILED;
     }
-
     ge::AscendString groupEpStr;
     if (originalNode.GetAttr(ge::AscendString(epName.c_str()), groupEpStr) != ge::GRAPH_SUCCESS ||
         groupEpStr.GetString() == nullptr || *groupEpStr.GetString() == '\0') {
@@ -646,43 +632,25 @@ ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
         return ge::GRAPH_FAILED;
     }
     std::string groupEp(groupEpStr.GetString());
-
     Mc2MoeGraphContext& manager = GetInstance();
-
-    // 包含 graphName 以区分不同子图（否则跨图共享 Const 会导致拓扑环）
     ge::AscendString graphNameStr;
     graph.GetName(graphNameStr);
-    std::string graphName(graphNameStr.GetString() ? graphNameStr.GetString() : "unknown");
-    std::string uniqueKey = contextTag + "_" + groupEp + "_" + graphName;
-
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph entry, key=%s", uniqueKey.c_str());
-
-    // 1. 从内存缓存查找已有的 Const 节点（避免 FindNodeByName 触发 GE_ASSERT）
+    std::string uniqueKey = contextTag + "_" + groupEp + "_" +
+        (graphNameStr.GetString() ? graphNameStr.GetString() : "unknown");
     auto nodeIt = manager.contextNodeMapA5_.find(uniqueKey);
     if (nodeIt != manager.contextNodeMapA5_.end()) {
         ge::AscendString cachedName;
         if (nodeIt->second.GetName(cachedName) == ge::GRAPH_SUCCESS) {
             constNode = nodeIt->second;
-            if (manager.TryGetBufferSizeCache(uniqueKey, hcclBuffSize)) {
-                OPS_LOG_I(LOG_TAG, "Reusing cached Const + buffer size cache HIT (%lld), skip HCCL", hcclBuffSize);
-                return ge::GRAPH_SUCCESS;
-            }
-            OPS_LOG_I(LOG_TAG, "Reusing cached Const, buffer size cache MISS");
+            if (manager.TryGetBufferSizeCache(uniqueKey, hcclBuffSize)) { return ge::GRAPH_SUCCESS; }
             Mc2MoeContext context{0};
             auto status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
-            if (status != ge::GRAPH_SUCCESS) {
-                OPS_LOG_E(LOG_TAG, "Get HCCL context failed for reuse");
-                return status;
-            }
+            if (status != ge::GRAPH_SUCCESS) { OPS_LOG_E(LOG_TAG, "Get HCCL context failed"); return status; }
             manager.UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
             return ge::GRAPH_SUCCESS;
         }
-        // 缓存条目指向的节点已销毁（旧图），淘汰
-        OPS_LOG_I(LOG_TAG, "Cached Const invalid (old graph), removing from cache");
         manager.contextNodeMapA5_.erase(nodeIt);
     }
-
-    // 2. 计算 Mc2MoeContext + 创建 Const 节点
     Mc2MoeContext context{0};
     auto status = manager.GetHcclContext(contextTag, groupEp, &context, hcclBuffSize);
     if (status != ge::GRAPH_SUCCESS) {
@@ -690,15 +658,12 @@ ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
         return status;
     }
     manager.UpdateBufferSizeCache(uniqueKey, hcclBuffSize);
-
     status = manager.CreateContextNode(graph, context, constNode);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "Create context node failed");
         return status;
     }
-
     manager.contextNodeMapA5_[uniqueKey] = constNode;
-    OPS_LOG_I(LOG_TAG, "GetMc2ContextA5 graph done, hcclBuffSize=%lld", hcclBuffSize);
     return ge::GRAPH_SUCCESS;
 }
 
