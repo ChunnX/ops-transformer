@@ -135,20 +135,21 @@ private:
     {
         uint32_t spAligned = (spAlloc + NUM7) / NUM8 * NUM8;
         // 用94K的UB大小推算出 tileLength 最大能设置到多少
-        uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
-                                (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
-                                hDim * spAligned * sizeof(float) * NUM2 +
-                                sizeof(float) * BUFFER_NUM +
-                                sizeof(float) * NUM2 +
-                                sizeof(uint8_t) * spAligned);
+        uint32_t maxTileLength =
+            (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
+            (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
+             hDim * spAligned * sizeof(float) * NUM2 +
+             sizeof(float) * BUFFER_NUM +
+             sizeof(float) * NUM2 +
+             sizeof(uint8_t) * spAligned);
         if constexpr (!std::is_same<outType, float>::value) {
-            maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
-                                    (sizeof(float) * spAligned * BUFFER_NUM *
-                                        (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
-                                    hDim * spAligned * sizeof(float) * NUM2 +
-                                    sizeof(float) * BUFFER_NUM +
-                                    sizeof(float) * NUM2 + (spAlloc + NUM1) * NUM16 * BUFFER_NUM +
-                                    sizeof(uint8_t) * spAligned);
+            maxTileLength =
+                (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
+                (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
+                 hDim * spAligned * sizeof(float) * NUM2 +
+                 sizeof(float) * BUFFER_NUM +
+                 sizeof(float) * NUM2 + (spAlloc + NUM1) * NUM16 * BUFFER_NUM +
+                 sizeof(uint8_t) * spAligned);
         }
         if (sp >= NUM8) {
             maxTileLength = maxTileLength / SPLIT_TO_2;
