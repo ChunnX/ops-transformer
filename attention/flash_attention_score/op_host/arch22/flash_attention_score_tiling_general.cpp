@@ -894,14 +894,17 @@ bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
     uint64_t perCoreL2 = l2CacheSize / std::max(aicNum, aivNum);
     int64_t origDataPerCore = 8L * std::min(128L, alignedS1) * alignedS2 * calcTypeSize * 2;
     int64_t totalAttnData = alignedS1 * alignedS2 * calcTypeSize;
+    auto layoutType = tilingData->inputParams.get_layoutType();
     return (l2CacheSize == B4_1_L2_CACHESIZE) &&
            (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
-           (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
-            tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
-            tilingData->inputParams.get_layoutType() == LAYOUT_BSND) &&
-           dSize >= 128 &&
+           (layoutType == LAYOUT_SBH ||
+            layoutType == LAYOUT_BNSD ||
+            layoutType == LAYOUT_BSND) &&
+           dSize == 128 &&
            (static_cast<uint64_t>(origDataPerCore) >= perCoreL2 ||
-            static_cast<uint64_t>(totalAttnData) >= perCoreL2);
+            static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&
+           (s2Size > 1024 || s2Size <= 384 || s1Size <= 512) &&
+           (s2Size <= 1024 || layoutType != LAYOUT_BNSD);
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
