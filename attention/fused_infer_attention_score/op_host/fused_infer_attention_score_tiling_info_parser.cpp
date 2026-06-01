@@ -161,8 +161,8 @@ ge::graphStatus FiaInfoParser::GetLegacyIfaFlag()
 ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-        OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
-                LayoutToSerialString(qLayout_).c_str(), ACTUAL_SEQ_Q_LEN_NAME.c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "actualSeqLengths", "empty",
+            "When inputLayout is " + LayoutToSerialString(qLayout_) + ", actualSeqLengths cannot be empty.");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
@@ -935,7 +935,9 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
         qLayout_ = it->second.first;
         outLayout_ = it->second.second;
     } else {
-        OP_LOGE(opName_, "input layout is %s, it is unsupported.", layout.c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "input_layout", layout.c_str(),
+            "Input layout must be within the range {BSH, BSND, BNSD, TND, BSH_NBSD, BSND_NBSD, "
+            "BNSD_NBSD, TND_NTD, NTD_TND, BNSD_BSND, BSND_BNSD, BSH_BNSD, NTD}");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -998,8 +1000,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskBatchStride_ = 1;
             attenMaskStride_ = 1;
         } else {
-            OP_LOGE(opName_, "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.",
-                    *opParamInfo_.sparseMode);
+            std::string maskDimStr = std::to_string(maskDimNum) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr.c_str(),
+                "The shape dim of atten_mask must be 1 when the layout is TND or NTD");
         }
     } else {
         if (maskDimNum == 3U) {
@@ -1007,8 +1010,9 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
                                     maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
-            OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.",
-                    *opParamInfo_.sparseMode);
+            std::string maskDimStr3 = std::to_string(maskDimNum) + "D";
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", maskDimStr3.c_str(),
+                "The shape dim of atten_mask must be 3 when the layout is not TND or NTD");
         }
     }
     return ge::GRAPH_SUCCESS;
