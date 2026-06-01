@@ -258,32 +258,25 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
     LocalTensor<int16_t> &xLocal, int32_t roundId, int32_t tileId, uint64_t curTileLen)
 {
-    LocalTensor<float> xLocalFp32 = xBuf1_.Get<float>();
-    LocalTensor<int32_t> xLocalInt32 = maskLocalBuf_.Get<int32_t>();
-
-    Cast(xLocalFp32, xLocal, RoundMode::CAST_NONE, curTileLen);
-    PipeBarrier<PIPE_V>();
-    Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
-    PipeBarrier<PIPE_V>();
+    LocalTensor<half> xLocalHalf = xLocal.template ReinterpretCast<half>();
 
     LocalTensor<half> tempHalf = globalHistBuf_.Get<half>();
     LocalTensor<uint8_t> cmpMaskTensor = tempBuf_.Get<uint8_t>();
     LocalTensor<int32_t> tileHist = tempBuf_.GetWithOffset<int32_t>(
         curTileLen / BYTE_SIZE, curTileLen / BYTE_SIZE);
-    LocalTensor<int32_t> globalHist = maskLocalBuf_.GetWithOffset<int32_t>(
-        numValue_, curTileLen * sizeof(int32_t));
+    LocalTensor<int32_t> globalHist = maskLocalBuf_.Get<int32_t>();
 
-    uint32_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
+    uint32_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(half)));
 
     int32_t cumSumOne = 0;
     for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
-        int32_t involvedMaskTemp = static_cast<int32_t>(involvedMask16_) |
-            static_cast<int32_t>(binMask << (roundId * bitsPerRound_));
+        int16_t involvedMaskTemp = involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_));
+        half involvedMaskHalf = *reinterpret_cast<half *>(&involvedMaskTemp);
 
-        Compares<int32_t, uint8_t>(
+        Compares<half, uint8_t>(
             cmpMaskTensor,
-            xLocalInt32,
-            involvedMaskTemp,
+            xLocalHalf,
+            involvedMaskHalf,
             AscendC::CMPMODE::EQ,
             curTileLenAlign);
 
