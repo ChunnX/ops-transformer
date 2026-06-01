@@ -56,7 +56,7 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
                                const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
-                               const char *groupTp, aclTensor *x)
+                               const char *groupTp, int64_t tpWorldSize, aclTensor *x)
 {
     OP_LOGD("aclnn_moe_distribute_combine checkparams start");
     CHECK_RET(CheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
@@ -74,6 +74,10 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupTp name exceeds %zu.", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    if (tpWorldSize >= 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", tpWorldSize);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     OP_LOGD("aclnn_moe_distribute_combine checkparams success");
     return ACLNN_SUCCESS;
 }
@@ -87,7 +91,7 @@ aclnnStatus MoeDistributeCombineGetWorkspaceSize(
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
     aclTensor *x, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, groupTp, x);
+    auto ret_param = CheckParams(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, groupTp, tpWorldSize, x);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineGetWorkspaceSize(
@@ -107,15 +111,6 @@ aclnnStatus aclnnMoeDistributeCombineGetWorkspaceSize(
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
     aclTensor *x, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-        const char *groupTpEmptyWord = "";
-        aclnnStatus distributeCombineRet = MoeDistributeCombineGetWorkspaceSize(
-            expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
-            weightScale, groupList, expandScales, groupEp, epWorldSize, epRankId, moeExpertNum, groupTpEmptyWord,
-            tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
-            commQuantMode, groupListType, x, workspaceSize, executor);
-        return distributeCombineRet;
-    }
     aclnnStatus ret = MoeDistributeCombineGetWorkspaceSize(
         expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
         weightScale, groupList, expandScales, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize,

@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 接口功能：对token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 
     相较于`aclnnMoeDistributeDispatch`接口，该接口变更如下：
     1. 输出了更详细的token信息辅助CombineV2系列算子高效地进行全卡同步，因此原接口中shape为`(BS * K,)`的`expandIdx`出参替换为shape为`(A * 128,)`的`assistInfoForCombineOut`参数；
@@ -384,7 +384,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>要求为2D Tensor。</td>
     <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
-    <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
+    <td><code>(A, H)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -493,13 +493,13 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `epWorldSize`取值范围[2, 768]。
         - `moeExpertNum`取值范围(0, 1024]。
         - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-        - `tpWorldSize`取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+        - `tpWorldSize`（预留参数，当前版本不支持，仅支持传0或1）。
+        - `tpRankId`（预留参数，当前版本不支持，仅支持传0）。
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
-        - 有TP域通信时`tpRecvCountsOut`为1D shape Tensor，shape为(tpWorldSize,)。
+        - `epRecvCountsOut`的shape为(epWorldSize * localExpertNum,)。
+        - `tpRecvCountsOut`（预留输出，当前版本不支持，传空指针即可）。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、2（动态量化）。
 
@@ -516,7 +516,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
+        - `epRecvCountsOut`的shape为(epWorldSize * localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
