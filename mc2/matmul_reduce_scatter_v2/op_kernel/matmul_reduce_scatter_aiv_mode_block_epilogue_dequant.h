@@ -109,7 +109,7 @@ public:
 
     static_assert(
         (UB_STAGES * (TileShape::COUNT * sizeof(ElementC) + TileShape::COLUMN * sizeof(ElementScale) +
-         TileShape::ROW * sizeof(ElementPerTokenScale) + TileShape::COLUMN * sizeof(ElementScale) +
+         TileShape::ROW * sizeof(ElementPerTokenScale) + TileShape::COLUMN * sizeof(ElementBias) +
          TileShape::COUNT * sizeof(ElementD)) +
          (TileShape::COUNT + TileShape::COUNT) * sizeof(float) + TileShape::ROW * BYTE_PER_BLK)
         <= ArchTag::UB_SIZE,
@@ -262,6 +262,7 @@ public:
                 auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
 
                 // 把bias 从GM拷贝到UB
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
@@ -279,7 +280,6 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
 
             // 在UB上做广播乘法
             AscendC::PipeBarrier<PIPE_V>();
@@ -555,13 +555,13 @@ public:
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
-                    AscendC::PipeBarrier<PIPE_V>();
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBias);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
+                AscendC::PipeBarrier<PIPE_V>();
             }
             // 将乘法结果从UB cast到D
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
