@@ -52,8 +52,14 @@ public:
         PreprocessQkv(tile, slice);
         (void)QkAfterCubeUb();
         (void)QkFp8StagingUb();
-        (void)vScaleUb_;
-        (void)VOutUb();
+    }
+
+    __aicore__ inline void PostprocessV(const TileParam &tile)
+    {
+        const AivSlice slice = MakeAivSlice(tile, tilingData_->qkHeadTile, aivLocalId_);
+        activeBufferId_ = MakeDataBufferId(tile.bufferId);
+        QuantAndScatterV(tile, slice);
+        ReleaseInputBuffer(activeBufferId_);
     }
 
 private:
@@ -139,6 +145,24 @@ private:
 #endif
     }
 
+    __aicore__ inline void NotifyVOutReady(uint32_t bufferId)
+    {
+#ifndef __CCE_KT_TEST__
+        SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
+    }
+
+    __aicore__ inline void WaitVOutReady(uint32_t bufferId)
+    {
+#ifndef __CCE_KT_TEST__
+        WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
+    }
+
     __aicore__ inline void WaitQkOutBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
@@ -183,7 +207,6 @@ private:
         WaitAl1StageReady();
         WriteRopeBf16NdToL1Nz(tile, slice);
         WaitAl1StageDone();
-        ReleaseInputBuffer(activeBufferId_);
     }
 
     __aicore__ inline void CopyPreprocessInputs(const AivSlice &slice)
@@ -194,6 +217,9 @@ private:
             DataCopyGmToUb2D(gammaUb_, qGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
             DataCopyGmToUb2D(
                 gammaUb_[tilingData_->headDim], kGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
+        }
+        if (tilingData_->numVHeads > 0U) {
+            DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, tilingData_->numVHeads, tilingData_->numVHeads});
         }
         if (slice.tokenSize > 0U) {
             DataCopyGmToUb2D(
@@ -262,6 +288,55 @@ private:
         nd2nzParams.dstNzNStride = 1U;
         nd2nzParams.dstNzMatrixStride = 0U;
         DataCopy(ARotL1Nz()[slice.rowOffset * QKV_RRC_NZ_C0], QkRopeBf16NdUb(), nd2nzParams);
+    }
+
+    __aicore__ inline void QuantAndScatterV(const TileParam &tile, const AivSlice &slice)
+    {
+        if (slice.tokenSize == 0U || tile.vHeadSize == 0U) {
+            return;
+        }
+
+        WaitVOutBufferReusable(activeBufferId_);
+        QuantVToFp8(tile, slice);
+        NotifyVOutReady(activeBufferId_);
+        WaitVOutReady(activeBufferId_);
+        ScatterVCache(tile, slice);
+        ReleaseVOutBuffer(activeBufferId_);
+    }
+
+    __aicore__ inline void QuantVToFp8(const TileParam &tile, const AivSlice &slice)
+    {
+        AscendC::VF_CALL<VScaleFp8D128Vf>(
+            (__ubuf__ bfloat16_t *)InputUb().GetPhyAddr(),
+            (__ubuf__ float *)vScaleUb_.GetPhyAddr(),
+            (__ubuf__ fp8_e4m3fn_t *)VOutUb().GetPhyAddr(),
+            slice.tokenSize, tile.vHeadOffset, tile.vHeadSize, tilingData_->qkvStrideT,
+            tilingData_->numQHeads + tilingData_->numKHeads);
+    }
+
+    __aicore__ inline void ScatterVCache(const TileParam &tile, const AivSlice &slice)
+    {
+        DataCopyExtParams copyParams;
+        copyParams.blockCount = 1U;
+        copyParams.blockLen = tilingData_->headDim * sizeof(fp8_e4m3fn_t);
+        copyParams.srcStride = 0U;
+        copyParams.dstStride = 0U;
+        copyParams.rsv = 0U;
+
+        const LocalTensor<fp8_e4m3fn_t> vOut = VOutUb();
+        const LocalTensor<int32_t> slotMapping = SlotMappingUb();
+        for (uint32_t tokenIdx = 0U; tokenIdx < slice.tokenSize; ++tokenIdx) {
+            const uint32_t slot = static_cast<uint32_t>(slotMapping.GetValue(tokenIdx));
+            const uint32_t blockId = slot / tilingData_->blockSize;
+            const uint32_t blockOffset = slot % tilingData_->blockSize;
+            for (uint32_t headIdx = 0U; headIdx < tile.vHeadSize; ++headIdx) {
+                const uint32_t vHead = tile.vHeadOffset + headIdx;
+                const uint32_t ubOffset = (tokenIdx * tile.vHeadSize + headIdx) * tilingData_->headDim;
+                const uint32_t gmOffset = blockId * tilingData_->cacheStrideBlock +
+                    vHead * tilingData_->cacheStrideHead + blockOffset * tilingData_->cacheStrideToken;
+                DataCopyPad(vCacheOutGm_[gmOffset], vOut[ubOffset], copyParams);
+            }
+        }
     }
 
     __aicore__ inline void BindLocalTensors()

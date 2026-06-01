@@ -19,7 +19,8 @@ fast-path implementation is split by module:
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vf.h`: D=128 RMSNorm + half-RoPE BF16
-  vector function used by the AIV preprocess path.
+  vector function used by the AIV preprocess path, plus V BF16 scale and FP8
+  cast helpers.
 - `qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h`: kernel-side POD tiling
   data.
 
@@ -125,3 +126,14 @@ emits the intersecting row ranges with single-target Fixpipe and `subBlockId`
 after Cube compute AIC sends `C_READY`, and the AIV side waits it before
 signaling the current placeholder `C_CONSUMED`. Q/K postprocess will replace
 that placeholder consumption in T10.
+
+T09 adds the V branch early postprocess without moving CrossCore sync into Vec.
+The AIV basic-block path now preprocesses Q/K/V, notifies `A_READY`, runs V
+postprocess, then waits `C_READY`. Vec delays input UB release until after V
+has consumed the staged QKV row data. The V path loads `v_scale` into the
+reserve UB, calls `VScaleFp8D128Vf` with raw UB addresses so the token/head
+loops, BF16-to-FP32 conversion, scale multiply, and FP8 cast all stay inside
+the VF function, then scatters the packed FP8 rows into `v_cache` by
+`slot_mapping`, cache block, cache head, and cache token strides. `v_out_ub`
+uses local `V_MTE3`/`MTE3_V` event ids `0/1`; CrossCore calls remain only in
+basic block through the semantic wrappers.

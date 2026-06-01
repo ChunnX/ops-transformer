@@ -28,7 +28,7 @@
 | T06 | AIV Q/K/V preprocess | Done | Added AIV preprocess boundary: input UB reuse and `MTE2 -> V` ready events, QKV/gamma/slot_mapping/cos-sin staging, D=128 VF RMSNorm + half-RoPE + BF16 ND output, ND2NZ AL1 write, and private `V -> MTE3`/`MTE3 -> V` AL1 staging event id `4`. Basic block now owns the `A_READY` CrossCore notify/wait around AIV/Cube tile compute. Follow-up optimized the D=128 VF path to keep low/high halves in registers, moved token/head loops into VF, and kept Vec pingpong storage as one base buffer plus active-buffer offset views. Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused preprocess golden/UT is still pending. | 2459db1b9 plus this commit |
 | T07 | AIC rotation resident and Cube matmul | Done | AIC now loads dense BF16 `[D,D]` `rotation` to resident `rotation_l1_nz` before the tile loop, while basic block waits both AIV `A_READY` signals per tile before entering Cube compute. Cube loads A/rotation into L0 and executes BF16 x BF16 -> FP32 matmul. Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Cube UT is still pending. | aba3656fc |
 | T08 | AIC Fixpipe distribution and C_READY | Done | AIC now Fixpipes L0C rows into AIV0/AIV1 `qk_after_cube_ub` by the actual `ceil(tokenSize/2) * qkHeadTile` row boundary, using single-target Fixpipe with `subBlockId` 0/1 instead of fixed half-tile splitting. Basic block owns `C_READY` and placeholder `C_CONSUMED` CrossCore sequencing with fixed per-tile counts: AIC sets `C_READY` twice and waits `C_CONSUMED` twice; each AIV waits `C_READY` once and sets `C_CONSUMED` once. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
-| T09 | V branch early postprocess | Not started | Kernel compile + V path UT | |
+| T09 | V branch early postprocess | Done | Basic block now runs V postprocess after `A_READY` and before `C_READY` wait, so CrossCore sequencing stays centralized outside Vec. V postprocess keeps `input_ub` alive through V consumption, scales BF16 V by `v_scale`, casts to FP8 inside `VScaleFp8D128Vf`, and scatters to `v_cache` by `slot_mapping`; `v_out_ub` uses local `V_MTE3`/`MTE3_V` events `0/1`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused V path UT is still pending. | This commit |
 | T10 | AIV Q/K postprocess | Not started | Kernel compile + Q/K postprocess UT | |
 | T11 | Rolling pipeline and drain | Not started | Kernel compile + static review | |
 | T12 | Tail and empty-slice synchronization | Not started | Kernel compile + Host UT extension | |
@@ -37,8 +37,8 @@
 
 ## Next Task
 
-Start T09 by adding the AIV V branch early postprocess after `A_READY` and
-before Q/K `C_READY` consumption.
+Start T10 by adding AIV Q/K postprocess after `C_READY` and before
+`C_CONSUMED`.
 
 ## Kernel Layout
 
@@ -70,3 +70,10 @@ derived from the same actual AIV token split used for AL1 input, so tail tiles
 do not use a fixed half-tile C split. CrossCore `C_READY`/`C_CONSUMED` calls
 remain centralized in basic block; `C_CONSUMED` is currently a balanced
 placeholder until T10 adds real Q/K postprocess consumption.
+T09 inserts the V branch early postprocess in the basic-block AIV sequence
+after `A_READY` and before `C_READY` wait. Vec keeps `input_ub` ownership
+through this V phase, loads `v_scale`, runs BF16 V scale and FP8 cast inside
+`VScaleFp8D128Vf`, stages rows in `v_out_ub`, then writes `v_cache` using
+`slot_mapping` and cache block/head/token strides. The local `v_out_ub`
+handoff uses `V_MTE3`/`MTE3_V` event ids `0/1`; no CrossCore calls are added
+inside Vec.

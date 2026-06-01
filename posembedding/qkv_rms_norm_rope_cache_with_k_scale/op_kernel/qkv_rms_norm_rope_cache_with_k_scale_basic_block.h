@@ -50,6 +50,7 @@ public:
     {
         vec_.ComputeTile(tile);
         NotifyAReadyToAic();
+        vec_.PostprocessV(tile);
         WaitCReadyFromAic();
         NotifyCConsumedToAic();
     }
