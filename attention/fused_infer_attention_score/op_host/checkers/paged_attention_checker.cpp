@@ -328,8 +328,9 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
 ge::graphStatus PagedAttentionChecker::CheckQDtypeSupport(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT,
-        OP_LOGE(fiaInfo.opName, "When page attention enable, the datatype(%s) of query should not be INT8 except for MLA fullquant.",
-                DataTypeToSerialString(fiaInfo.inputQType).c_str()),
+    // TODO: Fix and not xx scenerio after translated
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query", Ops::Base::ToString(fiaInfo.inputQType).c_str(),
+            "When page attention enable and not MLA fullquant scenerio, the datatype of query cannot be INT8"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

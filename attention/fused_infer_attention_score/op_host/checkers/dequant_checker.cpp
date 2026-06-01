@@ -43,19 +43,23 @@ ge::graphStatus DequantChecker::CheckDataTypeSupportFullquant(const FiaTilingInf
 
     std::tuple<ge::DataType, ge::DataType, ge::DataType> inOutDtypeTuple = {fiaInfo.inputQType, fiaInfo.inputKvType,
                                                                             fiaInfo.outputType};
-    OP_CHECK_IF(
-        ge::GRAPH_SUCCESS != CheckValueSupport(inOutDtypeTuple, fullQuantDtypeSupported),
-        OP_LOGE(fiaInfo.opName,
-                "In fullquant scenario, query datatype(%s), key/value datatype(%s), "
-                "attentionOut datatype(%s) is not currently supported.",
-                DataTypeToSerialString(fiaInfo.inputQType).c_str(), DataTypeToSerialString(fiaInfo.inputKvType).c_str(),
-                DataTypeToSerialString(fiaInfo.outputType).c_str()),
-        return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckValueSupport(inOutDtypeTuple, fullQuantDtypeSupported)) {
+        std::string paramNames = "query, key/value, attention_out";
+        std::string incorrectDtypes = std::string(Ops::Base::ToString(fiaInfo.inputQType).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.inputKvType).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.outputType).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(),
+            "The dtypes of these parameters support only the following combinations: "
+            "[(INT8, INT8, BF16), (FLOAT8_E4M3FN, FLOAT8_E4M3FN, FLOAT16), "
+            "(FLOAT8_E4M3FN, FLOAT8_E4M3FN, BF16), (HIFLOAT8, HIFLOAT8, FLOAT16), "
+            "(HIFLOAT8, HIFLOAT8, BF16)]");
+        return ge::GRAPH_FAILED;
+    }
 
     OP_CHECK_IF(fiaInfo.inputKvType != fiaInfo.opParamInfo.value.desc->GetDataType(),
-                OP_LOGE(fiaInfo.opName, "In fullquant scenario, the datatype of value(%s) should be equal to key(%s).",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value",
+            Ops::Base::ToString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
+            "In fullquant scenario, the datatype of value must be the same as the datatype of key"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -72,16 +76,16 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMLAFullquant(const FiaTili
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
+    if (fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
                     fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In MLA fullquant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
-                        "and valueAntiquantScale(%s) must be FLOAT32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT) {
+        std::string paramNames = "dequant_scale_query, key_antiquant_scale, value_antiquant_scale";
+        std::string incorrectDtypes = std::string(Ops::Base::ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(), "must be FLOAT32 in MLA fullquant scenario");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -96,21 +100,23 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilin
         fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
+    if (fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT ||
                     fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT ||
-                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In per-block quant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
-                        "and valueAntiquantScale(%s) must be float32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT) {
+        std::string paramNames = "dequant_scale_query, key_antiquant_scale, value_antiquant_scale";
+        std::string incorrectDtypes = std::string(Ops::Base::ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str()) + ", " +
+                                      std::string(Ops::Base::ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(), incorrectDtypes.c_str(),
+            "In per-block quant scenario, the datatypes of dequantScaleQuery, keyAntiquantScale "
+            "and valueAntiquantScale must be float32");
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF(fiaInfo.opParamInfo.quantScale1.tensor != nullptr &&
-                fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In per-block quant scenario, datatype of quantScale1(%s) must be float32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str()),
+        fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale1",
+            Ops::Base::ToString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str(),
+            "In per-block quant scenario, the datatype of quant_scale1 must be float32"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -128,17 +134,26 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPertensor(const FiaTili
         return ge::GRAPH_SUCCESS;
     }
 
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(quantScale1Desc, QUANT_SCALE1_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale1Desc, DEQUANT_SCALE1_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale2Desc, DEQUANT_SCALE2_NAME)) {
-        OP_LOGE(fiaInfo.opName,
-                "In per-tensor quant scenario, the datatype of "
-                "%s(%s), %s(%s), or %s(%s) is not supported.",
-                QUANT_SCALE1_NAME.c_str(), DataTypeToSerialString(quantScale1Desc->GetDataType()).c_str(),
-                DEQUANT_SCALE1_NAME.c_str(), DataTypeToSerialString(deqScale1Desc->GetDataType()).c_str(),
-                DEQUANT_SCALE2_NAME.c_str(), DataTypeToSerialString(deqScale2Desc->GetDataType()).c_str());
-        return ge::GRAPH_FAILED;
-    }
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(quantScale1Desc, QUANT_SCALE1_NAME),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale1",
+                    Ops::Base::ToString(quantScale1Desc->GetDataType()).c_str(),
+                    "In per-tensor quant scenario, the datatype of quant_scale1 must be FLOAT"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale1Desc, DEQUANT_SCALE1_NAME),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "dequant_scale1",
+                    Ops::Base::ToString(deqScale1Desc->GetDataType()).c_str(),
+                    "In per-tensor quant scenario, "
+                    "the datatype of dequant_scale1 must be within the range {UINT64, FLOAT}"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(deqScale2Desc, DEQUANT_SCALE2_NAME),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "dequant_scale2",
+                    Ops::Base::ToString(deqScale2Desc->GetDataType()).c_str(),
+                    "In per-tensor quant scenario, "
+                    "the datatype of dequant_scale2 must be within the range {UINT64, FLOAT}"),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -148,28 +163,38 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeMXFP8Fullquant(const FiaTi
     if (!enableMxfp8FullQuant_) {
         return ge::GRAPH_SUCCESS;
     }
+
     if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
         fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr ||
         fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
-                    fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0 ||
-                    fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario, datatype of dequantScaleQuery(%s), keyAntiquantScale(%s) "
-                        "and valueAntiquantScale(%s) must be FLOAT8_E8M0.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
-                        DataTypeToSerialString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str()),
+    OP_CHECK_IF(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "dequant_scale_query",
+                    Ops::Base::ToString(fiaInfo.opParamInfo.dequantScaleQuery.desc->GetDataType()).c_str(),
+                    "In MXFP8 fullquant scenario, the datatype of dequant_scale_query must be FLOAT8_E8M0"),
                 return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                    Ops::Base::ToString(fiaInfo.opParamInfo.keyAntiquantScale.desc->GetDataType()).c_str(),
+                    "In MXFP8 fullquant scenario, the datatype of key_antiquant_scale must be FLOAT8_E8M0"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType() != ge::DT_FLOAT8_E8M0,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                    Ops::Base::ToString(fiaInfo.opParamInfo.valueAntiquantScale.desc->GetDataType()).c_str(),
+                    "In MXFP8 fullquant scenario, the datatype of value_antiquant_scale must be FLOAT8_E8M0"),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(fiaInfo.opParamInfo.quantScale1.tensor != nullptr &&
                 fiaInfo.opParamInfo.quantScale1.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(fiaInfo.opName,
-                        "In MXFP8 fullquant scenario, datatype of quantScale1(%s) must be float32.",
-                        DataTypeToSerialString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "quant_scale1",
+                    Ops::Base::ToString(fiaInfo.opParamInfo.quantScale1.desc->GetDataType()).c_str(),
+                    "In MXFP8 fullquant scenario, the datatype of quant_scale1 must be FLOAT"),
                 return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1201,71 +1226,74 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeCrossFullquant(const FiaTi
 // check 不同量化方式 支持的数据类型
 ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fiaInfo)
 {
-    if (enableIFAMLAFullQuant_) {  // MLA 全量化 QKV : fp8_e4m3/int8
-        OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_INT8 ||
-                      fiaInfo.inputQType == ge::DT_HIFLOAT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario, query datatype(%s) and key/value datatype(%s), "
-                            "should be FLOAT8_E4M3FN 、INT8 or HIFLOAT8.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
-                            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
-
+    if (enableIFAMLAFullQuant_) {    // MLA 全量化 QKV : fp8_e4m3/int8
+        if (!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_INT8 ||
+              fiaInfo.inputQType == ge::DT_HIFLOAT8)) {
+            std::string paramNames = "query, key and value";
+            std::string incorrectDtypes = Ops::Base::ToString(fiaInfo.inputQType) + ", " +
+                                          Ops::Base::ToString(fiaInfo.inputKvType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
+                incorrectDtypes.c_str(),
+                "In MLA fullquant scenario, the datatype of query, key and value must be FLOAT8_E4M3FN, INT8 or HIFLOAT8");
+            return ge::GRAPH_FAILED;
+        }
         OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16,
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario, attentionOut datatype(%s) should be BF16.",
-                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
-                    return ge::GRAPH_FAILED);
-
-        OP_CHECK_IF(!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MLA fullquant scenario, queryRope datatype(%s), "
-                            "keyRope datatype(%s) should be BF16.",
-                            DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(),
-                            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
+                Ops::Base::ToString(fiaInfo.outputType).c_str(),
+                "In MLA fullquant scenario, the datatype of attention_out must be BF16"),
+            return ge::GRAPH_FAILED);
+        if (!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16)) {
+            std::string paramNames = "query_rope and key_rope";
+            std::string incorrectDtypes = Ops::Base::ToString(fiaInfo.inputQRopeType) + ", " +
+                                          Ops::Base::ToString(fiaInfo.inputKRopeType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
+                incorrectDtypes.c_str(),
+                "In MLA fullquant scenario, the datatype of query_rope and key_rope must be BF16");
+            return ge::GRAPH_FAILED;
+        }
     } else if (enablePertensorQuant_) {  // GQA Pertensor QKV:int8
         OP_CHECK_IF((fiaInfo.inputQType != ge::DT_INT8),
-                    OP_LOGE(fiaInfo.opName, "In per-tensor quant scenario, input datatype(%s) should be INT8.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query",
+                Ops::Base::ToString(fiaInfo.inputQType).c_str(),
+                "In per-tensor quant scenario, the datatype of query must be INT8"),
+            return ge::GRAPH_FAILED);
     } else if (enablePerblockQuant_) {  // GQA perblock fp8_e4m3/hifp8
         OP_CHECK_IF((fiaInfo.inputQType != ge::DT_FLOAT8_E4M3FN && fiaInfo.inputQType != ge::DT_HIFLOAT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "In per-block quant scenario, input datatype(%s) should be FLOAT8_E4M3FN or HIFLOAT8.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query",
+                Ops::Base::ToString(fiaInfo.inputQType).c_str(),
+                "In per-block quant scenario, the datatype of query must be FLOAT8_E4M3FN or HIFLOAT8"),
+            return ge::GRAPH_FAILED);
     } else if (enableMxfp8FullQuant_) {
-        OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario, query datatype(%s) and key/value datatype(%s), "
-                            "should be FLOAT8_E4M3FN.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
-                            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
-
+        if (!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN)) {
+            std::string paramNames = "query and key_value";
+            std::string incorrectDtypes = Ops::Base::ToString(fiaInfo.inputQType) + ", " +
+                                          Ops::Base::ToString(fiaInfo.inputKvType);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
+                incorrectDtypes.c_str(),
+                "In MXFP8 fullquant scenario, the datatype of query and key_value must be FLOAT8_E4M3FN");
+            return ge::GRAPH_FAILED;
+        }
         OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16 && fiaInfo.outputType != ge::DT_FLOAT16,
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario, attentionOut datatype(%s) should be BF16/FLOAT16.",
-                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
-                    return ge::GRAPH_FAILED);
-
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
+                Ops::Base::ToString(fiaInfo.outputType).c_str(),
+                "In MXFP8 fullquant scenario, the datatype of attention_out must be BF16 or FLOAT16"),
+            return ge::GRAPH_FAILED);
         // rope
         if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
-            OP_CHECK_IF(!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16),
-                        OP_LOGE(fiaInfo.opName,
-                                "In MXFP8 fullquant scenario, queryRope datatype(%s), "
-                                "keyRope datatype(%s) should be BF16 when has rope.",
-                                DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(),
-                                DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
-                        return ge::GRAPH_FAILED);
-
+            if (!(fiaInfo.inputQRopeType == ge::DT_BF16 && fiaInfo.inputKRopeType == ge::DT_BF16)) {
+                std::string paramNames = "query_rope and key_rope";
+                std::string incorrectDtypes = Ops::Base::ToString(fiaInfo.inputQRopeType) + ", " +
+                                              Ops::Base::ToString(fiaInfo.inputKRopeType);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, paramNames.c_str(),
+                    incorrectDtypes.c_str(),
+                    "In MXFP8 fullquant scenario, when rope is split, the datatype of query_rope and key_rope must be BF16");
+                return ge::GRAPH_FAILED;
+            }
             OP_CHECK_IF(fiaInfo.outputType != ge::DT_BF16,
-                        OP_LOGE(fiaInfo.opName,
-                                "In MXFP8 fullquant scenario, output datatype(%s), "
-                                "should be BF16 when has rope.",
-                                DataTypeToSerialString(fiaInfo.outputType).c_str()),
-                        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
+                    Ops::Base::ToString(fiaInfo.outputType).c_str(),
+                    "In MXFP8 fullquant scenario, when rope is split, the datatype of attention_out must be BF16"),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1570,122 +1598,95 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
         auto keyAntiquantScaleShape = keyAntiquantScaleTensor->GetStorageShape();
         if (inputKvType == ge::DT_INT4 || inputKvType == ge::DT_INT32) {
             OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(INT4/INT32) is not supported. "
-                            "Datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                    Ops::Base::ToString(inputKvType).c_str(),
+                    "The datatype of key and value must be INT8 "
+                    "when keyAntiquantMode and valueAntiquantMode are per-tensor mode"),
                     return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF((keyAntiquantScaleShape == expectedShape1) && inputKvType != ge::DT_INT8,
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-tensor mode and valueAntiquantMode is per-tensor mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                    Ops::Base::ToString(inputKvType).c_str(),
+                    "The datatype of key and value must be INT8 "
+                    "when keyAntiquantMode and valueAntiquantMode are per-tensor mode"),
                     return ge::GRAPH_FAILED);
         }
         // per-channel模式，支持key/value的数据类型为INT8、INT4(INT32)、HIFLOAT8、FLOAT8_E4M3FN
         OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_HIFLOAT8 &&
-                     inputKvType != ge::DT_FLOAT8_E4M3FN),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8, INT4(INT32), HIFLOAT8 or FLOAT8_E4M3FN when "
-                            "keyAntiquantMode is per-channel mode and "
-                            "valueAntiquantMode is per-channel mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+            inputKvType != ge::DT_FLOAT8_E4M3FN),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8, INT4(INT32), "
+                "HIFLOAT8 or FLOAT8_E4M3FN when keyAntiquantMode and valueAntiquantMode are both per-channel mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         // per-token模式，支持key/value的数据类型为INT8、INT4(INT32)、FLOAT8_E4M3FN
         OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4 && inputKvType != ge::DT_FLOAT8_E4M3FN),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8, INT4(INT32) or FLOAT8_E4M3FN when "
-                            "keyAntiquantMode is per-token mode and valueAntiquantMode is per-token mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8, INT4 or "
+                "FLOAT8_E4M3FN when keyAntiquantMode and valueAntiquantMode are both per-token mode"),
                     return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         // per-token模式，使用page attention管理scale/offset, 支持key/value的数据类型为INT8、FLAOT8_E4M3FN
         OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_FLOAT8_E4M3FN),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 or FLOAT8_E4M3FN when "
-                            "keyAntiquantMode is per-token-pa mode and "
-                            "valueAntiquantMode is per-token-pa mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or FLOAT8_E4M3FN "
+                "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode"),
                     return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
         // per-tensor-head模式，支持key/value的数据类型为INT8
         if (inputKvType == ge::DT_INT4) {
-            OP_LOGE(fiaInfo.opName,
-                    "Datatype of key and value(INT4/INT32) is not supported. "
-                    "Datatype of key and value must be INT8 when "
-                    "keyAntiquantMode is per-tensor-head mode and "
-                    "valueAntiquantMode is per-tensor-head mode.");
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+                "when keyAntiquantMode and valueAntiquantMode are per-token-pa mode")
             return ge::GRAPH_FAILED;
         }
         OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-tensor-head mode and "
-                            "valueAntiquantMode is per-tensor-head mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+                "when keyAntiquantMode and valueAntiquantMode are per-tensor-head mode"),
                     return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
         // per-token-head模式，支持key/value的数据类型为INT8、INT4(INT32)
         OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 or INT4(INT32) when "
-                            "keyAntiquantMode is per-token-head mode and "
-                            "valueAntiquantMode is per-token-head mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or INT4 "
+                "when keyAntiquantMode and valueAntiquantMode are per-token-head mode"),
                     return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE && valueAntiquantMode == PER_TOKEN_HEAD_PA_MODE) {
         // per-token-head模式使用page attention管理scale/offset，支持key/value的数据类型为INT8
         OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-token-head-PA mode and "
-                            "valueAntiquantMode is per-token-head-PA mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                        Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 "
+                        "when keyAntiquantMode and valueAntiquantMode are per-token-head-PA mode"),
                     return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         // key支持per-channel叠加value支持per-token，支持key/value的数据类型为INT8、INT4(INT32)
         OP_CHECK_IF((inputKvType != ge::DT_INT8 && inputKvType != ge::DT_INT4),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 or INT4(INT32) when "
-                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be INT8 or INT4 "
+                "when keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 &&
-                    (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
-                    OP_LOGE(fiaInfo.opName,
-                            "When key in per-channel scenario and value in per-token scenario,"
-                            "if inputKvType is INT8, inputQType and outputType must be FLOAT16,"
-                            "but now inputQType is %s, outputType is %s.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
-                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
-                    return ge::GRAPH_FAILED);
+            (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "query and attention_out",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of query and attention_out must be FLOAT16"
+                "when keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode "
+                "and the datatype of key is INT8"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
         // per-token-group模式，支持key/value的数据类型为FLOAT4_E2M1
         OP_CHECK_IF((inputKvType != ge::DT_FLOAT4_E2M1),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be FLOAT4_E2M1 when "
-                            "keyAntiquantMode is per-token-group mode and "
-                            "valueAntiquantMode is per-token-group mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(fiaInfo.opName, "key and value",
+                Ops::Base::ToString(inputKvType).c_str(), "The datatype of key and value must be FLOAT4_E2M1 "
+                "when keyAntiquantMode and valueAntiquantMode are per-token-group mode"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -2023,141 +2024,110 @@ ge::graphStatus DequantChecker::CheckScaleTypeForAntiquant(const FiaTilingInfo &
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
         // per-channel/per-tensor模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                            "The datatype of keyAntiquantScale and query must be the same when "
-                            "keyAntiquantMode is per-channel mode or per-tensor mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be the same as query when keyAntiquantMode is per-channel or per-tensor mode"
+                " and keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
-                            "The datatype of valueAntiquantScale and query must be the same when "
-                            "valueAntiquantMode is per-channel mode or per-tensor mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be the same as query when valueAntiquantMode is per-channel or per-tensor"
+                " mode and keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
 
     if (keyAntiquantMode == PER_TOKEN_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         // per-token模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of keyAntiquantScale must be FLOAT32 when "
-                            "keyAntiquantMode is per-token mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of valueAntiquantScale must be FLOAT32 when "
-                            "valueAntiquantMode is per-token mode and "
-                            "valueAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
         // per-tensor-head模式，keyAntiquantScale和valueAntiquantScale的数据类型与query相同
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                            "The datatype of keyAntiquantScale and query must be the same when "
-                            "keyAntiquantMode is per-tensor-head mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be the same as query when keyAntiquantMode is per-tensor-head mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) and query(%s) are different. "
-                            "The datatype of valueAntiquantScale and query must be the same when "
-                            "valueAntiquantMode is per-tensor-head mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be the same as query when valueAntiquantMode is per-tensor-head mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
         // per-token-head模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT32
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of keyAntiquantScale must be FLOAT32 when "
-                            "keyAntiquantMode is per-token-head mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token-head mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of valueAntiquantScale must be FLOAT32 when "
-                            "valueAntiquantMode is per-token-head mode and "
-                            "valueAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-head mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_PA_MODE && valueAntiquantMode == PER_TOKEN_PA_MODE) {
         // per-token-PA模式，数据类型固定为FLOAT32
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of keyAntiquantScale must be FLOAT32 when "
-                            "keyAntiquantMode is per-token-PA mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of valueAntiquantScale must be FLOAT32 when "
-                            "valueAntiquantMode is per-token-PA mode and "
-                            "valueAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-token-PA mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT), 
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when valueAntiquantMode is per-token-PA mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) {
         // key支持per-channel叠加value支持per-token
         // keyAntiquantScale的数据类型与query相同
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != queryDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) and query(%s) are different. "
-                            "The datatype of keyAntiquantScale and query must be the same when "
-                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(queryDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be the same as query when keyAntiquantMode is per-channel mode and "
+                "valueAntiquantMode is per-token mode"),
+            return ge::GRAPH_FAILED);
         // valueAntiquantScale的数据类型固定为FLOAT32
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) is not FLOAT32. "
-                            "The datatype of valueAntiquantScale must be FLOAT32 when "
-                            "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT32 when keyAntiquantMode is per-channel mode and "
+                "valueAntiquantMode is per-token mode"),
+            return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
         // per-token-group模式，keyAntiquantScale和valueAntiquantScale的数据类型固定为FLOAT8_E8M0
         OP_CHECK_IF((keyAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantScale(%s) is not FLOAT8_E8M0. "
-                            "The datatype of keyAntiquantScale must be FLOAT8_E8M0 when "
-                            "keyAntiquantMode is per-token-group mode and "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+                Ops::Base::ToString(keyAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_scale must be FLOAT8_E8M0 when keyAntiquantMode is per-token-group mode and "
+                "keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueAntiquantScaleDesc->GetDataType() != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantScale(%s) is not FLOAT8_E8M0. "
-                            "The datatype of valueAntiquantScale must be FLOAT8_E8M0 when "
-                            "valueAntiquantMode is per-token-group mode and "
-                            "valueAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+                Ops::Base::ToString(valueAntiquantScaleDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_scale must be FLOAT8_E8M0 when valueAntiquantMode is per-token-group mode and "
+                "valueAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -2253,25 +2223,21 @@ ge::graphStatus DequantChecker::CheckOffsetTypeForAntiquant(const FiaTilingInfo 
     auto &keyAntiquantScaleDesc = fiaInfo.opParamInfo.keyAntiquantScale.desc;
     if (keyAntiquantOffsetDesc != nullptr && keyAntiquantScaleDesc != nullptr) {
         OP_CHECK_IF((keyAntiquantOffsetDesc->GetDataType() != keyAntiquantScaleDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of keyAntiquantOffset(%s) and keyAntiquantScale(%s) are different. "
-                            "The datatype of keyAntiquantOffset and keyAntiquantScale must be the same when "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(keyAntiquantOffsetDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(keyAntiquantScaleDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_antiquant_offset",
+                Ops::Base::ToString(keyAntiquantOffsetDesc->GetDataType()).c_str(), "The datatype of "
+                "key_antiquant_offset must be the same as key_antiquant_scale "
+                "when keyAntiquant/valueAntiquant is in split mode"),
+            return ge::GRAPH_FAILED);
     }
     // valueAntiquantOffset的datatype与valueAntiquantScale一致
     auto &valueAntiquantOffsetDesc = fiaInfo.opParamInfo.valueAntiquantOffset.desc;
     auto &valueAntiquantScaleDesc = fiaInfo.opParamInfo.valueAntiquantScale.desc;
     if (valueAntiquantOffsetDesc != nullptr && valueAntiquantScaleDesc != nullptr) {
         OP_CHECK_IF((valueAntiquantOffsetDesc->GetDataType() != valueAntiquantScaleDesc->GetDataType()),
-                    OP_LOGE(fiaInfo.opName,
-                            "The datatype of valueAntiquantOffset(%s) and valueAntiquantScale(%s) are different. "
-                            "The datatype of valueAntiquantOffset and valueAntiquantScale must be the same when "
-                            "keyAntiquant/valueAntiquant is in split mode.",
-                            DataTypeToSerialString(valueAntiquantOffsetDesc->GetDataType()).c_str(),
-                            DataTypeToSerialString(valueAntiquantScaleDesc->GetDataType()).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value_antiquant_offset",
+                Ops::Base::ToString(valueAntiquantOffsetDesc->GetDataType()).c_str(), "The datatype of "
+                "value_antiquant_offset must be the same as value_antiquant_scale "
+                "when keyAntiquant/valueAntiquant is in split mode"),
                     return ge::GRAPH_FAILED);
     }
 

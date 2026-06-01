@@ -36,8 +36,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo
     // SoftmaxLse only supports output FP32
     if (fiaInfo.softmaxLseFlag) {
         OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.lseOut.desc, SOFTMAX_LSE_NAME),
-                    OP_LOGE(fiaInfo.opName, "SoftmaxLse only support dtype FP32, but got %s",
-                            DataTypeToSerialString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPE(fiaInfo.opName, "softmax_lse",
+                Ops::Base::ToString(fiaInfo.opParamInfo.lseOut.desc->GetDataType()).c_str(),
+                Ops::Base::ToString(ge::DT_FLOAT).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -37,15 +37,15 @@ ge::graphStatus RopeChecker::CheckRopeDtype(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF((fiaInfo.inputQRopeType != ge::DT_BF16 && fiaInfo.inputQRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of queryRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputQRopeType).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query_rope",
+            Ops::Base::ToString(fiaInfo.inputQRopeType).c_str(),
+            "The datatype of query_rope must be BF16 or FLOAT16 when query_rope is not empty"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((fiaInfo.inputKRopeType != ge::DT_BF16 && fiaInfo.inputKRopeType != ge::DT_FLOAT16),
-        OP_LOGE(fiaInfo.opName,
-        "When rope exist, the datatype(%s) of keyRope only support BF16 or FLOAT16.",
-        DataTypeToSerialString(fiaInfo.inputKRopeType).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_rope",
+            Ops::Base::ToString(fiaInfo.inputKRopeType).c_str(),
+            "The datatype of key_rope must be BF16 or FLOAT16 when key_rope is not empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -112,13 +112,14 @@ ge::graphStatus RopeChecker::CheckRopeDtypeConsistency(const FiaTilingInfo &fiaI
 {
     if (enableNonQuant_) {
         OP_CHECK_IF((fiaInfo.inputQRopeType != fiaInfo.inputQType),
-            OP_LOGE(fiaInfo.opName, "The datatype of query rope(%s) should be equal to query(%s).",
-            DataTypeToSerialString(fiaInfo.inputQRopeType).c_str(), DataTypeToSerialString(fiaInfo.inputQType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName,
+                "query_rope", Ops::Base::ToString(fiaInfo.inputQRopeType).c_str(),
+                "The datatype of query_rope and query must be the same"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.inputKRopeType != fiaInfo.inputKvType),
-            OP_LOGE(fiaInfo.opName, "The datatype of key rope(%s) should be equal to key(%s).",
-            DataTypeToSerialString(fiaInfo.inputKRopeType).c_str(),
-            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key_rope",
+                Ops::Base::ToString(fiaInfo.inputKRopeType).c_str(),
+                "The datatype of key_rope and key must be the same"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
