@@ -2750,12 +2750,16 @@ protected:
 
     void CalcS1S2BasicBlock([[maybe_unused]] const BufferNum &bufferNum) override
     {
+        // Per-core L2 budget: only optimize when original per-core data volume exceeds it
+        uint64_t perCoreL2 = l2CacheSize / std::max(aicNum, aivNum);
+        int64_t origDataPerCore = 8L * std::min(128L, alignedS1) * alignedS2 * calcTypeSize * 2;
         auto optimCond = (l2CacheSize == B4_1_L2_CACHESIZE) &&
                          (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
                          (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BSND) &&
-                         dSize >= 128;
+                         dSize >= 128 &&
+                         static_cast<uint64_t>(origDataPerCore) >= perCoreL2;
         if (optimCond) {
             OP_LOGI(opName, "L2 cache optimization: s1BasicBlock set to 64 for B4_1.");
         }
@@ -3241,12 +3245,16 @@ protected:
 
     void CalcNRatio() override
     {
+        // Per-core L2 budget: only optimize when original per-core data volume exceeds it
+        uint64_t perCoreL2 = l2CacheSize / std::max(aicNum, aivNum);
+        int64_t origDataPerCore = 8L * std::min(128L, alignedS1) * alignedS2 * calcTypeSize * 2;
         auto optimCond = (l2CacheSize == B4_1_L2_CACHESIZE) &&
                          (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
                          (tilingData->inputParams.get_layoutType() == LAYOUT_SBH ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BNSD ||
                           tilingData->inputParams.get_layoutType() == LAYOUT_BSND) &&
-                         dSize >= 128;
+                         dSize >= 128 &&
+                         static_cast<uint64_t>(origDataPerCore) >= perCoreL2;
         if (optimCond) {
             OP_LOGI(opName, "L2 cache optimization: nRatio set to 4 for B4_1.");
         }
