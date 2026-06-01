@@ -334,18 +334,16 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvTTQuantGmmTiling::SetWorkspaceInfo(uint64_t maxTokenNum)
+void AlltoAllvTTQuantGmmTiling::SetWorkspaceInfo()
 {
     // aixs
-    uint64_t gmmXAixs = h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     // comm
-    if (!permuteOutFlag_) {
-        tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(a_ * gmmXAixs,
-            static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    }
+    tilingData->workspaceInfo.commXOutSize = permuteOutFlag_ ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // permute gmmX
-    tilingData->workspaceInfo.permuteXOutSize = Ops::Base::CeilAlign(maxTokenNum
-        * gmmXAixs, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // compute
     uint64_t ttScaleRepeatSize = sizeof(float) * e_ * 2;
     tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(ttScaleRepeatSize,
