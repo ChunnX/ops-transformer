@@ -20,7 +20,6 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant_deter.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split_pro.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
 
 using namespace Cgmct::Gemm;
@@ -54,7 +53,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
 
-    using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitProScheduler;
+    using BlockScheduler = Cgmct::Gemm::GroupedMatmulAswtWithTailSplitScheduler;
     using BlockMmadBuilder =
         Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutBias, L1TileShape,
                                 L0TileShape, BlockScheduler, MatmulMultiBlock<>,

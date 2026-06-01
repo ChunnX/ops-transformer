@@ -36,7 +36,6 @@ struct QuantIterateKScheduler {};
 struct GroupedMatmulAswtScheduler {};
 struct GroupedMatmulPerTileAswtScheduler {};
 struct GroupedMatmulAswtWithTailSplitScheduler {};
-struct GroupedMatmulAswtWithTailSplitProScheduler {};
 } // namespace Gemm
 } // namespace Cgmct
 #endif
