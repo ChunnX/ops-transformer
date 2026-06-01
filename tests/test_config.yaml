@@ -522,7 +522,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant_v2
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_add:
     module: True
