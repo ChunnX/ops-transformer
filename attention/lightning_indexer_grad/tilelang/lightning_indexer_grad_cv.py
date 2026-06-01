@@ -158,11 +158,11 @@ def lightning_indexer_grad_kernel(
                         for n_idx in T.serial(n_num):
                             T.copy(reluIn_ws[b_idx, s1_idx, n2, m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N], relu_in_ub)
                             T.copy(Dy[b_idx, s1_idx, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N], dy_ub)
-                            T.tile.casts(dy_fp32_ub, dy_ub)
+                            T.tile.cast(dy_fp32_ub, dy_ub, "CAST_NONE", BLOCK_N)
                             for row in T.serial(BLOCK_M):
                                 T.tile.mul(reduce_in_ub[row, :], relu_in_ub[row, :], dy_fp32_ub)
                         T.reduce_sum(reduce_in_ub, reduce_out_ub, dim=-1, clear=True)
-                        T.tile.casts(dw_ub, reduce_out_ub)
+                        T.tile.cast(dw_ub, reduce_out_ub, "CAST_ROUND", BLOCK_M)
                         T.copy(dw_ub, dWeights[b_idx, s1_idx, n1_start + m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M])
 
                 T.set_cross_flag("FIX", 1)
@@ -188,7 +188,7 @@ def lightning_indexer_grad_kernel(
                                 T.copy(K_gather_ws[b_idx, s1_idx, n2, k_idx * BLOCK_N:(k_idx + 1) * BLOCK_N, d_idx * BLOCK_D:(d_idx + 1) * BLOCK_D], KG_L1)
                                 T.gemm_v0(RG_L1, KG_L1, DQ_L0C, init=(k_idx == 0))
                             T.copy(DQ_L0C, DQ_fp32_ub)
-                            T.tile.casts(DQ_ub, DQ_fp32_ub)
+                            T.tile.cast(DQ_ub, DQ_fp32_ub, "CAST_ROUND", BLOCK_M * BLOCK_D)
                             T.copy(DQ_ub, dQuery[b_idx, s1_idx, n1_start + m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M, d_idx * BLOCK_D:(d_idx + 1) * BLOCK_D])
 
                     # --- Cube4: reluGradOut^T(TOPK,G) @ Q(G,D) -> scatterAdd(TOPK,D) ---
@@ -219,7 +219,7 @@ def lightning_indexer_grad_kernel(
                     for n_idx in T.serial(n_num):
                         for d_idx in T.serial(d_num):
                             T.copy(scatterAdd_ws[b_idx, s1_idx, n2, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N, d_idx * BLOCK_D:(d_idx + 1) * BLOCK_D], sa_ub)
-                            T.tile.casts(sa_fp16_ub, sa_ub)
+                            T.tile.cast(sa_fp16_ub, sa_ub, "CAST_ROUND", BLOCK_N * BLOCK_D)
                             for t in T.serial(BLOCK_N):
                                 global_t = n_idx * BLOCK_N + t
                                 s2_pos = idx_ub3[global_t]
