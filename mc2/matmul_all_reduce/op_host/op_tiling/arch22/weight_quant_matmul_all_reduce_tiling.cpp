@@ -109,8 +109,8 @@ void WeightQuantMatmulAllReduceTiling::DoEmptyTensorTiling()
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling::DoOpTiling()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckA16W8());
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
@@ -118,7 +118,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::DoOpTiling()
         DoAllReduceTiling(true);
         return ge::GRAPH_SUCCESS;
     }
-    MC2_CHECK_GRAPH_STATUS(opName_, DoWeightQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoWeightQuantTiling());
     DoAllReduceTiling(true);
     return ge::GRAPH_SUCCESS;
 }
@@ -148,7 +148,7 @@ uint64_t WeightQuantMatmulAllReduceTiling::GetTilingKey() const
 }
 ge::graphStatus WeightQuantMatmulAllReduceTiling::GetWorkspaceSize()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingData().biasLen;
     if (isKZero_) {
         myWorkSpaceSize_ = myWorkSpaceSize_ + libApiWorkSpaceSize_;
@@ -182,7 +182,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    MC2_CHECK_GRAPH_STATUS(opName_, ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -195,7 +195,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::DoWeightQuantTiling()
         weightQuantMatmulTPLParam_ = mmTile.GetWeightQuantMatmulTPLParam();
         return res;
     } else {
-        MC2_CHECK_GRAPH_STATUS(opName_, mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             weightQuantMatmulTPLParam_ = mmTile.GetWeightQuantMatmulTPLParam();
             return ge::GRAPH_SUCCESS;
@@ -234,7 +234,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckAxisSize()
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
     const size_t x2DimNum = (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
                                      ge::Format::FORMAT_FRACTAL_NZ ?
                                  4 :

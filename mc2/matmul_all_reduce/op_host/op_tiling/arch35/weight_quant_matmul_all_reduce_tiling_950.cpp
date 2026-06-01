@@ -180,9 +180,9 @@ void WeightQuantMatmulAllReduceTilingA5::DoEmptyTensorTiling()
 
 ge::graphStatus WeightQuantMatmulAllReduceTilingA5::DoOpTiling()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckA16W8());
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckInput());
-    MC2_CHECK_GRAPH_STATUS(opName_, SetMc2Hcomm());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
+    MC2_CHECK_LOG_RET(opName_, SetMc2Hcomm());
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
@@ -192,9 +192,9 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::DoOpTiling()
     }
 
     if (antiQuantType_ != AntiQuantType::PER_GROUP) {
-        MC2_CHECK_GRAPH_STATUS(opName_, DoWeightQuantAsTiling());
+        MC2_CHECK_LOG_RET(opName_, DoWeightQuantAsTiling());
     } else {
-        MC2_CHECK_GRAPH_STATUS(opName_, DoWeightQuantTiling());
+        MC2_CHECK_LOG_RET(opName_, DoWeightQuantTiling());
     }
 
     DoAllReduceTiling();
@@ -266,7 +266,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSizeForA2ARSAG()
 
 ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND910B) {
         myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingData().biasLen;
         if (isKZero_) {
@@ -498,7 +498,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::DoWeightQuantTiling()
         WeightQuantTPLPatams_ = mmTile.GetWeightQuantMMAllReduceTPLParam();
         return curStatus;
     } else {
-        MC2_CHECK_GRAPH_STATUS(opName_, mmTile.MatmulDoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.MatmulDoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             WeightQuantTPLPatams_ = mmTile.GetWeightQuantMMAllReduceTPLParam();
             return ge::GRAPH_SUCCESS;
@@ -555,7 +555,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::DoWeightQuantAsTiling()
 {
     args_.mValue = tileMValue_;
     WeightQuantAsTilingTransferHelper mmTile(*this, weightQuantMatmulAllReduceA5Fp8TilingData_.tileMmASTiling);
-    MC2_CHECK_GRAPH_STATUS(opName_, mmTile.MatmulDoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.MatmulDoTiling());
     if (MutableRCSTilingData().tailCnt == 0) {
         WeightQuantTPLPatams_ = mmTile.GetWeightQuantASMMAllReduceTPLParam();
         return ge::GRAPH_SUCCESS;
@@ -585,7 +585,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckBiasInput()
 
 ge::graphStatus WeightQuantMatmulAllReduceTilingA5::CheckInput()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
     const size_t x2DimNum =
         (static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
                  ge::Format::FORMAT_FRACTAL_NZ ? 4 : 2);

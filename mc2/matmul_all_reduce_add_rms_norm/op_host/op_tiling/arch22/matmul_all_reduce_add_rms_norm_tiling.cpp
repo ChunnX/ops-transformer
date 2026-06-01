@@ -56,16 +56,16 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::CheckMRNInput(const MRNCtxInfo&
 }
 ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
 {
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), helper_->DoOpTiling());
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), CheckMRNInput(mrnCtxInfo_));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), helper_->DoOpTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CommonAddResNormTiling::CheckAddRmsNormInput(context_, mrnCtxInfo_.arnCtxInfo));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::CheckMRNCtxInfo(context_, mrnCtxInfo_));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CheckMRNInput(mrnCtxInfo_));
     hasTail_ = (tilingData_.matmulAllReduceTilingData.param.tailCnt != 0);
     AddRmsNormTilingInputFromMM addRmsNormTilingInputFromMm;
     addRmsNormTilingInputFromMm.m = helper_->tileMValue_;
     addRmsNormTilingInputFromMm.n = helper_->args_.nValue;
     addRmsNormTilingInputFromMm.x1Dtype = helper_->args_.geCType;
-    MC2_CHECK_TRUE(context_->GetNodeName(), context_->GetPlatformInfo() != nullptr);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), context_->GetPlatformInfo() != nullptr);
     AddRMSNormTilingDepend addRmsNormTilingDepend = {
         context_->GetNodeName(),
         *context_->GetPlatformInfo(),
@@ -76,7 +76,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
 
     AddRMSNormTilingOutput addRmsNormTilingOutput = {tilingData_.addRMSNormTileTilingData, tilingOutAddRmsNormTile_};
 
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutput));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutput));
     tilingData_.addRmsNormTilingeKeyData.ARNKeyTile = tilingOutAddRmsNormTile_.tilingKey;
     tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTile = tilingOutAddRmsNormTile_.numBlocks;
 
@@ -84,7 +84,7 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
         addRmsNormTilingDepend.addRmsNormTilingInputFromMm.m = helper_->tailMValue_;
         AddRMSNormTilingOutput addRmsNormTilingOutputTail = {
             tilingData_.addRMSNormTailTilingData, tilingOutAddRmsNormTail_};
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), 
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), 
             CommonAddResNormTiling::Tiling4AddRmsNorm(addRmsNormTilingDepend, addRmsNormTilingOutputTail));
         tilingData_.addRmsNormTilingeKeyData.ARNKeyTail = tilingOutAddRmsNormTail_.tilingKey;
         tilingData_.addRmsNormTilingeKeyData.ARNNumBlocksTail = tilingOutAddRmsNormTail_.numBlocks;
@@ -94,14 +94,14 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::DoOpTiling()
 ge::graphStatus MatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
 {
     if (strcmp(context_->GetNodeType(), MRN) == 0) {
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(context_, mrnCtxInfo_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleMRNCtxInfoFromMRNCtx(context_, mrnCtxInfo_));
     } else if (strcmp(context_->GetNodeType(), IMRN) == 0) {
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
     } else {
         OP_LOGE(context_->GetNodeName(), "Unsupported node type %s", context_->GetNodeType());
         return ge::GRAPH_FAILED;
     }
-    MC2_CHECK_NOTNULL(context_->GetNodeName(), helper_);
+    MC2_CHECK_NOTNULL_RET(context_->GetNodeName(), helper_);
     return helper_->GetShapeAttrsInfo();
 }
 ge::graphStatus MatmulAllReduceAddRmsNormTiling::GetPlatformInfo()
@@ -125,14 +125,14 @@ MatmulAllReduceAddRmsNormTiling::MatmulAllReduceAddRmsNormTiling(gert::TilingCon
 
 ge::graphStatus MatmulAllReduceAddRmsNormTiling::GetWorkspaceSize()
 {
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), helper_->GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), helper_->GetWorkspaceSize());
     const uint64_t mc2WorkSpace = helper_->myWorkSpaceSize_;
-    MC2_CHECK_TRUE(context_->GetNodeName(), mc2WorkSpace >= SYS_WORKSPACE_SIZE);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), mc2WorkSpace >= SYS_WORKSPACE_SIZE);
     if (HasTail()) {
-        MC2_CHECK_TRUE(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize == tilingOutAddRmsNormTail_.workSpaceSize);
+        MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize == tilingOutAddRmsNormTail_.workSpaceSize);
     }
     // 系统空间用mc2申请的就好了， arn的减去这部分
-    MC2_CHECK_TRUE(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), tilingOutAddRmsNormTile_.workSpaceSize >= SYS_WORKSPACE_SIZE);
     const auto arnWorkSpace = tilingOutAddRmsNormTile_.workSpaceSize - SYS_WORKSPACE_SIZE;
     const auto myWorkSpace = mc2WorkSpace + arnWorkSpace;
     OP_LOGI(helper_->opName_, " Workspace %lu with detail: mc2: %lu arn：%u", myWorkSpace, mc2WorkSpace, arnWorkSpace);
@@ -172,13 +172,13 @@ ge::graphStatus MatmulAllReduceAddRmsNormTiling::PostTiling()
         helper_->args_.aicCoreNum, numBlocksOfArn);
     // 当前mc2给的aicCoreNum是硬件规格的最大个数, numBlocksOfArn取了尾和非尾的最大值，最大值应该小于等于硬件规格的aiv num
     // 2代表aic和aiv个数规格定义是1比2的关系
-    MC2_CHECK_TRUE(context_->GetNodeName(), helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
+    MC2_CHECK_TRUE_RET(context_->GetNodeName(), helper_->args_.aicCoreNum * 2 >= numBlocksOfArn);
     context_->SetBlockDim(helper_->args_.aicCoreNum);
 
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), ret);
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), ret);
 
     return ge::GRAPH_SUCCESS;
 }

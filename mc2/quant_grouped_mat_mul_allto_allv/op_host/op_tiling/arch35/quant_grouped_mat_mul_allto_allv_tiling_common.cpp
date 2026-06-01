@@ -866,7 +866,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
 {
     // 设置公共信息
     QuantGroupedMatmulAllToAllvAdapter gmmTile(context_);
-    MC2_CHECK_GRAPH_STATUS(opName_, gmmTile.SetCommonInputParams(localParams_));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetCommonInputParams(localParams_));
     // tokens最多的专家作为MM计算的M
     uint64_t mMaxSize = 0;
     uint64_t mSize = 0;
@@ -877,16 +877,16 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    MC2_CHECK_GRAPH_STATUS(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
-    MC2_CHECK_GRAPH_STATUS(opName_, gmmTile.Process());
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 
     // SharedMM
     if (!localParams_.hasSharedMm) {
         return ge::GRAPH_SUCCESS;
     }
-    MC2_CHECK_GRAPH_STATUS(opName_, gmmTile.SetSharedExpertInputParameters(localParams_));
-    MC2_CHECK_GRAPH_STATUS(opName_, gmmTile.Process());
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetSharedExpertInputParameters(localParams_));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.sharedGmmTiling = gmmTile.GetGmmQuantTilingAdapterData();
 
     return ge::GRAPH_SUCCESS;
@@ -926,14 +926,14 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckAndSetInputOutputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckAndSetInputOutputInfo());
 
-    MC2_CHECK_GRAPH_STATUS(opName_, SetTilingCommonInfo());
+    MC2_CHECK_LOG_RET(opName_, SetTilingCommonInfo());
     // 调用量化Matmul的tiling方法进行切分
-    MC2_CHECK_GRAPH_STATUS(opName_, DoQuantGMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoQuantGMMTiling());
     // hccl的tiling参数赋值处理
-    MC2_CHECK_GRAPH_STATUS(opName_, SetHcclTiling());
-    MC2_CHECK_GRAPH_STATUS(opName_, SetGmmA2avWorkspaceInfo());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetGmmA2avWorkspaceInfo());
     return ge::GRAPH_SUCCESS;
 }
 

@@ -162,7 +162,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
     }                                                                                                           \
   } while (0)
 // MC2_CHECK_GRAPH_STATUS — 检查 graphStatus 返回值为 0，上报 EZ9999
-#define MC2_CHECK_GRAPH_STATUS(opName, callExpr)                                              \
+#define MC2_CHECK_LOG_RET(opName, callExpr)                                              \
     do {                                                                                       \
         const ge::graphStatus _mc2_gs_ = (callExpr);                                           \
         if (_mc2_gs_ != 0) {                                                                   \
@@ -172,7 +172,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
     } while (0)
 
 // MC2_CHECK_NOTNULL — 空指针检查，上报 EZ0004
-#define MC2_CHECK_NOTNULL(opName, ptr)                                                         \
+#define MC2_CHECK_NOTNULL_RET(opName, ptr)                                                         \
     do {                                                                                       \
         if (unlikely((ptr) == nullptr)) {                                                      \
             OP_LOGE_WITH_INVALID_INPUT(opName, #ptr);                                          \
@@ -181,7 +181,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
     } while (0)
 
 // MC2_CHECK_TRUE — 布尔条件断言，上报 EZ9999
-#define MC2_CHECK_TRUE(opName, condition)                                                      \
+#define MC2_CHECK_TRUE_RET(opName, condition)                                                      \
     do {                                                                                       \
         if (unlikely(!(condition))) {                                                          \
             OP_LOGE(opName, "assert %s failed", #condition);                                   \
@@ -190,7 +190,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
     } while (0)
 
 // MC2_CHECK_SUCCESS — 检查返回值 == ge::SUCCESS，上报 EZ9999
-#define MC2_CHECK_SUCCESS(opName, callExpr)                                                    \
+#define MC2_CHECK_SUCCESS_RET(opName, callExpr)                                                    \
     do {                                                                                       \
         const auto _mc2_ret_ = (callExpr);                                                     \
         if (_mc2_ret_ != ge::SUCCESS) {                                                        \
@@ -200,7 +200,7 @@ inline const char *ConvertStringToCstr(const std::string &str) { return str.c_st
     } while (0)
 
 // MC2_CHECK_EQ_ERR — 等值断言，返回 ::ErrorResult()，上报 EZ9999
-#define MC2_CHECK_EQ_ERR(opName, x, y)                                                         \
+#define MC2_CHECK_EQ_RET(opName, x, y)                                                         \
     do {                                                                                       \
         const auto &_mc2_x_ = (x);                                                             \
         const auto &_mc2_y_ = (y);                                                             \
@@ -271,11 +271,11 @@ namespace optiling {
 #define OPS_LOG_D(opName, ...)
 #define CUBE_INNER_ERR_REPORT(op_name, err_msg, ...)
 #define VECTOR_INFER_SHAPE_INNER_ERR_REPORT(opName, err_msg)
-#define MC2_CHECK_GRAPH_STATUS(opName, callExpr)
-#define MC2_CHECK_NOTNULL(opName, ptr)
-#define MC2_CHECK_TRUE(opName, condition)
-#define MC2_CHECK_SUCCESS(opName, callExpr)
-#define MC2_CHECK_EQ_ERR(opName, x, y)
+#define MC2_CHECK_LOG_RET(opName, callExpr)
+#define MC2_CHECK_NOTNULL_RET(opName, ptr)
+#define MC2_CHECK_TRUE_RET(opName, condition)
+#define MC2_CHECK_SUCCESS_RET(opName, callExpr)
+#define MC2_CHECK_EQ_RET(opName, x, y)
 #define OPS_REPORT_VECTOR_INNER_ERR(opName, ...)
 #define OPS_REPORT_CUBE_INNER_ERR(opName, ...)
 #define CUBE_CALL_ERR_REPORT(op_name, err_msg, ...)

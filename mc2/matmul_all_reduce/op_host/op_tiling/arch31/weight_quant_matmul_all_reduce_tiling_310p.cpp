@@ -65,7 +65,7 @@ void WeightQuantMatmulAllReduceTiling310P::UpdateCommOffset()
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckA16W8());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W8());
     DoRCSTiling();
     DoSplitMTiling();
     weightQuantMatmulAllReduceTilingData_.tilematmulTiling.cubeBlockDimM = 1;
@@ -77,7 +77,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoOpTiling()
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
-    MC2_CHECK_GRAPH_STATUS(opName_, DoWeightQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoWeightQuantTiling());
     DoAllReduceTiling();
     UpdateCommOffset();
     return ge::GRAPH_SUCCESS;
@@ -129,7 +129,7 @@ uint64_t WeightQuantMatmulAllReduceTiling310P::GetTilingKey() const
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling310P::GetWorkspaceSize()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
     OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
@@ -179,7 +179,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    MC2_CHECK_GRAPH_STATUS(opName_, ret); 
+    MC2_CHECK_LOG_RET(opName_, ret); 
     
     return ge::GRAPH_SUCCESS;
 }
@@ -216,7 +216,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
         return res;
     } else {
         OP_LOGI(opName_, "DoWeightQuantTiling tailMValue_:%lu", tailMValue_);
-        MC2_CHECK_GRAPH_STATUS(opName_, mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
         tileTilingKey_ = GET_TPL_TILING_KEY(
             static_cast<uint64_t>(ASCEND_310P),

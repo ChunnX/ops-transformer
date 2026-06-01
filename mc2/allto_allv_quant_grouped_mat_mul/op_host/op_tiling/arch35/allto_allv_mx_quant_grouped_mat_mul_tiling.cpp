@@ -122,16 +122,16 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), gmmHelper.Process());
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->gmmQuantTilingData);
     }
     // mm group matmul tiling
     if (bs_ != 0) {
         AlltoAllvMXQuantGmmTilingHelper mmHelper(*this);
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_));
-        MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), mmHelper.Process());
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->mmQuantTilingData);
     }
@@ -546,8 +546,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint
 
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::Process()
 {
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), DoOpTiling());
-    MC2_CHECK_GRAPH_STATUS(context_->GetNodeName(), DoLibApiTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoOpTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 

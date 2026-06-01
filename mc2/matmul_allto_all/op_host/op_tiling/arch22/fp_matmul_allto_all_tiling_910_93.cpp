@@ -183,10 +183,10 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckBsRankSizeRange()
  */
 ge::graphStatus FpMatmulAllToAllTilingBaseA3::InitTilingContextParameters()
 {
-    MC2_CHECK_GRAPH_STATUS(opName_, 
+    MC2_CHECK_LOG_RET(opName_, 
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo));
-    MC2_CHECK_GRAPH_STATUS(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo));
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::NON_QUANT; // 在isCapable判断过，直接赋值即可
     return ge::GRAPH_SUCCESS;
 }
@@ -199,15 +199,15 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::InitTilingContextParameters()
 ge::graphStatus FpMatmulAllToAllTilingBaseA3::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    MC2_CHECK_GRAPH_STATUS(opName_, CheckOpInputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
-    MC2_CHECK_GRAPH_STATUS(opName_, InitTilingContextParameters());
+    MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
-    MC2_CHECK_GRAPH_STATUS(opName_, TileCommAndCompute());
+    MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用非量化Matmul的tiling方法进行切分
-    MC2_CHECK_GRAPH_STATUS(opName_, DoMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoMMTiling());
     // hccl的tiling参数赋值处理
-    MC2_CHECK_GRAPH_STATUS(opName_, SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -220,7 +220,7 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::DoMMTiling()
 {
     contextInfo.args_.mValue = inferredInfo.tileM;
     FpMatmulAllToAllHelper mmTile(*this, localTilingData_.mc2MmV3TileTilingData);
-    MC2_CHECK_GRAPH_STATUS(opName_, mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (inferredInfo.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
