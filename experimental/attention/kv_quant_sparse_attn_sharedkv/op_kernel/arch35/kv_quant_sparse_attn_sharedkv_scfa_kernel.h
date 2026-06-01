@@ -320,6 +320,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     if (this->constInfo.needInit) {
         SyncAll<false>();
     }
+    ICachePreLoad(6);
     ProcessMainLoop();
 }
 
