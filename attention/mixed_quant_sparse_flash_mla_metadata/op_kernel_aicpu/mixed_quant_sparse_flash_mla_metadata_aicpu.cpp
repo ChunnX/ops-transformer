@@ -299,12 +299,12 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcSplitInfo(SplitContext &spli
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         if (hasOriKv_) {
-            uint32_t oriS2Size = GetOriS2SeqSize(bIdx);
-            splitInfo.oriS2BaseNum[bIdx] = (static_cast<int64_t>(oriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+            uint32_t curOriS2Size = GetOriS2SeqSize(bIdx);
+            splitInfo.oriS2BaseNum[bIdx] = (static_cast<int64_t>(curOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
         }
         if (hasCmpKv_) {
-            uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
-            splitInfo.cmpS2BaseNum[bIdx] = (static_cast<int64_t>(cmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+            uint32_t curCmpS2Size = GetCmpS2SeqSize(bIdx);
+            splitInfo.cmpS2BaseNum[bIdx] = (static_cast<int64_t>(curCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
         }
         if (splitInfo.s1GBaseNum[bIdx] != 0U &&
             (splitInfo.oriS2BaseNum[bIdx] != 0U || splitInfo.cmpS2BaseNum[bIdx] != 0U)) {

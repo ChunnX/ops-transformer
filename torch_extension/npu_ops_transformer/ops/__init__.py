@@ -31,4 +31,8 @@ from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
     convert_npu_quant_lightning_indexer_v2_metadata
 )
 from .sparse_flash_mla_metadata import npu_sparse_flash_mla_metadata
+from .graph_convert.graph_convert_sparse_flash_mla_metadata import convert_npu_sparse_flash_mla_metadata
 from .mixed_quant_sparse_flash_mla_metadata import npu_mixed_quant_sparse_flash_mla_metadata
+from .graph_convert.graph_convert_mixed_quant_sparse_flash_mla_metadata import (
+    convert_npu_mixed_quant_sparse_flash_mla_metadata
+)

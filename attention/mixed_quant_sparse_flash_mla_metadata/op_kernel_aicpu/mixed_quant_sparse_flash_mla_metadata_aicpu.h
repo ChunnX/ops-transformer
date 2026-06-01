@@ -331,7 +331,7 @@ private:
     uint32_t aivCoreNum_ = 48U;
 
     // attr
-    std::string socVersion_;
+    std::string socVersion_ = "";
     int64_t oriPreToken_ = 0;
     int64_t oriNextToken_ = 0;
     int64_t cmpPreToken_ = 0;
