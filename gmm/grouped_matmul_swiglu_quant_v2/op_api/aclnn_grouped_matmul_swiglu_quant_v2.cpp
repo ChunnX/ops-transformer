@@ -11,6 +11,8 @@
 #include <dlfcn.h>
 #include <new>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <unordered_map>
 #include "gmm_dsq_base.h"
 #include "grouped_matmul_swiglu_quant_v2_utils.h"
@@ -21,6 +23,10 @@
 using namespace op;
 using namespace gmm_dsq;
 using namespace gmm_dsq_base;
+
+namespace {
+constexpr char GMM_SWIGLU_QUANT_V2_OP_NAME[] = "grouped_matmul_swiglu_quant_v2";
+} // namespace
 
 class GmmDsqHandlerFactory {
 private:
@@ -39,7 +45,7 @@ public:
     }
 };
 
-static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* interfaceName,
+static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const char* opName,
     GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     GmmDsqHandlerFactory factory;
@@ -50,10 +56,13 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
         std::make_unique<gmmSwigluQuantV2::GroupedMatmulSwigluQuantBaseHandler>());
 
     if (auto *handler = factory.getHandler(npuArch)) {
-        handler->Initialize(interfaceName, params, workspaceSize, executor);
+        handler->Initialize(opName, params, workspaceSize, executor);
         return handler->Process();
     } else {
-         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "interfaceName failed: the soc verison is not support");
+        std::ostringstream reason;
+        reason << "SoC version " << static_cast<int32_t>(npuArch) << " is not supported";
+        std::string reasonStr = reason.str();
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], %s.", opName, reasonStr.c_str());
     }
 
     return ACLNN_ERR_PARAM_INVALID;
@@ -78,7 +87,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
                    DFX_OUT(output, outputScale));
     CHECK_COND((output != nullptr), ACLNN_ERR_PARAM_INVALID,
-               "Expected a proper Tensor but got null for argument output.");
+               "In op [%s], output must not be nullptr.", GMM_SWIGLU_QUANT_V2_OP_NAME);
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
         .SetXScale(xScale).SetSmoothScale(smoothScale)
@@ -91,7 +100,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(const aclTensor *x,
         .SetTuningConfig(tuningConfigOptional).Build();
 
     // 调用公共接口
-    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(__FUNCTION__, params, workspaceSize, executor);
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
+        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTensor *x,
@@ -118,10 +128,13 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         auto storgeShape = w->GetStorageShape();
         auto viewShape = w->GetViewShape();
         aclTensor *weightNZ = const_cast<aclTensor *>(w);
+        std::ostringstream gotShape;
+        gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
+        std::string gotShapeStr = gotShape.str();
         CHECK_COND((storgeShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-                   "aclnnGroupedMatmulSwigluQuantWeightNzV2, The dimnum of storageShape for second input (weight)"
-                 "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
-                   op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
+                   "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
+                   GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
+                   "storage shape dim num must be 5 when weight NZ v2");
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
@@ -138,10 +151,13 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
             auto storgeShape = w->GetStorageShape();
             auto viewShape = w->GetViewShape();
             aclTensor *weightNZ = const_cast<aclTensor *>(w);
+            std::ostringstream gotShape;
+            gotShape << op::ToString(storgeShape).GetString() << " with dim num " << storgeShape.GetDimNum();
+            std::string gotShapeStr = gotShape.str();
             CHECK_COND((storgeShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
-                       "aclnnGroupedMatmulSwigluQuantWeightNzV2, The dimnum of storageShape for second input (weight)"
-                     "must be 4. \n But StorageShape got %s , and dimNum is %lu.",
-                       op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
+                       "In op [%s], the shape of [%s] is not supported, got [%s]. Constraint:[%s]",
+                       GMM_SWIGLU_QUANT_V2_OP_NAME, "weight", gotShapeStr.c_str(),
+                       "storage shape dim num must be 4 when multi-weight NZ v2");
             // weight的StorageFormat无条件视为NZ
             weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             if (viewShape.GetDimNum() == MULTI_WEIGHT_NZ_DIM_LIMIT) {
@@ -166,7 +182,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         .SetTuningConfig(tuningConfigOptional).Build();
 
     // 调用公共接口
-    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(__FUNCTION__, params, workspaceSize, executor);
+    return aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
+        GMM_SWIGLU_QUANT_V2_OP_NAME, params, workspaceSize, executor);
 }
 
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
