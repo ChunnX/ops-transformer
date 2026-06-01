@@ -204,29 +204,21 @@ def {}({}, kernel_name="{}"{}):
         bisheng_path = os.path.dirname(bisheng)
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
-        tikcpp_path = os.path.realpath("/usr/local/Ascend/latest/compiler/tikcpp")
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api", "include"))
+        tikcpp_path = os.path.realpath("/usr/local/Ascend/cann/compiler/tikcpp")
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + tikcpp_path)
     options.append("-I" + os.path.join(tikcpp_path, "..", "..", "include"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "impl"))
     options.append("-I" + os.path.join(tikcpp_path, "tikcfw", "interface"))
-    options.append("-I" + os.path.join(tikcpp_path, "..", "ascendc", "act"))
+    options.append("-I" + os.path.join(tikcpp_path,
+        "..", "..", "..", "latest", os.uname().machine+"-linux", "asc", "atcos"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common"))
-    toolkit_path = os.environ.get('ASCEND_HOME_PATH')
-    if toolkit_path is None:
-        toolkit_path = os.path.realpath("/usr/local/Ascend/latest/")
-    options.append("-I" + toolkit_path + os.path.join("/", os.uname().machine +"-linux", "asc", "atcos"))
-    op_common_path = os.path.realpath(toolkit_path + "/include/op_common/")
-    options.append("-I" + op_common_path)
-    op_common_path = os.path.realpath(toolkit_path + "/pkg_inc/op_common/")
-    options.append("-I" + op_common_path)
+
+    ascend_home_path = os.environ.get('ASCEND_HOME_PATH')
+    if ascend_home_path is None:
+        ascend_home_path = os.path.realpath("/usr/local/Ascend/cann")
+    options.append("-I" + os.path.join(ascend_home_path, "pkg_inc", "op_common"))
     if "impl_mode" in locals():
         if impl_mode == "high_performance":
             options.append("-DHIGH_PERFORMANCE=1")
