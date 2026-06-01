@@ -159,6 +159,7 @@ public:
             }
             taskId++;
         }
+        cubeOp.Destroy();
         AscendC::CrossCoreSetFlag<2, PIPE_FIX>(FLAG_CUBE_POST);
     }
 
