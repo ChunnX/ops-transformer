@@ -77,7 +77,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
     OP_CHECK_IF(sharedInputOffset_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     "GroupedMatmulFinalizeRouting", "share_input_offset", std::to_string(sharedInputOffset_),
-                    "shareInputOffset must be less than or equal to outputBS"),
+                    "shareInputOffset must be less than or equal to batch(" + std::to_string(outputBs_) + ")"),
                 return false);
 
     OP_CHECK_IF(outputDtype > OUT_DTYPE_BF16_INDEX,
@@ -164,7 +164,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "bias", "nullptr",
-                                                      "bias from tensor is not nullptr, but bias from desc is nullptr"),
+                                                      "bias from tensor is nonnull, but bias from desc is nullptr"),
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
 
@@ -369,14 +369,16 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
         sharedInputLen_ > outputBs_,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "shared_input",
                                               std::to_string(sharedInputLen_),
-                                              "shared_input_len must be less than or equal to outputBS"),
+                                              "shared_input_len must be less than or equal to batch(" +
+                                                  std::to_string(outputBs_) + ")"),
         return false);
 
     OP_CHECK_IF(sharedInputOffset_ + sharedInputLen_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     "GroupedMatmulFinalizeRouting", "share_input_offset, shared_input",
                     std::to_string(sharedInputOffset_ + sharedInputLen_),
-                    "shareInputOffset plus sharedInputLen must be less than or equal to outputBS"),
+                    "shareInputOffset plus sharedInputLen must be less than or equal to batch(" +
+                        std::to_string(outputBs_) + ")"),
                 return false);
 
     auto LogitDesc = context_->GetOptionalInputDesc(LOGIT_INDEX);
@@ -395,13 +397,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "row_index",
                                                       std::to_string(rowIndex_),
-                                                      "rowIndex must be less than or equal to M"),
+                                                      "rowIndex must be less than or equal to M (" +
+                                                          std::to_string(inputParams_.mSize) + ")"),
                 return false);
 
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "output_bs",
                                                       std::to_string(outputBs_),
-                                                      "outputBS must be less than or equal to M"),
+                                                      "outputBS must be less than or equal to M (" +
+                                                          std::to_string(inputParams_.mSize) + ")"),
                 return false);
     return true;
 }

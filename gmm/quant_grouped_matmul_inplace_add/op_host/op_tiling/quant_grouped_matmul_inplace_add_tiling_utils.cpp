@@ -157,8 +157,9 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                     "QuantGroupedMatmulInplaceAdd", "scale1, groupNum",
-                    std::to_string(x1FirstDim) + ", " + std::to_string(inputParams.groupNum),
-                    "in T-T/T-C mode, first dim of scale1 must be equal to groupNum"),
+                    std::to_string(x1FirstDim),
+                    "in T-T/T-C mode, first dim of scale1 must be equal to groupNum[" +
+                        std::to_string(inputParams.groupNum) + "]"),
                 return false);
     if (x1ScaleDimNum == 2) {
         auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
@@ -179,14 +180,16 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("QuantGroupedMatmulInplaceAdd", "scale2",
                                                       std::to_string(x2FirstDim),
-                                                      "in T-T/T-C mode, first dim of scale2 must be equal to groupNum"),
+                                                      "in T-T/T-C mode, first dim of scale2 must be equal to groupNum[" +
+                                                          std::to_string(inputParams.groupNum) + "]"),
                 return false);
     if (x2ScaleDimNum == 2) {
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         "QuantGroupedMatmulInplaceAdd", "scale2", std::to_string(x2LastDim),
-                        "in T-T/T-C mode, last dim of scale2 must be equal to 1 or n"),
+                        "in T-T/T-C mode, last dim of scale2 must be equal to 1 or n[" +
+                            std::to_string(inputParams.nSize) + "]"),
                     return false);
     }
     return true;

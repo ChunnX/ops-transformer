@@ -545,7 +545,7 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     "GroupedMatmul", "weight", std::to_string(wShape[WEIGHTNZ_FIFTH_DIM]),
                     "when the format of weight is FRACTAL_NZ, fifth dimension must be " +
-                        std::to_string(weightNzLastDim)),
+                        std::to_string(weightNzLastDim) + " for " + (isWeight4Bit ? "4-bit" : "8-bit") + " weight"),
                 return false);
     OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
@@ -558,27 +558,31 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         "GroupedMatmul", "weight", std::to_string(wShapeDimThird),
-                        "when the format of weight is FRACTAL_NZ, third dimension must be equal to ceil(kSize/16)"),
+                        "when the format of weight is FRACTAL_NZ, third dimension must be equal to ceil(kSize/16) = " +
+                            std::to_string(CeilDiv(inputParams_.kSize, WEIGHTNZ_16))),
                     return false);
         OP_CHECK_IF(
             wShapeDimSecond != CeilDiv(inputParams_.nSize, weightNzLastDim),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 "GroupedMatmul", "weight", std::to_string(wShapeDimSecond),
                 "when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(nSize/" +
-                    std::to_string(weightNzLastDim) + ")"),
+                    std::to_string(weightNzLastDim) + ") = " +
+                    std::to_string(CeilDiv(inputParams_.nSize, weightNzLastDim))),
             return false);
     } else {
         OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_16),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         "GroupedMatmul", "weight", std::to_string(wShapeDimThird),
-                        "when the format of weight is FRACTAL_NZ, third dimension must be equal to ceil(nSize/16)"),
+                        "when the format of weight is FRACTAL_NZ, third dimension must be equal to ceil(nSize/16) = " +
+                            std::to_string(CeilDiv(inputParams_.nSize, WEIGHTNZ_16))),
                     return false);
         OP_CHECK_IF(
             wShapeDimSecond != CeilDiv(inputParams_.kSize, weightNzLastDim),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 "GroupedMatmul", "weight", std::to_string(wShapeDimSecond),
                 "when the format of weight is FRACTAL_NZ, second dimension must be equal to ceil(kSize/" +
-                    std::to_string(weightNzLastDim) + ")"),
+                    std::to_string(weightNzLastDim) + ") = " +
+                    std::to_string(CeilDiv(inputParams_.kSize, weightNzLastDim))),
             return false);
     }
     // 逻辑上最后两根轴对应 N/K：Ascend950 MXFP4 weight NZ 文档要求 n、k 不能为 1；此处对所有 NZ weight 统一约束
