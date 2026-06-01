@@ -146,7 +146,12 @@ public:
         uint32_t nowNIdx, uint32_t &strideKV, uint32_t &blockSize)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-        kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+        if constexpr (std::is_same_v<LayoutB, layout::zN>) {
+            constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(ElementB);
+            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * ELE_NUM_PER_C0;
+        } else {
+            kOffset = blockTableId * blockSize * strideKV + blockStartOffset * strideKV;
+        }
     }
 
     __aicore__ inline
