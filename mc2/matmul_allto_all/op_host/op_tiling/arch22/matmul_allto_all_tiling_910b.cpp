@@ -749,7 +749,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
     // 1. tilingData
     MatmulAlltoAllTilingData *tilingData = context_->GetTilingData<MatmulAlltoAllTilingData>();
     OPS_CHECK(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName_, "tilingData is nullptr."),
@@ -758,9 +758,9 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
     MatmulAlltoAllInfo &info = tilingData->matmulAlltoAllInfo;
     OPS_LOG_I(opName_, "MatmulAlltoAll get tilingData info.");
 
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo(info));
-    GE_ASSERT_GRAPH_SUCCESS(DoMmCommTiling(tilingData->cocTiling, info));
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling(tilingData));
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo(info));
+    MC2_CHECK_LOG_RET(opName_, DoMmCommTiling(tilingData->cocTiling, info));
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling(tilingData));
 
     // 2. tilingkey
     SetTilingKey();

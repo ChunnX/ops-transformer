@@ -50,7 +50,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoOpTiling()
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
-    GE_ASSERT_GRAPH_SUCCESS(DoUnQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoUnQuantTiling());
     DoAllReduceTiling();
     return ge::GRAPH_SUCCESS;
 }
@@ -100,7 +100,7 @@ uint64_t UnQuantMatmulAllReduceTiling310::GetTilingKey() const
 
 ge::graphStatus UnQuantMatmulAllReduceTiling310::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
     OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
@@ -141,7 +141,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret); 
+    MC2_CHECK_LOG_RET(opName_, ret); 
 
     return ge::GRAPH_SUCCESS;
 }
@@ -175,7 +175,7 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
         matmulTPLParam_ = mmTile.GetMatmulTPLParam();
         return res;
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             matmulTPLParam_ = mmTile.GetMatmulTPLParam();
 
