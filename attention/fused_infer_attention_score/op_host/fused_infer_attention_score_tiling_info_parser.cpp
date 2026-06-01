@@ -795,7 +795,7 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
 ge::graphStatus FiaInfoParser::GetBlockSize()
 {
     if (opParamInfo_.blockSize == nullptr) {
-        OP_LOGE(opName_, "The op [FusedInferAttentionScore] missing [blockSize] attribute"),
+        OP_LOGE(opName_, "The op [FusedInferAttentionScore] missing [blockSize] attribute");
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);
