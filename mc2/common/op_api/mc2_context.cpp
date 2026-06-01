@@ -262,6 +262,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
         void *tempBuffer = nullptr;
         hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+        OP_LOGD("Get HCCL buffer success, hcclBuffSize_ is: %u", hcclBuffSize_);
     } else {
         hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
     }

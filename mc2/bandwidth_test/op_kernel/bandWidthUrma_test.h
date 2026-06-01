@@ -335,9 +335,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     // 2. 将token数据写入目标rank的窗口
     GlobalTensor<XType> outTokenGT;
     outTokenGT.SetGlobalBuffer((__gm__ XType*)urmaLocaLAddr);
-    if (dstRankId == epRankId_) {
-        outTokenGT.SetGlobalBuffer((__gm__ XType*)remoteAddr); // 目标rank是epRankId，直接写入remoteAddr
-    }
+    // if (dstRankId == epRankId_) {
+    //     outTokenGT.SetGlobalBuffer((__gm__ XType*)remoteAddr); // 目标rank是epRankId，直接写入remoteAddr
+    // }
     
     DataCopyPadParams padParams = {true, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
@@ -353,10 +353,10 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
-    if (dstRankId != epRankId_) {
-        uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
-    }
+    // if (dstRankId != epRankId_) {
+    //     uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+    //     hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
+    // }
 }
 
 template <TemplateBandwidthTestTypeClass>
