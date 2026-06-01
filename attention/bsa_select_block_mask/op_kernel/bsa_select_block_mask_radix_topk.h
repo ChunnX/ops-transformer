@@ -510,8 +510,27 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batchIdx, uint32_t headIdx,
                                                                      GlobalTensor<OUT_T> &maskOutGm)
 {
-    // TODO: 实现 mask 输出拷贝
-    // 暂时为空函数，避免 507015 错误
+    uint64_t maskSizePerHead = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks;
+    uint64_t outputOffset = (static_cast<uint64_t>(batchIdx) * constInfo.numHeads + headIdx) * maskSizePerHead;
+
+    uint64_t copyTileLen = BSAMin(tileLen_, maskSizePerHead);
+
+    for (uint64_t offset = 0; offset < maskSizePerHead; offset += copyTileLen) {
+        uint64_t curLen = BSAMin(copyTileLen, maskSizePerHead - offset);
+        uint64_t alignLen = BSAAlignTo(curLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+
+        LocalTensor<uint8_t> maskLocal8 = maskLocalBuf_.Get<uint8_t>();
+
+        DataCopyPad(maskLocal8, maskTmpGmLocal[offset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curLen * sizeof(uint8_t)), 0, 0, 0),
+                    DataCopyPadExtParams<uint8_t>(false, 0,
+                        static_cast<uint8_t>(alignLen - curLen), 0));
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<OUT_T> maskLocalOut = maskLocal8.template ReinterpretCast<OUT_T>();
+        DataCopyPad(maskOutGm[outputOffset + offset], maskLocalOut,
+                    DataCopyParams(1, static_cast<uint16_t>(curLen * sizeof(OUT_T)), 0, 0));
+    }
 }
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
