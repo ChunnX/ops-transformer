@@ -22,7 +22,7 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV3MoeV3RowIdxGatherDropPad {
+class MoeV3RowIdxGatherDropPad {
 public:
     __aicore__ inline MoeV3RowIdxGatherDropPad(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale, GM_ADDR workspace,
