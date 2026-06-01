@@ -211,7 +211,11 @@ ge::graphStatus NCAITiling::ProcessQkv()
     if (CheckQkv() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    batchSize_ = ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0);
+    int64_t batchDim = ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0);
+    OP_CHECK_IF(batchDim <= 0 || batchDim > static_cast<int64_t>(UINT32_MAX),
+        OP_LOGE(ncaiContext_->opName, "batch size %ld is invalid", batchDim),
+        return ge::GRAPH_FAILED);
+    batchSize_ = static_cast<uint32_t>(batchDim);
     qHeadNum_ = static_cast<uint32_t>(*this->ncaiContext_->numHeads);
     kvHeadNum_ = static_cast<uint32_t>(*this->ncaiContext_->kvHeadNums);
     scaleValue_ = *this->ncaiContext_->scaleValue;
@@ -323,10 +327,13 @@ ge::graphStatus NCAITiling::FillTilingData()
     tilingData_->baseParams.set_compStrideD(compStrideD_);
     tilingData_->baseParams.set_ubSize(ubSize_);
     tilingData_->baseParams.set_workSpaceElemNum(workSpaceElemNum_);
-    tilingData_->baseParams.set_mm1ResWorkSpaceSize(mm1ResWorkSpaceSize_);
-    tilingData_->baseParams.set_mm2InWorkSpaceSize(mm2InWorkSpaceSize_);
-    tilingData_->baseParams.set_scoreInWorkSpaceSize(scoreInWorkSpaceSize_);
-    tilingData_->baseParams.set_topKInWorkSpaceSize(topKInWorkSpaceSize_);
+    OP_CHECK_IF(mm1ResWorkSpaceSize_ > UINT32_MAX || mm2InWorkSpaceSize_ > UINT32_MAX ||
+        scoreInWorkSpaceSize_ > UINT32_MAX || topKInWorkSpaceSize_ > UINT32_MAX,
+        OP_LOGE(ncaiContext_->opName, "workspace size overflow"), return ge::GRAPH_FAILED);
+    tilingData_->baseParams.set_mm1ResWorkSpaceSize(static_cast<uint32_t>(mm1ResWorkSpaceSize_));
+    tilingData_->baseParams.set_mm2InWorkSpaceSize(static_cast<uint32_t>(mm2InWorkSpaceSize_));
+    tilingData_->baseParams.set_scoreInWorkSpaceSize(static_cast<uint32_t>(scoreInWorkSpaceSize_));
+    tilingData_->baseParams.set_topKInWorkSpaceSize(static_cast<uint32_t>(topKInWorkSpaceSize_));
 
     tilingData_->splitBNParams.set_coreNumUsed(coreNumUsed_);
     tilingData_->splitBNParams.set_kvHeadSplitSize(kvHeadSplitSize_);
@@ -364,11 +371,11 @@ ge::graphStatus NCAITiling::CalcWorkSpace()
     workSpaceSize_ = libapiSize_;
     blockDim_ = coreNumUsed_;
     workSpaceElemNum_ = rowNumSp * colNumSp;
-    mm1ResWorkSpaceSize_ = workSpaceElemNum_ * mm1ResElemSize * bufferNum * blockDim_;
+    mm1ResWorkSpaceSize_ = static_cast<uint64_t>(workSpaceElemNum_) * mm1ResElemSize * bufferNum * blockDim_;
 
-    mm2InWorkSpaceSize_ = workSpaceElemNum_ * mm2InElemSize * bufferNum * blockDim_;  // mm2In开db
-    scoreInWorkSpaceSize_ = workSpaceElemNum_ * scoreInElemSize * blockDim_;
-    topKInWorkSpaceSize_  = workSpaceElemNum_ * scoreInElemSize * blockDim_ / groupSize_;
+    mm2InWorkSpaceSize_ = static_cast<uint64_t>(workSpaceElemNum_) * mm2InElemSize * bufferNum * blockDim_;
+    scoreInWorkSpaceSize_ = static_cast<uint64_t>(workSpaceElemNum_) * scoreInElemSize * blockDim_;
+    topKInWorkSpaceSize_ = static_cast<uint64_t>(workSpaceElemNum_) * scoreInElemSize * blockDim_ / groupSize_;
 
     workSpaceSize_ += mm1ResWorkSpaceSize_ + mm2InWorkSpaceSize_ + scoreInWorkSpaceSize_ + topKInWorkSpaceSize_;
     if (ncaiContext_->workSpaces) {

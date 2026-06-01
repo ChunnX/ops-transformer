@@ -212,7 +212,7 @@ private:
     uint32_t aivNum_ = 0;
     uint32_t aicNum_ = 0;
     uint32_t libapiSize_ = 0;
-    uint32_t workSpaceSize_ = 0;
+    uint64_t workSpaceSize_ = 0;
     uint64_t ubSize_ = 0;
 
     uint32_t bnTotalSize_ = 0;
@@ -225,10 +225,10 @@ private:
     uint32_t sInnerLoopTimes_ = 0;
 
     uint32_t workSpaceElemNum_ = 0;
-    uint32_t mm1ResWorkSpaceSize_ = 0;
-    uint32_t mm2InWorkSpaceSize_ = 0;
-    uint32_t scoreInWorkSpaceSize_ = 0;
-    uint32_t topKInWorkSpaceSize_ = 0;
+    uint64_t mm1ResWorkSpaceSize_ = 0;
+    uint64_t mm2InWorkSpaceSize_ = 0;
+    uint64_t scoreInWorkSpaceSize_ = 0;
+    uint64_t topKInWorkSpaceSize_ = 0;
 
     uint32_t rowLenPerHeadCore_ = 0;
     uint32_t rowLenPerTailCore_ = 0;
