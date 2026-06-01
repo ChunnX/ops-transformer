@@ -37,11 +37,11 @@ namespace fallback
                  return ge::GRAPH_FAILED);
 
         const auto expertIds = host_api_ctx->GetInputTensor(static_cast<size_t>(IDX_IN_EXPERT_IDS));
-        OPS_CHECK(expertIds == nullptr, OP_LOGE("MoeUpdateExpertFallback", "expertIds is null"),
+        OPS_CHECK(expertIds == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "expertIds"),
                  return ge::GRAPH_FAILED);
 
         const auto eplbTable = host_api_ctx->GetInputTensor(static_cast<size_t>(IDX_IN_EPLB_TABLE));
-        OPS_CHECK(eplbTable == nullptr, OP_LOGE("MoeUpdateExpertFallback", "eplbTable is null"),
+        OPS_CHECK(eplbTable == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "eplbTable"),
                  return ge::GRAPH_FAILED);
 
         const auto expertScales = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(IDX_IN_EXPERT_SCALES));
@@ -50,12 +50,13 @@ namespace fallback
         const auto activeMask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(IDX_IN_ACTIVE_MASK));
 
         const auto balancedExpertIds = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_EXPERT_IDS));
-        OPS_CHECK(balancedExpertIds == nullptr, OP_LOGE("MoeUpdateExpertFallback", "balancedExpertIds is null"),
-                 return ge::GRAPH_FAILED);
+        OPS_CHECK(balancedExpertIds == nullptr,
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedExpertIds"),
+            return ge::GRAPH_FAILED);
 
         const auto balancedActiveMask = host_api_ctx->GetOutputTensor(static_cast<size_t>(IDX_OUT_ACTIVE_MASK));
         OPS_CHECK(balancedActiveMask == nullptr,
-            OP_LOGE("MoeUpdateExpertFallback", "balancedActiveMask is null"),
+            OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balancedActiveMask"),
             return ge::GRAPH_FAILED);
 
         const auto attrs = host_api_ctx->GetAttrs();
