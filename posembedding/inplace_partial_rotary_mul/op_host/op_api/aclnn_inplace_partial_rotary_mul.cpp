@@ -24,21 +24,21 @@ extern "C" {
 #endif
 
 static aclnnStatus InplacePartialRotaryMulCommonProcess(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
-                                                         int64_t mode, const aclIntArray *partialSlice,
+                                                         int64_t rotary_mode, const aclIntArray *partialSlice,
                                                          aclOpExecutor *executor)
 {
-    auto result = l0op::InplacePartialRotaryMul(x, cos, sin, mode, partialSlice, executor);
+    auto result = l0op::InplacePartialRotaryMul(x, cos, sin, rotary_mode, partialSlice, executor);
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos, const aclTensor* sin,
-                                                          int64_t mode, const aclIntArray *partialSlice,
+                                                          int64_t rotary_mode, const aclIntArray *partialSlice,
                                                           uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnInplacePartialRotaryMul,
-        DFX_IN(x, cos, sin, mode, partialSlice),
+        DFX_IN(x, cos, sin, rotary_mode, partialSlice),
         DFX_OUT(x));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -50,7 +50,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, con
         return ACLNN_SUCCESS;
     }
 
-    auto ret = InplacePartialRotaryMulCommonProcess(x, cos, sin, mode, partialSlice, uniqueExecutor.get());
+    auto ret = InplacePartialRotaryMulCommonProcess(x, cos, sin, rotary_mode, partialSlice, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

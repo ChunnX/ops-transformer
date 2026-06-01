@@ -78,7 +78,7 @@ int main() {
     std::vector<int64_t> xShape = {1, 1, 1, 128};
     std::vector<int64_t> cosShape = {1, 1, 1, 128};
     std::vector<int64_t> sinShape = {1, 1, 1, 128};
-    int64_t mode = 1;
+    int64_t rotary_mode = 1;
     std::vector<int64_t> partialSlice = {0, 0};
 
     void* xDeviceAddr = nullptr;
@@ -125,7 +125,7 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用第一段接口
-    ret = aclnnInplacePartialRotaryMulGetWorkspaceSize(x, cos, sin, mode, partialSliceArray, &workspaceSize, &executor);
+    ret = aclnnInplacePartialRotaryMulGetWorkspaceSize(x, cos, sin, rotary_mode, partialSliceArray, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnInplacePartialRotaryMulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;

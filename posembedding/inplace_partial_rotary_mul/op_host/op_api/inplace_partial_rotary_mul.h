@@ -16,7 +16,7 @@
 
 namespace l0op {
 const aclTensor* InplacePartialRotaryMul(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
-    int64_t mode, const aclIntArray *partialSlice, aclOpExecutor *executor);
+    int64_t rotary_mode, const aclIntArray *partialSlice, aclOpExecutor *executor);
 
 }
 

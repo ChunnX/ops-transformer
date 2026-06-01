@@ -23,20 +23,20 @@ namespace l0op {
 OP_TYPE_REGISTER(InplacePartialRotaryMul);
 
 const aclTensor *InplacePartialRotaryMul(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
-    int64_t mode, const aclIntArray *partialSlice, aclOpExecutor *executor)
+    int64_t rotary_mode, const aclIntArray *partialSlice, aclOpExecutor *executor)
 {
-    L0_DFX(InplacePartialRotaryMul, x, cos, sin, mode, partialSlice);
+    L0_DFX(InplacePartialRotaryMul, x, cos, sin, rotary_mode, partialSlice);
     DataType outType = x->GetDataType();
     Format format = x->GetStorageFormat();
     auto output = executor->AllocTensor(outType, format, format);
 
     auto ret = INFER_SHAPE(InplacePartialRotaryMul,
         OP_INPUT(x, cos, sin), OP_OUTPUT(output),
-        OP_ATTR(mode, partialSlice));
+        OP_ATTR(rotary_mode, partialSlice));
     OP_CHECK_INFERSHAPE(ret != ACLNN_SUCCESS, return nullptr, "InplacePartialRotaryMul InferShape failed.");
     ret = ADD_TO_LAUNCHER_LIST_AICORE(InplacePartialRotaryMul,
         OP_INPUT(x, cos, sin), OP_OUTPUT(output),
-        OP_ATTR(mode, partialSlice));
+        OP_ATTR(rotary_mode, partialSlice));
     OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
         "InplacePartialRotaryMul ADD_TO_LAUNCHER_LIST_AICORE failed.");
     return output;
