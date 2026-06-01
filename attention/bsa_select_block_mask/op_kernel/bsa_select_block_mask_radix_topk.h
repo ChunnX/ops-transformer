@@ -147,12 +147,55 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
-    AscendC::printf("STEP6.1: ProcessRadixTopKAndWriteMask baseline (empty)\n");
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("STEP6.2: ProcessRadixTopKAndWriteMask start, sparsityMode=%d\n",
+                        static_cast<int32_t>(constInfo.sparsityMode));
+    }
+
+    if (constInfo.sparsityMode == BSASparseMode::BottomK) {
+        NegateAttnScore();
+    }
+
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("STEP6.2: NegateAttnScore done (or skipped for TopK)\n");
+    }
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
 {
+    for (uint64_t tileIdx = 0; tileIdx < tileNum_; tileIdx++) {
+        uint64_t curTileLen = BSAMin(tileLen_, sortLen_ - tileIdx * tileLen_);
+        uint64_t tileGmOffset = tileIdx * tileLen_;
+
+        LocalTensor<IN_T> xLocal = xBuf0_.Get<IN_T>();
+        uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+
+        DataCopyPad(xLocal, attnScoreGmLocal[tileGmOffset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(IN_T)), 0, 0, 0),
+                    DataCopyPadExtParams<IN_T>(false, 0,
+                        static_cast<uint8_t>(alignLen - curTileLen), 0));
+        PipeBarrier<PIPE_V>();
+
+        if (GetBlockIdx() == 0 && tileIdx == 0) {
+            AscendC::printf("STEP6.2: NegateAttnScore before Muls, tileLen=%lu\n", curTileLen);
+        }
+
+        if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
+            Muls(xLocal.template ReinterpretCast<half>(),
+                 xLocal.template ReinterpretCast<half>(), (half)-1, alignLen);
+        } else {
+            Muls(xLocal, xLocal, (IN_T)-1, alignLen);
+        }
+        PipeBarrier<PIPE_V>();
+
+        DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
+                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(IN_T)), 0, 0));
+
+        if (GetBlockIdx() == 0 && tileIdx == 0) {
+            AscendC::printf("STEP6.2: NegateAttnScore after writeback\n");
+        }
+    }
 }
 
 template <typename BSAT>
