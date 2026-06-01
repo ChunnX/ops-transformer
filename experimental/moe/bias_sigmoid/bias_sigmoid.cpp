@@ -35,17 +35,17 @@ public:
     __aicore__ inline void Init(const GM_ADDR expertX, GM_ADDR sigmoidOut, GM_ADDR biasOut, GM_ADDR expertBias,
                                 int32_t ROWS, int32_t per_count, int32_t block_cnt)
     {
-        BASE_SIZE = 32 / sizeof(T);          // 32B / 2B = 16 个数
-        BASE_SIZE_FP32 = 32 / sizeof(float); // 32B / 4B = 8 个数
+        BASE_SIZE = 32 / sizeof(T);
+        BASE_SIZE_FP32 = 32 / sizeof(float);
         core_id_ = GetBlockIdx();
-        TILE_LENGTH = per_count; // 254
-        per_dim_ = per_count;    // 254
-        block_cnt_ = block_cnt;  // blockdim =40 or b * s
+        TILE_LENGTH = per_count;
+        per_dim_ = per_count;
+        block_cnt_ = block_cnt;
 
         int32_t rows_per_core = int(ROWS / block_cnt_);
         rows_per_core_per_loop_ = 1;
 
-        align_cnt = DivCeil(per_dim_, BASE_SIZE) * BASE_SIZE; // 对齐到256
+        align_cnt = DivCeil(per_dim_, BASE_SIZE) * BASE_SIZE;
 
         if (rows_per_core >= 2) {
             int32_t limit_rows_per_core = UB_BUFFER_SIZE / (align_cnt * BUFFER_NUM * (3 * sizeof(T) + sizeof(float)));
@@ -55,19 +55,15 @@ public:
         tail_rows_last_loop_per_core_ = rows_per_core_per_loop_;
 
         /**计算loop_count**/
-        int32_t loop_count = ROWS / (rows_per_core_per_loop_ * block_cnt_); // 4578 / 30 * 40 = 3
+        int32_t loop_count = ROWS / (rows_per_core_per_loop_ * block_cnt_);
 
         full_loop_count_ = loop_count;
         full_rows_offset_ = full_loop_count_ * rows_per_core_per_loop_ * block_cnt_ * TILE_LENGTH;
         rows_offset_ = 0;
         int32_t tail_count = ROWS - (full_loop_count_ * block_cnt_ * rows_per_core_per_loop_);
-        // if(tail_count > 0)
-        // {
-        //     loop_count += 1;
-        // }
-        tail_rows_last_loop_per_core_ = tail_count / block_cnt_; // 24 or 0
+        tail_rows_last_loop_per_core_ = tail_count / block_cnt_;
 
-        tail_count = tail_count % block_cnt_; // 18 or 0
+        tail_count = tail_count % block_cnt_;
         tail_rows_offset_ = tail_count * (tail_rows_last_loop_per_core_ + 1) * TILE_LENGTH;
         if (core_id_ < tail_count || tail_rows_last_loop_per_core_) {
             tail_rows_last_loop_per_core_ += 1;
@@ -87,11 +83,10 @@ public:
         pipe.InitBuffer(outQueue_expertXout, BUFFER_NUM, rows_per_core_per_loop_ * align_cnt * sizeof(T));
         pipe.InitBuffer(outQueue_biasXout, 1, rows_per_core_per_loop_ * align_cnt * sizeof(T) * 2);
 
-        // pipe.InitBuffer(work_buf,  rows_per_core_per_loop_ * align_cnt  * sizeof(float));   // input -> fp32
-        pipe.InitBuffer(work_buf2, rows_per_core_per_loop_ * align_cnt * sizeof(float)); // sigmoid out
+        pipe.InitBuffer(work_buf2, rows_per_core_per_loop_ * align_cnt * sizeof(float));
 
-        pipe.InitBuffer(work_buf1, align_cnt * sizeof(float));                           // bias fp32
-        pipe.InitBuffer(work_buf3, rows_per_core_per_loop_ * align_cnt * sizeof(float)); // broad bias fp32
+        pipe.InitBuffer(work_buf1, align_cnt * sizeof(float));
+        pipe.InitBuffer(work_buf3, rows_per_core_per_loop_ * align_cnt * sizeof(float));
     }
 
     __aicore__ inline void Process()
@@ -99,7 +94,7 @@ public:
         LocalTensor<T> expertBiasLocal = inQueue_expertBias.AllocTensor<T>();
         DataCopyParams copy_pas{1, (uint16_t)(TILE_LENGTH * sizeof(T)), 0, 0};
         DataCopyPadParams pad_pas;
-        DataCopyPad(expertBiasLocal, expertBias_Gm, copy_pas, pad_pas); // 填充到256个数
+        DataCopyPad(expertBiasLocal, expertBias_Gm, copy_pas, pad_pas);
         inQueue_expertBias.EnQue(expertBiasLocal);
         expertBiasLocal = inQueue_expertBias.DeQue<T>();
         LocalTensor<float> expertBiasfp32Local = work_buf1.Get<float>();
@@ -113,8 +108,8 @@ public:
         inQueue_expertBias.FreeTensor(expertBiasLocal);
 
         broadcast_biasfp32Local_ = work_buf3.Get<float>();
-        uint32_t srcshape[2] = {(uint32_t)1, (uint32_t)align_cnt};                       // 1*256
-        uint32_t dstshape[2] = {(uint32_t)rows_per_core_per_loop_, (uint32_t)align_cnt}; // n * 256
+        uint32_t srcshape[2] = {(uint32_t)1, (uint32_t)align_cnt};
+        uint32_t dstshape[2] = {(uint32_t)rows_per_core_per_loop_, (uint32_t)align_cnt};
         Broadcast<float, 2, 0>(broadcast_biasfp32Local_, expertBiasfp32Local, dstshape, srcshape);
         work_buf1.FreeTensor(expertBiasfp32Local);
 
@@ -133,10 +128,8 @@ private:
         global_core_index_ = loop_cnt * block_cnt_ + core_id_;
         if (loop_cnt < full_loop_count_) {
             rows_offset_ = global_core_index_ * rows_per_core_per_loop_ * TILE_LENGTH;
-
-        } else // tail loop
-        {
-            rows_per_core_per_loop_ = tail_rows_last_loop_per_core_; // 25 or 24
+        } else {
+            rows_per_core_per_loop_ = tail_rows_last_loop_per_core_;
 
             if (core_id_ < tail_count_) {
                 rows_offset_ = full_rows_offset_ + core_id_ * rows_per_core_per_loop_ * TILE_LENGTH;
@@ -151,7 +144,7 @@ private:
         DataCopyParams copy_pas{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0, 0};
         DataCopyPadParams pad_pas{
             true, 0, uint8_t(align_cnt - TILE_LENGTH),
-            0}; // pad: true, leftpading元素个数： 0， rightpadding元素个数：2 or 4(25B)， paddingvalue: 0
+            0};
         DataCopyPad(expertXLocal, expertX_Gm[rows_offset_], copy_pas, pad_pas);
 
         inQueue_expertX.EnQue(expertXLocal);
@@ -159,13 +152,12 @@ private:
 
     __aicore__ inline void Compute(int32_t loop_cnt)
     {
-        LocalTensor<T> expertXLocal = inQueue_expertX.DeQue<T>();              // rows * 256
-        LocalTensor<T> expertXoutLocal = outQueue_expertXout.AllocTensor<T>(); // 16 * rows
-        LocalTensor<T> biasXoutLocal = outQueue_biasXout.AllocTensor<T>();     // 16 * rows
-        // LocalTensor<float> expertXfp32Local = work_buf.Get<float>();
+        LocalTensor<T> expertXLocal = inQueue_expertX.DeQue<T>();
+        LocalTensor<T> expertXoutLocal = outQueue_expertXout.AllocTensor<T>();
+        LocalTensor<T> biasXoutLocal = outQueue_biasXout.AllocTensor<T>();
         LocalTensor<float> sigmoidOutLocal = work_buf2.Get<float>();
 
-        LocalTensor<float> expertXfp32Local = biasXoutLocal.template ReinterpretCast<float>(); // 16 * rows
+        LocalTensor<float> expertXfp32Local = biasXoutLocal.template ReinterpretCast<float>();
 
         if constexpr (std::is_same<T, float>::value) {
             LocalTensor<float> expertXLocal_fp32 = expertXLocal.template ReinterpretCast<float>();
@@ -185,7 +177,6 @@ private:
         outQueue_expertXout.EnQue<T>(expertXoutLocal);
         outQueue_biasXout.EnQue<T>(biasXoutLocal);
 
-        // work_buf.FreeTensor(expertXfp32Local);
         work_buf2.FreeTensor(sigmoidOutLocal);
         inQueue_expertX.FreeTensor(expertXLocal);
     }
@@ -195,11 +186,11 @@ private:
         LocalTensor<T> expertXoutLocal = outQueue_expertXout.DeQue<T>();
         LocalTensor<T> biasXoutLocal = outQueue_biasXout.DeQue<T>();
         DataCopyParams copyParams{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0,
-                                  0}; // 拷贝回n * 254 个数
+                                  0};
         DataCopyPad(sigmoidOut_Gm[rows_offset_], expertXoutLocal, copyParams);
 
         DataCopyParams copyParams1{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0,
-                                   0}; // 拷贝回n * 254 个数
+                                   0};
         DataCopyPad(biasOut_Gm[rows_offset_], biasXoutLocal, copyParams1);
 
         outQueue_expertXout.FreeTensor(expertXoutLocal);
@@ -255,8 +246,8 @@ void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &e
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
     auto acl_call = [=]() -> int {
         bias_sigmoid_launch((uint8_t *)expertX.data_ptr(), (uint8_t *)sigmoidOut.data_ptr(),
-                            (uint8_t *)biasOut.data_ptr(), (uint8_t *)expertBias.data_ptr(), expertX.size(0), expertX.size(1), blockDim, stream,
-                            expertX.scalar_type() == at::kHalf ? 1 : 27);
+                            (uint8_t *)biasOut.data_ptr(), (uint8_t *)expertBias.data_ptr(), expertX.size(0),
+                            expertX.size(1), blockDim, stream, expertX.scalar_type() == at::kHalf ? 1 : 27);
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("BiasSigmoid", acl_call);
