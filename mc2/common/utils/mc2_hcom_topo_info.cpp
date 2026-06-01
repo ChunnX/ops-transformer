@@ -20,6 +20,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "ops_legacy/op_tiling/hcom_topo_info.h"
 #include "mc2_tiling_utils.h"
+#include "asc_devkit_version.h"
 #ifndef BUILD_OPEN_PROJECT
 #include "hcom/hcom_topo_info.h"
 #endif
@@ -29,13 +30,13 @@ namespace {
 }
 
 namespace Mc2Hcom {
-#if defined(ASC_DEVKIT_VERSION_NUM) && (ASC_DEVKIT_VERSION_NUM >= 90000000)
+#if ASC_DEVKIT_MAJOR>=9
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcclCommGetHandleWithName";
 #else
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcomGetCommHandleByGroup";
 #endif
 #ifdef BUILD_OPEN_PROJECT
-const std::string HCCL_GET_RANK_SIZE_NAME = "HcclGetRankSize";
+const std::string HCOM_GET_RANK_SIZE_EX = "HcomGetRankSizeEx";
 const std::string HCCL_GET_TOPO_TYPE_NAME = "HcclRankGraphGetTopoTypeByLayer";
 #else
 const std::string HCCL_GET_NET_LAYERS_NAME = "HcclRankGraphGetLayers";
@@ -83,7 +84,7 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
 
     getCommHandle_ = GetHcclLibFunc<FuncGetHandle>(handle_, HCOM_GET_COMM_FUNC_NAME);
 #ifdef BUILD_OPEN_PROJECT
-    getRankSize_ = GetHcclLibFunc<FuncGetRankSize>(handle_, HCCL_GET_RANK_SIZE_NAME);
+    getRankSizeEx_ = GetHcclLibFunc<FuncGetRankSizeEx>(handle_, HCOM_GET_RANK_SIZE_EX);
     getTopoTypeByLayer_ = GetHcclLibFunc<FuncGetTopoTypeByLayer>(handle_, HCCL_GET_TOPO_TYPE_NAME);
 #else
     getNetLayers_ = GetHcclLibFunc<FuncGetNetLayers>(handle_, HCCL_GET_NET_LAYERS_NAME);
@@ -93,11 +94,11 @@ MC2HcomTopology::MC2HcomTopology(const char *libPath)
     getHcclBuffer_ = GetHcclLibFunc<FuncGetHcclBuffer>(handle_, COMM_GET_HCCL_BUFFER_NAME);
 
 #ifdef BUILD_OPEN_PROJECT
-    if (getCommHandle_ == nullptr || getRankSize_ == nullptr || getTopoTypeByLayer_ == nullptr ||
+    if (getCommHandle_ == nullptr || getRankSizeEx_ == nullptr || getTopoTypeByLayer_ == nullptr ||
         getHcclBuffer_ == nullptr) {
         OP_LOGE("", "Lib load new topo functions failed.");
         getCommHandle_ = nullptr;
-        getRankSize_ = nullptr;
+        getRankSizeEx_ = nullptr;
         getTopoTypeByLayer_ = nullptr;
         getHcclBuffer_ = nullptr;
         return;
@@ -137,17 +138,11 @@ HcclResult MC2HcomTopology::CallHcomGetCommHandleByGroup(const char *group, Hccl
 #ifdef BUILD_OPEN_PROJECT
 HcclResult MC2HcomTopology::CallHcomGetRankSizeEx(const char *group, uint32_t *ranksize, uint32_t flag) const
 {
-    if (getRankSize_ == nullptr) {
-        OP_LOGE("", "Failed to get rank size, func load failed.");
-        return HCCL_E_PTR;
+    if (getRankSizeEx_ == nullptr) {	 
+        OP_LOGE("", "Failed to get inst size, func load failed.");
+        return HCCL_E_PTR;	 
     }
-    HcclComm comm;
-    HcclResult ret = CallHcomGetCommHandleByGroup(group, &comm);
-    if (ret != HCCL_SUCCESS) {
-        OP_LOGE("", "Failed to get comm handle for rank size.");
-        return ret;
-    }
-    return static_cast<HcclResult>(getRankSize_(comm, ranksize));
+    return static_cast<HcclResult>(getRankSizeEx_(group, ranksize, flag));
 }
 
 HcclResult MC2HcomTopology::CallHcomGetL0TopoTypeEx(const char *group, CommTopo *topoType, uint32_t flag) const

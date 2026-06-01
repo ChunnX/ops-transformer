@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
+set(CANN_VERSION_PATH ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/version)
 if(BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
@@ -40,6 +41,9 @@ if(BUILD_OPEN_PROJECT)
     if(OPTILING_SRCS)
         add_tiling_modules()
         target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS})
+        target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE
+            ${CANN_VERSION_PATH}
+        )
         if(UT_TEST_ALL OR OP_HOST_UT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
