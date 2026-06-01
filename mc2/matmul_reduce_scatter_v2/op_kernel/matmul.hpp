@@ -175,7 +175,7 @@ public:
                     break;
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
-                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = static_cast<int64_t>(dstRankIdx) * finalM * kAlign;
                 int32_t inRankIdx = loopIdx / params.rankSize;
                 GemmCoord blockIdxCoord = GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops,
                     params.swizzlDirect, params.swizzlCount);
@@ -198,9 +198,9 @@ public:
                 } else {
                     layoutGmDst = params.layoutPeerMem;
                     gmDstHalf = gmPeerMemHalf;
-                    gmOffsetC = (flagIdx * loopNumPerComm + dstRankIdx * (loopNumPerComm / params.rankSize) +
-                                 (loopIdx % loopNumPerComm) / params.rankSize) *
-                                blockSize;
+                    gmOffsetC = (static_cast<int64_t>(flagIdx) * loopNumPerComm +
+                                dstRankIdx * (loopNumPerComm / params.rankSize) +
+                                (loopIdx % loopNumPerComm) / params.rankSize) * blockSize;
                 }
 
                 bool hasNextBlock = false;
