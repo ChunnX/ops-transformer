@@ -33,7 +33,7 @@ protected:
     ge::graphStatus CheckScaleShape() const override;
     ge::graphStatus CheckQuantMode() const override;
     ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) override;
-    void GetPermuteOutSize() override;
+    void SetWorkspaceInfo(uint64_t maxTokenNum) override;
 private:
     void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData,
         uint32_t expertNum) const;

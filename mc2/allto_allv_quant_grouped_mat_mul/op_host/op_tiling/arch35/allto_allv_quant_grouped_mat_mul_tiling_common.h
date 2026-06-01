@@ -76,13 +76,12 @@ protected:
     virtual ge::graphStatus CheckQuantMode() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus CheckScaleShape() const {return ge::GRAPH_SUCCESS;};
     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) {return ge::GRAPH_SUCCESS;};
-    virtual void GetPermuteOutSize() {};
+    virtual void SetWorkspaceInfo(uint64_t maxTokenNum) {};
     ge::graphStatus CheckInputNotNull() const;
     ge::graphStatus SetHcclTiling() const;
     void PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const;
     void PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const;
-    uint64_t permuteScaleOutSize_{0};
-    uint64_t permuteOutSize_{0};
+    uint64_t expertNum_{1};
 };
 }  // namespace optiling
 #endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
