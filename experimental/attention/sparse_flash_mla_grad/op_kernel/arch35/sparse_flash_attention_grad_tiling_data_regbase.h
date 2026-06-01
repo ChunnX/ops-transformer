@@ -45,6 +45,7 @@
      int64_t oriWinLeft;
      int64_t oriWinRight; 
      float scaleValue;
+     int64_t totalSize;
      int64_t selectedKWorkSpaceOffset;
      int64_t mm4ResWorkSpaceOffset;
      int64_t mm5ResWorkSpaceOffset;
@@ -67,6 +68,7 @@
      int64_t get_formerCoreProcessNNum() const {return formerCoreProcessNNum;}
      int64_t get_remainCoreProcessNNum() const {return remainCoreProcessNNum;}
      float get_scaleValue() const {return scaleValue;}
+     int64_t get_totalSize() const {return totalSize;}
      int64_t get_layout() const {return layout;}
      int32_t get_cmpSparseMode() const {return cmpSparseMode;}
      int32_t get_oriSparseMode() const {return oriSparseMode;}
@@ -94,6 +96,7 @@
      void set_formerCoreProcessNNum(int64_t formerCoreProcessNNumParam) { this->formerCoreProcessNNum = formerCoreProcessNNumParam; }
      void set_remainCoreProcessNNum(int64_t remainCoreProcessNNumParam) { this->remainCoreProcessNNum = remainCoreProcessNNumParam; }
      void set_scaleValue(float scaleValueParam) { this->scaleValue = scaleValueParam; }
+     void set_totalSize(int64_t totalSizeParam) { this->totalSize = totalSizeParam; }
      void set_layout(int64_t layoutParam) { this->layout = layoutParam; }
      void set_cmpSparseMode(int32_t cmpSparseModeParam) { this->cmpSparseMode = cmpSparseModeParam; }
      void set_oriSparseMode(int32_t oriSparseModeParam) { this->oriSparseMode = oriSparseModeParam; }

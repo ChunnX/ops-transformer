@@ -156,14 +156,16 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t selectBlockCount = std::max(static_cast<int64_t>(tmpData.ori_selected_block_count + tmpData.cmp_selected_block_count), static_cast<int64_t>(128));
+    int64_t selectBlockCount = 4096;
+    int64_t softmaxL1SelectBlockCount = std::max(static_cast<int64_t>(tmpData.ori_selected_block_count + tmpData.cmp_selected_block_count), static_cast<int64_t>(128));
+
     int64_t mm4WorkspaceLen = selectBlockCount * tmpData.d * B32;
     int64_t mm5WorkspaceLen = selectBlockCount * tmpData.d1 * B32;
     int64_t dSinkWorkspaceLen = tmpData.g * tmpData.n2 * B32;
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t softmaxL1WorkspaceLen = selectBlockCount * tmpData.g * B32 * coreNum;
+    int64_t softmaxL1WorkspaceLen = softmaxL1SelectBlockCount * tmpData.g * B32 * coreNum;
 
     int64_t dqWorkspaceLen = tmpData.dqWorkspaceLen;
     int64_t doriKVWorkspaceLen = tmpData.doriKVWorkspaceLen;
@@ -626,7 +628,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     } else {
-        auto ori_selected_block_count = 0;
+        auto ori_selected_block_count = tmpData.s2;
         baseParams_->set_oriselectedBlockCount(ori_selected_block_count);
         tmpData.ori_selected_block_count = ori_selected_block_count;
     }
@@ -644,7 +646,7 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     } else {
-        auto cmp_selected_block_count = 0;
+        auto cmp_selected_block_count = tmpData.s3;
         baseParams_->set_cmpselectedBlockCount(cmp_selected_block_count);
         tmpData.cmp_selected_block_count = cmp_selected_block_count;
     }
@@ -808,6 +810,8 @@ ge::graphStatus SparseFlashMlaGradBs1Regbase::GetBaseShapeInfo()
         OP_LOGE(context_, "SparseFlashMlaGrad the input shpae of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
+    int32_t nNums = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? tmpData.t1 : tmpData.b * tmpData.s1;
+    baseParams_->set_totalSize(nNums);
 
     return ge::GRAPH_SUCCESS;
 }

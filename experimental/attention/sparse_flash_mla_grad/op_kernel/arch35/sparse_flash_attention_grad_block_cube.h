@@ -217,46 +217,7 @@ __aicore__ inline GlobalTensor<INPUT_TYPE> FAGBlockCube<TEMPLATE_ARGS>::GetKVGlo
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::GetCubeVecSharedParams(FagRunInfo &runInfo)
 {
-    if (!runInfo.isSparse) {
-        return;
-    }
-    int32_t s2RealSize = 0;
-    SfagCVSharedParams sharedParams;
-    int32_t ssbufAddress1 = 0;
-    int32_t ssbufAddress2 = sizeof(SfagCVSharedParams);
-    int32_t ssbufAddress3 = 2 * sizeof(SfagCVSharedParams);
 
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15 + 16);
-    
-    auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress1);
-    auto tempTiling = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTiling = *tempTilingSSbuf;
-    s2RealSize = sharedParams.s2RealSize;
-
-    auto tempTilingSSbuf2 = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress2);
-    auto tempTiling2 = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTiling2 = *tempTilingSSbuf2;
-    s2RealSize += sharedParams.s2RealSize;
-
-    sharedParams.s2RealSize = s2RealSize;
-    auto tempTilingSSbuf3 = reinterpret_cast<__ssbuf__ int32_t*>(ssbufAddress3);
-    auto tempTiling3 = reinterpret_cast<int32_t *>(&sharedParams);
-    *tempTilingSSbuf3 = *tempTiling3;
-
-    CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15 + 16);
-    runInfo.commonRunInfo.s2RealSize = s2RealSize;
-    runInfo.actualSelCntOffset = runInfo.commonRunInfo.s2RealSize;
-
-    if (runInfo.commonRunInfo.s2RealSize < 128) {
-        if (!runInfo.isOriKV) {
-            runInfo.isNextS1IdxNoChange = false;
-        } else {
-            runInfo.isNextS1IdxNoChange = runInfo.actualCmpSelectedBlockCount > 0;
-            
-        }
-    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -566,6 +527,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
     if (runInfo.commonRunInfo.s2RealSize == 0) {
         return;
     }
+    event_t eventIDFIXToM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_M));
+    event_t eventIDMToFIX = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::M_FIX));
+    SetFlag<HardEvent::FIX_M>(eventIDFIXToM);    
     Buffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buffer = dSL1Buf.Get();
     constexpr uint32_t baseN = CUBE_BASEN;
     uint32_t nLoops = ((uint32_t)constInfo.dTotalSize + baseN - 1) / baseN; // 尾块处理
@@ -620,13 +584,15 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
             true,
             true
         };
+        WaitFlag<HardEvent::FIX_M>(eventIDFIXToM);
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(
             dSL1Buffer.GetTensor<INPUT_TYPE>(), qL1Tensor[queryL1Offset], l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
  
         if (!runInfo.isNextS1IdxNoChange) {
             qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         }
- 
+        SetFlag<HardEvent::M_FIX>(eventIDMToFIX);
+        WaitFlag<HardEvent::M_FIX>(eventIDMToFIX);
         dkL0CBuffer.Set<HardEvent::M_FIX>();
         dkL0CBuffer.Wait<HardEvent::M_FIX>();
  
@@ -644,7 +610,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
         Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[runInfo.mm4ResWsAddr + n * CUBE_BASEN], dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
 
         dkL0CBuffer.Set<HardEvent::FIX_M>();
+        SetFlag<HardEvent::FIX_M>(eventIDFIXToM);
     }
+    WaitFlag<HardEvent::FIX_M>(eventIDFIXToM);
 }
  
 TEMPLATES_DEF_NO_DEFAULT

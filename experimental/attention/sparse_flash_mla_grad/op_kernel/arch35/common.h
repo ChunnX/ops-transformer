@@ -179,6 +179,8 @@ struct FagConstInfo {
     int64_t cmpRatio = 1;
     int64_t halfGRealSize = 0;
     int64_t firstHalfGRealSize = 0;    
+    /** \brief metadata分核信息 */
+    uint32_t totalNum;
 };
 
 // fp8反量化因子
@@ -194,7 +196,9 @@ struct FagRunInfo {
     RunInfo<false> commonRunInfo{0};
 	QuantScaleInfo quantScaleInfo;
     int64_t sTaskId;
-    int64_t sTaskIdMod2;    
+    int64_t sTaskIdMod2;
+    int64_t deterTaskId;
+    int64_t deterTaskIdMod2;
     int64_t s2oIdx;
     int64_t s2CvBegin;
     int64_t s2CvEnd;
