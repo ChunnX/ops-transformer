@@ -578,6 +578,7 @@ struct ArgContext {
     char *layoutKvOptional { nullptr };
     bool hasOriKv { true };
     bool hasCmpKv { true };
+    int64_t batchInvariant { 0 };
     // output
     Tensor metadata {};
 };
@@ -693,6 +694,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BNBD
     context.hasOriKv = true;
     context.hasCmpKv = true;
+    context.batchInvariant = 0;
 
     if (!scenario.hasCuSeq && !scenario.hasSeqused) {
         context.batchSize = batchSize;
@@ -763,8 +765,8 @@ int main() {
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.batchSize, context.maxSeqlenQ,
         context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk, context.cmpRatio,
         context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft = 127, context.oriWinRight = 0,
-        context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.metadata.data,
-        &workspaceSize, &executor);
+        context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.batchInvariant,
+        context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 
@@ -794,25 +796,25 @@ int main() {
 
     for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
         printf("AIC Core%u\n", i);
-        printf("    Core Enable : %u\n", result.faData[i][FA_CORE_ENABLE_INDEX]);
-        printf("    Start BN2   : %u\n", result.faData[i][FA_BN2_START_INDEX]);
-        printf("    Start M     : %u\n", result.faData[i][FA_M_START_INDEX]);
-        printf("    Start S2    : %u\n", result.faData[i][FA_S2_START_INDEX]);
-        printf("    End BN2     : %u\n", result.faData[i][FA_BN2_END_INDEX]);
-        printf("    End M       : %u\n", result.faData[i][FA_M_END_INDEX]);
-        printf("    End S2      : %u\n", result.faData[i][FA_S2_END_INDEX]);
-        printf("    First Worksapce Index : %u\n", result.faData[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
-        printf("    Max S2 Block Num : %u\n", result.faData[i][FA_S2_MAX_NUM]);
+        printf("    Core Enable : %u\n", result.faMetadata[i][FA_CORE_ENABLE_INDEX]);
+        printf("    Start BN2   : %u\n", result.faMetadata[i][FA_BN2_START_INDEX]);
+        printf("    Start M     : %u\n", result.faMetadata[i][FA_M_START_INDEX]);
+        printf("    Start S2    : %u\n", result.faMetadata[i][FA_S2_START_INDEX]);
+        printf("    End BN2     : %u\n", result.faMetadata[i][FA_BN2_END_INDEX]);
+        printf("    End M       : %u\n", result.faMetadata[i][FA_M_END_INDEX]);
+        printf("    End S2      : %u\n", result.faMetadata[i][FA_S2_END_INDEX]);
+        printf("    First Worksapce Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
+        printf("    Max S2 Block Num : %u\n", result.faMetadata[i][FA_S2_MAX_NUM]);
     }
     for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
         printf("AIV Core%u\n", i);
-        printf("    Core Enable             : %u\n", result.fdData[i][FD_CORE_ENABLE_INDEX]);
-        printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][FD_BN2_IDX_INDEX]);
-        printf("    FD Task M Idx           : %u\n", result.fdData[i][FD_M_IDX_INDEX]);
-        printf("    FD Task S2 Idx          : %u\n", result.fdData[i][FD_WORKSPACE_IDX_INDEX]);
-        printf("    FD Task Workspace Num   : %u\n", result.fdData[i][FD_WORKSPACE_NUM_INDEX]);
-        printf("    FD Subtask M Start      : %u\n", result.fdData[i][FD_M_START_INDEX]);
-        printf("    FD Subtask M Num        : %u\n", result.fdData[i][FD_M_NUM_INDEX]);
+        printf("    Core Enable             : %u\n", result.fdMetadata[i][FD_CORE_ENABLE_INDEX]);
+        printf("    FD Task BN2 Idx         : %u\n", result.fdMetadata[i][FD_BN2_IDX_INDEX]);
+        printf("    FD Task M Idx           : %u\n", result.fdMetadata[i][FD_M_IDX_INDEX]);
+        printf("    FD Task S2 Idx          : %u\n", result.fdMetadata[i][FD_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Num   : %u\n", result.fdMetadata[i][FD_WORKSPACE_NUM_INDEX]);
+        printf("    FD Subtask M Start      : %u\n", result.fdMetadata[i][FD_M_START_INDEX]);
+        printf("    FD Subtask M Num        : %u\n", result.fdMetadata[i][FD_M_NUM_INDEX]);
     }
 
     return 0;
