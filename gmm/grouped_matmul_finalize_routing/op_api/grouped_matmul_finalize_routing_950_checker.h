@@ -17,7 +17,26 @@
 #include "util/math_util.h"
 #include "log/log.h"
 
+#include <sstream>
+
 namespace GmmFinalizeRouting {
+
+inline std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+inline std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+}
 
 #define GMMFR_CHECK_REPORT(cond, retExpr, reportExpr) \
     do {                                              \
@@ -229,7 +248,7 @@ public:
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         if (k <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                GMMFR_ACLNN_OP_NAME, "x", std::to_string(k),
+                GMMFR_ACLNN_OP_NAME, "x", ViewShapeToString(gmmParams_.x1),
                 "when the M or N value is not 0 [M=" + std::to_string(m) + ", N=" + std::to_string(n) +
                     "], axis K of x must be a positive number");
             return false;
@@ -301,7 +320,7 @@ public:
         if (kInWeight != k) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "x and weight",
-                "x K=" + std::to_string(k) + ", weight K=" + std::to_string(kInWeight),
+                "x=" + ViewShapeToString(gmmParams_.x1) + ", weight=" + ViewShapeToString(gmmParams_.x2),
                 "axis K of x must be equal to axis K of weight");
             return false;
         }
@@ -309,7 +328,7 @@ public:
         int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(ZERO_DIM);
         if (groupListLen != e) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                GMMFR_ACLNN_OP_NAME, "groupList", std::to_string(groupListLen),
+                GMMFR_ACLNN_OP_NAME, "groupList", ViewShapeToString(gmmParams_.groupList),
                 "the total number of elements of groupList must be equal to the number of experts in weight [" +
                     std::to_string(e) + "]");
             return false;
@@ -317,7 +336,7 @@ public:
         if (e > MAX_NUM_EXPERTS) {
             const char* quantModeStr = (quantMode_ == QuantMode::MX) ? "MX quant" : "pertoken quant";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                GMMFR_ACLNN_OP_NAME, "weight", std::to_string(e),
+                GMMFR_ACLNN_OP_NAME, "weight", ViewShapeToString(gmmParams_.x2),
                 "in " + std::string(quantModeStr) + ", e must be less than or equal to 1024");
             return false;
         }
@@ -335,18 +354,18 @@ public:
         DataType weightDtype = gmmParams_.x2->GetDataType();
         if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             if (!(k % MOD2 == 0)) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", std::to_string(k),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", ViewShapeToString(gmmParams_.x1),
                                                        "in MXFP4, k must be divisible by 2");
                 return false;
             }
             if (gmmParams_.transposeX2 == false && (n % MOD2 != 0)) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    GMMFR_ACLNN_OP_NAME, "weight", std::to_string(n),
+                    GMMFR_ACLNN_OP_NAME, "weight", ViewShapeToString(gmmParams_.x2),
                     "in MXFP4 and when x2 is not transposed, axis N of weight must be an even number");
                 return false;
             }
             if (k == MOD2) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", std::to_string(k),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(GMMFR_ACLNN_OP_NAME, "x", ViewShapeToString(gmmParams_.x1),
                                                        "in MXFP4, k cannot be 2");
                 return false;
             }

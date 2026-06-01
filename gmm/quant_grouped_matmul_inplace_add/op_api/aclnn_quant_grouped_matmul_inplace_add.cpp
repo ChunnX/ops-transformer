@@ -11,6 +11,7 @@
 
 #include <dlfcn.h>
 #include <new>
+#include <sstream>
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/contiguous.h"
@@ -43,6 +44,23 @@ extern "C" {
 
 namespace {
 constexpr const char *QGMM_INPLACE_ADD_ACLNN_OP_NAME = "aclnnQuantGroupedMatmulInplaceAdd";
+
+std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+}
 
 #define QGMM_INPLACE_ADD_CHECK_REPORT(cond, retExpr, reportExpr) \
     do {                                                         \
@@ -123,11 +141,11 @@ static aclnnStatus IsMxQuantDim(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddPara
     auto scale2LastDimValue = params.scale2->GetViewShape().GetDim(gmm::MX_SPLIT_K_SCALE_DIM - 1);
     QGMM_INPLACE_ADD_CHECK_REPORT(scale1LastDimValue == 2, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1",
-                                              std::to_string(scale1LastDimValue),
+                                              ViewShapeToString(params.scale1Optional),
                                               "in mx quant mode, last dim of scale1 must be equal to 2"));
     QGMM_INPLACE_ADD_CHECK_REPORT(scale2LastDimValue == 2, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2",
-                                              std::to_string(scale2LastDimValue),
+                                              ViewShapeToString(params.scale2),
                                               "in mx quant mode, last dim of scale2 must be equal to 2"));
     return ACLNN_SUCCESS;
 }
@@ -158,13 +176,13 @@ static aclnnStatus CheckShape(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
     auto yNDim = params.yRef->GetViewShape().GetDim(2);
 
     QGMM_INPLACE_ADD_CHECK_REPORT(mDim >= 0, return ACLNN_ERR_PARAM_INVALID,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", std::to_string(mDim),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", ViewShapeToString(params.x1),
                                               "axis M of x1 must be a positive number"));
 
     QGMM_INPLACE_ADD_CHECK_REPORT(aKDim == bKDim, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
-            "x1 K=" + std::to_string(aKDim) + ", x2 K=" + std::to_string(bKDim),
+            "x1=" + ViewShapeToString(params.x1) + ", x2=" + ViewShapeToString(params.x2),
             "axis K of x1 must be equal to axis K of x2"));
     QGMM_INPLACE_ADD_CHECK_REPORT(gDim == yGDim && mDim == yMDim && nDim == yNDim,
         return ACLNN_ERR_PARAM_INVALID,
@@ -335,8 +353,7 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(QGmmI
     QGMM_INPLACE_ADD_CHECK_REPORT(transposeX == true && transposeWeight == false, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
             QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1 and x2",
-            "transposeX1=" + std::string(transposeX ? "true" : "false") +
-                ", transposeX2=" + (transposeWeight ? "true" : "false"),
+            "x1=" + ViewShapeToString(params.x1) + ", x2=" + ViewShapeToString(params.x2),
             "when transpose of x1 is true and transpose of x2 is false, only this transposition combination is supported"));
 
     if (transposeX) {

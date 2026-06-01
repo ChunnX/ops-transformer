@@ -15,9 +15,28 @@
 #include "util/math_util.h"
 #include "log/log.h"
 
+#include <sstream>
+
 namespace gmmSwigluQuantV2 {
 
 using namespace gmm_dsq;
+
+inline std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+inline std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+}
 
 #define GMM_SWIGLU_CHECK_SHAPE(tensor, paramName, expectedShape, retExpr)                              \
     do {                                                                                               \
@@ -314,8 +333,8 @@ protected:
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "weightScale and weight",
-                "weightScale=" + std::string(transposeWeightScale ? "true" : "false") +
-                    ", weight=" + (transposeWeight ? "true" : "false"),
+                "weightScale=" + ViewShapeToString((*gmmDsqParams_.weightScale)[0]) +
+                    ", weight=" + ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "the transposition of weightScale must be equal to the transposition of weight");
             return false;
         }
@@ -343,8 +362,7 @@ protected:
         if (transposeX || transposeXScale) {
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "x and xScale",
-                "x=" + std::string(transposeX ? "true" : "false") +
-                    ", xScale=" + (transposeXScale ? "true" : "false"),
+                "x=" + ViewShapeToString(gmmDsqParams_.x) + ", xScale=" + ViewShapeToString(gmmDsqParams_.xScale),
                 "the transposition of x and xScale must be false");
             return false;
         }
@@ -374,7 +392,7 @@ protected:
         }
         if (transposeX) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "x",
-                                                  transposeX ? "true" : "false",
+                                                  ViewShapeToString(gmmDsqParams_.x),
                                                   "the transposition of x must be false");
             return false;
         }
@@ -432,7 +450,8 @@ protected:
             std::ostringstream constraint;
             constraint << "N must be even when " << scenario;
             std::string constraintStr = constraint.str();
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "weight", std::to_string(n),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GMM_SWIGLU_ACLNN_OP_NAME, "weight",
+                                                  ViewShapeToString((*gmmDsqParams_.weight)[0]),
                                                   "axis N of weight must be an even number");
             return false;
         }
@@ -574,7 +593,7 @@ protected:
         if (kValue == MXFP4_K_CONSTRAINT) {
             std::string gotStr = BuildLogValue("K", kValue);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", std::to_string(kValue),
+                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
                 "when the dtypes of x and weight inputs are DT_FLOAT4_E2M1, axis K of x must be greater than 2");
             return false;
         }
@@ -586,7 +605,7 @@ protected:
         if (kModValue != 0) {
             std::string gotStr = BuildLogValue("K", kValue);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", std::to_string(kValue),
+                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
                 "when the dtypes of x and weight inputs are DT_FLOAT4_E2M1, axis K of x must be an even number");
             return false;
         }
@@ -597,7 +616,7 @@ protected:
             if (!(nValue >= MXFP4_N_CONSTRAINT && nModValue == 0)) {
                 std::string gotStr = BuildLogValue("N", nValue);
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    GMM_SWIGLU_ACLNN_OP_NAME, "weight", std::to_string(nValue),
+                    GMM_SWIGLU_ACLNN_OP_NAME, "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
                     "when the output dtype is DT_FLOAT4_E2M1, axis N of weight must be an even number and greater than or equal to 4");
                 return false;
             }
@@ -615,7 +634,7 @@ protected:
             constraint << "K must be positive when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                GMM_SWIGLU_ACLNN_OP_NAME, "x", std::to_string(gmmDsqParams_.x->GetViewShape().GetDim(1)),
+                GMM_SWIGLU_ACLNN_OP_NAME, "x", ViewShapeToString(gmmDsqParams_.x),
                 "when the value of M is not 0 [M=" + std::to_string(xMDim) +
                     "], axis K of x must be a positive number");
             return false;
@@ -630,7 +649,7 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "weight",
-                std::to_string(((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex)),
+                ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "when the value of N is not 0 [N=" + std::to_string(weightNDim) +
                     "], axis K of weight must be a positive number");
             return false;
@@ -723,7 +742,7 @@ protected:
             std::string reasonStr = reason.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "x and weight",
-                "x K=" + std::to_string(kInX) + ", weight K=" + std::to_string(kInWeight),
+                "x=" + ViewShapeToString(gmmDsqParams_.x) + ", weight=" + ViewShapeToString((*gmmDsqParams_.weight)[0]),
                 "axis K of x must be equal to axis K of weight");
             return false;
         }

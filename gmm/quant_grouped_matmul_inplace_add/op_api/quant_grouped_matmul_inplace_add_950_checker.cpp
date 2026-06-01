@@ -11,6 +11,8 @@
 #include "quant_grouped_matmul_inplace_add_950_checker.h"
 #include "log/log.h"
 
+#include <sstream>
+
 using namespace QGmmInPlaceAdd;
 
 namespace QGmmInPlaceAdd {
@@ -54,6 +56,23 @@ size_t GetInputTensorSize(const aclTensor *input)
 {
     (void)input;
     return 1;
+}
+
+std::string ShapeToStringWithoutBracket(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << shape.GetDim(i);
+    }
+    return oss.str();
+}
+
+std::string ViewShapeToString(const aclTensor *tensor)
+{
+    return ShapeToStringWithoutBracket(tensor->GetViewShape());
 }
 } // namespace
 
@@ -100,13 +119,16 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckGeneralQuan
     CHECK_RET(CheckTensorListSizeForEachInput() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.x); i++) {
+        const auto *xTensor = GetInputTensor(gmmParams_.x, i);
+        const auto *weightTensor = GetInputTensor(gmmParams_.weight, i);
+        const auto *yTensor = GetInputTensor(gmmParams_.y, i);
         auto weightNIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - 1;
         auto yNIndex = GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDimNum() - 1;
-        QGMM_INPLACE_ADD_CHECK_REPORT(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0) == groupNum,
+        QGMM_INPLACE_ADD_CHECK_REPORT(yTensor->GetViewShape().GetDim(0) == groupNum,
             return ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 QGMM_INPLACE_ADD_ACLNN_OP_NAME, yName_,
-                std::to_string(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0)),
+                ViewShapeToString(yTensor),
                 "when the value of groupType is 2 (split K), first dim of y must be equal to axis 0 of groupList [" +
                     std::to_string(groupNum) + "]"));
         // y shape dim num must 3
@@ -116,23 +138,18 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckGeneralQuan
                                          std::to_string(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDimNum()),
                                          "3"));
         QGMM_INPLACE_ADD_CHECK_REPORT(
-            GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(1) ==
-                GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(0),
+            yTensor->GetViewShape().GetDim(1) == xTensor->GetViewShape().GetDim(0),
             return ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 QGMM_INPLACE_ADD_ACLNN_OP_NAME, yName_ + " and " + xName_,
-                yName_ + " M=" + std::to_string(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(1)) +
-                    ", " + xName_ + " M=" + std::to_string(GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(0)),
+                yName_ + "=" + ViewShapeToString(yTensor) + ", " + xName_ + "=" + ViewShapeToString(xTensor),
                 "axis M of y must be equal to axis M of x"));
         QGMM_INPLACE_ADD_CHECK_REPORT(
-            GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(yNIndex) ==
-                GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex),
+            yTensor->GetViewShape().GetDim(yNIndex) == weightTensor->GetViewShape().GetDim(weightNIndex),
             return ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 QGMM_INPLACE_ADD_ACLNN_OP_NAME, yName_ + " and " + weightName_,
-                yName_ + " N=" + std::to_string(GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(yNIndex)) +
-                    ", " + weightName_ + " N=" +
-                    std::to_string(GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex)),
+                yName_ + "=" + ViewShapeToString(yTensor) + ", " + weightName_ + "=" + ViewShapeToString(weightTensor),
                 "axis N of y must be equal to axis N of weight"));
     }
     return ACLNN_SUCCESS;
@@ -170,6 +187,8 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
         auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
+        const auto *perTokenScaleTensor = GetInputTensor(gmmParams_.perTokenScaleOptional, i);
+        const auto *scaleTensor = GetInputTensor(gmmParams_.scaleOptional, i);
 
         // 校验 scale1 (perTokenScale)
         QGMM_INPLACE_ADD_CHECK_REPORT(perTokenDimNumber == 1 || perTokenDimNumber == 2,
@@ -179,14 +198,14 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         auto perTokenFirstDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
         QGMM_INPLACE_ADD_CHECK_REPORT(perTokenFirstDim == groupNum, return ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_, std::to_string(perTokenFirstDim),
+                QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_, ViewShapeToString(perTokenScaleTensor),
                 "in T-T/T-C mode, first dim of perTokenScale must be equal to groupnum [" +
                     std::to_string(groupNum) + "]"));
         if (perTokenDimNumber == 2) {
             auto perTokenLastDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
             QGMM_INPLACE_ADD_CHECK_REPORT(perTokenLastDim == 1, return ACLNN_ERR_PARAM_INVALID,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_, std::to_string(perTokenLastDim),
+                    QGMM_INPLACE_ADD_ACLNN_OP_NAME, perTokenScaleName_, ViewShapeToString(perTokenScaleTensor),
                     "in T-T/T-C mode, last dim of perTokenScale must be equal to 1"));
         }
 
@@ -196,7 +215,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         auto scaleFirstDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(0);
         QGMM_INPLACE_ADD_CHECK_REPORT(scaleFirstDim == groupNum, return ACLNN_ERR_PARAM_INVALID,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, scaleName_,
-                                                  std::to_string(scaleFirstDim),
+                                                  ViewShapeToString(scaleTensor),
                                                   "in T-T mode, first dim of scale must be equal to groupnum [" +
                                                       std::to_string(groupNum) + "]"));
         if (scaleDimNumber == 2) {
@@ -204,7 +223,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
             auto scaleLastDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1);
             QGMM_INPLACE_ADD_CHECK_REPORT(scaleLastDim == 1 || scaleLastDim == n, return ACLNN_ERR_PARAM_INVALID,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    QGMM_INPLACE_ADD_ACLNN_OP_NAME, scaleName_, std::to_string(scaleLastDim),
+                    QGMM_INPLACE_ADD_ACLNN_OP_NAME, scaleName_, ViewShapeToString(scaleTensor),
                     "in T-T/T-C mode, last dim of scale must be equal to 1 or n [" + std::to_string(n) + "]"));
         }
     }
