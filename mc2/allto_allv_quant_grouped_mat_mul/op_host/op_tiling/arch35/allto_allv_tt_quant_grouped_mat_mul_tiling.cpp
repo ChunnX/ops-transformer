@@ -59,8 +59,6 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
         SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
         PrintGMMQuantTilingData(mmQuantTilingData);
     }
-    // permute out
-    GetPermuteOutSize();
     OP_LOGD(context_->GetNodeName(), "end DoGmmTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -336,13 +334,22 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
+void AlltoAllvTTQuantGmmTiling::SetWorkspaceInfo(uint64_t maxTokenNum)
 {
-    permuteOutSize_ = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
-    permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    permuteOutSize_ = permuteOutFlag_ ? permuteOutSize_ : permuteOutSize_ * 2;
+    // aixs
+    uint64_t gmmXAixs = h1_ * GetSizeByDataType(gmmXDataType_);
+    // comm
+    if (!permuteOutFlag_) {
+        tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(a_ * gmmXAixs,
+            static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    }
+    // permute gmmX
+    tilingData->workspaceInfo.permuteXOutSize = Ops::Base::CeilAlign(maxTokenNum
+        * gmmXAixs, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    // compute
     uint64_t ttScaleRepeatSize = sizeof(float) * e_ * 2;
-    permuteScaleOutSize_ = Ops::Base::CeilAlign(ttScaleRepeatSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(ttScaleRepeatSize,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvQuantGroupedMatMul, AlltoAllvTTQuantGmmTiling, 1);

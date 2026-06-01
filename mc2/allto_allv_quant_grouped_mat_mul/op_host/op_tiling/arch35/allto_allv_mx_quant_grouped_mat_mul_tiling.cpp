@@ -133,8 +133,6 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->mmQuantTilingData);
     }
-    // permute out
-    GetPermuteOutSize();
     OP_LOGD(context_->GetNodeName(), "end DoGmmTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -477,24 +475,28 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
+void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo(uint64_t maxTokenNum)
 {
-    // permuteout size(范围校验能够确保不溢出)
-    permuteOutSize_ = a_ * h1_;
+    // aixs
+    uint64_t gmmXAixs = h1_ * GetSizeByDataType(gmmXDataType_);
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
-        // mxfp4 场景占半字节，shapesize大小除以二
-        permuteOutSize_ = Ops::Base::CeilDiv(permuteOutSize_, MXFP4_PACK_FACTOR);
+        gmmXAixs = Ops::Base::CeilDiv(gmmXAixs, MXFP4_PACK_FACTOR);
     }
-    // 将 permuteOutSize 对齐到 512 字节
-    permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    // 重排空间
-    permuteOutSize_ = permuteOutFlag_ ? permuteOutSize_ : permuteOutSize_ * 2;
-    // permutscaleout size
-    uint64_t hSize = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR);
-    permuteScaleOutSize_ =  Ops::Base::CeilAlign((a_ * hSize * 2 * GetSizeByDataType(gmmWeightDataType_)),
+    uint64_t gmmXScaleAixs = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) *
+        GetSizeByDataType(gmmWeightDataType_) * 2;
+    // comm
+    if (!permuteOutFlag_) {
+        tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(a_ * gmmXAixs,
+            static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    }
+    tilingData->workspaceInfo.commXScaleSize = Ops::Base::CeilAlign(gmmXScaleAixs * a_,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512)); 
+    // permute gmmX
+    tilingData->workspaceInfo.permuteXOutSize = Ops::Base::CeilAlign(maxTokenNum * gmmXAixs,
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    // scale重排空间
-    permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
+    // permutscaleout size
+    tilingData->workspaceInfo.permuteScaleOutSize = Ops::Base::CeilAlign(gmmXScaleAixs * maxTokenNum,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K,

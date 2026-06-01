@@ -36,6 +36,10 @@ public:
     {
         uint32_t e = taskTilingInfo_->e;
         uint32_t expertNum = taskTilingInfo_->expertNum;
+        // hccl prepare limit
+        uint32_t a2avLaunchNum = CeilDiv(e, expertNum);
+        constexpr int32_t a2avLimit = 63;
+        expertNum = a2avLaunchNum > a2avLimit ? CeilDiv(e, a2avLimit) : expertNum;
         bool isNeedPermute = expertNum > 1;
 
         for (uint32_t start = 0; start < e; start += expertNum) {

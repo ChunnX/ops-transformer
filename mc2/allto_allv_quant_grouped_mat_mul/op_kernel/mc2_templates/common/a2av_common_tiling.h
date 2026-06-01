@@ -30,8 +30,6 @@ static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
 static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
-static constexpr uint16_t MAX_HCCL_PREPARE_NUM = 63U;
-static constexpr uint16_t MX_MAX_HCCL_PREPARE_NUM = 63U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -40,6 +38,14 @@ using GMMArray = Mc2GroupedMatmulTilingData::GMMArray;
 struct HcclA2avTilingInfo {
     Mc2InitTiling hcclInitTiling;
     Mc2CcTiling a2avCcTiling;
+};
+
+struct A2avGmmWorkspaceInfo {
+    uint64_t commXOutSize = 0;
+    uint64_t permuteXOutSize = 0;
+    uint64_t commXScaleSize = 0;
+    uint64_t permuteScaleOutSize = 0;
+    uint64_t gmmComputeSize = 0;
 };
 
 struct TaskTilingInfo {
