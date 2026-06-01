@@ -209,23 +209,23 @@ namespace RainFusion {
                 // BNSD: [B, N, S, D]
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
-                strideQOB = qHeads * maxQSeqlen * embed;  // batch stride
-                strideQON = maxQSeqlen * embed;  // head stride
+                strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
+                strideQON = static_cast<uint64_t>(maxQSeqlen) * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideQO = qHeads * embed;
+                strideQO = static_cast<uint64_t>(qHeads) * embed;
             }
             
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
-                strideKVB = kvHeads * maxKvSeqlen * embed;  // batch stride
-                strideKVN = maxKvSeqlen * embed;  // head stride
+                strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
+                strideKVN = static_cast<uint64_t>(maxKvSeqlen) * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideKV = kvHeads * embed;
+                strideKV = static_cast<uint64_t>(kvHeads) * embed;
             }
             
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
@@ -240,12 +240,26 @@ namespace RainFusion {
             uint32_t preTotalTaskNum = 0;
             uint32_t preTotalQBlockNum = 0;
             uint32_t curBatch = 0;
-            // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-            uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
-                              static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
-            // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
-                               static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
+            uint32_t qSeqlen;
+            uint32_t kvSeqlen;
+            {
+                uint64_t qLen = useUniformQSeqlen ? maxQSeqlen :
+                    static_cast<uint64_t>(gActualQseqlen.GetValue(curBatch));
+                uint64_t kvLen = useUniformKvSeqlen ? maxKvSeqlen :
+                    static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch));
+                if constexpr (QUERY_LAYOUT != 1) {
+                    if (!useUniformQSeqlen && curBatch > 0) {
+                        qLen -= static_cast<uint64_t>(gActualQseqlen.GetValue(curBatch - 1));
+                    }
+                    if constexpr (!PAGED_CACHE_FLAG) {
+                        if (!useUniformKvSeqlen && curBatch > 0) {
+                            kvLen -= static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch - 1));
+                        }
+                    }
+                }
+                qSeqlen = static_cast<uint32_t>(qLen);
+                kvSeqlen = static_cast<uint32_t>(kvLen);
+            }
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile; // CeilDiv
             uint32_t curQNBlockNum = qNBlockNumPerGroup * kvHeads;
@@ -266,34 +280,45 @@ namespace RainFusion {
                     // Update offsets based on layout (compile-time optimization)
                     if constexpr (QUERY_LAYOUT == 1) {  // BNSD_Q
                         // BNSD: [B, N, S, D], offset = batch * strideB
-                        qBOffset = curBatch * strideQOB;
-                        oBOffset = curBatch * strideQOB;
+                        qBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
+                        oBOffset = static_cast<uint64_t>(curBatch) * strideQOB;
                     } else {
                         // TND
-                        qBOffset += qSeqlen * strideQO;
-                        oBOffset += qSeqlen * strideQO;
+                        qBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
+                        oBOffset += static_cast<uint64_t>(qSeqlen) * strideQO;
                     }
                     
                     if constexpr (!PAGED_CACHE_FLAG) {
                         if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                             // BNSD: [B, N, S, D], offset = batch * strideB
-                            kBOffset = curBatch * strideKVB;
-                            vBOffset = curBatch * strideKVB;
+                            kBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
+                            vBOffset = static_cast<uint64_t>(curBatch) * strideKVB;
                         } else {
                             // TND
-                            kBOffset += kvSeqlen * strideKV;
-                            vBOffset += kvSeqlen * strideKV;
+                            kBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
+                            vBOffset += static_cast<uint64_t>(kvSeqlen) * strideKV;
                         }
                     } else {
                         blockBOffset += maxNumBlocksPerBatch;
                     }
                     
                     // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-                    qSeqlen = useUniformQSeqlen ? maxQSeqlen : 
-                             static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
-                    // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen : 
-                              static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
+                    uint64_t qSeqlenU = useUniformQSeqlen ? maxQSeqlen :
+                        static_cast<uint64_t>(gActualQseqlen.GetValue(curBatch));
+                    uint64_t kvSeqlenU = useUniformKvSeqlen ? maxKvSeqlen :
+                        static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch));
+                    if constexpr (QUERY_LAYOUT != 1) {
+                        if (!useUniformQSeqlen && curBatch > 0) {
+                            qSeqlenU -= static_cast<uint64_t>(gActualQseqlen.GetValue(curBatch - 1));
+                        }
+                        if constexpr (!PAGED_CACHE_FLAG) {
+                            if (!useUniformKvSeqlen && curBatch > 0) {
+                                kvSeqlenU -= static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch - 1));
+                            }
+                        }
+                    }
+                    qSeqlen = static_cast<uint32_t>(qSeqlenU);
+                    kvSeqlen = static_cast<uint32_t>(kvSeqlenU);
                     curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
                     qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
                     curQNBlockNum = qNBlockNumPerGroup * kvHeads;
@@ -316,7 +341,7 @@ namespace RainFusion {
                 
                 uint32_t kvHeadIdx = qNBlockIdx / qNBlockNumPerGroup;
                 uint32_t qHeadIdx = kvHeadIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
-                uint32_t curSelectIdx = preTotalQBlockNum + qXIdx * qHeads + qHeadIdx;
+                uint64_t curSelectIdx = static_cast<uint64_t>(preTotalQBlockNum) + static_cast<uint64_t>(qXIdx) * qHeads + qHeadIdx;
                 uint32_t curSelectNum = static_cast<uint32_t>(gSelectNumIdx.GetValue(curSelectIdx));
                 // In this case, the output should be zero, so we skip this task
                 if (curSelectNum == 0) {
@@ -324,7 +349,7 @@ namespace RainFusion {
                 }
                 
                 uint32_t lastSelectIdx = static_cast<int32_t>(
-                    gSelectIdx.GetValue(curSelectIdx * maxKvBlockNum + curSelectNum - 1));
+                    gSelectIdx.GetValue(curSelectIdx * static_cast<uint64_t>(maxKvBlockNum) + curSelectNum - 1));
                 uint32_t kvYBlockNum = (kvSeqlen + qBlockY - 1) / qBlockY; // CeilDiv
                 uint32_t curKvSeqLen = (lastSelectIdx == kvYBlockNum - 1 && kvSeqlen % qBlockY != 0) ? 
                     qBlockY * (curSelectNum - 1) + kvSeqlen % qBlockY : qBlockY * curSelectNum;
@@ -422,7 +447,7 @@ namespace RainFusion {
                             gK[gmOffsetK],
                             gS[gmOffsetS],
                             gBlockTable[blockBOffset],
-                            gSelectIdx[curSelectIdx * maxKvBlockNum],
+                            gSelectIdx[curSelectIdx * static_cast<uint64_t>(maxKvBlockNum)],
                             layoutQTemp,
                             layoutKTemp,
                             layOutS,
@@ -484,7 +509,7 @@ namespace RainFusion {
                             gV[gmOffsetV],
                             gOTmp[gmOffsetOTmp],
                             gBlockTable[blockBOffset],
-                            gSelectIdx[curSelectIdx * maxKvBlockNum],
+                            gSelectIdx[curSelectIdx * static_cast<uint64_t>(maxKvBlockNum)],
                             layoutPTemp,
                             layoutVTemp,
                             layoutOTmp,

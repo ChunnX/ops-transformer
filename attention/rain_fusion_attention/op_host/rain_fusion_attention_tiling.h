@@ -177,7 +177,7 @@ private:
     uint32_t maxKvBlockNum_ = 0;
     uint32_t firstQBlockNum_ = 0;
     uint32_t firstBatchTaskNum_ = 0;
-    uint32_t totalTaskNum_ = 0;
+    uint64_t totalTaskNum_ = 0;
     uint32_t maxNumBlocksPerBatch_ = 0;
     const int64_t *qSeqLenList = nullptr;
     const int64_t *kvSeqLenList = nullptr;
