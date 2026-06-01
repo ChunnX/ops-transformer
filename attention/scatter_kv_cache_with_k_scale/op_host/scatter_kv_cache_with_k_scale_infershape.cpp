@@ -14,44 +14,43 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeScatterKvCacheWithKScale(gert::InferShapeContext* context)
-{
-    // 本算子为 inplace 算子，输出 shape 与对应输入完全一致
-    // 输入索引: 0=key, 1=value, 2=key_cache, 3=value_cache,
-    //           4=slot_mapping, 5=key_scale, 6=key_scale_cache
-    // 输出索引: 0=key_cache(out), 1=value_cache(out), 2=k_scale_cache(out)
 
-    // 输出 0 (key_cache): shape = 输入 2 (key_cache) 的 shape
-    const gert::Shape* kcShape = context->GetInputShape(2);
+constexpr size_t INPUT_KEY_CACHE_IDX = 2;
+constexpr size_t INPUT_VALUE_CACHE_IDX = 3;
+constexpr size_t INPUT_KEY_SCALE_CACHE_IDX = 6;
+constexpr size_t OUTPUT_KEY_CACHE_IDX = 0;
+constexpr size_t OUTPUT_VALUE_CACHE_IDX = 1;
+constexpr size_t OUTPUT_KEY_SCALE_CACHE_IDX = 2;
+
+static ge::graphStatus InferShapeScatterKvCacheWithKScale(gert::InferShapeContext *context)
+{
+    const gert::Shape *kcShape = context->GetInputShape(INPUT_KEY_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kcShape);
-    gert::Shape* outKcShape = context->GetOutputShape(0);
+    gert::Shape *outKcShape = context->GetOutputShape(OUTPUT_KEY_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outKcShape);
     outKcShape->SetDimNum(kcShape->GetDimNum());
     for (size_t i = 0; i < kcShape->GetDimNum(); i++) {
         outKcShape->SetDim(i, kcShape->GetDim(i));
     }
 
-    // 输出 1 (value_cache): shape = 输入 3 (value_cache) 的 shape
-    const gert::Shape* vcShape = context->GetInputShape(3);
+    const gert::Shape *vcShape = context->GetInputShape(INPUT_VALUE_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vcShape);
-    gert::Shape* outVcShape = context->GetOutputShape(1);
+    gert::Shape *outVcShape = context->GetOutputShape(OUTPUT_VALUE_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outVcShape);
     outVcShape->SetDimNum(vcShape->GetDimNum());
     for (size_t i = 0; i < vcShape->GetDimNum(); i++) {
         outVcShape->SetDim(i, vcShape->GetDim(i));
     }
 
-    // 输出 2 (k_scale_cache): shape = 输入 6 (key_scale_cache) 的 shape
-    const gert::Shape* kscShape = context->GetInputShape(6);
+    const gert::Shape *kscShape = context->GetInputShape(INPUT_KEY_SCALE_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kscShape);
-    gert::Shape* outKscShape = context->GetOutputShape(2);
+    gert::Shape *outKscShape = context->GetOutputShape(OUTPUT_KEY_SCALE_CACHE_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outKscShape);
     outKscShape->SetDimNum(kscShape->GetDimNum());
     for (size_t i = 0; i < kscShape->GetDimNum(); i++) {
         outKscShape->SetDim(i, kscShape->GetDim(i));
     }
 
-    // Dtype 推导（inplace 算子，输出 dtype 与输入一致，框架自动处理）
     return GRAPH_SUCCESS;
 }
 

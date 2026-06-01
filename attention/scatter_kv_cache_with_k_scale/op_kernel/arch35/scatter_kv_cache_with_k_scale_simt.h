@@ -22,9 +22,36 @@
 namespace NsScatterKvCacheWithKScale {
 
 using namespace AscendC;
+// ==================== 线程数配置常量 ====================
+// 32位索引(uint32_t): 使用2048线程，优化寄存器利用率
+// 64位索引(uint64_t): 使用1024线程，64位索引占用更多寄存器，需减少线程数保持相同寄存器预算
+
+constexpr size_t SIZEOF_32BIT_IDX = 4;
+constexpr size_t SIZEOF_64BIT_IDX = 8;
+constexpr uint32_t THREADS_FOR_32BIT_IDX = 2048;
+constexpr uint32_t THREADS_FOR_64BIT_IDX = 1024;
+
+// ==================== stride数组索引常量 ====================
+
+constexpr size_t STRIDE_IDX_TOKEN = 0;
+constexpr size_t STRIDE_IDX_HEAD = 1;
+constexpr size_t STRIDE_IDX_HEAD_SIZE = 2;
+constexpr size_t STRIDE_IDX_ELEM = 3;
+
+constexpr size_t STRIDE_IDX_BLOCK = 0;
+constexpr size_t STRIDE_IDX_CACHE_HEAD = 1;
+constexpr size_t STRIDE_IDX_BLOCK_OFFSET = 2;
+constexpr size_t STRIDE_IDX_CACHE_ELEM = 3;
+
+constexpr size_t STRIDE_IDX_SCALE_TOKEN = 0;
+constexpr size_t STRIDE_IDX_SCALE_HEAD = 1;
+
+constexpr size_t STRIDE_IDX_SCALE_CACHE_BLOCK = 0;
+constexpr size_t STRIDE_IDX_SCALE_CACHE_HEAD = 1;
+constexpr size_t STRIDE_IDX_SCALE_CACHE_OFFSET = 2;
 
 template <typename IDX_T>
-static constexpr uint32_t THREADS = (sizeof(IDX_T) == 4) ? 2048 : 1024;
+static constexpr uint32_t THREADS = (sizeof(IDX_T) == SIZEOF_32BIT_IDX) ? THREADS_FOR_32BIT_IDX : THREADS_FOR_64BIT_IDX;
 
 // ==================== VF-A: 特化 Key+Value (全部参数直接传入) ====================
 
@@ -156,15 +183,19 @@ __aicore__ inline void LaunchKVVf(const ScatterKvCacheWithKScaleTilingData *t, I
     GetUintDivMagicAndShift(m2, s2, kH);
     GetUintDivMagicAndShift(m3, s3, bS);
     asc_vf_call<ScatterKvKVVf<T_FP8, T_SLOT, IDX_T>>(
-        dim3(THREADS<IDX_T>), count, kg, vg, kcg, vcg, sg, nH, kH, bS, mS, static_cast<IDX_T>(t->keyStride[0]),
-        static_cast<IDX_T>(t->keyStride[1]), static_cast<IDX_T>(t->keyStride[2]),
-        static_cast<IDX_T>(t->keyCacheStride[0]), static_cast<IDX_T>(t->keyCacheStride[1]),
-        static_cast<IDX_T>(t->keyCacheStride[2]), static_cast<IDX_T>(t->keyCacheStride[3]),
-        static_cast<IDX_T>(t->valueStride[0]), static_cast<IDX_T>(t->valueStride[1]),
-        static_cast<IDX_T>(t->valueStride[2]), static_cast<IDX_T>(t->valueCacheStride[0]),
-        static_cast<IDX_T>(t->valueCacheStride[1]), static_cast<IDX_T>(t->valueCacheStride[2]),
-        static_cast<IDX_T>(t->valueCacheStride[3]), static_cast<IDX_T>(t->slotMappingStride[0]), m1, s1, m2, s2, m3,
-        s3);
+        dim3(THREADS<IDX_T>), count, kg, vg, kcg, vcg, sg, nH, kH, bS, mS,
+        static_cast<IDX_T>(t->keyStride[STRIDE_IDX_TOKEN]), static_cast<IDX_T>(t->keyStride[STRIDE_IDX_HEAD]),
+        static_cast<IDX_T>(t->keyStride[STRIDE_IDX_HEAD_SIZE]), static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_BLOCK]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_CACHE_HEAD]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_BLOCK_OFFSET]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_CACHE_ELEM]),
+        static_cast<IDX_T>(t->valueStride[STRIDE_IDX_TOKEN]), static_cast<IDX_T>(t->valueStride[STRIDE_IDX_HEAD]),
+        static_cast<IDX_T>(t->valueStride[STRIDE_IDX_HEAD_SIZE]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_BLOCK]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_CACHE_HEAD]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_BLOCK_OFFSET]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_CACHE_ELEM]),
+        static_cast<IDX_T>(t->slotMappingStride[STRIDE_IDX_TOKEN]), m1, s1, m2, s2, m3, s3);
 }
 
 template <typename T_FP8, typename T_SLOT, typename IDX_T>
@@ -176,11 +207,13 @@ __aicore__ inline void LaunchKeyVf(const ScatterKvCacheWithKScaleTilingData *t, 
     GetUintDivMagicAndShift(m2, s2, kH);
     GetUintDivMagicAndShift(m3, s3, bS);
     asc_vf_call<ScatterKvKeyVf<T_FP8, T_SLOT, IDX_T>>(
-        dim3(THREADS<IDX_T>), count, kg, kcg, sg, nH, kH, bS, mS, static_cast<IDX_T>(t->keyStride[0]),
-        static_cast<IDX_T>(t->keyStride[1]), static_cast<IDX_T>(t->keyStride[2]),
-        static_cast<IDX_T>(t->keyCacheStride[0]), static_cast<IDX_T>(t->keyCacheStride[1]),
-        static_cast<IDX_T>(t->keyCacheStride[2]), static_cast<IDX_T>(t->keyCacheStride[3]),
-        static_cast<IDX_T>(t->slotMappingStride[0]), m1, s1, m2, s2, m3, s3);
+        dim3(THREADS<IDX_T>), count, kg, kcg, sg, nH, kH, bS, mS, static_cast<IDX_T>(t->keyStride[STRIDE_IDX_TOKEN]),
+        static_cast<IDX_T>(t->keyStride[STRIDE_IDX_HEAD]), static_cast<IDX_T>(t->keyStride[STRIDE_IDX_HEAD_SIZE]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_BLOCK]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_CACHE_HEAD]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_BLOCK_OFFSET]),
+        static_cast<IDX_T>(t->keyCacheStride[STRIDE_IDX_CACHE_ELEM]),
+        static_cast<IDX_T>(t->slotMappingStride[STRIDE_IDX_TOKEN]), m1, s1, m2, s2, m3, s3);
 }
 
 template <typename T_FP8, typename T_SLOT, typename IDX_T>
@@ -192,11 +225,13 @@ __aicore__ inline void LaunchValueVf(const ScatterKvCacheWithKScaleTilingData *t
     GetUintDivMagicAndShift(m2, s2, vH);
     GetUintDivMagicAndShift(m3, s3, bS);
     asc_vf_call<ScatterKvValueVf<T_FP8, T_SLOT, IDX_T>>(
-        dim3(THREADS<IDX_T>), count, vg, vcg, sg, nH, vH, bS, mS, static_cast<IDX_T>(t->valueStride[0]),
-        static_cast<IDX_T>(t->valueStride[1]), static_cast<IDX_T>(t->valueStride[2]),
-        static_cast<IDX_T>(t->valueCacheStride[0]), static_cast<IDX_T>(t->valueCacheStride[1]),
-        static_cast<IDX_T>(t->valueCacheStride[2]), static_cast<IDX_T>(t->valueCacheStride[3]),
-        static_cast<IDX_T>(t->slotMappingStride[0]), m1, s1, m2, s2, m3, s3);
+        dim3(THREADS<IDX_T>), count, vg, vcg, sg, nH, vH, bS, mS, static_cast<IDX_T>(t->valueStride[STRIDE_IDX_TOKEN]),
+        static_cast<IDX_T>(t->valueStride[STRIDE_IDX_HEAD]), static_cast<IDX_T>(t->valueStride[STRIDE_IDX_HEAD_SIZE]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_BLOCK]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_CACHE_HEAD]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_BLOCK_OFFSET]),
+        static_cast<IDX_T>(t->valueCacheStride[STRIDE_IDX_CACHE_ELEM]),
+        static_cast<IDX_T>(t->slotMappingStride[STRIDE_IDX_TOKEN]), m1, s1, m2, s2, m3, s3);
 }
 
 template <typename T_SLOT, typename IDX_T>
@@ -207,10 +242,13 @@ __aicore__ inline void LaunchKeyScaleVf(const ScatterKvCacheWithKScaleTilingData
     GetUintDivMagicAndShift(m1, s1, nH);
     GetUintDivMagicAndShift(m2, s2, bS);
     asc_vf_call<ScatterKvKeyScaleVf<T_SLOT, IDX_T>>(
-        dim3(THREADS<IDX_T>), count, ksg, kscg, sg, nH, bS, mS, static_cast<IDX_T>(t->keyScaleStride[0]),
-        static_cast<IDX_T>(t->keyScaleStride[1]), static_cast<IDX_T>(t->keyScaleCacheStride[0]),
-        static_cast<IDX_T>(t->keyScaleCacheStride[1]), static_cast<IDX_T>(t->keyScaleCacheStride[2]),
-        static_cast<IDX_T>(t->slotMappingStride[0]), m1, s1, m2, s2);
+        dim3(THREADS<IDX_T>), count, ksg, kscg, sg, nH, bS, mS,
+        static_cast<IDX_T>(t->keyScaleStride[STRIDE_IDX_SCALE_TOKEN]),
+        static_cast<IDX_T>(t->keyScaleStride[STRIDE_IDX_SCALE_HEAD]),
+        static_cast<IDX_T>(t->keyScaleCacheStride[STRIDE_IDX_SCALE_CACHE_BLOCK]),
+        static_cast<IDX_T>(t->keyScaleCacheStride[STRIDE_IDX_SCALE_CACHE_HEAD]),
+        static_cast<IDX_T>(t->keyScaleCacheStride[STRIDE_IDX_SCALE_CACHE_OFFSET]),
+        static_cast<IDX_T>(t->slotMappingStride[STRIDE_IDX_TOKEN]), m1, s1, m2, s2);
 }
 
 template <typename T_FP8, typename T_SLOT, uint32_t SCH_MODE>
@@ -222,6 +260,7 @@ __aicore__ inline void Process(GM_ADDR key, GM_ADDR value, GM_ADDR keyCache, GM_
     uint64_t kH = static_cast<uint64_t>(t->kHeadSize);
     uint64_t vH = static_cast<uint64_t>(t->vHeadSize);
     uint64_t bS = static_cast<uint64_t>(t->blockSize);
+    // TODO: int32条件 需要增加cache判断
     uint64_t total = nT * nH * ((kH > vH) ? kH : vH);
     bool use32 = (total <= static_cast<uint64_t>(INT32_MAX));
 
