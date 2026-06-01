@@ -366,6 +366,9 @@ def fill_none_params(params_dict):
         'tile_size': params_dict['tile_size'],
         'rope_head_dim': params_dict['rope_head_dim'],
         'template_run_mode': template_run_mode,
+        'actlen_mode': actlen_mode,
+        'S1EQS2': S1EQS2,
+        'tc_prefix': params_dict.get('tc_prefix', ''),
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
     }
@@ -404,6 +407,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "topk_value_mode", "return_softmax_lse",
         ]
         optional_columns = [
+            "tc_prefix",
             "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
         ]
@@ -436,7 +440,8 @@ def save_result(params, result, fulfill_percent, result_path):
     存储测试结果到表格
     """
     row_data = {
-        "case_name": params.get('Testcase_Name'),
+        "Testcase_Name": params.get('Testcase_Name'),
+        "tc_prefix": params.get('tc_prefix', ''),
         "layout_q": params.get('layout_q'),
         "layout_kv": params.get('layout_kv'),
         "q_type": params.get('q_type'),
@@ -444,6 +449,7 @@ def save_result(params, result, fulfill_percent, result_path):
         "cmp_kv_type": params.get('cmp_kv_type'),
         "B": params.get('B'),
         "S1": params.get('S1'),
+        "S2": params.get('S2'),
         "T1": params.get('T1'),
         "N1": params.get('N1'),
         "N2": params.get('N2'),
@@ -469,6 +475,9 @@ def save_result(params, result, fulfill_percent, result_path):
         "kv_quant_mode": params.get('kv_quant_mode'),
         "tile_size": params.get('tile_size'),
         "rope_head_dim": params.get('rope_head_dim'),
+        "template_run_mode": params.get('template_run_mode'),
+        "actlen_mode": params.get('actlen_mode'),
+        "S1EQS2": params.get('S1EQS2'),
         "topk_value_mode": params.get('topk_value_mode'),
         "return_softmax_lse": params.get('return_softmax_lse'),
         "result": result,

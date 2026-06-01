@@ -46,6 +46,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
+    normalized_params["tc_prefix"] = params.get("tc_prefix", "")
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
@@ -55,7 +56,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     normalized_params["template_run_mode"] = template_run_mode.split(',')
 
     param_names = [
-        "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
+        "Testcase_Name", "tc_prefix", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
         "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", \
         "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
         "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
@@ -65,6 +66,7 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     param_values = [
         [normalized_params["Testcase_Name"]],
+        [normalized_params["tc_prefix"]],
         [normalized_params["layout_q"]],
         [normalized_params["layout_kv"]],
         [normalized_params["q_type"]],
@@ -118,7 +120,8 @@ def qsmla(param_combinations):
         ops_mode = 'prefill' if params['S1'] > 4 else "decode"
         q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
-        Testcase_Name = f"kvquantSparseAttenShardkv_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
+        prefix_part = f"{param_combinations['tc_prefix']}_" if param_combinations.get('tc_prefix', '') else ""
+        Testcase_Name = f"QSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
     print("input_params:", params)
 
