@@ -1268,11 +1268,19 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     //         AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 
     LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
+    dumpLt.SetValue(0, 77);
+    dumpLt.SetValue(1, 77);
+    dumpLt.SetValue(2, 77);
+    PipeBarrier<PIPE_ALL>();
+    DataCopyExtParams params{1, 3 * sizeof(uint32_t), 0, 0, 0};
+    DataCopyPad(selfDataStatusGMAivSend, dumpLt, params);
+    PipeBarrier<PIPE_ALL>();
+
+
     dumpLt.SetValue(0, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
     dumpLt.SetValue(1, static_cast<uint32_t>(dstFlagRdmaAddr));
     dumpLt.SetValue(2, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
     PipeBarrier<PIPE_ALL>();
-    DataCopyExtParams params{1, 3 * sizeof(uint32_t), 0, 0, 0};
     DataCopyPad(selfDataStatusGMAivSend, dumpLt, params);
     PipeBarrier<PIPE_ALL>();
 }
@@ -1533,9 +1541,9 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         selfDataStatusGMAiv.SetValue(10, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(11, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(12, 88); // 初始化为0，表示数据未准备好
-        selfDataStatusGMAiv.SetValue(13, 88); // 初始化为0，表示数据未准备好
-        selfDataStatusGMAiv.SetValue(14, 88); // 初始化为0，表示数据未准备好
-        selfDataStatusGMAiv.SetValue(15, 88); // 初始化为0，表示数据未准备好
+        // selfDataStatusGMAiv.SetValue(13, 88); // 初始化为0，表示数据未准备好
+        // selfDataStatusGMAiv.SetValue(14, 88); // 初始化为0，表示数据未准备好
+        // selfDataStatusGMAiv.SetValue(15, 88); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(10, worldSize_); // 初始化为0，表示数据未准备好
         // selfDataStatusGMTensor.SetValue(98, rankId_); // 初始化为0，表示数据未准备好winContext->rankSize
         // selfDataStatusGMTensor.SetValue(99, winContext_->localUsrRankId); // 初始化为0，表示数据未准备好
