@@ -289,18 +289,90 @@ protected:
         if (tc.testName.find("EMismatch") != string::npos) {
             scaleShape = {{e + 1, n, (k + 63) / 64, 2}, {e + 1, n, (k + 63) / 64, 2}};
         }
-        if (tc.testName.find("KMismatch") != string::npos) {
+        if (tc.testName.find("KMismatch") != string::npos && tc.testName.find("KMismatchXW") == string::npos) {
             scaleShape = {{e, n, (k + 63) / 64 + 1, 2}, {e, n, (k + 63) / 64 + 1, 2}};
         }
-        
+        if (tc.testName.find("TransposeXTrue") != string::npos) {
+            // Will set transpose_x attr to true below
+        }
+        if (tc.testName.find("WrongGroupListType") != string::npos) {
+            // Will set groupListType=2 from CSV
+        }
+        if (tc.testName.find("WrongDtypeAttr") != string::npos) {
+            // Will set dtype attr to 1 below
+        }
+        if (tc.testName.find("KMismatchXW") != string::npos) {
+            xShape = {{m, k + 32}, {m, k + 32}};  // x K != w K
+        }
+        if (tc.testName.find("KTooSmallAligned") != string::npos) {
+            // k=0 from CSV, already aligned (0%32==0) but < MIN_KN_SIZE
+        }
+        if (tc.testName.find("NTooSmallAligned") != string::npos) {
+            // n=0 from CSV, already aligned (0%32==0) but < MIN_KN_SIZE
+        }
+        if (tc.testName.find("NegativeOutputBS") != string::npos) {
+            // Will set outputBS=-1 from CSV
+        }
+        if (tc.testName.find("NegativeShareInputOffset") != string::npos) {
+            // Will set shareInputOffset=-1 below
+        }
+        if (tc.testName.find("WrongGroupListE") != string::npos) {
+            groupListShape = {{e + 1}, {e + 1}};  // groupList E != w E
+        }
+        if (tc.testName.find("WrongRowIndexDim") != string::npos) {
+            rowindexShape = {{m, 1}, {m, 1}};  // 2D instead of 1D
+        }
+        if (tc.testName.find("WrongRowIndexM") != string::npos) {
+            rowindexShape = {{m + 1}, {m + 1}};  // rowIndex[0] != M
+        }
+        if (tc.testName.find("WrongLogitDim") != string::npos) {
+            logitShape = {{m, 1}, {m, 1}};  // 2D instead of 1D
+        }
+        if (tc.testName.find("WrongLogitM") != string::npos) {
+            logitShape = {{m + 1}, {m + 1}};  // logit[0] != M
+        }
+        if (tc.testName.find("WrongBiasDim") != string::npos) {
+            biasShape = {{e, n, 1}, {e, n, 1}};  // 3D instead of 2D
+        }
+        if (tc.testName.find("WrongBiasE") != string::npos) {
+            biasShape = {{e + 1, n}, {e + 1, n}};  // bias[0] != E
+        }
+        if (tc.testName.find("WrongBiasN") != string::npos) {
+            biasShape = {{e, n + 32}, {e, n + 32}};  // bias[1] != N
+        }
+        if (tc.testName.find("WrongScaleDim") != string::npos) {
+            scaleShape = {{e, n, (k + 63) / 64}, {e, n, (k + 63) / 64}};  // 3D instead of 4D
+        }
+        if (tc.testName.find("WrongScaleN") != string::npos) {
+            scaleShape = {{e, n + 32, (k + 63) / 64, 2}, {e, n + 32, (k + 63) / 64, 2}};  // scale[1] != N
+        }
+        if (tc.testName.find("WrongScaleInner") != string::npos) {
+            scaleShape = {{e, n, (k + 63) / 64, 3}, {e, n, (k + 63) / 64, 3}};  // scale[3] != 2
+        }
+        if (tc.testName.find("WrongPertokenScaleDim") != string::npos) {
+            pertokenScaleShape = {{m, (k + 63) / 64}, {m, (k + 63) / 64}};  // 2D instead of 3D
+        }
+        if (tc.testName.find("WrongPertokenScaleM") != string::npos) {
+            pertokenScaleShape = {{m + 1, (k + 63) / 64, 2}, {m + 1, (k + 63) / 64, 2}};  // pertokenScale[0] != M
+        }
+        if (tc.testName.find("WrongPertokenScaleK") != string::npos) {
+            pertokenScaleShape = {{m, (k + 63) / 64 + 1, 2}, {m, (k + 63) / 64 + 1, 2}};  // pertokenScale[1] != CeilDiv(K,64)
+        }
+        if (tc.testName.find("WrongPertokenScaleInner") != string::npos) {
+            pertokenScaleShape = {{m, (k + 63) / 64, 3}, {m, (k + 63) / 64, 3}};  // pertokenScale[2] != 2
+        }
+
         // Build attributes - MUST be in correct index order:
         // 0:dtype, 1:shared_input_weight, 2:shared_input_offset, 3:transpose_x
         // 4:transpose_w, 5:output_bs, 6:group_list_type, 7:tuning_config
         vector<gert::TilingContextPara::OpAttr> attrs;
-        attrs.push_back({"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)});                        // index 0
+        int64_t dtypeValue = (tc.testName.find("WrongDtypeAttr") != string::npos) ? 1 : 0;
+        attrs.push_back({"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtypeValue)});              // index 0
         attrs.push_back({"shared_input_weight", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)});         // index 1
-        attrs.push_back({"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)});         // index 2
-        attrs.push_back({"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(false)});                // index 3
+        int64_t shareInputOffsetValue = (tc.testName.find("NegativeShareInputOffset") != string::npos) ? -1 : 0;
+        attrs.push_back({"shared_input_offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(shareInputOffsetValue)}); // index 2
+        bool transposeXValue = (tc.testName.find("TransposeXTrue") != string::npos) ? true : false;
+        attrs.push_back({"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeXValue)});      // index 3
         attrs.push_back({"transpose_w", Ops::Transformer::AnyValue::CreateFrom<bool>(tc.transposeW)});        // index 4
         // output_bs must be index 5
         if (tc.outputBs != "NULL") {
@@ -404,16 +476,39 @@ TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzSmallDim
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEmptyBias) { ExecuteCsvTest("TestMXA8W4WeightNzEmptyBias"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroNullOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroNullOutputBs"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroWithOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroWithOutputBs"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzTransposeXTrue) { ExecuteCsvTest("TestMXA8W4WeightNzTransposeXTrue"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongGroupListType) { ExecuteCsvTest("TestMXA8W4WeightNzWrongGroupListType"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongDtypeAttr) { ExecuteCsvTest("TestMXA8W4WeightNzWrongDtypeAttr"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzKMismatchXW) { ExecuteCsvTest("TestMXA8W4WeightNzKMismatchXW"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzKTooSmallAligned) { ExecuteCsvTest("TestMXA8W4WeightNzKTooSmallAligned"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNTooSmallAligned) { ExecuteCsvTest("TestMXA8W4WeightNzNTooSmallAligned"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNegativeOutputBS) { ExecuteCsvTest("TestMXA8W4WeightNzNegativeOutputBS"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNegativeShareInputOffset) { ExecuteCsvTest("TestMXA8W4WeightNzNegativeShareInputOffset"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongGroupListE) { ExecuteCsvTest("TestMXA8W4WeightNzWrongGroupListE"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongRowIndexDim) { ExecuteCsvTest("TestMXA8W4WeightNzWrongRowIndexDim"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongRowIndexM) { ExecuteCsvTest("TestMXA8W4WeightNzWrongRowIndexM"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongLogitDim) { ExecuteCsvTest("TestMXA8W4WeightNzWrongLogitDim"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongLogitM) { ExecuteCsvTest("TestMXA8W4WeightNzWrongLogitM"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongBiasDim) { ExecuteCsvTest("TestMXA8W4WeightNzWrongBiasDim"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongBiasE) { ExecuteCsvTest("TestMXA8W4WeightNzWrongBiasE"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongBiasN) { ExecuteCsvTest("TestMXA8W4WeightNzWrongBiasN"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongScaleDim) { ExecuteCsvTest("TestMXA8W4WeightNzWrongScaleDim"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongScaleN) { ExecuteCsvTest("TestMXA8W4WeightNzWrongScaleN"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongScaleInner) { ExecuteCsvTest("TestMXA8W4WeightNzWrongScaleInner"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongPertokenScaleDim) { ExecuteCsvTest("TestMXA8W4WeightNzWrongPertokenScaleDim"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongPertokenScaleM) { ExecuteCsvTest("TestMXA8W4WeightNzWrongPertokenScaleM"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongPertokenScaleK) { ExecuteCsvTest("TestMXA8W4WeightNzWrongPertokenScaleK"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongPertokenScaleInner) { ExecuteCsvTest("TestMXA8W4WeightNzWrongPertokenScaleInner"); }
 
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded)
 {
     auto& cases = GetCsvTestCases();
-    EXPECT_EQ(cases.size(), 28) << "Expected 28 test cases in CSV file";
+    EXPECT_EQ(cases.size(), 51) << "Expected 51 test cases in CSV file";
 
-    cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
-    for (const auto& pair : cases) {
-        cout << "  - " << pair.first << endl;
-    }
+    // cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
+    // for (const auto& pair : cases) {
+    //     cout << "  - " << pair.first << endl;
+    // }
 }
 
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzInvalidAicAivRatio)
