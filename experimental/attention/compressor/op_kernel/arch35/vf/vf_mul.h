@@ -82,22 +82,11 @@ __simd_vf__ void MulReduceSumbase8VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreAd
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(regList.vregSum, 0, mask);
         // 当前仅支持coff * cmpRatio为2的幂的情况
-        for (uint32_t rLoop = 0; rLoop < SimdCeilDivT(rCnt, 8U); rLoop++) {
-            uint32_t dealLen = min((rCnt - rLoop * 8) * baseD, baseD64);
+        for (uint32_t rLoop = 0; rLoop < rCnt; rLoop++) {
+            uint32_t dealLen = baseD;
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList, offset, dealLen);
             offset += dealLen;
         }
-        // 64 -> 32
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH32);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL32);
-
-        // 32 -> 16
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH48);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL16);
-        
-        // 16 -> 8
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH56);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL8);
 
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList.vregSum, maskL8);
     }
@@ -122,18 +111,11 @@ __simd_vf__ void MulReduceSumbase16VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreA
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(regList.vregSum, 0, mask);
         // 当前仅支持coff * cmpRatio为2的幂的情况
-        for (uint32_t rLoop = 0; rLoop < SimdCeilDivT(rCnt, 4U); rLoop++) {
-            uint32_t dealLen = min((rCnt - rLoop * 4) * baseD, baseD64);
+        for (uint32_t rLoop = 0; rLoop < rCnt; rLoop++) {
+            uint32_t dealLen = baseD;
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList, offset, dealLen);
             offset += dealLen;
         }
-        // 64 -> 32
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH32);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL32);
-    
-        // 32 -> 16
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH48);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL16);
 
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList.vregSum, maskL16);
     }
@@ -155,16 +137,12 @@ __simd_vf__ void MulReduceSumbase32VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *scoreA
     uint32_t rCnt = coff * cmpRatio;
     for (uint32_t scLoop = 0; scLoop < scLoopCnt; scLoop++) {
         MicroAPI::Duplicate(regList.vregSum, 0, mask);
-        // 当前仅支持coff * cmpRatio为2的幂的情况
-        for (uint32_t rLoop = 0; rLoop < SimdCeilDivT(rCnt, 2U); rLoop++) {
-            uint32_t dealLen = min((rCnt - rLoop * 2) * baseD, baseD64);
+        // // 当前仅支持coff * cmpRatio为2的幂的情况
+        for (uint32_t rLoop = 0; rLoop < rCnt; rLoop++) {
+            uint32_t dealLen = baseD;
             LoadMulAddVFImpl(kvAddr, scoreAddr, regList, offset, dealLen);
             offset += dealLen;
         }
-        // 64 -> 32
-        MicroAPI::Squeeze<T, AscendC::MicroAPI::GatherMaskMode::NO_STORE_REG>(vregSum0, regList.vregSum, maskH32);
-        MicroAPI::Add(regList.vregSum, regList.vregSum, vregSum0, maskL32);
-
         MicroAPI::StoreAlign(outputAddr + scLoop * baseD, regList.vregSum, maskL32);
     }
 }
