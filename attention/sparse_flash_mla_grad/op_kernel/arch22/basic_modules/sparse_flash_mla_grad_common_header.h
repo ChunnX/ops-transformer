@@ -73,6 +73,7 @@ struct RunInfo {
     int64_t curS1g;
     int64_t curS1Basic;
     int64_t oriWinDiagOffset;
+    int64_t cmpDiagOffset;
     bool isLastBasicBlock;
     bool isOri;
 };
