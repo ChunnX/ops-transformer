@@ -81,14 +81,14 @@ __aicore__ inline void NotifyCube(uint16_t value = 0)
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
 }
 
-__aicore__ inline void WaitForVector(uint16_t value = 0)
+__aicore__ inline void WaitForVector(uint16_t value = 0, uint16_t subBlockIdx = 0)
 {
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + FLAG_ID_MAX_PER_V * subBlockIdx + value);
 }
 
-__aicore__ inline void NotifyVector(uint16_t value = 0)
+__aicore__ inline void NotifyVector(uint16_t value = 0, uint16_t subBlockIdx = 0)
 {
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX_PER_V * subBlockIdx + value);
 }
 
 __aicore__ inline void WaitForCube(uint16_t value = 0)
