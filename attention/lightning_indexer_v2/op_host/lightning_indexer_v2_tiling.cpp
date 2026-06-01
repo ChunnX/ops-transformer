@@ -157,7 +157,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.topk = attrs->GetAttrPointer<int32_t>(ATTR_TOPK_INDEX);
     opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int64_t>(ATTR_CMP_RATIO_INDEX);
-    opParamInfo_.returnValue = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
+    opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
 
     if (opParamInfo_.layOut != nullptr) {
         OP_LOGI(context_->GetNodeName(), "layout_query is:%s", opParamInfo_.layOut);
@@ -175,7 +175,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "mask mode is:%d", *opParamInfo_.maskMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%lld", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
@@ -410,9 +410,9 @@ ge::graphStatus LIV2InfoParser::GetBatchSize()
             bSize_ = bSizeQuery;
         } else {
             if (bSizeQuery == bSizeKey + 1) {
-                batchSupperFlag_ = true;
+                batchSupperFlag_ = 1;
             }
-            OP_CHECK_IF((bSizeQuery != bSizeKey) && !batchSupperFlag_,
+            OP_CHECK_IF((bSizeQuery != bSizeKey) && (batchSupperFlag_ == 0),
                 OP_LOGE(opName_, "the lengths of cu_seqlens_q and cu_seqlens_k is %u, %u respectively, "
                         "they must be same.",
                         bSizeQuery, bSizeKey),
@@ -487,7 +487,7 @@ ge::graphStatus LIV2InfoParser::GetS2SizeForPageAttention()
     }
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
-    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %d, blockSize_ is %d, s2Size_ is %d",
+    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %u, blockSize_ is %d, s2Size_ is %lld",
             maxBlockNumPerBatch_, blockSize_, s2Size_);
     return ge::GRAPH_SUCCESS;
 }
