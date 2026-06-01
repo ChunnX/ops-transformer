@@ -54,7 +54,7 @@ TEST_F(MoeDistributeCombineInfershape, InferShape0)
             {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
             {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("tp_group")},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)},
-            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"expert_shard_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},

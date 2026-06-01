@@ -88,7 +88,7 @@ bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 
 aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
                                const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
-                               const char *groupTp, aclTensor *x)
+                               const char *groupTp, int64_t tpWorldSize, aclTensor *x)
 {
     CHECK_RET(CombineCheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -103,6 +103,10 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombine", "groupTp",
             std::to_string(strnlen(groupTp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupTp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (tpWorldSize >= 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", tpWorldSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -156,7 +160,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = CombineCheckParams(expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, groupEp,
-                                       groupTp, xOut);
+                                       groupTp, tpWorldSize, xOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     const aclTensor *performanceInfoOptionalCombineV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
