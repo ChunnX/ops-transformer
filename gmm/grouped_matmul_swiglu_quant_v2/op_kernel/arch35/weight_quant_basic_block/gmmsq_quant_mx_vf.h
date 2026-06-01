@@ -23,7 +23,7 @@
 #include "kernel_operator_intf.h"
 #endif
 
-#include "../common/basic_block_vf_mx.h"
+#include "basic_block_vf_mx.h"
 
 namespace GMMSQWeightQuant {
 
