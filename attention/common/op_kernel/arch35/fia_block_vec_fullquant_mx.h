@@ -120,6 +120,7 @@ public:
     postQuantBf16GmType postQuantScaleBf16Gm;
     postQuantBf16GmType postQuantOffsetBf16Gm;
     quantGmType pScaleGm;
+    quantGmType deScaleVGm;
 
     flashdecodeGmType accumOutGm;
     flashdecodeGmType softmaxFDSumGm;
@@ -161,19 +162,19 @@ public:
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
-                                        __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *deqScaleV, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar = *((T *)&tmp1);
 
-        InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
+        InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, deqScaleV, attenMask, softmaxLse, attentionOut, workspace);
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
-                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
-                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
+                                        __gm__ uint8_t *pScale, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *attenMask,
+                                        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         if (constInfo.isSoftmaxLseEnable) {
@@ -191,6 +192,9 @@ public:
             if (pScale != nullptr) {
                 pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
                 pScaleValue = this->pScaleGm.GetValue(0);
+            }
+            if (deqScaleV != nullptr) {
+                deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
             }
         }
 
@@ -680,6 +684,70 @@ public:
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
                     vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64, 1.0,
                     1.0);
+            }
+        }
+        bmm2ResBuf.SetCrossCore();
+        if (runInfo.isLastS2Loop) {
+            if (unlikely(runInfo.isFirstS2Loop)) {
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
+                    vec2ResUb, vec2ResUb, sumUb, runInfo.actVecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
+            }
+            CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
+        }
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    }
+
+    __aicore__ inline void ProcessVec2OnUbScale(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+                                                 RunInfoX runInfo)
+    {
+        if (unlikely(runInfo.actVecMSize == 0)) {
+            bmm2ResBuf.SetCrossCore();
+            return;
+        }
+        int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
+        float deSCaleVValue = 1.0f;
+        if constexpr (isFp8) {
+            deSCaleVValue = this->deScaleVGm.GetValue(0);
+        }
+        LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
+        LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        if (unlikely(runInfo.isFirstS2Loop)) {
+            DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        } else {
+            LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
+            LocalTensor<T> pScaleUb;
+            float deSCalePreVValue = 1.0f;
+            if constexpr (isFp8) {
+                if constexpr (USE_DN) {
+                    deSCalePreVValue = this->deScaleVGm.GetValue(0);
+                } else {
+                    deSCalePreVValue = this->deScaleVGm.GetValue(0);
+                }
+            }
+            if (!runInfo.isLastS2Loop) {
+                if constexpr (isFp8) {
+                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
+                        deSCaleVValue, deSCalePreVValue);
+                } else {
+                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
+                        1.0, 1.0);
+                }
+            } else {
+                if constexpr (isFp8) {
+                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
+                        deSCaleVValue, deSCalePreVValue);
+                } else {
+                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
+                        1.0, 1.0);
+                }
             }
         }
         bmm2ResBuf.SetCrossCore();

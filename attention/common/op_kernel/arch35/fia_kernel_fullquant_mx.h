@@ -147,8 +147,8 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, attenMask, softmaxLse,
-                                    attentionOut, workspace);
+            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, dequantScaleValue,
+                                    attenMask, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
