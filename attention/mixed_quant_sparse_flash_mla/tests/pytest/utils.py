@@ -368,6 +368,7 @@ def fill_none_params(params_dict):
         'template_run_mode': template_run_mode,
         'actlen_mode': actlen_mode,
         'S1EQS2': S1EQS2,
+        'tc_prefix': params_dict.get('tc_prefix', ''),
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
     }
@@ -406,6 +407,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "topk_value_mode", "return_softmax_lse",
         ]
         optional_columns = [
+            "tc_prefix",
             "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
         ]
@@ -439,6 +441,7 @@ def save_result(params, result, fulfill_percent, result_path):
     """
     row_data = {
         "Testcase_Name": params.get('Testcase_Name'),
+        "tc_prefix": params.get('tc_prefix', ''),
         "layout_q": params.get('layout_q'),
         "layout_kv": params.get('layout_kv'),
         "q_type": params.get('q_type'),
