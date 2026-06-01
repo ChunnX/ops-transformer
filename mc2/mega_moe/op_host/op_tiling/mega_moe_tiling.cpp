@@ -940,8 +940,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank || numMaxTokensPerRank % epWorldSize != 0,
-            OP_LOGE(nodeName, "numMaxTokensPerRank(%ld) either be 0 or (maxBs * EP and mod(numMaxTokensPerRank, EP(%ld)) == 0).",
+        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank ||
+                        numMaxTokensPerRank % epWorldSize != 0,
+            OP_LOGE(nodeName, 
+                "numMaxTokensPerRank(%ld) either be 0 or (maxBs * EP and mod(numMaxTokensPerRank, EP(%ld)) == 0).",
                 numMaxTokensPerRank, epWorldSize),
             return ge::GRAPH_FAILED);
     }
