@@ -114,7 +114,7 @@ private:
     ge::graphStatus GetHcclCommChannel(const HcclComm& hcclHandle, const ChannelAcquireParams& params,
                                        std::vector<ChannelHandle>& channels);
     ge::graphStatus GetHcclCommResource(const HcclComm& hcclHandle, const CommEngine& engine,
-                                        const CommProtocol& protocol, Mc2MoeContext* context);
+                                         const CommProtocol& protocol, Mc2MoeContext* context);
     ge::graphStatus FillContextBuffer(const HcclComm& hcclHandle, const CommEngine& engine, Mc2MoeContext* context,
                                       uint32_t rankId, const std::vector<ChannelHandle>& channels);
     ge::graphStatus CreatMc2Context(const ContextCreateParams& params, Mc2MoeContext* context);
