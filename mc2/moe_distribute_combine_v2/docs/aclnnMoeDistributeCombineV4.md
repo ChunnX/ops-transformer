@@ -15,25 +15,16 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。不支持TP域通信。
 
     相较于`aclnnMoeDistributeCombineV3`接口，该接口变更如下：
 
     新增采集通信耗时功能，记录每张卡的通信时间，通过传入`performanceInfoOptional`参数使能该特性。该功能推荐结合[DeepXTrace](https://github.com/antgroup/DeepXTrace)工具使用。单次算子调用各卡通信耗时会累加到该Tensor上，用户使用前按需清零。
 
 - 计算公式：
-    - 不存在TP域通信时：
 
     $$
     ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
@@ -128,7 +119,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     <td>要求2D Tensor。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td><code>(max(tpWorldSize, 1) * A , H)</code></td>
+    <td><code>(A , H)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -556,9 +547,9 @@ aclnnStatus aclnnMoeDistributeCombineV4(
     - sharedExpertXOptional 要求为2D或3D Tensor（2D时shape为 (BS, H)；3D时前两位乘积等于BS、第三维等于H）；可传或不传，传入时sharedExpertRankNum需为0。
     - epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     - moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
-    - groupTp 字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-    - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-    - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+    - groupTp 预留参数，TP域通信不再支持，仅在无TP域通信时支持传空。
+    - tpWorldSize 预留参数，TP域通信不再支持，仅允许0或1。
+    - tpRankId 预留参数，TP域通信不再支持，传0即可。
     - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
     - sharedExpertNum 当前取值范围[0, 4]。
     - sharedExpertRankNum 取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
