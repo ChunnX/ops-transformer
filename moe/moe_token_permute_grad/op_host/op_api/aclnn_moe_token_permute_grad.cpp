@@ -84,12 +84,12 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
+    aclnnStatus ret = MoeTokenPermuteGradCheck::CheckParams(permutedOutputGrad, sortedIndices, out);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    aclnnStatus ret = MoeTokenPermuteGradCheck::CheckParams(permutedOutputGrad, sortedIndices, out);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto permutedOutputGradContiguous = l0op::Contiguous(permutedOutputGrad, uniqueExecutor.get());
