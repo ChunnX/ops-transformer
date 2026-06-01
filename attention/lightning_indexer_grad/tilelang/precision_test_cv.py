@@ -60,8 +60,6 @@ def run_precision_test():
     dy = torch.randn(batch, seqlen_q, topk, dtype=torch.float16).npu()
     indices = torch.randint(0, seqlen_k, (batch, seqlen_q, topk), dtype=torch.int32).npu()
 
-    torch.npu.synchronize()
-
     print("\n[1] TileLang CV 分离架构计算...")
     try:
         d_query_tl, d_key_tl, d_weights_tl = op.forward(
