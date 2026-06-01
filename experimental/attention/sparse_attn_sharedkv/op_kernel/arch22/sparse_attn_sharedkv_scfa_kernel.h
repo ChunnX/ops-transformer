@@ -418,6 +418,21 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
 
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
     InitCalcParamsEach();
+    if (tmpBlockIdx < 2U) {
+        SAS_DEBUG_PRINTF("[SAS][SCFA][Init] block=%u aiCore=%u layout=%u kvLayout=%u outLayout=%u batch=%llu "
+                         "qSeq=%llu kvSeq=%llu g=%llu headDim=%llu mBase=%u s2Base=%u sparseCount=%u "
+                         "cmpRatio=%lld coreRange(bn2:%u-%u gs1:%u-%u s2:%u-%u)\n",
+                         tmpBlockIdx, aiCoreIdx, static_cast<uint32_t>(LAYOUT_T),
+                         static_cast<uint32_t>(KV_LAYOUT_T), static_cast<uint32_t>(constInfo.outputLayout),
+                         static_cast<unsigned long long>(constInfo.batchSize),
+                         static_cast<unsigned long long>(constInfo.qSeqSize),
+                         static_cast<unsigned long long>(constInfo.kvSeqSize),
+                         static_cast<unsigned long long>(constInfo.gSize),
+                         static_cast<unsigned long long>(constInfo.headDim), constInfo.mBaseSize,
+                         constInfo.s2BaseSize, constInfo.sparseBlockCount,
+                         static_cast<long long>(constInfo.cmpRatio), constInfo.bN2Start, constInfo.bN2End,
+                         constInfo.gS1Start, constInfo.gS1End, constInfo.s2Start, constInfo.s2End);
+    }
 
     pipe = tPipe;
     // init global buffer
@@ -605,6 +620,29 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::CalcParams(uint32_t loop, u
             info.v0S2Start = 512;
         }
         info.v0S2DealSize = 512;
+    }
+
+    if (SasDebugShouldTrace(info)) {
+        int32_t top0 = -999999;
+        if ((!info.isOriOnly) && (info.v0S2Start < constInfo.sparseBlockCount)) {
+            top0 = topKGm.GetValue(info.topKBaseOffset + info.v0S2Start);
+        }
+        SAS_DEBUG_PRINTF("[SAS][SCFA][Calc] core=%u b=%u n2=%u s1=%u gs1=%u loop=%u cmpLoop=%u "
+                         "s2=%u/%u first=%u last=%u oriOnly=%u m=%u mV=%u mVStart=%u actS1=%llu "
+                         "oriMask=[%d,%d] cmpLimit=%lld actS2=%u actS2Align=%u v0Start=%d v0Size=%d "
+                         "topBase=%llu top0=%d qOff=%llu oriOff=%llu cmpOff=%llu outOff=%llu\n",
+                         tmpBlockIdx, info.bIdx, info.n2IdxReal, info.s1Idx, info.gS1Idx, info.loop,
+                         info.cmpLoop, info.s2Idx, info.curSInnerLoopTimes, static_cast<uint32_t>(info.isFirstSInnerLoop),
+                         static_cast<uint32_t>(info.isLastS2Loop), static_cast<uint32_t>(info.isOriOnly),
+                         info.mSize, info.mSizeV, info.mSizeVStart, static_cast<unsigned long long>(info.actS1Size),
+                         tempLoopInfo.oriMaskLeft, tempLoopInfo.oriMaskRight,
+                         static_cast<long long>(info.cmpS2IdLimit), info.actualSingleProcessSInnerSize,
+                         info.actualSingleProcessSInnerSizeAlign, info.v0S2Start, info.v0S2DealSize,
+                         static_cast<unsigned long long>(info.topKBaseOffset), top0,
+                         static_cast<unsigned long long>(info.tensorAOffset),
+                         static_cast<unsigned long long>(info.tensorBOffset),
+                         static_cast<unsigned long long>(info.tensorCmpBOffset),
+                         static_cast<unsigned long long>(info.attenOutOffset));
     }
 }
 

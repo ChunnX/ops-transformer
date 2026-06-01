@@ -462,7 +462,23 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
+    bool debugDump = SasDebugShouldDump(info) && (mSplitInfo.nBufferIdx == 0U) && (startRow == 0U);
+    if (debugDump) {
+        uint32_t dumpLen = SasDebugDumpLen(computeSize);
+        SAS_DEBUG_PRINTF("[SAS][SCFA][Vec1][mm1Raw] block=%u sub=%u b=%u s1=%u loop=%u s2=%u "
+                         "oriOnly=%u mStart=%u vecStart=%u startRow=%u rows=%u col=%u actualCol=%u "
+                         "gmOff=%llu dumpLen=%u\n",
+                         GetBlockIdx(), GetSubBlockIdx(), info.bIdx, info.s1Idx, info.loop, info.s2Idx,
+                         static_cast<uint32_t>(info.isOriOnly), mSplitInfo.nBufferStartM,
+                         mSplitInfo.vecStartM, startRow, dealRowCount, columnCount,
+                         info.actualSingleProcessSInnerSize, static_cast<unsigned long long>(inOutGmOffset), dumpLen);
+        SAS_DUMP_TENSOR(mmResUb, 9101, dumpLen);
+    }
+
     ElewiseCompute(info, mmResUb, dealRowCount, columnCount);
+    if (debugDump) {
+        SAS_DUMP_TENSOR(mmResUb, 9102, SasDebugDumpLen(computeSize));
+    }
 
     PipeBarrier<PIPE_V>();
     LocalTensor<T> tmpAFloorUb = tmpBuff1.Get<T>();
@@ -470,6 +486,19 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
 
     SoftmaxFlashV2Compute(info, mSplitInfo, mmResUb, softmaxTmpUb, startRow, dealRowCount, columnCount,
                           info.actualSingleProcessSInnerSize);
+    if (debugDump) {
+        uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
+        uint32_t outIdx = info.loop % (constInfo.preLoadNum);
+        uint32_t softmaxOutOffset = outIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset;
+        SAS_DEBUG_PRINTF("[SAS][SCFA][Vec1][softmax] block=%u sub=%u b=%u s1=%u loop=%u s2=%u "
+                         "sumOff=%u rows=%u col=%u actualCol=%u\n",
+                         GetBlockIdx(), GetSubBlockIdx(), info.bIdx, info.s1Idx, info.loop, info.s2Idx,
+                         softmaxOutOffset, dealRowCount, columnCount, info.actualSingleProcessSInnerSize);
+        SAS_DUMP_TENSOR(mmResUb, 9103, SasDebugDumpLen(computeSize));
+        SAS_DUMP_TENSOR(softmaxSumUb[softmaxOutOffset], 9104, SasDebugDumpLen(dealRowCount));
+        SAS_DUMP_TENSOR(softmaxMaxUb[softmaxOutOffset], 9105, SasDebugDumpLen(dealRowCount));
+        SAS_DUMP_TENSOR(softmaxExpUb[softmaxOutOffset], 9106, SasDebugDumpLen(dealRowCount));
+    }
 
     PipeBarrier<PIPE_V>();
     LocalTensor<KV_T> tmpMMResCastTensor = outputBuff1.Get<KV_T>();
@@ -481,6 +510,9 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo 
 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
+    if (debugDump) {
+        SAS_DUMP_TENSOR(tmpMMResCastTensor, 9107, SasDebugDumpLen(computeSize));
+    }
     DataCopy(vec1ResGm[inOutGmOffset], tmpMMResCastTensor, computeSize);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 }
@@ -523,10 +555,27 @@ __aicore__ inline void SASVectorBlock<SAST>::GetRealS2Idx(int64_t s2GmOffset, in
     int64_t topkGmIdx = cmpS2Offset / constInfo.sparseBlockSize;
     if (unlikely(topkGmIdx >= constInfo.sparseBlockCount || s2GmOffset >= runInfo.v0S2DealSize)) {
         realS2Idx = -1;
+        if (SasDebugShouldDump(runInfo) && s2GmOffset < 4) {
+            SAS_DEBUG_PRINTF("[SAS][SCFA][TopK] block=%u sub=%u b=%u s1=%u cmpLoop=%u s2Gm=%lld "
+                             "topIdx=%lld invalid sparseCount=%u v0Size=%d topBase=%llu\n",
+                             GetBlockIdx(), GetSubBlockIdx(), runInfo.bIdx, runInfo.s1Idx, runInfo.cmpLoop,
+                             static_cast<long long>(s2GmOffset), static_cast<long long>(topkGmIdx),
+                             constInfo.sparseBlockCount, runInfo.v0S2DealSize,
+                             static_cast<unsigned long long>(topkGmBaseOffset));
+        }
         return;
     }
     realS2Idx = topkGm_.GetValue(topkGmBaseOffset + topkGmIdx) * static_cast<int64_t>(constInfo.sparseBlockSize) +
                 static_cast<int64_t>(cmpS2Offset % constInfo.sparseBlockSize);
+    if (SasDebugShouldDump(runInfo) && s2GmOffset < 4) {
+        SAS_DEBUG_PRINTF("[SAS][SCFA][TopK] block=%u sub=%u b=%u s1=%u cmpLoop=%u s2Gm=%lld "
+                         "topIdx=%lld topVal=%d realS2=%lld limit=%lld topBase=%llu\n",
+                         GetBlockIdx(), GetSubBlockIdx(), runInfo.bIdx, runInfo.s1Idx, runInfo.cmpLoop,
+                         static_cast<long long>(s2GmOffset), static_cast<long long>(topkGmIdx),
+                         topkGm_.GetValue(topkGmBaseOffset + topkGmIdx), static_cast<long long>(realS2Idx),
+                         static_cast<long long>(runInfo.cmpS2IdLimit),
+                         static_cast<unsigned long long>(topkGmBaseOffset));
+    }
 }
 
 template <typename SAST>
@@ -896,6 +945,19 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo 
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
     pingpongFlag ^= 1; // pingpong 0 1切换
 
+    bool debugDump = SasDebugShouldDump(info) && (mSplitInfo.nBufferIdx == 0U) && (startRow == 0U);
+    if (debugDump) {
+        uint32_t dumpLen = SasDebugDumpLen(vec2ComputeSize);
+        SAS_DEBUG_PRINTF("[SAS][SCFA][Vec2][mm2Raw] block=%u sub=%u b=%u s1=%u loop=%u s2=%u "
+                         "first=%u last=%u oriOnly=%u mStart=%u vecStart=%u startRow=%u rows=%u col=%u "
+                         "gmOff=%llu dumpLen=%u\n",
+                         GetBlockIdx(), GetSubBlockIdx(), info.bIdx, info.s1Idx, info.loop, info.s2Idx,
+                         static_cast<uint32_t>(info.isFirstSInnerLoop), static_cast<uint32_t>(info.isLastS2Loop),
+                         static_cast<uint32_t>(info.isOriOnly), mSplitInfo.nBufferStartM, mSplitInfo.vecStartM,
+                         startRow, dealRowCount, columnCount, static_cast<unsigned long long>(srcGmOffset), dumpLen);
+        SAS_DUMP_TENSOR(bmm2ResUb, 9201, dumpLen);
+    }
+
     uint32_t inOutBaseOffset = mStart * columnCount;
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
 
@@ -920,11 +982,23 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo 
         Brcb(expUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8,
              {1, 8});
         PipeBarrier<PIPE_V>();
+        if (debugDump) {
+            SAS_DEBUG_PRINTF("[SAS][SCFA][Vec2][accumUpdate] block=%u sub=%u b=%u s1=%u loop=%u "
+                             "prevGmOff=%llu expOff=%u rows=%u col=%u\n",
+                             GetBlockIdx(), GetSubBlockIdx(), info.bIdx, info.s1Idx, info.loop,
+                             static_cast<unsigned long long>(vec2ResGmOffset),
+                             idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset, dealRowCount, columnCount);
+            SAS_DUMP_TENSOR(bmm2ResPreUb, 9202, SasDebugDumpLen(vec2ComputeSize));
+            SAS_DUMP_TENSOR(expUb, 9203, SasDebugDumpLen(dealRowCount * FP32_BLOCK_ELEMENT_NUM));
+        }
 
         RowMuls(bmm2ResPreUb, bmm2ResPreUb, expUb, dealRowCount, columnCount, actualColumnCount);
         AscendC::PipeBarrier<PIPE_V>();
         Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
         AscendC::PipeBarrier<PIPE_V>();
+        if (debugDump) {
+            SAS_DUMP_TENSOR(bmm2ResUb, 9204, SasDebugDumpLen(vec2ComputeSize));
+        }
 
         SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG + pingpongFlag);
         pingpongFlag ^= 1; // pingpong 0 1 切换
@@ -937,9 +1011,26 @@ __aicore__ inline void SASVectorBlock<SAST>::DealBmm2ResBaseBlock(const RunInfo 
         Brcb(tmpSumUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset], (dealRowCount + 7) / 8,
              {1, 8});
         PipeBarrier<PIPE_V>();
+        if (debugDump) {
+            SAS_DEBUG_PRINTF("[SAS][SCFA][Vec2][finalDiv] block=%u sub=%u b=%u s1=%u loop=%u "
+                             "sumOff=%u rows=%u col=%u actualCol=%u outOff=%llu\n",
+                             GetBlockIdx(), GetSubBlockIdx(), info.bIdx, info.s1Idx, info.loop,
+                             idx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset, dealRowCount, columnCount,
+                             actualColumnCount,
+                             static_cast<unsigned long long>(info.attenOutOffset + mStart * actualColumnCount));
+            SAS_DUMP_TENSOR(tmpSumUb, 9205, SasDebugDumpLen(dealRowCount * FP32_BLOCK_ELEMENT_NUM));
+            SAS_DUMP_TENSOR(bmm2ResUb, 9206, SasDebugDumpLen(vec2ComputeSize));
+        }
         RowDivs(bmm2ResUb, bmm2ResUb, tmpSumUb, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
+        if (debugDump) {
+            SAS_DUMP_TENSOR(bmm2ResUb, 9207, SasDebugDumpLen(vec2ComputeSize));
+        }
         Bmm2ResCopyOut(info, bmm2ResUb, mStart, dealRowCount, columnCount, actualColumnCount);
+        if (debugDump) {
+            SAS_DUMP_TENSOR(attentionOutGm[info.attenOutOffset + mStart * actualColumnCount], 9208,
+                            SasDebugDumpLen(dealRowCount * actualColumnCount));
+        }
     } else {
         LocalTensor<T> outUb = outputBuff1.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
