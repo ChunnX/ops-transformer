@@ -194,11 +194,11 @@ void Mc2MatmulV3BaseTiling::InitCompileInfo() // 检查输入属性是否支持
 ge::graphStatus Mc2MatmulV3BaseTiling::GetShapeAttrsInfo() // 检查输入属性是否支持
 {
     args_.opName = context_->GetNodeName();
-    OP_TILING_CHECK(args_.opName == nullptr, CUBE_INNER_ERR_REPORT("matmul", "get op name invalid"),
+    OP_TILING_CHECK(args_.opName == nullptr, OP_LOGE("matmul", "get op name invalid."),
         return ge::GRAPH_FAILED);
     OP_LOGI(args_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     OP_TILING_CHECK((CheckArgs() != ge::GRAPH_SUCCESS) || (GetArgs() != ge::GRAPH_SUCCESS),
-        CUBE_INNER_ERR_REPORT(args_.opName, "invalid context"), return ge::GRAPH_FAILED);
+        OP_LOGE(args_.opName, "invalid context."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -549,10 +549,10 @@ ge::graphStatus Mc2MatmulV3BaseTiling::SelectNZTiling()
 
 ge::graphStatus Mc2MatmulV3BaseTiling::DoOpTiling()
 {
-    OP_TILING_CHECK(GetMoreArgs() != ge::GRAPH_SUCCESS, CUBE_INNER_ERR_REPORT(args_.opName, "invalid context"),
+    OP_TILING_CHECK(GetMoreArgs() != ge::GRAPH_SUCCESS, OP_LOGE(args_.opName, "invalid context."),
         return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckDimsAligned310P() != ge::GRAPH_SUCCESS, CUBE_INNER_ERR_REPORT(args_.opName, "invalid context"),
+    OP_TILING_CHECK(CheckDimsAligned310P() != ge::GRAPH_SUCCESS, OP_LOGE(args_.opName, "invalid context."),
         return ge::GRAPH_FAILED);
 
     if (InitTilingData() == ge::GRAPH_FAILED) {
@@ -576,13 +576,13 @@ ge::graphStatus Mc2MatmulV3BaseTiling::DoOpTiling()
                 MathUtil::CeilDivision(args_.kValue,
                     static_cast<uint64_t>(tilingData_.matmulTiling.singleCoreK)) <= compileInfo_.aicNum;
             OP_TILING_CHECK(args_.isATrans || !args_.isBTrans || !isSingleRound || args_.aType != ge::DT_FLOAT,
-                CUBE_INNER_ERR_REPORT(args_.opName, "MULTI_CORE_SPLIT_K only support fp322fp32, "
-                "transA=false and transB=true, and multi round is not permitted."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(args_.opName, "MULTI_CORE_SPLIT_K",
+                    "unsupported", "only support fp322fp32, transA=false and transB=true, and multi round is not permitted."),
                 return ge::GRAPH_FAILED);
         }
         return ge::GRAPH_SUCCESS;
     }
-    OP_TILING_CHECK(SelectNZTiling() != ge::GRAPH_SUCCESS, CUBE_INNER_ERR_REPORT(args_.opName, "invalid tiling select"),
+    OP_TILING_CHECK(SelectNZTiling() != ge::GRAPH_SUCCESS, OP_LOGE(args_.opName, "invalid tiling select."),
         return ge::GRAPH_FAILED);
     DoBasicTiling();
     OptimizeBasicKernelStepK();
@@ -1770,7 +1770,7 @@ bool Mc2MatmulV3BaseTiling::DoBL1FullloadWithFixpipeTiling() {
     runInfo_.singleCoreM = runInfo_.baseM;
     runInfo_.singleCoreN = runInfo_.baseN;
     OP_TILING_CHECK(runInfo_.depthA1 == 0,
-            CUBE_INNER_ERR_REPORT(context_->GetNodeName(), "Tiling calculate failed"), return false);
+            OP_LOGE(context_->GetNodeName(), "Tiling calculate failed."), return false);
     tilingEnable_.tilingEnableFixOpti = Mc2TilingEnableFixOpti::BASE_ENABLE_ALIGNOUT;
     tilingEnable_.tilingEnableSplitCore = Mc2TilingEnableSplitCore::BASE;
     tilingEnable_.tilingEnableFullLoad = Mc2TilingEnableFullLoad::BL1_FULL_LOAD;
@@ -2757,7 +2757,7 @@ ge::graphStatus Mc2MatmulV3BaseTiling::PostTiling()
     context_->SetBlockDim(tilingData_.matmulTiling.usedCoreNum);
     context_->SetScheduleMode(1);
     size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
-    OP_TILING_CHECK(workspaces == nullptr, CUBE_INNER_ERR_REPORT(context_->GetNodeName(), "workspaces is null"),
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "workspaces is null."),
         return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize_;
 

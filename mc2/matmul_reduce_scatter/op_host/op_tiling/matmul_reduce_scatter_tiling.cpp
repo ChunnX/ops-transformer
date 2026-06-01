@@ -242,12 +242,12 @@ static uint32_t MC2_SpliteReduceScatter(mc2tiling::TilingArgs& args, uint32_t ma
 static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(mc2tiling::Mc2TilingUtils::CommonParamCheck(context) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "common check failed"), return ge::GRAPH_FAILED);
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
     const gert::StorageShape* bShape = context->GetInputShape(1);
     OP_TILING_CHECK((aShape == nullptr) || (bShape == nullptr),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the required params shouldn't nullptr."),
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "required params"),
         return ge::GRAPH_FAILED);
     uint64_t valueOne = aShape->GetStorageShape().GetDim(0);
     uint64_t valueTwo = aShape->GetStorageShape().GetDim(1);
@@ -255,32 +255,27 @@ static ge::graphStatus ReduceScatterParamsCheck(const gert::TilingContext* conte
     uint64_t valueFour = bShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(valueOne == 0 || valueTwo == 0 || valueThree == 0 || valueFour == 0,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "the value is invalid."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "shape value"), return ge::GRAPH_FAILED);
 
     if (context->GetAttrs() == nullptr) {
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get attrs failed.");
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs");
     } else {
         auto reduce_op = context->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(reduce_op == nullptr,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the reduce_op is nullptr."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "reduce_op"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(strcmp(reduce_op, "sum") != 0,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the reduce_op should be sum, but real value is %s.", reduce_op), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "reduce_op", reduce_op, "should be sum"), return ge::GRAPH_FAILED);
 
         auto isTransA = context->GetAttrs()->GetAttrPointer<bool>(2);
         OP_TILING_CHECK(isTransA == nullptr,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the isTransA is nullptr."), return ge::GRAPH_FAILED);
+            OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransA"), return ge::GRAPH_FAILED);
         OP_TILING_CHECK(*isTransA != false,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-            "the isTransA should be false, but real value is 1."), return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "isTransA", "true", "should be false"), return ge::GRAPH_FAILED);
     }
 
     auto group = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     OP_TILING_CHECK(group == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the group is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -499,11 +494,9 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceSc
     mc2tiling::TilingArgs& args)
 {
     OP_TILING_CHECK(context->GetInputDesc(0) == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the input desc of x1 is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "input desc x1"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(context->GetInputDesc(1) == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the input desc of x2 is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "input desc x2"), return ge::GRAPH_FAILED);
     SetReduceScatterTilingArgs(context, args);
 
     tilingData.param.rankM = args.orgMValue; // 存放用户原始输入的mValue
@@ -617,7 +610,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(
 {
     size_t* workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(context->GetNodeName(), "get workspace failed"), return ge::GRAPH_FAILED);
 
     auto&& cfg = tilingData.param;
 
@@ -671,7 +664,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     MatmulReduceScatterTilingData* tilingData = context->GetTilingData<MatmulReduceScatterTilingData>();
     // 对参数进行校验
     OP_TILING_CHECK(ReduceScatterParamsCheck(context) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "param is invalid."),
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "param"),
                     return ge::GRAPH_FAILED);
     int index = 0;
     auto group = context->GetAttrs()->GetAttrPointer<char>(index++);
@@ -681,16 +674,13 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     auto comm_turn_ptr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);
 
     OP_TILING_CHECK(is_trans_b == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the is_trans_b is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "is_trans_b"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(comm_turn_ptr == nullptr,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-        "the comm_turn is nullptr."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_turn"), return ge::GRAPH_FAILED);
     auto rankSize = mc2tiling::MatmulFormulaicTiling::GetRankSize(group);
     auto comm_turn = *comm_turn_ptr;
     OP_TILING_CHECK(comm_turn != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "comm_turn should be 0, but the actual value is %ld.", comm_turn),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "comm_turn", std::to_string(comm_turn).c_str(), "0"),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("MatmulReduceScatter",
@@ -706,7 +696,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc
     tilingData->socParam.isStep = 0U;
     tilingData->socParam.isND2NZ = 1U;
     OP_TILING_CHECK(SetCommAlg(*tilingData) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), " Set comm algorithm failed."),
+                    OP_LOGE(context->GetNodeName(), " Set comm algorithm failed."),
                     return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
     OP_LOGI(context->GetNodeName(), " Step comm flag is %u. ND2NZ flag is: %u", tilingData->socParam.isStep,

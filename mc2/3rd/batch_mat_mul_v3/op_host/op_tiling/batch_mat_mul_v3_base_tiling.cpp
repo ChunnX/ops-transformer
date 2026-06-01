@@ -1017,7 +1017,7 @@ ge::graphStatus Mc2BatchMatmulV3BaseTiling::PostTiling()
     workspaceSize_ = std::max(workspaceSize_, DEFAULT_SIZE);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-                    CUBE_INNER_ERR_REPORT(context_->GetNodeName(), "workspaces is null"),
+                    OP_LOGE(context_->GetNodeName(), "workspaces is null."),
                     return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize_;
     return ge::GRAPH_SUCCESS;

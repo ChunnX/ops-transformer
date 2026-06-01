@@ -37,7 +37,7 @@ REGISTER_OPS_TILING_TEMPLATE(Mc2BatchMatMulV3, Mc2BatchMatmulV3BaseTiling, 0);
 
 static ge::graphStatus Mc2BatchMatMulV3TilingFunc(gert::TilingContext* context)
 {
-    OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("Mc2BatchMatMulV3", "context is null"),
+    OP_TILING_CHECK(context == nullptr, OP_LOGE("Mc2BatchMatMulV3", "context is null."),
                     return ge::GRAPH_FAILED);
     if (Mc2IsAdvancedSocVersion(context)) {
         return Mc2batch_matmul_v3_advanced::Mc2BatchMatMulV3Tiling(context).DoTiling();
@@ -46,14 +46,14 @@ static ge::graphStatus Mc2BatchMatMulV3TilingFunc(gert::TilingContext* context)
 }
 
 static ge::graphStatus Mc2TilingPrepareForBatchMatMulV3(gert::TilingParseContext *context) {
-    OP_TILING_CHECK(context == nullptr, CUBE_INNER_ERR_REPORT("Mc2BatchMatMulV3", "context is null"),
+    OP_TILING_CHECK(context == nullptr, OP_LOGE("Mc2BatchMatMulV3", "context is null."),
                     return ge::GRAPH_FAILED);
     fe::PlatFormInfos* platformInfo = context->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "platformInfoPtr is null"),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null."),
                     return ge::GRAPH_FAILED);
 
     auto compileInfoPtr = context->GetCompiledInfo<Mc2MatmulV3CompileInfo>();
-    OP_TILING_CHECK(compileInfoPtr == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(), "compileInfoPtr is null"),
+    OP_TILING_CHECK(compileInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "compileInfoPtr is null."),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     platformInfo->GetPlatformRes("version", "SoC_version", compileInfoPtr->socVersionStr);
