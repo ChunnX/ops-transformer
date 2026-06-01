@@ -1,0 +1,249 @@
+================================================================================
+fia_kernel_noquant_gqa.h  全变量初始化检查报告
+================================================================================
+检查范围：FlashAttentionNoQuantGqaKernel 类成员变量、所有函数局部变量
+================================================================================
+
+## 一、FlashAttentionNoQuantGqaKernel 类成员变量（static constexpr）
+================================================================================
+[L042] mBaseSize                | constexpr uint32_t       | = CubeBlockType::mBaseSize
+[L043] s2BaseSize               | constexpr uint32_t       | = CubeBlockType::s2BaseSize
+[L044] dBaseSize                | constexpr uint32_t       | = CubeBlockType::dBaseSize
+[L045] dVBaseSize               | constexpr uint32_t       | = CubeBlockType::dVBaseSize
+[L047] USE_DN                   | constexpr bool           | = CubeBlockType::USE_DN
+[L048] BMM2_TOUB                | constexpr bool           | = CubeBlockType::BMM2_TOUB
+[L049] HAS_PREFIX               | constexpr bool           | = CubeBlockType::HAS_PREFIX
+[L050] HAS_MASK                 | constexpr bool           | = VecFaBlockType::HAS_MASK
+[L052] PRELOAD_N                | constexpr uint32_t       | = 2
+[L053] PRELOAD_TASK_CACHE_SIZE  | constexpr uint32_t       | = PRELOAD_N + 1 = 3
+[L055] PAGE_ATTENTION           | constexpr bool           | = CubeBlockType::PAGE_ATTENTION
+[L056] HAS_ROPE                 | constexpr bool           | = CubeBlockType::HAS_ROPE
+[L057] FLASH_DECODE             | constexpr bool           | = VecFaBlockType::FLASH_DECODE
+[L058] LAYOUT_Q                 | constexpr LayOutTypeEnum  | = CubeBlockType::LAYOUT
+[L059] LAYOUT_KV                | constexpr LayOutTypeEnum  | = CubeBlockType::LAYOUT
+[L060] Q_MODE                   | constexpr ActualSeqLensMode | = GetQActSeqMode<LAYOUT_Q>()
+[L061] KV_MODE                  | constexpr ActualSeqLensMode | = GetKvActSeqMode<LAYOUT_KV, PAGE_ATTENTION>()
+
+================================================================================
+## 二、FlashAttentionNoQuantGqaKernel 类成员变量（非constexpr）
+================================================================================
+[L069] gmBufferManager          | BufferManager<GM>       | 默认构造
+[L070] ubBufferManager          | BufferManager<UB>       | 默认构造
+[L071] l1BufferManager          | BufferManager<L1>       | 默认构造
+[L072] bmm2ResGmBuffers         | BuffersPolicy3buff<GM>  | 默认构造
+[L073] bmm1Buffers              | BuffersPolicyDB<UB>     | 默认构造
+[L074] bmm2Buffers              | BuffersPolicyDB<UB>     | 默认构造
+[L075] l1PBuffers               | BuffersPolicy3buff<L1>  | 默认构造
+[L077] actualSeqLengthsGmQ      | GlobalTensor<uint64_t>  | Init(L140): SetGlobalBuffer(actualSeqLengths, constInfo.actualSeqLenSize)
+[L078] actualSeqLengthsGm       | GlobalTensor<uint64_t>  | Init(L143): SetGlobalBuffer(actualSeqLengthsKv, constInfo.actualSeqLenKVSize)
+[L079] fiaMetaDataGm            | GlobalTensor<uint32_t>  | Init(L131): SetGlobalBuffer(fiaMetaData, NPU_AIC_CORE_NUM*FA_METADATA_SIZE + NPU_AIV_CORE_NUM*FD_METADATA_SIZE)
+[L080] softmaxLseGm             | GlobalTensor<float>     | Init(L172): SetGlobalBuffer [条件: FLASH_DECODE && isSoftmaxLseEnable]
+[L081] sinkGm                   | GlobalTensor<INPUT_T>    | Init(L167): SetGlobalBuffer [条件: FLASH_DECODE && learnableSink != nullptr]
+[L082] keyPtr                   | __gm__ uint8_t*         | 内联 = nullptr; Init(L137): = key
+[L083] valuePtr                 | __gm__ uint8_t*         | 内联 = nullptr; Init(L138): = value
+[L085] constInfo                | ConstInfoX              | 默认构造; Init(L134): InitConstInfo() 全字段赋值
+[L087] tilingData               | const NoQuantTilingArch35* __restrict | Init(L129): = tiling
+[L088] pipe                     | TPipe*                  | Init(L128): = tPipe
+[L089] cubeBlock                | CubeBlockType           | 构造函数(L116): cubeBlock(constInfo)
+[L090] vecFaBlock               | VecFaBlockType          | 构造函数(L116): vecFaBlock(constInfo)
+[L091] vecFdBlock               | VecFdBlockType          | 构造函数(L116): vecFdBlock(constInfo)
+[L093] coreGS1Loops             | uint32_t                | 内联 = 0U
+[L094] accGS1Loops              | uint32_t                | 内联 = 0U
+[L095] varlenCalcTimes          | uint32_t                | 内联 = 0U; CalcS1OutSplitLoopTimes(L357-362)更新
+[L096] preTaskIdx               | int64_t                 | 内联 = 0; S1OutSplitUpdateAxis(L796)更新
+[L097] curTaskIdx               | int64_t                 | 内联 = 0; S1OutSplitUpdateAxis(L791)更新
+[L100] actSeqLensKv             | uint64_t                | 内联 = 0; GetTaskDealMode(L480-484)更新
+[L101] actSeqLensQ              | uint64_t                | 内联 = 0; GetTaskDealMode(L485)更新
+[L102] curS2Start               | uint32_t                | ★ 无内联默认值; CalcCurS2StartEndNoSparse(L557-561)/CalcCurS2StartEndWithSparse(L607-624)设置; 首次GetTaskDealMode(L474 isFirstTask=true)中调用设置,早于CalcParams(L748)首次使用
+[L103] curS2End                 | uint32_t                | 内联 = 0; CalcCurS2StartEndNoSparse(L558-566)/CalcCurS2StartEndWithSparse(L608-628)覆盖
+[L104] prevBIdx                 | uint32_t                | ★ 无内联默认值; GetTaskDealMode(L478)首次调用时isFirstTask=true,在if体内赋值,早于任何读取(L477)使用; subsequent calls通过短路求值避免未赋值读取
+[L105] prevBN2Idx               | uint32_t                | ★ 无内联默认值; FlashAttention(L413)在while之前赋值; GetTaskDealMode(L513)更新
+[L106] prevGS1Idx               | uint32_t                | ★ 无内联默认值; FlashAttention(L414)在while之前赋值; GetTaskDealMode(L514)更新
+[L107] mloop                    | uint32_t                | 内联 = 0; GetTaskDealMode(L530)递增
+[L108] headS2Split              | bool                    | 内联 = false; CalcCurS2StartEndNoSparse(L560)/WithSparse(L623)设置
+[L109] tailS2Split              | bool                    | 内联 = false; CalcCurS2StartEndNoSparse(L565)/WithSparse(L627)设置
+[L111] qActSeqLensParser        | ActualSeqLensParser<>   | 默认构造; Init(L141): .Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size)
+[L112] kvActSeqLensParser       | ActualSeqLensParser<>   | 默认构造; Init(L144): .Init(actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size)
+
+================================================================================
+## 三、各函数局部变量
+================================================================================
+
+--- Init (L117-177) ---
+(无局部变量)
+
+--- InitMMResBuf (L179-208) ---
+[L181] mm1OutDtype              | uint32_t              | OK: = sizeof(T)
+[L183] mm1ResultSize            | uint32_t              | OK: = mBaseSize/CV_RATIO * s2BaseSize * mm1OutDtype
+[L184] mm2ResultSize            | constexpr uint32_t    | OK: = mBaseSize/CV_RATIO * dVBaseSize * sizeof(T)
+[L185] mm2LeftSize              | constexpr uint32_t    | OK: = mBaseSize * s2BaseSize * sizeof(INPUT_T)
+[L200] mm2ResultSize            | int64_t               | OK: = mBaseSize * constInfo.dBasicBlock [if !BMM2_TOUB]
+[L202] prevCoretotalOffset      | int64_t               | OK: = constInfo.aicIdx * 3 * mm2ResultSize [if !BMM2_TOUB]
+
+--- InitConstInfo (L210-340) ---
+[L221] fiaBaseParams            | auto(FiaBaseParams)   | OK: = this->tilingData->fiaBaseParams (struct copy, 所有字段有默认值)
+[L222] fiaAttenMaskParams       | auto(FiaAttenMaskParams) | OK: = this->tilingData->fiaAttenMaskParams (struct copy)
+[L223] fiaPseParams             | auto(FiaPseParams)    | OK: = this->tilingData->fiaPseParams (struct copy)
+[L224] fiaSystemPrefixParams   | auto(FiaSystemPrefixParams) | OK: = this->tilingData->fiaSystemPrefixParams (struct copy)
+[L225] fiaPageAttentionParams   | auto(FiaPageAttentionParams) | OK: = this->tilingData->fiaPageAttentionParams (struct copy)
+[L226] fiaLeftPaddingParams     | auto(FiaLeftPaddingParams) | OK: = this->tilingData->fiaLeftPaddingParams (struct copy)
+[L227] fiaPostQuantParams       | auto(FiaPostQuantParams) | OK: = this->tilingData->fiaPostQuantParams (struct copy)
+[L228] fiaWorkspaceParams       | auto(FiaWorkspaceParams) | OK: = this->tilingData->fiaWorkspaceParams (struct copy)
+[L229] fiaS1OuterSplitCoreParams| auto(FiaS1OuterSplitCoreParams) | OK: = this->tilingData->fiaS1OuterSplitCoreParams (struct copy)
+[L230] fiaEmptyTensorParams     | auto(FiaEmptyTensorParams) | OK: = this->tilingData->fiaEmptyTensorParams (struct copy)
+
+--- GetFAMetaDataIndex (L342-345) ---
+(无局部变量)
+
+--- GetFDMetaDataIndex (L347-350) ---
+(无局部变量)
+
+--- CalcS1OutSplitLoopTimes (L352-365) ---
+[L354] varlenCycleCoreNums      | int64_t               | OK: = constInfo.coreNum * 2
+[L355] varlenCalcLoops          | int64_t               | OK: = constInfo.totalSize / varlenCycleCoreNums
+[L356] varlenCalcLoopsRemain    | int64_t               | OK: = constInfo.totalSize % varlenCycleCoreNums
+
+--- CalcS1OutTaskIdx (L367-373) ---
+(无局部变量)
+
+--- CrossCoreBufferInit (L375-387) ---
+(无局部变量)
+
+--- CrossCoreBufferUnInit (L389-401) ---
+(无局部变量)
+
+--- FlashAttention (L403-452) ---
+[L409] taskRunInfo              | RunInfoX[3]           | OK: = {} (value-initialized, 全部zero-init)
+[L410] bN2Cur                   | uint32_t              | OK: = constInfo.bN2Start
+[L411] gS1Cur                   | uint32_t              | OK: = constInfo.gS1OStart
+[L412] s2Cur                    | uint32_t              | OK: = constInfo.s2OStart
+[L420] shouldDispatchTask       | bool                  | OK: = true
+[L421] shouldExecuteTask        | bool                  | OK: = false
+[L422] createdTaskCount         | uint32_t              | OK: = 0U
+[L423] executedTaskCount        | uint32_t              | OK: = 0U
+[L428] taskDealMode             | TASK_DEAL_MODE        | OK: = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur)返回
+
+--- ShouldDispatchTask (L454-460) ---
+(无局部变量)
+
+--- ShouldExecuteTask (L462-470) ---
+[L464] i                        | uint32_t              | OK: for循环索引
+
+--- GetTaskDealMode (L472-534) ---
+[L474] isFirstTask              | bool                  | OK: = (bN2Cur==bN2Start)&&(gS1Cur==gS1OStart)&&(s2Cur==s2OStart)
+[L476] bIdx                     | uint32_t              | OK: = bN2Cur / constInfo.n2Size
+[L492] s2LoopTimes              | uint64_t              | OK: = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize
+[L493] gS1Size                  | uint64_t              | OK: = actSeqLensQ * constInfo.gSize
+[L494] gS1LoopTimes             | uint64_t              | OK: = (gS1Size + mBaseSize - 1) / mBaseSize
+
+--- GetPreNextTokenLeftUp (L536-553) ---
+(无局部变量; 引用参数preTokenLeftUp,nextTokenLeftUp由调用者初始化)
+
+--- CalcCurS2StartEndNoSparse (L555-568) ---
+(无局部变量)
+
+--- CalcCurS2StartEndWithSparse (L570-631) ---
+[L573] preTokenLeftUp           | int64_t               | OK: = 0 (后L575被引用参数覆盖)
+[L574] nextTokenLeftUp          | int64_t               | OK: = 0 (后L575被引用参数覆盖)
+[L578] s1GFirstToken            | int64_t               | OK: = gS1Cur * mBaseSize
+[L579] s1GLastToken             | int64_t               | OK: = Min(s1GFirstToken+mBaseSize, actSeqLensQ*gSize) - 1
+[L583] s1FirstToken             | int64_t               | OK: = 0; 后if-else两分支均赋值(L586/L591/L595/L596)
+[L584] s1LastToken              | int64_t               | OK: = 0; 后if-else两分支均赋值(L587/L592/L596)
+[L601] s2StartWithSparse        | uint32_t              | OK: = 0U; 后L615覆盖
+[L602] s2EndWithSparse          | uint32_t              | OK: = 0U; 后L616覆盖
+[L603] s2FirstToken             | int64_t               | OK: = s1FirstToken - preTokenLeftUp
+[L604] s2LastToken              | int64_t               | OK: = s1LastToken + nextTokenLeftUp
+
+--- ExecuteTask (L633-655) ---
+[L635] runInfo0                 | RunInfoX& (ref)       | OK: = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE] (已在FlashAttention中{}初始化)
+[L636] runInfoNegN              | RunInfoX& (ref)       | OK: = taskRunInfo[(loop-PRELOAD_N)%PRELOAD_TASK_CACHE_SIZE]; 仅在loop>=2时(L645)访问
+
+--- CalcParams (L693-784) ---
+[L712] gS1Size                  | uint64_t              | OK: = info.actS1Size * constInfo.gSize
+
+--- S1OutSplitUpdateAxis (L786-855) ---
+[L794] gS1Skip                  | int64_t               | OK: = curTaskIdx - preTaskIdx (curTaskIdx在L791先行赋值)
+[L801] gS1Size                  | uint64_t              | OK: = actSeqLensQ * constInfo.gSize
+[L802] gS1LoopTimes             | uint64_t              | OK: = actSeqLensQ==0 ? gSize : (gS1Size+mBaseSize-1)/mBaseSize
+[L803] gS1RemainCurBN2          | uint64_t              | OK: = gS1LoopTimes - gS1Cur
+[L815] n2Size                   | uint32_t              | OK: = constInfo.n2Size
+[L816] n2Idx                    | uint32_t              | OK: = bN2Cur % n2Size
+[L817] bIdx                     | uint32_t              | OK: = bN2Cur / n2Size
+[L818] gS1RemainCurBatch        | uint64_t              | OK: = 0 (条件L823覆盖)
+[L839] gS1Size                  | uint64_t              | OK: = actSeqLensQ * constInfo.gSize (循环内重新赋值)
+[L840] gS1LoopTimes             | uint64_t              | OK: = actSeqLensQ==0 ? gSize : (gS1Size+mBaseSize-1)/mBaseSize (循环内)
+
+--- UpdateAxisInfo (L857-888) ---
+[L878] gS1Size                  | uint64_t              | OK: = actSeqLensQ * constInfo.gSize
+[L879] gS1LoopTimes             | uint64_t              | OK: = (gS1Size + mBaseSize - 1) / mBaseSize
+
+--- FlashDecode (L890-907) ---
+[L894] fdCoreEnable             | uint32_t              | OK: = fiaMetaDataGm.GetValue(GetFDMetaDataIndex(aivIdx, FD_CORE_ENABLE_INDEX))
+[L895] fdBN2Idx                 | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L896] fdMIdx                   | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L897] fdS2SplitNum             | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L898] mStart                   | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L899] mLen                     | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L900] fdWorkspaceIdx           | uint32_t              | OK: = fiaMetaDataGm.GetValue(...)
+[L902] fdParams                 | FDparamsX             | OK: 聚合初始化全部6字段 {fdCoreEnable,fdBN2Idx,fdMIdx,fdS2SplitNum,mStart,mLen,fdWorkspaceIdx}
+
+--- Process (L909-935) ---
+(无局部变量)
+
+================================================================================
+## 四、constInfo 在 constInfo 中的字段初始化跟踪
+================================================================================
+constInfo 是 FlashAttentionNoQuantGqaKernel 的成员变量(L85), 非引用,默认构造。
+在 Init(L134) 中调用 InitConstInfo() 完成全字段初始化。
+InitConstInfo 将 tilingData 中的全部 Fia*Params 逐字段拷贝到 constInfo。
+constInfo 作为引用传递给 cubeBlock、vecFaBlock、vecFdBlock 的构造函数(L116)。
+Init() 中 InitConstInfo(L134)先于 InitVecBlock(L149)和 InitCubeBlock(L155)调用,顺序安全。
+
+所有 constInfo 字段初始化来源详见 fia_block_vec_noquant_gqa_vars_check.txt 第四节。
+
+================================================================================
+## 五、特殊分析：无内联默认值的成员变量初始化安全分析
+================================================================================
+以下4个成员变量声明时无内联默认值, 需确认使用前已初始化:
+
+[L102] curS2Start (uint32_t, ★无默认)
+  首次使用路径: FlashAttention(L403) → while loop → GetTaskDealMode(L428)
+  → isFirstTask=true(L474) → CalcCurS2StartEnd*(L509/511) 设置 curS2Start
+  → 返回 CREATE_TASK → FlashAttention → CreateTask(L431) → CalcParams(L689)
+  → L748: info.isFirstS2Loop = ((loop==0)||(s2Cur==curS2Start)) ← 此时已赋值
+  结论: SAFE (isFirstTask=true 确保首次调用必然经过赋值路径)
+
+[L104] prevBIdx (uint32_t, ★无默认)
+  首次使用路径: FlashAttention → GetTaskDealMode(L477):
+    if (isFirstTask || prevBIdx != bIdx)
+  isFirstTask=true → 短路求值, prevBIdx 不被读取 → 进入if体 → L478 prevBIdx = bIdx 赋值
+  后续调用: prevBIdx已在上一轮赋值, 比较合法
+  结论: SAFE (短路求值保护首次读取; 赋值后值被持久化)
+
+[L105] prevBN2Idx (uint32_t, ★无默认)
+  首次使用路径: FlashAttention(L413)在while之前: prevBN2Idx = bN2Cur (赋值)
+  首次读取路径: GetTaskDealMode(L507): if (isFirstTask || bN2Cur != prevBN2Idx || ...)
+  isFirstTask=true → 短路求值, prevBN2Idx 不被读取
+  结论: SAFE (先赋值L413,后条件读取L507; 短路求值保护)
+
+[L106] prevGS1Idx (uint32_t, ★无默认)
+  与 prevBN2Idx 相同: L414赋值, L507短路求值保护
+  结论: SAFE
+
+================================================================================
+## 六、constInfo 字段未初始化项
+================================================================================
+以下 CommonConstInfo 字段在 InitConstInfo 中未设置, 但在此 kernel 中未使用:
+  realGSize, realN2Size — 仅在 fullquant 路径使用, NO_QUANT 模板不引用
+以下 PostQuantConstInfo 字段在 InitConstInfo 中未设置:
+  postQuantScaleValue, postQuantOffsetValue, isPostQuantOffsetExist
+  — PostQuant 功能在 fia_block_vec_noquant_gqa.h 中均为 #if 0 死代码
+
+================================================================================
+## 七、总结
+================================================================================
+1. 成员变量: 17个有内联默认值; 4个无默认值(curS2Start,prevBIdx,prevBN2Idx,prevGS1Idx)但均在首次读取前完成赋值
+2. 局部变量: 全部函数的所有局部变量均声明即初始化或首次使用前完成赋值
+3. constInfo: InitConstInfo() 在 Init() 流程中首个调用, 全字段赋值, 早于任何 constInfo 使用
+4. 无未初始化变量问题
+================================================================================

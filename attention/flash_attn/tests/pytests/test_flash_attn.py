@@ -21,9 +21,9 @@ from utils.data import generate_qkv, generate_npu_mask, trans_bnsd_to_layout, ge
 from utils.compare import data_compare_benchmark_new, Result, check_result, analyze_fail_distribution
 from utils.io import save_tensor_to_txt, load_tensor_from_txt
 
-_DEFAULT_CASE_FILES = ["base", "fia_stc", "functional_stc",
-                        "functional_redline_train_tnd", "functional_redline_train",
-                        "functional_redline_infer", "performance_redline_infer"]
+_DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
+    os.path.join(os.path.dirname(__file__), "test_cases"))
+    if f.endswith(".py") and not f.startswith("_")]
 
 # ─────────────────── 动态导入 GPU / NPU 实现 ───────────────────
 GPU_AVAILABLE = False

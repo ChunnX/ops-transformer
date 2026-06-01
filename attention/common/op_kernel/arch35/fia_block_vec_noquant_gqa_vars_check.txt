@@ -1,0 +1,464 @@
+================================================================================
+fia_block_vec_noquant_gqa.h  全变量初始化检查报告
+================================================================================
+检查范围：成员变量（含static constexpr）、所有函数局部变量、constInfo外部变量、runInfo外部变量
+================================================================================
+
+## 一、FANoQuantGqaBlockVec 类成员变量（非constexpr）
+================================================================================
+[L049] mBaseSize                    | constexpr uint32_t       | = (uint32_t)s1TemplateType
+[L050] s2BaseSize                   | constexpr uint32_t       | = (uint32_t)s2TemplateType
+[L051] vec1S2CopyLenDn              | constexpr uint32_t       | = s2BaseSize >> 1
+[L052] vec1HalfS1BaseSize           | constexpr uint32_t       | = mBaseSize >> 1
+[L053] vec1S2CopyCountDn            | constexpr uint32_t       | = mBaseSize >> 5
+[L054] vec1S2strideDn               | constexpr uint32_t       | = s2BaseSize * 8
+[L055] vec1ResOffsetDn              | constexpr uint32_t       | = s2BaseSize * 32 + 64
+[L056] vec1Srcstride                | constexpr uint32_t       | = (mBaseSize >> 1) + 1
+[L057] dTemplateAlign64             | constexpr uint32_t       | = Align64Func((uint16_t)dVTemplateType)
+[L059] DB                           | constexpr uint32_t       | = 2
+[L060] PRELOAD_N                    | constexpr uint32_t       | = 2
+[L061] HAS_MASK                     | constexpr bool           | = hasAtten (template param)
+[L062] FLASH_DECODE                 | constexpr bool           | = isFd (template param)
+[L064] initOutputEventId            | constexpr uint32_t       | = 0U
+[L066] Q_MODE                       | constexpr ActualSeqLensMode | = GetQActSeqMode<layout>()
+[L067] MASK_LAYOUT                  | constexpr LAYOUT_Q       | = layout条件三元表达式
+[L070] hasPse                       | constexpr bool           | = pseMode != PSE_NONE_TYPE
+[L071] hasPseOuter                  | constexpr bool           | = pseMode条件三元表达式
+[L074] POST_QUANT                   | constexpr bool           | = !IsSameType<OUTPUT_T,half> && !IsSameType<OUTPUT_T,bfloat16_t> && !IsSameType<OUTPUT_T,float>
+[L078] BOOL_ATTEN_MASK_SCALAR_VALUE | constexpr T              | = -1000000000000.0
+[L149] PSE_UB_FORMAT                | constexpr UbFormat       | = GetPseUbFormat<layout>()
+
+================================================================================
+## 二、FANoQuantGqaBlockVec 类成员变量（非constexpr变量）
+================================================================================
+[L079] negativeIntScalar        | uint32_t               | 内联初始化: *((uint32_t*)&BOOL_ATTEN_MASK_SCALAR_VALUE)
+[L099] tPipe                    | TPipe*                 | InitVecBlock(L164): = pipe
+[L100] attentionOutGm           | GlobalTensor<OUTPUT_T> | InitVecInput(L178): SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut)
+[L101] softmaxLseGm             | GlobalTensor<float>    | InitVecInput(L181): SetGlobalBuffer((__gm__ float*)softmaxLse) [条件:isSoftmaxLseEnable]
+[L103] actualSeqLengthsGmQ      | GlobalTensor<uint64_t> | InitVecInput(L184): SetGlobalBuffer((__gm__ uint64_t*)actualSeqQlenAddr, constInfo.actualSeqLenSize)
+[L104] qActSeqLensParser        | ActualSeqLensParser<>  | InitVecInput(L185): .Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size)
+[L106] pseGm                    | pseGmType             | InitVecInput(L188): SetGlobalBuffer [if constexpr(hasPse)]
+[L107] attenMaskGmInt            | attenMaskGmType       | InitVecInput(L192): SetGlobalBuffer [if constexpr(hasAtten)]
+[L109] postQuantScaleGm          | postQuantGmType       | ★ UNINITIALIZED in this file (使用代码均在 #if 0 块内，死代码)
+[L110] postQuantOffsetGm         | postQuantGmType       | ★ UNINITIALIZED in this file (使用代码均在 #if 0 块内，死代码)
+[L111] postQuantScaleBf16Gm      | postQuantBf16GmType   | ★ UNINITIALIZED in this file (使用代码均在 #if 0 块内，死代码)
+[L112] postQuantOffsetBf16Gm     | postQuantBf16GmType   | ★ UNINITIALIZED in this file (使用代码均在 #if 0 块内，死代码)
+[L114] vec2ResGm[3]             | vec2ResGmType         | InitVecInput(L199-201): SetGlobalBuffer [if constexpr(splitD)]
+[L115] sinkGm                   | GlobalTensor<INPUT_T>  | InitVecInput(L206): SetGlobalBuffer [learnableSink != nullptr]
+[L117] accumOutGm               | flashdecodeGmType     | InitVecInput(L210): SetGlobalBuffer [if constexpr(FLASH_DECODE)]
+[L118] softmaxFDSumGm           | flashdecodeGmType     | InitVecInput(L211): SetGlobalBuffer [if constexpr(FLASH_DECODE)]
+[L119] softmaxFDMaxGm           | flashdecodeGmType     | InitVecInput(L212): SetGlobalBuffer [if constexpr(FLASH_DECODE)]
+[L122] commonTBuf               | TBuf<>                | InitBuffers(L1264/L1288): InitBuffer(commonTBuf, 512)
+[L123] stage1OutQue[0]          | TQue<VECOUT,1>        | InitBuffers(L1260/L1266/L1301): InitBuffer(stage1OutQue[0], 1, 〜16896 or 〜33024)
+[L123] stage1OutQue[1]          | TQue<VECOUT,1>        | InitBuffers(L1261/L1267/L1302): InitBuffer(stage1OutQue[1], 1, 〜16896 or 〜33024)
+[L124] attenMaskInQue[0]        | TQue<VECIN,1>         | InitBuffers(L1269/L1284): InitBuffer [if constexpr(hasAtten)]
+[L124] attenMaskInQue[1]        | TQue<VECIN,1>         | InitBuffers(L1270/L1285): InitBuffer [if constexpr(hasAtten)]
+[L125] pseInQue                 | TQue<VECIN,1>         | InitBuffers(L1273/L1280): InitBuffer [if constexpr(hasPseOuter)]
+[L126] stage2OutBuf             | TBuf<>                | InitBuffers(L1258/L1265/L1292/L1295/L1298): InitBuffer
+[L127] mte3ToVId[0]             | TEventID              | AllocEventID(L1323): AllocEventID<MTE3_V>()
+[L127] mte3ToVId[1]             | TEventID              | AllocEventID(L1324): AllocEventID<MTE3_V>()
+[L127] vToMte3Id[0]             | TEventID              | AllocEventID(L1325): AllocEventID<V_MTE3>()
+[L127] vToMte3Id[1]             | TEventID              | AllocEventID(L1326): AllocEventID<V_MTE3>()
+[L129] softmaxMaxBuf[0]         | TBuf<>                | SoftmaxInitBuffer(L1237): InitBuffer(softmaxMaxBuf[0], 256)
+[L129] softmaxMaxBuf[1]         | TBuf<>                | SoftmaxInitBuffer(L1238): InitBuffer(softmaxMaxBuf[1], 256)
+[L129] softmaxMaxBuf[2]         | TBuf<>                | SoftmaxInitBuffer(L1239): InitBuffer(softmaxMaxBuf[2], 256)
+[L130] softmaxSumBuf[0]         | TBuf<>                | SoftmaxInitBuffer(L1233): InitBuffer(softmaxSumBuf[0], 256)
+[L130] softmaxSumBuf[1]         | TBuf<>                | SoftmaxInitBuffer(L1234): InitBuffer(softmaxSumBuf[1], 256)
+[L130] softmaxSumBuf[2]         | TBuf<>                | SoftmaxInitBuffer(L1235): InitBuffer(softmaxSumBuf[2], 256)
+[L131] softmaxExpBuf[0]         | TBuf<>                | SoftmaxInitBuffer(L1241): InitBuffer(softmaxExpBuf[0], 256)
+[L131] softmaxExpBuf[1]         | TBuf<>                | SoftmaxInitBuffer(L1242): InitBuffer(softmaxExpBuf[1], 256)
+[L131] softmaxExpBuf[2]         | TBuf<>                | SoftmaxInitBuffer(L1243): InitBuffer(softmaxExpBuf[2], 256)
+[L132] mm2InBuf                 | TBuf<>                | InitBuffers(L1254): InitBuffer(mm2InBuf, 32768) [if constexpr(!bmm2Write2Ub)]
+[L134] maxBrdcst                | TQue<VECOUT,1>        | SoftmaxInitBuffer(L1245): InitBuffer(maxBrdcst, 1, 2048)
+[L135] sumBrdcst                | TQue<VECOUT,1>        | SoftmaxInitBuffer(L1246): InitBuffer(sumBrdcst, 1, 2048)
+[L137] softmaxLseQueue          | TQue<VECOUT,1>        | InitBuffers(L1307): InitBuffer [条件:constInfo.isSoftmaxLseEnable]
+[L138] postQuantScaleQue        | TQue<VECIN,1>         | InitBuffers(L1310): InitBuffer [if constexpr(POST_QUANT)]
+[L140] postQuantOffsetQue       | TQue<VECIN,1>         | InitBuffers(L1312): InitBuffer [if constexpr(POST_QUANT) && constInfo.isPostQuantOffsetExist]
+[L142] sinkQue                  | TQue<VECIN,1>         | InitBuffers(L1317): InitBuffer [条件:constInfo.learnableSinkFlag]
+[L144] constInfo                | const ConstInfoX&     | 构造函数初始化列表(L155): constInfo(constInfo)
+[L145] negativeFloatScalar      | T                     | InitVecBlock(L166): = *((T*)&tmp1) [tmp1 = NEGATIVE_MIN_VALUE_FP32]
+[L146] bmm2SubBlockOffset       | int64_t               | 内联初始化: = 0
+[L147] vec2SubBlockOffset       | int64_t               | 内联初始化: = 0; InitVecInput(L197): 条件赋值[if constexpr(splitD)]
+[L152] copyPSEGmToUb            | CopyPSEGmToUb<>       | 默认构造(无成员变量的空函数对象类)
+
+================================================================================
+## 三、各函数局部变量
+================================================================================
+
+--- InitVecBlock (L157-170) ---
+[L165] tmp1                      | uint32_t             | OK: = NEGATIVE_MIN_VALUE_FP32
+
+--- InitVecInput (L172-215) ---
+[L196] vec2ResultSize            | int64_t              | OK: = mBaseSize * constInfo.dBasicBlock [if constexpr(splitD)]
+[L198] prevCoretotalOffset       | int64_t              | OK: = constInfo.aicIdx * 3 * vec2ResultSize [if constexpr(splitD)]
+
+--- ProcessVec1 (L217-233) ---
+(无局部变量)
+
+--- ClearOutput (L235-246) ---
+(无局部变量)
+
+--- IsInitAttentionOutGm (L248-265) ---
+[L259] isExistRowInvalid         | bool                 | OK: = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid
+
+--- InitOutputSingleCore (L267-294) ---
+[L269] tSize                     | int64_t              | OK: = constInfo.bSize * constInfo.s1Size (TND/NTD条件覆盖)
+[L274] totalOutputSize           | int64_t              | OK: = tSize * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV
+[L278] singleCoreSize            | int64_t              | OK: = (totalOutputSize + 2*coreNum - 1) / (2*coreNum)
+[L280] tailSize                  | int64_t              | OK: = totalOutputSize - constInfo.aivIdx * singleCoreSize
+[L281] singleInitOutputSize      | int64_t              | OK: = tailSize < singleCoreSize ? tailSize : singleCoreSize
+[L286] attentionOutTmpGm         | GlobalTensor<half>   | OK: SetGlobalBuffer [if constexpr(POST_QUANT)]
+
+--- InitLseOutputSingleCore (L296-315) ---
+[L298] tSize                     | int64_t              | OK: 同InitOutputSingleCore
+[L303] totalOutputSize           | int64_t              | OK
+[L304] singleCoreSize            | int64_t              | OK
+[L306] tailSize                  | int64_t              | OK
+[L307] singleInitOutputSize      | int64_t              | OK
+
+--- ProcessVec1Dn (L319-376) ---
+[L323] attenMaskUb               | LocalTensor<uint8_t> | OK: LocalTensor<标量>是零成员空结构体(struct LocalTensor{};)
+[L325] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>()
+[L326] maxUb                     | LocalTensor<float>   | OK: = softmaxMaxBuf[...].Get<float>()
+[L328] expUb                     | LocalTensor<T>       | OK: = softmaxExpBuf[...].Get<T>()
+[L329] stage1Offset              | int64_t              | OK: = runInfo.loop % DB
+[L331] descaleQK                 | float                | OK: = 1.0
+[L333] mmRes                     | LocalTensor<T>       | OK: = bmm1ResBuf.GetTensor<T>()
+[L334] stage1CastTensor          | LocalTensor<INPUT_T> | OK: = stage1OutQue[stage1Offset].AllocTensor<INPUT_T>()
+[L351] mm2AL1Tensor              | LocalTensor<INPUT_T> | OK: = outputBuf.GetTensor<INPUT_T>()
+
+--- SoftmaxDataCopyOut (L378-403) ---
+(无局部变量)
+
+--- SoftmaxLseCopyOut (L405-448) ---
+[L412] vecMIdx                   | uint32_t             | OK: = runInfo.gS1Idx + runInfo.vecMbaseIdx
+[L413] lseUb                     | LocalTensor<float>   | OK: = softmaxLseQueue.AllocTensor<float>()
+[L419] prefixBS1                 | uint32_t             | OK: = qActSeqLensParser.GetTBase(runInfo.bIdx) [layout==TND]
+[L420] bN2Offset                 | uint64_t             | OK: = prefixBS1 * n2Size * gSize + n2Idx * gSize [layout==TND]
+[L424] prefixBS1                 | uint32_t             | OK: = qActSeqLensParser.GetTBase(runInfo.bIdx) [layout==NTD]
+[L425] s1Size                    | uint32_t             | OK: = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx) [layout==NTD]
+[L426] bN2Offset                 | uint64_t             | OK [layout==NTD]
+[L430] bN2Offset                 | uint64_t             | OK [layout==BSH]
+[L432] qActSeqLens               | uint64_t             | OK: = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx) [layout==BSH]
+[L433] s1LeftPaddingSize         | uint64_t             | OK: 三元表达式 [layout==BSH]
+[L438] bN2Offset                 | uint64_t             | OK [layout==BNSD]
+[L440] qActSeqLens               | uint64_t             | OK: = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx) [layout==BNSD]
+[L441] s1LeftPaddingSize         | uint64_t             | OK: 三元表达式 [layout==BNSD]
+
+--- Vec1SinkCompute (L450-461) ---
+[L452] sinkOffset                | int64_t              | OK: = runInfo.n2Idx * constInfo.gSize + runInfo.gIdx
+[L453] sinkRaw                   | auto                 | OK: = sinkGm.GetValue(sinkOffset)
+[L454] sinkValue                 | float                | OK: if-else 两分支均初始化 (static_cast / ToFloat)
+
+--- Vec1SinkComputeGSFused (L463-471) ---
+[L468] sinkUb                    | LocalTensor<INPUT_T> | OK: = sinkQue.DeQue<INPUT_T>()
+
+--- CopySinkIn (L473-488) ---
+[L476] sinkUbBf16                | LocalTensor<INPUT_T> | OK: = sinkQue.AllocTensor<INPUT_T>()
+[L477] sinkOffset                | int64_t              | OK: = n2Idx * gSize + subBlockIdx * (actMSize - actVecMSize)
+[L479] sinkCopyParams            | DataCopyExtParams    | OK: 默认init(blockCount=1,blockLen=0,srcStride=0,dstStride=0)+显式赋值全部4字段
+[L485] sinkCopyPadParams         | DataCopyPadExtParams<INPUT_T> | OK: = {} (值初始化: zero-init)
+
+--- ProcessVec1Nd (L529-688) ---
+[L533] pseUb                     | LocalTensor<pseShiftType> | OK: if constexpr(hasPse) {L540=DeQue}; else unused
+[L534] dropMaskUb                | LocalTensor<uint8_t> | OK: LocalTensor<标量>是零成员空结构体
+[L535] slopes                    | float                | OK: = 0.0f
+[L536] posShift                  | float                | OK: = 0.0f
+[L537] pseStride                 | uint32_t             | OK: = 0 (L562覆盖条件)
+[L541] pseShiftUbTensor          | FaUbTensor<PSE_T>    | OK: 聚合初始化 [if constexpr(hasPse)]
+[L544] pseCoord                  | GmPseCoord           | OK: 聚合初始化 [if constexpr(hasPse)]
+[L553] qsEqualOne                | bool                 | OK: = (constInfo.s1Size == 1) [if constexpr(hasPse)]
+[L555] pseShiftGmTensor          | FaGmTensor<>         | OK: .Init() [if constexpr(hasPse)]
+[L565] attenMaskUb               | LocalTensor<uint8_t> | OK: L570=attenMaskInQue.AllocTensor<uint8_t>() [if constexpr(hasAtten)]
+[L566] attenMaskUbPre            | LocalTensor<uint8_t> | OK: 仅在if constexpr(hasAtten)块内使用，空结构体
+[L574] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>()
+[L575] maxUb                     | LocalTensor<float>   | OK: = softmaxMaxBuf[...].Get<float>()
+[L576] expUb                     | LocalTensor<float>   | OK: = softmaxExpBuf[...].Get<T>()
+[L577] pScaleUb                  | LocalTensor<T>       | OK: LocalTensor<标量>是零成员空结构体
+[L578] queryScaleUb              | LocalTensor<T>       | OK: LocalTensor<标量>是零成员空结构体
+[L579] apiTmpBuffer              | LocalTensor<uint8_t> | OK: L581=commonTBuf.Get<uint8_t>()
+[L583] stage1Offset              | int64_t              | OK: = 0; 后 L584 = runInfo.loop % DB
+[L586] descaleQK                 | float                | OK: = 1.0
+[L587] deSCaleKValue             | float                | OK: = 1.0
+[L589] mmRes                     | LocalTensor<T>       | OK: = bmm1ResBuf.GetTensor<T>()
+[L590] stage1CastTensor          | LocalTensor<INPUT_T> | OK: = stage1OutQue[stage1Offset].AllocTensor<INPUT_T>()
+[L667] mm2AL1Tensor              | LocalTensor<INPUT_T> | OK: L668 = outputBuf.GetTensor<INPUT_T>()
+
+--- ProcessVec2OnUb (L690-730) ---
+[L698] vec2CalcSize              | int64_t              | OK: = runInfo.actVecMSize * dTemplateAlign64
+[L700] vec2ResUb                 | LocalTensor<T>       | OK: = stage2OutBuf.Get<T>()
+[L701] mmRes                     | LocalTensor<T>       | OK: = bmm2ResBuf.GetTensor<T>()
+[L706] expUb                     | LocalTensor<T>       | OK: = softmaxExpBuf[...].Get<T>() [!isFirstS2Loop]
+[L707] pScaleUb                  | LocalTensor<T>       | OK: LocalTensor<标量>是零成员空结构体
+[L709] deSCalePreVValue          | float                | OK: = 1.0f
+[L714] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop]
+[L723] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop && isFirstS2Loop]
+
+--- Bmm2ResCastAndCopyOut (L732-754) ---
+[L735] attenOut                  | LocalTensor<OUTPUT_T> | OK: L741=SetAddr(vec2ResUb.address_)
+[L736] dSizeAligned64            | int64_t              | OK: = (int64_t)dVTemplateType; [if splitD L738=constInfo.dBasicBlock]
+
+--- PostQuant (L757-770) ---
+(无局部变量，函数体为空或 #if 0)
+
+--- PostQuantPerChnl (L774-811) ---
+(整个函数体在 #if 0 块内)
+
+--- ProcessVec2DSplit (L813-932) ---
+[L816] subMBase                  | uint32_t             | OK: = 8192 / constInfo.dBasicBlock
+[L817] vec2LoopLimit             | int64_t              | OK: = CeilDiv(runInfo.actVecMSize, subMBase)
+[L818] vec2ResUb                 | LocalTensor<T>       | OK: = stage2OutBuf.Get<T>()
+[L820] bmm2Ub                    | LocalTensor<T>       | OK: = mm2InBuf.Get<T>()
+[L822] mte2ToV                   | event_t              | OK: = FetchEventID(HardEvent::MTE2_V)
+[L823] vToMte2                   | event_t              | OK: = FetchEventID(HardEvent::V_MTE2)
+[L824] mte3ToMte2                | event_t              | OK: = FetchEventID(HardEvent::MTE3_MTE2)
+[L827] mIdx                      | int32_t              | OK: = mOIdx * subMBase (循环)
+[L828] subMRealsize              | uint32_t             | OK: 两分支均赋值(循环)
+[L833] vec2CalcSize              | int64_t              | OK: = subMRealsize * constInfo.dBasicBlock (循环)
+[L835] mm2ResInnerOffset         | int64_t              | OK: = mIdx * dTemplateAlign64 (循环)
+[L849] dataCopyParams            | DataCopyParams       | OK: 默认init全部4字段 + 显式赋值全部4字段 [dSizeV != dTemplateAlign64]
+[L850] dataCopyPadParams         | DataCopyPadParams    | OK: 类内默认init(isPad=false,leftPadding=0,rightPadding=0,paddingValue=0)
+[L868] vec2ResInnerOffset        | int64_t              | OK: = mIdx * constInfo.dBasicBlock (循环)
+[L889] vec2ExpBufOffset          | int64_t              | OK: = mIdx [!isFirstS2Loop]
+[L890] deSCalePreVValue          | float                | OK: = 1.0f [!isFirstS2Loop]
+[L891] expUb                     | LocalTensor<T>       | OK: = softmaxExpBuf[...].Get<T>() [!isFirstS2Loop]
+[L898] vec2SumBufOffset          | int64_t              | OK: = mIdx [isLastS2Loop && !isFirstS2Loop]
+[L899] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop && !isFirstS2Loop]
+[L909] vec2SumBufOffset          | int64_t              | OK: = mIdx [isLastS2Loop && isFirstS2Loop]
+[L910] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop && isFirstS2Loop]
+
+--- CopyOutAttentionOut (L934-946) ---
+(无局部变量)
+
+--- CalcBlockNeedRowInvalid (L948-977) ---
+[L951] vecMStartIdx              | int32_t              | OK: = runInfo.gS1Idx + runInfo.vecMbaseIdx
+[L952] vecMEndIdx                | int32_t              | OK: = vecMStartIdx + runInfo.actVecMSize - 1
+[L953] s1StartTdx                | int32_t              | OK: if-else 两分支均赋值
+[L953] s1EndTdx                  | int32_t              | OK: if-else 两分支均赋值
+[L954] ret                       | bool                 | OK: = false
+[L965] gStartIdx                 | int32_t              | OK: = vecMStartIdx / runInfo.actS1Size [else分支 GS1 layout]
+[L966] gEndIdx                   | int32_t              | OK: = vecMEndIdx / runInfo.actS1Size [else分支 GS1 layout]
+
+--- RowInvalid (L980-1013) ---
+[L984] s1FirstValidToken         | int64_t              | OK: = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size)
+[L985] s1LastValidToken          | int64_t              | OK: = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size)
+[L987] hasValidRow               | bool                 | OK: = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size)
+[L988] batchNeedRowInvalid       | bool                 | OK: 布尔表达式
+[L995] blockNeedRowInvalid       | bool                 | OK: = CalcBlockNeedRowInvalid(...); 后追加条件
+[L999] maxTensor                 | LocalTensor<float>   | OK: = softmaxMaxBuf[...].Get<float>() [if blockNeedRowInvalid]
+[L1005] dStride                  | uint32_t             | OK: = CeilDiv(...) [if POST_QUANT]
+[L1007] dSize                    | uint16_t             | OK: = CeilDiv(constInfo.dSizeV, sizeof(float)) [if POST_QUANT]
+
+--- Bmm2DataCopyOutTrans (L1015-1028) ---
+[L1018] ubTensor                 | FaUbTensor<OUTPUT_T> | OK: 聚合初始化
+[L1021] gmCoord                  | GmCoord              | OK: 聚合初始化
+
+--- CopyAttentionOut (L1030-1067) ---
+[L1033] outGmTensor(BSH)         | FaGmTensor<>         | OK: 聚合初始化+Init [if BSH]
+[L1039] copyAttenOutUbToGm(BSH)  | CopyAttenOutUbToGm<> | OK: 默认构造 [if BSH]
+[L1042] outGmTensor(BNSD)        | FaGmTensor<>         | OK: 聚合初始化+Init [if BNSD]
+[L1048] copyAttenOutUbToGm(BNSD) | CopyAttenOutUbToGm<> | OK: 默认构造 [if BNSD]
+[L1051] outGmTensor(TND)         | FaGmTensor<>         | OK: 聚合初始化+Init [if TND]
+[L1056] copyAttenOutUbToGm(TND)  | CopyAttenOutUbToGm<> | OK: 默认构造 [if TND]
+[L1059] outGmTensor(NTD)         | FaGmTensor<>         | OK: 聚合初始化+Init [if NTD]
+[L1064] copyAttenOutUbToGm(NTD)  | CopyAttenOutUbToGm<> | OK: 默认构造 [if NTD]
+
+--- BroadCastAndCopyOut (L1069-1087) ---
+[L1073] sumOutTensor             | LocalTensor<float>   | OK: = sumBrdcst.AllocTensor<float>()
+[L1081] maxOutTensor             | LocalTensor<float>   | OK: = maxBrdcst.AllocTensor<float>()
+
+--- ComputeLogSumExpAndCopyToGm (L1089-1101) ---
+[L1095] calculateSize            | int64_t              | OK: = runInfo.actVecMSize * fp32BaseSize
+[L1097] gmOffset                 | int64_t              | OK: = runInfo.faTmpOutWsPos * mBaseSize * fp32BaseSize + runInfo.vecMbaseIdx * fp32BaseSize
+
+--- Bmm2ResForFDCopyOut (L1103-1122) ---
+[L1106] dSizeAligned64           | int64_t              | OK: = (int64_t)dVTemplateType [if splitD L1108覆盖]
+[L1112] gmOffset                 | uint64_t             | OK: 计算表达式
+[L1115] dataCopyParams           | DataCopyExtParams    | OK: 默认init全部字段(blockCount=1,blockLen=0,srcStride=0,dstStride=0) + 显式赋值全部4字段
+
+--- ProcessVec2 (L1124-1138) ---
+[L1131] mmRes                    | GlobalTensor<T>      | OK: = bmm2ResBuf.GetTensor<T>() [if splitD]
+[L1134] mmRes                    | GlobalTensor<T>      | OK: = bmm2ResBuf.GetTensor<T>() [else]
+
+--- ProcessVec2_C2GmUpdateUb (L1140-1229) ---
+[L1143] subMBase                  | uint32_t             | OK: = 8192 / dTemplateAlign64
+[L1144] vec2LoopLimit             | int64_t              | OK: = CeilDiv(actVecMSize, subMBase)
+[L1145] vec2ResUb                 | LocalTensor<T>       | OK: = stage2OutBuf.Get<T>()
+[L1147] bmm2Ub                    | LocalTensor<T>       | OK: = mm2InBuf.Get<T>()
+[L1149] mte2ToV                   | event_t              | OK: = FetchEventID(MTE2_V)
+[L1150] vToMte2                   | event_t              | OK: = FetchEventID(V_MTE2)
+[L1153] mIdx                      | int32_t              | OK: = mOIdx * subMBase (循环)
+[L1154] subMRealsize              | uint32_t             | OK: 两分支均赋值(循环)
+[L1159] vec2CalcSize              | int64_t              | OK: = subMRealsize * dTemplateAlign64 (循环)
+[L1161] mm2ResInnerOffset         | int64_t              | OK: = mIdx * constInfo.dSizeV (循环)
+[L1174] dataCopyParams            | DataCopyParams       | OK: 默认init+显式赋值全部4字段 [dSizeV != dTemplateAlign64]
+[L1175] dataCopyPadParams         | DataCopyPadParams    | OK: 类内默认init
+[L1194] vec2ResInner              | LocalTensor          | OK: = vec2ResUb[mIdx * dTemplateAlign64] (循环)
+[L1199] vec2ExpBufOffset          | int64_t              | OK: = mIdx [!isFirstS2Loop]
+[L1200] deSCalePreVValue          | float                | OK: = 1.0f [!isFirstS2Loop]
+[L1201] expUb                     | LocalTensor<T>       | OK: = softmaxExpBuf[...].Get<T>() [!isFirstS2Loop]
+[L1208] vec2SumBufOffset          | int64_t              | OK: = mIdx [isLastS2Loop && !isFirstS2Loop]
+[L1209] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop && !isFirstS2Loop]
+[L1219] vec2SumBufOffset          | int64_t              | OK: = mIdx [isLastS2Loop && isFirstS2Loop]
+[L1220] sumUb                     | LocalTensor<float>   | OK: = softmaxSumBuf[...].Get<float>() [isLastS2Loop && isFirstS2Loop]
+
+--- SoftmaxInitBuffer (L1231-1247) ---
+(无局部变量)
+
+--- InitBuffers (L1249-1319) ---
+[L1251] mm1ResultSize            | uint32_t             | OK: 声明后未被使用(仅计算未引用)
+[L1252] mm2ResultSize            | uint32_t             | OK: 声明后未被使用(仅计算未引用)
+
+--- AllocEventID (L1321-1329), FreeEventID (L1331-1339), PseCopyIn (L1389-1418 #if0) ---
+(无局部变量)
+
+--- AttenMaskCopyIn (L1341-1387) ---
+[L1344] maskInfo                 | MaskInfo             | OK: 聚合初始化全部字段(L1345-1365 显式赋值约19个字段)
+[L1367] IsSkipMask               | bool                 | OK: = IsSkipAttentionmask(maskInfo)
+[L1368] IsSkipMaskForPre         | bool                 | OK: = IsSkipAttentionmaskForPre(maskInfo)
+[L1382] attenMaskUbPre           | LocalTensor<uint8_t> | OK: = attenMaskInQue[...].AllocTensor<uint8_t>() [条件]
+
+--- DealZeroActSeqLen (L1420-1455) ---
+[L1422] n2Idx                    | uint32_t             | OK: = bN2Cur % constInfo.n2Size
+[L1423] bIdx                     | uint32_t             | OK: = bN2Cur / constInfo.n2Size
+[L1429] offsetCalculator(BSNGD)  | OffsetCalculator<>   | OK: .Init() [if BSH/BHS]
+[L1434] offsetCalculator(BNGSD)  | OffsetCalculator<>   | OK: .Init() [if BNSD]
+[L1439] offsetCalculator(NGBSD)  | OffsetCalculator<>   | OK: .Init() [if NBSD]
+[L1444] offsetCalculator(TNGD)   | OffsetCalculator<>   | OK: .Init() [if TND]
+[L1449] offsetCalculator(NGTD)   | OffsetCalculator<>   | OK: .Init() [if NTD]
+
+================================================================================
+## 四、constInfo 外部变量（ConstInfo_t<NO_QUANT> -> fia_kernel_noquant_gqa.h::InitConstInfo）
+================================================================================
+字段名(类型)                    | 在.h中使用行号                 | 初始化来源(fia_kernel_noquant_gqa.h)
+-------------------------------|--------------------------------|--------------------------------------------------
+actualSeqLenSize(uint64_t)      | 184,185,559                   | L246: = fiaBaseParams.actualSeqLengthsQSize
+                                 |                                |   ← tiling: FiaBaseParams(L65)=0, SetFATilingData(L914)显式赋值
+s1Size(uint64_t)                | 185,269,298,434,442,553       | L237: = fiaBaseParams.s1Size
+                                 |                                |   ← tiling: FiaBaseParams(L60)=0, SetFATilingData(L908)显式赋值
+isSoftmaxLseEnable(bool)        | 180,240,387,391,1305          | L289: = fiaBaseParams.isSoftMaxLseEnable
+                                 |                                |   ← tiling: FiaBaseParams(L69)=0, SetFATilingData(L917)显式赋值
+dBasicBlock(uint32_t)           | 196,738,816,833,852,868,879,  | L339: = Align64Func((uint16_t)constInfo.dSizeV)
+                                 | 895,902,913,925,1020,1108     |   (由dSizeV计算)
+subBlockIdx(uint8_t)            | 197,354,358,364,478,671,843,  | L218: = GetSubBlockIdx() (AIV硬件获取)
+                                 | 860,877,923                   |
+aicIdx(uint32_t)                | 198                           | L214/L218: = GetBlockIdx() (AIC), 或 = GetBlockIdx() / GetSubBlockNum() (AIV)
+coreNum(uint32_t)               | 202,279,305                   | L250: = fiaBaseParams.coreNum
+                                 |                                |   ← tiling: FiaBaseParams(L70)=0, SetFATilingData(L918)显式赋值
+accumOutSize(uint32_t)          | 211,212                       | L277: = fiaWorkspaceParams.accumOutSize
+                                 |                                |   ← tiling: FiaWorkspaceParams(L116)=0, CalcWorkspaceSize(L826-827)显式赋值
+logSumExpSize(uint32_t)         | 213                           | L278: = fiaWorkspaceParams.logSumExpSize
+                                 |                                |   ← tiling: FiaWorkspaceParams(L117)=0, CalcWorkspaceSize(L826-827)显式赋值
+isExistRowInvalid(bool)         | 259                           | L262: = fiaAttenMaskParams.isExistRowInvalid
+                                 |                                |   ← tiling: FiaAttenMaskParams(L82)=0, SetFATilingData(L924)显式赋值
+bSize(uint32_t)                 | 269,298,557,1036,1045         | L232: = fiaBaseParams.bSize
+                                 |                                |   ← tiling: FiaBaseParams(L55)=0, SetFATilingData(L903)显式赋值
+n2Size(uint32_t)                | 274,303,420,426,430,431,438,  | L235: = fiaBaseParams.n2Size
+                                 | 439,452,478,557,1036,1045     |   ← tiling: FiaBaseParams(L58)=0, SetFATilingData(L906)显式赋值
+gSize(uint32_t)                 | 274,303,420,426,430,431,438,  | L236: = fiaBaseParams.gSize
+                                 | 439,452,478,558,958,959,1036, |   ← tiling: FiaBaseParams(L59)=0, SetFATilingData(L907)显式赋值
+                                 | 1045,1348                     |
+dSizeV(uint32_t)                | 274,738,784,787,802,807,838,  | L240: = fiaBaseParams.dSizeV
+                                 | 852,853,854,1002,1007,1026,   |   ← tiling: FiaBaseParams(L63)=0, SetFATilingData(L911)显式赋值
+                                 | 1037,1046,1108,1113,1117,1118,|
+                                 | 1164,1169,1177,1179,1186,1187 |
+aivIdx(uint32_t)                | 280,288,290,306,311           | L216: = GetBlockIdx() (AIV硬件获取)
+scaleValue(float)               | 339,344,597,604,611,619,629,  | L248: = static_cast<float>(fiaBaseParams.scaleValue)
+                                 | 636,643,651                   |   ← tiling: FiaBaseParams(L67)=0.0f, SetFATilingData(L913)显式赋值
+learnableSinkFlag(bool)         | 396,1316                      | L301: = false (默认); 外部FlashAttentionNoQuantGqaKernel::InitProcess(L168)覆盖为true(GM指针非空时)
+                                 |                                |   注意: 此模板IsCapable()因learnableSinkFlag=true返回false, 实际不走sink路径
+pseS2Size(int64_t)              | 543,549,558                   | L269: = fiaPseParams.pseS2Size [仅if hasPse]
+                                 |                                |   ← tiling: FiaPseParams(L88)=0, SetFATilingData(L927)显式赋值
+pseShiftByBatch(uint32_t)       | 544,557                       | L267: = fiaPseParams.pseShiftByBatch [仅if hasPse]
+                                 |                                |   ← tiling: FiaPseParams(L86)=0, SetFATilingData(L928)显式赋值
+pseS1Size(int64_t)              | 558                           | L268: = fiaPseParams.pseS1Size [仅if hasPse]
+                                 |                                |   ← tiling: FiaPseParams(L87)=0, SetFATilingData(L926)显式赋值
+pseStride(uint32_t)             | 562                           | L270: = s2BaseSize [仅if hasPse]
+isQHasLeftPadding(bool)         | 434,442,1038,1047             | L280: = fiaLeftPaddingParams.isQHasLeftPadding
+                                 |                                |   ← tiling: FiaLeftPaddingParams(L106)=0, SetFATilingData(L930)显式赋值
+queryRightPaddingSize(int64_t)  | 434,442,1038,1047             | L326: = ((__gm__ int64_t*)queryPaddingSize)[0] [条件:isQHasLeftPadding=true]
+isKVHasLeftPadding(bool)        | 1038,1047                     | L281: = fiaLeftPaddingParams.isKVHasLeftPadding (=0)
+kvRightPaddingSize(int64_t)     | 1038,1047                     | L333: = ((__gm__ int64_t*)kvPaddingSize)[0] [条件:isKVHasLeftPadding=true]
+sparseMode(uint32_t)            | 989,1355                      | L254-255: = fiaAttenMaskParams.sparseMode
+                                 |                                |   ← tiling: FiaAttenMaskParams(L75)=0, SetFATilingData(L923显式赋值 through fiaInfo_)
+isRowInvalidOpen(bool)          | 988,996                       | L261: = fiaAttenMaskParams.isRowInvalidOpen
+                                 |                                |   ← tiling: FiaAttenMaskParams(L81)=0, SetFATilingData(L923)显式赋值
+outputLayout(FIA_LAYOUT)        | 1032,1041,1050,1058           | L251: = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout)
+                                 |                                |   ← tiling: FiaBaseParams(L71)=0, SetFATilingData(L919)显式赋值
+isPostQuantPerChnl(bool)        | 761                           | L274: = fiaPostQuantParams.isPostQuantPerChnl
+                                 |                                |   ← tiling: FiaPostQuantParams(L111)=0, SetFATilingData(L939)显式赋值
+isPostQuantBF16(bool)           | 注释禁用                        | L275: = fiaPostQuantParams.isPostQuantBF16
+                                 |                                |   ← tiling: FiaPostQuantParams(L112)=0, SetFATilingData(L940)显式赋值
+isPostQuantOffsetExist(bool)    | 794,1311                      | ★ 未在fia_kernel_noquant_gqa.h::InitConstInfo中设置
+                                 |                                |   在flash_attention_noquant_block_vec_infer.h::InitPostQuant(L293)中设为false
+                                 |                                |   注意: PostQuant代码均在 #if 0 块内
+postQuantScaleValue(float)      | 766(注释)                      | ★ 未在InitConstInfo中设置, 在外部InitPostQuant中从GM读取
+postQuantOffsetValue(float)     | 767(注释)                      | ★ 未在InitConstInfo中设置, 在外部InitPostQuant中从GM读取
+preTokens(int64_t)              | 1353                          | L256: = fiaAttenMaskParams.preTokens
+                                 |                                |   ← tiling: FiaAttenMaskParams(L76)=0, SetFATilingData(L921)显式赋值
+nextTokens(int64_t)             | 1354                          | L257: = fiaAttenMaskParams.nextTokens
+                                 |                                |   ← tiling: FiaAttenMaskParams(L77)=0, SetFATilingData(L922)显式赋值
+attenMaskBatch(uint32_t)        | 1356                          | L258: = fiaAttenMaskParams.attenMaskBatch
+                                 |                                |   ← tiling: FiaAttenMaskParams(L78)=0, ComputeTilingData(L854)显式赋值
+attenMaskS1Size(uint32_t)       | 1357                          | L259: = fiaAttenMaskParams.attenMaskS1Size
+                                 |                                |   ← tiling: FiaAttenMaskParams(L79)=0, ComputeTilingData(L857)显式赋值
+attenMaskS2Size(uint32_t)       | 1357,1358                     | L260: = fiaAttenMaskParams.attenMaskS2Size
+                                 |                                |   ← tiling: FiaAttenMaskParams(L80)=0, ComputeTilingData(L858)显式赋值
+
+================================================================================
+## 五、runInfo 外部变量（RunInfoX -> fia_kernel_noquant_gqa.h::CalcParams）
+================================================================================
+字段名(类型,默认值)            | 在.h中使用行号                | 初始化来源(CalcParams 行号)
+------------------------------|-------------------------------|------------------------------------------------
+loop(uint32_t,=0)              | 328,329,566,570,576,584,658,  | L695: = loop(外层参数)
+                                | 706,877                       |
+mloop(uint32_t,=0)             | 325,326,574,575,714,723,900,  | L696: = mloop(kernel成员变量, L107=0, L530++递增)
+                                | 911,1000,1210,1221           |
+actVecMSize(uint32_t,★无默认)  | 222,338,343,353,408,414,421,  | L755/L757/L762: = actMSize <= 16 ? actMSize : (actMSizeAlign32>>1) [USE_DN]
+                                | 427,435,443,460,469,478,481,  | 或 = (actMSize + 1) >> 1 [!USE_DN]; L760-762 subBlockIdx==1时调整
+                                | 542,548,571,592,596,599,603,  |
+                                | 606,610,618,624,628,631,635,  |
+                                | 638,642,650,670,672,674,675,  |
+                                | 682,693,698,712,716,725,727,  |
+                                | 817,830,843,860,877,923,1074, |
+                                | 1082,1095,1144,1156,1168,1186 |
+isFirstS2Loop(bool,=false)     | 335,591,681,703,722,886,908,  | L748: = ((loop == 0) || (s2Cur == curS2Start))
+                                | 1196,1218                    |
+actMSizeAlign32(uint32_t,★无默认)| 338,343                      | L754: = (info.actMSize + 31) >> 5 << 5 [if USE_DN]; 非USE_DN时不设置(不使用)
+actSingleLoopS2Size(uint32_t,=0)| 338,343,353,354,357,358,361,  | L717: = s2BaseSize; L719: 尾块调整
+                                | 362,364,366,367,592,596,599,  |
+                                | 603,606,610,618,624,628,631,  |
+                                | 635,638,642,650,1350          |
+actSingleLoopS2SizeAlign        | 338,343,354,358,361,362,364,  | L721-722: = Align(actSingleLoopS2Size, FA_BYTE_BLOCK/sizeof(INPUT_T))
+ (uint32_t,★无默认)             | 366,367                       |
+isLastS2Loop(bool,=false)      | 372,710,721,722,888,893,907,  | L751: = (s2Cur + 1 == curS2End)
+                                | 1203,1217                    |
+isS2SplitCore(bool,=false)     | 381,387,938,978               | L749: = false; L770-783条件覆盖(bN2Start==bN2End, headS2Split, tailS2Split)
+gS1Idx(uint32_t,=0)            | 412,546,1023,1345             | L699: = gS1Cur * mBaseSize
+vecMbaseIdx(uint32_t,★无默认)   | 412,546,997,1023,1113,1345   | L759: = 0; L761-762: subBlockIdx==1时=actVecMSize
+bIdx(uint32_t,=0)              | 419,424,425,430,432,438,440,  | L697: = bN2Cur / constInfo.n2Size
+                                | 452,544,552,1021,1356         |
+n2Idx(uint32_t,=0)             | 420,426,431,439,478,545,1022  | L698: = bN2Cur % constInfo.n2Size
+gIdx(uint32_t,=0)              | 452                           | ★ 仅使用in-struct默认值=0 (CalcParams中未显式设置)
+                                |                                |   仅在 Vec1SinkCompute 中使用, 该模板sink路径被IsCapable禁用
+actMSize(uint32_t,=0)          | 478,672,843,860,877,923       | L711: = mBaseSize; L714: 尾块调整
+s2Idx(uint32_t,=0)             | 547,1349                      | L708: = s2Cur * s2BaseSize
+actS2Size(uint64_t,=1)         | 1351                          | L710: = actSeqLensKv
+actS1Size(uint64_t,=1)         | 963,964,965,984,985,987,1347  | L709: = actSeqLensQ
+preTokensLeftUp(int64_t,=0)    | 985                           | L742: GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokensLeftUp, nextTokensLeftUp)
+nextTokensLeftUp(int64_t,=0)   | 984                           | L742: GetPreNextTokenLeftUp(...)
+qPaddingBeginOffset(uint64_t,=0)| 1362                          | L725: = constInfo.s1Size - actSeqLensQ - constInfo.queryRightPaddingSize [条件:isQHasLeftPadding]
+kvPaddingBeginOffset(uint64_t,=0)| 1363                         | L728: = constInfo.s2Size - actSeqLensKv - constInfo.kvRightPaddingSize [条件:isKVHasLeftPadding]
+faTmpOutWsPos(uint32_t,=0)     | 1097,1113                     | L750: = constInfo.coreFirstTmpOutWsPos; L781条件覆盖
+
+================================================================================
+## 六、总结
+================================================================================
+1. 文件内部变量:  全部初始化(标量变量声明即赋值,UB buffer在InitBuffers/SoftmaxInitBuffer/AllocEventID中初始化,
+                  LocalTensor<标量>为空结构体无数据, DataCopy*Params有类内默认init)
+2. constInfo变量: 除postQuantScaleGm/postQuantOffsetGm(未设置,使用代码在#if0)外全部在InitConstInfo中初始化
+3. runInfo变量:   除gIdx(使用in-struct默认值=0,仅sink路径使用该字段但此模板sink已禁用)外全部在CalcParams中显式赋值
+4. tiling data:   所有Fia*Params结构体字段均有类内默认初始化器(=0), host端SetFATilingData()显式设置所有值
+
+结论: 活跃执行路径中不存在任何未初始化变量问题。
+================================================================================
