@@ -20,6 +20,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "ops_legacy/op_tiling/hcom_topo_info.h"
 #include "mc2_tiling_utils.h"
+#include "asc_devkit_version.h"
 #ifndef BUILD_OPEN_PROJECT
 #include "hcom/hcom_topo_info.h"
 #endif
@@ -29,7 +30,7 @@ namespace {
 }
 
 namespace Mc2Hcom {
-#if defined(ASC_DEVKIT_VERSION_NUM) && (ASC_DEVKIT_VERSION_NUM >= 90000000)
+#if ASC_DEVKIT_MAJOR>=9
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcclCommGetHandleWithName";
 #else
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcomGetCommHandleByGroup";
