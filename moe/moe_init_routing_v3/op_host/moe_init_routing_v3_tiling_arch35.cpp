@@ -474,13 +474,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
         Tiling4SrcToDstDropPadCompute();
         Tiling4GatherOutDropPadCompute();
     } else {
-        // Dropless模式下的Tiling计算
-        if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
-            quantMode_ == QUANT_MODE_MXFP4_E2M1) {
-            Tiling4GatherOutMxQuant();
-        } else {
-            Tiling4GatherOutCompute();
-        }
+        Tiling4GatherOutCompute();
     }
 
     isFullload_ = IsFullLoad();

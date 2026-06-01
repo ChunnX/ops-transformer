@@ -155,10 +155,12 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
-    expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-            Align(actualExpertNum_, sizeof(int32_t)) + Align(actualExpertNum_, sizeof(int32_t)),
-        coreNum_ * EXPERT_ID_VALUE_NUM);
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        expertIdxValueGm_.SetGlobalBuffer(
+            (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+                Align(actualExpertNum_, sizeof(int32_t)) + Align(actualExpertNum_, sizeof(int32_t)),
+            coreNum_ * EXPERT_ID_VALUE_NUM);
+    }
 
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreElements_);
     if ((tilingData->rowIdxType == GATHER) && (blockIdx_ < needCoreNum_)) {
