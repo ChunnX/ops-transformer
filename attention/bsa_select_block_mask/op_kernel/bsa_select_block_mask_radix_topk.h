@@ -37,7 +37,7 @@ private:
     __aicore__ inline bool Update(int32_t roundId);
     __aicore__ inline void ClearHist(int32_t roundId);
     __aicore__ inline void TopKPerTile(uint32_t batchIdx, uint32_t headIdx);
-    __aicore__ inline void SubTopKAndWriteMask(LocalTensor<int16_t> &xLocalInt16, int16_t boundaryInt16,
+    __aicore__ inline void SubTopKAndWriteMask(LocalTensor<half> &xLocalHalf, half boundaryHalf,
                                                 uint64_t curTileLen, uint64_t tileGmOffset,
                                                 int32_t &curTileK);
     __aicore__ inline void NegateAttnScore();
@@ -399,6 +399,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TopKPerTile(uint32_t batchIdx,
     }
 
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | static_cast<int16_t>(0x8000));
+    half boundaryHalf = *reinterpret_cast<half *>(&boundaryNumber16);
 
     LocalTensor<int32_t> tileTopK = tileTopKBuf_.Get<int32_t>();
 
@@ -418,20 +419,21 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TopKPerTile(uint32_t batchIdx,
         LocalTensor<int16_t> xLocalInt16 = xLocalIN.template ReinterpretCast<int16_t>();
         TwiddleInB16(xLocalInt16, curTileLen);
 
-        SubTopKAndWriteMask(xLocalInt16, boundaryNumber16, curTileLen, tileGmOffset, curTileK);
+        LocalTensor<half> xLocalHalf = xLocalInt16.template ReinterpretCast<half>();
+        SubTopKAndWriteMask(xLocalHalf, boundaryHalf, curTileLen, tileGmOffset, curTileK);
     }
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
-    LocalTensor<int16_t> &xLocalInt16, int16_t boundaryInt16,
+    LocalTensor<half> &xLocalHalf, half boundaryHalf,
     uint64_t curTileLen, uint64_t tileGmOffset, int32_t &curTileK)
 {
     if (curTileK <= 0) {
         return;
     }
 
-    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int16_t)));
+    uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(half)));
     uint32_t cmpMaskBytes = static_cast<uint32_t>(curTileLenAlign / BYTE_SIZE);
     uint32_t cmpMaskBytesAlign = BSAAlignTo(cmpMaskBytes, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
@@ -439,8 +441,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
     LocalTensor<uint8_t> maskLocal8 = tempBuf_.GetWithOffset<uint8_t>(
         cmpMaskBytesAlign, cmpMaskBytesAlign);
 
-    Compares<int16_t, uint8_t>(cmpMaskTensor, xLocalInt16, boundaryInt16,
-                                CMPMODE::GT, curTileLenAlign);
+    Compares<half, uint8_t>(cmpMaskTensor, xLocalHalf, boundaryHalf,
+                             CMPMODE::GT, curTileLenAlign);
 
     LocalTensor<int32_t> maskLocal32 = maskLocalBuf_.Get<int32_t>();
 
