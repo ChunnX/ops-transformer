@@ -25,7 +25,7 @@ namespace BiasSigmoid {
 using namespace AscendC;
 
 constexpr int BUFFER_NUM = 2;
-#define UB_BUFFER_SIZE 188416 // 184KB 剩余作为sigmoid 临时空间
+#define UB_BUFFER_SIZE 188416
 template <typename T>
 class bias_sigmoid {
 public:
