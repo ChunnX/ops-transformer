@@ -149,26 +149,22 @@ ge::graphStatus ContextTransfer::CheckMRNCtxInfo(const gert::TilingContext *cont
     uint64_t x1DimNum = x1Shape->GetStorageShape().GetDimNum();
     OP_LOGD(context->GetNodeName(), "the dim of x1 is %lu.", x1DimNum);
     OP_TILING_CHECK(x1DimNum < DIM_ONE,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect x1 dim to be more than 0, but got x1 dim [%lu].",
-                                                    x1DimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x1",
+                        std::to_string(x1DimNum).c_str(), "more than 0"),
                     return ge::GRAPH_FAILED);
     int64_t x1MValue = x1Shape->GetStorageShape().GetDim(0);
     if (x1DimNum >= static_cast<int64_t>(DIM_THREE)) {
         x1MValue *= x1Shape->GetStorageShape().GetDim(1);
     }
     OP_TILING_CHECK(residualShape->GetStorageShape().GetDimNum() != DIM_THREE,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect dim of residual from arn to be 3, but got"
-                                                    " residual_dim:[%lu].",
-                                                    residualShape->GetStorageShape().GetDimNum()),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "residual",
+                        (std::to_string(residualShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
                     return ge::GRAPH_FAILED);
     int64_t residualMValue = residualShape->GetStorageShape().GetDim(0) * residualShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(x1MValue != residualMValue,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "Expect b * s of x1 (when dim of x1 is 2, b = 1 as default) and"
-                                                    " residual to be same, but got x1_b*s:[%lu], residual_b*s:[%lu].",
-                                                    x1MValue, residualMValue),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1_b*s",
+                        std::to_string(x1MValue).c_str(),
+                        ("should be the same as residual_b*s:" + std::to_string(residualMValue)).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

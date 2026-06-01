@@ -206,7 +206,17 @@
     <td>AI Core</td>
     <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
   </tr>
-    <tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/mixed_quant_sparse_flash_mla/README.md">mixed_quant_sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。</td>
+  </tr>
+  <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>
@@ -435,6 +445,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>全量推理场景的FlashAttention算子。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
+    <td><a href="../../experimental/ffn/swiglu_gated_mlp/README.md">swiglu_gated_mlp</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。</td>
   </tr>
   <tr>
     <td>ffn</td>

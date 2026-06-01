@@ -92,7 +92,7 @@ ge::graphStatus MatmulAllReduceTiling910::PostTiling()
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ", tilingDataSize,
             context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+                    OP_LOGE(opName_, "tiling data size[%s] not aligned to 8", std::to_string(tilingDataSize).c_str()),
                     return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -162,17 +162,17 @@ ge::graphStatus MatmulAllReduceTiling910::CheckAxisSize()
     const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
     OP_TILING_CHECK(
         m > static_cast<uint64_t>(INT32_MAX),
-        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "The size of m-axis(%lu) exceeds the upper limit.", m),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         k > static_cast<uint64_t>(INT32_MAX),
-        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "The size of k-axis(%lu) exceeds the upper limit.", k),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
     OP_TILING_CHECK(
         n > static_cast<uint64_t>(INT32_MAX),
-        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "The size of n-axis(%lu) exceeds the upper limit.", n),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
 
     return CheckEmptyTensor();
@@ -183,32 +183,31 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputDtype()
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO,
-                    VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                   "In the not quant scenario, Expect x2 dim to be 2, but "
-                                                   " got x2 dim:[%lu].",
-                                                   x2DimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x2",
+                        (std::to_string(x2DimNum) + "D").c_str(),
+                        "Expect x2 dim to be 2"),
                     return ge::GRAPH_FAILED);
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
     //  x1 为fp16 或者bf16
     OP_TILING_CHECK(!((x1Type == ge::DT_FLOAT16) || (x1Type == ge::DT_BF16)),
-                    VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                   "In the not quant scenario, type of x1 should be"
-                                                   " fp16 or bf16."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1",
+                        std::to_string(static_cast<int32_t>(x1Type)).c_str(),
+                        "should be fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x2Type = mmrCtxInfo_.x2->GetDataType();
     OP_TILING_CHECK(x1Type != x2Type,
-                    VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                   "In the not quant scenario, type of x1 and x2"
-                                                   " should be same"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
+                        std::to_string(static_cast<int32_t>(x2Type)).c_str(),
+                        "should be same as x1"),
                     return ge::GRAPH_FAILED);
     // x1,bias数据类型相同
     if (mmrCtxInfo_.bias_shape != nullptr) {
         auto biasType = mmrCtxInfo_.bias->GetDataType();
         OP_TILING_CHECK(x1Type != biasType,
-                        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                       "In the not quant scenario, type of x1 and bias should be"
-                                                       " same."),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "bias",
+                            std::to_string(static_cast<int32_t>(biasType)).c_str(),
+                            "should be same as x1"),
                         return ge::GRAPH_FAILED);
     }
     OP_LOGD(opName_, "Check Input Dtype Success.");
@@ -221,7 +220,9 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputFormat()
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat())) ==
             ge::Format::FORMAT_FRACTAL_NZ,
-        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "In the not quant scenario, weigth dont support NZ"),
+        OP_LOGE_FOR_INVALID_FORMAT(context_->GetNodeName(), "x2",
+            std::to_string(static_cast<int32_t>(ge::GetPrimaryFormat(mmrCtxInfo_.x2->GetStorageFormat()))).c_str(),
+            std::to_string(static_cast<int32_t>(ge::Format::FORMAT_ND)).c_str()),
         return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "Check Input Format Success.");
     return ge::GRAPH_SUCCESS;
@@ -233,16 +234,15 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputShape()
     if (mmrCtxInfo_.x3_shape != nullptr) {
         auto x3DimNum = mmrCtxInfo_.x3_shape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK(outputDimNum != x3DimNum,
-                        VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                       "In the not quant scenario, shape of x3 and output should be"
-                                                       " same."),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x3",
+                            (std::to_string(x3DimNum) + "D").c_str(), "should be same as output"),
                         return ge::GRAPH_FAILED);
         for (size_t i = 0U; i < outputDimNum; i++) {
             OP_TILING_CHECK(mmrCtxInfo_.y_shape->GetStorageShape().GetDim(i) !=
                                 mmrCtxInfo_.x3_shape->GetStorageShape().GetDim(i),
-                            VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
-                                                           "In the not quant scenario, shape of x3 and output should be"
-                                                           " same."),
+                            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x3",
+                                Ops::Base::ToString(mmrCtxInfo_.x3_shape->GetStorageShape()).c_str(),
+                                "should be same as output"),
                             return ge::GRAPH_FAILED);
         }
     }

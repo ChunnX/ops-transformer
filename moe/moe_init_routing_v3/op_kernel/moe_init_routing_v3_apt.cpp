@@ -170,6 +170,14 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                             userWS, t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
+        } else if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
+                             IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
+            TPipe fullLoadPipe;
+            MoeV3FullLoadDynamicQuant<DTYPE_X, int4b_t> fullLoadOp;
+            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                            userWS, t, &fullLoadPipe);
+            fullLoadOp.Process();
+            fullLoadPipe.Destroy();
         }
 
 #if (__NPU_ARCH__ == 3510)
@@ -324,6 +332,13 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                        IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
             TPipe gatherPipe;
             MoeGatherOutDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
+            gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherDynamicQuantOp.Process();
+            gatherPipe.Destroy();
+        } else if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
+                             IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
+            TPipe gatherPipe;
+            MoeGatherOutDynamicQuant<DTYPE_X, int4b_t> gatherDynamicQuantOp;
             gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherDynamicQuantOp.Process();
             gatherPipe.Destroy();

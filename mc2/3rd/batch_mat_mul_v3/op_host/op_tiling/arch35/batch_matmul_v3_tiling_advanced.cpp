@@ -35,7 +35,7 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::DoTiling()
     }
     Mc2MatMulV3BatchInfo tempBatchInfo;
     OP_TILING_CHECK((GetBatchInfo(*context_, args_, tempBatchInfo) != ge::GRAPH_SUCCESS),
-       CUBE_INNER_ERR_REPORT(args_.opName, "GetBatchInfo failed"),
+       OP_LOGE(args_.opName, "GetBatchInfo failed."),
        return ge::GRAPH_FAILED);
     args_.batchInfo = &tempBatchInfo;
     Mc2MatMulTilingCfg tilingCfg(false, context_->GetCompileInfo(), static_cast<void *>(&args_));
@@ -148,7 +148,7 @@ ge::graphStatus Mc2BatchMatMulV3Tiling::GetBatchInfo(const gert::TilingContext &
         return ge::GRAPH_FAILED;
     }
     OP_TILING_CHECK((GetBmmBiasInfo(context, args, batchInfo) != ge::GRAPH_SUCCESS),
-                    CUBE_INNER_ERR_REPORT(args_.opName, "GetBmmBiasInfo failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(args_.opName, "GetBmmBiasInfo failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
