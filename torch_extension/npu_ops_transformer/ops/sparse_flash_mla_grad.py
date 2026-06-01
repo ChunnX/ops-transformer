@@ -33,7 +33,7 @@ class SparseFlashMlaGradOpBuilder(OpBuilder):
             "Tensor? metadata=None," \
             "float softmax_scale=None, int cmp_ratio=None, int ori_mask_mode=0, int cmp_mask_mode=0," \
             "int ori_win_left=-1, int ori_win_right=-1," \
-            "str layout_q=\"BSND\", str layout_kv=\"BSND\", int deterministic=0)->" \
+            "str layout_q=\"BSND\", str layout_kv=\"BSND\")->" \
             "(Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
@@ -50,8 +50,7 @@ class SparseFlashMlaGradOpBuilder(OpBuilder):
                                 sinks=None, metadata=None,
                                 softmax_scale=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
                                 ori_win_left=-1, ori_win_right=-1,
-                                layout_q="BSND", layout_kv="BSND",
-                                deterministic=0):
+                                layout_q="BSND", layout_kv="BSND"):
             dq = q.new_empty(q.shape, dtype=q.dtype, device='meta')
             dOriKv = ori_kv.new_empty(ori_kv.shape, dtype=ori_kv.dtype, device='meta') if ori_kv != None else None
             dCmpKv = cmp_kv.new_empty(cmp_kv.shape, dtype=cmp_kv.dtype, device='meta') if cmp_kv != None else None
@@ -76,8 +75,7 @@ def npu_sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_k
                                 sinks=None, metadata=None,
                                 softmax_scale=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
                                 ori_win_left=-1, ori_win_right=-1,
-                                layout_q="BSND", layout_kv="BSND",
-                                deterministic=0):
+                                layout_q="BSND", layout_kv="BSND"):
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
@@ -90,5 +88,4 @@ def npu_sparse_flash_mla_grad(q, dout, attn_out, softmax_lse, ori_kv=None, cmp_k
                                 sinks, metadata,
                                 softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
                                 ori_win_left, ori_win_right,
-                                layout_q, layout_kv,
-                                deterministic)
+                                layout_q, layout_kv)

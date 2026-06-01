@@ -45,8 +45,7 @@ at::Tensor npu_sparse_flash_mla_grad_metadata(
                c10::optional<c10::string_view> layout_q, 
                c10::optional<c10::string_view> layout_kv,
                c10::optional<bool> has_ori_kv,
-               c10::optional<bool> has_cmp_kv,
-               c10::optional<int64_t> deterministic)
+               c10::optional<bool> has_cmp_kv)
 {
     at::Tensor metadata;
     return metadata;

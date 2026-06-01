@@ -100,7 +100,6 @@ aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     int64_t            oriWinRight,
     char              *layoutQOptional,
     char              *layoutKvOptional,
-    int64_t            deterministic,
     const aclTensor   *dQueryOut,
     const aclTensor   *dOriKvOutOptional,
     const aclTensor   *dCmpKvOutOptional,
@@ -516,18 +515,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             支持"BSND"、"TND"。
             </td>
             <td>STRING</td>
-            <td>N/A</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>deterministic（int64_t）</td>
-            <td>输入</td>
-            <td>表示是否开启确定性，应和全局保持一致。</td>
-            <td>
-            预留参数，暂不支持使用。
-            </td>
-            <td>INT64</td>
             <td>N/A</td>
             <td>-</td>
             <td>-</td>
@@ -971,7 +958,6 @@ int main() {
   int64_t cmpMaskMode = 3;
   int64_t oriWinLeft = 127;
   int64_t oriWinRight = 0;
-  int64_t deterministic = 0;
   char layoutQ[5] = {'T', 'N', 'D', 0};
   char layoutKv[5] = {'T', 'N', 'D', 0};
   
@@ -982,7 +968,7 @@ int main() {
   // 调用aclnnSparseFlashMlaGrad第一段接口
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, deterministic, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   

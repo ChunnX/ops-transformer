@@ -32,8 +32,7 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
                c10::optional<int64_t> ori_mask_mode, c10::optional<int64_t> cmp_mask_mode,
                c10::optional<int64_t> ori_win_left, c10::optional<int64_t> ori_win_right, 
                c10::optional<c10::string_view> layout_q, 
-               c10::optional<c10::string_view> layout_kv,
-               c10::optional<int64_t> deterministic)
+               c10::optional<c10::string_view> layout_kv)
 {
     const at::Tensor &ori_kv_const = ori_kv.value_or(at::Tensor());
     const at::Tensor &cmp_kv_const = cmp_kv.value_or(at::Tensor());
@@ -85,7 +84,6 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
     const int64_t cmp_mask_mode_const = cmp_mask_mode.value_or(0);
     const int64_t ori_win_left_const = ori_win_left.value_or(-1);
     const int64_t ori_win_right_const = ori_win_right.value_or(-1);
-    const int64_t deterministic_const = ori_win_right.value_or(0);
 
     at::Tensor oriSoftmaxL1Norm;
     if (ori_sparse_indices_const.defined()) {
@@ -108,7 +106,7 @@ npu_sparse_flash_mla_grad(const at::Tensor &q, const at::Tensor &dout, const at:
               ori_topk_length_const, cmp_topk_length_const, sinks_const, metadata_const,
               softmax_scale_const, cmp_ratio_const, ori_mask_mode_const, cmp_mask_mode_const, 
               ori_win_left_const, ori_win_right_const, 
-              layout_q_ptr, layout_kv_ptr, deterministic_const, 
+              layout_q_ptr, layout_kv_ptr,
               dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(

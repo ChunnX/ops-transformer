@@ -31,8 +31,7 @@ class SparseFlashMlaGradMetadataOpBuilder(OpBuilder):
             "int batch_size=None, int max_seqlen_q=None, int max_seqlen_ori_kv=None, int max_seqlen_cmp_kv=None, " \
             "int ori_topk=None, int cmp_topk=None, int cmp_ratio=None, int ori_mask_mode=0, int cmp_mask_mode=0," \
             "int ori_win_left=-1, int ori_win_right=-1, " \
-            "str layout_q=\"BSND\", str layout_kv=\"BSND\", bool has_ori_kv=True, bool has_cmp_kv=True," \
-            "int deterministic=0) -> Tensor"
+            "str layout_q=\"BSND\", str layout_kv=\"BSND\", bool has_ori_kv=True, bool has_cmp_kv=True) -> Tensor"
         )
 
     def register_meta(self):
@@ -45,8 +44,7 @@ class SparseFlashMlaGradMetadataOpBuilder(OpBuilder):
             batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
             ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
             ori_win_left=-1, ori_win_right=-1,
-            layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True,
-            deterministic=0
+            layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True
         ):
             return None
 
@@ -62,8 +60,7 @@ def npu_sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         batch_size=None, max_seqlen_q=None, max_seqlen_ori_kv=None, max_seqlen_cmp_kv=None,
                                         ori_topk=None, cmp_topk=None, cmp_ratio=None, ori_mask_mode=0, cmp_mask_mode=0,
                                         ori_win_left=-1, ori_win_right=-1,
-                                        layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True,
-                                        deterministic=0
+                                        layout_q="BSND", layout_kv="BSND", has_ori_kv=True, has_cmp_kv=True
                                     ):
     """
     dispatcher implementation for NPU.
@@ -76,6 +73,5 @@ def npu_sparse_flash_mla_grad_metadata(num_heads_q, num_heads_kv, head_dim,
                                         batch_size, max_seqlen_q, max_seqlen_ori_kv, max_seqlen_cmp_kv,
                                         ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode,
                                         ori_win_left, ori_win_right,
-                                        layout_q, layout_kv, has_ori_kv, has_cmp_kv,
-                                        deterministic
+                                        layout_q, layout_kv, has_ori_kv, has_cmp_kv
                                     )

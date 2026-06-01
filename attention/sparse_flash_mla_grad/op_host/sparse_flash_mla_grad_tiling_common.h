@@ -81,8 +81,7 @@ enum class AttrIndex : uint32_t {
     ORI_WIN_LEFT,
     ORI_WIN_RIGHT,
     LAYOUT_Q,
-    LAYOUT_KV,
-    DETERMINISTIC
+    LAYOUT_KV
 };
 
 struct SparseFlashMlaGradCompileInfo {

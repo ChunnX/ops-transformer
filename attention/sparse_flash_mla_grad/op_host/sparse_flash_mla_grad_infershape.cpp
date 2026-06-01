@@ -62,8 +62,7 @@ enum class AttrIndex : uint32_t {
     ORI_WIN_LEFT,
     ORI_WIN_RIGHT,
     LAYOUT_Q,
-    LAYOUT_KV,
-    DETERMINISTIC
+    LAYOUT_KV
 };
 
 ge::graphStatus InferShape4SparseFlashMlaGrad(gert::InferShapeContext *context)
