@@ -24,8 +24,8 @@
 | R01 | Split D=128 fast-path kernel modules | Done | Split `common`, `controller`, `basic_block`, `cube`, and `vec` into separate headers; `git diff --check` passed; source scan confirmed no `TPipe`/`TBuf`/`InitBuffer` or `BEGIN_TILING_DATA_DEF` usage in the kernel path; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
 | R02 | Remove empty fast-path aggregate header | Done | Deleted the empty aggregate header and made the kernel entry include `controller` directly; scan found no remaining reference to the removed header; `git diff --check` passed; source scan confirmed no `TPipe`/`TBuf`/`InitBuffer` or `BEGIN_TILING_DATA_DEF` usage in the kernel path; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` and no longer listed the removed header; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
 | R03 | Move core token split to tiling | Done | Host tiling now computes `coreTokenTile = ceil(totalTokens / aicNum)` and `coreGroupNum`; controller consumes those tiling fields to build the core token range, expands it into token-size tiles, and calls the basic-block single-tile AIC/AIV entries; Cube/Vec bind their own typed GM tensors and controller/basic block do not retain a shared bound-GM bundle; core-type dispatch is centralized in controller AIC/AIV entries with no lower-layer `g_coreType` checks; `git diff --check` passed; source scan confirmed no old `baseTokenSize`/`totalTokens / core` math, no retained shared bound-GM bundle, and no `TPipe`/`TBuf`/`InitBuffer` or `BEGIN_TILING_DATA_DEF`; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT including `CoreTokenRangeUsesHostCeilTokenTile`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
-| T05 | Intra-core event constants and Init/End | Done | Added AIV/AIC intra-core event constants with static range checks for ids `0..5`; Init/End now pair reusable-event `Set`/`Wait` for AIV input UB, `v_out_ub`, `qk_after_cube_ub`, and AIC L0/L0C reuse paths; current implementation has no A temporary UB staging and does not allocate AIV event ids for `a_rot_l1_nz`; `git diff --check` passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`, package generated at `build/cann-ops-transformer-custom_linux-x86_64.run` | This commit |
-| T06 | AIV Q/K/V preprocess | Not started | Kernel compile + preprocess UT | |
+| T05 | Intra-core event constants and Init/End | Done | AIV/AIC intra-core event ids are encapsulated inside `D128FastVec`/`D128FastCube`; reusable-event Init/End pairs AIV input UB, `v_out_ub`, `qk_after_cube_ub`, and AIC L0/L0C reuse paths. `a_rot_l1_nz` still does not allocate per-AL1 AIV event ids. | This commit |
+| T06 | AIV Q/K/V preprocess | In progress | Added AIV preprocess boundary: input UB reuse and `MTE2 -> V` ready events, QKV/gamma/slot_mapping staging, private `V -> MTE3` and `MTE3 -> V` AL1 staging events, `A_READY` after AL1 staging, and AIC `A_READY` wait before consuming AL1. Numeric RMSNorm/RoPE/NZ conversion is still pending. `git diff --check` passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 11 host UT | This commit |
 | T07 | AIC rotation resident and Cube matmul | Not started | Kernel compile + Cube UT | |
 | T08 | AIC Fixpipe distribution and C_READY | Not started | Kernel compile + static review | |
 | T09 | V branch early postprocess | Not started | Kernel compile + V path UT | |
@@ -37,9 +37,9 @@
 
 ## Next Task
 
-T06 is the next implementation task. It should add AIV Q/K/V preprocess logic,
-connect the input-UB and AL1 producer/consumer events to the real data path,
-and issue `A_READY` only after MTE3 has completed the Cube AL1 write.
+Continue T06 by replacing the current AL1 staging placeholder with the real
+Q/K RMSNorm, RoPE, BF16/NZ conversion path and adding a focused preprocess
+golden/UT hook.
 
 ## Kernel Layout
 
@@ -54,9 +54,11 @@ offsets to those base tensors, not stored as `LocalTensor` arrays.
 Host tiling owns the ceil-div core token split and writes the resulting
 `coreTokenTile` and `coreGroupNum` into the kernel POD tiling data.
 
-T05 adds fixed intra-core event id constants and Init/End pairing. AIV
-reusable-event Init/End covers input UB with `V_MTE2`, `v_out_ub` with
-`MTE3_V`, and `qk_after_cube_ub` with `MTE3_V`; the current static layout has
-no A temporary UB staging, so ids `4/5` remain unused. AIC Init/End covers L0
-reuse with `M_MTE1` and L0C reuse with `FIX_M`. All active ids are checked to
-stay within `0..5`.
+T05/T06 keep intra-core event ids private to the AIV/AIC implementation
+classes. AIV reusable-event Init/End covers input UB with `V_MTE2`,
+`v_out_ub` with `MTE3_V`, and `qk_after_cube_ub` with `MTE3_V`. The T06 AL1
+staging boundary uses AIV-private `V_MTE3`/`MTE3_V` ids `4/5` inside the tile
+compute path only; these ids protect the pipe handoff around the current
+input-UB-to-AL1 staging and are not per-AL1-buffer CrossCore flags. AIC
+Init/End covers L0 reuse with `M_MTE1` and L0C reuse with `FIX_M`. All active
+ids are checked to stay within `0..5`.
