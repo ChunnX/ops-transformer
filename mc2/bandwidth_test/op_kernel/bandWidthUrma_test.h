@@ -200,7 +200,6 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
-    totalWinSizeEp_ = 800UL * 1024 * 1024; //TODO:
     context_ = (__gm__ Mc2MoeContext *)context;
     epRankId_ =  context_->epRankId;
 
@@ -349,17 +348,14 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams, padParams);
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-
+    // SyncFunc<AscendC::HardEvent::MTE3_S>();
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
-        hcomm_.Wait(handle);
+        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
     }
 }
 
@@ -467,9 +463,9 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
+        hcomm_.Wait(context_->hcommHandle_[currRankId]);
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
-        auto handle = hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
-        hcomm_.Wait(handle);
+        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
     }
 }
 
@@ -565,7 +561,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::LocalWi
     GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
     DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
     DataCopy(localStatusTensor, srcStatus, statusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // 计算前缀和：当前核之前所有核收到的token总数
     uint32_t preCnt = 0;

@@ -260,6 +260,8 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
     HcclResult hcclRet;
     if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
         hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
+        void *tempBuffer = nullptr;
+        hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
     } else {
         hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
     }
