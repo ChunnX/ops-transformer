@@ -14,10 +14,6 @@
  */
 #ifndef SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H_
 #define SPARSE_FLASH_MLA_SCFA_BLOCK_CUBE_H_
-// #include "common/offset_calculator.h"
-// #include "common/matmul.h"
-// #include "common/FixpipeOut.h"
-// #include "common/CopyInL1.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "util_regbase.h"
 #include "sparse_flash_mla_common_arch35.h"
@@ -67,7 +63,7 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 template <SMLA_LAYOUT KV_LAYOUT_T>
 __aicore__ inline constexpr GmFormat GetKvGmFormat()
 {
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         return GmFormat::PA_BnBsND;
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         return GmFormat::TND;
@@ -91,7 +87,8 @@ public:
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ,
         __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-        __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
+        __gm__ uint8_t *cuSeqlensCmpKv,
+        __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo);
 
     __aicore__ inline void MergeKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         const RunInfo &runInfo, const ConstInfo &constInfo, int32_t startPos);
@@ -100,7 +97,7 @@ public:
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
         const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
         const ConstInfo &constInfo);
     // SCFA场景, inputRightBuf是CROSS_CORE_SYNC_FORWARD类型
@@ -109,14 +106,15 @@ public:
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, const RunInfo &runInfo,
         const ConstInfo &constInfo);
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-        __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
+        __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -129,7 +127,7 @@ private:
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
         const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm2CFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
         const ConstInfo &constInfo);
 
@@ -138,21 +136,23 @@ private:
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm2SCFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, const RunInfo &runInfo,
         const ConstInfo &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     static constexpr GmFormat KV_FORMAT = GetKvGmFormat<KV_LAYOUT_T>();
-    FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> oriKvGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> cmpKvGm;
+    static constexpr bool Q_WITH_ZERO_HEAD = (LAYOUT_T == SMLA_LAYOUT::TND);
+    FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_WITH_ZERO_HEAD> queryGm;
+    static constexpr bool KV_WITH_ZERO_HEAD = (KV_LAYOUT_T == SMLA_LAYOUT::TND);
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> oriKvGm;
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> cmpKvGm;
     GlobalTensor<int32_t> cmpSparseIndicesGm;
     GlobalTensor<int32_t> oriBlockTableGm;
     GlobalTensor<int32_t> cmpBlockTableGm;
     GlobalTensor<int32_t> blockTableGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> curKvGm;
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> curKvGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> cuSeqlensOriKvGm;
     GlobalTensor<int32_t> cuSeqlensCmpKvGm;
@@ -195,16 +195,17 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv,
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-    __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo)
+    __gm__ uint8_t *cuSeqlensCmpKv,
+    __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
         this->oriKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)oriKv);
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             this->oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
         }
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
             this->cmpKvGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)cmpKv);
-            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+            if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                 this->cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
             }
         }
@@ -225,7 +226,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
         }
-        InitGmTensor(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
+        InitGmTensor(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, constInfo);
     }
 }
 
@@ -248,18 +249,26 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManag
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo)
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
+    __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
     } else {  // SMLA_LAYOUT::TND
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        GlobalTensor<int32_t> sequsedQGm;
+        if (sequsedQ != nullptr) {
+            sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
+        }
+        uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
+        ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+        parser.Init(cuSeqlensQGm, sequsedQGm, constInfo.bSize, sequsedQSize);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-            cuSeqlensQGm, constInfo.actualSeqLenSize);
+            parser);
     }
 
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.oriBlockSize, constInfo.dSize,
             this->oriBlockTableGm, constInfo.oriMaxBlockNumPerBatch);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
@@ -268,12 +277,24 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
         }
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
-        this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
-            cuSeqlensOriKvGm, constInfo.actualSeqLenSize);
+        GlobalTensor<int32_t> seqUsedOriKvGm;
+        if (seqUsedOriKV != nullptr) {
+            seqUsedOriKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
+        }
+        uint32_t seqUsedOriKvSize = (seqUsedOriKV == nullptr) ? 0 : constInfo.bSize;
+        ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+        parser.Init(cuSeqlensOriKvGm, seqUsedOriKvGm, constInfo.actualSeqLenSize, seqUsedOriKvSize);
+        this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
             cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
-            this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
-                cuSeqlensCmpKvGm, constInfo.actualSeqLenSize);
+            GlobalTensor<int32_t> seqUsedCmpKvGm;
+            if (seqUsedCmpKV != nullptr) {
+                seqUsedCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
+            }
+            uint32_t seqUseCmpKvSize = (seqUsedCmpKV == nullptr) ? 0 : constInfo.bSize;
+            ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+            parser.Init(cuSeqlensCmpKvGm, seqUsedCmpKvGm, constInfo.actualSeqLenSize, seqUseCmpKvSize);
+            this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
         }
     } else {
         // BSND不需要初始化
@@ -281,7 +302,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
                 constInfo.s2Size, constInfo.dSize);
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
             this->cmpKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size,
-                constInfo.s2Size / constInfo.cmpRatio, constInfo.dSize);
+                constInfo.cmpS2Size, constInfo.dSize); // 替换constInfo.s2Size / constInfo.cmpRatio
         }
     }
 }
@@ -435,7 +456,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
     const ConstInfo &constInfo)
 {
@@ -543,11 +564,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1CFA(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2CFA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
     const ConstInfo &constInfo)
 {
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> inputLeftBuf = inputLeftBuffers.Get(); // P直接用无需搬运
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> inputLeftBuf = inputLeftBuffers.Get(); // P直接用无需搬运
     inputLeftBuf.WaitCrossCore();
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -611,7 +632,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, const RunInfo &runInfo,
     const ConstInfo &constInfo)
 {
@@ -731,11 +752,11 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, const RunInfo &runInfo,
     const ConstInfo &constInfo)
 {
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> inputLeftBuf = inputLeftBuffers.Get(); // P直接用无需搬运
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> inputLeftBuf = inputLeftBuffers.Get(); // P直接用无需搬运
     inputLeftBuf.WaitCrossCore();
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -792,7 +813,8 @@ public:
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *oriKv, __gm__ uint8_t *cmpKv,
         __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-        __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo) {}
+        __gm__ uint8_t *cuSeqlensCmpKv,
+        __gm__ uint8_t *seqUsedOriKV, __gm__ uint8_t *seqUsedCmpKV, const ConstInfo& constInfo) {}
 };
 
 template <typename T>
