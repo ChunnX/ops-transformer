@@ -280,7 +280,11 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutHistToWs()
 {
-    // TODO: 将 globalHist 写入 GM workspace
+    LocalTensor<int32_t> globalHist = maskLocalBuf_.Get<int32_t>();
+    
+    DataCopyExtParams globalHistParams{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * numValue_), 0, 0, 0};
+    DataCopyPad(globalHistGm_[GetBlockIdx() * numValue_], globalHist, globalHistParams);
 }
 
 template <typename BSAT>
@@ -300,9 +304,27 @@ __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ClearHist(int32_t roundId)
 {
-    // TODO: 初始化/重置直方图
-    // 第一轮: tileHist[bin0] = tileLen, globalHist[0] = 总元素数
-    // 后续轮: tileHist[bin0] = 上轮boundaryBin内元素数
+    LocalTensor<int32_t> tileHist = tempBuf_.GetWithOffset<int32_t>(
+        tileLen_ / BYTE_SIZE, tileLen_ / BYTE_SIZE);
+    LocalTensor<int32_t> globalHist = maskLocalBuf_.Get<int32_t>();
+    
+    if (roundId == static_cast<int32_t>(round_) - 1) {
+        Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNum_);
+        if (sortLen_ % tileLen_ != 0) {
+            tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(sortLen_ % tileLen_));
+        }
+        globalHistBoundaryNum_ = static_cast<int32_t>(sortLen_);
+    } else {
+        if (boundaryBin < static_cast<int32_t>(numValue_) - 1) {
+            Sub(tileHist, tileHist[boundaryBin * tileNumAlign_], 
+                tileHist[boundaryBinPrev * tileNumAlign_], tileNum_);
+        } else {
+            Copy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNum_);
+        }
+    }
+    
+    globalHist.SetValue(0, globalHistBoundaryNum_);
+    Duplicate<int32_t>(tileHist[tileNumAlign_], 0, (numValue_ - 1) * tileNumAlign_);
 }
 
 template <typename BSAT>
