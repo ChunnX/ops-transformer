@@ -286,6 +286,24 @@ public:
         {
             return ret;
         }
+        // No-op: empty slice, nothing to compute
+        if (sliceLength_ == 0) {
+            RopeRegbaseTilingData noopTiling;
+            noopTiling.set_sliceStart(sliceStart_);
+            noopTiling.set_sliceEnd(sliceEnd_);
+            noopTiling.set_sliceLength(0);
+            noopTiling.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
+            noopTiling.set_D(d_);
+            context_->SetBlockDim(1);
+            context_->SetTilingKey(20040);  // TILING_KEY_A: valid key, kernel will check sliceLength==0
+            size_t *workspaces = context_->GetWorkspaceSizes(1);
+            if (workspaces != nullptr) {
+                workspaces[0] = static_cast<size_t>(16) * 1024 * 1024;
+            }
+            noopTiling.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
+            context_->GetRawTilingData()->SetDataSize(noopTiling.GetDataSize());
+            return ge::GRAPH_SUCCESS;
+        }
         ret = GetPlatformInfo();
         if (ret != ge::GRAPH_SUCCESS)
         {
