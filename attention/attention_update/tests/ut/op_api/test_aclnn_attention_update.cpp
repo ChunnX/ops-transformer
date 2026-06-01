@@ -147,6 +147,7 @@ TEST_F(l2_attention_update_test, ascend910B2_test_attention_update_5)
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
+// 测试sp大于16的场景aclnn接口能否正常运行
 TEST_F(l2_attention_update_test, ascend910B2_test_attention_update_sp17)
 {
     vector<int64_t> lse_dims = {128};
@@ -172,6 +173,7 @@ TEST_F(l2_attention_update_test, ascend910B2_test_attention_update_sp17)
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
+// 测试sp大于128的场景aclnn接口能否正常拦截
 TEST_F(l2_attention_update_test, ascend910B2_test_attention_update_sp129)
 {
     vector<int64_t> lse_dims = {128};

@@ -137,6 +137,7 @@ TEST_F(AttentionUpdateTilingTest, AscendCLargeTotalLength)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 20001);
 }
 
+// 测试A2A3环境下sp为16的场景，不输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp16)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -145,6 +146,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp16)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10010);
 }
 
+// 测试A2A3环境下sp为16的场景且fp16，输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp16)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -153,6 +155,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp16)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
 }
 
+// 测试A2A3环境下sp大于16的场景，输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType1Sp32)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -161,6 +164,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType1Sp32)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10010);
 }
 
+// 测试A2A3环境下sp大于16的场景且fp16，输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp64)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -169,6 +173,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp64)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
 }
 
+// 测试A2A3环境下sp为64的场景且bf16，输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyBf16UpdateType1Sp64)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -177,6 +182,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyBf16UpdateType1Sp64)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10030);
 }
 
+// 测试A2A3环境下sp为128的场景且fp16，输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp128)
 {
     auto compileInfo = LegacyCompileInfo();
@@ -185,6 +191,7 @@ TEST_F(AttentionUpdateTilingTest, LegacyFloat16UpdateType1Sp128)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10020);
 }
 
+// 测试A2A3环境下sp为最大值128而且totallength超大，不输出lse的tiling能否正常运行
 TEST_F(AttentionUpdateTilingTest, LegacyFloatUpdateType0Sp128LargeTotalLength)
 {
     auto compileInfo = LegacyCompileInfo();
