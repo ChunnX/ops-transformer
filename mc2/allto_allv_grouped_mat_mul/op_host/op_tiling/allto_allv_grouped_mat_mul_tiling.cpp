@@ -74,7 +74,23 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
         return ge::GRAPH_FAILED);
 
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
-    tilingData->isPermuteOut = IsShapePresent(mmXStorageShape);
+    auto mmWeightStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX);
+    auto outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
+    if (!((mmXStorageShape == nullptr) && (mmWeightStorageShape == nullptr) &&
+          (outputMmYStorageShape == nullptr || outputMmYStorageShape->GetStorageShape().GetDimNum() == NUM_ZERO)) &&
+        !((IsShapePresent(mmXStorageShape)) && (IsShapePresent(mmWeightStorageShape)) &&
+          (IsShapePresent(outputMmYStorageShape)))) {
+        OP_LOGE(A_INNER_DEBUG, "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!");
+        return ge::GRAPH_FAILED;
+    }
+    hasSharedExpertFlag_ = IsShapePresent(mmXStorageShape);
+
+    auto permuteOutFlagPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
+    if (permuteOutFlagPtr != nullptr) {
+        tilingData->isPermuteOut = *permuteOutFlagPtr;
+    } else {
+        tilingData->isPermuteOut = hasSharedExpertFlag_;
+    }
 
     groupPtr_ = groupEpPtr;
     group_ = groupEpPtr;
@@ -87,8 +103,8 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
 
     auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK(transMmWeightPtr == nullptr,
-OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "transMmWeight"), return ge::GRAPH_FAILED);
-    transMmWeight_ = IsShapePresent(mmXStorageShape) ? *transMmWeightPtr : false;
+        OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "transMmWeight"), return ge::GRAPH_FAILED);
+    transMmWeight_ = hasSharedExpertFlag_ ? *transMmWeightPtr : false;
 
     OP_LOGI(A_INNER_DEBUG, "EpGroup is %s, epWorldSize is %lld.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
@@ -382,6 +398,12 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
             OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "permuteOut and gmmX",
                 (std::string("H1=") + std::to_string(permuteOutH1) + ", gmmX_H1=" + std::to_string(H1)).c_str(),
                 "H1 should be equal");
+            return ge::GRAPH_FAILED;
+        }
+    } else if (permuteOutFlagPtr != nullptr && !(*permuteOutFlagPtr)) {
+        auto permuteOutStorageShape = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX);
+        if (IsShapePresent(permuteOutStorageShape)) {
+            OP_LOGE(A_INNER_DEBUG, "The permuteOut should be null or empty when permuteOutFlag is false!");
             return ge::GRAPH_FAILED;
         }
     }
@@ -962,6 +984,49 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
         n2_ = mmWeightShape.GetDim(n2DimIndex);
     } else {
         transMmWeight_ = false;
+    }
+
+    constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
+    constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "sendCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "recvCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+
+    auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
+    OP_TILING_CHECK(gmmXDesc == nullptr || gmmXDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmX storage format should be ND."), return ge::GRAPH_FAILED);
+    auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(gmmWeightDesc == nullptr || gmmWeightDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+    auto mmXDesc = context_->GetOptionalInputDesc(NON_QUANT_MM_X_INDEX);
+    if (mmXDesc != nullptr) {
+        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::FORMAT_ND,
+            OP_LOGE(A_INNER_DEBUG, "mmX storage format should be ND."), return ge::GRAPH_FAILED);
+    }
+    auto mmWeightDesc = context_->GetOptionalInputDesc(NON_QUANT_MM_WEIGHT_INDEX);
+    if (mmWeightDesc != nullptr) {
+        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::FORMAT_ND,
+            OP_LOGE(A_INNER_DEBUG, "mmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+    }
+    auto gmmYDesc = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX);
+    OP_TILING_CHECK(gmmYDesc == nullptr || gmmYDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmY storage format should be ND."), return ge::GRAPH_FAILED);
+    if (hasSharedExpertFlag_) {
+        auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_INDEX);
+        if (mmYDesc != nullptr) {
+            OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::FORMAT_ND,
+                OP_LOGE(A_INNER_DEBUG, "mmY storage format should be ND."), return ge::GRAPH_FAILED);
+        }
+    }
+    if (permuteOutFlag_) {
+        auto permuteOutDesc = context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX);
+        if (permuteOutDesc != nullptr) {
+            OP_TILING_CHECK(permuteOutDesc->GetStorageFormat() != ge::FORMAT_ND,
+                OP_LOGE(A_INNER_DEBUG, "permuteOut storage format should be ND."), return ge::GRAPH_FAILED);
+        }
     }
 
     return ge::GRAPH_SUCCESS;
