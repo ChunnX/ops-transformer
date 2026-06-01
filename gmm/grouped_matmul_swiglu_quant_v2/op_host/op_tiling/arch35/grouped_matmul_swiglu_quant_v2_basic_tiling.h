@@ -42,6 +42,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "GroupedMatmulSwigluQuantV2";
+    }
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData

@@ -188,6 +188,7 @@ public:
     int8_t splitItem = 0;
     int8_t actType = 0;
     const char *opName = nullptr;
+    const char *opType = "GroupedMatmul";
     ge::DataType aDtype = ge::DT_INT8;
     ge::DataType bDtype = ge::DT_INT8;
     ge::DataType cDtype = ge::DT_FLOAT16;
@@ -237,6 +238,10 @@ protected:
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
     virtual void Reset();
+    virtual const char *GetOpType() const
+    {
+        return "GroupedMatmul";
+    }
     void CalBasicBlock();
     ge::graphStatus CalL1Tiling();
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
