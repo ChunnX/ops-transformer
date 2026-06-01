@@ -165,7 +165,7 @@ ge::graphStatus MhcPostTilingBase::CheckInputShapePositive(int64_t idx) const
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         OP_CHECK_IF(shape.GetDim(i) <= 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "input", shape.GetDim(i), "shape维度值必须为正数"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "input", shape.GetDim(i), "shape dimension value must be positive"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -176,14 +176,14 @@ ge::graphStatus MhcPostTilingBase::CheckShapeAllPositive()
     // Check all inputs
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
         OP_CHECK_IF(CheckInputShapePositive(i) != ge::GRAPH_SUCCESS,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "input", 0, "shape维度值必须为正数"), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "input", 0, "shape dimension value must be positive"), return ge::GRAPH_FAILED);
     }
 
     // Check output
     auto shape = context_->GetOutputShape(OUTPUT_INDEX)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         OP_CHECK_IF(shape.GetDim(i) <= 0,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "output", shape.GetDim(i), "shape维度值必须为正数"),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_, "output", shape.GetDim(i), "shape dimension value must be positive"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -198,7 +198,7 @@ ge::graphStatus MhcPostTilingBase::CheckDataType()
     // Check supported dtype
     const std::vector<ge::DataType> supportedDtype = {ge::DT_BF16, ge::DT_FLOAT16};
     OP_CHECK_IF(std::find(supportedDtype.begin(), supportedDtype.end(), dtype_) == supportedDtype.end(),
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_, "x", dtype_, "dtype必须为DT_BF16或DT_FLOAT16"),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_, "x", dtype_, "dtype must be DT_BF16 or DT_FLOAT16"),
                 return ge::GRAPH_FAILED);
 
     // Check x and h_out have same dtype (bf16/fp16)
@@ -237,7 +237,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape3D()
     auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
     const gert::Shape* hResShape = &hResShapePtr->GetStorageShape();
     OP_CHECK_IF(hResShape->GetDimNum() != dimNum,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "h_res", hResShape->GetDimNum(), "维度数量必须与x的维度数量一致"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "h_res", hResShape->GetDimNum(), "dimNum must match x's dimNum"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(hResShape->GetDim(DIM_0) != T || hResShape->GetDim(DIM_1) != n_ || hResShape->GetDim(DIM_2) != n_,
                 OP_LOGE_FOR_INVALID_SHAPE(context_, "h_res", 
@@ -273,7 +273,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape3D()
     auto outputShapePtr = context_->GetOutputShape(OUTPUT_INDEX);
     const gert::Shape* outputShape = &outputShapePtr->GetStorageShape();
     OP_CHECK_IF(outputShape->GetDimNum() != dimNum,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "output", outputShape->GetDimNum(), "维度数量必须与x的维度数量一致"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "output", outputShape->GetDimNum(), "dimNum must match x's dimNum"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(outputShape->GetDim(DIM_0) != T || outputShape->GetDim(DIM_1) != n_ || outputShape->GetDim(DIM_2) != d_,
                 OP_LOGE_FOR_INVALID_SHAPE(context_, "output",
@@ -292,7 +292,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape4D()
     auto hResShapePtr = context_->GetInputShape(H_RES_INPUT_INDEX);
     const gert::Shape* hResShape = &hResShapePtr->GetStorageShape();
     OP_CHECK_IF(hResShape->GetDimNum() != dimNum,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "h_res", hResShape->GetDimNum(), "维度数量必须与x的维度数量一致"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "h_res", hResShape->GetDimNum(), "dimNum must match x's dimNum"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(hResShape->GetDim(DIM_0) != b_ || hResShape->GetDim(DIM_1) != s_ ||
                 hResShape->GetDim(DIM_2) != n_ || hResShape->GetDim(DIM_3) != n_,
@@ -329,7 +329,7 @@ ge::graphStatus MhcPostTilingBase::CheckShape4D()
     auto outputShapePtr = context_->GetOutputShape(OUTPUT_INDEX);
     const gert::Shape* outputShape = &outputShapePtr->GetStorageShape();
     OP_CHECK_IF(outputShape->GetDimNum() != dimNum,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "output", outputShape->GetDimNum(), "维度数量必须与x的维度数量一致"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "output", outputShape->GetDimNum(), "dimNum must match x's dimNum"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(outputShape->GetDim(DIM_0) != b_ || outputShape->GetDim(DIM_1) != s_ ||
                 outputShape->GetDim(DIM_2) != n_ || outputShape->GetDim(DIM_3) != d_,
@@ -368,7 +368,7 @@ ge::graphStatus MhcPostTilingBase::CheckShapeConsistency()
         OP_CHECK_IF(CheckShape3D() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShape3D failed"),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "x", dimNum, "维度数量必须为3(TND格式)或4(BSND格式)");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_, "x", dimNum, "dimNum must be 3 (TND format) or 4 (BSND format)");
         return ge::GRAPH_FAILED;
     }
 

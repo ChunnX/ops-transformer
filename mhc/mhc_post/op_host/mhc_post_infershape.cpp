@@ -100,7 +100,7 @@ static ge::graphStatus InferShapeForMhcPost(gert::InferShapeContext *context)
     }
 
     OP_CHECK_IF((xDims != DIMS_THREE) && (xDims != DIMS_FOUR),
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x", xDims, "维度数量必须为3或4"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x", xDims, "dimNum must be 3 or 4"),
                 return ge::GRAPH_FAILED);
 
     // Output shape is same as input x
