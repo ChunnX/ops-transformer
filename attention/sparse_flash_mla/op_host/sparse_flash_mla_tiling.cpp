@@ -143,7 +143,7 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     if (opParamInfo_.layoutKv == "PA_BNBD") {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_ND"),
+                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_BNBD"),
                     return ge::GRAPH_FAILED);
     }
     if (perfMode_ == SMLATemplateMode::CFA_TEMPLATE_MODE) {
@@ -200,9 +200,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
+    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
         return ge::GRAPH_FAILED;
     }
@@ -277,7 +275,6 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
-    opParamInfo_.batchInvariant = attrs->GetAttrPointer<uint32_t>(ATTR_BATCH_INVARIANT_INDEX);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
@@ -347,12 +344,12 @@ ge::graphStatus SMLAInfoParser::GetQueryAndOutLayout()
     }
     if (qLayout_ == SMLALayout::BSND) {
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor != nullptr,
-                    OP_LOGE(opName_, "when query's layout is BSND, cuSeqLensQ is null."),
+                    OP_LOGE(opName_, "when query's layout is BSND, cuSeqLensQ should be null."),
                     return ge::GRAPH_FAILED);
     }
     if (qLayout_ == SMLALayout::TND) {
         OP_CHECK_IF(opParamInfo_.seqUsedQ.tensor != nullptr,
-                    OP_LOGE(opName_, "when query's layout is TND, seqUsedQ is null."),
+                    OP_LOGE(opName_, "when query's layout is TND, seqUsedQ should be null."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -598,6 +595,8 @@ ge::graphStatus SMLAInfoParser::GetS2Size()
         // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
         return GetS2SizeForPageAttention();
     }
+    OP_LOGE(opName_, "kvLayout is not PA_BNBD, TND or BSND, cannot get s2Size.");
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus SMLAInfoParser::GetQHeadDim()
@@ -763,7 +762,6 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
     smlaInfo.topkValueMode = *opParamInfo_.topkValueMode;
-    smlaInfo.batchInvariant = *opParamInfo_.batchInvariant;
 
     smlaInfo.qLayout = qLayout_;
     smlaInfo.oriSparseIndicesLayout = oriSparseIndicesLayout_;
@@ -854,7 +852,6 @@ void SMLATilingCheck::Init()
     kvLayout_ = smlaInfo_.kvLayout;
     outLayout_ = smlaInfo_.outLayout;
     topkValueMode_ = smlaInfo_.topkValueMode;
-    batchInvariant_ = smlaInfo_.batchInvariant;
 }
 
 void SMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
@@ -1355,9 +1352,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
     OP_CHECK_IF(topkValueMode_ != 1,
                 OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(batchInvariant_ != 0,
-                OP_LOGE(opName_, "batchInvariant should be 0, but got %d", batchInvariant_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1589,7 +1583,6 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
 
     tilingData_.baseParams.set_topkValueMode(tilingInfo->topkValueMode);
-    tilingData_.baseParams.set_batchInvariant(tilingInfo->batchInvariant);
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
     tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
