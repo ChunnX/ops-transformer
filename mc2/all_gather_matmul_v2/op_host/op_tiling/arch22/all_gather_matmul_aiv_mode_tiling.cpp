@@ -538,7 +538,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batchMode = 1U;
     auto ret = context->SetScheduleMode(batchMode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(nodeName, ret);
 
     // 1. tilingData
     AllGatherMatmulAIVModeTilingData *tilingData = context->GetTilingData<AllGatherMatmulAIVModeTilingData>();
