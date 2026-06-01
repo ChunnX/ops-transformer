@@ -10,9 +10,7 @@
 
 /*!
  * \file bandwidth_test_tiling.h
- * \brief Bandwidth test tiling data structure - 核间数据传递结构体
- * 
- * Tiling数据由Host端计算并传递给Kernel，包含算子执行所需的配置信息。
+ * \brief
  */
 #ifndef BANDWIDTH_TEST_TILING_H
 #define BANDWIDTH_TEST_TILING_H
