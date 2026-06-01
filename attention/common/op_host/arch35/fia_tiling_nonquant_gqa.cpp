@@ -542,7 +542,7 @@ void FiaTilingNonQuantArch35::SplitPolicy()
     split_core_v2::SplitParam splitParam{};
     CreateSplitInput(baseInfo, splitParam);
 
-    enableS1OutSplit = CheckS1OutSplit();
+    enableS1OutSplit = false;
     if (enableS1OutSplit) {
         SplitOutSeq();
     } else {
