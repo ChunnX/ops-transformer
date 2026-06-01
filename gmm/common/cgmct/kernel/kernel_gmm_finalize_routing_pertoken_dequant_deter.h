@@ -81,8 +81,7 @@ template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_,
           class BlockEpilogueDequantFinalizeRoutingDeter_, class BlockScheduler_>
 class KernelGmmFinalizeRoutingPertokenDequantDeter<
     ProblemShape_, BlockMmadBuilder_, BlockPrologue_, BlockEpilogueDequantFinalizeRoutingDeter_, BlockScheduler_,
-    AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler> ||
-                              AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitProScheduler>>> {
+    AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
     __aicore__ inline KernelGmmFinalizeRoutingPertokenDequantDeter()
     {
@@ -295,7 +294,7 @@ public:
         UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
-        while (bs.GetTileIdx(tileIdx)) {
+        while (bs.GetTileIdxRowMajor(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             blockOffset_ = coord.template GetQuantOffset<GroupedMatmul::QuantMode::PERTOKEN_MODE>(
                 Get<DETER_IDX_M_TILEIDXS>(tileIdx), Get<DETER_IDX_N_TILEIDXS>(tileIdx),
