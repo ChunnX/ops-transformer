@@ -11,6 +11,7 @@
 #include <vector>
 #include <array>
 #include <float.h>
+#include <gmock/gmock.h>
 #include "gtest/gtest.h"
 #include "../../../../op_host/op_api/aclnn_moe_token_unpermute_grad.h"
 #include "opdev/platform.h"
@@ -235,4 +236,156 @@ TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_padd
     aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_permute_tokens_dtype_invalid)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_INT8, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_INT8, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_sorted_indices_dtype_invalid)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_FLOAT16, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_probs_optional_dtype_invalid)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto probsOptional = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_FLOAT16, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut = OP_API_UT(
+        aclnnMoeTokenUnpermuteGrad,
+        INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
+        OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_permuted_tokens_grad_out_dtype_invalid)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_INT8, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_FLOAT16, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_probs_grad_out_dtype_invalid)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_INT8, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_dtype_diff)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_FLOAT16, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(l2_moe_token_unpermute_grad_test, Ascend950_moe_token_unpermute_grad_execute)
+{
+    auto permuteTokens = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto unpermutedTokensGrad = TensorDesc({2, 5}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto sortedIndices = TensorDesc({6}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 2);
+    auto permutedTokensGradOut = TensorDesc({6, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto probsGradOut = TensorDesc({6}, ACL_FLOAT16, ACL_FORMAT_ND);
+    bool paddedMode = false;
+    std::vector<int64_t> restoreShape = {2, 5};
+    auto restoreShapeOptional = aclCreateIntArray(restoreShape.data(), restoreShape.size());
+
+    auto ut =
+        OP_API_UT(aclnnMoeTokenUnpermuteGrad,
+                  INPUT(permuteTokens, unpermutedTokensGrad, sortedIndices, nullptr, paddedMode, restoreShapeOptional),
+                  OUTPUT(permutedTokensGradOut, probsGradOut));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
+
+    aclnnStatus execRet = aclnnMoeTokenUnpermuteGrad(nullptr, workspaceSize, executor, nullptr);
+    EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                        testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
