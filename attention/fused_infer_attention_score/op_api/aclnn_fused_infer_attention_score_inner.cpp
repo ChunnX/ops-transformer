@@ -68,7 +68,6 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
     OP_LOGD("The conversion of kv from int32 to int4 is completed.");
 }
 
-
 void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
     if (tensorKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
@@ -112,7 +111,8 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
         outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
                                     0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                    "The op [FusedInferAttentionScore] received bad params, the reason is: [Try alloc tensor failed]");
             return ACLNN_ERR_INNER_NULLPTR;
         }
     }
