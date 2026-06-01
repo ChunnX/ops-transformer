@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lightning_indexer_grad_cv import LightningIndexerGradCV
+from lightning_indexer_grad_cv import lightning_indexer_grad
 
 
 def run_precision_test():
@@ -29,43 +29,25 @@ def run_precision_test():
     head_num_k = 1
     group_num = 64
 
-    block_m = 64
-    block_n = 128
-    block_d = 128
-
     print(f"\n测试配置 (官方算子支持):")
     print(f"  batch={batch}, seqlen_q={seqlen_q}, seqlen_k={seqlen_k}")
     print(f"  head_dim={head_dim}, topk={topk}")
     print(f"  head_num_q={head_num_q}, head_num_k={head_num_k}, group_num={group_num}")
-    print(f"  block_m={block_m}, block_n={block_n}, block_d={block_d}")
-
-    op = LightningIndexerGradCV(
-        seqlen_q=seqlen_q,
-        seqlen_k=seqlen_k,
-        head_dim=head_dim,
-        topk=topk,
-        head_num_q=head_num_q,
-        head_num_k=head_num_k,
-        group_num=group_num,
-        block_m=block_m,
-        block_n=block_n,
-        block_d=block_d,
-    )
 
     torch.manual_seed(42)
 
     query = torch.randn(batch, seqlen_q, head_num_q, head_dim, dtype=torch.float16).npu()
     key = torch.randn(batch, seqlen_k, head_num_k, head_dim, dtype=torch.float16).npu()
     weights = torch.randn(batch, seqlen_q, head_num_q, dtype=torch.float16).npu()
-    dy = torch.randn(batch, seqlen_q, topk, dtype=torch.float16).npu()
-    indices = torch.randint(0, seqlen_k, (batch, seqlen_q, topk), dtype=torch.int32).npu()
+    dy = torch.randn(batch, seqlen_q, head_num_q, topk, dtype=torch.float16).npu()
+    indices = torch.randint(0, seqlen_k, (batch, seqlen_q, topk), dtype=torch.int64).npu()
 
     print("\n[1] TileLang CV 分离架构计算...")
     try:
-        d_query_tl, d_key_tl, d_weights_tl = op.forward(
+        d_query_tl, d_key_tl, d_weights_tl = lightning_indexer_grad(
             query, key, dy, indices, weights,
-            head_num=head_num_q,
-            layout="BSND",
+            layout_query="BSND",
+            sparse_count=topk,
             sparse_mode=3,
         )
         torch.npu.synchronize()
