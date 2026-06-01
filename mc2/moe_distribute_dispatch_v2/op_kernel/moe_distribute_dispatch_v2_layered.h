@@ -1356,6 +1356,22 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     if (tokenIdx >= activeMaskBsCnt_) {
         return FINISH_STATUS;
     }
+    GM_ADDR remoteExpAddr;
+    uint32_t remoteRankId;
+    if (rankId_ <= 15) {
+        remoteRankId = (rankId_ + 16 - 3) % 16;
+    } else {
+        remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
+    }
+    remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId].nextDevicePtr))->windowsExp);
+    GlobalTensor<uint32_t> selfDataStatusGMAivSend;
+    selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
+    selfDataStatusGMAivSend.SetValue(13, 55);
+    selfDataStatusGMAivSend.SetValue(14, 66);
+    selfDataStatusGMAivSend.SetValue(15, 77);
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
+    trap();
 
     LocalTensor<uint64_t> sendTokenInfoLocalTensor = statusBuf_.Get<uint64_t>();
     DataCopy(sendTokenInfoLocalTensor, tokenDstServerMaskWorkspaceGMTensor_[tokenIdx * FLAG_SIZE/sizeof(uint64_t)],
@@ -1379,22 +1395,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         return ARRIVAL_STATUS;
     }
 
-    GM_ADDR remoteExpAddr;
-    uint32_t remoteRankId;
-    if (rankId_ <= 15) {
-        remoteRankId = (rankId_ + 16 - 3) % 16;
-    } else {
-        remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
-    }
-    remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId].nextDevicePtr))->windowsExp);
-    GlobalTensor<uint32_t> selfDataStatusGMAivSend;
-    selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
-    selfDataStatusGMAivSend.SetValue(13, 55);
-    selfDataStatusGMAivSend.SetValue(14, 66);
-    selfDataStatusGMAivSend.SetValue(15, 77);
-    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
-    trap();
+    
 }
 
 template <TemplateMC2TypeV2LayeredClass>
