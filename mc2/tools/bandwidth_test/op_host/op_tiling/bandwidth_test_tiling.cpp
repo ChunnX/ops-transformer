@@ -10,17 +10,7 @@
 
 /*!
  * \file bandwidth_test_tiling.cpp
- * \brief Bandwidth test tiling implementation - Tiling策略实现
- * 
- * Tiling职责：
- * 1. 校验输入参数合法性（tensor shape、属性值范围等）
- * 2. 检查HCCL窗口大小是否满足通信需求
- * 3. 设置MC2集合通信配置
- * 4. 计算并填充TilingData，传递给Kernel
- * 
- * 输入校验范围：
- * - rank_id: [0, world_size)
- * - mode: 0 或 1
+ * \brief
  */
 
 #include <dlfcn.h>
@@ -132,10 +122,12 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         MAX_GROUP_NAME_LENGTH, strnlen(groupPtr, MAX_GROUP_NAME_LENGTH)), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE),
-        OP_LOGE(nodeName, "worldSize is invalid, should be positive, but got worldSize=%ld.", *worldSizePtr), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "worldSize is invalid, should be positive, but got worldSize=%ld.", *worldSizePtr),
+                return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*maxBsPtr <= 0),
-        OP_LOGE(nodeName, "maxBs is invalid, should be positive, but got maxBs=%ld.", *maxBsPtr), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "maxBs is invalid, should be positive, but got maxBs=%ld.", *maxBsPtr),
+                return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
@@ -194,7 +186,8 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     OP_TILING_CHECK(xDim0 <= 0,
         OP_LOGE(nodeName, "x dim0 (bs) is invalid, should be positive, but got %ld.", xDim0), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(xDim1 <= 0,
-        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1), return ge::GRAPH_FAILED);
+        OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be positive, but got %ld.", xDim1),
+                return ge::GRAPH_FAILED);
 
     tilingData.max_bs = static_cast<int32_t>(xDim0);
     tilingData.data_size = static_cast<int32_t>(xDim1);
@@ -337,7 +330,6 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -373,7 +365,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint32_t aivNum = platformAivNum;
     if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
-        OP_LOGD(nodeName, "User set aiv_num=%ld", *aivNumPtr); 
+        OP_LOGD(nodeName, "User set aiv_num = %ld", *aivNumPtr); 
     }
 
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
@@ -382,7 +374,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     tilingData->total_ub_size = ubSize;
     tilingData->aiv_num = aivNum;
 
-    OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
+    OP_LOGD(nodeName, "numBlocks = %u, aivNum = %u, ubSize = %lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);
 
     return ge::GRAPH_SUCCESS;

@@ -10,7 +10,7 @@
 
 /*!
  * \file bandwidth_test_proto.h
- * \brief Bandwidth test operator for measuring communication bandwidth
+ * \brief
  */
 #ifndef BANDWIDTH_TEST_PROTO_H_
 #define BANDWIDTH_TEST_PROTO_H_
@@ -24,7 +24,8 @@ namespace ge {
 * @par Inputs
 * Two inputs, including:
 * @li x: A tensor. Support dtype: float16, bfloat16. Shape supports (BS, H), support format: ND.
-* @li dst_rank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
+* @li dst_rank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ),
+        support format: ND.
 
 * @par Attributes
 * @li group: Required. Communication group name, dtype: String.
@@ -35,7 +36,8 @@ namespace ge {
 
 * @par Outputs
 * Two outputs, including:
-* @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H), support format: ND.
+* @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H),
+        support format: ND.
 * @li receive_cnt: A tensor. Received token count from each rank. Support dtype: int32, support format: ND.
 */
 REG_OP(BandwidthTest)
