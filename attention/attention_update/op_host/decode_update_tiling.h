@@ -33,10 +33,10 @@ BEGIN_TILING_DATA_DEF(DecodeUpdateTilingData)
     TILING_DATA_FIELD_DEF(uint32_t, tailLength);
     TILING_DATA_FIELD_DEF(uint32_t, formerNum);
     TILING_DATA_FIELD_DEF(uint32_t, tailNum);
-    TILING_DATA_FIELD_DEF(uint32_t, hDim);
+    TILING_DATA_FIELD_DEF(uint64_t, hDim);
     TILING_DATA_FIELD_DEF(uint32_t, updateType);
     TILING_DATA_FIELD_DEF(uint32_t, sp);
-    TILING_DATA_FIELD_DEF(uint32_t, totalLength);
+    TILING_DATA_FIELD_DEF(uint64_t, totalLength);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(AttentionUpdate, DecodeUpdateTilingData);

@@ -14,6 +14,7 @@
  */
 
 #include "attention_update_tiling.h"
+#include <cstdint>
 
 namespace optiling {
 using namespace Ops::Base;
@@ -140,6 +141,9 @@ ge::graphStatus AttentionUpdateTiling::CheckInputDim()
             "where H refers to the 1st dim");
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(d_ > 0 && bshSize_ > UINT32_MAX / d_,
+        OP_LOGE(context_->GetNodeName(), "bshSize * hDim exceeds UINT32_MAX."),
+        return ge::GRAPH_FAILED);
     for (uint64_t i = 0; i < ALL_TO_SP_MULTIPLIER * sp_; i++) {
         dimNum = context_->GetInputShape(i)->GetOriginShape().GetDimNum();
         auto currentShape = context_->GetInputShape(i)->GetOriginShape();
@@ -408,3 +412,4 @@ void AttentionUpdateTiling::DumpTilingInfo()
 
 REGISTER_OPS_TILING_TEMPLATE(AttentionUpdate, AttentionUpdateTiling, 1);
 } // namespace optiling
+ 
