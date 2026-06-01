@@ -15,21 +15,22 @@ Current state:
 3. The kernel uses a POD tiling layout under `op_kernel` that host tiling writes
    directly. Host tiling computes `coreTokenTile` with ceil division and writes
    `coreGroupNum`; AIC and paired AIV cores consume those values to derive the
-   same contiguous cube-group token range. T02 keeps the range loop in the
-   controller and adds per-tile tail parameters plus AIV0/AIV1 local token/row
-   slices in the D=128 fast-path basic block.
+   same contiguous cube-group token range. The controller creates the
+   contiguous core token range, expands it into token-size tiles, and derives
+   per-tile tail parameters before calling the D=128 fast-path basic block.
 4. T03 adds static GM/L1/UB tensor binding. `rotation_l1_nz` is AIC-only,
    `a_rot_l1_nz` is the Cube AL1 data slot shared by the later AIV->AIC
-   protocol, and `bufferId = tileId & 1` only selects data buffers. The
-   controller passes GM inputs directly into the basic block, so the raw
-   `GlobalTensors` bundle is not retained as controller/basic-block state.
+   protocol, and `bufferId = tileId & 1` only selects data buffers. The raw
+   `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their
+   own typed GM tensors and neither controller nor basic block retains a shared
+   bound-GM bundle.
 5. T04 adds fixed CrossCore flag ids and wrappers for `A_READY`, `C_READY`, and
    `C_CONSUMED`. CrossCore flag ids are semantic constants and are not derived
    from pingpong `bufferId` or loop generation.
 6. After T04 the D=128 fast-path code is split into `common`, `controller`,
    `basic_block`, `cube`, and `vec` headers instead of keeping those larger
-   modules inside one file. Controller-private range/tile helpers stay in the
-   controller instead of `common`.
+   modules inside one file. Core-type dispatch is centralized in the
+   controller AIC/AIV entry split; lower layers do not inspect `g_coreType`.
 7. Real compute and the concrete synchronization call sites are left to later
    tasks.
 8. Implementation work must follow `TASKS.md`.

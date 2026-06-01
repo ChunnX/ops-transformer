@@ -17,16 +17,16 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class D128FastCube {
 public:
-    __aicore__ inline void Init(uint32_t cubeIndex)
+    __aicore__ inline void Init(uint32_t cubeIndex, const GlobalTensors &tensors)
     {
         cubeIndex_ = cubeIndex;
+        BindGlobalTensors(tensors);
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile, const BoundGlobalTensors &globalTensors,
-        const StaticLocalTensors &localTensors)
+    __aicore__ inline void ComputeTile(const TileParam &tile, const StaticLocalTensors &localTensors)
     {
         const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
-        (void)globalTensors;
+        (void)globalTensors_;
         (void)localTensors.rotationL1Nz;
         (void)localTensors.aRotL1Nz[bufferId];
         (void)tile;
@@ -34,7 +34,14 @@ public:
     }
 
 private:
+    __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
+    {
+        globalTensors_.rotation.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
+        globalTensors_.workspace.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
+    }
+
     uint32_t cubeIndex_;
+    CubeGlobalTensors globalTensors_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

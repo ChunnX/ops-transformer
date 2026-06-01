@@ -17,18 +17,19 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class D128FastVec {
 public:
-    __aicore__ inline void Init(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
+    __aicore__ inline void Init(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId,
+        const GlobalTensors &tensors)
     {
         tilingData_ = tilingData;
         aivLocalId_ = aivLocalId;
+        BindGlobalTensors(tensors);
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile, const BoundGlobalTensors &globalTensors,
-        const StaticLocalTensors &localTensors)
+    __aicore__ inline void ComputeTile(const TileParam &tile, const StaticLocalTensors &localTensors)
     {
         const AivSlice slice = MakeAivSlice(tile, tilingData_->qkHeadTile, aivLocalId_);
         const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
-        (void)globalTensors;
+        (void)globalTensors_;
         (void)localTensors.aRotL1Nz[bufferId];
         (void)localTensors.vUb[bufferId];
         (void)localTensors.qkAfterCubeUb[bufferId];
@@ -42,8 +43,29 @@ public:
     }
 
 private:
+    __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
+    {
+        globalTensors_.qkv.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qkv);
+        globalTensors_.qGamma.SetGlobalBuffer((__gm__ float *)tensors.qGamma);
+        globalTensors_.kGamma.SetGlobalBuffer((__gm__ float *)tensors.kGamma);
+        globalTensors_.cosSin.SetGlobalBuffer((__gm__ float *)tensors.cosSin);
+        globalTensors_.slotMapping.SetGlobalBuffer((__gm__ int32_t *)tensors.slotMapping);
+        globalTensors_.kCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.kCache);
+        globalTensors_.vCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCache);
+        globalTensors_.kScaleCacheIn.SetGlobalBuffer((__gm__ float *)tensors.kScaleCache);
+        globalTensors_.cuSeqLen.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLen);
+        globalTensors_.vScale.SetGlobalBuffer((__gm__ float *)tensors.vScale);
+        globalTensors_.qOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.qOut);
+        globalTensors_.qScale.SetGlobalBuffer((__gm__ float *)tensors.qScale);
+        globalTensors_.kCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.kCacheOut);
+        globalTensors_.vCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCacheOut);
+        globalTensors_.kScaleCacheOut.SetGlobalBuffer((__gm__ float *)tensors.kScaleCacheOut);
+        globalTensors_.workspace.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
+    }
+
     const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData_;
     uint32_t aivLocalId_;
+    VecGlobalTensors globalTensors_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

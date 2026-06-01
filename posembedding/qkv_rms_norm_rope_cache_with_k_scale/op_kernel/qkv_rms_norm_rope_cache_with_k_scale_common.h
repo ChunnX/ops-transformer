@@ -94,6 +94,11 @@ struct TileParam {
     uint32_t rowSize;
 };
 
+struct TokenRange {
+    uint32_t begin;
+    uint32_t end;
+};
+
 struct AivSlice {
     uint32_t tokenOffset;
     uint32_t tokenSize;
@@ -121,7 +126,12 @@ struct GlobalTensors {
     GM_ADDR workspace;
 };
 
-struct BoundGlobalTensors {
+struct CubeGlobalTensors {
+    GlobalTensor<bfloat16_t> rotation;
+    GlobalTensor<uint8_t> workspace;
+};
+
+struct VecGlobalTensors {
     GlobalTensor<bfloat16_t> qkv;
     GlobalTensor<float> qGamma;
     GlobalTensor<float> kGamma;
@@ -131,7 +141,6 @@ struct BoundGlobalTensors {
     GlobalTensor<fp8_e4m3fn_t> vCacheIn;
     GlobalTensor<float> kScaleCacheIn;
     GlobalTensor<int32_t> cuSeqLen;
-    GlobalTensor<bfloat16_t> rotation;
     GlobalTensor<float> vScale;
     GlobalTensor<fp8_e4m3fn_t> qOut;
     GlobalTensor<float> qScale;
@@ -244,11 +253,13 @@ __aicore__ inline void WaitCConsumedFromAiv()
     WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
 }
 
-__aicore__ inline uint32_t GetCubeIndex()
+__aicore__ inline uint32_t GetAicCubeIndex()
 {
-    if (g_coreType == AIC) {
-        return GetBlockIdx();
-    }
+    return GetBlockIdx();
+}
+
+__aicore__ inline uint32_t GetAivCubeIndex()
+{
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
 }
 

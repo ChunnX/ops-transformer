@@ -8,13 +8,14 @@ key dispatch shell, and it includes the controller directly. The D=128
 fast-path implementation is split by module:
 
 - `qkv_rms_norm_rope_cache_with_k_scale_common.h`: common constants, POD
-  structs, tensor bundles, scalar helpers, AIV slice helper, and CrossCore
-  wrappers.
+  structs, raw GM argument bundle, Cube/Vec typed GM bundles, scalar helpers,
+  AIV slice helper, and CrossCore wrappers.
 - `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level
-  private range/tile helpers, contiguous token range loop, and tile scheduling.
+  core token range helper, token-size tile expansion, and explicit AIC/AIV
+  entry dispatch.
 - `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: resource binding,
-  static tensor binding, lifecycle hooks, and AIC/AIV dispatch without
-  retaining the raw `GlobalTensors` bundle as member state.
+  static local tensor binding, lifecycle hooks, and single-tile AIC/AIV compute
+  entry points.
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h`: kernel-side POD tiling
@@ -22,24 +23,25 @@ fast-path implementation is split by module:
 
 The controller reads the kernel-side POD tiling data, maps AIC `GetBlockIdx()`
 and AIV `GetBlockIdx() / 2` to the same cube group, consumes host-computed
-`coreTokenTile`/`coreGroupNum`, and loops over local tiles in controller scope.
-It dispatches each tile through `Init`, `ComputeTile`, and `End` lifecycle
-hooks.
+`coreTokenTile`/`coreGroupNum`, expands the resulting contiguous token range
+into token-size tiles, and passes each tile to the AIC or AIV basic-block entry.
+Lower layers do not inspect `g_coreType`.
 
 The host side owns the ceil-div token-per-core calculation. Kernel code only
 uses the resulting tiling fields, which keeps the core range policy in tiling
-and the per-core tile loop in the controller.
+and the per-core token-size tile loop in the controller.
 
-The basic block now derives per-tile tail parameters, including `M_tile` row
-size, and computes AIV0/AIV1 local token/row slices using the actual tile token
+The controller derives per-tile tail parameters, including `M_tile` row size,
+by iterating `tokenSize = min(tokenTile, range.end - tokenOffset)`. The Vec
+path computes AIV0/AIV1 local token/row slices using the actual tile token
 count.
 
 T03 binds the static tensor layout directly with `LocalTensor<T>(TPosition,
 offset, size)` in the D=128 fast-path. No `TPipe`/`TBuf` allocation is used for
 these fixed L1/UB regions:
 
-- GM pointers are wrapped as typed `GlobalTensor` members once during `Init`;
-  the controller and basic block do not store the raw `GlobalTensors` input
+- Cube and Vec each wrap only their own typed `GlobalTensor` subset during
+  module `Init`; controller and basic block do not retain a shared bound-GM
   bundle.
 - AIC owns resident `rotation_l1_nz`; `a_rot_l1_nz[2]` exposes two logical
   pingpong AL1 data buffers. The static L1 budget still reserves the 4 * 64 KiB

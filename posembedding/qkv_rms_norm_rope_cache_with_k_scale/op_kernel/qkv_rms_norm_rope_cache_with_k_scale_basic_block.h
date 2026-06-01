@@ -18,25 +18,30 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class D128FastBasicBlock {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors,
-        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
     {
-        const uint32_t cubeIndex = GetCubeIndex();
-        const uint32_t aivLocalId = g_coreType == AIC ? 0U : GetSubBlockIdx();
-        BindGlobalTensors(tensors);
-        InitStaticBuffers();
-        cube_.Init(cubeIndex);
-        vec_.Init(tilingData, aivLocalId);
+        InitStaticL1Tensors();
+        cube_.Init(cubeIndex, tensors);
         InitIntraCoreEvents();
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile)
+    __aicore__ inline void InitAiv(const GlobalTensors &tensors,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
-        if (g_coreType == AIC) {
-            cube_.ComputeTile(tile, globalTensors_, localTensors_);
-        } else {
-            vec_.ComputeTile(tile, globalTensors_, localTensors_);
-        }
+        InitStaticL1Tensors();
+        InitAivStaticBuffers();
+        vec_.Init(tilingData, aivLocalId, tensors);
+        InitIntraCoreEvents();
+    }
+
+    __aicore__ inline void ComputeTileAic(const TileParam &tile)
+    {
+        cube_.ComputeTile(tile, localTensors_);
+    }
+
+    __aicore__ inline void ComputeTileAiv(const TileParam &tile)
+    {
+        vec_.ComputeTile(tile, localTensors_);
     }
 
     __aicore__ inline void End()
@@ -45,35 +50,6 @@ public:
     }
 
 private:
-    __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
-    {
-        globalTensors_.qkv.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.qkv);
-        globalTensors_.qGamma.SetGlobalBuffer((__gm__ float *)tensors.qGamma);
-        globalTensors_.kGamma.SetGlobalBuffer((__gm__ float *)tensors.kGamma);
-        globalTensors_.cosSin.SetGlobalBuffer((__gm__ float *)tensors.cosSin);
-        globalTensors_.slotMapping.SetGlobalBuffer((__gm__ int32_t *)tensors.slotMapping);
-        globalTensors_.kCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.kCache);
-        globalTensors_.vCacheIn.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCache);
-        globalTensors_.kScaleCacheIn.SetGlobalBuffer((__gm__ float *)tensors.kScaleCache);
-        globalTensors_.cuSeqLen.SetGlobalBuffer((__gm__ int32_t *)tensors.cuSeqLen);
-        globalTensors_.rotation.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
-        globalTensors_.vScale.SetGlobalBuffer((__gm__ float *)tensors.vScale);
-        globalTensors_.qOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.qOut);
-        globalTensors_.qScale.SetGlobalBuffer((__gm__ float *)tensors.qScale);
-        globalTensors_.kCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.kCacheOut);
-        globalTensors_.vCacheOut.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)tensors.vCacheOut);
-        globalTensors_.kScaleCacheOut.SetGlobalBuffer((__gm__ float *)tensors.kScaleCacheOut);
-        globalTensors_.workspace.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
-    }
-
-    __aicore__ inline void InitStaticBuffers()
-    {
-        InitStaticL1Tensors();
-        if (g_coreType != AIC) {
-            InitAivStaticBuffers();
-        }
-    }
-
     __aicore__ inline void InitStaticL1Tensors()
     {
         localTensors_.rotationL1Nz = LocalTensor<bfloat16_t>(
@@ -142,7 +118,6 @@ private:
         // T05 will add the matching event-id waits.
     }
 
-    BoundGlobalTensors globalTensors_;
     StaticLocalTensors localTensors_;
     D128FastCube cube_;
     D128FastVec vec_;

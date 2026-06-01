@@ -17,11 +17,6 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class D128FastController {
 private:
-    struct TokenRange {
-        uint32_t begin;
-        uint32_t end;
-    };
-
     __aicore__ inline TokenRange MakeCoreTokenRange(
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t cubeIndex) const
     {
@@ -41,8 +36,8 @@ private:
         return range;
     }
 
-    __aicore__ inline TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize,
-        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData) const
+    __aicore__ inline TileParam MakeTileParam(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
+        uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize) const
     {
         TileParam tile = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
         tile.tileId = tileId;
@@ -62,25 +57,71 @@ private:
         return tile;
     }
 
+    __aicore__ inline void ForEachTileAic(D128FastBasicBlock &basicBlock,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range) const
+    {
+        uint32_t localTileId = 0U;
+        for (uint32_t tokenOffset = range.begin; tokenOffset < range.end;) {
+            const uint32_t tokenSize = MinU32(tilingData->tokenTile, range.end - tokenOffset);
+            if (tokenSize == 0U) {
+                break;
+            }
+
+            basicBlock.ComputeTileAic(MakeTileParam(tilingData, localTileId, tokenOffset, tokenSize));
+            tokenOffset += tokenSize;
+            ++localTileId;
+        }
+    }
+
+    __aicore__ inline void ForEachTileAiv(D128FastBasicBlock &basicBlock,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range) const
+    {
+        uint32_t localTileId = 0U;
+        for (uint32_t tokenOffset = range.begin; tokenOffset < range.end;) {
+            const uint32_t tokenSize = MinU32(tilingData->tokenTile, range.end - tokenOffset);
+            if (tokenSize == 0U) {
+                break;
+            }
+
+            basicBlock.ComputeTileAiv(MakeTileParam(tilingData, localTileId, tokenOffset, tokenSize));
+            tokenOffset += tokenSize;
+            ++localTileId;
+        }
+    }
+
 public:
     __aicore__ inline void Process(const GlobalTensors &tensors,
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
-        const TokenRange tokenRange = MakeCoreTokenRange(tilingData, GetCubeIndex());
-
-        D128FastBasicBlock basicBlock;
-        basicBlock.Init(tensors, tilingData);
-        uint32_t localTileId = 0U;
-        for (uint32_t tokenOffset = tokenRange.begin; tokenOffset < tokenRange.end;) {
-            const uint32_t tokenSize = MinU32(tilingData->tokenTile, tokenRange.end - tokenOffset);
-            if (tokenSize == 0U) {
-                break;
-            }
-            const TileParam tile = MakeTileParam(localTileId, tokenOffset, tokenSize, tilingData);
-            basicBlock.ComputeTile(tile);
-            tokenOffset += tokenSize;
-            ++localTileId;
+#if defined(__CCE_AICORE__)
+        if ASCEND_IS_AIC {
+            ProcessAic(tensors, tilingData);
+        } else {
+            ProcessAiv(tensors, tilingData);
         }
+#endif
+    }
+
+private:
+    __aicore__ inline void ProcessAic(const GlobalTensors &tensors,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    {
+        const uint32_t cubeIndex = GetAicCubeIndex();
+        const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
+        D128FastBasicBlock basicBlock;
+        basicBlock.InitAic(tensors, cubeIndex);
+        ForEachTileAic(basicBlock, tilingData, tokenRange);
+        basicBlock.End();
+    }
+
+    __aicore__ inline void ProcessAiv(const GlobalTensors &tensors,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    {
+        const uint32_t cubeIndex = GetAivCubeIndex();
+        const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
+        D128FastBasicBlock basicBlock;
+        basicBlock.InitAiv(tensors, tilingData, GetSubBlockIdx());
+        ForEachTileAiv(basicBlock, tilingData, tokenRange);
         basicBlock.End();
     }
 };
