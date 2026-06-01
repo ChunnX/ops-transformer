@@ -136,6 +136,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
             uint64_t expKCmpSize = static_cast<uint64_t>(constInfo.yBlocks) * constInfo.dSize * sizeof(float);
             uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(IN_T);
+            AscendC::printf("DEBUG: xBlocks=%u, yBlocks=%u, sizeof(IN_T)=%lu, expAttnScoreSize=%lu\n",
+                            constInfo.xBlocks, constInfo.yBlocks, sizeof(IN_T), expAttnScoreSize);
             uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
             uint64_t expTopkWsSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.coreNum + constInfo.coreNum + constInfo.coreNum) * sizeof(int32_t);
