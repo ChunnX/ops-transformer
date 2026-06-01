@@ -29,8 +29,8 @@ public:
                                              GlobalTensor<OUT_T> &maskOutGm);
 
 private:
-    __aicore__ inline void TwiddleInB16(LocalTensor<int16_t> &xLocal, uint64_t dataLen);
-    __aicore__ inline void DoAndMask(LocalTensor<int16_t> &xLocal, uint64_t dataLen);
+    __aicore__ inline void TwiddleInB16(LocalTensor<float> &xLocal, uint64_t dataLen);
+    __aicore__ inline void DoAndMask(LocalTensor<float> &xLocal, uint64_t dataLen);
     __aicore__ inline void CalcCumsumHistogram(LocalTensor<int16_t> &xLocal, int32_t roundId,
                                                 int32_t tileId, uint64_t curTileLen);
     __aicore__ inline void CopyOutHistToWs();
@@ -202,13 +202,30 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(LocalTensor<int16_t> &xLocal,
-                                                                  uint64_t dataLen)
+__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(LocalTensor<float> &xLocal, uint64_t dataLen)
 {
-    // TODO: FP16 Twiddle 变换
-    // 1. ShiftRight 提取符号位
-    // 2. Or 构造 flipMask
-    // 3. AND/OR/NOT 组合实现 XOR
+    LocalTensor<int32_t> xLocalInt32 = xLocal.template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> signMaskTensor = maskLocalBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tempTensor = tempBuf_.Get<int32_t>();
+    
+    uint64_t calcLen = dataLen * 2;
+    LocalTensor<int16_t> temp1 = tempBuf_.GetWithOffset<int16_t>(
+        calcLen, numValue_ * tileNumAlign_ * sizeof(int32_t));
+    
+    ShiftRight(tempTensor, xLocalInt32, static_cast<int32_t>(31), dataLen);
+    Duplicate<int32_t>(signMaskTensor, static_cast<int32_t>(0x80000000), dataLen);
+    Or(tempTensor.template ReinterpretCast<int16_t>(), 
+       tempTensor.template ReinterpretCast<int16_t>(), 
+       signMaskTensor.template ReinterpretCast<int16_t>(), calcLen);
+    
+    And(temp1, xLocal.template ReinterpretCast<int16_t>(), 
+        tempTensor.template ReinterpretCast<int16_t>(), calcLen);
+    Or(xLocal.template ReinterpretCast<int16_t>(), 
+       xLocal.template ReinterpretCast<int16_t>(), 
+       tempTensor.template ReinterpretCast<int16_t>(), calcLen);
+    Not(temp1, temp1, calcLen);
+    And(xLocal.template ReinterpretCast<int16_t>(), 
+        xLocal.template ReinterpretCast<int16_t>(), temp1, calcLen);
 }
 
 template <typename BSAT>
