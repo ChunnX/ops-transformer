@@ -671,7 +671,7 @@ __aicore__ inline void VecOp<SFAGT>::CalSoftmaxGrad(const int32_t loopIdx, const
     auto castS2Loop = CeilDiv(actualSelS2Align, 64);
     for (int i = 0; i < castS2Loop; ++i) {
         uint64_t mask = i == (castS2Loop - 1) ? actualSelS2 - (i * 64) : 64;
-        Cast(sftgOutT1Tensor[i * 64], pTensor[i * 64], RoundMode::CAST_ROUND, mask, params.sftBaseM, {1, 1, static_cast<uint8_t>(CeilDiv(actualSelS2Align, 16)), static_cast<uint8_t>(CeilDiv(actualSelS2Align, 8))});
+        Cast(sftgOutT1Tensor[i * 64], pTensor[i * 64], RoundMode::CAST_ROUND, mask, processM, {1, 1, static_cast<uint8_t>(CeilDiv(actualSelS2Align, 16)), static_cast<uint8_t>(CeilDiv(actualSelS2Align, 8))});
     }
     SET_FLAG(V, MTE3, mte3WaitV);
     WAIT_FLAG(V, MTE3, mte3WaitV);
@@ -709,6 +709,94 @@ __aicore__ inline void VecOp<SFAGT>::GatherKV(const int64_t n2Index, uint64_t cu
     uint64_t outWsOffset = subBlockIdx == 0 ? 0 : firstVecEnd * selectedBlockSize * totalD;
     uint64_t orgOutWsOffset = outWsOffset;
     uint32_t i;
+
+    if (selectedBlockSize >= MAX_GATHER_SIZE) {
+        for (i = curBlk; i < curActualSelCntEnd; ++i) {
+            int64_t keyOffset = topkIndicesGm.GetValue(gmOffset + i) * selectedBlockSize;
+            uint32_t blockRows = selectedBlockSize;
+            if (runInfo.isLastBasicBlock && i == runInfo.actualSelCntOffset - 1) {
+                blockRows = static_cast<uint32_t>(runInfo.lastBlockSize);
+            }
+
+            for (uint32_t rowOffset = 0; rowOffset < blockRows; rowOffset += MAX_GATHER_SIZE) {
+                uint32_t copyRows = (blockRows - rowOffset) > MAX_GATHER_SIZE ?
+                    MAX_GATHER_SIZE : (blockRows - rowOffset);
+                uint64_t kOutOffset = i * selectedBlockSize * totalD + rowOffset * totalD;
+                uint64_t vOutOffset = i * selectedBlockSizeDv + rowOffset * dimDv;
+
+                mte2WaitMte3EventId = mergePingPong ? runInfo.gatherMte2WaitMte3Pong :
+                    runInfo.gatherMte2WaitMte3;
+                mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Pong : mte3WaitMte2;
+                WAIT_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+                LocalTensor<T1> &gatherTensor = mergePingPong ? gatherTensorPing : gatherTensorPong;
+                LocalTensor<T1> &gatherRopeTensor = mergePingPong ? gatherRopePing : gatherRopePong;
+
+                intriParamsKey.blockCount = copyRows;
+                intriParamsKey.blockLen = dimDqk * sizeof(T1);
+                intriParamsKey.srcStride = (dimN2 - 1) * dimDqk * sizeof(T1);
+                intriParamsKey.dstStride = 0;
+                DataCopyPad(gatherTensor, keyGm[runInfo.keyGmOffset + (keyOffset + rowOffset) * dimN2 * dimDqk],
+                    intriParamsKey, padParams);
+
+                if constexpr (HAS_ROPE) {
+                    intriParamsRope.blockCount = copyRows;
+                    intriParamsRope.blockLen = dimRope * sizeof(T1);
+                    intriParamsRope.srcStride = (dimN2 - 1) * dimRope * sizeof(T1);
+                    intriParamsRope.dstStride = 0;
+                    DataCopyPad(gatherRopeTensor,
+                        keyRopeGm[runInfo.keyRopeGmOffset + (keyOffset + rowOffset) * dimN2 * dimRope],
+                        intriParamsRope, padParams);
+                }
+
+                SET_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+                WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+
+                outParamK.blockCount = copyRows;
+                outParamK.blockLen = dimDqk * sizeof(T1);
+                outParamK.srcStride = 0;
+                outParamK.dstStride = dimRope * sizeof(T1);
+                DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + kOutOffset], gatherTensor, outParamK);
+
+                if constexpr (HAS_ROPE) {
+                    outParamRope.blockCount = copyRows;
+                    outParamRope.blockLen = dimRope * sizeof(T1);
+                    outParamRope.srcStride = 0;
+                    outParamRope.dstStride = dimDqk * sizeof(T1);
+                    DataCopyPad(selectedKWorkspaceGm[kSelectedWsAddr + dimDqk + kOutOffset],
+                        gatherRopeTensor, outParamRope);
+                }
+
+                SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+                mte2WaitMte3EventId = mergePingPong ? runInfo.gatherMte2WaitMte3Pong :
+                    runInfo.gatherMte2WaitMte3;
+                mte3WaitMte2EventId = mergePingPong ? mte3WaitMte2Pong : mte3WaitMte2;
+                WAIT_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+
+                intriParamsKey.blockCount = copyRows;
+                intriParamsKey.blockLen = dimDv * sizeof(T1);
+                intriParamsKey.srcStride = (dimN2 - 1) * dimDv * sizeof(T1);
+                intriParamsKey.dstStride = 0;
+                DataCopyPad(gatherTensor,
+                    valueGm[runInfo.valueGmOffset + (keyOffset + rowOffset) * dimN2 * dimDv],
+                    intriParamsKey, padParams);
+
+                SET_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+                WAIT_FLAG(MTE2, MTE3, mte3WaitMte2EventId);
+
+                outParamK.blockCount = copyRows;
+                outParamK.blockLen = dimDv * sizeof(T1);
+                outParamK.srcStride = 0;
+                outParamK.dstStride = 0;
+                DataCopyPad(selectedVWorkspaceGm[vSelectedWsAddr + vOutOffset], gatherTensor, outParamK);
+
+                SET_FLAG(MTE3, MTE2, mte2WaitMte3EventId);
+                mergePingPong = 1 - mergePingPong;
+            }
+        }
+        return;
+    }
 
     bool isLast = runInfo.isLastBasicBlock && subBlockIdx == 1;
 

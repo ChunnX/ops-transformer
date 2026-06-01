@@ -511,8 +511,14 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     }
 
     if (strcmp(inputLayout, TND_STR) == 0) {
+        auto actSeqQLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
+        auto actSeqKVLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
+        OP_CHECK_IF(actSeqQLen == nullptr || actSeqKVLen == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "When layout is TND, actSeqQLen / actSeqKVLen can not be nullptr"),
+            return ge::GRAPH_FAILED);
         const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN))->GetStorageShape();
         tmpData.b = actSeqQLenShape.GetDim(DIM_0);
+        OP_CHECK_IF(tmpData.b == 0, OP_LOGE(context_, "batchNum is 0"), return ge::GRAPH_FAILED);
         tmpData.t1 = queryShape.GetDim(DIM_0);
         tmpData.t2 = keyShape.GetDim(DIM_0);
         tmpData.s1 = tmpData.t1;
@@ -523,6 +529,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         tmpData.layout = static_cast<uint32_t>(InputLayout::TND);
     } else { // BSND
         tmpData.b = queryShape.GetDim(DIM_0);
+        OP_CHECK_IF(tmpData.b == 0, OP_LOGE(context_, "batchNum is 0"), return ge::GRAPH_FAILED);
         tmpData.s1 = queryShape.GetDim(DIM_1);
         tmpData.s2 = keyShape.GetDim(DIM_1);
         tmpData.n2 = keyShape.GetDim(DIM_2);

@@ -96,6 +96,7 @@ private:
     int64_t curMaxS2Scatter{0};
     int64_t dimS1;
     int64_t totalS1{0};
+    int64_t validT1{0};
     // attr
     uint32_t selectedBlockCount;
     bool enableOptimizedScatter{false};
@@ -233,6 +234,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
 {
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
+    if constexpr (IS_BSND == false) {
+        validT1 = ((__gm__ int32_t *)actual_seq_qlen)[dimB - 1];
+        totalS1 = validT1;
+    }
 
     if constexpr (IS_DETERMINISTIC) {
         ProcessDeterministic(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum,
@@ -264,6 +269,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             bool t1HasTask = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
@@ -329,6 +337,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessNonDeterministi
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             bool t1HasTask = false;
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
@@ -417,6 +428,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
@@ -507,6 +521,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % SCATTER_BUFFER_NUM;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
+            if (!IS_BSND && t1Index >= validT1) {
+                break;
+            }
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
@@ -570,7 +587,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ProcessDeterministic(
         if (processBS1ByCore < tilingData->opInfo.formerCoreProcessNNum && cubeBlockIdx < usedCoreNum) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             int64_t scatterSyncPhaseBegin = (task > 0 ? runInfo[1 - mmPingPongIdx].s1End :
-                runInfo[mmPingPongIdx].s1End) * dimN2;
+                totalS1) * dimN2;
             int64_t scatterSyncPhaseEnd = totalS1 * dimN2;
             for (int64_t i = scatterSyncPhaseBegin; i < scatterSyncPhaseEnd; i++) {
                 CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
