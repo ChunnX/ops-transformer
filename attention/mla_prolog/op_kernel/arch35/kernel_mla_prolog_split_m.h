@@ -969,7 +969,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQcQr(AicOffset &aicOffset
     // [32, 1536] * [1536, 32*(128+64)] = [32, 32*192]
     constexpr uint32_t mSize =
         (sizeof(mmQcQrInputType) == sizeof(int8_t)) ? INT8_AFULLLOAD_MAX_MSIZE : BF16_AFULLLOAD_MAX_MSIZE;
-    bool isAFullLoad = (mmQcQrParam_.m <= mSize) ? true : false;
+    bool isAFullLoad =
+        (mmQcQrParam_.m <= mSize && !(std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0)) ? true : false;
 
     uint32_t nInput = mmQcQrParam_.n;
     uint32_t nL1SplitSize = mmQcQrParam_.baseN;
