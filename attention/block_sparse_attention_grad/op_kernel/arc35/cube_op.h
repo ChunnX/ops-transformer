@@ -103,13 +103,13 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
-        SET_FLAG(FIX, MTE1, EVENT_ID0);
-        SET_FLAG(FIX, MTE1, EVENT_ID1);
+        SET_FLAG(FIX, MTE1, evnet_ping);
+        SET_FLAG(FIX, MTE1, evnet_pong);
     }
 
     __aicore__ inline void Destroy() {
-        WAIT_FLAG(FIX, MTE1, EVENT_ID0);
-        WAIT_FLAG(FIX, MTE1, EVENT_ID1);
+        WAIT_FLAG(FIX, MTE1, evnet_ping);
+        WAIT_FLAG(FIX, MTE1, evnet_pong);
     }
 
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
@@ -212,7 +212,7 @@ private:
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
-        SET_FLAG(FIX, M, event_id);
+        SET_FLAG(FIX, MTE1, event_id);
     }
 
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
