@@ -10,7 +10,7 @@
 
 include_guard(GLOBAL)
 
-set(OPTENSOR_TAG_ID a8w4)
+set(OPTENSOR_TAG_ID a8w4-dev)
 set(OPTENSOR_GIT_URL "https://gitcode.com/luobaiqing/ops-tensor.git")
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
