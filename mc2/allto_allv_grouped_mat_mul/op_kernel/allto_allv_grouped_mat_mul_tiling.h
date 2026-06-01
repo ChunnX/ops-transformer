@@ -51,8 +51,7 @@ struct AlltoAllvGmmAicpuTiling {
     int64_t recvCnt[MAX_EXPERT_SIZE];
 };
 
-class AlltoAllvGmmTilingData
-{
+class AlltoAllvGmmTilingData {
 public:
     Mc2InitTiling hcclInitTiling;
     Mc2CcTiling allGatherCcTiling;

@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/* !
+/*!
  * \file allto_allv_grouped_mat_mul_coarse_grained.h
  * \brief
  */
@@ -42,8 +42,7 @@ struct HcclTypeSelector<AICPU_COMM_MODE> {
 };
 
 template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE = CCU_COMM_MODE>
-class AlltoAllvGmmCoarseGrained
-{
+class AlltoAllvGmmCoarseGrained {
 public:
     __aicore__ inline AlltoAllvGmmCoarseGrained()
     {}
