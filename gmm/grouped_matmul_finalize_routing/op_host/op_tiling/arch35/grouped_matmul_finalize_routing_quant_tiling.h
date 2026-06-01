@@ -79,6 +79,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "GroupedMatmulFinalizeRouting";
+    }
     // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
@@ -111,7 +115,7 @@ private:
     bool CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
                   const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
                   const gert::Shape &yShape) const;
-    bool CheckFp4Shape() const;
+    bool CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     bool CheckCoreNum() const override;
 
     GMMFinalizeRoutingTilingData tilingData_;
