@@ -266,8 +266,7 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
-        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) ||
-                (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
+        return (quantMode_ == QUANT_MODE_UNQUANT && !isMXFPXNoQuantCase(quantMode_, xDtype_)) || (quantMode_ == QUANT_MODE_STATIC) || (quantMode_ == QUANT_MODE_DYNAMIC);
     }
 
     bool IsInt4DynamicQuantCase() const
