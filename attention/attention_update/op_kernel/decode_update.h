@@ -29,7 +29,7 @@ static constexpr uint32_t NUM1 = 1;
 static constexpr uint32_t NUM2 = 2;
 static constexpr uint32_t NUM7 = 7;
 static constexpr uint32_t NUM8 = 8;
-    static constexpr uint32_t NUM16 = 16;
+static constexpr uint32_t NUM16 = 16;
 static constexpr uint32_t NUM32 = 32;
 static constexpr uint32_t NUM64 = 64;
 static constexpr uint32_t NUM255 = 255;
@@ -72,7 +72,8 @@ public:
             } else {
                 LocalTensor<float> outAccLocal = lseexpBroadcastBuffer.Get<float>();
                 for (uint32_t spLoop = 0; spLoop < spLoopCount; spLoop++) {
-                    uint32_t currentSp, effectiveSp;
+                    uint32_t currentSp;
+                    uint32_t effectiveSp;
                     if (spLoop == 0) {
                         currentSp = spFirstLoop;
                         effectiveSp = 1 + currentSp;
@@ -133,7 +134,7 @@ private:
     __aicore__ inline void CalcTileLength()
     {
         uint32_t spAligned = (spAlloc + NUM7) / NUM8 * NUM8;
-        // 用24K的UB大小推算出tileLength 最大能设置到多少
+        // 用94K的UB大小推算出 tileLength 最大能设置到多少
         uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
                                 (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
                                 hDim * spAligned * sizeof(float) * NUM2 +
@@ -142,7 +143,8 @@ private:
                                 sizeof(uint8_t) * spAligned);
         if constexpr (!std::is_same<outType, float>::value) {
             maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
-                                    (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
+                                    (sizeof(float) * spAligned * BUFFER_NUM *
+                                        (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
                                     hDim * spAligned * sizeof(float) * NUM2 +
                                     sizeof(float) * BUFFER_NUM +
                                     sizeof(float) * NUM2 + (spAlloc + NUM1) * NUM16 * BUFFER_NUM +
@@ -167,7 +169,8 @@ private:
         if constexpr (std::is_same<outType, float>::value) {
             pipe.InitBuffer(inQueueIn, BUFFER_NUM, tileLength * hDim * spAlloc * sizeof(float));
         } else {
-            pipe.InitBuffer(inQueueIn, BUFFER_NUM, tileLength * hDim * spAlloc * sizeof(float) + (spAlloc + NUM1) * NUM16);
+            pipe.InitBuffer(inQueueIn, BUFFER_NUM,
+                            tileLength * hDim * spAlloc * sizeof(float) + (spAlloc + NUM1) * NUM16);
         }
         
         pipe.InitBuffer(outQueueOut, BUFFER_NUM, tileLength * hDim * sizeof(float));
@@ -225,8 +228,10 @@ private:
                     fp16Offset += NUM16;
                 }
                 DataCopyPad(inLocalFp16[fp16Offset / NUM2], inGm[gmOffset],
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0},
-                            {true, 0, static_cast<uint8_t>((NUM32 - curLength * hDim * sizeof(outType) % NUM32) / NUM2), 0});
+                            {static_cast<uint16_t>(1),
+                             static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0},
+                            {true, 0,
+                             static_cast<uint8_t>((NUM32 - curLength * hDim * sizeof(outType) % NUM32) / NUM2), 0});
                 PipeBarrier<PIPE_ALL>();
                 Cast(inLocal[inOffset], inLocalFp16[fp16Offset / NUM2], RoundMode::CAST_NONE, curLength * hDim);
             }
@@ -235,7 +240,7 @@ private:
 
     __aicore__ inline void CopyInSp(int32_t progress, int32_t spLoopIdx, uint32_t currentSp, uint32_t effectiveSp)
     {
-        // 按照逻辑队列初始化的buffer数量和每块大小，分配对应大小的内存
+        //  按照逻辑队列初始化的buffer数量和每块大小，分配对应大小的内存
         LocalTensor<float> lseLocal = inQueueLse.AllocTensor<float>();
         LocalTensor<float> inLocal = inQueueIn.AllocTensor<float>();
         
@@ -323,7 +328,8 @@ private:
         Duplicate<float>(negInfTensor, NEG_INF, static_cast<int32_t>(curLengthPad * effectiveSp));
         PipeBarrier<PIPE_V>();
 
-        Select<float, uint8_t>(lseLocal, selMask, negInfTensor, lseLocal, SELMODE::VSEL_TENSOR_TENSOR_MODE, static_cast<uint32_t>(curLengthPad * effectiveSp));
+        Select<float, uint8_t>(lseLocal, selMask, negInfTensor, lseLocal,
+                               SELMODE::VSEL_TENSOR_TENSOR_MODE, static_cast<uint32_t>(curLengthPad * effectiveSp));
         PipeBarrier<PIPE_V>();
     }
 
@@ -475,12 +481,13 @@ private:
     __gm__ uint64_t* lsePtr;
     __gm__ uint64_t* inPtr;
 
-    uint32_t blockLength; // 单核上数据总长度
-    uint16_t tileLength;  // 单核循环的非最后一轮数据长度
-    uint16_t curLength; // Tiling循环数据长度为curLength，最后一轮为lastLength，内存申请使用tileLength，数据量用curLength
-    uint16_t lastLength; // 单核循环的最后一轮数据长度
-    uint32_t loopCount;  // 单核循环次数
-    uint32_t hDim;       // head dimension
+    uint32_t blockLength; //  单核上数据总长度
+    uint16_t tileLength;  //  单核循环的非最后一轮数据长度
+    uint16_t curLength; //  Tiling 循环数据长度为 curLength，最后一轮为 lastLength，内存申请使用 tileLength，数据量用
+                        //  curLength
+    uint16_t lastLength; //  单核循环的最后一轮数据长度
+    uint32_t loopCount;  //  单核循环次数
+    uint32_t hDim;       //  head dimension
     uint32_t sp;
     uint32_t tileLengthAlig;
     uint32_t lastLengthAlig;
