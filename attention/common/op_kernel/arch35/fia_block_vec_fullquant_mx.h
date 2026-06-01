@@ -141,7 +141,7 @@ public:
     TBuf<> preLoopMaxBuf;
     TBuf<> preLoopSumBuf;
     TBuf<> firstLoopSumBuf;
-    TBuf<> vselrIndexesBuf[5];
+    TBuf<> vselrIndexesBuf[4];
     TBuf<> mm2InBuf;
     /* 用来做Broadcast[S1,1]->[S2,8]的临时UB区域 */
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
@@ -372,7 +372,7 @@ public:
         if constexpr (HAS_MASK) {
             this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
         }
-
+        
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         //-------------------------Data copy to l1-------------------------
@@ -1023,12 +1023,6 @@ public:
                     for (int j = 0; j < (256 >> 2); j++) {
                         vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
                     }
-                }
-                tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::PSCALE_INDEX)], 128);
-                LocalTensor<uint8_t> vselrIndexesTensorPScale =
-                    vselrIndexesBuf[static_cast<int>(VselrIndexEnum::PSCALE_INDEX)].template Get<uint8_t>();
-                for (int i = 0; i < 128; i++) {
-                    vselrIndexesTensorPScale.SetValue(i, i * 2);
                 }
             } else {
                 tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)],
