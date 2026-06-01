@@ -383,7 +383,11 @@ ge::graphStatus IFATiling::QKVPreProcess()
 {
     OP_CHECK_IF(ifaContext_->key.desc->GetDataType() != ifaContext_->value.desc->GetDataType(),
         OP_LOGE(ifaContext_->opName, "datatype of k tensor and value tensor is different"), return ge::GRAPH_FAILED);
-    batchSizeQ_ = batchSize_ = ifaContext_->query.shape->GetStorageShape().GetDim(0);
+    int64_t batchDim = ifaContext_->query.shape->GetStorageShape().GetDim(0);
+    OP_CHECK_IF(batchDim <= 0 || batchDim > static_cast<int64_t>(UINT32_MAX),
+        OP_LOGE(ifaContext_->opName, "batch size %ld is invalid", batchDim),
+        return ge::GRAPH_FAILED);
+    batchSizeQ_ = batchSize_ = static_cast<uint32_t>(batchDim);
     inputQType_ = ifaContext_->query.desc->GetDataType();
     inputKvType_ = ifaContext_->key.desc->GetDataType();
     outputType_ = ifaContext_->attenOut.desc->GetDataType();
@@ -745,7 +749,11 @@ void IFATiling::UpdateL2CacheOffFlag()
 ge::graphStatus IFATiling::ProcessPageAttentionFlag()
 {
     maxBlockNumPerBatch_ = ifaContext_->blockTable.tensor->GetStorageShape().GetDim(1);
-    sMax_ = maxBlockNumPerBatch_ * blockSize_;
+    uint64_t sMaxCalc = static_cast<uint64_t>(maxBlockNumPerBatch_) * blockSize_;
+    OP_CHECK_IF(sMaxCalc > UINT32_MAX,
+        OP_LOGE(ifaContext_->opName, "sMax %lu exceeds UINT32_MAX", sMaxCalc),
+        return ge::GRAPH_FAILED);
+    sMax_ = static_cast<uint32_t>(sMaxCalc);
     seqSize_ = sMax_;
     uint32_t kDimNum = ifaContext_->key.shape->GetStorageShape().GetDimNum();
     if (inputLayout_ == IfaLayout::TND) {
@@ -2991,8 +2999,8 @@ void IFATiling::FillTilingSplitKV() const
     tilingData_->splitKVParams.set_sInnerLoopSize(sInnerLoopSize_);
     if (inputLayout_ == IfaLayout::TND) {
         tilingData_->splitKVParams.set_accumOutSize(tSeqSize_ * numHeads_ * kvSplitPart_ * headDimAlign_);
-        tilingData_->splitKVParams.set_logSumExpSize(NUM2 * batchSizeQ_ * numHeads_ * kvSplitPart_ * qSeqSize_ *   // 2份
-                                                    (BYTE_BLOCK / blockTypeSize_)); // 2: sum + max
+        tilingData_->splitKVParams.set_logSumExpSize(NUM2 * batchSizeQ_ * numHeads_ * kvSplitPart_ * qSeqSize_ *
+                                                    (BYTE_BLOCK / blockTypeSize_));
     } else {
         if (slidingFlag_) {
            tilingData_->splitKVParams.set_accumOutSize(batchSizeQ_ * numHeads_ * kvSplitPart_ * headDimVAlign_);
@@ -3000,7 +3008,7 @@ void IFATiling::FillTilingSplitKV() const
            tilingData_->splitKVParams.set_accumOutSize(batchSizeQ_ * numHeads_ * kvSplitPart_ * headDimAlign_);
         }
         tilingData_->splitKVParams.set_logSumExpSize(NUM2 * batchSizeQ_ * numHeads_ * kvSplitPart_ *
-                                                    (BYTE_BLOCK / blockTypeSize_)); // 2: sum + max
+                                                    (BYTE_BLOCK / blockTypeSize_));
     }
     if (!splitKVFlag_) {
         tilingData_->splitKVParams.set_s2(0);
@@ -3242,13 +3250,13 @@ void IFATiling::FillTilingSplitKVMla()
     }
     tilingDataMla_.splitKVParams.set_sInnerLoopSize(sInnerLoopSize_);
     if (balanceModeFlag_) {
-        tilingDataMla_.splitKVParams.set_accumOutSize(aicNum_ * 2U * numKvHeads_ * FIA_BALANCE_SG_BASIC_SIZE * headDimAlign_);   // 每个核可能有头规约和尾规约，一共两份规约信息
-        tilingDataMla_.splitKVParams.set_logSumExpSize(2U * aicNum_ * 2U * numKvHeads_ * FIA_BALANCE_SG_BASIC_SIZE *  // 每个核可能有头规约和尾规约，一共两份规约信息;sum + max
+        tilingDataMla_.splitKVParams.set_accumOutSize(aicNum_ * 2U * numKvHeads_ * FIA_BALANCE_SG_BASIC_SIZE * headDimAlign_);
+        tilingDataMla_.splitKVParams.set_logSumExpSize(2U * aicNum_ * 2U * numKvHeads_ * FIA_BALANCE_SG_BASIC_SIZE *
                                                     (BYTE_BLOCK / blockTypeSize_));
     } else {
         tilingDataMla_.splitKVParams.set_accumOutSize(batchSizeQ_ * numHeads_ * kvSplitPart_ * headDimAlign_);
         tilingDataMla_.splitKVParams.set_logSumExpSize(2U * batchSizeQ_ * numHeads_ * kvSplitPart_ *
-                                                    (BYTE_BLOCK / blockTypeSize_)); // 2: sum + max
+                                                    (BYTE_BLOCK / blockTypeSize_));
     }
     if (!splitKVFlag_) {
         tilingDataMla_.splitKVParams.set_s2(0);
@@ -3928,8 +3936,12 @@ ge::graphStatus IFATiling::AtbTilingCheck()
     inputQType_ = ifaContext_->query.desc->GetDataType();
     inputKvType_ = ifaContext_->key.desc->GetDataType();
     outputType_ = ifaContext_->attenOut.desc->GetDataType();
-    batchSize_ = pageAttentionFlag_ ? ifaContext_->blockTable.tensor->GetStorageShape().GetDim(0):
+    int64_t batchDim = pageAttentionFlag_ ? ifaContext_->blockTable.tensor->GetStorageShape().GetDim(0) :
                                       ifaContext_->actualSeqLengths.tensor->GetShapeSize();
+    OP_CHECK_IF(batchDim <= 0 || batchDim > static_cast<int64_t>(UINT32_MAX),
+        OP_LOGE(ifaContext_->opName, "batch size %ld is invalid", batchDim),
+        return ge::GRAPH_FAILED);
+    batchSize_ = static_cast<uint32_t>(batchDim);
     headDim_ = GetHeadSize();
     
     std::string layout(ifaContext_->layOut);
@@ -3980,7 +3992,11 @@ ge::graphStatus IFATiling::AtbParamGet()
     if (pageAttentionFlag_) {
         maxBlockNumPerBatch_ = ifaContext_->blockTable.tensor->GetStorageShape().GetDim(1);
         totalBlockNum_ = ifaContext_->kCache[0]->GetStorageShape().GetDim(0);
-        sMax_ = maxBlockNumPerBatch_ * blockSize_;
+        uint64_t sMaxCalc = static_cast<uint64_t>(maxBlockNumPerBatch_) * blockSize_;
+        OP_CHECK_IF(sMaxCalc > UINT32_MAX,
+            OP_LOGE(ifaContext_->opName, "sMax %lu exceeds UINT32_MAX", sMaxCalc),
+            return ge::GRAPH_FAILED);
+        sMax_ = static_cast<uint32_t>(sMaxCalc);
         const uint32_t headUBSize = 128U;
         headSplit_ = std::max(1U, headUBSize / ((blockSize_ + BLOCK_SIZE * 4U - 1U) / BLOCK_SIZE * 4U));
         seqStepQ_ = CalcSeqStepQ();
