@@ -116,8 +116,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t multiCoreIdxMod2 = 0; \
     uint8_t multiCoreIdxMod3 = 0; \
     bool    isCmp; \
-    bool    isS2Gather; \
-    uint8_t resv[2]; \
+    uint8_t resv[3]; \
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
 
