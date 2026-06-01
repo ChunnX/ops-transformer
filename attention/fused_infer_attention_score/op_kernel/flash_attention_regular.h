@@ -256,18 +256,20 @@ namespace SplitFuse {
                 uint64_t gmOffsetOFD = fATilingData->coreInfo.firstSplitKVTaskOOffset[coreIdx];
 
                 for (uint32_t BIdx = startBIdx; BIdx <= endBIdx; BIdx++) {
-                    uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx));
-                    uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
+                    uint64_t qSeqlen = static_cast<uint64_t>(gActualQseqlen.GetValue(BIdx));
+                    uint64_t kvSeqlen = static_cast<uint64_t>(gActualKvseqlen.GetValue(BIdx));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                        uint32_t prevQSeqlenSum = (BIdx == 0) ?
-                            0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
-                        qSeqlenCur = qSeqlenCur - prevQSeqlenSum;
+                        uint64_t prevQSeqlenSum = (BIdx == 0) ? 0 :
+                            static_cast<uint64_t>(gActualQseqlen.GetValue(BIdx - 1));
+                        qSeqlen -= prevQSeqlenSum;
                         if constexpr (!PAGED_CACHE_FLAG) {
-                            uint32_t prevKvSeqlenSum = (BIdx == 0) ?
-                                0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
-                            kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSum;
+                            uint64_t prevKvSeqlenSum = (BIdx == 0) ? 0 :
+                                static_cast<uint64_t>(gActualKvseqlen.GetValue(BIdx - 1));
+                            kvSeqlen -= prevKvSeqlenSum;
                         }
                     }
+                    uint32_t qSeqlenCur = static_cast<uint32_t>(qSeqlen);
+                    uint32_t kvSeqlenCur = static_cast<uint32_t>(kvSeqlen);
 
                     uint32_t curQNBlockTileTmp = GetQNBlockTile(qSeqlenCur, groupSize);
                     uint32_t qNBlockNumPerGroupTmp = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileTmp);
@@ -319,18 +321,20 @@ namespace SplitFuse {
                         ++curBatchTmp;
                         preTotalTaskNumTmp = curTotalTaskNumTmp;
 
-                        uint32_t qSeqlenTmp = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
-                        uint32_t kvSeqlenTmp = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
+                        uint64_t qSeqlen = static_cast<uint64_t>(gActualQseqlen.GetValue(curBatchTmp));
+                        uint64_t kvSeqlen = static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatchTmp));
                         if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                            uint32_t prevQSeqlenSumTmp = (curBatchTmp == 0) ?
-                                0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
-                            qSeqlenTmp = qSeqlenTmp - prevQSeqlenSumTmp;
+                            uint64_t prevQSeqlenSum = (curBatchTmp == 0) ? 0 :
+                                static_cast<uint64_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
+                            qSeqlen -= prevQSeqlenSum;
                             if constexpr (!PAGED_CACHE_FLAG) {
-                                uint32_t prevKvSeqlenSumTmp = (curBatchTmp == 0) ?
-                                    0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
-                                kvSeqlenTmp = kvSeqlenTmp - prevKvSeqlenSumTmp;
+                                uint64_t prevKvSeqlenSum = (curBatchTmp == 0) ? 0 :
+                                    static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
+                                kvSeqlen -= prevKvSeqlenSum;
                             }
                         }
+                        uint32_t qSeqlenTmp = static_cast<uint32_t>(qSeqlen);
+                        uint32_t kvSeqlenTmp = static_cast<uint32_t>(kvSeqlen);
 
                         uint32_t curQNBlockTileTmp = GetQNBlockTile(qSeqlenTmp, groupSize);
                         uint32_t qNBlockNumPerGroupTmp = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileTmp);
@@ -340,18 +344,20 @@ namespace SplitFuse {
                         curTotalTaskNumTmp += curQNBlockNumTmp * curQSBlockNumTmp;
                     }
 
-                    uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
-                    uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
+                    uint64_t qSeqlen = static_cast<uint64_t>(gActualQseqlen.GetValue(curBatchTmp));
+                    uint64_t kvSeqlen = static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatchTmp));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                        uint32_t prevQSeqlenSumCur = (curBatchTmp == 0) ?
-                            0 : static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
-                        qSeqlenCur = qSeqlenCur - prevQSeqlenSumCur;
+                        uint64_t prevQSeqlenSum = (curBatchTmp == 0) ? 0 :
+                            static_cast<uint64_t>(gActualQseqlen.GetValue(curBatchTmp - 1));
+                        qSeqlen -= prevQSeqlenSum;
                         if constexpr (!PAGED_CACHE_FLAG) {
-                            uint32_t prevKvSeqlenSumCur = (curBatchTmp == 0) ?
-                                0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
-                            kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSumCur;
+                            uint64_t prevKvSeqlenSum = (curBatchTmp == 0) ? 0 :
+                                static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatchTmp - 1));
+                            kvSeqlen -= prevKvSeqlenSum;
                         }
                     }
+                    uint32_t qSeqlenCur = static_cast<uint32_t>(qSeqlen);
+                    uint32_t kvSeqlenCur = static_cast<uint32_t>(kvSeqlen);
 
                     uint32_t curQNBlockTileCur = GetQNBlockTile(qSeqlenCur, groupSize);
                     uint32_t qNBlockNumPerGroupCur = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileCur);
@@ -464,34 +470,39 @@ namespace SplitFuse {
             auto& gOUpdate = globalTensors.gOUpdate;
             auto& gSink = globalTensors.gSink;
 
-            uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx));
-            uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
-            uint32_t prevQSeqlenSum = 0;
-            uint32_t prevKvSeqlenSum = 0;
-
-            if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
-                prevQSeqlenSum = (BIdx == 0) ?
-                    0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
-                qSeqlen = qSeqlen - prevQSeqlenSum;
-                if constexpr (!PAGED_CACHE_FLAG) {
-                    prevKvSeqlenSum = (BIdx == 0) ?
-                        0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx - 1));
-                    kvSeqlen = kvSeqlen - prevKvSeqlenSum;
+            uint64_t prevQSeqlenSum = 0;
+            uint64_t prevKvSeqlenSum = 0;
+            uint32_t qSeqlen;
+            uint32_t kvSeqlen;
+            {
+                uint64_t qLen = static_cast<uint64_t>(gActualQseqlen.GetValue(BIdx));
+                uint64_t kvLen = static_cast<uint64_t>(gActualKvseqlen.GetValue(BIdx));
+                if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
+                    prevQSeqlenSum = (BIdx == 0) ? 0 :
+                        static_cast<uint64_t>(gActualQseqlen.GetValue(BIdx - 1));
+                    qLen -= prevQSeqlenSum;
+                    if constexpr (!PAGED_CACHE_FLAG) {
+                        prevKvSeqlenSum = (BIdx == 0) ? 0 :
+                            static_cast<uint64_t>(gActualKvseqlen.GetValue(BIdx - 1));
+                        kvLen -= prevKvSeqlenSum;
+                    }
                 }
+                qSeqlen = static_cast<uint32_t>(qLen);
+                kvSeqlen = static_cast<uint32_t>(kvLen);
             }
 
-            uint64_t qBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideQ;
+            uint64_t qBOffset = prevQSeqlenSum * strideQ;
             uint64_t kBOffset = 0;
             uint64_t vBOffset = 0;
             uint64_t blockBOffset = 0;
             if constexpr (!PAGED_CACHE_FLAG) {
-                kBOffset = static_cast<uint64_t>(prevKvSeqlenSum) * strideK;
-                vBOffset = static_cast<uint64_t>(prevKvSeqlenSum) * strideV;
+                kBOffset = prevKvSeqlenSum * strideK;
+                vBOffset = prevKvSeqlenSum * strideV;
             } else {
                 blockBOffset = BIdx * static_cast<uint64_t>(maxNumBlocksPerBatch);
             }
-            uint64_t oBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideO;
-            uint64_t lseBOffset = static_cast<uint64_t>(prevQSeqlenSum) * qHeads;
+            uint64_t oBOffset = prevQSeqlenSum * strideO;
+            uint64_t lseBOffset = prevQSeqlenSum * qHeads;
 
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTile);
@@ -502,7 +513,7 @@ namespace SplitFuse {
             uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
             uint32_t kvNIdx = qNBlockIdx / qNBlockNumPerGroup;
             uint32_t qNStartIdx = kvNIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
-            uint32_t lseTokenOffset = qSBlockIdx * curQSBlockTile * qHeads;
+            uint64_t lseTokenOffset = static_cast<uint64_t>(qSBlockIdx) * curQSBlockTile * qHeads;
 
             uint64_t gmOffsetQ = qBOffset +
                 static_cast<uint64_t>(qSBlockIdx * curQSBlockTile) * strideQ +
