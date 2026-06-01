@@ -157,6 +157,12 @@ private:
 
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
+    // GMM1 pingpong：跨 wave 持久化的 ping/pong 状态。
+    // tileNum 通常 = blockNum/wavesParallel = coresPerWave，意味着每核每 wave 只 1 个 tile，
+    // 单次 GroupMatmulSwigluQuant 调用内 pingpong 无法翻转。把它提到类成员后，
+    // 同核 batch 内连续两个 wave (wave0/wave2 或 wave1/wave3) 分别落在 UbFirst/UbSecond，
+    // 实现 GMM1(N) mmad 与 swiglu(N-1) 在 ping/pong 半区真正并行。
+    uint16_t gmm1PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
     uint32_t maskAlignSize_ = 0;
     uint32_t maskSlotSize_ = 0;    // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
@@ -192,7 +198,7 @@ private:
     LocalTensor<int32_t> sendGatherOutTensor_;  // SendMaskCal GatherMask 计 count 的废弃输出 scratch
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<
-        QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true, IsInterleaved>;
+        QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true, IsInterleaved>;
     BlockEpilogue epilogueOp_;
 
     // 本核连续累计的 wave iteration 序号（trace 用，trace 关时无副作用）
@@ -242,7 +248,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertRevNumsGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
     tripleGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tripleInfoPtr);
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
-        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     quantWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr - params_.peermemInfo.rankSyncInWorldPtr);
@@ -450,7 +456,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
         return;
     }
     if constexpr(g_coreType == AIC) {
-        WaitForVector();
+        // vecSetSyncCom_ == 1：单 pending（非 pingpong 始终 1，或 pingpong 仅 1 个 iter 全程），落在 ch0。
+        // vecSetSyncCom_ >= 2：必为 pingpong 模式且已进入稳态，ch0/ch1 各 1 个 pending，drain 双通道。
+        // 顺序：先 drain 当前 gmm1PingPongIdx_ 指向的通道（最近被 flip 到的、即下一个本该用的那个，
+        // 其上一个未消费的 NotifyCube 在等），再 drain 另一个。两个 ch 必然各有 pending，不会卡死。
+        if (vecSetSyncCom_ == 1) {
+            WaitForVector();
+        } else {
+            WaitForVector(gmm1PingPongIdx_);
+            WaitForVector(1 - gmm1PingPongIdx_);
+        }
     }
 }
 
@@ -1372,9 +1387,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_GMM1_BEGIN);
                 if (subBlockIdx_ == 0) {
                     MegaMoeImpl::GroupMatmulSwigluQuant<
-                        QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                        QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
-                        vecSetSyncCom_, curWaveTrace);
+                        vecSetSyncCom_, gmm1PingPongIdx_, curWaveTrace);
                 }
                 MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, curWaveTrace,
                                               MegaMoeTrace::SP_GMM1_END);
@@ -1427,6 +1442,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // ★ 全部 expert 跑完后，drain 最后一次 GMM1 留在 cube/vec flag 槽里的 pending NotifyCube。
     EndSync();
     vecSetSyncCom_ = 0;
+    gmm1PingPongIdx_ = 0;
 
     if constexpr(g_coreType == AIV) {
         if (aivCoreIdx_ == 1) {
@@ -1441,6 +1457,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if constexpr(g_coreType == AIV) {
         SecondBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认 combine send 完成
+        MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_SYNC_END);
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
