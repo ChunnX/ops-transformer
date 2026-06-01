@@ -64,7 +64,7 @@ public:
     constexpr static uint32_t WAIT_STATUS = 1;
     constexpr static uint32_t ARRIVAL_STATUS = 2;
     constexpr static uint32_t SKIP_STATUS = 3;
-    constexpr static uint32_t RDMA_DATA_SIZE = 100U * 1024U * 1024U;
+    constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint32_t MAX_ARR_UB_OFFSET = 6 * 1024;
     constexpr static uint32_t MAX_ARR_LEN = 3;
@@ -1251,20 +1251,20 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(sendStatusGMTensor_);
 
-    // GM_ADDR remoteExpAddr;
-    // uint32_t remoteRankId;
-    // if (rankId_ <= 15) {
-    //     remoteRankId = (rankId_ + 16 - 3) % 16;
-    // } else {
-    //     remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
-    // }
-    // remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp;
-    // GlobalTensor<uint32_t> selfDataStatusGMAivSend;
-    // selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
-    // selfDataStatusGMAivSend.SetValue(12, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
-    // selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(srcFlagRdmaAddr));
-    // DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-    //         AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
+    GM_ADDR remoteExpAddr;
+    uint32_t remoteRankId;
+    if (rankId_ <= 15) {
+        remoteRankId = (rankId_ + 16 - 3) % 16;
+    } else {
+        remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
+    }
+    remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp;
+    GlobalTensor<uint32_t> selfDataStatusGMAivSend;
+    selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
+    selfDataStatusGMAivSend.SetValue(12, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
+    selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(srcFlagRdmaAddr));
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1525,7 +1525,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
         // selfDataStatusGMTensor.SetValue(99, winContext_->localUsrRankId); // 初始化为0，表示数据未准备好
         selfDataStatusGMAiv.SetValue(1, aivNum_);
         selfDataStatusGMAiv.SetValue(2, rankId_);
-        uint64_t opcnt = selfDataStatusGMAiv.GetValue(9);
+        uint32_t opcnt = selfDataStatusGMAiv.GetValue(9);
         opcnt += 1;
         selfDataStatusGMAiv.SetValue(9, opcnt);
         DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,

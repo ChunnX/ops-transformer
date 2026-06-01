@@ -68,7 +68,7 @@ public:
     constexpr static uint32_t B64_PER_BLOCK = 4U;
     constexpr static uint32_t SERVER_RANK_SIZE = 16U;
     constexpr static uint32_t IPC_DATA_OFFSET = 4U * 1024U * 1024U;
-    constexpr static uint32_t RDMA_DATA_SIZE = 100U * 1024U * 1024U;
+    constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static uint32_t SRCSTRIDE_BLOCK = 15U;
     constexpr static uint32_t MAX_LOCAL_BS = 256U;
