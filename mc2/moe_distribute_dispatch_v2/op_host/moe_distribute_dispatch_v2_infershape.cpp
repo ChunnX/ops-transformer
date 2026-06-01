@@ -252,7 +252,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     }
 
     expandXShape->SetDimNum(DIM_TWO);
-    auto realA = ((*tpWorldSize == 0) ? a : (a * *tpWorldSize));
+    auto realA = a;
     expandXShape->SetDim(0U, realA);
     expandXShape->SetDim(1U, h);
     OP_LOGD(context->GetNodeName(), "expandx shape is :%s after infershape.",
@@ -285,9 +285,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (*tpWorldSize == DIM_TWO)  {
-            epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum * (*tpWorldSize));
-        } else if (expertScalesShape != nullptr) {
+        if (expertScalesShape != nullptr) {
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);

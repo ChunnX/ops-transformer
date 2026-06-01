@@ -58,8 +58,8 @@ constexpr uint32_t MX_QUANT = 4;
 
 
 #define TemplateMoeDistributeDispatchA5TypeClass \
-    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+    typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
+#define TemplateMoeDistributeDispatchA5TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
 template <TemplateMoeDistributeDispatchA5TypeClass>
@@ -68,7 +68,7 @@ public:
     __aicore__ inline MoeDistributeDispatchA5(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR expandXOut, GM_ADDR xActiveMask,
                                 GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe* pipe,
+                                GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe* pipe,
                                 const MoeDistributeDispatchV2TilingData* tilingData);
     __aicore__ inline void Process();
 
@@ -371,7 +371,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
 template <TemplateMoeDistributeDispatchA5TypeClass>
 __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-    GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
+    GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
