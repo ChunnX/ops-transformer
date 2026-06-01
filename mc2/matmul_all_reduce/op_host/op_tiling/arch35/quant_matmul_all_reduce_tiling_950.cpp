@@ -180,21 +180,21 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA8W8());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckA8W8());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     DoRCSTiling();
-    GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
+    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
     DoSplitMTiling();
-    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit());
-    GE_ASSERT_GRAPH_SUCCESS(DoQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit());
+    MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
     if (MutableRCSTilingData().isInputCommQuantScale == 1) {
         isCommInt8Enable_ = true;
     }
-    GE_ASSERT_GRAPH_SUCCESS(SetMc2Hcomm());
+    MC2_CHECK_LOG_RET(opName_, SetMc2Hcomm());
     DoAllReduceTiling(true);
     if (MutableRCSTilingData().isInputCommQuantScale == QUANT_MODE_FP8) {
         isCommFp8Enable_ = true;
-        GE_ASSERT_GRAPH_SUCCESS(GetDynamicQuantTempBuffSize());
+        MC2_CHECK_LOG_RET(opName_, GetDynamicQuantTempBuffSize());
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -511,12 +511,12 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoQuantTiling()
     QuantTilingTransferHelperA5 mmTile(*this, quantMatmulAllReduceTilingData_.tilematmulTiling);
     if (args_.enableSplitK) {
         OP_LOGD(opName_, "Enable SplitK Tiling.");
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         quantTPlparam_ = mmTile.GetQuantMMAllReduceTPLParam(mmTile.GetKernelType());
         OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTile.GetKernelType());
         return ge::GRAPH_SUCCESS;
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());;
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());;
         if (MutableRCSTilingData().tailCnt == 0) {
             quantTPlparam_ = mmTile.GetQuantMMAllReduceTPLParam(mmTile.GetKernelType());
             OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTile.GetKernelType());
@@ -524,7 +524,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::DoQuantTiling()
         }
         args_.mValue = tailMValue_;
         QuantTilingTransferHelperA5 mmTail(*this, quantMatmulAllReduceTilingData_.tailmatmulTiling);
-        GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
 
         quantTPlparam_ = mmTail.GetQuantMMAllReduceTPLParam(mmTail.GetKernelType());
         OP_LOGD(opName_, "QuantmmAllReduce get kernelType: %d.", mmTail.GetKernelType());
@@ -817,7 +817,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::CheckInput()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
     OP_TILING_CHECK(
         CheckX1X2() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "Check input_X failed."), return ge::GRAPH_FAILED);
@@ -826,7 +826,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckInput()
         CheckBias() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "Check bias failed."), return ge::GRAPH_FAILED);
     // dequantScale数据类型范围
-    GE_ASSERT_GRAPH_SUCCESS(CheckDequantScaleType());
+    MC2_CHECK_LOG_RET(opName_, CheckDequantScaleType());
     // comm_quant_scale不为空时校验数据类型
     OP_TILING_CHECK(
         CheckCommQuantScale() != ge::GRAPH_SUCCESS,
@@ -951,7 +951,7 @@ ge::graphStatus QuantTilingTransferHelperA5::GetShapeAttrsInfo()
         inputParams_.groupSizeK = SUPPORTED_BLOCK_SIZE;
     }
     // optiling::PlatformInfo::GetInstance().intrinsic_fix_pipe_l0c2out = tilingProcesser_.supportL0c2Out_;
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(tilingProcesser_.opName_, AnalyzeInputs());
     inputParams_.isPerTensor = (tilingProcesser_.quantType_ == Mc2QuantType::PER_TENSOR);
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;

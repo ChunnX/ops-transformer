@@ -116,13 +116,13 @@ void MatmulAllReduceTilingA5::DoEmptyTensorTiling()
 
 ge::graphStatus MatmulAllReduceTilingA5::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA16W16());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
-    GE_ASSERT_GRAPH_SUCCESS(SetMc2Hcomm());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W16());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
+    MC2_CHECK_LOG_RET(opName_, SetMc2Hcomm());
     DoRCSTiling();
     DoSplitMTiling();
     if (!isKZero_) {
-        GE_ASSERT_GRAPH_SUCCESS(Do910Tiling());
+        MC2_CHECK_LOG_RET(opName_, Do910Tiling());
     } else {
         DoEmptyTensorTiling();
     }
@@ -202,7 +202,7 @@ ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSizeForA2ARSAG()
 
 ge::graphStatus MatmulAllReduceTilingA5::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     OP_LOGI(
         opName_, "Select max workspace size to context, myWorkSpaceSize_=%lu, workspaceSize_=%lu.", myWorkSpaceSize_,
         workspaceSize_);
@@ -265,13 +265,13 @@ ge::graphStatus MatmulAllReduceTilingA5::Do910Tiling()
     OP_LOGD(opName_, "Do Mc2MatmulV3 tile tiling!");
     Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
                                                       reinterpret_cast<const void*>(&mmV3Args_));
-    GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TileTilingData()));
+    MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TileTilingData()));
     if (tailMValue_ != 0UL) {
         mmV3Args_.mValue = tailMValue_;
         OP_LOGD(opName_, "Do Mc2MatmulV3 tail tiling!");
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
                                                           reinterpret_cast<const void*>(&mmV3Args_));
-        GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
+        MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -360,7 +360,7 @@ ge::graphStatus MatmulAllReduceTilingA5::CheckX1X2()
 
 ge::graphStatus MatmulAllReduceTilingA5::CheckInput()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
     OP_TILING_CHECK(
         CheckX1X2() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "Check input_X failed."), return ge::GRAPH_FAILED);

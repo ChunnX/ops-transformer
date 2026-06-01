@@ -384,7 +384,7 @@ ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::
     if (tilingData.param.biasLen != 0) {
         uint32_t batch_mode = 1U;
         auto ret = ctx->SetScheduleMode(batch_mode);
-        GE_ASSERT_GRAPH_SUCCESS(ret);
+        MC2_CHECK_LOG_RET(ctx->GetNodeName(), ret);
     }
 
     return ge::GRAPH_SUCCESS;

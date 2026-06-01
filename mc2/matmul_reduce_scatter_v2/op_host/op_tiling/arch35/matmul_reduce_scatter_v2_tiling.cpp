@@ -160,27 +160,27 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
     OP_LOGD(opName_, "Do Mc2MatMulV3 tile tiling!");
     Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(static_cast<const void*>(&compileInfo_),
                                      static_cast<const void*>(&mmV3Args_), tileMValue_);
-    GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TileTilingData()));
+    MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TileTilingData()));
     if (tailMValue_ != 0UL) {
         mmV3Args_.mValue = tailMValue_ * args_.rankDim;
         OP_LOGD(opName_, "Do Mc2MatMulV3 tail tiling!");
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(static_cast<const void*>(&compileInfo_),
                                          static_cast<const void*>(&mmV3Args_), tailMValue_);
-        GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
+        MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MatmulReduceScatterV2Tiling::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
         OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(matmulReduceScatterV2TilingData_->param);
     DoSplitMTiling(matmulReduceScatterV2TilingData_->param);
-    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
-    GE_ASSERT_GRAPH_SUCCESS(DoAllMatmulTiling());
+    MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(matmulReduceScatterV2TilingData_->param, mc2tiling::Mc2QuantMode::DEFAULT));
+    MC2_CHECK_LOG_RET(opName_, DoAllMatmulTiling());
     SetTilingResult(matmulReduceScatterV2TilingData_->param, MutableMC2MmV3TileTilingData().tCubeTiling,
                     MutableMC2MmV3TailTilingData().tCubeTiling, matmulReduceScatterV2TilingData_->debugMode,
                     matmulReduceScatterV2TilingData_->dataType);

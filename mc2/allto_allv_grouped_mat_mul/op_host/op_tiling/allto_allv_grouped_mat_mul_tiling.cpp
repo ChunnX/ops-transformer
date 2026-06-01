@@ -801,17 +801,17 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
 
     if (maxMSize != 0) {
         AlltoAllvGmmTilingHelper gmmHelper(*this);
-        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
             gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
-        GE_ASSERT_GRAPH_SUCCESS(gmmHelper.Process());
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
     }
 
     if (bs_ != 0) {
         AlltoAllvGmmTilingHelper mmHelper(*this);
-        GE_ASSERT_GRAPH_SUCCESS(mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
             mmXDataType_, mmWeightDataType_, mmXDataType_));
-        GE_ASSERT_GRAPH_SUCCESS(mmHelper.Process());
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
     }
 
@@ -870,8 +870,8 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
 
 ge::graphStatus AlltoAllvGmmTilingHelper::Process()
 {
-    GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
-    GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoOpTiling());
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 

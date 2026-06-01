@@ -866,7 +866,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
 {
     // 设置公共信息
     QuantGroupedMatmulAllToAllvAdapter gmmTile(context_);
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetCommonInputParams(localParams_));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetCommonInputParams(localParams_));
     // tokens最多的专家作为MM计算的M
     uint64_t mMaxSize = 0;
     uint64_t mSize = 0;
@@ -877,16 +877,16 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.Process());
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 
     // SharedMM
     if (!localParams_.hasSharedMm) {
         return ge::GRAPH_SUCCESS;
     }
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.SetSharedExpertInputParameters(localParams_));
-    GE_ASSERT_GRAPH_SUCCESS(gmmTile.Process());
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetSharedExpertInputParameters(localParams_));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.sharedGmmTiling = gmmTile.GetGmmQuantTilingAdapterData();
 
     return ge::GRAPH_SUCCESS;
@@ -926,14 +926,14 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    GE_ASSERT_GRAPH_SUCCESS(CheckAndSetInputOutputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckAndSetInputOutputInfo());
 
-    GE_ASSERT_GRAPH_SUCCESS(SetTilingCommonInfo());
+    MC2_CHECK_LOG_RET(opName_, SetTilingCommonInfo());
     // 调用量化Matmul的tiling方法进行切分
-    GE_ASSERT_GRAPH_SUCCESS(DoQuantGMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoQuantGMMTiling());
     // hccl的tiling参数赋值处理
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling());
-    GE_ASSERT_GRAPH_SUCCESS(SetGmmA2avWorkspaceInfo());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetGmmA2avWorkspaceInfo());
     return ge::GRAPH_SUCCESS;
 }
 

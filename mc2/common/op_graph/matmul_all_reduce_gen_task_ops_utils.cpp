@@ -26,7 +26,7 @@ const std::string KERNEL_NAME_V1 = "RunAicpuKfcSrvLaunch";
 static bool IsPlatform310P() {
   fe::PlatformInfo platform_info;
   fe::OptionalInfo optional_info;
-  GE_ASSERT_SUCCESS(fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info));
+  MC2_CHECK_SUCCESS_RET("MatmulAllReduceGenTaskOpsUtils", fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info));
   OPS_ERR_IF(
       fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
       ge::GRAPH_SUCCESS, OPS_LOG_E("", "Cannot get platform info!"), return false);
@@ -46,7 +46,7 @@ ge::Status MatmulAllReduceGenTaskOpsUtils::MatmulAllReduceGenTaskCallback(
     ge::KernelLaunchInfo aicpu_task =
     ge::KernelLaunchInfo::CreateAicpuKfcTask(context, SO_NAME.c_str(), KERNEL_NAME_V1.c_str());
     aicpu_task.SetStreamId(attach_stream_id);
-    GE_ASSERT_SUCCESS(Mc2GenTaskOpsUtils::CreateAicpuTaskV1(context, aicpu_task));
+    MC2_CHECK_SUCCESS_RET(context->GetNodeName(), Mc2GenTaskOpsUtils::CreateAicpuTaskV1(context, aicpu_task));
     tasks.insert(tasks.begin() + aicore_idx, aicpu_task.Serialize());
     OPS_LOG_I(context->GetNodeName(), "aicpu task for 310P done.");
     //aicore task

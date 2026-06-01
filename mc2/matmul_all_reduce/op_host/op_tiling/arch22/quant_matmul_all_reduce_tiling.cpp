@@ -34,11 +34,11 @@ bool QuantMatmulAllReduceTiling::IsCapable()
 }
 ge::graphStatus QuantMatmulAllReduceTiling::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA8W8());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckA8W8());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     DoRCSTiling();
     DoSplitMTiling();
-    GE_ASSERT_GRAPH_SUCCESS(DoQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
     if (MutableRCSTilingData().isInputCommQuantScale == 1) {
         isCommInt8Enable_ = true;
     }
@@ -105,7 +105,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -135,7 +135,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::DoQuantTiling()
         quantMatmulTPLParam_ = mmTile.GetQuantMatmulTPLParam();
         return res;
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             quantMatmulTPLParam_ = mmTile.GetQuantMatmulTPLParam();
             return ge::GRAPH_SUCCESS;
@@ -204,7 +204,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckDequantScaleType()
 
 ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
     // x2 shape 为 2 维
     size_t x2DimNum = mmrCtxInfo_.x2_shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(x2DimNum != DIM_NUM_TWO && x2DimNum != DIM_NUM_FOUR,
@@ -228,7 +228,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckInput()
                         return ge::GRAPH_FAILED);
     }
     // dequantScale数据类型范围
-    GE_ASSERT_GRAPH_SUCCESS(CheckDequantScaleType());
+    MC2_CHECK_LOG_RET(opName_, CheckDequantScaleType());
     // comm_quant_scale不为空时校验数据类型
     if ((mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) && (mmrCtxInfo_.comm_quant_scale_2_shape != nullptr)) {
         auto commQuantScaleType1 = mmrCtxInfo_.comm_quant_scale_1->GetDataType();
@@ -315,7 +315,7 @@ ge::graphStatus QuantTilingTransferHelper::GetShapeAttrsInfo()
     inputParams_.biasDtype = tilingArgs.isBias ? tilingArgs.geBiasType : ge::DT_INT32;
     inputParams_.scaleDtype = tilingProcesser_.mmrCtxInfo_.dequant_scale->GetDataType();
     // optiling::PlatformInfo::GetInstance().intrinsic_fix_pipe_l0c2out = tilingProcesser_.supportL0c2Out_;
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(tilingProcesser_.opName_, AnalyzeInputs());
     inputParams_.isPerTensor = (tilingProcesser_.quantType_ == Mc2QuantType::PER_TENSOR);
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;

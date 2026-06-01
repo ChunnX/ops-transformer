@@ -435,8 +435,8 @@ bool QuantBmmReduceScatterTiling::CheckPerblockM()
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     OP_TILING_CHECK(SetMc2Hcomm() != ge::GRAPH_SUCCESS,
         OP_LOGE(opName_, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingDataA5());
@@ -445,10 +445,10 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoOpTiling()
     if ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||
         (quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE) ||
         (quantMode_ == mc2tiling::Mc2QuantMode::PERBLOCK_MODE && CheckPerblockM())) {
-            GE_ASSERT_GRAPH_SUCCESS(DoSplitMTiling(MutableRCSTilingDataA5()));
+            MC2_CHECK_LOG_RET(opName_, DoSplitMTiling(MutableRCSTilingDataA5()));
     }
-    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
-    GE_ASSERT_GRAPH_SUCCESS(DoAdaptSlidWindowTiling());
+    MC2_CHECK_LOG_RET(opName_, AdjustHCCLLimit(MutableRCSTilingDataA5(), GetQuantMode()));
+    MC2_CHECK_LOG_RET(opName_, DoAdaptSlidWindowTiling());
     if ((GetQuantMode() == mc2tiling::Mc2QuantMode::PERBLOCK_MODE) && (MutableRCSTilingDataA5().tileCnt == 0) 
         && (MutableRCSTilingDataA5().tailCnt == 0)) {
         MutableRCSTilingDataA5().tileCnt = 1;
@@ -642,7 +642,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
                     (quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE)) ? (tempMValue * args_.rankDim) : tempMValue;
 
     QuantBmmReduceScatterHelper mmTile(*this, quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling);
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (MutableRCSTilingDataA5().tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
@@ -652,7 +652,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
     args_.mValue = ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||
                     (quantMode_ == mc2tiling::Mc2QuantMode::MXFP_MODE)) ? (tailMValue_ * args_.rankDim) : tailMValue_;
     QuantBmmReduceScatterHelper mmTail(*this, quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -795,7 +795,7 @@ ge::graphStatus QuantBmmReduceScatterHelper::GetShapeAttrsInfo()
         inputParams_.groupSizeK = MXFP8_SIZE;
         inputParams_.groupSizeN = MXFP8_SIZE_N;
     }
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(inputParams_.opName, AnalyzeInputs());
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;
 }
@@ -809,7 +809,7 @@ ge::graphStatus QuantBmmReduceScatterHelper::PostTiling()
 
 ge::graphStatus QuantBmmReduceScatterHelper::DoLibApiTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
+    MC2_CHECK_LOG_RET(inputParams_.opName, Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
     isBf16Opt_ = false;
     return ge::GRAPH_SUCCESS;
 }

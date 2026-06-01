@@ -437,7 +437,7 @@ void MatmulAllReduceTilingBase::DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara& l
 // 根据ctxinfo做后续处理的AnalyzeShapeAttr操作, 子类重写之后也应该调用一下
 ge::graphStatus MatmulAllReduceTilingBase::GetShapeAttrsInfo()
 {
-    GE_ASSERT_GRAPH_SUCCESS(ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(context_, mmrCtxInfo_));
+    MC2_CHECK_LOG_RET(opName_, ContextTransfer::AssembleMMRCtxInfoFromMMRCtx(context_, mmrCtxInfo_));
     return AnalyzeShapeAttr();
 }
 

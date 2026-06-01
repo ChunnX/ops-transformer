@@ -33,12 +33,12 @@ void MatmulAllReduceTiling910::DoEmptyTensorTiling()
 
 ge::graphStatus MatmulAllReduceTiling910::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA16W16());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckA16W16());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
     DoRCSTiling();
     DoSplitMTiling();
     if (!isKZero_) {
-        GE_ASSERT_GRAPH_SUCCESS(Do910Tiling());
+        MC2_CHECK_LOG_RET(opName_, Do910Tiling());
     } else {
         DoEmptyTensorTiling();
     }
@@ -77,7 +77,7 @@ uint64_t MatmulAllReduceTiling910::GetTilingKey() const
 
 ge::graphStatus MatmulAllReduceTiling910::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     OP_LOGI(opName_, "select max workspace size to context, myWorkSpaceSize_:%lu, workspaceSize_:%lu", myWorkSpaceSize_,
             workspaceSize_);
     myWorkSpaceSize_ = std::max(myWorkSpaceSize_, workspaceSize_);
@@ -109,7 +109,7 @@ ge::graphStatus MatmulAllReduceTiling910::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(opName_, ret);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -124,7 +124,7 @@ ge::graphStatus MatmulAllReduceTiling910::Do910Tiling()
         matmulTPLParam_ = mmTile.GetMatmulTPLParam();
         return res;
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             matmulTPLParam_ = mmTile.GetMatmulTPLParam();
             return ge::GRAPH_SUCCESS;
@@ -253,15 +253,15 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInputShape()
 ge::graphStatus MatmulAllReduceTiling910::CheckInput()
 {
     OP_LOGD(opName_, "Begin Check Input.");
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::CheckInput());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInputDtype());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::CheckInput());
+    MC2_CHECK_LOG_RET(opName_, CheckInputDtype());
 
     //  非量化场景不支持B矩阵Nz格式 除了310P
     if (npuArch_ != NpuArch::DAV_2002) {
-        GE_ASSERT_GRAPH_SUCCESS(CheckInputFormat());
+        MC2_CHECK_LOG_RET(opName_, CheckInputFormat());
     }
 
-    GE_ASSERT_GRAPH_SUCCESS(CheckInputShape());
+    MC2_CHECK_LOG_RET(opName_, CheckInputShape());
 
     return CheckAxisSize();
 }

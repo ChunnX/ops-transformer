@@ -481,7 +481,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchTili
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
+    MC2_CHECK_LOG_RET(nodeName, ret);
 
     // 1. tilingData
     MoeDistributeDispatchA2TilingData *tilingData = context->GetTilingData<MoeDistributeDispatchA2TilingData>();
