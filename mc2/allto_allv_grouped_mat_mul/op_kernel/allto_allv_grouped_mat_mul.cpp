@@ -68,6 +68,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     TPipe pipe;
 
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
+    // tilingData
     GET_TILING_DATA(tilingData, tilingGM);
 
     using ComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
@@ -83,8 +84,14 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
         gmmArray, mmArrayAddr_, tilingGM);
-
-    a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, nullptr, nullptr,
-        gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true);
+    ComputeOpType computeOp;
+    computeOp.Init(computeGmmXGM, gmmweightGM, nullptr, nullptr, gmmyGM, gmmXComputeGM,
+                   tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddr_, &pipe, true);
+    LocalComputeOpType localComputeOp;
+    localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, gmmXComputeGM,
+                    tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe, true);
+    //scheduler
+    A2avGmmSchedulerType a2avGmmScheduler(commOp, computeOp, localComputeOp, &tilingData_->taskTilingInfo,
+                                        tilingData_->isNeedMM);
     a2avGmmScheduler.Process();
 }

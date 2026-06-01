@@ -1136,11 +1136,18 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
+    uint64_t gmmXAxis = h1_ * GetSizeByDataType(gmmXDataType_);
     uint64_t groupListSize = sizeof(int64_t) * e_;
-    uint64_t xDataTypeSize = GetSizeByDataType(gmmXDataType_);
-    uint64_t permuteOutSize = permuteOutFlag_ ? 0 : Ops::Base::CeilAlign(a_ * h1_ * xDataTypeSize, tensorListSize);
-    uint64_t permuteScaleOutSize = 0;
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + groupListSize + tensorListSize;
+    auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
+    tilingData->workspaceInfo.commXOutSize =
+        Ops::Base::CeilAlign(a_ * gmmXAxis, tensorListSize);
+    tilingData->workspaceInfo.permuteXOutSize =
+        Ops::Base::CeilAlign(maxMergeTokenNum * gmmXAxis, tensorListSize);
+    tilingData->workspaceInfo.gmmComputeSize =
+        Ops::Base::CeilAlign(groupListSize + tensorListSize, tensorListSize);
+    workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
+                    tilingData->workspaceInfo.permuteXOutSize +
+                    tilingData->workspaceInfo.gmmComputeSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1159,9 +1166,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    tilingData->taskTilingInfo.mainLoopExpertNum = e_;
-    tilingData->taskTilingInfo.tailLoopExpertNum = 0;
-    tilingData->taskTilingInfo.totalLoopCount = e_;
+    tilingData->taskTilingInfo.expertNum = expertNum_;
+    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
+    tilingData->taskTilingInfo.tailLoopExpertNum =
+        (e_ % expertNum_ == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum_);
+    tilingData->taskTilingInfo.totalLoopCount =
+        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum_)));
 
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),

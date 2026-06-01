@@ -27,6 +27,7 @@
 struct AlltoAllvGmmTilingData {
     MC2KernelTemplate::HcclA2avTilingInfo hcclA2avTilingInfo;
     MC2KernelTemplate::TaskTilingInfo taskTilingInfo;
+    MC2KernelTemplate::A2avGmmWorkspaceInfo workspaceInfo;
     bool isPermuteOut = false;
     bool isNeedMM = false;
     Mc2GroupedMatmulTilingData::GMMQuantTilingData gmmQuantTilingData;
