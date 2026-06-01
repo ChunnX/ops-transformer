@@ -20,7 +20,6 @@ class D128FastBasicBlock {
 public:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
     {
-        pendingCConsumedCount_ = 0U;
         aivTileCount_ = 0U;
         cube_.Init(cubeIndex, tensors);
         cube_.InitIntraCoreEvents();
@@ -29,86 +28,101 @@ public:
     __aicore__ inline void InitAiv(const GlobalTensors &tensors,
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
-        pendingCConsumedCount_ = 0U;
         aivTileCount_ = 0U;
         vec_.Init(tilingData, aivLocalId, tensors);
         vec_.InitIntraCoreEvents();
+        InitReusableOutputBufferCreditsAiv();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
+        WaitInputAReadyAic();
         WaitReusableOutputBufferAic();
-        WaitAReadyFromAiv();
         cube_.ComputeTile(tile);
+        NotifyAConsumedToAiv();
         NotifyCReadyToAiv();
-        ++pendingCConsumedCount_;
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
     {
         cube_.PrepareRotationBeforeLoop();
+        InitReusableInputBufferCreditsAic();
     }
 
     __aicore__ inline void ComputeTileAiv(const TileParam &tile, const TileParam &lastTile)
     {
-        PreprocessTileAiv(tile);
+        WaitReusableInputBufferAiv();
+        vec_.ComputeTile(tile);
+        NotifyAReadyToAic();
+        vec_.PostprocessV(tile);
         if (aivTileCount_ > 0U) {
-            PostprocessTileAiv(lastTile);
+            WaitCReadyFromAic();
+            vec_.PostprocessQk(lastTile);
+            NotifyCConsumedToAic();
         }
         ++aivTileCount_;
     }
 
     __aicore__ inline void EndAic()
     {
-        DrainAic();
+        DrainReusableOutputBuffersAic();
         cube_.EndIntraCoreEvents();
     }
 
     __aicore__ inline void EndAiv(const TileParam &lastTile)
     {
-        DrainAiv(lastTile);
+        if (aivTileCount_ > 0U) {
+            WaitCReadyFromAic();
+            vec_.PostprocessQk(lastTile);
+            NotifyCConsumedToAic();
+            aivTileCount_ = 0U;
+        }
+        DrainReusableInputBuffersAiv();
         vec_.EndIntraCoreEvents();
     }
 
 private:
+    __aicore__ inline void InitReusableInputBufferCreditsAic()
+    {
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            NotifyAConsumedToAiv();
+        }
+    }
+
+    __aicore__ inline void InitReusableOutputBufferCreditsAiv()
+    {
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            NotifyCConsumedToAic();
+        }
+    }
+
+    __aicore__ inline void WaitInputAReadyAic()
+    {
+        WaitAReadyFromAiv();
+    }
+
+    __aicore__ inline void WaitReusableInputBufferAiv()
+    {
+        WaitAicToAiv<PIPE_MTE3>(SYNC_A_CONSUMED);
+    }
+
     __aicore__ inline void WaitReusableOutputBufferAic()
     {
-        if (pendingCConsumedCount_ < QKV_RRC_DOUBLE_BUFFER_NUM) {
-            return;
-        }
         WaitCConsumedFromAiv();
-        --pendingCConsumedCount_;
     }
 
-    __aicore__ inline void DrainAic()
+    __aicore__ inline void DrainReusableInputBuffersAiv()
     {
-        while (pendingCConsumedCount_ > 0U) {
-            WaitCConsumedFromAiv();
-            --pendingCConsumedCount_;
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            WaitReusableInputBufferAiv();
         }
     }
 
-    __aicore__ inline void DrainAiv(const TileParam &lastTile)
+    __aicore__ inline void DrainReusableOutputBuffersAic()
     {
-        if (aivTileCount_ == 0U) {
-            return;
+        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
+            WaitReusableOutputBufferAic();
         }
-        PostprocessTileAiv(lastTile);
-        aivTileCount_ = 0U;
-    }
-
-    __aicore__ inline void PreprocessTileAiv(const TileParam &tile)
-    {
-        vec_.ComputeTile(tile);
-        NotifyAReadyToAic();
-        vec_.PostprocessV(tile);
-    }
-
-    __aicore__ inline void PostprocessTileAiv(const TileParam &tile)
-    {
-        WaitCReadyFromAic();
-        vec_.PostprocessQk(tile);
-        NotifyCConsumedToAic();
     }
 
     __aicore__ inline void NotifyAReadyToAic()
@@ -119,6 +133,11 @@ private:
     __aicore__ inline void WaitAReadyFromAiv()
     {
         WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
+    }
+
+    __aicore__ inline void NotifyAConsumedToAiv()
+    {
+        SetAicToAiv<PIPE_FIX>(SYNC_A_CONSUMED);
     }
 
     __aicore__ inline void NotifyCReadyToAiv()
@@ -141,7 +160,6 @@ private:
         WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
     }
 
-    uint32_t pendingCConsumedCount_;
     uint32_t aivTileCount_;
     D128FastCube cube_;
     D128FastVec vec_;

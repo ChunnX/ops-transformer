@@ -32,11 +32,14 @@ constexpr uint64_t QKV_RRC_FLAG_ID_MAX = 16U;
 constexpr uint64_t SYNC_A_READY = 0U;
 constexpr uint64_t SYNC_C_READY = 1U;
 constexpr uint64_t SYNC_C_CONSUMED = 2U;
+constexpr uint64_t SYNC_A_CONSUMED = 3U;
 
 static_assert(SYNC_A_READY != SYNC_C_READY && SYNC_A_READY != SYNC_C_CONSUMED &&
-        SYNC_C_READY != SYNC_C_CONSUMED,
+        SYNC_A_READY != SYNC_A_CONSUMED && SYNC_C_READY != SYNC_C_CONSUMED &&
+        SYNC_C_READY != SYNC_A_CONSUMED && SYNC_C_CONSUMED != SYNC_A_CONSUMED,
     "QkvRmsNormRopeCacheWithKScale CrossCore flags must keep unique semantic ids.");
-static_assert(SYNC_C_CONSUMED < QKV_RRC_FLAG_ID_MAX,
+static_assert(SYNC_A_READY < QKV_RRC_FLAG_ID_MAX && SYNC_C_READY < QKV_RRC_FLAG_ID_MAX &&
+        SYNC_C_CONSUMED < QKV_RRC_FLAG_ID_MAX && SYNC_A_CONSUMED < QKV_RRC_FLAG_ID_MAX,
     "QkvRmsNormRopeCacheWithKScale CrossCore base flag ids must not overlap AIV1 offset.");
 
 constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
