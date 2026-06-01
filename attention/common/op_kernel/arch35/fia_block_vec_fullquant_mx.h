@@ -705,13 +705,11 @@ public:
             bmm2ResBuf.SetCrossCore();
             return;
         }
-
         int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
         float deSCaleVValue = 1.0f;
         if constexpr (isFp8) {
             deSCaleVValue = this->deScaleVGm.GetValue(0);
         }
-
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -720,20 +718,36 @@ public:
         } else {
             LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
-
             float deSCalePreVValue = 1.0f;
             if constexpr (isFp8) {
-                deSCalePreVValue = this->deScaleVGm.GetValue(0);
+                if constexpr (USE_DN) {
+                    deSCalePreVValue = this->deScaleVGm.GetValue(0);
+                } else {
+                    deSCalePreVValue = this->deScaleVGm.GetValue(0);
+                }
             }
             if (!runInfo.isLastS2Loop) {
-                FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                if constexpr (isFp8) {
+                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
+                        deSCaleVValue, deSCalePreVValue);
+                } else {
+                    FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, runInfo.actVecMSize, dTemplateAlign64,
+                        1.0, 1.0);
+                }
             } else {
-                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
-                FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
-                    deSCaleVValue, deSCalePreVValue);
+                if constexpr (isFp8) {
+                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
+                        deSCaleVValue, deSCalePreVValue);
+                } else {
+                    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
+                    FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                        vec2ResUb, mmRes, vec2ResUb, expUb, pScaleUb, sumUb, runInfo.actVecMSize, dTemplateAlign64,
+                        1.0, 1.0);
+                }
             }
         }
         bmm2ResBuf.SetCrossCore();
