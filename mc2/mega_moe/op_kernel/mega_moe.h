@@ -169,6 +169,9 @@ private:
     uint32_t startBlockIdx_ = 0;
     uint32_t dispatchBlockNumPerEP_ = 2;
     int32_t perRankStridesInTokenPerExpert_ = 0;
+    // Per-expert stride into ptrFlagDispatchToGmm1 (in int32 slots); one slot per wave (L1_TILE_M rows).
+    int32_t dispatchFlagSlotsPerExpert_ = 0;
+    int32_t maxWavesPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockAivNum_ = GetBlockNum() * 2;
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
@@ -198,6 +201,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchRows_ = tilingData->dispatchRows;
     groupListType_ = tilingData->groupListType;
     maxOutputSize_ = tilingData->maxOutputSize;
+    // Same allocation as the workspace constructor (see WorkspaceInfo::WorkspaceInfo).
+    maxWavesPerExpert_ = static_cast<int32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(maxOutputSize_), DISPATCH_WAVE_TILE_M));
+    dispatchFlagSlotsPerExpert_ = static_cast<int32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(maxWavesPerExpert_), static_cast<int64_t>(INT_CACHELINE)));
     Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
@@ -246,8 +254,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     uint32_t getCumsumBufAlign = (AlignUp(worldSize_ * expertPerRank_, ALIGN_128)) * worldSize_ * sizeof(int32_t);
     tPipe->InitBuffer(CumsumBuf_, getCumsumBufAlign);
     tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(ActivationType));
-    uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
-        static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
+    // Total int32 flag entries to reset: SwiGluToGmm2 region (expertPerRank * INT_CACHELINE)
+    // + DispatchToGmm1 region (expertPerRank * dispatchFlagSlotsPerExpert_).
+    int32_t totalFlagInt32 = static_cast<int32_t>(expertPerRank_) *
+        (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
+    uint32_t maxResetBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(totalFlagInt32 * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
     tPipe->InitBuffer(tempBuf_, ALIGN_32);
 }
@@ -290,10 +302,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList()
 {
-    // workSpace groupFlagList清零
+    // workSpace groupFlagList清零（含 dispatch->gmm1 wave-grain 槽位区）
     groupFlagListGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     if constexpr(g_coreType == AIV) {
-        int32_t flagNum = expertPerRank_ * INT_CACHELINE * 2;
+        int32_t flagNum = static_cast<int32_t>(expertPerRank_) *
+            (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_);
         int32_t coreLen, coreOffset;
         TilingByCore(flagNum, coreLen, coreOffset);
         LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
@@ -325,19 +338,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
-
-    LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
-    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
-    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
-    Sum(sumOutTensor, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
-
-    SyncFunc<AscendC::HardEvent::V_S>();
-
-    LocalTensor<int64_t> resTensor = sumOutTensor.template ReinterpretCast<int64_t>();
-    int64_t totalCnt = resTensor.GetValue(0);
-
-    SyncFunc<AscendC::HardEvent::S_V>();
-    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -502,11 +502,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
     int32_t pingpongId = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    // wave-grain dispatch flag: 每个 expert 拥有 maxWavesPerExpert_ 个槽位，
+    // 每个槽位累计该 wave (L1_TILE_M rows) 实际收到的行数。
+    // 当槽位值达到 min(L1_TILE_M, m - waveIdx * L1_TILE_M) 时，gmm1 可以早启动该 wave。
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M);
     for (uint32_t idx = blockIdx_; idx < worldSize_ * dispatchBlockNumPerEP_; idx += blockNum_) {
         uint32_t dstRankIdx = idx / dispatchBlockNumPerEP_;
         uint32_t aivIdxInGroup = idx % dispatchBlockNumPerEP_;
         uint32_t rowStartInDst = (dstRankIdx == 0 ? 0 :
             cumsumInWorkSpace_((dstRankIdx - 1) * expertPerRank_ + expertIdx));
+        int32_t rowsThisCore = 0;
+        int32_t rowDstOffsetPerCore = 0;
         if (rowStartInDst < maxOutputSize_) {
             int32_t rowsCopyCnt = tokenPerExpertWin_(TokenPerExpertLayout(dstRankIdx, rankId_, expertIdx));
             if (rowStartInDst + rowsCopyCnt > maxOutputSize_) {
@@ -515,7 +521,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             int32_t rowSrcOffset = prevSum_;
             prevSum_ += rowsCopyCnt;
             int32_t rowsPerCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(dispatchBlockNumPerEP_));
-            int32_t rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
+            rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
             int32_t rowSrcOffsetPerCore = rowSrcOffset + aivIdxInGroup * rowsPerCore;
             if (rowDstOffsetPerCore + rowsPerCore > rowStartInDst + rowsCopyCnt) {
                 rowsPerCore = rowStartInDst + rowsCopyCnt - rowDstOffsetPerCore;
@@ -533,10 +539,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                     gmmAddrInfo.aScaleGlobal));
                 CopyGMToGMPerToken(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
+                rowsThisCore = rowsPerCore;
             }
         }
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-        AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1));
+        if (rowsThisCore > 0) {
+            // drain MTE3 后再按 wave 边界做 AtomicAdd
+            SyncFunc<AscendC::HardEvent::MTE3_S>();
+            int32_t rowEnd = rowDstOffsetPerCore + rowsThisCore;
+            int32_t waveLo = rowDstOffsetPerCore / L1_TILE_M_I32;
+            int32_t waveHi = (rowEnd - 1) / L1_TILE_M_I32;
+            __gm__ int32_t* flagBase = (__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr());
+            for (int32_t w = waveLo; w <= waveHi; ++w) {
+                int32_t waveStartRow = w * L1_TILE_M_I32;
+                int32_t waveEndRow = waveStartRow + L1_TILE_M_I32;
+                int32_t lo = rowDstOffsetPerCore > waveStartRow ? rowDstOffsetPerCore : waveStartRow;
+                int32_t hi = rowEnd < waveEndRow ? rowEnd : waveEndRow;
+                AtomicAdd(flagBase + w, int32_t(hi - lo));
+            }
+        }
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -619,8 +639,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     }
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+    // wave-grain: per-expert stride is dispatchFlagSlotsPerExpert_ (one slot per L1_TILE_M wave).
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
-                                Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+                                Get<IDX_FLAG_OFFSET>(baseOffset_) * dispatchFlagSlotsPerExpert_;
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
     groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 }
