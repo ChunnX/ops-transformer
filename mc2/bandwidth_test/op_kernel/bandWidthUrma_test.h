@@ -149,7 +149,7 @@ private:
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
     __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
-    AscendC::Hcomm<CommProtocol::URMA, CommEngine::AIV> hcomm_; // todo: 通信上下文
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_TP> hcomm_; // todo: 通信上下文
 
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
@@ -196,7 +196,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
 
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
-    hcomm_.Init((__ubuf__ uint8_t*)hcommTensor_.GetPhyAddr(), HCOMM_INIT_SIZE);
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
@@ -463,7 +463,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         GM_ADDR srcRankGM = (GM_ADDR)(GetWindStateAddrByRankId(dstRankId) + offset);
         GM_ADDR dstRankGM = (GM_ADDR)(GetUrmaStateAddrByRankId(dstRankId) + offset);
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
-        hcomm_.Wait(context_->hcommHandle_[currRankId]);
+        hcomm_.Drain(context_->hcommHandle_[currRankId]);
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)srcRankGM);
         hcomm_.WriteNbi(context_->hcommHandle_[currRankId], dstRankGM, srcRankGM, UB_ALIGN);
     }
