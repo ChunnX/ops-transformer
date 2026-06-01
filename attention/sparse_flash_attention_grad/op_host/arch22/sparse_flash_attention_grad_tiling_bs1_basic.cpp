@@ -15,6 +15,7 @@
 
 #include "sparse_flash_attention_grad_tiling_bs1_basic.h"
 #include "op_host/tiling_templates_registry.h"
+#include <algorithm>
 
 namespace optiling {
 namespace sfag {
@@ -25,13 +26,58 @@ constexpr uint32_t B16 = 2;
 constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
+constexpr uint32_t SCATTER_BUFFER_NUM = 3;
+constexpr int64_t OPT_SCATTER_AVG_EFFECTIVE_TOKEN_THRESHOLD = 1024;
+constexpr int64_t OPT_SCATTER_AVG_BASIC_BLOCK_THRESHOLD = 4;
+
+inline int64_t CeilDivInt64(int64_t x, int64_t y)
+{
+    return y == 0 ? 0 : (x + y - 1) / y;
+}
+
+bool EnableOptimizedScatterPath(const TempParams &tmpData)
+{
+    int64_t s1 = tmpData.s1;
+    int64_t s2 = tmpData.s2;
+    int64_t selectedBlockCount = static_cast<int64_t>(tmpData.selected_block_count);
+    int64_t selectedBlockSize = static_cast<int64_t>(tmpData.selected_block_size);
+    if (s1 <= 0 || s2 <= 0 || selectedBlockCount <= 0 || selectedBlockSize <= 0) {
+        return false;
+    }
+    if (tmpData.n2 != 1) {
+        return true;
+    }
+
+    int64_t selectedCountOffset = BASE_LEN_256 / selectedBlockSize;
+    if (selectedBlockCount * selectedBlockSize <= BASE_LEN_256) {
+        selectedCountOffset = selectedBlockCount;
+    }
+    if (selectedCountOffset <= 0) {
+        return false;
+    }
+
+    int64_t selectedTokenLimit = selectedBlockCount * selectedBlockSize;
+    int64_t totalEffectiveTokens = 0;
+    int64_t totalBasicBlocks = 0;
+    for (int64_t s1Index = 0; s1Index < s1; ++s1Index) {
+        int64_t curMaxS2 = tmpData.attenEnable ? (s2 - s1 + s1Index + 1) : s2;
+        curMaxS2 = curMaxS2 > 0 ? curMaxS2 : 0;
+        int64_t maxS2Blk = CeilDivInt64(curMaxS2, selectedBlockSize);
+        int64_t actualSelectedBlockCount = std::min(selectedBlockCount, maxS2Blk);
+        totalEffectiveTokens += std::min(curMaxS2, selectedTokenLimit);
+        totalBasicBlocks += CeilDivInt64(actualSelectedBlockCount, selectedCountOffset);
+    }
+
+    return totalEffectiveTokens >= OPT_SCATTER_AVG_EFFECTIVE_TOKEN_THRESHOLD * s1 &&
+        totalBasicBlocks >= OPT_SCATTER_AVG_BASIC_BLOCK_THRESHOLD * s1;
+}
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
 {
     /*
     Get all shape info and attr
     */
-    opName = context_->GetNodeName();
+    opName = (context_ != nullptr) ? context_->GetNodeName() : nullptr;
     OP_CHECK_IF(context_ == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "GetAttrs is nullptr."),
@@ -156,7 +202,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
                                            aicoreParams_.aicNum, aicoreParams_.numBlocks),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
-    context_->SetScheduleMode(1);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;
@@ -170,7 +215,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     // Gather/Scatter
     int64_t selectedKWorkspaceLen = selectedS2 * (tmpData.d + tmpData.ropeDim) * inputDtypeSize;
     int64_t selectedVWorkspaceLen = selectedS2 * tmpData.d2 * inputDtypeSize;
-    
+
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN);
     selectedVWorkspaceLen = AlignData(selectedVWorkspaceLen, GM_ALIGN);
 
@@ -185,8 +230,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
     int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
-    // 每个s1做完，做scatter add累加，workspace开DB
-    workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
+    workspaces[0] += 24 * SCATTER_BUFFER_NUM * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
@@ -237,6 +281,10 @@ uint64_t SparseFlashAttentionGradBasicTiling::GetTilingKey() const
     if (tmpData.layout == static_cast<uint32_t>(InputLayout::BSND)) {
         tilingKey += 1;
     }
+    tilingKey *= 10;
+    if (tmpData.deterministic) {
+        tilingKey += 1;
+    }
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -270,9 +318,10 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     /*
      * softmax tiling切分策略
      */
+    constexpr int32_t maxProcessDataSize = 8 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = 16;
+    uint32_t sftBaseM = 6;
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
@@ -466,7 +515,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         auto actSeqKVLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
         OP_CHECK_IF(actSeqQLen == nullptr || actSeqKVLen == nullptr,
             OPS_REPORT_VECTOR_INNER_ERR(opName, "When layout is TND, actSeqQLen / actSeqKVLen can not be nullptr"),
-            return false);
+            return ge::GRAPH_FAILED);
         const gert::Shape &actSeqQLenShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN))->GetStorageShape();
         tmpData.b = actSeqQLenShape.GetDim(DIM_0);
         OP_CHECK_IF(tmpData.b == 0, OP_LOGE(context_, "batchNum is 0"), return ge::GRAPH_FAILED);
@@ -525,6 +574,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     tmpData.selected_block_count = selected_block_count;
     tmpData.selected_block_size = selected_block_size;
     tmpData.deterministic = deterministic;
+    tilingData.opInfo.set_enableOptimizedScatter(EnableOptimizedScatterPath(tmpData));
 
     auto ret = CheckDtypeValid(context_);
 
@@ -549,4 +599,3 @@ REGISTER_TILING_TEMPLATE_WITH_ARCH(SparseFlashAttentionGrad, SparseFlashAttentio
 
 } // namespace sfag
 } // namespace optiling
-
