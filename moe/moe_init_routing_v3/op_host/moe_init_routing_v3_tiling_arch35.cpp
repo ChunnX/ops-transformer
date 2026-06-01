@@ -232,6 +232,11 @@ private:
     // 各阶段TilingData计算函数
     MultipleParams GetMultipleParams();
     PerLoopParams GetPerLoopParams(MultipleParams &multipleParams, int64_t perCoreIndicesElements);
+    void SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams, PerLoopParams &perLoopParams,
+                                                  int64_t perCoreIndicesElements);
+    int64_t GetXBufferNum(int additionalBufferNum);
+    void SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
+                                                  int64_t perCoreIndicesElements);
     void Tiling4GatherOutCompute();
     void Tiling4GatherOutMxQuant();
     void Tiling4GatherOutFP8Quant();
@@ -1484,35 +1489,76 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
                      NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         }
     } else {
+        if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+            SetPerLoopParams4NoQuantDropLess(perLoopParams, perCoreIndicesElements);
+        } else {
+            SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
+        }
+    }
+    return perLoopParams;
+}
+
+void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropLess(PerLoopParams &perLoopParams,
+                                                                         const int64_t perCoreIndicesElements)
+{
+    perLoopParams.perLoopMaxIndicesElements = availUbSize_ / NUM_TWO /
+            (AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_) +
+                AlignBytes(1, sizeof(float)) + static_cast<int64_t>(sizeof(int32_t)));
+    while (perLoopParams.perLoopMaxIndicesElements <= 0) {
+        perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
+        perLoopParams.perLoopMaxIndicesElements = availUbSize_ / NUM_TWO /
+        (AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_) +
+            AlignBytes(1, sizeof(float)) + static_cast<int64_t>(sizeof(int32_t)));
+    }
+    perLoopParams.perLoopMaxIndicesElements =
+        std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
+    int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
+    int64_t xQueueSize = perLoopParams.perLoopMaxIndicesElements *
+                            AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
+    int64_t scaleQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(1, sizeof(float));
+
+    int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
+
+    int64_t remainingSpace = availUbSize_ - baseMemory;
+    int64_t additionalBufferNum = remainingSpace / xQueueSize;
+    perLoopParams.xCopyInQueueBufferNum = GetXBufferNum(additionalBufferNum);
+}
+
+void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const MultipleParams &multipleParams,
+                                                                        PerLoopParams &perLoopParams,
+                                                                        const int64_t perCoreIndicesElements)
+{
+    perLoopParams.perLoopMaxIndicesElements =
+            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
+             UB_BLOCK_SIZE * NUM_TWO) /
+            multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+    while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
+        perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
              UB_BLOCK_SIZE * NUM_TWO) /
             multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
-        while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
-            perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
-            perLoopParams.perLoopMaxIndicesElements =
-                (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-                 UB_BLOCK_SIZE * NUM_TWO) /
-                multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
-        }
-        perLoopParams.perLoopMaxIndicesElements =
-            std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
-
-        int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
-        int64_t xQueueSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
-        int64_t scaleQueueSize = AlignBytes(1, sizeof(float));
-
-        int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
-
-        int64_t remainingSpace = availUbSize_ - baseMemory;
-        int64_t maxAdditionalRows = remainingSpace / xQueueSize;
-        if (maxAdditionalRows > 0) {
-            perLoopParams.xCopyInQueueBufferNum = std::min(maxAdditionalRows + NUM_TWO, MAX_QUEUE_BUFFER_NUM);
-        } else {
-            perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
-        }
     }
-    return perLoopParams;
+    perLoopParams.perLoopMaxIndicesElements =
+        std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
+
+    int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
+    int64_t xQueueSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
+    int64_t scaleQueueSize = AlignBytes(1, sizeof(float));
+
+    int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
+
+    int64_t remainingSpace = availUbSize_ - baseMemory;
+    int64_t additionalBufferNum = remainingSpace / xQueueSize;
+    perLoopParams.xCopyInQueueBufferNum = GetXBufferNum(additionalBufferNum);
+}
+
+int64_t MoeInitRoutingV3Arch35TilingClass::GetXBufferNum(const int additionalBufferNum)
+{
+    if (additionalBufferNum > 0) {
+        return std::min(additionalBufferNum + NUM_TWO, MAX_QUEUE_BUFFER_NUM);
+    }
+    return NUM_TWO;
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
