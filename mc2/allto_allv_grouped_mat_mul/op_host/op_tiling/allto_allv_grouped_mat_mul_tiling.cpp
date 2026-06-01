@@ -367,10 +367,12 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
             sendSum = 0U;
             for (uint64_t j = (i - 1U) * eExpert; j <= i * eExpert - 1U; j++) {
                 OP_TILING_CHECK((sendCounts[j] < NUM_ZERO) || (sendCounts[j] > bsk),
-                    OP_LOGE(A_INNER_DEBUG, "sendCounts[%lu] should be in [0, bsK[%lu]], but get %lu",j, bsk, sendCounts[j]),
+                    OP_LOGE(A_INNER_DEBUG, "sendCounts[%lu] should be in [0, bsK[%lu]], but get %lu",
+                             j, bsk, sendCounts[j]),
                     return ge::GRAPH_FAILED);
                 OP_TILING_CHECK((recvCounts[j] < NUM_ZERO) || (recvCounts[j] > a),
-                    OP_LOGE(A_INNER_DEBUG, "recvCounts[%lu] should be in [0, a[%lu]], but get %lu",j, a, recvCounts[j]),
+                    OP_LOGE(A_INNER_DEBUG, "recvCounts[%lu] should be in [0, a[%lu]], but get %lu",
+                             j, a, recvCounts[j]),
                     return ge::GRAPH_FAILED);
                 recvSum += recvCounts[j] * H1 * 2U;
                 sendSum += sendCounts[j] * H1 * 2U; // /sizeof(gmmX) = 2U
@@ -454,7 +456,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
     }
     OP_TILING_CHECK(
         std::find(epWorldSizeOptional.begin(), epWorldSizeOptional.end(), epWorldSize) == epWorldSizeOptional.end(),
-        OP_LOGE(A_INNER_DEBUG, "epWorldSize[%lu] should be %s!", epWorldSize, epWorldSizeNum.c_str()), return ge::GRAPH_FAILED);
+        OP_LOGE(A_INNER_DEBUG, "epWorldSize[%lu] should be %s!",
+                     epWorldSize, epWorldSizeNum.c_str()), return ge::GRAPH_FAILED);
     // 对sendCounts和recvCounts校验
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
@@ -538,15 +541,18 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
 // 检查入参 shape 之间的关系
 ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext* context) const
 {
-    OP_TILING_CHECK((context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) || (context->GetInputShape(GMM_X_INDEX) == nullptr),
-                     OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) ||
+                 (context->GetInputShape(GMM_X_INDEX) == nullptr),
+                     OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."),
+                     return ge::GRAPH_FAILED);
 
     uint64_t gmmWeightH1 = tilingData->commonTilingInfo.isGmmWeightTrans ?
                                context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(NUM_TWO) :
                                context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape().GetDim(1);
     uint64_t gmmXH1 = context->GetInputShape(GMM_X_INDEX)->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(gmmXH1 != gmmWeightH1, OP_LOGE(A_INNER_DEBUG,
-                    "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of gmmWeight(e, H1, N1) !", gmmXH1, gmmWeightH1),
+OP_TILING_CHECK(gmmXH1 != gmmWeightH1, OP_LOGE(A_INNER_DEBUG,
+                     "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of gmmWeight(e, H1, N1) !",
+                     gmmXH1, gmmWeightH1),
                     return ge::GRAPH_FAILED);
 
     if (tilingData->commonTilingInfo.isNeedMM) {
@@ -554,8 +560,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t mmWeightH2 = tilingData->commonTilingInfo.isMmWeightTrans ?
                                   context->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(1) :
                                   context->GetOptionalInputShape(MM_WEIGHT_INDEX)->GetStorageShape().GetDim(0);
-        OP_TILING_CHECK(mmXH2 != mmWeightH2, OP_LOGE(A_INNER_DEBUG,
-                        "The H2 %lu of mmX(BS, H2) should be equal to the H2 %lu of mmWeight(H2, N2)!", mmXH2, mmWeightH2),
+OP_TILING_CHECK(mmXH2 != mmWeightH2, OP_LOGE(A_INNER_DEBUG,
+                     "The H2 %lu of mmX(BS, H2) should be equal to the H2 %lu of mmWeight(H2, N2)!",
+                     mmXH2, mmWeightH2),
                         return ge::GRAPH_FAILED);
 
         uint64_t mmXBS = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDim(0);
@@ -573,11 +580,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t gmmYA = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(0);
         uint64_t permuteA = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(0);
         uint64_t permuteH1 = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(1);
-        OP_TILING_CHECK(gmmXH1 != permuteH1, OP_LOGE(A_INNER_DEBUG,
-                        "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of permuteOut(A, H1)!", gmmXH1, permuteH1),
+OP_TILING_CHECK(gmmXH1 != permuteH1, OP_LOGE(A_INNER_DEBUG,
+                     "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of permuteOut(A, H1)!",
+                     gmmXH1, permuteH1),
                         return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(gmmYA != permuteA, OP_LOGE(A_INNER_DEBUG,
-                        "The A %lu of gmmY(A, H1) should be equal to the A %lu of permuteOut(A, H1)!", gmmYA, permuteA),
+OP_TILING_CHECK(gmmYA != permuteA, OP_LOGE(A_INNER_DEBUG,
+                     "The A %lu of gmmY(A, H1) should be equal to the A %lu of permuteOut(A, H1)!",
+                     gmmYA, permuteA),
                         return ge::GRAPH_FAILED);
     }
 
@@ -732,41 +741,59 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != ge::DT_BF16),
-        OP_LOGE(A_INNER_DEBUG, "Unsupported dataType, gmmx only support float16 and bfloat16!"), return ge::GRAPH_FAILED);
+        OP_LOGE(A_INNER_DEBUG, "Unsupported dataType, gmmx only support float16 and bfloat16!"),
+                 return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX)->GetDataType() != context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType()) ||
             (context->GetInputDesc(GMM_X_INDEX)->GetDataType() !=
              context->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType()),
-        OP_LOGE(A_INNER_DEBUG, "The dataType of gmmWeight and gmmY should be the same with gmmX."), return ge::GRAPH_FAILED);
+        OP_LOGE(A_INNER_DEBUG, "The dataType of gmmWeight and gmmY should be the same with gmmX."),
+                 return ge::GRAPH_FAILED);
     if (tilingData->commonTilingInfo.isNeedMM) {
         auto mmXDex = context->GetOptionalInputDesc(MM_X_INDEX);
-        OP_TILING_CHECK(mmXDex == nullptr, OP_LOGE(A_INNER_DEBUG, "Flag isNeedMM is True, but MM_X is null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmXDex == nullptr,
+                 OP_LOGE(A_INNER_DEBUG, "Flag isNeedMM is True, but MM_X is null."),
+                 return ge::GRAPH_FAILED);
         auto mmWeightDesc = context->GetOptionalInputDesc(MM_WEIGHT_INDEX);
         OP_TILING_CHECK(
-            mmWeightDesc == nullptr, OP_LOGE(A_INNER_DEBUG, "Flag isNeedMM is True, MM_WEIGHT is null."), return ge::GRAPH_FAILED);
+            mmWeightDesc == nullptr,
+                 OP_LOGE(A_INNER_DEBUG, "Flag isNeedMM is True, MM_WEIGHT is null."),
+                 return ge::GRAPH_FAILED);
         auto mmYDesc = context->GetOutputDesc(OUTPUT_MM_Y_INDEX);
-        OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE(A_INNER_DEBUG, "GetOutputDesc mmY returned null."), return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mmYDesc == nullptr,
+                 OP_LOGE(A_INNER_DEBUG, "GetOutputDesc mmY returned null."),
+                 return ge::GRAPH_FAILED);
 
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
                 (context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() != ge::DT_BF16),
-            OP_LOGE(A_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"), return ge::GRAPH_FAILED);
+            OP_LOGE(A_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"),
+                 return ge::GRAPH_FAILED);
         OP_TILING_CHECK(
             (context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() !=
              context->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType()) ||
                 (context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() !=
                  context->GetOutputDesc(OUTPUT_MM_Y_INDEX)->GetDataType()),
-            OP_LOGE(A_INNER_DEBUG, "The dataType of mmWeight and mmY should be the same with mmX."), return ge::GRAPH_FAILED);
+            OP_LOGE(A_INNER_DEBUG, "The dataType of mmWeight and mmY should be the same with mmX."),
+                 return ge::GRAPH_FAILED);
         // 校验mmdataType和gmmdataType一致
-        OP_TILING_CHECK(context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() != context->GetInputDesc(GMM_X_INDEX)->GetDataType(),
- 	            OP_LOGE(context->GetNodeName(), "mmX data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
- 	                ge::TypeUtils::DataTypeToSerialString(context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType()).c_str(),
- 	                ge::TypeUtils::DataTypeToSerialString(context->GetInputDesc(GMM_X_INDEX)->GetDataType()).c_str()),
+OP_TILING_CHECK(
+    context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType() !=
+    context->GetInputDesc(GMM_X_INDEX)->GetDataType(),
+    OP_LOGE(context->GetNodeName(),
+            "mmX data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+            ge::TypeUtils::DataTypeToSerialString(context->GetOptionalInputDesc(MM_X_INDEX)->GetDataType()).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(context->GetInputDesc(GMM_X_INDEX)->GetDataType()).c_str()),
  	            return ge::GRAPH_FAILED);
- 	    OP_TILING_CHECK(context->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType() != context->GetInputDesc(GMM_X_INDEX)->GetDataType(),
- 	        OP_LOGE(context->GetNodeName(), "mmWeight data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
- 	            ge::TypeUtils::DataTypeToSerialString(context->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType()).c_str(),
- 	            ge::TypeUtils::DataTypeToSerialString(context->GetInputDesc(GMM_X_INDEX)->GetDataType()).c_str()),
+OP_TILING_CHECK(
+    context->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType() !=
+    context->GetInputDesc(GMM_X_INDEX)->GetDataType(),
+    OP_LOGE(context->GetNodeName(),
+            "mmWeight data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+            ge::TypeUtils::DataTypeToSerialString(
+                context->GetOptionalInputDesc(MM_WEIGHT_INDEX)->GetDataType()).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(
+                context->GetInputDesc(GMM_X_INDEX)->GetDataType()).c_str()),
  	        return ge::GRAPH_FAILED);
     }
 
@@ -842,7 +869,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     return tilingKey;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context){
+ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context) {
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
 
