@@ -1356,14 +1356,14 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     if (tokenIdx >= activeMaskBsCnt_) {
         return FINISH_STATUS;
     }
-    GM_ADDR remoteExpAddr;
-    uint32_t remoteRankId;
-    if (rankId_ <= 15) {
-        remoteRankId = (rankId_ + 16 - 3) % 16;
-    } else {
-        remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
-    }
-    remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId].nextDevicePtr))->windowsExp);
+    // GM_ADDR remoteExpAddr;
+    // uint32_t remoteRankId;
+    // if (rankId_ <= 15) {
+    //     remoteRankId = (rankId_ + 16 - 3) % 16;
+    // } else {
+    //     remoteRankId = (rankId_ + 16 - 3) % 16 + 16;
+    // }
+    remoteExpAddr = (GM_ADDR)(winContext_->localWindowsExp);
     GlobalTensor<uint32_t> selfDataStatusGMAivSend;
     selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
     selfDataStatusGMAivSend.SetValue(13, 55);
