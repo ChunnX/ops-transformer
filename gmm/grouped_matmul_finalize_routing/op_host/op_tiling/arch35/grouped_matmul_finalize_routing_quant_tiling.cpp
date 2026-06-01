@@ -61,8 +61,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
         shareInputOffset < 0 || outputBS < 0 || groupListType < 0 || outputDtype < 0,
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
             "GroupedMatmulFinalizeRouting", "share_input_offset, group_list_type, output_bs, dtype",
-            std::to_string(shareInputOffset) + ", " + std::to_string(groupListType) + ", " +
-                std::to_string(outputBS) + ", " + std::to_string(outputDtype),
+            ShapeDimsToString(shareInputOffset, groupListType, outputBS, outputDtype),
             "attr shareInputOffset, groupListType, outputBS and outputDtype must be greater than or equal to 0"),
         return false);
 
@@ -77,7 +76,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
     OP_CHECK_IF(sharedInputOffset_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     "GroupedMatmulFinalizeRouting", "share_input_offset", std::to_string(sharedInputOffset_),
-                    "shareInputOffset must be less than or equal to batch(" + std::to_string(outputBs_) + ")"),
+                    StrCat("shareInputOffset must be less than or equal to batch(", outputBs_, ")")),
                 return false);
 
     OP_CHECK_IF(outputDtype > OUT_DTYPE_BF16_INDEX,
@@ -101,7 +100,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     "GroupedMatmulFinalizeRouting", "attrs",
                     std::to_string(attrs->GetAttrNum()),
-                    "the num of attrs must be greater than " + std::to_string(ATTR_INDEX_TUNING_CONFIG + 1)),
+                    StrCat("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
                 return false);
     const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
@@ -238,8 +237,8 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
             !(a8w8 || a4w4),
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 "GroupedMatmulFinalizeRouting", "x, weight",
-                std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)) + ", " +
-                    ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                 "in mx quant mode, the dtypes of x and weight must be within the range "
                 "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E1M2/DT_FLOAT4_E2M1"),
             return false);
@@ -331,7 +330,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDim(const gert::Shape &xShape
     return true;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape() const
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const
 {
     bool a4w4 = IsFp4Dtype(inputParams_.aDtype) && IsFp4Dtype(inputParams_.bDtype);
     if (!a4w4) {
@@ -339,7 +338,8 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape() const
     }
     OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    "GroupedMatmulFinalizeRouting", "x, weight", std::to_string(inputParams_.kSize),
+                    "GroupedMatmulFinalizeRouting", "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
                     "when the dtype of x is FLOAT4, k size must be even number"),
                 return false);
     // 2: mxfp4场景下不支持K轴为2
@@ -350,8 +350,8 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape() const
     if (!inputParams_.transB) {
         OP_CHECK_IF(
             inputParams_.nSize % EVEN_FACTOR != 0,
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                "GroupedMatmulFinalizeRouting", "weight", std::to_string(inputParams_.nSize),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                "GroupedMatmulFinalizeRouting", "weight", ShapeToString(wShape),
                 "when the dtype of weight is FLOAT4 and weight is not transposed, n size must be even number"),
             return false);
     }
@@ -369,16 +369,16 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
         sharedInputLen_ > outputBs_,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "shared_input",
                                               std::to_string(sharedInputLen_),
-                                              "shared_input_len must be less than or equal to batch(" +
-                                                  std::to_string(outputBs_) + ")"),
+                                              StrCat("shared_input_len must be less than or equal to batch(",
+                                                     outputBs_, ")")),
         return false);
 
     OP_CHECK_IF(sharedInputOffset_ + sharedInputLen_ > outputBs_,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     "GroupedMatmulFinalizeRouting", "share_input_offset, shared_input",
                     std::to_string(sharedInputOffset_ + sharedInputLen_),
-                    "shareInputOffset plus sharedInputLen must be less than or equal to batch(" +
-                        std::to_string(outputBs_) + ")"),
+                    StrCat("shareInputOffset plus sharedInputLen must be less than or equal to batch(",
+                           outputBs_, ")")),
                 return false);
 
     auto LogitDesc = context_->GetOptionalInputDesc(LOGIT_INDEX);
@@ -397,15 +397,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     OP_CHECK_IF(rowIndex_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "row_index",
                                                       std::to_string(rowIndex_),
-                                                      "rowIndex must be less than or equal to M (" +
-                                                          std::to_string(inputParams_.mSize) + ")"),
+                                                      StrCat("rowIndex must be less than or equal to M (",
+                                                             inputParams_.mSize, ")")),
                 return false);
 
     OP_CHECK_IF(outputBs_ > inputParams_.mSize,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRouting", "output_bs",
                                                       std::to_string(outputBs_),
-                                                      "outputBS must be less than or equal to M (" +
-                                                          std::to_string(inputParams_.mSize) + ")"),
+                                                      StrCat("outputBS must be less than or equal to M (",
+                                                             inputParams_.mSize, ")")),
                 return false);
     return true;
 }
@@ -420,7 +420,8 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckInputsShape(const gert::Shape
     OP_CHECK_IF(!CheckDim(xShape, wShape, pertokenScaleStorageShape, scaleShape, yShape),
                 OP_LOGE(context_->GetNodeName(), "CheckDim failed."), return false);
     if (IsMicroScaling()) {
-        OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(context_->GetNodeName(), "CheckFp4Shape failed."), return false);
+        OP_CHECK_IF(!CheckFp4Shape(xShape, wShape), OP_LOGE(context_->GetNodeName(), "CheckFp4Shape failed."),
+                    return false);
     }
     return true;
 }

@@ -123,8 +123,8 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
 
     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
         "QuantGroupedMatmulInplaceAdd", "x1, x2",
-        std::string(ge::TypeUtils::DataTypeToSerialString(inputParams.aDtype)) + ", " +
-            ge::TypeUtils::DataTypeToSerialString(inputParams.bDtype),
+        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams.aDtype),
+                     ge::TypeUtils::DataTypeToSerialString(inputParams.bDtype)),
         "in quant case, the dtypes of x1 and x2 must be both DT_HIFLOAT8 or both DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2");
     return false;
 }
@@ -155,17 +155,16 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
                 return false);
     auto x1FirstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    "QuantGroupedMatmulInplaceAdd", "scale1, groupNum",
-                    std::to_string(x1FirstDim),
-                    "in T-T/T-C mode, first dim of scale1 must be equal to groupNum[" +
-                        std::to_string(inputParams.groupNum) + "]"),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    "QuantGroupedMatmulInplaceAdd", "scale1", ShapeToString(x1ScaleShape),
+                    StrCat("in T-T/T-C mode, first dim of scale1 must be equal to groupNum[",
+                           inputParams.groupNum, "]")),
                 return false);
     if (x1ScaleDimNum == 2) {
         auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
         OP_CHECK_IF(x1LastDim != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("QuantGroupedMatmulInplaceAdd", "scale1",
-                                                          std::to_string(x1LastDim),
+                                                          ShapeToString(x1ScaleShape),
                                                           "in T-T/T-C mode, last dim of scale1 must be equal to 1"),
                     return false);
     }
@@ -179,17 +178,18 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     auto x2FirstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("QuantGroupedMatmulInplaceAdd", "scale2",
-                                                      std::to_string(x2FirstDim),
-                                                      "in T-T/T-C mode, first dim of scale2 must be equal to groupNum[" +
-                                                          std::to_string(inputParams.groupNum) + "]"),
+                                                      ShapeToString(x2ScaleShape),
+                                                      StrCat("in T-T/T-C mode, first dim of scale2 must be equal to "
+                                                             "groupNum[",
+                                                             inputParams.groupNum, "]")),
                 return false);
     if (x2ScaleDimNum == 2) {
         auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
         OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        "QuantGroupedMatmulInplaceAdd", "scale2", std::to_string(x2LastDim),
-                        "in T-T/T-C mode, last dim of scale2 must be equal to 1 or n[" +
-                            std::to_string(inputParams.nSize) + "]"),
+                        "QuantGroupedMatmulInplaceAdd", "scale2", ShapeToString(x2ScaleShape),
+                        StrCat("in T-T/T-C mode, last dim of scale2 must be equal to 1 or n[", inputParams.nSize,
+                               "]")),
                     return false);
     }
     return true;
@@ -218,18 +218,14 @@ bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2
     OP_CHECK_IF(
         xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams.mSize,
         OP_LOGE_FOR_INVALID_SHAPE(
-            "QuantGroupedMatmulInplaceAdd", "scale1",
-            std::to_string(xScaleKDim) + ", " + std::to_string(xScaleMDim) + ", " + std::to_string(xScaleLastDim),
-            std::to_string(expectedKDimValue) + ", " + std::to_string(inputParams.mSize) + ", " +
-                std::to_string(MXFP_MULTI_BASE_SIZE)),
+            "QuantGroupedMatmulInplaceAdd", "scale1", ShapeToString(x1ScaleShape),
+            ShapeDimsToString(expectedKDimValue, inputParams.mSize, MXFP_MULTI_BASE_SIZE)),
         return false);
     OP_CHECK_IF(
         wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams.nSize,
         OP_LOGE_FOR_INVALID_SHAPE(
-            "QuantGroupedMatmulInplaceAdd", "scale2",
-            std::to_string(wScaleKDim) + ", " + std::to_string(wScaleNDim) + ", " + std::to_string(wScaleLastDim),
-            std::to_string(expectedKDimValue) + ", " + std::to_string(inputParams.nSize) + ", " +
-                std::to_string(MXFP_MULTI_BASE_SIZE)),
+            "QuantGroupedMatmulInplaceAdd", "scale2", ShapeToString(x2ScaleShape),
+            ShapeDimsToString(expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE)),
         return false);
     return true;
 }

@@ -219,8 +219,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                     inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                         "GroupedMatmulSwigluQuantV2", "x, weight",
-                        std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)) + ", " +
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                         "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be DT_FLOAT8_E4M3FN"),
                     return false);
     }
@@ -262,22 +262,22 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtype()
         (xIsFp4 && weightIsFp8) || (xIsFp8 && weightIsFp4),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             "GroupedMatmulSwigluQuantV2", "x, weight",
-            std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)) + ", " +
-                ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+            ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                         ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
             "the dtypes of x and weight must both be FLOAT8 or FLOAT4"),
         return false);
     OP_CHECK_IF(!(IsFp4Input() || IsFp8Input()),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     "GroupedMatmulSwigluQuantV2", "x, weight",
-                    std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)) + ", " +
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8 or FLOAT4"),
                 return false);
     OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     "GroupedMatmulSwigluQuantV2", "scale, per_token_scale",
-                    std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype)) + ", " +
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype),
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype)),
                     "the dtypes of scale and per_token_scale must be DT_FLOAT8_E8M0"),
                 return false);
     OP_CHECK_IF(!(IsFp4(inputParams_.outDataDtype) || IsFp8(inputParams_.outDataDtype)),
@@ -323,35 +323,36 @@ bool GroupedMatmulSwigluQuantV2Tiling950::SetQuantModeForGMMSwigluQuant(const ge
     return false;
 }
 
-bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims() const
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckDims(const gert::Shape &xShape, const gert::Shape &wShape) const
 {
     auto aInnerSize = inputParams_.transA ? inputParams_.mSize : inputParams_.kSize;
     auto bInnerSize = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
     OP_CHECK_IF(
         IsFp4Input() && (aInnerSize % B4_DATACOPY_MIN_NUM != 0 || bInnerSize % B4_DATACOPY_MIN_NUM != 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("GroupedMatmulSwigluQuantV2", "x, weight",
-                                              std::to_string(aInnerSize) + ", " + std::to_string(bInnerSize),
-                                              "when inputs are FLOAT4, inner axis element number must be even"),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulSwigluQuantV2", "x, weight",
+                                               ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
+                                               "when inputs are FLOAT4, inner axis element number must be even"),
         return false);
 
     // MXFP4场景不支持K=2
     OP_CHECK_IF(IsFp4Input() && inputParams_.kSize == MXFP4_K_MIN_VALUE,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    "GroupedMatmulSwigluQuantV2", "x, weight", std::to_string(inputParams_.kSize),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    "GroupedMatmulSwigluQuantV2", "x, weight",
+                    ShapesToString({ShapeToString(xShape), ShapeToString(wShape)}),
                     "when the dtypes of x and weight are DT_FLOAT4_E2M1, k value must be greater than 2"),
                 return false);
     // MXFP4场景下，当输出类型为FP4时，N需要满足为大于等于4的偶数
     if (IsFp4Input() && IsFp4(inputParams_.outDataDtype)) {
         OP_CHECK_IF(inputParams_.nSize < MXFP4_N_MIN_VALUE || inputParams_.nSize % EVEN_FACTOR != 0,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        "GroupedMatmulSwigluQuantV2", "weight", std::to_string(inputParams_.nSize),
+                        "GroupedMatmulSwigluQuantV2", "weight", ShapeToString(wShape),
                         "when inputs and output are FLOAT4, n value must be even and greater or equal to 4"),
                     return false);
     }
     // MX量化场景下，N为128对齐
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::BASIC_BLOCK_SIZE_128 != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    "GroupedMatmulSwigluQuantV2", "weight", std::to_string(inputParams_.nSize),
+                    "GroupedMatmulSwigluQuantV2", "weight", ShapeToString(wShape),
                     "n axis element number of weight must be an integer multiple of 128"),
                 return false);
     return true;
@@ -399,7 +400,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
         return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(!CheckDims(), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
+    OP_CHECK_IF(!CheckDims(xShape, wShape), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
                     OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
@@ -530,8 +531,8 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
     OP_CHECK_IF(!(IsB8(inputParams_.aDtype) && IsB8(inputParams_.bDtype)),
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                     "GroupedMatmulSwigluQuantV2", "x, weight",
-                    std::string(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)) + ", " +
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype),
+                    ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                     "the dtypes of x and weight must be within the range FLOAT8, INT8 or HIFLOAT8"),
                 return false);
     OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
@@ -560,6 +561,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::CheckDtypePertoken()
 
 bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
 {
+    auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_IF(wStorageShape == nullptr,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulSwigluQuantV2", "weight", "nullptr",
+                                                      "wStorageShape cannot be nullptr"),
+                return false);
+    const gert::Shape &wShape = wStorageShape->GetOriginShape();
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulSwigluQuantV2", "weight_scale", "nullptr",
@@ -585,7 +592,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputsPertoken()
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(inputParams_.nSize % GmmConstant::EVEN_FACTOR != 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    "GroupedMatmulSwigluQuantV2", "weight", std::to_string(inputParams_.nSize),
+                    "GroupedMatmulSwigluQuantV2", "weight", ShapeToString(wShape),
                     "n axis element number of weight must be an even number"),
                 return false);
     return true;
