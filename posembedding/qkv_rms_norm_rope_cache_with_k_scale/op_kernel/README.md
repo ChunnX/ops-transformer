@@ -4,10 +4,9 @@ This directory contains the AscendC D=128 fast-path implementation for tiling
 key `350128` with `KERNEL_TYPE_MIX_AIC_1_2`.
 
 `qkv_rms_norm_rope_cache_with_k_scale.cpp` is only the kernel entry and tiling
-key dispatch shell. The D=128 fast-path implementation is split by module:
+key dispatch shell, and it includes the controller directly. The D=128
+fast-path implementation is split by module:
 
-- `qkv_rms_norm_rope_cache_with_k_scale_d128_fast.h`: aggregate include for
-  the entry file.
 - `qkv_rms_norm_rope_cache_with_k_scale_common.h`: common constants, POD
   structs, tensor bundles, range/tile helpers, and CrossCore wrappers.
 - `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level

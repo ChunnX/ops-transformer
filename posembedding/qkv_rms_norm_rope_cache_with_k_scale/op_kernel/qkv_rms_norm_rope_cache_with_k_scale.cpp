@@ -12,7 +12,7 @@
  * \file qkv_rms_norm_rope_cache_with_k_scale.cpp
  * \brief Kernel entry for QkvRmsNormRopeCacheWithKScale.
  */
-#include "qkv_rms_norm_rope_cache_with_k_scale_d128_fast.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_controller.h"
 
 using namespace AscendC;
 using QkvRmsNormRopeCacheWithKScale::D128FastController;

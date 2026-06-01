@@ -11,8 +11,7 @@ Current state:
    and UT; it is not device kernel code.
 2. T01 kernel controller and basic block skeleton are present under
    `op_kernel`. The kernel entry file only selects the tiling key, unpacks
-   tiling, and dispatches the controller through the aggregate
-   `qkv_rms_norm_rope_cache_with_k_scale_d128_fast.h` header.
+   tiling, and dispatches the controller directly.
 3. The kernel uses a POD tiling layout under `op_kernel` that host tiling writes
    directly. AIC and paired AIV cores derive the same contiguous, balanced
    cube-group token range. T02 keeps the range loop in the controller and adds
@@ -26,7 +25,7 @@ Current state:
    from pingpong `bufferId` or loop generation.
 6. After T04 the D=128 fast-path code is split into `common`, `controller`,
    `basic_block`, `cube`, and `vec` headers instead of keeping those larger
-   modules inside the aggregate header.
+   modules inside one file.
 7. Real compute and the concrete synchronization call sites are left to later
    tasks.
 8. Implementation work must follow `TASKS.md`.
