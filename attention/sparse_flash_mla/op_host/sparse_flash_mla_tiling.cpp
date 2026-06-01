@@ -277,7 +277,6 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
-    opParamInfo_.batchInvariant = attrs->GetAttrPointer<uint32_t>(ATTR_BATCH_INVARIANT_INDEX);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
@@ -763,7 +762,6 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
     smlaInfo.topkValueMode = *opParamInfo_.topkValueMode;
-    smlaInfo.batchInvariant = *opParamInfo_.batchInvariant;
 
     smlaInfo.qLayout = qLayout_;
     smlaInfo.oriSparseIndicesLayout = oriSparseIndicesLayout_;
@@ -854,7 +852,6 @@ void SMLATilingCheck::Init()
     kvLayout_ = smlaInfo_.kvLayout;
     outLayout_ = smlaInfo_.outLayout;
     topkValueMode_ = smlaInfo_.topkValueMode;
-    batchInvariant_ = smlaInfo_.batchInvariant;
 }
 
 void SMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
@@ -1355,9 +1352,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
     OP_CHECK_IF(topkValueMode_ != 1,
                 OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(batchInvariant_ != 0,
-                OP_LOGE(opName_, "batchInvariant should be 0, but got %d", batchInvariant_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1589,7 +1583,6 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
 
     tilingData_.baseParams.set_topkValueMode(tilingInfo->topkValueMode);
-    tilingData_.baseParams.set_batchInvariant(tilingInfo->batchInvariant);
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
     tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
