@@ -182,7 +182,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
-#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \ 
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
     defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_v2";
