@@ -63,7 +63,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, IsInterleaved>& epilogueOp,
     const ParamsType& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom,
-    int waveTraceIdx)
+    uint16_t& pingpongIdx, int waveTraceIdx)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -125,7 +125,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong); // 当前固定无bias
 
     // GMM1 pingpong 开启条件：交织 + 两块 UbFirst/UbSecond 都能塞进 UB。
-    // L1_TILE_M=128 时 2 * 128*256*4 = 256KB ≤ UB ✓；L1_TILE_M=256 时 2 * 256*256*4 = 512KB ✗。
+    // L1_TILE_M=256 + ElementC=bf16(2B)：2 * 256*256*2 = 256KB ≤ UB ✓；
+    // 如果 ElementC 是 float(4B)：2 * 256*256*4 = 512KB ✗。本 branch 走 bf16，pingpong 开。
     constexpr bool kGmm1Pingpong = IsInterleaved &&
         (MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC) * 2U <= UB_CAPACITY_BYTES);
 
@@ -173,7 +174,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     //   - cube/vec 信号 flag value = pingpongIdx (0/1)，2 个独立通道
     //   - AIC 第 3 次起 WaitForVector(pingpongIdx)：流水填满后才等
     // 非交织（IsInterleaved=false）：保持原来单通道串行（每 tile 2 次 mmad 占满两块 UB，无法 pingpong）
-    uint16_t pingpongIdx = 0;
+    //
+    // pingpongIdx 由调用方传引用进来，跨 wave 持久化。这是因为 tileNum ≈ coresPerWave，每核每个
+    // wave 的调用只跑 1 个 tile，函数内 ppIdx 翻转一次就退出；要让同核连续两个 wave 真正落在 ping/pong
+    // 两半，必须把状态留在外面。非 pingpong 路径下不翻转 ppIdx，避免污染调用方状态。
     for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -202,7 +206,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             }
 
             // 等 AIV 释放 UB 槽：
-            //   kGmm1Pingpong=true（L1_TILE_M=128）：第 3 次起才等（pingpong 流水填满后）
+            //   kGmm1Pingpong=true（交织 + ElementC=bf16）：第 3 次起才等（pingpong 流水填满后）
             //   kGmm1Pingpong=false：每次都等（单 UB，cube 与 vec 串行）
             if constexpr (kGmm1Pingpong) {
                 if (vecSetSyncCom >= 2) {
@@ -227,7 +231,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             if constexpr (IsInterleaved) {
                 // 交织：1 次 mmad；pingpong 时 ping=UbFirst, pong=UbSecond 交替；
-                // 不 pingpong 时永远写 UbFirst（L1_TILE_M=256 即此分支）。
+                // 不 pingpong 时永远写 UbFirst（ElementC=float 即此分支，bf16 走 pingpong）。
                 auto gmBlockB = gmB.Slice(
                     Te::MakeCoord(kLoc, nLoc),
                     Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -282,7 +286,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         }
 
         // 计数器：pingpong 模式每 iter 递增（用于 EndSync 判断 drain 1/2 个 NotifyCube）；
-        // 单 UB 模式（含非交织和交织+L1_TILE_M=256）置 1，EndSync 只 drain 一个。
+        // 单 UB 模式（含非交织和交织+ElementC=float）置 1，EndSync 只 drain 一个。
         if constexpr (kGmm1Pingpong) {
             vecSetSyncCom++;
         } else {
@@ -319,7 +323,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 epilogueOp(epilogueShape, epilogueOffset, pingpongIdx);
                 NotifyCube(pingpongIdx);
             } else {
-                // 单 UB（交织+L1_TILE_M=256 或 非交织）：单通道 cube↔vec sync
+                // 单 UB（交织+ElementC=float 或 非交织）：单通道 cube↔vec sync
                 WaitForCube();
                 if (isFirstTile) {
                     MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
@@ -347,8 +351,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             }
         }
 
-        // 切换 ping/pong（仅交织模式有意义；非交织无影响）
-        pingpongIdx = 1U - pingpongIdx;
+        // 切换 ping/pong（仅 pingpong 模式翻转；非 pingpong 不动，避免污染调用方的 gmm1PingPongIdx_）
+        if constexpr (kGmm1Pingpong) {
+            pingpongIdx = 1U - pingpongIdx;
+        }
     }
 }
 
