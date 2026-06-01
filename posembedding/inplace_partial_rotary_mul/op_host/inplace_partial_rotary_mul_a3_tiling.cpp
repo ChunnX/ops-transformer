@@ -14,8 +14,10 @@
  */
 
 #include "inplace_partial_rotary_mul_tiling.h"
+#include <graph/utils/type_utils.h>
 
 namespace optiling {
+using namespace Ops::Base;
 constexpr int64_t TILING_KEY_FLOAT16 = 0;
 constexpr int64_t TILING_KEY_BFLOAT16 = 10;
 constexpr int64_t TILING_KEY_FLOAT32 = 20;
@@ -256,17 +258,20 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     int64_t dimNumR1 = inputR1Shape.GetDimNum();
     int64_t dimNumR2 = inputR2Shape.GetDimNum();
     auto inputShape = xInput->GetStorageShape();
-    OP_CHECK_IF(dimNum != CONST_4,
-        OP_LOGE(context_->GetNodeName(), "xInput dim:%ld, should be 4.", dimNum),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(dimNumR1 != CONST_4 || dimNumR2 != CONST_4,
-        OP_LOGE(context_->GetNodeName(), "dimNumR1:%ld dimNumR2 %ld,  r1 r2 dim must be4", dimNumR1, dimNumR2),
-        return ge::GRAPH_FAILED);
+    if (dimNum != CONST_4 || dimNumR1 != CONST_4 || dimNumR2 != CONST_4) {
+        std::string dimNumMsg = std::to_string(dimNum) + ", " +
+            std::to_string(dimNumR1) + " and " + std::to_string(dimNumR2);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context_->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
+            "The shape dims of input x, cos and sin should all be 4D");
+        return ge::GRAPH_FAILED;
+    }
     for (int64_t i = 0 ; i < CONST_4; i++) {
         int64_t r1dim  = inputR1Shape.GetDim(i);
         int64_t r2dim  = inputR2Shape.GetDim(i);
         if (r1dim != r2dim) {
-            OP_LOGE(context_->GetNodeName(), "i is %d r1dim is %ld, r2dim is %ld, not equal",i,r1dim,r2dim);
+            std::string shapeMsg = ToString(inputR1Shape) + " and " + ToString(inputR2Shape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+                "The shapes of input cos and input sin should be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -295,24 +300,44 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     if (headDim_ == 0) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(headDim_ < 0,
-        OP_LOGE(context_->GetNodeName(), "slice not right"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(allHeadDim_ > D_LIMIT,
-        OP_LOGE(context_->GetNodeName(), "D must be less than %ld, actual %ld.", D_LIMIT, allHeadDim_),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(allHeadDim_ % INTERLEAVE_MODE_COEF != 0,
-        OP_LOGE(context_->GetNodeName(), "D must be multiples of 2 in interleave mode, actual %ld.", allHeadDim_),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(start_ < 0,
-        OP_LOGE(context_->GetNodeName(), "sliceStart must be >= 0, actual %ld.", start_),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(end_ < 0,
-        OP_LOGE(context_->GetNodeName(), "sliceEnd must be >= 0, actual %ld.", end_),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(end_ > allHeadDim_,
-        OP_LOGE(context_->GetNodeName(), "sliceEnd must be <= D(%ld), actual %ld.", allHeadDim_, end_),
-        return ge::GRAPH_FAILED);
+    if (headDim_ < 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("sliceLength=" + std::to_string(headDim_)).c_str(),
+            "Slice length must be >= 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (allHeadDim_ > D_LIMIT) {
+        std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LIMIT) +
+            ", where D refers to the last dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("D=" + std::to_string(allHeadDim_)).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (allHeadDim_ % INTERLEAVE_MODE_COEF != 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("D=" + std::to_string(allHeadDim_)).c_str(),
+            "D must be multiples of 2 in interleave mode, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (start_ < 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("sliceStart=" + std::to_string(start_)).c_str(),
+            "sliceStart must be >= 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (end_ < 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("sliceEnd=" + std::to_string(end_)).c_str(),
+            "sliceEnd must be >= 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (end_ > allHeadDim_) {
+        std::string reasonMsg = "sliceEnd must be <= D(" + std::to_string(allHeadDim_) +
+            "), where D refers to the last dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("sliceEnd=" + std::to_string(end_)).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     r1dim3_ =  inputR1Shape.GetDim(3);
     r1dim0_ =  inputR1Shape.GetDim(0);
     r1dim1_ =  inputR1Shape.GetDim(1);
@@ -320,15 +345,24 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     int64_t r1Dim2 = inputR1Shape.GetDim(2);
     int64_t xDim1 = xShape.GetDim(1);
     int64_t xDim2 = xShape.GetDim(2);
-    OP_CHECK_IF(headDim_ != r1dim3_,
-        OP_LOGE(context_->GetNodeName(), "slice not right, not equal r1 and r2 last dim num"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(r1dim0_ != dim0_,
-        OP_LOGE(context_->GetNodeName(), "dim0 must be equal"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(r1dim2_ != 1,
-        OP_LOGE(context_->GetNodeName(), "r1dim2_ must be 1"),
-        return ge::GRAPH_FAILED);
+    if (headDim_ != r1dim3_) {
+        std::string shapeMsg = "x D=" + std::to_string(headDim_) + ", cos/sin D=" + std::to_string(r1dim3_);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The D axes of input x and input cos should be the same, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (r1dim0_ != dim0_) {
+        std::string shapeMsg = "x dim0=" + std::to_string(dim0_) + ", cos dim0=" + std::to_string(r1dim0_);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The first dimensions of input x and input cos should be the same");
+        return ge::GRAPH_FAILED;
+    }
+    if (r1dim2_ != 1) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
+            ("dim2=" + std::to_string(r1dim2_)).c_str(),
+            "The third dimension of input cos should be 1");
+        return ge::GRAPH_FAILED;
+    }
     dim2_ = headDim_;
     dim1_ = xShape.GetDim(1) * xShape.GetDim(2);
     numHead_ = dim1_;
@@ -355,8 +389,13 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplitN(int64_t numHeads, in
         totalHeadNum1Size += headDimAlign * FP32_DTYPE_SIZE * IO_NUM;
     }
     uint32_t ubCalcNNum{1}, ubCalcNLoop{numHeads}, ubCalcNTail{0};
-    OP_CHECK_IF(bufferSize < totalHeadNum1Size, OP_LOGE(context_->GetNodeName(), "The D dimension of the input shape is too large."),
-                return ge::GRAPH_FAILED);
+    if (bufferSize < totalHeadNum1Size) {
+        std::string reasonMsg = "The D dimension of the input shape is too large to fit in UB (bufferSize=" +
+            std::to_string(bufferSize) + ", required=" + std::to_string(totalHeadNum1Size) + ")";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", reasonMsg.c_str(),
+            "The D dimension of input x is too large");
+        return ge::GRAPH_FAILED;
+    }
     ubCalcNNum = GetDiv(bufferSize, totalHeadNum1Size);
     ubCalcNLoop = GetCeilInt(numHeads, ubCalcNNum);
     ubCalcNTail = GetDivRem(numHeads, ubCalcNNum) != 0 ? numHeads - (ubCalcNLoop - 1) * ubCalcNNum : 0;
@@ -502,7 +541,9 @@ ge::graphStatus InplacePartialRotaryMulTiling::TilingSplit()
         seqLenOut = r1dim0_ * r1dim1_;
         numHeadsOut = xdim2_; // 1,BS,N,D cons/sin 1,BS,1,D
     } else {
-        OP_LOGE(context_->GetNodeName(), "The shape of the input x, cos and sin is not supported.");
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x, cos and sin",
+            "layout not supported",
+            "The shapes of input x, cos and sin do not satisfy any supported layout pattern");
         return ge::GRAPH_FAILED;
     }
     if (batchSizeOut != 1) {

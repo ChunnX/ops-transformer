@@ -39,6 +39,7 @@ const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -79,10 +80,14 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive(const int64_t idx)
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
-        OP_CHECK_IF(
-            shape.GetDim(i) <= 0,
-            OP_LOGE(context_, "input %ld has non positive shape, dim %lu actual %ld .", idx, i, shape.GetDim(i)),
-            return ge::GRAPH_FAILED);
+        if (shape.GetDim(i) <= 0) {
+            std::string reasonMsg = "All dimensions of input must be positive, but dim " +
+                std::to_string(i) + " is " + std::to_string(shape.GetDim(i));
+            const char* tensorName = (idx == X_INDEX) ? "x" : (idx == COS_INDEX) ? "cos" : "sin";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tensorName,
+                ToString(shape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -101,17 +106,24 @@ bool RopeRegBaseTilingClass::IsRotaryPosEmbeddingMode(const int32_t mode) const
 
 ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive() const
 {
-    OP_CHECK_IF(CheckShapeAllPositive(X_INDEX) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "x has non positive shape."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckShapeAllPositive(COS_INDEX) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "cos has non positive shape."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckShapeAllPositive(SIN_INDEX) != ge::GRAPH_SUCCESS, OP_LOGE(context_, "sin has non positive shape."),
-                return ge::GRAPH_FAILED);
+    if (CheckShapeAllPositive(X_INDEX) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckShapeAllPositive(COS_INDEX) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckShapeAllPositive(SIN_INDEX) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     auto yShape = context_->GetOutputShape(Y_INDEX)->GetStorageShape();
     for (size_t i = 0; i < yShape.GetDimNum(); i++) {
-        OP_CHECK_IF(yShape.GetDim(i) <= 0,
-                    OP_LOGE(context_, "output has non positive shape, dim %lu actual %ld .", i, yShape.GetDim(i)),
-                    return ge::GRAPH_FAILED);
+        if (yShape.GetDim(i) <= 0) {
+            std::string reasonMsg = "All dimensions of output must be positive, but dim " +
+                std::to_string(i) + " is " + std::to_string(yShape.GetDim(i));
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "output",
+                ToString(yShape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -141,7 +153,9 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        OP_LOGE(context_->GetNodeName(), "the shape of x and sin not satisfy the broadcast.");
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The shapes of input x and cos do not satisfy the broadcast rule");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -153,78 +167,88 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
     auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     auto &yShape = context_->GetOutputShape(Y_INDEX)->GetStorageShape();
-    OP_CHECK_IF(xShape.GetDimNum() != DIM_NUM, OP_LOGE(context_, "dim of x expect 4, actual %lu.", xShape.GetDimNum()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of cos expect 4, actual %lu.", cosShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sinShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of sin expect 4, actual %lu.", sinShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(yShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context_, "dim of output expect 4, actual %lu.", yShape.GetDimNum()), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape != sinShape,
-                OP_LOGE(context_,
-                        "shape of cos and sin should be same, actual cos shape is (%ld, %ld, %ld, %ld), sin shape is "
-                        "(%ld, %ld, %ld, %ld). ",
-                        cosShape.GetDim(DIM_0), cosShape.GetDim(DIM_1), cosShape.GetDim(DIM_2), cosShape.GetDim(DIM_3),
-                        sinShape.GetDim(DIM_0), sinShape.GetDim(DIM_1), sinShape.GetDim(DIM_2), sinShape.GetDim(DIM_3)),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(xShape != yShape,
-                OP_LOGE(context_,
-                        "shape of x and output should be2 same, actual x shape is (%ld, "
-                        "%ld, %ld, %ld), output shape is (%ld, %ld, %ld, %ld). ",
-                        xShape.GetDim(DIM_0), xShape.GetDim(DIM_1), xShape.GetDim(DIM_2), xShape.GetDim(DIM_3),
-                        yShape.GetDim(DIM_0), yShape.GetDim(DIM_1), yShape.GetDim(DIM_2), yShape.GetDim(DIM_3)),
-                return ge::GRAPH_FAILED);
+    if (xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
+            std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context_->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
+            "The shape dims of input x, cos and sin should all be 4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (yShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumMsg = std::to_string(yShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context_->GetNodeName(), "output", dimNumMsg.c_str(),
+            "The shape dims of output should be 4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (cosShape != sinShape) {
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+            "The shapes of input cos and input sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
+    if (xShape != yShape) {
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(yShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and output", shapeMsg.c_str(),
+            "The shapes of input x and output should be the same");
+        return ge::GRAPH_FAILED;
+    }
     // OP_CHECK_IF(
     //     (cosShape.GetDim(DIM_3) != xShape.GetDim(DIM_3)),
     //     OP_LOGE(context_,
     //             "D of x, cos, sin and output should be same, actual x is %ld, cos is %ld, sin is %ld, output is %ld. ",
     //             xShape.GetDim(DIM_3), cosShape.GetDim(DIM_3), sinShape.GetDim(DIM_3), yShape.GetDim(DIM_3)),
     //     return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
+    if (CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return CheckShapeAllPositive();
 }
 
 ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
 {
     dtype_ = context_->GetInputDesc(X_INDEX)->GetDataType();
-    OP_CHECK_IF(std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), dtype_) == SUPPORT_DTYPE.end(),
-                OP_LOGE(context_->GetNodeName(), "Only support F32, BF16, F16 datetype for x, actual %s.",
-                        ge::TypeUtils::DataTypeToSerialString(dtype_).c_str()),
-                return ge::GRAPH_FAILED);
+    if (std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), dtype_) == SUPPORT_DTYPE.end()) {
+        std::string inputDtypeStr = ToString(dtype_);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x", inputDtypeStr.c_str(),
+            "FLOAT, BF16, FLOAT16");
+        return ge::GRAPH_FAILED;
+    }
     
     auto cosType = context_->GetInputDesc(COS_INDEX)->GetDataType();
     auto sinType = context_->GetInputDesc(SIN_INDEX)->GetDataType();
     
     // Check cos/sin dtype: same type, and must be F32, BF16, or F16
-    OP_CHECK_IF(cosType != sinType,
-                OP_LOGE(context_, "cos and sin datatype should be same, cos is %s, sin is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(cosType).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(sinType).c_str()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), cosType) == SUPPORT_DTYPE.end(),
-                OP_LOGE(context_->GetNodeName(), "Only support F32, BF16, F16 datetype for cos/sin, actual %s.",
-                        ge::TypeUtils::DataTypeToSerialString(cosType).c_str()),
-                return ge::GRAPH_FAILED);
+    if (cosType != sinType) {
+        std::string dtypeMsg = ToString(cosType) + " and " + ToString(sinType);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "cos and sin", dtypeMsg.c_str(),
+            "The dtypes of input cos and input sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
+    if (std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), cosType) == SUPPORT_DTYPE.end()) {
+        std::string cosDtypeStr = ToString(cosType);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "cos", cosDtypeStr.c_str(),
+            "FLOAT, BF16, FLOAT16");
+        return ge::GRAPH_FAILED;
+    }
     
     // Mixed precision: x is BF16/FP16, cos/sin are FP32
     bool isMixedPrecision = (dtype_ == ge::DT_BF16 || dtype_ == ge::DT_FLOAT16) && cosType == ge::DT_FLOAT;
     bool isSamePrecision = (dtype_ == cosType);
     
-    OP_CHECK_IF(!isSamePrecision && !isMixedPrecision,
-                OP_LOGE(context_, "Unsupported dtype combination: x=%s, cos=%s. "
-                        "Supported: same type, or x=BF16/FP16 with cos/sin=FP32.",
-                        ge::TypeUtils::DataTypeToSerialString(dtype_).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(cosType).c_str()),
-                return ge::GRAPH_FAILED);
+    if (!isSamePrecision && !isMixedPrecision) {
+        std::string dtypeMsg = ToString(dtype_) + " and " + ToString(cosType);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "x and cos", dtypeMsg.c_str(),
+            "Unsupported dtype combination: supported combinations are same type, or x=BF16/FP16 with cos/sin=FP32");
+        return ge::GRAPH_FAILED;
+    }
     
     auto outputType = context_->GetOutputDesc(Y_INDEX)->GetDataType();
-    OP_CHECK_IF(outputType != dtype_,
-                OP_LOGE(context_, "output datatype expect %s, actual %s.",
-                        ge::TypeUtils::DataTypeToSerialString(dtype_).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(outputType).c_str()),
-                return ge::GRAPH_FAILED);
+    if (outputType != dtype_) {
+        std::string outputDtypeStr = ToString(outputType);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "output", outputDtypeStr.c_str(),
+            ToString(dtype_).c_str());
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -245,18 +269,28 @@ ge::graphStatus RopeRegBaseTilingClass::CheckParam()
 
 ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64_t d)
 {
-    OP_CHECK_IF(d > D_LIMIT, OP_LOGE(context_, "D must be small than %ld, actual %ld.", D_LIMIT, d),
-                return ge::GRAPH_FAILED);
+    if (d > D_LIMIT) {
+        std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LIMIT) +
+            ", where D refers to the last dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("D=" + std::to_string(d)).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::INTERLEAVE ||
         rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
-        OP_CHECK_IF(
-            d % HALF_INTERLEAVE_MODE_COEF != 0,
-            OP_LOGE(context_, "D must be multiples of 2 in half, interleave and interleave-half mode, actual %ld.", d),
-            return ge::GRAPH_FAILED);
+        if (d % HALF_INTERLEAVE_MODE_COEF != 0) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+                ("D=" + std::to_string(d)).c_str(),
+                "D must be multiples of 2 in half, interleave and interleave-half mode, where D refers to the last dim");
+            return ge::GRAPH_FAILED;
+        }
     } else if (rotaryMode_ == RotaryPosEmbeddingMode::QUARTER) {
-        OP_CHECK_IF(d % QUARTER_MODE_COEF != 0,
-                    OP_LOGE(context_, "D must be multiples of 4 in quarter mode, actual %ld.", d),
-                    return ge::GRAPH_FAILED);
+        if (d % QUARTER_MODE_COEF != 0) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+                ("D=" + std::to_string(d)).c_str(),
+                "D must be multiples of 4 in quarter mode, where D refers to the last dim");
+            return ge::GRAPH_FAILED;
+        }
     }
     if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
@@ -271,11 +305,16 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
 ge::graphStatus RopeRegBaseTilingClass::JudgeSliceInfo() {
     OP_LOGI(context_, "TEST LOG, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
     if (sliceStart_ < 0 || sliceEnd_ < 0 || sliceLength_ < 0 || sliceEnd_ > d_) {
-        OP_LOGE(context_, "slice info fail, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
+            ("slice=[" + std::to_string(sliceStart_) + ", " + std::to_string(sliceEnd_) + "), D=" + std::to_string(d_)).c_str(),
+            "Slice range is invalid: sliceStart/sliceEnd must be >= 0, sliceLength must be >= 0, and sliceEnd must be <= D");
         return ge::GRAPH_FAILED;
     }
     if (sliceLength_ > 0 && (cosd_ != sind_ || cosd_ != sliceLength_)) {
-        OP_LOGE(context_, "slice info fail, sliceLength_ =  %ld. cosd_ =  %ld", sliceLength_, cosd_);
+        std::string shapesMsg = std::to_string(sliceLength_) + " (slice), " +
+            std::to_string(cosd_) + " (cos_D) and " + std::to_string(sind_) + " (sin_D)";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "slice, cos and sin", shapesMsg.c_str(),
+            "When sliceLength > 0, the D axes of cos and sin must equal sliceLength");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
