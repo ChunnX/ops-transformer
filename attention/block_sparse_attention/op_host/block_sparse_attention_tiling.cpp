@@ -335,13 +335,8 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_D));
     auto embeddingSizeK = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BNSD_DIM_D));
     auto embeddingSizeV = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(BNSD_DIM_D));
-    int64_t qSeqlenDim = queryShape->GetStorageShape().GetDim(BNSD_DIM_S);
-    int64_t kvSeqlenDim = keyShape->GetStorageShape().GetDim(BNSD_DIM_S);
-    OP_CHECK_IF(qSeqlenDim <= 0 || kvSeqlenDim <= 0,
-        OP_LOGE(bsaContext->GetNodeName(), "BNSD seqlen must be positive, got qS=%ld kvS=%ld", qSeqlenDim, kvSeqlenDim),
-        return ge::GRAPH_FAILED);
-    maxQSeqlen_ = static_cast<uint64_t>(qSeqlenDim);
-    maxKvSeqlen_ = static_cast<uint64_t>(kvSeqlenDim);
+    maxQSeqlen_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_S));
+    maxKvSeqlen_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BNSD_DIM_S));
     if (batch_ != kBatch || batch_ != vBatch) {
         OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent batch with each other, "
             "but got qBatch %u, kBatch %u, vBatch %u.", batch_, kBatch, vBatch);
@@ -781,28 +776,24 @@ void BSATiling::CalcSplitCoreTilingParams950()
 {
     CalcBaseTileTilingParams950();
     for (uint32_t bIdx = 0; bIdx < batch_; bIdx++) {
-        int64_t curQSeqlen = useUniformQSeqlen_ ? static_cast<int64_t>(maxQSeqlen_) : qSeqLenList_[bIdx];
-        int64_t curKvSeqlen = useUniformKvSeqlen_ ? static_cast<int64_t>(maxKvSeqlen_) : kvSeqLenList_[bIdx];
+        int64_t curQSeqlen = useUniformQSeqlen_ ? maxQSeqlen_ : qSeqLenList_[bIdx];
+        int64_t curKvSeqlen = useUniformKvSeqlen_ ? maxKvSeqlen_ : kvSeqLenList_[bIdx];
         uint32_t curQSTileNum = GetCurQSTileNum950(curQSeqlen);
         uint32_t curBatchTaskNum = curQSTileNum * numHeads_;
         totalTaskNum_ += curBatchTaskNum;
         if (bIdx == 0) {
             firstBatchTaskNum_ = curBatchTaskNum;
         }
-        maxQSeqlen_ = static_cast<uint64_t>((curQSeqlen > static_cast<int64_t>(maxQSeqlen_)) ? curQSeqlen :
-            static_cast<int64_t>(maxQSeqlen_));
-        maxKvSeqlen_ = static_cast<uint64_t>((curKvSeqlen > static_cast<int64_t>(maxKvSeqlen_)) ? curKvSeqlen :
-            static_cast<int64_t>(maxKvSeqlen_));
+        maxQSeqlen_ = (curQSeqlen > maxQSeqlen_) ? curQSeqlen : maxQSeqlen_;
+        maxKvSeqlen_ = (curKvSeqlen > maxKvSeqlen_) ? curKvSeqlen : maxKvSeqlen_;
     }
     blockDim_ = aicNum_;
     // mask2idx split core
-    xBlockNumAligned_ = static_cast<uint32_t>((maxQSeqlen_ + static_cast<uint64_t>(blockShapeX_) - 1) /
-        static_cast<uint64_t>(blockShapeX_));
-    yBlockNumAligned_ = static_cast<uint32_t>((maxKvSeqlen_ + static_cast<uint64_t>(blockShapeY_) - 1) /
-        static_cast<uint64_t>(blockShapeY_));
-    uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_;
-    avgRowPerSubCore_ = static_cast<uint32_t>((totalRowNumBlockMask + aivNum_ - 1) / aivNum_);
-    preActiveSubCoreNum_ = static_cast<uint32_t>((totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_);
+    xBlockNumAligned_ = (maxQSeqlen_ + blockShapeX_ - 1) / blockShapeX_;
+    yBlockNumAligned_ = (maxKvSeqlen_ + blockShapeY_ - 1) / blockShapeY_;
+    uint32_t totalRowNumBlockMask = batch_ * numHeads_ * xBlockNumAligned_;
+    avgRowPerSubCore_ = (totalRowNumBlockMask + aivNum_ - 1) / aivNum_;
+    preActiveSubCoreNum_ = (totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_;
 }
 
 ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)

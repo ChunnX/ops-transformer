@@ -97,10 +97,10 @@ public:
         InitSyncFlags<4, 4, 4>();
 #ifdef __DAV_VEC__
         EpilogueMask2Idx epilogueMask2Idx(resource);
-        uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch_) * qHeads_ * xBlockNumAligned_;
+        uint32_t totalRowNumBlockMask = batch_ * qHeads_ * xBlockNumAligned_;
         epilogueMask2Idx(
             gBlockSparseMask, gSparseIdx, gSparseCount,
-            static_cast<uint32_t>(totalRowNumBlockMask), yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
+            totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
 #endif
         AscendC::SyncAll<false>();
 #ifdef __DAV_CUBE__
