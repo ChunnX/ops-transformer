@@ -570,6 +570,7 @@ aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclO
         return ACLNN_SUCCESS;
     }
 
+    CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
