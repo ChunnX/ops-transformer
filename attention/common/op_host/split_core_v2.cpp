@@ -61,7 +61,7 @@ uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo)
 {
     auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
-    if (mode == SparseMode::BAND || mode == SparseMode::BAND_INIT_TOKEN) {
+    if (mode == SparseMode::BAND) {
         return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + baseInfo.preToken;
     }
     return baseInfo.preToken;
@@ -78,7 +78,6 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
         case SparseMode::RIGHT_DOWN_CAUSAL:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
-        case SparseMode::BAND_INIT_TOKEN:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + baseInfo.nextToken;
         default:
             return baseInfo.nextToken;
@@ -723,7 +722,7 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     // BAND prefill 简单分核：按有效行均分，不做S2方向拆分
     auto mode = static_cast<SparseMode>(baseInfo.sparseMode);
     uint32_t s1Size0 = GetS1SeqSize(0U, baseInfo);
-    if ((mode == SparseMode::BAND_INIT_TOKEN) && s1Size0 >= param.mBaseSize) {
+    if (mode == SparseMode::BAND && s1Size0 >= param.mBaseSize) {
         uint32_t totalBN2 = baseInfo.bSize * baseInfo.n2Size;
         uint32_t s1GBaseNum = splitContext.splitInfo.s1GBaseNum[0];
 
