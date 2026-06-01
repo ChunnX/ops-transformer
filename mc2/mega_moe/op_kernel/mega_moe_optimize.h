@@ -198,7 +198,7 @@ private:
     LocalTensor<int32_t> topkIdsTensor_;
 
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<
-        QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true, IsInterleaved>;
+        QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true, IsInterleaved>;
     BlockEpilogue epilogueOp_;
 
     // 本核连续累计的 wave iteration 序号（trace 用，trace 关时无副作用）
@@ -249,7 +249,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertRevNumsGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expertRevTokenNumsPtr);
     tripleGloablTensor_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.tripleInfoPtr);
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
-        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+        params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.topKInfoInWorldSizePtr +
@@ -1375,7 +1375,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                                               MegaMoeTrace::SP_GMM1_BEGIN);
                 if (subBlockIdx_ == 0) {
                     MegaMoeImpl::GroupMatmulSwigluQuant<
-                        QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
+                        QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                         epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
                         vecSetSyncCom_, curWaveTrace);
                 }
