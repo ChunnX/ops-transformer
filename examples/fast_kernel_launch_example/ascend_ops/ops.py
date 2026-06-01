@@ -13,7 +13,17 @@ from typing import List, Optional, Tuple
 import torch
 from torch import Tensor
 
-__all__ = ["groupedmatmul", ]
+__all__ = ["groupedmatmul", "moe_gate_silu"]
+
+
+def moe_gate_silu(x: Tensor, total_rows: Tensor) -> Tensor:
+    """
+    MoE Gate SiLU算子。
+
+    输入x的最后一维按二等分拆成left/right，返回silu(left) * right。
+    total_rows为int64一维张量，最后一个元素表示实际参与计算的行数。
+    """
+    return torch.ops.ascend_ops.moe_gate_silu(x, total_rows)
 
 def groupedmatmul(
     x: List[Tensor],
