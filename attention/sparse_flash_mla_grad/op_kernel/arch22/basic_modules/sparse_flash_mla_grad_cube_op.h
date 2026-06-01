@@ -13,8 +13,8 @@
  */
 #pragma once
 #include "kernel_operator.h"
-#include "common_header.h"
-#include "matmul.h"
+#include "sparse_flash_mla_grad_common_header.h"
+#include "sparse_flash_mla_grad_matmul.h"
 using namespace AscendC;
 
 namespace SMLAG_BASIC {
