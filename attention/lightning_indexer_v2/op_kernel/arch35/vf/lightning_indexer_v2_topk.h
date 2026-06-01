@@ -16,7 +16,6 @@
 #define LIGHTNING_INDEXER_V2_TOPK_H
 
 #include "kernel_operator.h"
-#include "vf_topk.h"
 #include "vf_topk_gather.h"
 
 namespace liV2Topk {
