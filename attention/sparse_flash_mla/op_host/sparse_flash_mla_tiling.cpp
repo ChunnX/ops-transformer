@@ -52,8 +52,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 
 const std::map<std::string, std::vector<SMLALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME,            {SMLALayout::BSND, SMLALayout::TND}},
-    {ORI_KV_NAME,               {SMLALayout::PA_BNBD, SMLALayout::TND, SMLALayout::BSND}},
-    {CMP_KV_NAME,             {SMLALayout::PA_BNBD, SMLALayout::TND, SMLALayout::BSND}},
+    {ORI_KV_NAME,               {SMLALayout::PA_BBND, SMLALayout::TND, SMLALayout::BSND}},
+    {CMP_KV_NAME,             {SMLALayout::PA_BBND, SMLALayout::TND, SMLALayout::BSND}},
     {ATTEN_OUT_NAME,         {SMLALayout::BSND, SMLALayout::TND}},
     {ORI_SPARSE_INDICES,         {SMLALayout::BSND, SMLALayout::TND}},
     {CMP_SPARSE_INDICES,         {SMLALayout::BSND, SMLALayout::TND}},
@@ -100,7 +100,7 @@ std::string SMLALayoutToSerialString(SMLALayout layout)
     switch (layout) {
         case SMLALayout::BSND: return "BSND";
         case SMLALayout::TND: return "TND";
-        case SMLALayout::PA_BNBD: return "PA_BNBD";
+        case SMLALayout::PA_BBND: return "PA_BBND";
         default: return "UNKNOWN";
     }
 }
@@ -112,13 +112,13 @@ struct SMLACompileInfo {
 static const std::map<SMLALayout, std::vector<SMLAAxis>> SMLA_LAYOUT_AXIS_MAP = {
     {SMLALayout::BSND, {SMLAAxis::B, SMLAAxis::S, SMLAAxis::N, SMLAAxis::D}},
     {SMLALayout::TND, {SMLAAxis::T, SMLAAxis::N, SMLAAxis::D}},
-    {SMLALayout::PA_BNBD, {SMLAAxis::Bn, SMLAAxis::Bs, SMLAAxis::N, SMLAAxis::D}},
+    {SMLALayout::PA_BBND, {SMLAAxis::Bn, SMLAAxis::Bs, SMLAAxis::N, SMLAAxis::D}},
 };
 
 static const std::map<SMLALayout, size_t> SMLA_LAYOUT_DIM_MAP = {
     {SMLALayout::BSND, DIM_NUM_FOUR},
     {SMLALayout::TND, DIM_NUM_THREE},
-    {SMLALayout::PA_BNBD, DIM_NUM_FOUR},
+    {SMLALayout::PA_BBND, DIM_NUM_FOUR},
 };
 
 static std::string SMLADataTypeToSerialString(ge::DataType type)
@@ -141,9 +141,9 @@ ge::graphStatus SMLAInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr, OP_LOGE(opName_, "tensor of oriKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (opParamInfo_.layoutKv == "PA_BNBD") {
+    if (opParamInfo_.layoutKv == "PA_BBND") {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_ND"),
+                    OP_LOGE(opName_, "tensor of oriBlockTable is nullptr when layoutKv is PA_BBND"),
                     return ge::GRAPH_FAILED);
     }
     if (perfMode_ == SMLATemplateMode::CFA_TEMPLATE_MODE) {
@@ -200,9 +200,7 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0, OP_LOGE(opName_, "num of core obtained is 0."), return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910_93) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
+    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND950)) {
         OP_LOGE(opName_, "SOC Version[%d] is not support.", (int32_t)socVersion_);
         return ge::GRAPH_FAILED;
     }
@@ -277,7 +275,6 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
-    opParamInfo_.batchInvariant = attrs->GetAttrPointer<uint32_t>(ATTR_BATCH_INVARIANT_INDEX);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
@@ -347,12 +344,7 @@ ge::graphStatus SMLAInfoParser::GetQueryAndOutLayout()
     }
     if (qLayout_ == SMLALayout::BSND) {
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor != nullptr,
-                    OP_LOGE(opName_, "when query's layout is BSND, cuSeqLensQ is null."),
-                    return ge::GRAPH_FAILED);
-    }
-    if (qLayout_ == SMLALayout::TND) {
-        OP_CHECK_IF(opParamInfo_.seqUsedQ.tensor != nullptr,
-                    OP_LOGE(opName_, "when query's layout is TND, seqUsedQ is null."),
+                    OP_LOGE(opName_, "when query's layout is BSND, cuSeqLensQ should be null."),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -361,7 +353,7 @@ ge::graphStatus SMLAInfoParser::GetQueryAndOutLayout()
 ge::graphStatus SMLAInfoParser::GetKvLayout()
 {
     const map<string, SMLALayout> layoutKVMap = {
-        {"PA_BNBD",     SMLALayout::PA_BNBD},
+        {"PA_BBND",     SMLALayout::PA_BBND},
         {"TND",       SMLALayout::TND},
         {"BSND",      SMLALayout::BSND},
     };
@@ -594,10 +586,11 @@ ge::graphStatus SMLAInfoParser::GetS2Size()
         s2Size_ = GetAxisNum(oriKvShape_, SMLAAxis::S, kvLayout_);
         cmpS2Size_ = GetAxisNum(cmpKvShape_, SMLAAxis::S, kvLayout_);
         return ge::GRAPH_SUCCESS;
-    } else if (kvLayout_ == SMLALayout::PA_BNBD) {
+    } else if (kvLayout_ == SMLALayout::PA_BBND) {
         // 获取S2基准值:PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
         return GetS2SizeForPageAttention();
     }
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus SMLAInfoParser::GetQHeadDim()
@@ -680,7 +673,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
         }
     }
 
-    if (kvLayout_ == SMLALayout::PA_BNBD) {
+    if (kvLayout_ == SMLALayout::PA_BBND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
             if (qLayout_ == SMLALayout::BSND) {
                 if (opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_) {
@@ -697,7 +690,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             }
             actualLenDimsKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
         } else {
-            OP_LOGE(opName_, "Input sequsedOriKv must be provided when kv layout is PA_BNBD");
+            OP_LOGE(opName_, "Input sequsedOriKv must be provided when kv layout is PA_BBND");
             return ge::GRAPH_FAILED;
         }
     } else if (kvLayout_ == SMLALayout::TND) {
@@ -706,7 +699,7 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED);
     } else if (kvLayout_ == SMLALayout::BSND) {
     } else {
-        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BNBD, TND and BSND layout, but got %d.", kvLayout_);
+        OP_LOGE(opName_, "oriKV and cmpKv only support PA_BBND, TND and BSND layout, but got %d.", kvLayout_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -763,7 +756,6 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
     smlaInfo.topkValueMode = *opParamInfo_.topkValueMode;
-    smlaInfo.batchInvariant = *opParamInfo_.batchInvariant;
 
     smlaInfo.qLayout = qLayout_;
     smlaInfo.oriSparseIndicesLayout = oriSparseIndicesLayout_;
@@ -854,7 +846,6 @@ void SMLATilingCheck::Init()
     kvLayout_ = smlaInfo_.kvLayout;
     outLayout_ = smlaInfo_.outLayout;
     topkValueMode_ = smlaInfo_.topkValueMode;
-    batchInvariant_ = smlaInfo_.batchInvariant;
 }
 
 void SMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
@@ -1093,7 +1084,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpSparseIndices() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriBlockTable() const
 {
-    if (kvLayout_ != SMLALayout::PA_BNBD) {
+    if (kvLayout_ != SMLALayout::PA_BBND) {
         return ge::GRAPH_SUCCESS;
     }
     const std::vector<size_t> oriBlockTableDimNumList = {DIM_NUM_TWO};
@@ -1112,7 +1103,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriBlockTable() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
 {
-    if (kvLayout_ != SMLALayout::PA_BNBD) {
+    if (kvLayout_ != SMLALayout::PA_BBND) {
         return ge::GRAPH_SUCCESS;
     }
     if (smlaInfo_.perfMode == optiling::SMLATemplateMode::SCFA_TEMPLATE_MODE ||
@@ -1124,9 +1115,8 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
                 cmpBlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
                 return ge::GRAPH_FAILED;
                 }
-            OP_CHECK_IF((cmpBlockSize_ <= 0 || cmpBlockSize_ > BLOCK_SIZE_LIMIT ||
-                        (static_cast<uint64_t>(cmpBlockSize_) % 16 != 0UL)),
-                        OP_LOGE(opName_, "cmpBlockSize should be in [1, 1024], and be aligned to 16, but got: %d.",
+            OP_CHECK_IF((cmpBlockSize_ <= 0 || cmpBlockSize_ > BLOCK_SIZE_LIMIT),
+                        OP_LOGE(opName_, "cmpBlockSize should be in [1, 1024], but got: %d.",
                         cmpBlockSize_),
                         return ge::GRAPH_FAILED);
         }
@@ -1162,12 +1152,9 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaCmpRatio() const
 {
-    // if (smlaInfo_.perfMode == optiling::SMLATemplateMode::CFA_TEMPLATE_MODE
-    //     || smlaInfo_.perfMode == optiling::SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-    //     OP_CHECK_IF(cmpRatio_ != 128 && cmpRatio_ != 4,
-    //                 OP_LOGE(opName_, "cmpRatio should be 128 or 4, but got %u", cmpRatio_),
-    //                 return ge::GRAPH_FAILED);
-    // }
+    OP_CHECK_IF(cmpRatio_ < 1 || cmpRatio_ > 128,
+                OP_LOGE(opName_, "cmpRatio should be in range [1, 128], but got %u", cmpRatio_),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1195,12 +1182,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
     if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
-            OP_LOGE(opName_, "cmp_redisual_kv is required when cmp_mask_mode=3 and cmp_ratio!=1"),
+            OP_LOGE(opName_, "cmp_redisual_kv is required when cmp_mask_mode=3 and cmp_ratio != 1"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
-
 
 ge::graphStatus SMLATilingCheck::CheckSinglePara() const
 {
@@ -1354,9 +1340,6 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
 
     OP_CHECK_IF(topkValueMode_ != 1,
                 OP_LOGE(opName_, "topkValueMode should be 1, but got %d", topkValueMode_),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(batchInvariant_ != 0,
-                OP_LOGE(opName_, "batchInvariant should be 0, but got %d", batchInvariant_),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1589,7 +1572,6 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_returnSoftmaxLse(tilingInfo->returnSoftmaxLse);
 
     tilingData_.baseParams.set_topkValueMode(tilingInfo->topkValueMode);
-    tilingData_.baseParams.set_batchInvariant(tilingInfo->batchInvariant);
 
     tilingData_.cmpParams.set_cmpMaxBlockNumPerBatch(tilingInfo->cmpMaxBlockNumPerBatch);
     tilingData_.cmpParams.set_cmpSparseBlockCount(tilingInfo->cmpSparseBlockCount);
