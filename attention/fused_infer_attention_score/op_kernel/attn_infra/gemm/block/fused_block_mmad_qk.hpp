@@ -174,10 +174,14 @@ public:
 
     __aicore__ inline
     void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, 
-         uint32_t startOffset, uint32_t strideKV, uint32_t blockSize)
+         uint32_t startOffset, uint32_t strideKV, uint32_t blockSize, uint64_t keyBnStride)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-        kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
+        if (keyBnStride != 0) {
+            kOffset = blockTableId * keyBnStride + startOffset * strideKV;
+        } else {
+            kOffset = blockTableId * blockSize * strideKV + startOffset * strideKV;
+        }
     }
 
     __aicore__ inline
@@ -202,7 +206,7 @@ public:
                     AscendC::GlobalTensor<ElementC> gC,
                     AscendC::GlobalTensor<int32_t> gBlockTable,
                     LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
-                    uint32_t nIdx, uint32_t nLoop, uint32_t blockSize, uint32_t strideKV)
+                    uint32_t nIdx, uint32_t nLoop, uint32_t blockSize, uint32_t strideKV, uint64_t keyBnStride)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM1];
@@ -235,7 +239,7 @@ public:
                     uint32_t curBlockSize = (curBlockIdx < (curBlockTotalNum-1)) ? blockSize : blockEnd;
                     uint32_t nowNIdx = nIdx * maxKVStackLen / blockSize + curBlockIdx;
                     getBlockShape(actualShape, blockStartOffset, l1NResDynamic, kvL1Len, nowLen, curBlockSize);
-                    getKVOffset(gBlockTable, gBOffset, nowNIdx, blockStartOffset, strideKV, blockSize);
+                    getKVOffset(gBlockTable, gBOffset, nowNIdx, blockStartOffset, strideKV, blockSize, keyBnStride);
                     auto layoutBTile = layoutB.GetTileLayout(MakeCoord(embed, nowLen));
                     MatrixCoord l1BTileCoord{0, kvL1Len};
                     auto l1BTile = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
