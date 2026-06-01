@@ -1489,7 +1489,7 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
                      NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         }
     } else {
-        if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+        if (quantMode_ == QUANT_MODE_UNQUANT && dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
             SetPerLoopParams4NoQuantDropLess(perLoopParams, perCoreIndicesElements);
         } else {
             SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
