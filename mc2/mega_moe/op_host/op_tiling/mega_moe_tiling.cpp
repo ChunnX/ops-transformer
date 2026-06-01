@@ -942,7 +942,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     if (numMaxTokensPerRank != 0) {
         OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank ||
                         numMaxTokensPerRank % epWorldSize != 0,
-            OP_LOGE(nodeName, 
+            OP_LOGE(nodeName,
                 "numMaxTokensPerRank(%ld) either be 0 or (maxBs * EP and mod(numMaxTokensPerRank, EP(%ld)) == 0).",
                 numMaxTokensPerRank, epWorldSize),
             return ge::GRAPH_FAILED);
