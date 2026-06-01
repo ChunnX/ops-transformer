@@ -84,7 +84,7 @@ protected:
     uint64_t hOutSize = 0;
     uint64_t hPostSize = 0;
 
-    DataCopyPadParams padParams{false, 0, 0, 0};
+    DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 };
 
 template <typename T>
@@ -192,9 +192,9 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
         SetFlag<HardEvent::V_MTE2>(0);
         WaitFlag<HardEvent::V_MTE2>(0);
 
-        DataCopyParams copyParamsHLPostUb{1, (uint16_t)(this->n * sizeof(float)), 0, 0};
+        DataCopyExtParams copyParamsHLPostUb{1, static_cast<uint32_t>(this->n * sizeof(float)), 0, 0, 0};
         DataCopyPad(this->HLPostUb, this->HLPostGm[i * this->n], copyParamsHLPostUb, this->padParams);
-        DataCopyParams copyParamsHLResUb{1, (uint16_t)(this->n * this->n * sizeof(float)), 0, 0};
+        DataCopyExtParams copyParamsHLResUb{1, static_cast<uint32_t>(this->n * this->n * sizeof(float)), 0, 0, 0};
         DataCopyPad(this->HLResUb, this->HLResGm[i * this->n * this->n], copyParamsHLResUb, this->padParams);
         
         // 清0
@@ -205,27 +205,27 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
         Duplicate(this->dHLResUb, float(0.0), this->n * this->alignN);
 
         for (int j = 0; j < this->loopC; j ++) {
-            uint16_t channelStride = this->channel - this->blockChannel;
+            uint32_t channelStride = this->channel - this->blockChannel;
             SetFlag<HardEvent::V_MTE2>(0);
             WaitFlag<HardEvent::V_MTE2>(0);
 
             SetFlag<HardEvent::MTE3_V>(1);
             WaitFlag<HardEvent::MTE3_V>(1);
 
-            DataCopyParams copyParamsdFPostResUb{
-                (uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)),
-                (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsdFPostResUb{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->blockChannel * sizeof(T)),
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0, 0};
             DataCopyPad(
                 this->dFPostResCastUb, this->dFPostResGm[i * this->n * this->channel + j * this->blockChannel],
                 copyParamsdFPostResUb, this->padParams);
-            DataCopyParams copyParamsFOutUb{1, (uint16_t)(this->blockChannel * sizeof(T)), 0, 0};
+            DataCopyExtParams copyParamsFOutUb{1, static_cast<uint32_t>(this->blockChannel * sizeof(T)), 0, 0, 0};
             DataCopyPad(
                 this->FOutCastUb, this->FOutGm[i * this->channel + j * this->blockChannel],
                 copyParamsFOutUb, this->padParams);
             
-            DataCopyParams copyParamsXLUb{
-                (uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)),
-                (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsXLUb{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->blockChannel * sizeof(T)),
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0, 0};
             DataCopyPad(
                 this->xLCastUb, this->xLGm[i * this->n * this->channel + j * this->blockChannel],
                 copyParamsXLUb, this->padParams);
@@ -270,10 +270,10 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
                 this->n, this->n, this->blockChannel);
 
             
-            DataCopyParams copyParamsdxLGm{
-                (uint16_t)this->n, (uint16_t)(this->blockChannel * sizeof(T)), 0,
-                (uint16_t)(channelStride * sizeof(T))};
-            DataCopyParams copyParamsdFOutGm{1, (uint16_t)(this->blockChannel * sizeof(T)), 0, 0};
+            DataCopyExtParams copyParamsdxLGm{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->blockChannel * sizeof(T)), 0,
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsdFOutGm{1, static_cast<uint32_t>(this->blockChannel * sizeof(T)), 0, 0, 0};
             Cast(this->dFOutCastUb, this->dFOutUb, RoundMode::CAST_ROUND,  this->blockChannel); // float--> bf16
             Cast(this->dxLCastUb, this->dxLUb, RoundMode::CAST_ROUND, this->n * this->blockChannel); // float--> bf16
             
@@ -289,7 +289,7 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
 
         if (this->tailC != 0) {
             // 尾部C的处理
-            uint16_t channelStride = this->channel - this->tailC;
+            uint32_t channelStride = this->channel - this->tailC;
             
             SetFlag<HardEvent::V_MTE2>(0);
             WaitFlag<HardEvent::V_MTE2>(0);
@@ -297,22 +297,22 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
             SetFlag<HardEvent::MTE3_V>(1);
             WaitFlag<HardEvent::MTE3_V>(1);
 
-            DataCopyParams copyParamsdFPostResUb{
-                (uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)),
-                (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsdFPostResUb{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->tailC * sizeof(T)),
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0, 0};
             DataCopyPad(
                 this->dFPostResCastUb,
                 this->dFPostResGm[i * this->n * this->channel + this->loopC * this->blockChannel],
                 copyParamsdFPostResUb, this->padParams);
             
-            DataCopyParams copyParamsFOutUb{1, (uint16_t)(this->tailC * sizeof(T)), 0, 0};
+            DataCopyExtParams copyParamsFOutUb{1, static_cast<uint32_t>(this->tailC * sizeof(T)), 0, 0, 0};
             DataCopyPad(
                 this->FOutCastUb,
                 this->FOutGm[i * this->channel + this->loopC * this->blockChannel],
                 copyParamsFOutUb, this->padParams);
-            DataCopyParams copyParamsXLUb{
-                (uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)),
-                (uint16_t)(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsXLUb{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->tailC * sizeof(T)),
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0, 0};
             DataCopyPad(
                 this->xLCastUb,
                 this->xLGm[i * this->n * this->channel + this->loopC * this->blockChannel],
@@ -353,10 +353,10 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
                 this->HLResUb, this->dFPostResUb, this->dxLUb, this->dHLResTmp2,
                 this->n, this->n, this->tailC);
 
-            DataCopyParams copyParamsdxLGm{
-                (uint16_t)this->n, (uint16_t)(this->tailC * sizeof(T)), 0,
-                (uint16_t)(channelStride * sizeof(T))};
-            DataCopyParams copyParamsdFOutGm{1, (uint16_t)(this->tailC * sizeof(T)), 0, 0};
+            DataCopyExtParams copyParamsdxLGm{
+                static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->tailC * sizeof(T)), 0,
+                static_cast<uint32_t>(channelStride * sizeof(T)), 0};
+            DataCopyExtParams copyParamsdFOutGm{1, static_cast<uint32_t>(this->tailC * sizeof(T)), 0, 0, 0};
             Cast(this->dFOutCastUb, this->dFOutUb, RoundMode::CAST_ROUND, this->tailC); // float--> bf16
             Cast(this->dxLCastUb, this->dxLUb, RoundMode::CAST_ROUND, this->n * this->tailC); // float--> bf16
             
@@ -370,8 +370,9 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
                 this->dFOutCastUb, copyParamsdFOutGm);
         }
 
-        DataCopyParams copyParamsdHLResGm{(uint16_t)this->n, (uint16_t)(this->n * sizeof(float)), 0, 0};
-        DataCopyParams copyParamsdHLPostGm{1, (uint16_t)(this->n * sizeof(float)), 0, 0};
+        DataCopyExtParams copyParamsdHLResGm{
+            static_cast<uint16_t>(this->n), static_cast<uint32_t>(this->n * sizeof(float)), 0, 0, 0};
+        DataCopyExtParams copyParamsdHLPostGm{1, static_cast<uint32_t>(this->n * sizeof(float)), 0, 0, 0};
 
         SetFlag<HardEvent::V_MTE3>(2);
         WaitFlag<HardEvent::V_MTE3>(2);
