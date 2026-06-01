@@ -148,8 +148,8 @@ def lightning_indexer_grad_kernel(
                             T.copy(reluIn_ws[b_idx, s1_idx, n2, m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N], relu_in_ub)
                             T.copy(reluGrad_ws[b_idx, s1_idx, n2, m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N], relu_grad_ub)
 
-                            T.tile.cmp_gt(mask_ub, relu_in_ub, zero_ub)
-                            T.tile.select(relu_grad_ub, mask_ub, relu_grad_ub, 0.0)
+                            T.tile.compare(mask_ub, relu_in_ub, zero_ub, "GT")
+                            T.tile.select(relu_grad_ub, mask_ub, relu_grad_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
 
                             T.copy(relu_grad_ub, reluGrad_ws[b_idx, s1_idx, n2, m_idx * BLOCK_M:(m_idx + 1) * BLOCK_M, n_idx * BLOCK_N:(n_idx + 1) * BLOCK_N])
 
