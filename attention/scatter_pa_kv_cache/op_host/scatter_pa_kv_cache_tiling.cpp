@@ -563,8 +563,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
     auto attrs = context_->GetAttrs();
     auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
     auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
-    if (params_.templateType == TEMPLATE_NORM_NCT || params_.templateType == TEMPLATE_SISO_NCT) {
 
+    if (params_.templateType == TEMPLATE_NORM_NCT || params_.templateType == TEMPLATE_SISO_NCT) {
         params_.kStride = strides->GetData()[0];
         params_.vStride = strides->GetData()[1];
         params_.kOffset = offsets->GetData()[0];
