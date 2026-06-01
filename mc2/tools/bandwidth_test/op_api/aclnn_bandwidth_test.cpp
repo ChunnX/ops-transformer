@@ -117,7 +117,6 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
         mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
         y, receiveCnt, workspaceSize, executor);
-#else
 #endif
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
