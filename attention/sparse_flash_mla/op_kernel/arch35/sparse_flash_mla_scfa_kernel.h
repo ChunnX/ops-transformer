@@ -291,7 +291,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ,
                               sinks, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     cubeBlock.InitCubeInput(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, cuSeqlensQ,
-                            cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
+                            cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -532,52 +532,6 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                         }
                     }
                 }
-                // else if constexpr (TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-                //     if (notLastTwoLoop) {
-                //         RunInfo &runInfo0 = runInfo[taskId % 3];
-                //         this->SetRunInfo(runInfo0, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                //         if ASCEND_IS_AIC {
-                //             this->cubeBlock.MergeKv(this->l1RightBuffers.Get(), runInfo0, this->constInfo, 0);
-                //         } else {
-                //             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
-                //                 runInfo0, this->constInfo, 32);
-                //         }
-                //     }
-                //     if (taskId > 0 && notLast) {
-                //         RunInfo &runInfo1 = runInfo[(taskId + 2) % 3];
-                //         if ASCEND_IS_AIC {
-                //             // this->cubeBlock.IterateBmm1(
-                //                    this->bmm1Buffers.Get(), this->l1RightBuffers.Get((taskId + 2) % 3),
-                //             //     v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                //             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
-                //                                         this->l1RightBuffers.GetReused(),
-                //                                         v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                //         } else {
-                //             this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo1,
-                //                 this->constInfo);
-                //         }
-                //     }
-                //     if (taskId > 1) {
-                //         RunInfo &runInfo2 = runInfo[(taskId + 1) % 3];
-                //         if ASCEND_IS_AIC {
-                //             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                //                 this->l1RightBuffers.Get((taskId + 1) % 3), runInfo2, this->constInfo);
-                //         } else {
-                //             this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo2, this->constInfo);
-                //         }
-                //     }
-                //     // if (notLastTwoLoop) {
-                //     //     RunInfo &runInfo0 = runInfo[taskId % 3];
-                //     //     if ASCEND_IS_AIC {
-                //     //         this->cubeBlock.MergeKv(
-                //                  this->l1RightBuffers.Get(taskId % 3), runInfo0, this->constInfo, 16);
-                //     //     } else {
-                //     //         this->vecBlock.ProcessVec0(
-                //                    this->l1RightBuffers.Get(taskId % 3), v0ResGmBuffers.GetReused(),
-                //     //             runInfo0, this->constInfo, 80);
-                //     //     }
-                //     // }
-                // }
                 ++taskId;
             }
             ++multiCoreInnerIdx;

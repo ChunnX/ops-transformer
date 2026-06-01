@@ -33,7 +33,6 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
     int32_t actualS1Size = 0;
-    //int32_t actualS2Size = 0; // del
     int32_t actualS2OriSize = 0;
     int32_t actualS2CmpSize = 0;
     int32_t actualSeqMin = 1;
@@ -48,9 +47,9 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualSeqQlenAddr[bIdx];
     }
 
-    // if (constInfo.isActualLenDimsOriKVNull) {  补回来
-    //     actualS2OriSize = constInfo.s2Size;
-    // } else {
+    if (constInfo.isActualLenDimsOriKVNull) {
+        actualS2OriSize = constInfo.s2Size;
+    } else {
         if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
             if constexpr (IS_PA) {
                 actualS2OriSize = actualSeqOriKvlenAddr[bIdx];
@@ -58,16 +57,15 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2OriSize = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
             }
         } else {
-            // actualS2OriSize = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
-            //     actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
-            actualS2OriSize = actualSeqOriKvlenAddr[bIdx];
+            actualS2OriSize = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
+                actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
         }
-    //}
+    }
 
     // 处理cmp的actualSeq
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
-            if (actualSeqCmpKvlenAddr != nullptr) {    // 有actualSeq先用，没有再看cuSeqlens，什么都没有就做除法
+            if (actualSeqCmpKvlenAddr != nullptr) {
                 actualS2CmpSize = actualSeqCmpKvlenAddr[bIdx];
             } else if (cuSeqlensCmpKvAddr != nullptr) {
                 actualS2CmpSize = cuSeqlensCmpKvAddr[bIdx + 1] - cuSeqlensCmpKvAddr[bIdx];
@@ -76,7 +74,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             }
         } else {
             actualS2CmpSize = (actualSeqCmpKvlenAddr == nullptr) ? (actualS2OriSize / constInfo.cmpRatio) :
-                (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ? actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
+                (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
+                 actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
         }
     }
     runParam.cmpSparseBlockCount = constInfo.cmpSparseBlockCount;
@@ -87,7 +86,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS2CmpSize = actualS2CmpSize;
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpResidual = (cmpResidualKvAddr != nullptr) ? cmpResidualKvAddr[bIdx] : 0;
-        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
+        runParam.nextTokensPerBatchCmp =
+            (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
 
@@ -296,12 +296,9 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, __gm
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
     }
-
     runParam.oriKvLoopEndIdx = (runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx + s2BaseSize - 1) / s2BaseSize;
-
     runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx + runParam.cmpKvLoopEndIdx;
     return (runParam.s2LoopEndIdx == 0);
-
 }
 
 TEMPLATE_INTF
