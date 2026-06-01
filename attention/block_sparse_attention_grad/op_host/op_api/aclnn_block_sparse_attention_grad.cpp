@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -162,18 +162,6 @@ static aclnnStatus ValidateParams(const aclTensor *dout,
         return ACLNN_ERR_PARAM_INVALID;
     }    
 
-    // 验证Q layout
-    if (qLayout != "TND" && qLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qInputLayout only supports TND or BNSD, got %s.", qLayout.c_str());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
-    // 验证KV layout
-    if (kvLayout != "TND" && kvLayout != "BNSD") {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvInputLayout only supports TND or BNSD, got %s.", kvLayout.c_str());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
     // 验证Q和KV格式一致性：如果其中一个是BNSD，另一个也必须是BNSD
     bool qIsBNSD = (qLayout == "BNSD");
     bool kvIsBNSD = (kvLayout == "BNSD");
