@@ -256,7 +256,7 @@ struct GmLayout<GmFormat::PA_BnNBsD> {
         shape = AscendC::MakeShape(n, blockSize, d);
         uint64_t dStride = 1;
         uint64_t bsStride = dStride * d;
-        uint64_t nStride = bsStride * blockSize;
+        uint64_t nStride = bsStride * (blockSize + 4);
         uint64_t bnStride = nStride * n;
         stride = AscendC::MakeStride(bnStride, nStride, bsStride, dStride);
     }
