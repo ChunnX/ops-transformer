@@ -115,8 +115,8 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BufferManager);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-        __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedQ,
+        __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void CalcS2Coord(const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -145,14 +145,16 @@ private:
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     static constexpr GmFormat KV_FORMAT = GetKvGmFormat<KV_LAYOUT_T>();
-    FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> oriKvGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> cmpKvGm;
+    static constexpr bool Q_WITH_ZERO_HEAD = (LAYOUT_T == SMLA_LAYOUT::TND);
+    FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_WITH_ZERO_HEAD> queryGm;
+    static constexpr bool KV_WITH_ZERO_HEAD = (KV_LAYOUT_T == SMLA_LAYOUT::TND);
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> oriKvGm;
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> cmpKvGm;
     GlobalTensor<int32_t> cmpSparseIndicesGm;
     GlobalTensor<int32_t> oriBlockTableGm;
     GlobalTensor<int32_t> cmpBlockTableGm;
     GlobalTensor<int32_t> blockTableGm;
-    FaGmTensor<KV_T, KV_FORMAT, int32_t> curKvGm;
+    FaGmTensor<KV_T, KV_FORMAT, int32_t, KV_WITH_ZERO_HEAD> curKvGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> cuSeqlensOriKvGm;
     GlobalTensor<int32_t> cuSeqlensCmpKvGm;
@@ -225,7 +227,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
             SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
         }
-        InitGmTensor(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
+        InitGmTensor(cuSeqlensQ, sequsedQ, cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
     }
 }
 
@@ -248,15 +250,23 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManag
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv, const ConstInfo& constInfo)
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
+    const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
     } else {  // SMLA_LAYOUT::TND
         cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        GlobalTensor<int32_t> sequsedQGm;
+        if (sequsedQ != nullptr) {
+            sequsedQGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
+        }
+        uint32_t sequsedQSize = (sequsedQ == nullptr) ? 0 : constInfo.bSize;
+            ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+            parser.Init(cuSeqlensQGm, sequsedQGm, constInfo.bSize, sequsedQSize);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
-            cuSeqlensQGm, constInfo.actualSeqLenSize);
+            parser);
     }
 
     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
@@ -268,12 +278,26 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
         }
     } else if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::TND) {
         cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
-        this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
-            cuSeqlensOriKvGm, constInfo.actualSeqLenSize);
+        if constexpr (Q_WITH_ZERO_HEAD) {
+            GlobalTensor<int32_t> seqUsedGm;
+            ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+            parser.Init(cuSeqlensOriKvGm, seqUsedGm, constInfo.actualSeqLenSize, 0);
+            this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
+        } else {
+            this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
+                cuSeqlensOriKvGm, constInfo.actualSeqLenSize);
+        }
         if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
             cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
-            this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
-                cuSeqlensCmpKvGm, constInfo.actualSeqLenSize);
+            if constexpr (Q_WITH_ZERO_HEAD) {
+                GlobalTensor<int32_t> seqUsedGm;
+                ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
+                parser.Init(cuSeqlensCmpKvGm, seqUsedGm, constInfo.actualSeqLenSize, 0);
+                this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
+            } else {
+                this->cmpKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize,
+                    cuSeqlensCmpKvGm, constInfo.actualSeqLenSize);
+            }
         }
     } else {
         // BSND不需要初始化
@@ -489,7 +513,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1CFA(
         GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
     } else {
         int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
-            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize,
                             constInfo.dSize, constInfo.mm1Kb);
     }
@@ -667,7 +691,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
             GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
         } else {
             int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
-                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
             CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize,
                                 constInfo.dSize, constInfo.mm1Kb);
         }
