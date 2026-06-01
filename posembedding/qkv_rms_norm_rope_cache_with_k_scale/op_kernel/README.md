@@ -8,8 +8,9 @@ key dispatch shell, and it includes the controller directly. The D=128
 fast-path implementation is split by module:
 
 - `qkv_rms_norm_rope_cache_with_k_scale_common.h`: common constants, POD
-  structs, raw GM argument bundle, Cube/Vec typed GM bundles, scalar helpers,
-  AIV slice helper, and CrossCore wrappers.
+  structs, raw GM argument bundle, scalar helpers, 2D GM-to-UB copy helper
+  backed by explicit `DataCopyPad` parameters, AIV slice helper, and CrossCore
+  wrappers.
 - `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level
   core token range helper, token-size tile expansion, and explicit AIC/AIV
   entry dispatch.
@@ -17,6 +18,8 @@ fast-path implementation is split by module:
   single-tile AIC/AIV compute entry points.
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
+- `qkv_rms_norm_rope_cache_with_k_scale_vf.h`: D=128 RMSNorm + half-RoPE BF16
+  vector function used by the AIV preprocess path.
 - `qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h`: kernel-side POD tiling
   data.
 
@@ -79,25 +82,24 @@ are statically checked to stay in `0..5`.
 |-----------|--------|-----------|
 | `MTE2 -> V` | input/cos-sin/slot-mapping DB pool current buffer | `0/1` |
 | `V -> MTE2` | input UB reuse | `0/1` |
-| `V -> MTE3` | v-out DB pool current buffer | `0/1` |
 | `MTE3 -> V` | v-out DB pool reuse | `0/1` |
-| `V -> MTE3` | output DB pool current buffer for Q/K FP8 staging/write-out | `2/3` |
 | `MTE3 -> V` | output DB pool Q/K reuse | `2/3` |
-| `V -> MTE3` / `MTE3 -> V` | AIV-private AL1 staging boundary | `4/5` |
+| `V -> MTE3` / `MTE3 -> V` | AIV-private AL1 staging pipe boundary | `4` |
 | `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
 | `MMAD -> FIX` / `FIX -> MMAD` | AIC L0C pingpong path | `0/1` |
 
 Init currently sets only reusable reverse events (`V_MTE2`, `MTE3_V`,
 `M_MTE1`, `FIX_M`); End waits the same events to consume the final reusable
-tokens. T06 uses ids `4/5` inside `D128FastVec::ComputeTile` for the current
-AL1 staging pipe handoff only. They are not initialized in lifecycle hooks and
-are not per-AL1-buffer synchronization.
+tokens. T06 uses event id `4` inside `D128FastVec::ComputeTile` for the current
+AL1 staging pipe handoff only. It is not initialized in lifecycle hooks and
+is not per-AL1-buffer synchronization.
 
-T06 currently wires the AIV preprocess boundary. Each AIV derives local tensor
-views inside `ComputeTile`, waits for input UB reuse, stages QKV/gamma/
-slot-mapping inputs, publishes and consumes the `MTE2 -> V` input-ready event,
-stages the current Q/K slice into the logical AL1 buffer, waits for the private
-MTE3 completion event, releases input UB reuse, and then issues `A_READY`. AIC
-waits `A_READY` before touching the logical AL1 buffer. The real numeric
-RMSNorm/RoPE/BF16-NZ transform still needs to replace the current staging
-placeholder.
+T06 wires the AIV preprocess boundary and the initial numeric Q/K path. Each
+AIV derives local tensor views inside `ComputeTile`, waits for input UB reuse,
+loads QKV/gamma/slot-mapping/cos-sin through the 2D copy helper, publishes and
+consumes the `MTE2 -> V` input-ready event, runs the D=128 VF for
+RMSNorm + half-RoPE into a BF16 ND staging area, converts that ND staging into
+the logical AL1 NZ buffer, waits for the private MTE3 completion event,
+releases input UB reuse, and then issues `A_READY`. AIC waits `A_READY` before
+touching the logical AL1 buffer. V preprocess/postprocess and Q/K dynamic
+quant/cache writeback are still later tasks.

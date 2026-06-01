@@ -50,7 +50,8 @@ public:
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[bufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         WaitAReadyFromAiv();
         ConsumePreprocessedA(tile, aRotL1Nz);
-        (void)globalTensors_;
+        (void)rotationGm_;
+        (void)workspaceGm_;
         (void)rotationL1Nz_;
         (void)cubeIndex_;
     }
@@ -81,22 +82,38 @@ private:
 
     __aicore__ inline void WaitL0BufferReusable(uint32_t bufferId)
     {
-        WaitIntraCoreEvent<HardEvent::M_MTE1>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId);
+#ifndef __CCE_KT_TEST__
+        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
     }
 
     __aicore__ inline void ReleaseL0Buffer(uint32_t bufferId)
     {
-        SetIntraCoreEvent<HardEvent::M_MTE1>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId);
+#ifndef __CCE_KT_TEST__
+        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
     }
 
     __aicore__ inline void WaitL0CBufferReusable(uint32_t bufferId)
     {
-        WaitIntraCoreEvent<HardEvent::FIX_M>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId);
+#ifndef __CCE_KT_TEST__
+        WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
     }
 
     __aicore__ inline void ReleaseL0CBuffer(uint32_t bufferId)
     {
-        SetIntraCoreEvent<HardEvent::FIX_M>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId);
+#ifndef __CCE_KT_TEST__
+        SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId));
+#else
+        (void)bufferId;
+#endif
     }
 
     __aicore__ inline void ConsumePreprocessedA(const TileParam &tile, LocalTensor<bfloat16_t> &aRotL1Nz)
@@ -115,12 +132,13 @@ private:
 
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
-        globalTensors_.rotation.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
-        globalTensors_.workspace.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
+        rotationGm_.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
+        workspaceGm_.SetGlobalBuffer((__gm__ uint8_t *)tensors.workspace);
     }
 
     uint32_t cubeIndex_;
-    CubeGlobalTensors globalTensors_;
+    GlobalTensor<bfloat16_t> rotationGm_;
+    GlobalTensor<uint8_t> workspaceGm_;
     LocalTensor<bfloat16_t> rotationL1Nz_;
     LocalTensor<bfloat16_t> aRotL1Pool_;
 };

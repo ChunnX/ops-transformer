@@ -23,6 +23,7 @@ using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTi
 constexpr uint32_t QKV_RRC_MIX_AIV_PER_AIC = 2U;
 constexpr uint32_t QKV_RRC_DOUBLE_BUFFER_NUM = 2U;
 constexpr uint32_t QKV_RRC_HEAD_DIM_D128 = 128U;
+constexpr uint32_t QKV_RRC_BLOCK_BYTES = 32U;
 constexpr uint32_t QKV_RRC_KIB = 1024U;
 
 constexpr uint8_t QKV_RRC_SYNC_MODE4 = 4U;
@@ -146,28 +147,10 @@ struct GlobalTensors {
     GM_ADDR workspace;
 };
 
-struct CubeGlobalTensors {
-    GlobalTensor<bfloat16_t> rotation;
-    GlobalTensor<uint8_t> workspace;
-};
-
-struct VecGlobalTensors {
-    GlobalTensor<bfloat16_t> qkv;
-    GlobalTensor<float> qGamma;
-    GlobalTensor<float> kGamma;
-    GlobalTensor<float> cosSin;
-    GlobalTensor<int32_t> slotMapping;
-    GlobalTensor<fp8_e4m3fn_t> kCacheIn;
-    GlobalTensor<fp8_e4m3fn_t> vCacheIn;
-    GlobalTensor<float> kScaleCacheIn;
-    GlobalTensor<int32_t> cuSeqLen;
-    GlobalTensor<float> vScale;
-    GlobalTensor<fp8_e4m3fn_t> qOut;
-    GlobalTensor<float> qScale;
-    GlobalTensor<fp8_e4m3fn_t> kCacheOut;
-    GlobalTensor<fp8_e4m3fn_t> vCacheOut;
-    GlobalTensor<float> kScaleCacheOut;
-    GlobalTensor<uint8_t> workspace;
+struct DataCopy2DParams {
+    uint32_t rowCount;
+    uint32_t colCount;
+    uint32_t srcStride;
 };
 
 __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
@@ -178,6 +161,14 @@ __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)
     return (value + factor - 1U) / factor;
 }
 
+__aicore__ inline uint32_t AlignUp(uint32_t value, uint32_t align)
+{
+    if (align == 0U) {
+        return value;
+    }
+    return ((value + align - 1U) / align) * align;
+}
+
 __aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
 {
     return lhs < rhs ? lhs : rhs;
@@ -186,6 +177,30 @@ __aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
 __aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
 {
     return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);
+}
+
+template <typename T>
+__aicore__ inline void DataCopyGmToUb2D(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
+    const DataCopy2DParams &params2d)
+{
+    if (params2d.rowCount == 0U || params2d.colCount == 0U) {
+        return;
+    }
+
+    DataCopyExtParams params;
+    params.blockCount = params2d.rowCount;
+    params.blockLen = params2d.colCount * sizeof(T);
+    params.srcStride = (params2d.srcStride - params2d.colCount) * sizeof(T);
+    params.dstStride = 0U;
+    params.rsv = 0U;
+    DataCopyPadExtParams<T> padParams{false, 0U, 0U, 0U};
+    const uint32_t blockElements = QKV_RRC_BLOCK_BYTES / sizeof(T);
+    const uint32_t alignedColCount = AlignUp(params2d.colCount, blockElements);
+    if (alignedColCount != params2d.colCount) {
+        padParams.isPad = true;
+        padParams.rightPadding = alignedColCount - params2d.colCount;
+    }
+    DataCopyPad(dst, src, params, padParams);
 }
 
 template <const pipe_t pipe>
@@ -227,26 +242,6 @@ __aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
     CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
 #else
     (void)syncFlag;
-#endif
-}
-
-template <HardEvent event>
-__aicore__ inline void SetIntraCoreEvent(uint32_t eventId)
-{
-#ifndef __CCE_KT_TEST__
-    SetFlag<event>(static_cast<event_t>(eventId));
-#else
-    (void)eventId;
-#endif
-}
-
-template <HardEvent event>
-__aicore__ inline void WaitIntraCoreEvent(uint32_t eventId)
-{
-#ifndef __CCE_KT_TEST__
-    WaitFlag<event>(static_cast<event_t>(eventId));
-#else
-    (void)eventId;
 #endif
 }
 
