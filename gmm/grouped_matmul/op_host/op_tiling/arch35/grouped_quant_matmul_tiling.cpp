@@ -126,7 +126,8 @@ bool GroupedQmmTiling::AnalyzeAttrs()
                 return false);
     OP_CHECK_IF((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
                     inputParams_.groupType != SPLIT_M,
-                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "groupType", std::to_string(inputParams_.groupType), "0"),
+                OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "groupType",
+                                          std::to_string(inputParams_.groupType), "0"),
                 return false);
     if (inputParams_.groupType == SPLIT_M) {
         OP_CHECK_IF(inputParams_.transA,
@@ -636,8 +637,9 @@ bool GroupedQmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStor
 bool GroupedQmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape)
 {
     OP_CHECK_IF(inputParams_.actType == static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "actType", std::to_string(inputParams_.actType),
-                                                      "activation function does not support GELU_ERR_FUNC now"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    inputParams_.opType, "actType", std::to_string(inputParams_.actType),
+                    "activation function does not support GELU_ERR_FUNC now"),
                 return false);
     OP_CHECK_IF(inputParams_.actType > static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_SILU) ||
                     inputParams_.actType < static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE),
@@ -860,7 +862,8 @@ bool GroupedQmmTiling::SetGroupNum(uint32_t groupListIndex)
     // groupListType 0(cumsum)/1(count): grouplist is 1D; groupListType 2(sparse_m): grouplist is 2D [E, 2]
     if (inputParams_.groupListType == GROUPLIST_TYPE_SPARSE_M) {
         OP_CHECK_IF(groupListDimNum != GROUP_LIST_SPARSE_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "groupList", std::to_string(groupListDimNum), "2"),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "groupList",
+                                                 std::to_string(groupListDimNum), "2"),
                     return false);
         OP_CHECK_IF(
             groupListShape.GetDim(1) != GROUP_LIST_SPARSE_DIMS,

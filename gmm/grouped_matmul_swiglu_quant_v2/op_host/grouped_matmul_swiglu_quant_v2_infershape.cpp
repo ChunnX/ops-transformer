@@ -132,9 +132,10 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
                     "on this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
                     "FLOAT8_E5M2, FLOAT4_E2M1, INT_8 or HIFLOAT8"),
                 return GRAPH_FAILED);
-        
+
         OP_CHECK_IF(*quantMode != QUANT_MODE_MX_TYPE && *quantMode != QUANT_MODE_PERTOKEN_TYPE,
-                OP_LOGE_FOR_INVALID_VALUE(GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "quant_mode", std::to_string(*quantMode),
+                OP_LOGE_FOR_INVALID_VALUE(GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "quant_mode",
+                                          std::to_string(*quantMode),
                                           "0(Pertoken) or 2(MX)"),
                 return GRAPH_FAILED);
     }
@@ -143,7 +144,8 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
         if (weightScaleDtype == ge::DataType::DT_FLOAT8_E8M0) {
             context->SetOutputDataType(1, DataType::DT_FLOAT8_E8M0);
         }  else {
-            OP_LOGE(context->GetNodeName(), "In mx quant mode, quantMode should be 2, but actual value is %ld.", *quantMode);
+            OP_LOGE(context->GetNodeName(),
+                    "In mx quant mode, quantMode should be 2, but actual value is %ld.", *quantMode);
             return GRAPH_FAILED;
         }
     } else if (*quantMode == QUANT_MODE_PERTOKEN_TYPE) {
