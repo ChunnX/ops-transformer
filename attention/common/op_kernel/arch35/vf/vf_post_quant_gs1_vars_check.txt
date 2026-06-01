@@ -1,0 +1,155 @@
+================================================================================
+vf_post_quant_gs1.h  全变量初始化检查报告
+================================================================================
+文件类型: 纯模板函数文件（无类，FaVectorApi命名空间），474行
+================================================================================
+
+## 一、各函数局部变量一览
+
+--- CastBf16ToFp32VF (L19-41) ---
+[L22] vregSrc                  | RegTensor<bfloat16_t> | OK: 默认构造
+[L23] vregDst                  | RegTensor<float>      | OK: 默认构造
+[L24] preg_all                 | MaskReg               | OK: = CreateMask<float, ALL>()
+[L26] dLoops                   | uint16_t              | OK: = elementCount / floatRepSize
+[L27] dTail                    | uint16_t              | OK: = elementCount % floatRepSize
+[L28] dTailLoop                | uint16_t              | OK: = dTail > 0 ? 1 : 0
+[L29] pltTailD                 | uint32_t              | OK: = dTail
+[L36] preg_tail                | MaskReg               | OK: = UpdateMask<float>(pltTailD) [if dTailLoop > 0]
+
+--- PostQuantPerChnlNoOffsetImplVF (L44-108) ---
+[L50] vregInput                | RegTensor<T>          | OK: 默认构造
+[L51] vregMul                  | RegTensor<T>          | OK: 默认构造
+[L52] vregCastB16              | RegTensor<half>       | OK: 默认构造
+[L53] vregCast                 | RegTensor<OUTPUT_T>   | OK: 默认构造
+[L55] vScale                   | RegTensor<T>          | OK: 默认构造
+[L56] vScaleTmp                | RegTensor<POSTQUANT_PARAMS_T> | OK: 默认构造
+[L57] vOffsetTmp               | RegTensor<POSTQUANT_PARAMS_T> | OK: 默认构造 ★ 但NoOffset版本中从未使用(死代码)
+[L59] preg_all                 | MaskReg               | OK: = CreateMask<float, ALL>()
+[L60] preg_tail                | MaskReg               | OK: = UpdateMask<float>(mask_tail)
+
+--- PostQuantPerChnlOffsetImplVF (L110-191) ---
+[L117] vregInput               | RegTensor<T>          | OK: 默认构造
+[L118] vregMul                 | RegTensor<T>          | OK: 默认构造
+[L119] vreg_add                | RegTensor<T>          | OK: 默认构造
+[L120] vregCastB16             | RegTensor<half>       | OK: 默认构造
+[L121] vregCast                | RegTensor<OUTPUT_T>   | OK: 默认构造
+[L123] vScale                  | RegTensor<T>          | OK: 默认构造
+[L124] vOffset                 | RegTensor<T>          | OK: 默认构造
+[L125] vScaleTmp               | RegTensor<POSTQUANT_PARAMS_T> | OK: 默认构造
+[L126] vOffsetTmp              | RegTensor<POSTQUANT_PARAMS_T> | OK: 默认构造
+[L128] preg_all                | MaskReg               | OK: = CreateMask<float, ALL>()
+[L129] preg_tail               | MaskReg               | OK: = UpdateMask<float>(mask_tail)
+
+--- PostQuantPerChnlNoOffsetS1GImpl (L194-254) ---
+[L200] dstUb                   | __ubuf__ OUTPUT_T*    | OK: = dstTensor.GetPhyAddr()
+[L201] srcUb                   | __ubuf__ T*           | OK: = srcTensor.GetPhyAddr()
+[L202] scaleUb                 | __ubuf__ POSTQUANT_PARAMS_T* | OK: = scaleTensor.GetPhyAddr()
+[L204] preg_all                | uint16_t              | OK: = 64
+[L205] preg_tail               | uint16_t              | OK: = colCount % 64
+[L207] floatRepSize            | const uint16_t         | OK: = 64
+[L209] dLoops                  | uint16_t              | OK: = dSize / floatRepSize
+[L210] dTail                   | uint16_t              | OK: = dSize % floatRepSize
+[L211] dTailLoop               | uint16_t              | OK: = dTail > 0 ? 1 : 0
+[L212] s1IdxStart              | uint32_t              | OK: = gS1Idx / gSize
+[L213] gIdxStart               | uint32_t              | OK: = gS1Idx % gSize
+[L214] s1IdxEnd                | uint32_t              | OK: = (gS1Idx + gS1DealSize) / gSize
+[L215] gIdxEnd                 | uint32_t              | OK: = (gS1Idx + gS1DealSize) % gSize
+[L217] headSize                | uint32_t              | OK: = gSize - gIdxStart [if s1Idx跨越多个s1]
+[L218] src0Offset              | uint32_t              | OK: = 0
+[L219] src1Offset              | uint32_t              | OK: = gIdxStart * colCount
+[L220] dealSize                | uint32_t              | OK: = headSize * colCount
+[L248] dealSize                | uint32_t              | OK: = gS1DealSize * colCount [else分支]
+
+--- PostQuantPerChnlNoOffsetGS1Impl (L256-308) ---
+[L262] dstUb                   | __ubuf__ OUTPUT_T*    | OK: = dstTensor.GetPhyAddr()
+[L263] srcUb                   | __ubuf__ T*           | OK: = srcTensor.GetPhyAddr()
+[L264] scaleUb                 | __ubuf__ POSTQUANT_PARAMS_T* | OK: = scaleTensor.GetPhyAddr()
+[L266] preg_all                | uint16_t              | OK: = 64
+[L267] preg_tail               | uint16_t              | OK: = colCount % 64
+[L268] floatRepSize            | const uint16_t         | OK: = 64
+[L270] dLoops                  | uint16_t              | OK: = dSize / floatRepSize
+[L271] dTail                   | uint16_t              | OK: = dSize % floatRepSize
+[L272] dTailLoop               | uint16_t              | OK: = dTail > 0 ? 1 : 0
+[L273] gIdxStart               | uint32_t              | OK: = gS1Idx / s1Size
+[L274] s1IdxStart              | uint32_t              | OK: = gS1Idx % s1Size
+[L275] gIdxEnd                 | uint32_t              | OK: = (gS1Idx + gS1DealSize) / s1Size
+[L276] s1IdxEnd                | uint32_t              | OK: = (gS1Idx + gS1DealSize) % s1Size
+[L277] headS1                  | uint32_t              | OK: = 0; if-else两分支均赋值
+[L283] src0Offset              | uint32_t              | OK: = 0
+[L284] src1Offset              | uint32_t              | OK: = 0
+
+--- PostQuantPerChnlWithOffsetS1GImpl (L310-371) ---
+[L317] dstUb                   | __ubuf__ OUTPUT_T*    | OK: = dstTensor.GetPhyAddr()
+[L318] srcUb                   | __ubuf__ T*           | OK: = srcTensor.GetPhyAddr()
+[L319] scaleUb                 | __ubuf__ POSTQUANT_PARAMS_T* | OK: = scaleTensor.GetPhyAddr()
+[L320] offsetUb                | __ubuf__ POSTQUANT_PARAMS_T* | OK: = offsetTensor.GetPhyAddr()
+[L322] preg_all                | uint16_t              | OK: = 64
+[L323] preg_tail               | uint16_t              | OK: = colCount % 64
+[L324] floatRepSize            | const uint16_t         | OK: = 64
+[L326] dLoops                  | uint16_t              | OK: = dSize / floatRepSize
+[L327] dTail                   | uint16_t              | OK: = dSize % floatRepSize
+[L328] dTailLoop               | uint16_t              | OK: = dTail > 0 ? 1 : 0
+[L329] s1IdxStart              | uint32_t              | OK: = gS1Idx / gSize
+[L330] gIdxStart               | uint32_t              | OK: = gS1Idx % gSize
+[L331] s1IdxEnd                | uint32_t              | OK: = (gS1Idx + gS1DealSize) / gSize
+[L332] gIdxEnd                 | uint32_t              | OK: = (gS1Idx + gS1DealSize) % gSize
+其余局部变量(S1G分支中的headSize,src0Offset,src1Offset,dealSize)与NoOffsetS1GImpl一致 → OK
+
+--- PostQuantPerChnlWithOffsetGS1Impl (L373-427) ---
+[L380] dstUb                   | __ubuf__ OUTPUT_T*    | OK: = dstTensor.GetPhyAddr()
+[L381] srcUb                   | __ubuf__ T*           | OK: = srcTensor.GetPhyAddr()
+[L382] scaleUb                 | __ubuf__ POSTQUANT_PARAMS_T* | OK: = scaleTensor.GetPhyAddr()
+[L383] offsetUb                | __ubuf__ POSTQUANT_PARAMS_T* | OK: = offsetTensor.GetPhyAddr()
+[L385] preg_all                | uint16_t              | OK: = 64
+[L386] preg_tail               | uint16_t              | OK: = colCount % 64
+[L387] floatRepSize            | const uint16_t         | OK: = 64
+[L389] dLoops                  | uint16_t              | OK: = dSize / floatRepSize
+[L390] dTail                   | uint16_t              | OK: = dSize % floatRepSize
+[L391] dTailLoop               | uint16_t              | OK: = dTail > 0 ? 1 : 0
+[L392] gIdxStart               | uint32_t              | OK: = gS1Idx / s1Size
+[L393] s1IdxStart              | uint32_t              | OK: = gS1Idx % s1Size
+[L394] gIdxEnd                 | uint32_t              | OK: = (gS1Idx + gS1DealSize) / s1Size
+[L395] s1IdxEnd                | uint32_t              | OK: = (gS1Idx + gS1DealSize) % s1Size
+[L396] headS1                  | uint32_t              | OK: = 0; if-else两分支均赋值
+[L402] src0Offset              | uint32_t              | OK: = 0
+[L403] src1Offset              | uint32_t              | OK: = 0
+
+--- PostQuantPerChnlOffsetImpl (L429-449) ---
+[L435] gS1Idx                  | uint32_t              | OK: = postQuantInfo.gS1Idx
+[L436] colCount                | uint32_t              | OK: = postQuantInfo.colCount
+[L437] s1Size                  | uint32_t              | OK: = postQuantInfo.s1Size
+[L438] gS1DealSize             | uint32_t              | OK: = postQuantInfo.gS1DealSize
+[L439] gSize                   | uint32_t              | OK: = postQuantInfo.gSize
+[L440] dSize                   | uint32_t              | OK: = postQuantInfo.dSize
+
+--- PostQuantPerChnlNoOffsetImpl (L451-471) ---
+[L456] gS1Idx                  | uint32_t              | OK: = postQuantInfo.gS1Idx
+[L457] colCount                | uint32_t              | OK: = postQuantInfo.colCount
+[L458] s1Size                  | uint32_t              | OK: = postQuantInfo.s1Size
+[L459] gS1DealSize             | uint32_t              | OK: = postQuantInfo.gS1DealSize
+[L460] gSize                   | uint32_t              | OK: = postQuantInfo.gSize
+[L461] dSize                   | uint32_t              | OK: = postQuantInfo.dSize
+
+================================================================================
+## 二、值得注意的项
+================================================================================
+1. [L57] vOffsetTmp — NoOffsetImplVF中声明但从未使用(死代码); 同函数Offset版本中正常使用
+2. [L141] ★★逻辑Bug(非初始化问题): PostQuantPerChnlOffsetImplVF主循环中
+   Cast<T,POSTQUANT_PARAMS_T,castTraitP0>(vOffset, vScaleTmp, preg_all);
+   使用了vScaleTmp而非vOffsetTmp,导致offset值错误地取自scale buffer。
+   对比尾循环L171: Cast<T,...>(vOffset, vOffsetTmp, preg_tail) 正确使用了vOffsetTmp。
+3. [L148][L151] PostQuantPerChnlOffsetImplVF中: Add后Cast使用的是vregMul而非vreg_add
+   Add<T>(vreg_add, vregMul, vOffset, ...)
+   Cast<OUTPUT_T>(vregCast, vregMul, ...)   // ← 使用vregMul(vreg_add被忽略)
+   这导致offset加法结果未用于输出。但这是逻辑问题，非初始化问题。
+
+================================================================================
+## 三、总结
+================================================================================
+- 所有局部变量均已初始化
+- RegTensor<T> 默认构造安全
+- 无未初始化变量问题
+- 发现1处死代码: L57 vOffsetTmp在NoOffset版本中未使用
+- 发现1处逻辑Bug: L141 vScaleTmp应为vOffsetTmp (offset参数来源于错误的寄存器)
+- 发现1处逻辑Bug: L148/L151 vregMul应为vreg_add (offset加法结果未被使用)
+================================================================================

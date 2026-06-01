@@ -1,0 +1,185 @@
+================================================================================
+vf_flash_decode.h  全变量初始化检查报告
+================================================================================
+文件类型: 纯模板函数文件（无类，FaVectorApi命名空间），632行
+================================================================================
+
+## 一、各函数局部变量一览
+
+--- ReduceFinalRes_0_VF (L28-54) ---
+[L33] vregDst                   | RegTensor<T>          | OK: 默认构造
+[L34] vregLse                   | RegTensor<T>          | OK: 默认构造
+[L35] vregAccumOut              | RegTensor<T>          | OK: 默认构造
+[L36] n                         | uint32_t              | OK: = dealNum1Reg
+[L37] pregTailN                 | MaskReg               | OK: = UpdateMask<T>(n)
+
+--- ReduceFinalRes_0 (L56-73) ---
+[L61] dstUb                     | __ubuf__ T*           | OK: = dstLocal.GetPhyAddr()
+[L62] lseUb                     | __ubuf__ T*           | OK: = lseLocal.GetPhyAddr()
+[L63] accumOutUb                | __ubuf__ T*           | OK: = accumOutLocal.GetPhyAddr()
+[L64] k                         | uint16_t              | OK: = 0
+[L65] z                         | uint16_t              | OK: = 0
+[L66] dealNum1Reg               | uint32_t              | OK: = 256 / sizeof(float)
+[L67] repStride                 | uint32_t              | OK: = headDimAlignFp32 / 8
+[L68] floatRepSize              | const uint16_t         | OK: = 64
+[L69] dLoops                    | const uint16_t         | OK: = headDimAlignFp32 / floatRepSize
+
+--- ReduceFinalRes_Rest_VF (L76-103) ---
+[L81] vregDst                   | RegTensor<T>          | OK: 默认构造
+[L82] vregLse                   | RegTensor<T>          | OK: 默认构造
+[L83] vregAccumOut              | RegTensor<T>          | OK: 默认构造
+[L84] n                         | uint32_t              | OK: = dealNum1Reg
+[L85] pregTailN                 | MaskReg               | OK: = UpdateMask<T>(n)
+[L86] stride                    | uint32_t              | OK: = (0x1 << 16) | 0x8; ★ 声明后从未使用(死代码)
+
+--- ReduceFinalRes_Rest (L105-121) ---
+[L110] dstUb                    | __ubuf__ T*           | OK: = dstLocal.GetPhyAddr()
+[L111] lseUb                    | __ubuf__ T*           | OK: = lseLocal.GetPhyAddr()
+[L112] accumOutUb               | __ubuf__ T*           | OK: = accumOutLocal.GetPhyAddr()
+[L113] k                        | uint16_t              | OK: = 0
+[L114] z                        | uint16_t              | OK: = 0
+[L115] dealNum1Reg              | uint32_t              | OK: = 256 / sizeof(float)
+[L116] repStride                | uint32_t              | OK: = headDimAlignFp32 / 8
+[L117] floatRepSize             | const uint16_t         | OK: = 64
+[L118] dLoops                   | const uint16_t         | OK: = headDimAlignFp32 / floatRepSize
+
+--- ReduceFinalRes_VF (L123-132), ReduceFinalRes_const_VF (L134-143) ---
+(无局部变量)
+
+--- ComputeScaleValue_8_VF (L146-221) ---
+[L151] vregLseMax               | RegTensor<T>          | OK: 默认构造
+[L152] vregLseMaxTmp            | RegTensor<T>          | OK: 默认构造
+[L153] vregLseSum               | RegTensor<T>          | OK: 默认构造
+[L154] vregLseSumTmp            | RegTensor<T>          | OK: 默认构造
+[L155] vregLseSink              | RegTensor<SINK_T>     | OK: 默认构造
+[L156] vregLseSinkCast          | RegTensor<T>          | OK: 默认构造
+[L157] vregRes                  | RegTensor<T>          | OK: 默认构造
+[L158] n                        | uint32_t              | OK: = dealCount
+[L159] pregTailN                | MaskReg               | OK: = UpdateMask<T>(n)
+[L160] pregSinkTailN            | MaskReg               | OK: = UpdateMask<SINK_T>(n)
+[L161] blockStride              | uint16_t              | OK: = 0x1
+[L162] repeatStride             | uint16_t              | OK: = dealRowCount
+[L196] vregMinValue             | RegTensor<float>      | OK: = Duplicate(minValue) [if softmaxLseFlag]
+[L197] vregInfValue             | RegTensor<float>      | OK: = Duplicate(infValue) [if softmaxLseFlag]
+[L198] pregCompare              | MaskReg               | OK: = Compare() [if softmaxLseFlag]
+[L201] minValue                 | float                 | OK: = *((float*)&tmpMin) [if softmaxLseFlag]
+
+--- ComputeScaleValue_8 (L223-241) ---
+[L229] dealCount                | uint32_t              | OK: = dealRowCount * 8
+[L230] i                        | uint16_t              | OK: = 0
+[L232] lseMax                   | __ubuf__ T*           | OK: = lseMaxUb.GetPhyAddr()
+[L233] lseMaxTmp                | __ubuf__ T*           | OK: = lseMax (别名)
+[L234] lseSum                   | __ubuf__ T*           | OK: = lseSumUb.GetPhyAddr()
+[L235] lseSumTmp                | __ubuf__ T*           | OK: = lseSum (别名)
+[L236] lseUb                    | __ubuf__ T*           | OK: = lseOutputUb.GetPhyAddr()
+[L237] lseSink                  | __ubuf__ uint16_t*    | OK: = tmpSinkUb.GetPhyAddr()
+
+--- ComputeScaleValue_8_VF_FD (L244-319) ---
+[L251] vregLseMax               | RegTensor<T>          | OK: 默认构造
+[L252] vregLseMaxTmp            | RegTensor<T>          | OK: 默认构造
+[L253] vregLseSum               | RegTensor<T>          | OK: 默认构造
+[L254] vregLseSumTmp            | RegTensor<T>          | OK: 默认构造
+[L255] vregLseSinkCast          | RegTensor<T>          | OK: 默认构造
+[L256] vregRes                  | RegTensor<T>          | OK: 默认构造
+[L257] n                        | uint32_t              | OK: = dealCount
+[L258] pregTailN                | MaskReg               | OK: = UpdateMask<T>(n)
+[L259] pregSinkTailN            | MaskReg               | OK: = UpdateMask<SINK_T>(n)
+[L260] blockStride              | uint16_t              | OK: = 0x1
+[L261] repeatStride             | uint16_t              | OK: = dealRowCount
+[L293] (in for loop)            | 全部分支内变量          | OK: if softmaxLseFlag内全初始化
+
+--- ComputeScaleValue_8_FD (L321-346) ---
+[L325] dealCount                | uint32_t              | OK: = dealRowCount * 8
+[L326] i                        | uint16_t              | OK: = 0
+[L328-336] lseMax,lseMaxTmp,lseSum,lseSumTmp,lseUb,lseOutUb,lseMaxReduce,lseSink | OK: 全部通过GetPhyAddr初始化
+[L337] softmaxLseFlagUint       | uint16_t              | OK: = 0; L339-341条件设为1
+[L338] learnableSinkFlagUint    | uint16_t              | OK: = 0; L342-344条件设为1
+
+--- ComputeScaleValue_16_VF (L348-467) ---
+[L355] vregLseMax               | RegTensor<T>          | OK: 默认构造
+[L356] vregLseMaxTmp            | RegTensor<T>          | OK: 默认构造
+[L357] vregLseMax2              | RegTensor<T>          | OK: 默认构造
+[L358] vregLseMaxTmp2           | RegTensor<T>          | OK: 默认构造
+[L359] vregLseSum               | RegTensor<T>          | OK: 默认构造
+[L360] vregLseSumTmp            | RegTensor<T>          | OK: 默认构造
+[L361] vregLseSum2              | RegTensor<T>          | OK: 默认构造
+[L362] vregLseSumTmp2           | RegTensor<T>          | OK: 默认构造
+[L363] vregLseSink              | RegTensor<SINK_T>     | OK: 默认构造
+[L364] vregLseSink2             | RegTensor<SINK_T>     | OK: 默认构造
+[L365] vregLseSinkCast          | RegTensor<T>          | OK: 默认构造
+[L366] vregLseSinkCast2         | RegTensor<T>          | OK: 默认构造
+[L367] vregRes                  | RegTensor<T>          | OK: 默认构造
+[L368] vregRes2                 | RegTensor<T>          | OK: 默认构造
+[L369] n                        | uint32_t              | OK: = dealCount
+[L370] n2                       | uint32_t              | OK: = dealCount2
+[L371] pregTailN                | MaskReg               | OK: = UpdateMask<T>(n)
+[L372] pregTailN2               | MaskReg               | OK: = UpdateMask<T>(n2)
+[L373] pregSinkTailN            | MaskReg               | OK: = UpdateMask<SINK_T>(n)
+[L374] pregSinkTailN2           | MaskReg               | OK: = UpdateMask<SINK_T>(n2)
+[L375] blockStride              | uint16_t              | OK: = 0x1
+[L376] repeatStride             | uint16_t              | OK: = dealRowCount
+[L431] vregMinValue, vregInfValue, pregCompare, pregCompare2: OK [if softmaxLseFlag]
+
+--- ComputeScaleValue_16 (L469-491) ---
+[L473] dealCountSum             | uint32_t              | OK: = dealRowCount * 8
+[L474] dealCount                | uint32_t              | OK: = 8 * 8
+[L475] dealCount2               | uint32_t              | OK: = dealCountSum - dealCount
+[L476] i                        | uint16_t              | OK: = 0
+[L478-487] lseMax,lseMax2,...,lseSink2 | __ubuf__ T*/uint16_t* | OK: 全部通过GetPhyAddr初始化
+
+--- ComputeScaleValue_VF (L493-502), ComputeScaleValue_VF_FD (L506-511) ---
+(无局部变量)
+
+--- ComputeLogSumExp_8_VF (L514-544) ---
+[L517] vregSum                  | RegTensor<T>          | OK: 默认构造
+[L518] vregMax                  | RegTensor<T>          | OK: 默认构造
+[L519] vregRes                  | RegTensor<T>          | OK: 默认构造
+[L520] pregTailN                | MaskReg               | OK: = UpdateMask<T>(dealCount)
+[L521] vregMinValue             | RegTensor<float>      | OK: = Duplicate(minValue)
+[L522] vregInfValue             | RegTensor<float>      | OK: = Duplicate(infValue)
+[L523] pregCompare              | MaskReg               | OK: 默认构造(后Compare赋值)
+[L526] minValue                 | float                 | OK: = *((float*)&tmpMin)
+
+--- ComputeLogSumExp_8 (L546-555) ---
+[L550] srcSumLocalInt           | __ubuf__ T*           | OK: = softmaxSumTensor.GetPhyAddr()
+[L551] srcMaxLocalInt           | __ubuf__ T*           | OK: = softmaxMaxTensor.GetPhyAddr()
+[L552] dstLocalInt              | __ubuf__ T*           | OK: = dstTensor.GetPhyAddr()
+
+--- ComputeLogSumExp_16_VF (L558-601) ---
+[L562] vregSum                  | RegTensor<T>          | OK: 默认构造
+[L563] vregSum2                 | RegTensor<T>          | OK: 默认构造
+[L564] vregMax                  | RegTensor<T>          | OK: 默认构造
+[L565] vregMax2                 | RegTensor<T>          | OK: 默认构造
+[L566] vregRes                  | RegTensor<T>          | OK: 默认构造
+[L567] vregRes2                 | RegTensor<T>          | OK: 默认构造
+[L568] pregTailN                | MaskReg               | OK: = UpdateMask<T>(dealCount1)
+[L569] pregTailN2               | MaskReg               | OK: = UpdateMask<T>(dealCount2)
+[L570-573] vregMinValue,vregInfValue,pregCompare,pregCompare2: OK
+[L576] minValue                 | float                 | OK: = *((float*)&tmpMin)
+
+--- ComputeLogSumExp_16 (L603-617) ---
+[L607] srcSumUb                 | __ubuf__ T*           | OK: = softmaxSumTensor.GetPhyAddr()
+[L608] srcSumUb2                | __ubuf__ T*           | OK: = srcSumUb + 64
+[L609] srcMaxUb                 | __ubuf__ T*           | OK: = softmaxMaxTensor.GetPhyAddr()
+[L610] srcMaxUb2                | __ubuf__ T*           | OK: = srcMaxUb + 64
+[L611] dstUb                    | __ubuf__ T*           | OK: = dstTensor.GetPhyAddr()
+[L612] dstUb2                   | __ubuf__ T*           | OK: = dstUb + 64
+[L613] dealCount1               | uint32_t              | OK: = 8 * 8
+[L614] dealCount2               | uint32_t              | OK: = dealCount - dealCount1
+
+--- ComputeLogSumExp_VF (L619-628) ---
+(无局部变量)
+
+================================================================================
+## 二、值得注意的项
+================================================================================
+1. [L86] stride = (0x1 << 16) | 0x8 → 声明后从未使用（死代码）
+2. VF函数中 k, z 参数按值传递，调用方传入0但函数体内for循环覆盖，不影响调用方
+================================================================================
+## 三、总结
+================================================================================
+- 所有局部变量均已初始化
+- RegTensor<T> 默认构造安全
+- 无未初始化变量问题
+- 发现1处死代码: L86 stride变量未使用
+================================================================================
