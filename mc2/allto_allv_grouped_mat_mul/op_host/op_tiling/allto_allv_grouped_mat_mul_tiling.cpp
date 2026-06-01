@@ -1136,15 +1136,13 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"), return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
-    uint64_t gmmXAxis = h1_ * GetSizeByDataType(gmmXDataType_);
-    uint64_t groupListSize = sizeof(int64_t) * e_;
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t groupListSize = sizeof(int64_t) * e_ + tensorListSize;
     auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
-    tilingData->workspaceInfo.commXOutSize =
-        Ops::Base::CeilAlign(a_ * gmmXAxis, tensorListSize);
-    tilingData->workspaceInfo.permuteXOutSize =
-        Ops::Base::CeilAlign(maxMergeTokenNum * gmmXAxis, tensorListSize);
-    tilingData->workspaceInfo.gmmComputeSize =
-        Ops::Base::CeilAlign(groupListSize + tensorListSize, tensorListSize);
+    tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(groupListSize, tensorListSize);
     workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
                     tilingData->workspaceInfo.permuteXOutSize +
                     tilingData->workspaceInfo.gmmComputeSize;
