@@ -105,6 +105,9 @@ const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
 const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
 const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
+const static int64_t DROP_PAD_MODE_DROPPAD = 1LL;
+const static int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
+const static int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
 
 const static int64_t TILINGKEY_BASE = 10000000LL;
 const static int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
@@ -249,6 +252,10 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     bool IsFullLoad();
+
+    // DropPad模式Tiling计算函数
+    void Tiling4SrcToDstDropPadCompute();
+    void Tiling4GatherOutDropPadCompute();
 
     // LogTilingData
     void LogBaseTilingData();
@@ -463,9 +470,13 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
         Tiling4GatherOutMxQuant();
     } else if (quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
         Tiling4GatherOutFP8Quant();
+    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        Tiling4SrcToDstDropPadCompute();
+        Tiling4GatherOutDropPadCompute();
     } else {
         Tiling4GatherOutCompute();
     }
+
     isFullload_ = IsFullLoad();
     return ge::GRAPH_SUCCESS;
 }
@@ -504,8 +515,20 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     int64_t expertTokensCountWorkspaceSize = (expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int32_t));
     int64_t expertTokenTotalCountWorkspace = AlignBytes(1, static_cast<int64_t>(sizeof(int32_t)));
     int64_t quantTempWorkspaceSize = aivCoreNum_ * cols_ * static_cast<int64_t>(sizeof(float));
+
     workspaceSize_ += sortWorkspaceSize + coreSyncWorkspaceSize + scatterWorkspaceSize +
                       expertTokensCountWorkspaceSize + expertTokenTotalCountWorkspace;
+
+    // DropPad模式需要额外的workspace空间
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        // expertIdxValueGm: 每个核需要存储2个int32 (lastExpertId和lastCoreExpertIdNum)
+        int64_t expertIdxValueWorkspaceSize = tilingDataPtr_->coreNum * NUM_TWO * sizeof(int32_t);
+        workspaceSize_ += expertIdxValueWorkspaceSize;
+
+        OP_LOGD(context_, "DropPad workspace: expertIdxValueWorkspace=%ld",
+                expertIdxValueWorkspaceSize);
+    }
+
     if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
         quantMode_ != QUANT_MODE_HIF8_PERTENSOR) {
         // DYNAMIC_QUANT、MXFP8_E5M2_QUANT、MXFP8_E4M3FN_QUANT
@@ -632,7 +655,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()");
 
     // activeNum 暂不使用，在取得n和k后进行校验activeNum==n*k
-    // expertCapacity 暂不使用，也不校验
     // expertTokensNumType：expertNum的约束依赖expertTokensNumType，先校验expertTokensNumType
     OP_CHECK_IF((expertTokensNumType_ != EXPERT_TOKENS_TYPE_CUMSUM) &&
                     (expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT) &&
@@ -644,6 +666,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                                            std::to_string(EXPERT_TOKENS_TYPE_KEY_VALUE))),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumType = expertTokensNumType_;
+
     // expertNum
     int64_t maxExpertNum =
         (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ? KV_MODE_EXPERT_IDX_MAX : EXPERT_IDX_MAX;
@@ -653,18 +676,39 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                                   ("in range [1, " + std::to_string(maxExpertNum) + "]")),
         return ge::GRAPH_FAILED);
     tilingDataPtr_->expertNum = expertNum_;
-    // drop_pad_mode 暂不使用，只校验
-    OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS,
+
+    OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS && dropPadMode_ != DROP_PAD_MODE_DROPPAD,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "drop_pad_mode", std::to_string(dropPadMode_),
-                                          std::to_string(DROP_PAD_MODE_DROPLESS)),
+                                          std::to_string(DROP_PAD_MODE_DROPLESS) + " or " +
+                                          std::to_string(DROP_PAD_MODE_DROPPAD)),
                 return ge::GRAPH_FAILED);
+    tilingDataPtr_->dropPadMode = dropPadMode_;
+
+    // expertCapacity校验：DropPad模式下必须满足 > 0 且 ≤ numRows
+    // 注意：此时n_还未获取，需要在CheckSetInputs中获取n_后再校验expertCapacity
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(expertCapacity_ <= EXPERT_CAPACITY_MIN_VALUE,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expertCapacity_",
+                                              std::to_string(expertCapacity_),
+                                              " greater than " + std::to_string(EXPERT_CAPACITY_MIN_VALUE)),
+                    return ge::GRAPH_FAILED);
+    }
+    tilingDataPtr_->expertCapacity = expertCapacity_;
 
     OP_CHECK_IF(expertTokensNumFlag_ != true,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_tokens_num_flag",
                                           (expertTokensNumFlag_ ? "True" : "False"), "True"),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumFlag = expertTokensNumFlag_;
+
     // quantMode
+    // DropPad模式第一优先级仅支持非量化模式（quantMode=-1）
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(quantMode_ != QUANT_MODE_UNQUANT,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quant_mode", std::to_string(quantMode_),
+                                              "-1 n DropPad mode"),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(quantMode_ != QUANT_MODE_UNQUANT && quantMode_ != QUANT_MODE_STATIC &&
                     quantMode_ != QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_MXFP8_E5M2 &&
                     quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
@@ -675,7 +719,14 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                                           "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11 or 12"),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
-    // rowIdxType
+
+    // rowIdxType校验：DropPad模式仅支持rowIdxType=0（gather索引）
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(rowIdxType_ != ROW_IDX_GATHER,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "row_idx_type", std::to_string(rowIdxType_),
+                                              std::to_string(ROW_IDX_GATHER)),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(rowIdxType_ != ROW_IDX_SCATTER && rowIdxType_ != ROW_IDX_GATHER,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "row_idx_type", std::to_string(rowIdxType_),
                                           (std::to_string(ROW_IDX_SCATTER) + " or " +
@@ -706,6 +757,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetListAttrs()
                                           ("less than or equal to expert_num(" +
                                            std::to_string(expertNum_) + ")")),
                 return ge::GRAPH_FAILED);
+
+    // DropPad模式下activeExpertRange必须为[0, expertNum]
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(expertStart_ != 0 || expertEnd_ != expertNum_,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "[expert_start, expert_end]",
+                        "[" + std::to_string(expertStart_) + ", " + std::to_string(expertEnd_) + "]",
+                        "[0, " + std::to_string(expertNum_) + "]"),
+                    return ge::GRAPH_FAILED);
+    }
+
     tilingDataPtr_->expertStart = expertStart_;
     tilingDataPtr_->expertEnd = expertEnd_;
     tilingDataPtr_->actualExpertNum = expertEnd_ - expertStart_;
@@ -984,6 +1045,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
 
     tilingDataPtr_->activeNum = totalLength_;
 
+    // DropPad模式下expertCapacity必须满足 ≤ numRows
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(expertCapacity_ > n_,
+                    OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "expert_capacity",
+                        std::to_string(expertCapacity_),
+                        "less than or equal to " + std::to_string(n_)),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -992,19 +1062,43 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()");
 
     auto rank = static_cast<int64_t>(expandedXShape_.GetDimNum());
-    OP_CHECK_IF(rank != RANK_TWO,
-                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_x", std::to_string(rank), "2"),
-                return ge::GRAPH_FAILED);
-    int64_t dim0 = expandedXShape_.GetDim(0);
-    OP_CHECK_IF(dim0 != totalLength_,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[0]", std::to_string(dim0),
-                                          std::to_string(totalLength_)),
-                return ge::GRAPH_FAILED);
-    int64_t dim1 = expandedXShape_.GetDim(1);
-    OP_CHECK_IF(dim1 != cols_,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
-                                          std::to_string(cols_)),
-                return ge::GRAPH_FAILED);
+
+    // DropPad模式：expandedXOut应为3D [expertNum, expertCapacity, h]
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        OP_CHECK_IF(rank != RANK_THREE,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "rank", std::to_string(rank), "3"),
+                    return ge::GRAPH_FAILED);
+        int64_t dim0 = expandedXShape_.GetDim(0);
+        OP_CHECK_IF(dim0 != expertNum_,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "The dim0 of output expanded_x",
+                        std::to_string(dim0), std::to_string(expertNum_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim1 = expandedXShape_.GetDim(1);
+        OP_CHECK_IF(dim1 != expertCapacity_,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "The dim1 of output expanded_x",
+                        std::to_string(dim1), std::to_string(expertCapacity_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim2 = expandedXShape_.GetDim(2);
+        OP_CHECK_IF(dim2 != cols_,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "The dim2 of output expanded_x",
+                        std::to_string(dim2), std::to_string(cols_)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        // Dropless模式：expandedXOut应为2D [n*k, h]
+        OP_CHECK_IF(rank != RANK_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "expanded_x", std::to_string(rank), "2"),
+                    return ge::GRAPH_FAILED);
+        int64_t dim0 = expandedXShape_.GetDim(0);
+        OP_CHECK_IF(dim0 != totalLength_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[0]", std::to_string(dim0),
+                                            std::to_string(totalLength_)),
+                    return ge::GRAPH_FAILED);
+        int64_t dim1 = expandedXShape_.GetDim(1);
+        OP_CHECK_IF(dim1 != cols_,
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_x dim[1]", std::to_string(dim1),
+                                            std::to_string(cols_)),
+                    return ge::GRAPH_FAILED);
+    }
 
     // 静态量化场景下，输出expandedX的dtype必须为INT8
     if (quantMode_ == QUANT_MODE_STATIC) {
@@ -1106,6 +1200,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     int64_t expectedDim0{-1};
     int64_t expectedDim1{-1};
     int64_t expectedDim2{-1};
+
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
         if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
@@ -1114,7 +1209,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
             expectedDim2 = NUM_TWO;
         } else {
             expectedRank = RANK_ONE;
-            expectedDim0 = totalLength_;
+            expectedDim0 = (dropPadMode_ == DROP_PAD_MODE_DROPPAD) ? expertNum_ * expertCapacity_ : totalLength_;
         }
     } else if ((quantMode_ == QUANT_MODE_MXFP8_E5M2) || (quantMode_ == QUANT_MODE_MXFP8_E4M3FN)) {
         expectedRank = RANK_TWO;
@@ -1767,7 +1862,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     }
     tilingDataPtr_->epFullload = ep_;
 
-    if (totalLength_ > sortLoopMaxElement_ || dropPadMode_ == 1) {
+    if (totalLength_ > sortLoopMaxElement_) {
         return false;
     }
 
@@ -1805,6 +1900,196 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     }
 
     return remainUb > 0;
+}
+
+// DropPad模式的SrcToDst Tiling计算函数
+// 参考非arch35版本的实现：Tiling4SrcToDstDropPadCompute
+void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()");
+
+    auto *tilingData = &tilingDataPtr_->srcToDstDropPadParamsOp;
+
+    int64_t perCoreRows = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+    if (perCoreRows <= 0) {
+        tilingData->needCoreNum = 0;
+        return;
+    }
+
+    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreRows);
+    tilingData->needCoreNum = needCoreNum;
+    tilingData->perCoreRows = perCoreRows;
+
+    int64_t lastCoreRows = totalLength_ - perCoreRows * (needCoreNum - 1);
+    tilingData->lastCoreRows = lastCoreRows;
+
+     // 参考非arch35版本的UB空间计算
+    // INT8类型需要扩展为INT16处理
+    int64_t effectiveDtypeSize = (inputXDtypeSize_ == sizeof(int8_t)) ? sizeof(int16_t) : inputXDtypeSize_;
+
+    // 计算UB空间需求：应该使用每次循环处理的行数，而非核处理总行数
+    // 先计算理论上的最大每次循环行数，用于判断能否全载
+    int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
+    
+    // 理论最大每次循环行数（假设列全载）
+    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE)
+                                         / sizeof(int32_t) / NUM_TWO;
+    theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
+
+    // 每次循环实际处理的行数（取核处理行数和理论最大值的较小者）
+    int64_t perLoopRowsEstimate = std::min(perCoreRows, theoreticalMaxPerLoopRows);
+    int64_t lastPerLoopRowsEstimate = std::min(lastCoreRows, theoreticalMaxPerLoopRows);
+
+    // 使用每次循环行数计算UB需求
+    int64_t rowSize = AlignBytes(perLoopRowsEstimate * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
+
+    // 如果能全载（一行能全部放入UB）
+    // 需要额外考虑固定开销：copyOutQueue(32字节) + scaleZeroOutQueue(32字节) + UB_BLOCK_SIZE(对齐)
+    int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE; // 32*2 + 32 = 96字节
+    
+    if (rowSize + colSize + fixedOverhead < availUbSize_) {
+        tilingData->perCorePerLoopRows = perCoreRows;
+        tilingData->perCoreLastLoopRows = perCoreRows;
+        tilingData->perCoreLoops = 1;
+        tilingData->lastCorePerLoopRows = lastCoreRows;
+        tilingData->lastCoreLastLoopRows = lastCoreRows;
+        tilingData->lastCoreLoops = 1;
+        tilingData->perLoopCols = cols_;
+        tilingData->lastLoopCols = cols_;
+        tilingData->colLoops = 1;
+    } else {
+        // 需要分批处理
+        int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
+        int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
+
+        // 计算每循环最大行数（需要考虑固定开销）
+        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead)
+                                      / sizeof(int32_t) / NUM_TWO;
+        basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
+
+        if (cols_ < MAX_COLS_ONE_LOOP) {
+            basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead)
+                                  / sizeof(int32_t) / NUM_TWO;
+            basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
+        } else if (perCoreRows < basePerLoopMaxRows) {
+            baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / effectiveDtypeSize;
+            baseMaxCols = Align(baseMaxCols, effectiveDtypeSize);
+        }
+
+        tilingData->perLoopCols = std::min(baseMaxCols, cols_);
+        tilingData->lastLoopCols = cols_ - ((cols_ + baseMaxCols - 1) / baseMaxCols - 1) * baseMaxCols;
+        tilingData->colLoops = Ops::Base::CeilDiv(cols_, baseMaxCols);
+
+        tilingData->perCorePerLoopRows = std::min(perCoreRows, basePerLoopMaxRows);
+        tilingData->perCoreLastLoopRows = perCoreRows - ((perCoreRows + basePerLoopMaxRows - 1) /
+                                          basePerLoopMaxRows - 1) * basePerLoopMaxRows;
+        tilingData->perCoreLoops = Ops::Base::CeilDiv(perCoreRows, basePerLoopMaxRows);
+
+        tilingData->lastCorePerLoopRows = std::min(lastCoreRows, basePerLoopMaxRows);
+        tilingData->lastCoreLastLoopRows = lastCoreRows - ((lastCoreRows + basePerLoopMaxRows - 1) /
+                                           basePerLoopMaxRows - 1) * basePerLoopMaxRows;
+        tilingData->lastCoreLoops = Ops::Base::CeilDiv(lastCoreRows, basePerLoopMaxRows);
+    }
+
+    OP_LOGD(context_, "DropPad SrcToDst Tiling: needCoreNum=%ld, perCoreRows=%ld, lastCoreRows=%ld, "
+            "perLoopCols=%ld, colLoops=%ld, perCoreLoops=%ld",
+            tilingData->needCoreNum, tilingData->perCoreRows, tilingData->lastCoreRows,
+            tilingData->perLoopCols, tilingData->colLoops, tilingData->perCoreLoops);
+}
+
+// DropPad模式的GatherOut Tiling计算函数
+// 参考非arch35版本：Tiling4GatherOutCompute
+void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()");
+
+    auto *tilingData = &tilingDataPtr_->gatherOutDropPadParamsOp;
+
+    // DropPad模式下，Gather阶段需要遍历全部输入索引（n*k），而非输出元素数
+    // 因为rowIdxGatherDroppad输出了完整的n*k个映射索引，需要全部读取
+    // 只有rowIdx!=-1的索引才会进行实际的gather操作
+    int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+    if (perCoreIndicesElements <= 0) {
+        tilingData->perCorePerLoopIndicesElements = 0;
+        tilingData->lastCorePerLoopIndicesElements = 0;
+        return;
+    }
+
+    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
+    int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
+
+    // 计算列方向的Tiling
+    int64_t perLoopCols = cols_;
+    int64_t colMultiple = NUM_TWO * inputXDtypeSize_; // xCopyInQueue buffer倍数
+    int64_t rowMultiple = NUM_TWO; // expandedRowIdxCopyInQueue buffer倍数
+
+    // 计算每循环最大indices元素数（受UB大小限制）
+    // UB分配：xCopyInQueue(双缓冲) + scaleCopyInQueue(双缓冲) + expandedRowIdxCopyInQueue(双缓冲)
+    // scaleCopyInQueue固定开销：2 * AlignBytes(1, sizeof(float)) = 64字节
+    int64_t scaleCopyInQueueSize = UB_BLOCK_SIZE * NUM_TWO;
+    
+    // xCopyInQueue占用：colMultiple * AlignBytes(perLoopCols, sizeof(T))
+    // 剩余空间给expandedRowIdxCopyInQueue：rowMultiple * AlignBytes(indicesElements, sizeof(int32_t))
+    
+    // 由于AlignBytes会引入对齐开销，不能简单地用 sizeof(int32_t) * rowMultiple 计算
+    // 需要迭代计算，找到满足 AlignBytes(indicesElements, 4) <= 可用空间的 最大indicesElements
+    
+    int64_t xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+    int64_t remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
+    
+    // 计算理论最大indices元素数（需要考虑AlignBytes对齐开销）
+    // AlignBytes(indicesElements, 4) * 2 <= remainUbForIndices
+    // AlignBytes(indicesElements, 4) <= remainUbForIndices / 2
+    // indicesElements * 4 + 31 <= remainUbForIndices / 2 * 32 （近似）
+    int64_t maxAlignedBytes = remainUbForIndices / rowMultiple;
+    int64_t perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
+    perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
+
+    // 如果UB空间不足，递减perLoopCols
+    while (perLoopMaxIndicesElements <= 0) {
+        perLoopCols = Ops::Base::CeilDiv(perLoopCols, NUM_TWO);
+        xCopyInQueueSize = AlignBytes(perLoopCols, inputXDtypeSize_) * colMultiple;
+        remainUbForIndices = availUbSize_ - xCopyInQueueSize - scaleCopyInQueueSize;
+        maxAlignedBytes = remainUbForIndices / rowMultiple;
+        perLoopMaxIndicesElements = maxAlignedBytes / sizeof(int32_t);
+        perLoopMaxIndicesElements = Align(perLoopMaxIndicesElements, sizeof(int32_t));
+        OP_LOGD(context_, "perLoopCols adjusted to %ld, perLoopMaxIndicesElements=%ld",
+                perLoopCols, perLoopMaxIndicesElements);
+    }
+
+    int64_t colsLoops = Ops::Base::CeilDiv(cols_, perLoopCols);
+    int64_t lastLoopCols = cols_ - (colsLoops - 1) * perLoopCols;
+
+    // 计算perCore和lastCore的循环参数
+    int64_t perCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, perCoreIndicesElements);
+    int64_t perCoreIndicesLoops = Ops::Base::CeilDiv(perCoreIndicesElements, perCorePerLoopIndicesElements);
+    int64_t perCoreLastLoopIndicesElements = perCoreIndicesElements - (perCoreIndicesLoops - 1) *
+                                             perCorePerLoopIndicesElements;
+
+    int64_t lastCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, lastCoreIndicesElements);
+    int64_t lastCoreIndicesLoops = Ops::Base::CeilDiv(lastCoreIndicesElements, lastCorePerLoopIndicesElements);
+    int64_t lastCoreLastLoopIndicesElements = lastCoreIndicesElements - (lastCoreIndicesLoops - 1) *
+                                              lastCorePerLoopIndicesElements;
+
+    tilingData->needCoreNum = needCoreNum;
+    tilingData->perCoreIndicesElements = perCoreIndicesElements;
+    tilingData->lastCoreIndicesElements = lastCoreIndicesElements;
+    tilingData->perCoreIndicesLoops = perCoreIndicesLoops;
+    tilingData->perCorePerLoopIndicesElements = perCorePerLoopIndicesElements;
+    tilingData->perCoreLastLoopIndicesElements = perCoreLastLoopIndicesElements;
+    tilingData->lastCoreIndicesLoops = lastCoreIndicesLoops;
+    tilingData->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
+    tilingData->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
+    tilingData->colsLoops = colsLoops;
+    tilingData->perLoopCols = perLoopCols;
+    tilingData->lastLoopCols = lastLoopCols;
+    tilingData->xCopyInQueueBufferNum = 2;
+
+    OP_LOGD(context_, "DropPad GatherOut Tiling: needCoreNum=%ld, perCoreIndicesElements=%ld, "
+            "lastCoreIndicesElements=%ld, colsLoops=%ld, perLoopCols=%ld, perCoreIndicesLoops=%ld, "
+            "perCorePerLoopIndicesElements=%ld",
+            needCoreNum, perCoreIndicesElements, lastCoreIndicesElements,
+            colsLoops, perLoopCols, perCoreIndicesLoops, perCorePerLoopIndicesElements);
 }
 
 REGISTER_OPS_TILING_TEMPLATE(MoeInitRoutingV3, MoeInitRoutingV3Arch35TilingClass,

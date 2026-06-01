@@ -185,7 +185,8 @@
       <tr>
         <td>expandedXOut</td>
         <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为1且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</td>
+        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为1且x数据类型为FLOAT32或BFLOAT16时数据类型支持INT4，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1，quantMode为11、12时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。
+        <br>• Dropless场景shape为[NUM_ROWS * K, H]。<br>• DropPad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</td>
         <td>FLOAT32、FLOAT16、BFLOAT16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
         <td>ND</td>
       </tr>
@@ -206,7 +207,7 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入, 如果输入则要求为1D的Tensor, 类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时, 如果输入则要求3D的Tensor, 类型为FLOAT8_E8M0。<br>• quantMode为2、3、9时, 数据类型支持FLOAT8_E8M0。<br>• quantMode为11、12时, 数据类型支持FLOAT32, 且要求为3D的Tensor。<br>• 其余场景数据类型支持FLOAT32。</td>
+        <td>输出量化计算过程中scaleOptional的中间值。<br>• 非量化场景下为可选输入, 如果输入则要求为1D的Tensor, 类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时, 如果输入则要求3D的Tensor, 类型为FLOAT8_E8M0。当DropPad场景输出是一个1D的Tensor，shape为[expertNum * expertCapacity]，类型为FLOAT32。<br>• quantMode为2、3、9时, 数据类型支持FLOAT8_E8M0。<br>• quantMode为11、12时, 数据类型支持FLOAT32, 且要求为3D的Tensor。<br>• 其余场景数据类型支持FLOAT32。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
@@ -217,8 +218,8 @@
 
 - 输入值域限制：
   - activeNum 当前未使用，校验需等于NUM_ROWS*K。
-  - expertCapacity 当前未使用，仅校验非空。
-  - dropPadMode 当前只支持0，代表 Dropless 场景。
+  - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
+  - dropPadMode 支持取值为0和1，分别代表Dropless场景和DropPad场景。
   - expertTokensNumType 当前只支持 0、1 和 2，分别代表 cumsum 模式、count 模式和 key\_value 模式。
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
   - quantMode:
@@ -230,6 +231,12 @@
         - H为偶数，用于沿H维每两个INT4值打包为1个字节；NUM_ROWS不要求为偶数。
         - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
         - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
+  
+- <term>Ascend 950PR/Ascend 950DT</term> DropPad模式特殊约束（dropPadMode=1时）：
+  - rowIdxType仅支持取值为0（gather索引）。
+  - activeExpertRangeOptional必须为[0, expertNum]。
+  - quantMode在DropPad模式下仅支持-1（非量化），且数据类型仅支持FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8。
+  - expandedXOut必须是3D Tensor，shape为[expertNum, expertCapacity, H]。
   
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
   - 支持性能模板的产品：

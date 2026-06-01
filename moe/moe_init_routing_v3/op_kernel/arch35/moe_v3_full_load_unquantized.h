@@ -34,6 +34,8 @@ protected:
     __aicore__ inline void GatherOutX();
     __aicore__ inline void ScatterOutScale();
     __aicore__ inline void GatherOutScale();
+    __aicore__ inline void ZeroOutX();
+    __aicore__ inline void ZeroOutScale();
 
 private:
     TQue<QuePosition::VECIN, 1> xCopyInQueue_;
@@ -88,6 +90,38 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
 template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
 {
+    if (this->dropPadMode_ == DROP_PAD_MODE) {
+        if (this->blockIdx_ < this->needCoreNum_) {
+            this->CopyIn();
+            this->SortCompute();
+
+            if (this->blockIdx_ == 0) {
+                this->CopyOutRowIdx();
+            }
+
+            if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
+                this->ComputeExpertTokenCount();
+                this->CopyExpertCountToOutput();
+            }
+
+            this->ZeroOutX();
+            if (this->isInputScale_) {
+                this->ZeroOutScale();
+            }
+        }
+#ifndef __CCE_KT_TEST__
+        AscendC::SyncAll();
+#endif
+        if (this->blockIdx_ < this->needCoreNum_) {
+            this->GatherOutX();
+            if (this->isInputScale_) {
+                this->GatherOutScale();
+            }
+            this->FreeLocalTensor();
+        }
+        return;
+    }
+
     if (this->blockIdx_ < this->needCoreNum_) {
         this->CopyIn();
         this->SortCompute();
@@ -288,6 +322,59 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     this->expandedRowIdxQueue_.template EnQue<int32_t>(expandedRowIdx);
     scaleCopyInQueue_.FreeTensor(scaleLocal);
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
+{
+    int64_t perCoreRows = Ceil(this->activeNum_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->activeNum_);
+    if (startRow >= endRow) {
+        return;
+    }
+
+    if constexpr (IsSameType<T, hifloat8_t>::value) {
+        DataCopyExtParams hif8CopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(uint8_t)),
+                                         0, 0, 0};
+        LocalTensor<uint8_t> zeroLocal = xCopyInQueue_.AllocTensor<uint8_t>();
+        Duplicate<uint8_t>(zeroLocal, static_cast<uint8_t>(0), Align(this->cols_, sizeof(uint8_t)));
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+        for (int64_t row = startRow; row < endRow; row++) {
+            DataCopyPad(expandedXGm_[row * this->cols_], zeroLocal.ReinterpretCast<T>(), hif8CopyParams);
+        }
+        xCopyInQueue_.FreeTensor(zeroLocal);
+    } else {
+        DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0,
+                                     0};
+        LocalTensor<T> zeroLocal = xCopyInQueue_.AllocTensor<T>();
+        Duplicate<T>(zeroLocal, static_cast<T>(0), Align(this->cols_, sizeof(T)));
+        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+        for (int64_t row = startRow; row < endRow; row++) {
+            DataCopyPad(expandedXGm_[row * this->cols_], zeroLocal, copyParams);
+        }
+        xCopyInQueue_.FreeTensor(zeroLocal);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutScale()
+{
+    int64_t perCoreRows = Ceil(this->activeNum_, this->needCoreNum_);
+    int64_t startRow = this->blockIdx_ * perCoreRows;
+    int64_t endRow = Min(startRow + perCoreRows, this->activeNum_);
+    if (startRow >= endRow) {
+        return;
+    }
+
+    LocalTensor<float> zeroLocal = scaleCopyInQueue_.AllocTensor<float>();
+    Duplicate<float>(zeroLocal, 0.0f, static_cast<int32_t>(1));
+    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    for (int64_t row = startRow; row < endRow; row++) {
+        DataCopyPad(expandedScaleGm_[row], zeroLocal, copyParams);
+    }
+    scaleCopyInQueue_.FreeTensor(zeroLocal);
 }
 
 } // namespace MoeInitRoutingV3

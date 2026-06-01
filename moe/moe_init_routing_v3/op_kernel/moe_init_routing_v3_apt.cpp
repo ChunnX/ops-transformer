@@ -32,6 +32,8 @@
 #include "arch35/moe_v3_full_load_unquantized.h"
 #include "arch35/moe_v3_full_load_dynamic_quant.h"
 #include "arch35/moe_v3_full_load_static_quant.h"
+#include "arch35/moe_v3_row_idx_gather_droppad.h"
+#include "arch35/moe_v3_gather_out_droppad.h"
 
 /*
  * 非量化
@@ -40,6 +42,8 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER 10001000   // 单核排序、非量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER 11000000  // 多核排序、非量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER 11001000 // 多核排序、非量化、SCATTER索引
+#define MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP 10000100     // 单核排序、非量化、GATHER索引、DROP_PAD
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP 11000100   // 多核排序、非量化、GATHER索引、DROP_PAD
 
 /*
  * 静态量化
@@ -204,6 +208,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     // 1.排序阶段，计算SortedExpertIdx和SortedRowIdx。若rowIdxType=1(Scatter)，则SortedRowIdx直接写到输出expandedRowIdx。
     TPipe sortPipe;
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
@@ -226,6 +231,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         op.Init(expertIdx, expandedRowIdx, userWS, t, &sortPipe);
         op.Process();
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_SCATTER) ||
@@ -282,6 +288,18 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
         rowIdxGatherOp.Process();
         rowIdxPipe.Destroy();
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+        // GATHER索引 + DropPad
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
+                      IsSameType<DTYPE_X, hifloat8_t>::value) {
+            TPipe rowIdxGatherDropPadPipe;
+            MoeV3RowIdxGatherDropPad<DTYPE_X> rowIdxGatherDropPadOp;
+            rowIdxGatherDropPadOp.Init(expandedRowIdx, expandedX, expandedScale, userWS, t, &rowIdxGatherDropPadPipe);
+            rowIdxGatherDropPadOp.Process();
+            rowIdxGatherDropPadPipe.Destroy();
+        }
     }
 
     // 4.直接搬运或是搬运的过程中对x进行量化
@@ -308,6 +326,19 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             MoeGatherOut<DTYPE_X> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherOp.Process();
+            gatherPipe.Destroy();
+        }
+    // 4.直接搬运或是搬运的过程中对x进行量化
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER_DROP) ||
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER_DROP)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
+                      IsSameType<DTYPE_X, hifloat8_t>::value) {
+            // 非量化、Drop/Pad
+            TPipe gatherPipe;
+            MoeV3GatherOutDropPad<DTYPE_X> gatherDroppadOp;
+            gatherDroppadOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherDroppadOp.Process();
             gatherPipe.Destroy();
         }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
