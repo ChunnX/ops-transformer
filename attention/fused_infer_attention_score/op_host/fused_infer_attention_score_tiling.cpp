@@ -1232,11 +1232,7 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
     uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
     uint32_t pseShiftS2 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
     uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
-    int64_t batchDim = (context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize();
-    OP_CHECK_IF(batchDim <= 0 || batchDim > static_cast<int64_t>(UINT32_MAX),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "batch size %ld is invalid", batchDim),
-        return GRAPH_FAILED);
-    uint32_t batchSize = static_cast<uint32_t>(batchDim);
+    uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
     
     int64_t maxQSeqlen = 0;
     int64_t maxKVSeqlen = 0;
@@ -1252,21 +1248,19 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
         const int64_t *actualSeqKvTnd = actualKvSeq->GetData<int64_t>();
         if (actualSeqQTnd != nullptr && actualSeqKvTnd != nullptr) {
             for (uint32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-                uint64_t qSeqlen = static_cast<uint64_t>(*(actualSeqQTnd + batchIdx));
-                uint64_t kvSeqlen = static_cast<uint64_t>(*(actualSeqKvTnd + batchIdx));
-                uint64_t prevQSeqlenSum = batchIdx == 0 ? 0 :
-                    static_cast<uint64_t>(*(actualSeqQTnd + batchIdx - 1));
-                qSeqlen -= prevQSeqlenSum;
+                int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
+                int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
+                int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
+                qSeqlen = qSeqlen - prevQSeqlenSum;
                 if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
-                    uint64_t prevKvSeqlenSum = batchIdx == 0 ? 0 :
-                        static_cast<uint64_t>(*(actualSeqKvTnd + batchIdx - 1));
-                    kvSeqlen -= prevKvSeqlenSum;
+                    int64_t prevKvSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqKvTnd + batchIdx - 1);
+                    kvSeqlen = kvSeqlen - prevKvSeqlenSum;
                 }
-                if (static_cast<int64_t>(qSeqlen) > maxQSeqlen) {
-                    maxQSeqlen = static_cast<int64_t>(qSeqlen);
+                if (qSeqlen > maxQSeqlen) {
+                    maxQSeqlen = qSeqlen;
                 }
-                if (static_cast<int64_t>(kvSeqlen) > maxKVSeqlen) {
-                    maxKVSeqlen = static_cast<int64_t>(kvSeqlen);
+                if (kvSeqlen > maxKVSeqlen) {
+                    maxKVSeqlen = kvSeqlen;
                 }
             }
         }
@@ -1460,24 +1454,26 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         int64_t minQSeqlen = INT64_MAX;
         int64_t minKVSeqlen = INT64_MAX;
         for (int32_t batchIdx = 0; batchIdx < batch; batchIdx++) {
-            uint64_t qSeqlen = static_cast<uint64_t>(*(actualSeqQTnd + batchIdx));
-            uint64_t kvSeqlen = static_cast<uint64_t>(*(actualSeqKvTnd + batchIdx));
+            int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
+            int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
             if (faInfo.layout == "TND") {
                 if (batchIdx > 0) {
-                    qSeqlen -= static_cast<uint64_t>(*(actualSeqQTnd + batchIdx - 1));
+                    int64_t prevQSeqlenSum = *(actualSeqQTnd + batchIdx - 1);
+                    qSeqlen = qSeqlen - prevQSeqlenSum;
                     if (!faInfo.pagedCacheFlag) {
-                        kvSeqlen -= static_cast<uint64_t>(*(actualSeqKvTnd + batchIdx - 1));
+                        int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
+                        kvSeqlen = kvSeqlen - prevKvSeqlenSum;
                     }
                 }
             }
-            if (static_cast<int64_t>(qSeqlen) > maxQSeqlen) {
-                maxQSeqlen = static_cast<int64_t>(qSeqlen);
+            if (qSeqlen > maxQSeqlen) {
+                maxQSeqlen = qSeqlen;
             }
-            if (static_cast<int64_t>(qSeqlen) < minQSeqlen) {
-                minQSeqlen = static_cast<int64_t>(qSeqlen);
+            if (qSeqlen < minQSeqlen) {
+                minQSeqlen = qSeqlen;
             }
-            if (static_cast<int64_t>(kvSeqlen) < minKVSeqlen) {
-                minKVSeqlen = static_cast<int64_t>(kvSeqlen);
+            if (kvSeqlen < minKVSeqlen) {
+                minKVSeqlen = kvSeqlen;
             }
         }
         uint32_t numTasks = faInfo.batch * faInfo.kvHeads;

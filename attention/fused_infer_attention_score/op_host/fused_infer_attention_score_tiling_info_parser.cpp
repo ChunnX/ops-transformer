@@ -15,7 +15,6 @@
 
 #include <map>
 #include <numeric>
-#include <cstdint>
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
@@ -539,11 +538,7 @@ ge::graphStatus FiaInfoParser::GetQkHeadDim()
         return ge::GRAPH_FAILED;
     }
 
-    uint64_t qkHeadDim = static_cast<uint64_t>(queryShape_->GetShapeD());
-    OP_CHECK_IF(qkHeadDim == 0 || qkHeadDim > UINT32_MAX,
-        OP_LOGE(opName_, "qkHeadDim %lu is invalid", qkHeadDim),
-        return ge::GRAPH_FAILED);
-    qkHeadDim_ = static_cast<uint32_t>(qkHeadDim);
+    qkHeadDim_ = static_cast<uint32_t>(queryShape_->GetShapeD()); // 后面需要把qkHeadDim_改成uint64
     return ge::GRAPH_SUCCESS;
 }
 
@@ -989,12 +984,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
         }
     } else {
         if (maskDimNum == 3U) {
-            uint64_t batchStride = static_cast<uint64_t>(maskTensor->GetStorageShape().GetDim(maskDimNum - 1)) *
-                maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
-            OP_CHECK_IF(batchStride > UINT32_MAX,
-                OP_LOGE(opName_, "attenMaskBatchStride overflow"),
-                return ge::GRAPH_FAILED);
-            attenMaskBatchStride_ = static_cast<uint32_t>(batchStride);
+            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) *
+                                    maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
             OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.",
@@ -1070,22 +1061,14 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
         uint32_t maskDimNum = maskTensor->GetStorageShape().GetDimNum();
         if (maskDimNum == 2U) {
             if (s1Size_ == 1U) { // qs=1 仅支持BS
-                int64_t batchStride = maskTensor->GetStorageShape().GetDim(1);
-                OP_CHECK_IF(batchStride <= 0 || batchStride > static_cast<int64_t>(UINT32_MAX),
-                    OP_LOGE(opName_, "attenMaskBatchStride %ld is invalid", batchStride),
-                    return ge::GRAPH_FAILED);
-                attenMaskBatchStride_ = static_cast<uint32_t>(batchStride);
+                attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(1);
             } else { // qs > 1 仅支持SS
                 attenMaskBatchStride_ = 0;
             }
         } else if (maskDimNum == 3U || maskDimNum == 4U) {
             if (maskTensor->GetStorageShape().GetDim(0) == bSize_) { // BSS B1SS BatchStride = S1*S2
-                uint64_t batchStride = static_cast<uint64_t>(maskTensor->GetStorageShape().GetDim(maskDimNum - 1)) *
-                    maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
-                OP_CHECK_IF(batchStride > UINT32_MAX,
-                    OP_LOGE(opName_, "attenMaskBatchStride overflow"),
-                    return ge::GRAPH_FAILED);
-                attenMaskBatchStride_ = static_cast<uint32_t>(batchStride);
+                attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) *
+                                        maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
             } else { // 1SS 11SS
                 attenMaskBatchStride_ = 0;
             }

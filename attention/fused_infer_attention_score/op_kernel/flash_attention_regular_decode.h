@@ -212,15 +212,14 @@ namespace SplitFuse {
                 uint32_t kvNBlockIdx = taskIdx - curBatch * firstBatchTaskNum;
 
                 uint32_t qSeqlen = 1;
-                uint64_t kvSeqlen = static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch));
+                uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatch));
                 if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                     if constexpr (!PAGED_CACHE_FLAG) {
-                        uint64_t prevKvSeqlenSum = (curBatch == 0) ? 0 :
-                            static_cast<uint64_t>(gActualKvseqlen.GetValue(curBatch - 1));
-                        kvSeqlen -= prevKvSeqlenSum;
+                        uint32_t prevKvSeqlenSum = (curBatch == 0) ?
+                            0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatch - 1));
+                        kvSeqlen = kvSeqlen - prevKvSeqlenSum;
                     }
                 }
-                uint32_t noSkipKvS = static_cast<uint32_t>(kvSeqlen);
 
                 uint64_t qBOffset = static_cast<uint64_t>(curBatch) * strideQ;
                 uint64_t oBOffset = static_cast<uint64_t>(curBatch) * strideO;
@@ -255,6 +254,7 @@ namespace SplitFuse {
                 uint64_t oNStartOffset = static_cast<uint64_t>(qNStartIdx) * embedV;
                 uint64_t lseTokenOffset = 0;
 
+                uint32_t noSkipKvS = kvSeqlen;
                 uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
 
                 uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
@@ -461,12 +461,12 @@ namespace SplitFuse {
                     }
 
                     uint32_t tailQSeqlen = 1;
-                    uint64_t tailKvSeqlen = static_cast<uint64_t>(gActualKvseqlen.GetValue(tailCurBatch));
+                    uint32_t tailKvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(tailCurBatch));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                         if constexpr (!PAGED_CACHE_FLAG) {
-                            uint64_t prevKvSeqlenSum = (tailCurBatch == 0) ? 0 :
-                                static_cast<uint64_t>(gActualKvseqlen.GetValue(tailCurBatch - 1));
-                            tailKvSeqlen -= prevKvSeqlenSum;
+                            uint32_t prevKvSum = (tailCurBatch == 0) ?
+                                0 : static_cast<uint32_t>(gActualKvseqlen.GetValue(tailCurBatch - 1));
+                            tailKvSeqlen = tailKvSeqlen - prevKvSum;
                         }
                     }
 
@@ -502,7 +502,7 @@ namespace SplitFuse {
                     uint64_t oNStartOffset = static_cast<uint64_t>(tailQNStartIdx) * embedV;
                     uint64_t lseTokenOffset = 0;
 
-                    uint32_t noSkipKvS = static_cast<uint32_t>(tailKvSeqlen);
+                    uint32_t noSkipKvS = tailKvSeqlen;
                     uint32_t kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, pagedBlockSize);
 
                     uint32_t blockStackNum = MAX_KV_STACK_LEN / pagedBlockSize;
