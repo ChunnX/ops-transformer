@@ -209,8 +209,6 @@ def {}({}, kernel_name="{}"{}):
     options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api", "include"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common"))
-    options.append("-I" + os.path.join(PYF_PATH, "..", "common", "tensor_api"))
     options.append("-I" + os.path.join(PYF_PATH, "..", "ascendc", "common", "tensor_api", "include"))
     options.append("-I" + tikcpp_path)
     options.append("-I" + os.path.join(tikcpp_path, "..", "..", "include"))

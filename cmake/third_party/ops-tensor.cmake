@@ -11,7 +11,6 @@
 include_guard(GLOBAL)
 
 set(OPTENSOR_TAG_ID gmmtensor)
-set(OPTENSOR_GIT_URL "https://gitcode.com/zhangzhizhuo/ops-tensor.git")
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -50,6 +49,21 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
     message(FATAL_ERROR "Git checkout failed: ${CHECKOUT_ERROR}")
   endif()
 else()
+  execute_process(
+    COMMAND git remote get-url origin
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_REMOTE_URL
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
+    set(OPTENSOR_GIT_URL "git@gitcode.com:zhangzhizhuo/ops-tensor.git")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_GIT_URL}")
+  else()
+    set(OPTENSOR_GIT_URL "https://gitcode.com/zhangzhizhuo/ops-tensor.git")
+    message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_GIT_URL}")
+  endif()
+
   if(EXISTS "${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild")
     file(REMOVE_RECURSE ${PROJECT_SOURCE_DIR}/build/_deps/ops-tensor-subbuild)
   endif()

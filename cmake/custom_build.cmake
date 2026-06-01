@@ -990,12 +990,6 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
     )
-    install(DIRECTORY ${BLAZE}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-    )
-    install(DIRECTORY ${TENSOR_API}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
-    )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
 foreach(_3rd_op_dir ${_3rd_op_dirs})
@@ -1099,6 +1093,7 @@ if (ALL_COMMON_SRC_DIRS)
             )
         endif()
     endforeach()
+
     if(NOT TARGET common_src_copy)
         set(ALL_COMMON_COPY_STAMP "${_COMMON_OUT_SRC_DIR}/.all_common_copy.stamp")
         add_custom_command(OUTPUT ${ALL_COMMON_COPY_STAMP}
