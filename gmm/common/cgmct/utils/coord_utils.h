@@ -266,10 +266,9 @@ public:
         return offset;
     }
 
-    template <GroupedMatmul::QuantMode aQuantMode>
+    template <GroupedMatmul::QuantMode aQuantMode, int64_t bC0Align = MATMUL_MNK_ALIGN_INT8>
     __aicore__ inline AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
-    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0,
-                     int64_t bC0Align = MATMUL_MNK_ALIGN_INT8)
+    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0)
     {
         int64_t mOffset = mTileIdx * l1M + mSplitOffset;
         int64_t nOffset = nTileIdx * l1N + nSplitOffset;
@@ -279,7 +278,7 @@ public:
         } else {
             Get<0>(offset) = mOffset;
         }
-        Get<1>(offset) = GetBOffset(nTileIdx, 0, 0, bC0Align, nSplitOffset);
+        CalBOffset4LowerBits<bC0Align>(nOffset, Get<1>(offset));
         Get<5>(offset) = mOffset * n / 2 + nOffset; // 5: idx of y
         if constexpr (aQuantMode == GroupedMatmul::QuantMode::PERGROUP_MODE ||
                       aQuantMode == GroupedMatmul::QuantMode::PERBLOCK_MODE) {
