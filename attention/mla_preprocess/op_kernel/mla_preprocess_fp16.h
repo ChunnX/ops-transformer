@@ -17,7 +17,7 @@
 #define MLA_PREPROCESS_FP16_H
 
 #include "lib/matmul_intf.h"
-#include "mla_common.h"
+#include "mla_preprocess_mla_common.h"
 #include "mla_iterator.h"
 #include "mla_mem.h"
 #include "mla_mma.h"

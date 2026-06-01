@@ -252,11 +252,11 @@ ge::graphStatus Mc2MatMulV3Tiling::CheckArgs()
 ge::graphStatus Mc2MatMulV3Tiling::GetShapeAttrsInfo() // 检查输入属性是否支持
 {
     args_.opName = context_->GetNodeName();
-    OP_TILING_CHECK(args_.opName == nullptr, CUBE_INNER_ERR_REPORT("matmul", "get op name invalid context"),
+    OP_TILING_CHECK(args_.opName == nullptr, OP_LOGE("matmul", "get op name invalid context."),
         return ge::GRAPH_FAILED);
     OP_LOGI(args_.opName, "TilingContext: %s", Ops::Transformer::DebugTilingContext(context_).c_str());
     OP_TILING_CHECK((CheckArgs() != ge::GRAPH_SUCCESS) || (GetArgs() != ge::GRAPH_SUCCESS),
-        CUBE_INNER_ERR_REPORT(args_.opName, "invalid context"), return ge::GRAPH_FAILED);
+        OP_LOGE(args_.opName, "invalid context."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

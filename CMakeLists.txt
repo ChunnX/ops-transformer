@@ -45,10 +45,10 @@ set(ASCEND_COMPUTE_UNIT           "ascend910b"           CACHE   STRING   "soc t
 set(ASCEND_OP_NAME                "ALL"                           CACHE   STRING   "operators that need to be compiled")
 set(ARCH_DIRECTORY                ""                           CACHE   STRING   "arch directory that need to be compiled")
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
-set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
+set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62;kirinx90;kirin9030" CACHE STRING "all soc list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch22,kirin9030:arch22
-set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62:arch38,kirinx90:arch22,kirin9030:arch22
+set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62 kirinx90 kirin9030)
 set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
@@ -126,11 +126,16 @@ set_directory_properties(PROPERTIES
 
 include(cmake/third_party/opbase.cmake)
 include(cmake/config.cmake)
-include(cmake/third_party/json.cmake)
+add_cann_third_party(json)
+
 if (ENABLE_TEST)
     set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
     set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
-    include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+    add_cann_third_party(gtest)
+    if (TARGET GTest::gtest)
+        add_library(gtest ALIAS GTest::gtest)
+    endif()
+
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
 
@@ -146,9 +151,10 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/dependencies.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
-        include(cmake/third_party/eigen.cmake)
+        add_cann_third_party(eigen)
         include(cmake/third_party/abseil-cpp.cmake)
         include(cmake/third_party/ascend_protobuf.cmake)
+
 
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")

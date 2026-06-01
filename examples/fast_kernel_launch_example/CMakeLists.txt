@@ -44,8 +44,8 @@ set(INCLUDE_DIRECTORIES
     ${ASCEND_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${CMAKE_CURRENT_SOURCE_DIR}/../../common/inc
-    ${ASCEND_HOME}/include/op_common
-    ${ASCEND_HOME}/pkg_inc/op_common
+    ${OPBASE_SOURCE_PATH}/include/op_common
+    ${OPBASE_SOURCE_PATH}/pkg_inc/op_common
     ${ASCEND_HOME}/pkg_inc/base
 )
 

@@ -610,4 +610,34 @@ TEST_F(MatmulReduceScatterArch22TilingTest, IsDeterministic_False_FP16)
     }
 }
 
+TEST_F(MatmulReduceScatterArch22TilingTest, MataInterleaveLargeD_FP16)
+{
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
+    uint64_t coreNum = 24;
+    uint64_t ubSize = 196352;
+    gert::TilingContextPara tilingContextPara(
+        "MatmulReduceScatter",
+        {
+            {{{65536, 7168}, {65536, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{7168, 16384}, {7168, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{65536, 16384}, {65536, 16384}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    uint64_t expectTilingKey = 3;
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
 } // namespace MatmulReduceScatterUT

@@ -9,7 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 
 function(cpack_empty_package)
-  include(cmake/third_party/makeself-fetch.cmake)
+    add_cann_third_party(makeself-fetch)
+
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
       message(STATUS "Detected architecture: x86_64")
       set(ARCH x86_64)

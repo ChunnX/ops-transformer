@@ -182,6 +182,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
     int64_t inFactor = Align(this->cols_, sizeof(T));
+    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
 
@@ -199,7 +200,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
             for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
                 int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-                if (outIndex < this->activeNum_) {
+                if (outIndex >= 0 && outIndex < outputRows) {
                     DataCopyPad(expandedXGm_[outIndex * this->cols_], xOutLocal[(i - this->startXRow_) * inFactor],
                                 copyParams);
                 }
@@ -218,7 +219,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
         for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
             for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
                 int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-                if (outIndex < this->activeNum_) {
+                if (outIndex >= 0 && outIndex < outputRows) {
                     DataCopyPad(expandedXGm_[outIndex * this->cols_], xLocal[(i - this->startXRow_) * inFactor],
                                 copyParams);
                 }
@@ -271,6 +272,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     int64_t curIndex = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t k = 0;
+    int64_t outputRows = Min(this->actualExpertIdxNum_, this->activeNum_);
 
     for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
@@ -278,7 +280,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
         SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
         for (; k < this->coreIndicesElements_ && curIndex / this->k_ == i; curIndex++, k++) {
             int32_t outIndex = expandedRowIdx.GetValue(curIndex);
-            if (outIndex < this->activeNum_) {
+            if (outIndex >= 0 && outIndex < outputRows) {
                 DataCopyPad(expandedScaleGm_[outIndex], scaleLocal, copyParams);
             }
         }

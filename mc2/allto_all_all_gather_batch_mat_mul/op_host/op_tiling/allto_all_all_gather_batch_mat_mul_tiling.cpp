@@ -486,7 +486,7 @@ static ge::graphStatus HandleLocalBmmTilingData(gert::TilingContext *context,
                                                          mmV3ArgsInfo);
     OP_TILING_CHECK(
         bmmTilingLocalStd.DoTiling() != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Do BmmV3Tiling failed under local standard section."),
+        OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local standard section."),
         return ge::GRAPH_FAILED);
 
     // Local tail slice BMM tiling
@@ -506,7 +506,7 @@ static ge::graphStatus HandleLocalBmmTilingData(gert::TilingContext *context,
                                                               bmmV3BatchInfo, mmV3ArgsInfo);
         OP_TILING_CHECK(
             bmmTilingLocalTail.DoTiling() != ge::GRAPH_SUCCESS,
-            VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Do BmmV3Tiling failed under local tail section."),
+            OP_LOGE(context->GetNodeName(), "Do BmmV3Tiling failed under local tail section."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -534,7 +534,7 @@ static ge::graphStatus HandleNoneLocalBmmTilingData(gert::TilingContext *context
     AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticStd(context, tilingData->domesticTiling.bmmTilingData,
                                                             bmmV3BatchInfo, mmV3ArgsInfo);
     OP_TILING_CHECK(bmmTilingDomesticStd.DoTiling() != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+                    OP_LOGE(context->GetNodeName(),
                                                     "Do BmmV3Tiling failed under domestic standard section."),
                     return ge::GRAPH_FAILED);
 
@@ -557,7 +557,7 @@ static ge::graphStatus HandleNoneLocalBmmTilingData(gert::TilingContext *context
         AlltoAllAllGatherBatchMatMulTiling bmmTilingDomesticTail(context, tilingData->domesticTailTiling.bmmTilingData,
                                                                  bmmV3BatchInfo, mmV3ArgsInfo);
         OP_TILING_CHECK(bmmTilingDomesticTail.DoTiling() != ge::GRAPH_SUCCESS,
-                        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+                        OP_LOGE(context->GetNodeName(),
                                                         "Do BmmV3Tiling failed under domestic tail section."),
                         return ge::GRAPH_FAILED);
     }
@@ -578,11 +578,11 @@ static ge::graphStatus SetMatmulTilingAlltoAllAllGatherBatchMatMul(gert::TilingC
     }
 
     OP_TILING_CHECK(HandleLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Handle local bmm tiling data failed."),
+                    OP_LOGE(context->GetNodeName(), "Handle local bmm tiling data failed."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(HandleNoneLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) !=
                         ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Handle none local bmm tiling data failed."),
+                    OP_LOGE(context->GetNodeName(), "Handle none local bmm tiling data failed."),
                     return ge::GRAPH_FAILED);
 
     // shard-0 Non_local tail E slice BMM tiling
@@ -1006,7 +1006,7 @@ static ge::graphStatus MC2SetWorkspaceShard(gert::TilingContext *context,
 {
     size_t *workspaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "get workspace failed"),
+                    OP_LOGE(context->GetNodeName(), "get workspace failed"),
                     return ge::GRAPH_FAILED);
 
     const uint64_t commOut = GetCommOutSize(tilingData);
@@ -1125,7 +1125,7 @@ static void SetHcclTiling(const gert::TilingContext *context, AlltoAllAllGatherB
     std::string allGatherConfig = "AllGather=level0:doublering";
 
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(),
         "GetAttrs returned nullptr!"), return);
     auto epGroup = attrs->GetAttrPointer<char>(ATTR_EP_GROUP_INDEX);
     auto tpGroup = attrs->GetAttrPointer<char>(ATTR_TP_GROUP_INDEX);
@@ -1137,13 +1137,13 @@ static void SetHcclTiling(const gert::TilingContext *context, AlltoAllAllGatherB
     ge::DataType inputDataType = context->GetInputDesc(X_INDEX)->GetDataType();
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "%s is Unsupported outputdata type!",
-        Ops::Base::ToString(outputDataType).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "y1",
+        Ops::Base::ToString(outputDataType).c_str(), "supported HCCL data type"),
         return);
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "%s is Unsupported inputdata type!",
-        Ops::Base::ToString(inputDataType).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "x",
+        Ops::Base::ToString(inputDataType).c_str(), "supported HCCL data type"),
         return);
 
     auto dstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
@@ -1196,7 +1196,7 @@ static ge::graphStatus SetBatchMatMulTilingData(gert::TilingContext *context, ui
     // 待修改，等BMM tiling提供接口和修改方案
     OP_TILING_CHECK(SetMatmulTilingAlltoAllAllGatherBatchMatMul(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo,
                                                                 formulaicArgs) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set Matmul tiling Failed!"),
+                    OP_LOGE(context->GetNodeName(), "Set Matmul tiling Failed!"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1274,7 +1274,7 @@ ge::graphStatus AlltoAllAllGatherBatchMatMulTilingFunc(gert::TilingContext *cont
 {
     // tiling校验shape
     OP_TILING_CHECK(TilingCheckAlltoAllAllGatherBatchMatMul(context) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling check shape Failed!"),
+                    OP_LOGE(context->GetNodeName(), "Tiling check shape Failed!"),
                     return ge::GRAPH_FAILED);
     AlltoAllAllGatherBatchMatMulTilingData *tilingData =
         context->GetTilingData<AlltoAllAllGatherBatchMatMulTilingData>();
@@ -1286,14 +1286,14 @@ ge::graphStatus AlltoAllAllGatherBatchMatMulTilingFunc(gert::TilingContext *cont
 
     SetCommonTilingData(context, ubSize, aivNum, tilingData);
     OP_TILING_CHECK(SetBatchMatMulTilingData(context, aicNum, tilingData) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set BatchMatmul tiling failed!"),
+                    OP_LOGE(context->GetNodeName(), "Set BatchMatmul tiling failed!"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MC2SetWorkspaceShard(context, tilingData) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set workspace Failed!"),
+                    OP_LOGE(context->GetNodeName(), "Set workspace Failed!"),
                     return ge::GRAPH_FAILED);
     SetUbTilingDataInCommonTiling(context, ubSize, tilingData);
     OP_TILING_CHECK(SetContextData(context, numBlocks, tilingData) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Set context data failed!"),
+                    OP_LOGE(context->GetNodeName(), "Set context data failed!"),
                     return ge::GRAPH_FAILED);
 
     SetHcclTiling(context, tilingData);

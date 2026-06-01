@@ -175,92 +175,92 @@ public:
     }
 };
 
-aclnnRecurrentGatedDeltaRule_test_case test;
+aclnnRecurrentGatedDeltaRule_test_case rgdr_test;
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case0)
 {
-    test.RGDRTestCase(0, 0);
+    rgdr_test.RGDRTestCase(0, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case1)
 {
-    test.RGDRTestCase(1, 0);
+    rgdr_test.RGDRTestCase(1, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case2)
 {
-    test.RGDRTestCase(2, 0);
+    rgdr_test.RGDRTestCase(2, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case3)
 {
-    test.RGDRTestCase(3, 0);
+    rgdr_test.RGDRTestCase(3, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case4)
 {
-    test.RGDRTestCase(4, 0);
+    rgdr_test.RGDRTestCase(4, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case5)
 {
-    test.RGDRTestCase(5, 0);
+    rgdr_test.RGDRTestCase(5, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case6)
 {
-    test.RGDRTestCase(6, 0);
+    rgdr_test.RGDRTestCase(6, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case7)
 {
-    test.RGDRTestCase(7, 0);
+    rgdr_test.RGDRTestCase(7, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case8)
 {
-    test.RGDRTestCase(8, 0);
+    rgdr_test.RGDRTestCase(8, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case9)
 {
-    test.RGDRTestCase(9, 0);
+    rgdr_test.RGDRTestCase(9, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case10)
 {
-    test.RGDRTestCase(10, 0);
+    rgdr_test.RGDRTestCase(10, 0);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case11)
 {
-    test.RGDRTestCase(0, 1);
+    rgdr_test.RGDRTestCase(0, 1);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case12)
 {
-    test.RGDRTestCase(0, 2);
+    rgdr_test.RGDRTestCase(0, 2);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case13)
 {
-    test.RGDRTestCase(0, 3);
+    rgdr_test.RGDRTestCase(0, 3);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case14)
 {
-    test.RGDRTestCase(0, 4);
+    rgdr_test.RGDRTestCase(0, 4);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case15)
 {
-    test.RGDRTestCase(0, 5);
+    rgdr_test.RGDRTestCase(0, 5);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case16)
 {
-    test.RGDRTestCase(0, 6);
+    rgdr_test.RGDRTestCase(0, 6);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case17)
 {
-    test.RGDRTestCase(0, 7);
+    rgdr_test.RGDRTestCase(0, 7);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case18)
 {
-    test.RGDRTestCase(0, 8);
+    rgdr_test.RGDRTestCase(0, 8);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case19)
 {
-    test.RGDRTestCase(0, 9);
+    rgdr_test.RGDRTestCase(0, 9);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case20)
 {
-    test.RGDRTestCase(0, 10);
+    rgdr_test.RGDRTestCase(0, 10);
 }
 TEST_F(aclnnRecurrentGatedDeltaRule_test, ascend910B2_test_opapi_case21)
 {
-    test.RGDRTestCase(0, 11);
+    rgdr_test.RGDRTestCase(0, 11);
 }

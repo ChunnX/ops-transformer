@@ -75,6 +75,7 @@ constexpr uint32_t DAVID_EP_WORLD_SIZE_FOUR = 4;
 constexpr uint32_t DAVID_EP_WORLD_SIZE_TWO = 2;
 constexpr uint32_t ENABLE = 1;
 constexpr uint32_t NOT_ENABLE = 0;
+constexpr uint32_t INT8_COMM_QUANT = 2U;
 
 const int64_t H_V1 = 7168;
 const int64_t H_UPPER_BOUND_V2 = 8192;
@@ -653,7 +654,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const MoeDistr
 {
     const char *nodeName = context->GetNodeName();
     size_t *workspace = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
+    OP_TILING_CHECK(workspace == nullptr, OP_LOGE(nodeName, "get workspace failed"),
                     return ge::GRAPH_FAILED);
     uint64_t h = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.h);
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
@@ -723,8 +724,8 @@ static void SetTilingKey(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     bool tp = false;
-    uint32_t quantMode = TILINGKEY_NO_QUANT;  // A2 & A3
-    uint32_t layeredMode = TILINGKEY_TPL_MTE;  // A2
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t layeredMode = TILINGKEY_TPL_CCU;
     uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, layeredMode, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
@@ -771,7 +772,7 @@ ge::graphStatus MoeDistributeCombineTilingImpl(gert::TilingContext *context, con
     // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
     tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
     SetHcclTiling(context, *tilingData, groupEp, groupTp);
     // Tiling Key support only 1 scenario in current version
     SetTilingKey(context);
@@ -793,6 +794,22 @@ uint64_t MoeDistributeCombineTilingA5::GetTilingKey() const
     const uint64_t tilingKey = context_->GetTilingKey();
     const char *nodeName = context_->GetNodeName();
     OP_LOGD(nodeName, "MoeDistributeCombineTilingA5 get tiling key %lu", tilingKey);
+    return tilingKey;
+}
+
+uint64_t MoeDistributeCombineV2TilingFuncA5::CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode,
+    bool isLayered)
+{
+    bool tp = false;
+    uint32_t quantMode = TILINGKEY_NO_QUANT;
+    uint32_t hierarchy = TILINGKEY_TPL_MTE;
+    if (tpWorldSize == MAX_TP_WORLD_SIZE) {
+        tp = true;
+    }
+    if (commQuantMode >= INT8_COMM_QUANT) {
+        quantMode = commQuantMode;
+    }
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tp, quantMode, hierarchy, TILINGKEY_TPL_A5);
     return tilingKey;
 }
 

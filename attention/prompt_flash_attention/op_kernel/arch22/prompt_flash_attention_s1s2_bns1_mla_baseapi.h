@@ -17,7 +17,7 @@
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_MLA_BASEAPI_H
 
 #include "util.h"
-#include "mla_common.h"
+#include "prompt_flash_attention_mla_common.h"
 #include "mla_custom_matmul_policy_d192.h"
 #include "mla_custom_matmul_policy_d128.h"
 #if ASC_DEVKIT_MAJOR >= 9

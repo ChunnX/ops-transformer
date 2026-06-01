@@ -46,18 +46,16 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const MRNCtx
     if (dequantScaleType == ge::DT_BF16) {
         OP_TILING_CHECK(
             residualType != ge::DT_BF16,
-            VECTOR_INNER_ERR_REPORT_TILING(
-                context_->GetNodeName(),
-                "when dequantScaleType = bf16, Expect type of"
-                " residual to be bf16."),
+            OP_LOGE_FOR_INVALID_DTYPE(
+                context_->GetNodeName(), "residual",
+                Ops::Base::ToString(residualType).c_str(), "BF16"),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
             residualType != ge::DT_FLOAT16,
-            VECTOR_INNER_ERR_REPORT_TILING(
-                context_->GetNodeName(),
-                "when dequantScaleType != bf16, Expect type of"
-                " residual to be fp16"),
+            OP_LOGE_FOR_INVALID_DTYPE(
+                context_->GetNodeName(), "residual",
+                Ops::Base::ToString(residualType).c_str(), "FLOAT16"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -159,7 +157,7 @@ ge::graphStatus QuantMatmulAllReduceAddRmsNormTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
+        OP_LOGE(
             helper_->opName_,
             "tiling data size[%zu] not aligned to"
             " 8",

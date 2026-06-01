@@ -15,7 +15,7 @@
 #ifndef FLASH_ATTENTION_REGULAR_DECODE_H
 #define FLASH_ATTENTION_REGULAR_DECODE_H
 
-#include "kernel_common.hpp"
+#include "fia_kernel_common.hpp"
 
 using namespace NpuArch;
 using namespace KernelCommon;
