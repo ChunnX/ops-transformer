@@ -175,6 +175,11 @@ __aicore__ inline uint32_t MinU32(uint32_t lhs, uint32_t rhs)
     return lhs < rhs ? lhs : rhs;
 }
 
+__aicore__ inline uint32_t MaxU32(uint32_t lhs, uint32_t rhs)
+{
+    return lhs > rhs ? lhs : rhs;
+}
+
 __aicore__ inline uint32_t MakeDataBufferId(uint32_t tileBufferId)
 {
     return tileBufferId & (QKV_RRC_DOUBLE_BUFFER_NUM - 1U);

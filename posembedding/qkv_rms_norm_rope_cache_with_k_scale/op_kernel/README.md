@@ -71,8 +71,10 @@ AIV code sets or waits only the base flag id. AIC wrappers handle both AIV0 and
 AIV1 using `flag + 16` for AIV1 and the base id for AIV0. Basic block owns the
 semantic CrossCore protocol: after Vec finishes the AL1 staging boundary for a
 tile, basic block notifies `A_READY` through `PIPE_MTE3`; before Cube consumes
-`a_rot_l1_nz`, basic block waits `A_READY` through `PIPE_MTE1`. `C_READY` and
-`C_CONSUMED` remain later-stage hooks in the same basic-block boundary.
+`a_rot_l1_nz`, basic block waits `A_READY` through `PIPE_MTE1`. After Cube
+Fixpipe completes, basic block sends `C_READY` through `PIPE_FIX`; the AIV side
+waits it through `PIPE_V` and currently sends the balanced `C_CONSUMED`
+placeholder until T10 adds real Q/K postprocess consumption.
 
 T05/T06 keep fixed intra-core event ids inside the AIV/AIC implementation
 classes. Basic block owns only CrossCore protocol sequencing; it does not expose
@@ -114,5 +116,12 @@ copies the external dense BF16 `[128,128]` `rotation` matrix to
 the resident L1 visibility boundary. No CrossCore flag is introduced for
 rotation. Per tile, basic block still waits `A_READY` from both AIVs before
 entering Cube compute; Cube then loads A and resident rotation into L0 in
-up-to-128-row M chunks and issues BF16 x BF16 -> FP32 MMAD into L0C. Fixpipe
-distribution, `C_READY`, and Q/K postprocess remain later tasks.
+up-to-128-row M chunks and issues BF16 x BF16 -> FP32 MMAD into L0C.
+
+T08 adds AIC Fixpipe distribution from L0C to the shared output DB pool in AIV
+UB. Cube derives the AIV0/AIV1 split from the actual per-tile token split,
+emits the intersecting row ranges with single-target Fixpipe and `subBlockId`
+0/1, then releases L0C for reuse. Basic block owns the CrossCore sequencing:
+after Cube compute AIC sends `C_READY`, and the AIV side waits it before
+signaling the current placeholder `C_CONSUMED`. Q/K postprocess will replace
+that placeholder consumption in T10.

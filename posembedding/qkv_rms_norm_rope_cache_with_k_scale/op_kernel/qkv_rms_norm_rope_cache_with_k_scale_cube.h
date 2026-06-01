@@ -15,6 +15,8 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
+constexpr FixpipeConfig QKV_RRC_FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+
 class D128FastCube {
 public:
     __aicore__ inline void Init(uint32_t cubeIndex, const GlobalTensors &tensors)
@@ -55,7 +57,8 @@ public:
     {
         const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[bufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        ConsumePreprocessedA(tile, aRotL1Nz);
+        LocalTensor<float> qkAfterCubeUb = QkAfterCubeUb(bufferId);
+        ConsumePreprocessedA(tile, aRotL1Nz, qkAfterCubeUb);
         (void)workspaceGm_;
         (void)cubeIndex_;
     }
@@ -188,7 +191,8 @@ private:
         DataCopy(rotationL1Nz_, rotationGm_, nd2nzParams);
     }
 
-    __aicore__ inline void ConsumePreprocessedA(const TileParam &tile, LocalTensor<bfloat16_t> &aRotL1Nz)
+    __aicore__ inline void ConsumePreprocessedA(const TileParam &tile, LocalTensor<bfloat16_t> &aRotL1Nz,
+        LocalTensor<float> &qkAfterCubeUb)
     {
         if (tile.rowSize == 0U) {
             return;
@@ -206,6 +210,7 @@ private:
             ComputeMmad(mSize, bufferId);
             NotifyL0CReadyForFixpipe(bufferId);
             WaitL0CReadyForFixpipe(bufferId);
+            FixpipeToAivUb(tile, mStart, mSize, bufferId, qkAfterCubeUb);
             ReleaseL0CBuffer(bufferId);
             ReleaseL0Buffer(bufferId);
         }
@@ -256,6 +261,57 @@ private:
             params);
     }
 
+    __aicore__ inline uint32_t GetAiv0RowSize(const TileParam &tile) const
+    {
+        return CeilDiv(tile.tokenSize, QKV_RRC_MIX_AIV_PER_AIC) * tile.qkHeadSize;
+    }
+
+    __aicore__ inline void FixpipeToAivUb(const TileParam &tile, uint32_t mStart, uint32_t mSize,
+        uint32_t bufferId, LocalTensor<float> &qkAfterCubeUb)
+    {
+        const uint32_t aiv0RowSize = GetAiv0RowSize(tile);
+        FixpipeRowRangeToAivUb(
+            mStart, mSize, 0U, aiv0RowSize, 0U, bufferId, qkAfterCubeUb);
+        FixpipeRowRangeToAivUb(
+            mStart, mSize, aiv0RowSize, tile.rowSize, 1U, bufferId, qkAfterCubeUb);
+    }
+
+    __aicore__ inline void FixpipeRowRangeToAivUb(uint32_t chunkRowStart, uint32_t chunkRowSize,
+        uint32_t dstRowStart, uint32_t dstRowEnd, uint32_t subBlockId, uint32_t bufferId,
+        LocalTensor<float> &qkAfterCubeUb)
+    {
+        const uint32_t rowBegin = MaxU32(chunkRowStart, dstRowStart);
+        const uint32_t rowEnd = MinU32(chunkRowStart + chunkRowSize, dstRowEnd);
+        if (rowBegin >= rowEnd) {
+            return;
+        }
+
+        const uint32_t srcLocalRow = rowBegin - chunkRowStart;
+        const uint32_t dstLocalRow = rowBegin - dstRowStart;
+        FixpipeRowsToUb(srcLocalRow, dstLocalRow, rowEnd - rowBegin, chunkRowSize, subBlockId, bufferId,
+            qkAfterCubeUb);
+    }
+
+    __aicore__ inline void FixpipeRowsToUb(uint32_t srcLocalRow, uint32_t dstLocalRow, uint32_t rowCount,
+        uint32_t sourceMSize, uint32_t subBlockId, uint32_t bufferId, LocalTensor<float> &qkAfterCubeUb)
+    {
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = QKV_RRC_HEAD_DIM_D128;
+        fixpipeParams.mSize = AlignUp(rowCount, 2U);
+        fixpipeParams.srcStride = AlignUp(sourceMSize, QKV_RRC_NZ_C0);
+        fixpipeParams.dstStride = QKV_RRC_HEAD_DIM_D128;
+        fixpipeParams.dualDstCtl = 0U;
+        fixpipeParams.subBlockId = static_cast<bool>(subBlockId);
+        fixpipeParams.params.ndNum = 1U;
+        fixpipeParams.params.srcNdStride = 0U;
+        fixpipeParams.params.dstNdStride = 0U;
+
+        Fixpipe<float, float, QKV_RRC_FIXPIPE_ROW_MAJOR_UB>(
+            qkAfterCubeUb[dstLocalRow * QKV_RRC_HEAD_DIM_D128],
+            l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS + srcLocalRow * QKV_RRC_NZ_C0],
+            fixpipeParams);
+    }
+
     __aicore__ inline void BindLocalTensors()
     {
         rotationL1Nz_ =
@@ -265,6 +321,13 @@ private:
         l0a_ = LocalTensor<bfloat16_t>(TPosition::A2, 0, AIC_L0A_BUFFER_ELEMENTS);
         l0b_ = LocalTensor<bfloat16_t>(TPosition::B2, 0, AIC_L0B_BUFFER_ELEMENTS);
         l0c_ = LocalTensor<float>(TPosition::CO1, 0, AIC_L0C_BUFFER_ELEMENTS);
+        outputDbPoolUb_ =
+            LocalTensor<float>(TPosition::LCM, QKV_RRC_OUTPUT_DB_POOL_OFFSET, QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS);
+    }
+
+    __aicore__ inline LocalTensor<float> QkAfterCubeUb(uint32_t bufferId)
+    {
+        return outputDbPoolUb_[bufferId * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
     }
 
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
@@ -281,6 +344,7 @@ private:
     LocalTensor<bfloat16_t> l0a_;
     LocalTensor<bfloat16_t> l0b_;
     LocalTensor<float> l0c_;
+    LocalTensor<float> outputDbPoolUb_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale

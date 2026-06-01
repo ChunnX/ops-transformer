@@ -37,6 +37,8 @@ public:
     {
         WaitAReadyFromAiv();
         cube_.ComputeTile(tile);
+        NotifyCReadyToAiv();
+        WaitCConsumedFromAiv();
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
@@ -48,6 +50,8 @@ public:
     {
         vec_.ComputeTile(tile);
         NotifyAReadyToAic();
+        WaitCReadyFromAic();
+        NotifyCConsumedToAic();
     }
 
     __aicore__ inline void End()

@@ -27,7 +27,7 @@
 | T05 | Intra-core event constants and Init/End | Done | AIV/AIC intra-core event ids are encapsulated inside `D128FastVec`/`D128FastCube`; reusable-event Init/End pairs AIV input UB, `v_out_ub`, `qk_after_cube_ub`, and AIC L0/L0C reuse paths. `a_rot_l1_nz` still does not allocate per-AL1 AIV event ids. | This commit |
 | T06 | AIV Q/K/V preprocess | Done | Added AIV preprocess boundary: input UB reuse and `MTE2 -> V` ready events, QKV/gamma/slot_mapping/cos-sin staging, D=128 VF RMSNorm + half-RoPE + BF16 ND output, ND2NZ AL1 write, and private `V -> MTE3`/`MTE3 -> V` AL1 staging event id `4`. Basic block now owns the `A_READY` CrossCore notify/wait around AIV/Cube tile compute. Follow-up optimized the D=128 VF path to keep low/high halves in registers, moved token/head loops into VF, and kept Vec pingpong storage as one base buffer plus active-buffer offset views. Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused preprocess golden/UT is still pending. | 2459db1b9 plus this commit |
 | T07 | AIC rotation resident and Cube matmul | Done | AIC now loads dense BF16 `[D,D]` `rotation` to resident `rotation_l1_nz` before the tile loop, while basic block waits both AIV `A_READY` signals per tile before entering Cube compute. Cube loads A/rotation into L0 and executes BF16 x BF16 -> FP32 matmul. Sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Cube UT is still pending. | aba3656fc |
-| T08 | AIC Fixpipe distribution and C_READY | Not started | Kernel compile + static review | |
+| T08 | AIC Fixpipe distribution and C_READY | Done | AIC now Fixpipes L0C rows into AIV0/AIV1 `qk_after_cube_ub` by the actual `ceil(tokenSize/2) * qkHeadTile` row boundary, using single-target Fixpipe with `subBlockId` 0/1 instead of fixed half-tile splitting. Basic block owns `C_READY` and placeholder `C_CONSUMED` CrossCore sequencing with fixed per-tile counts: AIC sets `C_READY` twice and waits `C_CONSUMED` twice; each AIV waits `C_READY` once and sets `C_CONSUMED` once. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T09 | V branch early postprocess | Not started | Kernel compile + V path UT | |
 | T10 | AIV Q/K postprocess | Not started | Kernel compile + Q/K postprocess UT | |
 | T11 | Rolling pipeline and drain | Not started | Kernel compile + static review | |
@@ -37,8 +37,8 @@
 
 ## Next Task
 
-Start T08 by adding AIC Fixpipe distribution from L0C/C to the two AIV
-`qk_after_cube_ub` ranges and sending `C_READY` after Fixpipe completion.
+Start T09 by adding the AIV V branch early postprocess after `A_READY` and
+before Q/K `C_READY` consumption.
 
 ## Kernel Layout
 
@@ -64,3 +64,9 @@ the `A_READY` CrossCore notify/wait between that AIV AL1 staging boundary and
 Cube AL1 consumption. T07 keeps `rotation_l1_nz` resident on AIC without a
 CrossCore flag, and AIC Init/End covers L0 reuse with `M_MTE1` and L0C reuse
 with `FIX_M`. All active ids are checked to stay within `0..5`.
+T08 binds the AIC-side view of the same output DB pool and emits L0C rows to
+the two AIV UB address spaces with `subBlockId` 0/1. The row boundary is
+derived from the same actual AIV token split used for AL1 input, so tail tiles
+do not use a fixed half-tile C split. CrossCore `C_READY`/`C_CONSUMED` calls
+remain centralized in basic block; `C_CONSUMED` is currently a balanced
+placeholder until T10 adds real Q/K postprocess consumption.
