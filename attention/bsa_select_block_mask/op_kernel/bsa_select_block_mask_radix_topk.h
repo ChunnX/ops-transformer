@@ -290,15 +290,48 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyOutHistToWs()
 template <typename BSAT>
 __aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
 {
-    // TODO: 跨核聚合直方图 + 更新边界
-    // 1. 从 GM 读取所有核的 globalHist
-    // 2. 向量树形归约
-    // 3. 找 boundaryBin
-    // 4. 更新 involvedMask16_
-    // 5. 更新 tileTopK
-    // 6. 最后一轮精确分配
-    // return (remainK_ == 0 || roundId == 0)
-    return false;
+    LocalTensor<int32_t> tileHist = tempBuf_.GetWithOffset<int32_t>(
+        tileLen_ / BYTE_SIZE, tileLen_ / BYTE_SIZE);
+    LocalTensor<int32_t> resTensor = maskLocalBuf_.Get<int32_t>();
+    LocalTensor<int32_t> globalHist = resTensor;
+    
+    DataCopyExtParams copyParams{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * numValue_ * constInfo.coreNum),
+        0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
+    DataCopyPad(globalHist, globalHistGm_, copyParams, padParams);
+    PipeBarrier<PIPE_V>();
+    
+    for (int32_t binMask = 0; binMask < static_cast<int32_t>(numValue_); binMask++) {
+        for (int32_t coreId = 1; coreId < static_cast<int32_t>(constInfo.coreNum); coreId++) {
+            globalHist.SetValue(binMask, globalHist(binMask) + globalHist(coreId * numValue_ + binMask));
+        }
+    }
+    
+    boundaryBin = -1;
+    boundaryBinPrev = -1;
+    for (int32_t binMask = numValue_ - 1; binMask >= 0; binMask--) {
+        if (globalHist(binMask) >= static_cast<int32_t>(remainK_)) {
+            boundaryBin = binMask;
+            boundaryBinPrev = binMask + 1;
+            break;
+        }
+    }
+    
+    involvedMask_ = involvedMask_ | (boundaryBin << (roundId * bitsPerRound_));
+    
+    LocalTensor<int32_t> tileTopK = tileTopKBuf_.Get<int32_t>();
+    if (globalHist(boundaryBin) == static_cast<int32_t>(remainK_)) {
+        Add(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNum_);
+        totalDefinitelyInTopK_ += globalHist(boundaryBin);
+    } else if (boundaryBinPrev < static_cast<int32_t>(numValue_)) {
+        Add(tileTopK, tileTopK, tileHist[boundaryBinPrev * tileNumAlign_], tileNum_);
+        totalDefinitelyInTopK_ += globalHist(boundaryBinPrev);
+    }
+    
+    remainK_ = kValue_ - totalDefinitelyInTopK_;
+    
+    return (remainK_ == 0 || roundId == 0);
 }
 
 template <typename BSAT>
