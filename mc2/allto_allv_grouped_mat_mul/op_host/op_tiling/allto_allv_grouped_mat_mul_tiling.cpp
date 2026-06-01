@@ -965,31 +965,16 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE(context_->GetNodeName(), "Workspace is null, expected non-null."), return ge::GRAPH_FAILED);
-    // maxMergeTokenNum
+    // set expertNum
     expertNum_ = 1;
-    uint64_t maxMergeTokenNum = 0;
-    if (expertNum_ > 1) {
-        for (uint64_t startExpertIdx = 0; startExpertIdx < e_; startExpertIdx += expertNum_) {
-            uint64_t mergeTokenNum = 0;
-            for (uint64_t localExpertIdx = startExpertIdx; localExpertIdx <std::min(
-                    startExpertIdx + expertNum_, e_); localExpertIdx++) {
-                for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
-                    mergeTokenNum += recvCounts[rankIdx * e_ + localExpertIdx];
-                }
-            }
-            maxMergeTokenNum = std::max(maxMergeTokenNum, mergeTokenNum);
-        }
-    }
     const uint64_t tensorListSize = 512;
-    uint64_t gmmXAxis = h1_ * GetSizeByDataType(gmmXDataType_);
-    uint64_t groupListSize = sizeof(int64_t) * e_;
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t groupListSize = sizeof(int64_t) * e_ + tensorListSize;
     auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
-    tilingData->workspaceInfo.commXOutSize =
-        Ops::Base::CeilAlign(a_ * gmmXAxis, tensorListSize);
-    tilingData->workspaceInfo.permuteXOutSize =
-        Ops::Base::CeilAlign(maxMergeTokenNum * gmmXAxis, tensorListSize);
-    tilingData->workspaceInfo.gmmComputeSize =
-        Ops::Base::CeilAlign(groupListSize + tensorListSize, tensorListSize);
+    tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(groupListSize, tensorListSize);
     workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
                     tilingData->workspaceInfo.permuteXOutSize +
                     tilingData->workspaceInfo.gmmComputeSize;

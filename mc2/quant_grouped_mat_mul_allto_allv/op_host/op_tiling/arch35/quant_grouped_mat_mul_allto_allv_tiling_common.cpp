@@ -762,11 +762,12 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
         mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-
+    // set expertNum
+    expertNum_ = 1;
     // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
     // expertNum=1时无需Permute, GMM输出直接作为sendBuffer
-    uint64_t permuteOutSize = mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
-    localTilingData_.workspaceInfo.wsPermuteOutSize = permuteOutSize;
+    localTilingData_.workspaceInfo.wsPermuteOutSize = expertNum_ == 1 ? 0 :
+        mc2tiling::AlignUp(localParams_.A * localParams_.N1 * gmmYDtypeSize, alignAddrLen);
 
     workSpaceSize_ = libApiWorkSpaceSize_ + inferredInfo_.gmmResultLen +
                      localTilingData_.workspaceInfo.wsGmmComputeWorkspaceSize +

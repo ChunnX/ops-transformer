@@ -40,14 +40,6 @@ struct HcclA2avTilingInfo {
     Mc2CcTiling a2avCcTiling;
 };
 
-struct A2avGmmWorkspaceInfo {
-    uint64_t commXOutSize = 0;
-    uint64_t permuteXOutSize = 0;
-    uint64_t commXScaleSize = 0;
-    uint64_t permuteScaleOutSize = 0;
-    uint64_t gmmComputeSize = 0;
-};
-
 struct TaskTilingInfo {
     // Tensor维度参数（对应aclnn接口的输入输出shape）
     uint64_t BSK;           // 参考各个算子aclnn接口

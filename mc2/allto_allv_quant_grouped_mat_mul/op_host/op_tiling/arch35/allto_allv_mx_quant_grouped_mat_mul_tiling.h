@@ -34,7 +34,7 @@ protected:
     ge::graphStatus CheckScaleShape() const override;
     ge::graphStatus CheckQuantMode() const override;
     ge::graphStatus DoGmmTiling(uint64_t gmmMSize, uint32_t expertNum) override;
-    void SetWorkspaceInfo(uint64_t maxTokenNum) override;
+    void SetWorkspaceInfo() override;
 private:
     ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
         ge::DataType gYDataType) const;

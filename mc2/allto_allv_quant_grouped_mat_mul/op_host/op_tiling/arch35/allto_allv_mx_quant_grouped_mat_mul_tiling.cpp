@@ -475,28 +475,26 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo(uint64_t maxTokenNum)
+void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
 {
     // aixs
-    uint64_t gmmXAixs = h1_ * GetSizeByDataType(gmmXDataType_);
+    uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
-        gmmXAixs = Ops::Base::CeilDiv(gmmXAixs, MXFP4_PACK_FACTOR);
+        gmmXSize = Ops::Base::CeilDiv(gmmXSize, MXFP4_PACK_FACTOR);
     }
-    uint64_t gmmXScaleAixs = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) *
+    uint64_t gmmXScaleSize = a_ * Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) *
         GetSizeByDataType(gmmWeightDataType_) * 2;
     // comm
-    if (!permuteOutFlag_) {
-        tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(a_ * gmmXAixs,
-            static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    }
-    tilingData->workspaceInfo.commXScaleSize = Ops::Base::CeilAlign(gmmXScaleAixs * a_,
-        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512)); 
+    tilingData->workspaceInfo.commXOutSize = permuteOutFlag_ ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.commXScaleSize = Ops::Base::CeilAlign(gmmXScaleSize,
+        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // permute gmmX
-    tilingData->workspaceInfo.permuteXOutSize = Ops::Base::CeilAlign(maxTokenNum * gmmXAixs,
-        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // permutscaleout size
-    tilingData->workspaceInfo.permuteScaleOutSize = Ops::Base::CeilAlign(gmmXScaleAixs * maxTokenNum,
-        static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.permuteScaleOutSize = expertNum_ == 1 ? 0 :
+        Ops::Base::CeilAlign(gmmXScaleSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K,
