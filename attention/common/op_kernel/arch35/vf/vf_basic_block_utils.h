@@ -29,6 +29,7 @@ constexpr float fp8e4m3MaxValue = 448.0f;
 constexpr float int8MaxValue = 127.0f;
 constexpr float hifp8MaxValue = 32768.0f;
 constexpr float floatEps = 2.220446049250313e-16;
+constexpr float hifp8ScaleValue = 16.0f;
 /* **************************************************************************************************
  * Muls + Select(optional) + SoftmaxFlashV2 + Cast(fp32->fp16/bf16) + ND2NZ
  * ************************************************************************************************* */

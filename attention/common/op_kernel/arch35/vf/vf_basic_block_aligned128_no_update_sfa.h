@@ -24,7 +24,7 @@ namespace FaVectorApi {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
     __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
-    __ubuf__ T * srcUb, const uint32_t blockStride, const uint32_t repeatStride,
+    __ubuf__ T * srcUb, __ubuf__ uint8_t * indexesUb, const uint32_t blockStride, const uint32_t repeatStride,
     const uint16_t m, const T scale, const T minValue)
 {
     AscendC::MicroAPI::RegTensor<float> vreg_input_x;
@@ -92,6 +92,11 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
         AscendC::MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T *&)expSumUb), vreg_exp_sum, ureg_exp_sum, 1);
 
+        if constexpr (IsSameType<T2, hifloat8_t>::value) {
+            AscendC::MicroAPI::Muls(vreg_exp_even, vreg_exp_even, hifp8ScaleValue, preg_all);
+            AscendC::MicroAPI::Muls(vreg_exp_odd, vreg_exp_odd, hifp8ScaleValue, preg_all);
+        }
+
         if constexpr (IsSameType<T2, bfloat16_t>::value) {
             AscendC::MicroAPI::Cast<T2, T, castTraitZero>(vreg_exp_even_bf16, vreg_exp_even, preg_all);
             AscendC::MicroAPI::Cast<T2, T, castTraitOne>(vreg_exp_odd_bf16, vreg_exp_odd, preg_all);
@@ -108,6 +113,24 @@ __simd_vf__ void ProcessVec1NoUpdateImpl128VF(
             AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY,
                 MicroAPI::PostLiteral::POST_MODE_UPDATE>(
                 ((__ubuf__ T2 *&)expUb), vreg_exp_fp16, blockStride, repeatStride, preg_all_b16);
+        } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
+            AscendC::MicroAPI::RegTensor<hifloat8_t> vreg_exp_even_hifp8;
+            AscendC::MicroAPI::RegTensor<hifloat8_t> vreg_exp_odd_hifp8;
+            AscendC::MicroAPI::RegTensor<hifloat8_t> vreg_exp_merge_tmp_hifp8;
+            AscendC::MicroAPI::RegTensor<hifloat8_t> vreg_exp_hifp8;
+            AscendC::MicroAPI::RegTensor<uint8_t> vreg_exp_merge_hifp8_indexes;
+            AscendC::MicroAPI::MaskReg preg_all_b8 = AscendC::MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
+            uint32_t maskLen = 128;
+            AscendC::MicroAPI::MaskReg preg_all_b8_128 = AscendC::MicroAPI::UpdateMask<T2>(maskLen);
+            AscendC::MicroAPI::Cast<T2, T, castTraitZero>(vreg_exp_even_hifp8, vreg_exp_even, preg_all);
+            AscendC::MicroAPI::Cast<T2, T, castTraitTwo>(vreg_exp_odd_hifp8, vreg_exp_odd, preg_all);
+            AscendC::MicroAPI::Or((AscendC::MicroAPI::RegTensor<uint8_t>&)vreg_exp_merge_tmp_hifp8,
+                (AscendC::MicroAPI::RegTensor<uint8_t>&)vreg_exp_even_hifp8,
+                (AscendC::MicroAPI::RegTensor<uint8_t>&)vreg_exp_odd_hifp8, preg_all_b8);
+            AscendC::MicroAPI::LoadAlign(vreg_exp_merge_hifp8_indexes, indexesUb);
+            AscendC::MicroAPI::Gather(vreg_exp_hifp8, vreg_exp_merge_tmp_hifp8, vreg_exp_merge_hifp8_indexes);
+            AscendC::MicroAPI::StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                ((__ubuf__ T2 *&)expUb), vreg_exp_hifp8, blockStride, repeatStride, preg_all_b8_128);
         }
     }
     AscendC::MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
@@ -119,7 +142,8 @@ template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize
 __aicore__ inline void ProcessVec1NoUpdateImpl128(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor,
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor, const LocalTensor<T>& inMaxTensor,
-    const LocalTensor<T>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale, const T minValue)
+    const LocalTensor<T>& sharedTmpBuffer, const LocalTensor<uint8_t>& indexesTensor,
+    const uint16_t m, const uint32_t originN, const T scale, const T minValue)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
@@ -130,9 +154,10 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128(
     __ubuf__ T * maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * maxUbStart = (__ubuf__ T*)maxTensor.GetPhyAddr();
     __ubuf__ T * srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesTensor.GetPhyAddr();
 
     ProcessVec1NoUpdateImpl128VF<T, T2, s1BaseSize, s2BaseSize>(
-        expUb, expSumUb, maxUb, maxUbStart, srcUb, blockStride, repeatStride, m, scale, minValue);
+        expUb, expSumUb, maxUb, maxUbStart, srcUb, indexesUb, blockStride, repeatStride, m, scale, minValue);
 }
 } // namespace
 
