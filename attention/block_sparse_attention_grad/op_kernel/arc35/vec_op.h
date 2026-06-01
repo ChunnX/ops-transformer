@@ -232,9 +232,9 @@ public:
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_out_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset = POST_TILE_LEN * sizeof(INPUT_TYPE);
+        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
         vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset = POST_TILE_LEN * sizeof(INPUT_TYPE);
+        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
 
         EvenCoreInfo info;
         ComputeEvenCoreInfo(info, dkv_size, POST_TILE_LEN);
