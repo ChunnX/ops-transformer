@@ -80,8 +80,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, scalesOptional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, ge::DT_UNDEFINED,
-        combineQuantMode, "", globalBs, "swiglu",
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
+        combineQuantMode, commAlg, globalBs, "swiglu",
         std::numeric_limits<float>::max(), ge::DT_UNDEFINED, false, false, 0,
         yOut, expertTokenNumsOut, workspaceSize, executor);
 
