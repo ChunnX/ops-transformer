@@ -230,7 +230,8 @@ public:
         if (k <= 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "x", std::to_string(k),
-                "when the M or N value is not 0, axis K of x must be a positive number");
+                "when the M or N value is not 0 [M=" + std::to_string(m) + ", N=" + std::to_string(n) +
+                    "], axis K of x must be a positive number");
             return false;
         }
         if (!CheckRequiredShapes(m, k, n, e, outputBS)) {
@@ -309,7 +310,8 @@ public:
         if (groupListLen != e) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                 GMMFR_ACLNN_OP_NAME, "groupList", std::to_string(groupListLen),
-                "the total number of elements of groupList must be equal to the number of experts in weight");
+                "the total number of elements of groupList must be equal to the number of experts in weight [" +
+                    std::to_string(e) + "]");
             return false;
         }
         if (e > MAX_NUM_EXPERTS) {

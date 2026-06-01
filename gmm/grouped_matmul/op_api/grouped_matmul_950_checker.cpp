@@ -126,25 +126,31 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGeneralQuantShape() const
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.x); i++) {
         auto weightNIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - 1;
-        if (GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0) == 0 ||
-            GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex) == 0) {
+        auto xMDim = GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0);
+        auto weightNDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex);
+        if (xMDim == 0 || weightNDim == 0) {
             return ACLNN_SUCCESS;
         }
         if (gmmParams_.groupType == SPLIT_K) {
             auto yFirstDim = GetInputTensor(gmmParams_.y, i)->GetViewShape().GetDim(0);
             GMM_CHECK_REPORT(yFirstDim == groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), yName_.c_str(), std::to_string(yFirstDim),
-                    "when groupType is 2 (split K), axis 0 of y must be equal to axis 0 of groupTensor"));
+                    "when groupType is 2 (split K), axis 0 of y must be equal to axis 0 of groupTensor [" +
+                        std::to_string(groupNum) + "]"));
         } else {
             auto weightKIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - LAST_TWO_DIM_INDEX;
             auto xKDim = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDim(1);
             GMM_CHECK_REPORT(xKDim > 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), xName_.c_str(), std::to_string(xKDim),
-                    "when groupType is 0 (split M) and when the M or N value is not 0, axis K of x must be a positive number"));
+                    "when groupType is 0 (split M) and when the M or N value is not 0 [M=" +
+                        std::to_string(xMDim) + ", N=" + std::to_string(weightNDim) +
+                        "], axis K of x must be a positive number"));
             auto weightKDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex);
             GMM_CHECK_REPORT(weightKDim > 0,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(), std::to_string(weightKDim),
-                    "when groupType is 0 (split M) and when the M or N value is not 0, axis K of weight must be a positive number"));
+                    "when groupType is 0 (split M) and when the M or N value is not 0 [M=" +
+                        std::to_string(xMDim) + ", N=" + std::to_string(weightNDim) +
+                        "], axis K of weight must be a positive number"));
         }
     }
     return ACLNN_SUCCESS;
@@ -198,20 +204,24 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(int64_t
         GMM_CHECK_REPORT(weightStorageLastFourthDim == (kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
                 std::to_string(weightStorageLastFourthDim),
-                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape second dim of weight must be equal to ceil(k/32) for fp8 dtype or ceil(k/64) for fp4 dtype"));
+                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape second dim of weight must be equal to ceil(k/32) for fp8 dtype or ceil(k/64) for fp4 dtype [" +
+                    std::to_string((kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
         GMM_CHECK_REPORT(weightStorageLastThirdDim == (nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
                 std::to_string(weightStorageLastThirdDim),
-                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape third dim of weight must be equal to ceil(n/16)"));
+                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape third dim of weight must be equal to ceil(n/16) [" +
+                    std::to_string((nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
     } else {
         GMM_CHECK_REPORT(weightStorageLastFourthDim == (nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
                 std::to_string(weightStorageLastFourthDim),
-                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape second dim of weight must be equal to ceil(n/32) for fp8 dtype or ceil(n/64) for fp4 dtype"));
+                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape second dim of weight must be equal to ceil(n/32) for fp8 dtype or ceil(n/64) for fp4 dtype [" +
+                    std::to_string((nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
         GMM_CHECK_REPORT(weightStorageLastThirdDim == (kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
                 std::to_string(weightStorageLastThirdDim),
-                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape third dim of weight must be equal to ceil(k/16)"));
+                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape third dim of weight must be equal to ceil(k/16) [" +
+                    std::to_string((kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
     }
     return ACLNN_SUCCESS;
 }
@@ -316,11 +326,13 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerGroupDim()
                 GMM_CHECK_REPORT(scaleDimNumber == weightDimNumber,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
                         std::to_string(scaleDimNumber),
-                        "when split m and in G-B quant mode, the shape dim of scale must be equal to the shape dim of weight"));
+                        "when split m and in G-B quant mode, the shape dim of scale must be equal to the shape dim of weight [" +
+                            std::to_string(weightDimNumber) + "]"));
                 GMM_CHECK_REPORT(perTokenDimNumber == xDimNumber,
                     OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                         std::to_string(perTokenDimNumber),
-                        "when split m and in G-B quant mode, the shape dim of perTokenScale must be equal to the shape dim of x"));
+                        "when split m and in G-B quant mode, the shape dim of perTokenScale must be equal to the shape dim of x [" +
+                            std::to_string(xDimNumber) + "]"));
             }
         }
     }
@@ -344,10 +356,10 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxBiasInputShape(const Ten
         auto biasNDimValue = GetInputTensor(gmmParams_.biasOptional, index)->GetViewShape().GetDim(1);
         GMM_CHECK_REPORT(biasGDimValue == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), biasName_.c_str(), std::to_string(biasGDimValue),
-                "axis group of bias must be equal to axis 0 of groupTensor"));
+                "axis group of bias must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
         GMM_CHECK_REPORT(biasNDimValue == weightNDimValue,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), biasName_.c_str(), std::to_string(biasNDimValue),
-                "axis N of bias must be equal to axis N of weight"));
+                "axis N of bias must be equal to axis N of weight [" + std::to_string(weightNDimValue) + "]"));
     }
     return ACLNN_SUCCESS;
 }
@@ -374,20 +386,21 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
     CHECK_RET(CheckMxBiasInputShape(dimInfo, index) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     GMM_CHECK_REPORT(xMDimValue == pertokenMDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), xName_.c_str(), std::to_string(xMDimValue),
-            "axis M of x must be equal to axis M of perTokenScale"));
+            "axis M of x must be equal to axis M of perTokenScale [" + std::to_string(pertokenMDimValue) + "]"));
     GMM_CHECK_REPORT(weightNDimValue == scaleNDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(), std::to_string(weightNDimValue),
-            "axis N of weight must be equal to axis N of scale"));
+            "axis N of weight must be equal to axis N of scale [" + std::to_string(scaleNDimValue) + "]"));
     GMM_CHECK_REPORT(scaleGDimValue == groupNum,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleGDimValue),
-            "axis group of scale must be equal to axis 0 of groupTensor"));
+            "axis group of scale must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
     auto inferedScaleKDimValue = (xKDimValue + MXFP_DIVISOR_SIZE - 1) / MXFP_DIVISOR_SIZE;
     GMM_CHECK_REPORT(scaleKDimValue == inferedScaleKDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleKDimValue),
-            "axis K of scale must be equal to ceil(k/64)"));
+            "axis K of scale must be equal to ceil(k/64) [" + std::to_string(inferedScaleKDimValue) + "]"));
     GMM_CHECK_REPORT(pertokenScaleKDimValue == inferedScaleKDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
-            std::to_string(pertokenScaleKDimValue), "axis K of perTokenScale must be equal to ceil(k/64)"));
+            std::to_string(pertokenScaleKDimValue),
+            "axis K of perTokenScale must be equal to ceil(k/64) [" + std::to_string(inferedScaleKDimValue) + "]"));
     GMM_CHECK_REPORT(pertokenScaleLastDimValue == MXFP_MULTI_BASE_SIZE,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
             std::to_string(pertokenScaleLastDimValue), "last axis of perTokenScale must be equal to 2"));
@@ -433,17 +446,19 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxFp8TypeKCaseInputShape(c
         GetInputTensor(gmmParams_.scaleOptional, index)->GetViewShape().GetDim(MX_SPLIT_K_SCALE_DIM - 1);
     GMM_CHECK_REPORT(xMDimValue == pertokenMDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), xName_.c_str(), std::to_string(xMDimValue),
-            "axis M of x must be equal to axis M of perTokenScale"));
+            "axis M of x must be equal to axis M of perTokenScale [" + std::to_string(pertokenMDimValue) + "]"));
     GMM_CHECK_REPORT(weightNDimValue == scaleNDimValue,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(), std::to_string(weightNDimValue),
-            "axis N of weight must be equal to axis N of scale"));
+            "axis N of weight must be equal to axis N of scale [" + std::to_string(scaleNDimValue) + "]"));
     GMM_CHECK_REPORT(pertokenKDimValue == (xKDimValue / MXFP_DIVISOR_SIZE + groupNum),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
             std::to_string(pertokenKDimValue),
-            "axis K of perTokenScale must be equal to axis K of x divided by 64, plus groupSize"));
+            "axis K of perTokenScale must be equal to axis K of x divided by 64, plus groupSize [" +
+                std::to_string(xKDimValue / MXFP_DIVISOR_SIZE + groupNum) + "]"));
     GMM_CHECK_REPORT(scaleKDimValue == (xKDimValue / MXFP_DIVISOR_SIZE + groupNum),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleKDimValue),
-            "axis K of scale must be equal to axis K of x divided by 64, plus groupSize"));
+            "axis K of scale must be equal to axis K of x divided by 64, plus groupSize [" +
+                std::to_string(xKDimValue / MXFP_DIVISOR_SIZE + groupNum) + "]"));
     GMM_CHECK_REPORT(scaleLastDimValue == 2,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleLastDimValue),
             "when split k in mx quant mode, last axis of scale must be equal to 2"));
@@ -650,12 +665,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckNonPerGroupQuantPertokenSh
             GMM_CHECK_REPORT(perTokenFirstDim == xMDim || perTokenFirstDim == groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                     std::to_string(perTokenFirstDim),
-                    "in non-pergroup quantification mode and when groupType is 0 (split M) and perTokenScale has 1 dim, axis 0 of perTokenScale must be equal to axis M of x or axis 0 of groupTensor"));
+                    "in non-pergroup quantification mode and when groupType is 0 (split M) and perTokenScale has 1 dim, axis 0 of perTokenScale must be equal to axis M of x [" +
+                        std::to_string(xMDim) + "] or axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
         } else {
             GMM_CHECK_REPORT(perTokenFirstDim == groupNum,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                     std::to_string(perTokenFirstDim),
-                    "in non-pergroup quantification mode and when groupType is 0 (split M) and perTokenScale has 2 dims, axis 0 of perTokenScale must be equal to axis 0 of groupTensor"));
+                    "in non-pergroup quantification mode and when groupType is 0 (split M) and perTokenScale has 2 dims, axis 0 of perTokenScale must be equal to axis 0 of groupTensor [" +
+                        std::to_string(groupNum) + "]"));
             auto perTokenSecondDim = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetViewShape().GetDim(1);
             GMM_CHECK_REPORT(perTokenSecondDim == 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
@@ -666,13 +683,15 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckNonPerGroupQuantPertokenSh
         GMM_CHECK_REPORT(perTokenFirstDim == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                 std::to_string(perTokenFirstDim),
-                "in non-pergroup quantification mode and when groupType is 2 (split K), axis 0 of perTokenScale must be equal to axis 0 of groupTensor"));
+                "in non-pergroup quantification mode and when groupType is 2 (split K), axis 0 of perTokenScale must be equal to axis 0 of groupTensor [" +
+                    std::to_string(groupNum) + "]"));
         if (perTokenDimNumber > 1) {
             auto perTokenSecondDim = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetViewShape().GetDim(1);
             GMM_CHECK_REPORT(perTokenSecondDim == xMDim || perTokenSecondDim == 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                     std::to_string(perTokenSecondDim),
-                    "in non-pergroup quantification mode and when groupType is 2 (split K) and perTokenScale has 2 dims, axis 1 of perTokenScale must be equal to axis M of x or 1"));
+                    "in non-pergroup quantification mode and when groupType is 2 (split K) and perTokenScale has 2 dims, axis 1 of perTokenScale must be equal to axis M of x [" +
+                        std::to_string(xMDim) + "] or 1"));
         }
     }
     return ACLNN_SUCCESS;
@@ -690,18 +709,21 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckNonPerGroupQuantShape() co
         auto scaleFirstDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(0);
         GMM_CHECK_REPORT(scaleFirstDim == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleFirstDim),
-                "in non-pergroup quantification mode, axis 0 of scale must be equal to axis 0 of groupTensor"));
+                "in non-pergroup quantification mode, axis 0 of scale must be equal to axis 0 of groupTensor [" +
+                    std::to_string(groupNum) + "]"));
         if (scaleDimNumber > 1) {
             GMM_CHECK_REPORT(scaleNDim == 1 || scaleNDim == weightNDim,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
                     std::to_string(scaleNDim),
-                    "in non-pergroup quantification mode, axis N of scale must be 1 or equal to axis N of weight"));
+                    "in non-pergroup quantification mode, axis N of scale must be 1 or equal to axis N of weight [" +
+                        std::to_string(weightNDim) + "]"));
             DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
             if (yDtype == DataType::DT_INT8) {
                 GMM_CHECK_REPORT(scaleNDim == weightNDim,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
                         std::to_string(scaleNDim),
-                        "when the output dtype is int8, axis N of scale must be equal to axis N of weight"));
+                        "when the output dtype is int8, axis N of scale must be equal to axis N of weight [" +
+                            std::to_string(weightNDim) + "]"));
             }
         }
 
@@ -802,9 +824,12 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInt8QuantParams() const
             OP_LOGE_FOR_INVALID_SHAPEDIM(GetAclnnOpName(), perTokenScaleName_.c_str(),
                 std::to_string(perTokenDimNum), "1"));
         auto perTokenMDim = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetViewShape().GetDim(0);
-        GMM_CHECK_REPORT(perTokenMDim == GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0),
+        auto xMDim = GetInputTensor(gmmParams_.x)->GetViewShape().GetDim(0);
+        GMM_CHECK_REPORT(perTokenMDim == xMDim,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
-                std::to_string(perTokenMDim), "in int8 quant case, axis M of perTokenScale must be equal to axis M of x"));
+                std::to_string(perTokenMDim),
+                "in int8 quant case, axis M of perTokenScale must be equal to axis M of x [" +
+                    std::to_string(xMDim) + "]"));
     }
     return ACLNN_SUCCESS;
 }
@@ -888,20 +913,25 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulPerTileShape(
                 "when quantification mode is G-B quantification, the M value in x and perTokenScale should be consistent"));
         GMM_CHECK_REPORT(scaleNDim == (weightNDim + PERTILE_GROUP_SIZE - 1) / PERTILE_GROUP_SIZE,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleNDim),
-                "when quantification mode is G-B quantification, axis N of scale must be equal to axis N of weight divided by 128"));
+                "when quantification mode is G-B quantification, axis N of scale must be equal to axis N of weight divided by 128 [" +
+                    std::to_string((weightNDim + PERTILE_GROUP_SIZE - 1) / PERTILE_GROUP_SIZE) + "]"));
         if (gmmParams_.groupType == SPLIT_M) {
             int64_t expectScaleKValue = (weightKDim + PERTILE_GROUP_SIZE - 1) / PERTILE_GROUP_SIZE;
             GMM_CHECK_REPORT(perTokenKDim == scaleKDim && scaleKDim == expectScaleKValue,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                     std::to_string(perTokenKDim),
-                    "when quantification mode is G-B quantification and groupType is 0 (split M), axis K of perTokenScale must be equal to axis K of scale, and its value must be equal to axis K of weight divided by 128, rounded up to the next integer"));
+                    "when quantification mode is G-B quantification and groupType is 0 (split M), axis K of perTokenScale must be equal to axis K of scale [" +
+                        std::to_string(scaleKDim) + "], and its value must be equal to axis K of weight divided by 128, rounded up to the next integer [" +
+                        std::to_string(expectScaleKValue) + "]"));
         } else {
             int64_t expectScaleKValue =
                 (weightKDim / PERTILE_GROUP_SIZE) + gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
             GMM_CHECK_REPORT(perTokenKDim == scaleKDim && scaleKDim == expectScaleKValue,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), perTokenScaleName_.c_str(),
                     std::to_string(perTokenKDim),
-                    "when quantification mode is G-B quantification and groupType is 2 (split K), axis K of perTokenScale must be equal to axis K of scale, and its value must be equal to axis K of weight divided by 128, plus groupSize"));
+                    "when quantification mode is G-B quantification and groupType is 2 (split K), axis K of perTokenScale must be equal to axis K of scale [" +
+                        std::to_string(scaleKDim) + "], and its value must be equal to axis K of weight divided by 128, plus groupSize [" +
+                        std::to_string(expectScaleKValue) + "]"));
         }
     }
     return ACLNN_SUCCESS;
@@ -991,7 +1021,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp8Params(const DataType &
     } else {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(),
             op::ToString(scaleDtype).GetString(),
-            "with float8 case, the dtype of scale must be within the range {FLOAT8_E8M0, FLOAT32, UINT64, INT64}.");
+            "with float8 case, the dtype of scale must be within the range {FLOAT8_E8M0, FLOAT32, UINT64, INT64}");
         return ACLNN_ERR_PARAM_INVALID;
     }
 }
@@ -1012,7 +1042,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
         return CheckGroupedMatmulMxfp4();
     }
     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), op::ToString(scaleDtype).GetString(),
-        "with float4 case, the dtype of scale must be within the range {FLOAT8_E8M0}.");
+        "with float4 case, the dtype of scale must be within the range {FLOAT8_E8M0}");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
@@ -1053,19 +1083,20 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputShapeForV3Version() c
     auto scaleFirstDim = GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0);
     GMM_CHECK_REPORT(scaleFirstDim == groupNum,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleFirstDim),
-            "in quant case, axis 0 of scale must be equal to axis 0 of groupTensor"));
+            "in quant case, axis 0 of scale must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) +
+                "]"));
     GMM_CHECK_REPORT(scaleNDim == weightNDim,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), scaleName_.c_str(), std::to_string(scaleNDim),
-            "in quant case, axis N of scale must be equal to axis N of weight"));
+            "in quant case, axis N of scale must be equal to axis N of weight [" + std::to_string(weightNDim) + "]"));
     if (gmmParams_.biasOptional != nullptr) {
         auto biasGDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(0);
         auto biasNDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(1);
         GMM_CHECK_REPORT(biasGDimValue == groupNum,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), biasName_.c_str(), std::to_string(biasGDimValue),
-                "axis group of bias must be equal to axis 0 of groupTensor"));
+                "axis group of bias must be equal to axis 0 of groupTensor [" + std::to_string(groupNum) + "]"));
         GMM_CHECK_REPORT(biasNDimValue == weightNDim,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), biasName_.c_str(), std::to_string(biasNDimValue),
-                "axis N of bias must be equal to axis N of weight"));
+                "axis N of bias must be equal to axis N of weight [" + std::to_string(weightNDim) + "]"));
     }
     return ACLNN_SUCCESS;
 }
@@ -1135,7 +1166,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
         std::string quantDtypes = std::string("x=") + op::ToString(xDtype).GetString() +
             ", weight=" + op::ToString(weightDtype).GetString();
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(GetAclnnOpName(), "x and weight", quantDtypes.c_str(),
-            "the dtypes of x and weight must be within supported quant dtype pairs.");
+            "the dtypes of x and weight must be within supported quant dtype pairs");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

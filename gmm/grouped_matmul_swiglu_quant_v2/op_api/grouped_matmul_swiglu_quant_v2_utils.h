@@ -608,6 +608,7 @@ protected:
 
     bool CheckEmptyTensor() override
     {
+        auto xMDim = gmmDsqParams_.x->GetViewShape().GetDim(0);
         if (gmmDsqParams_.x->GetViewShape().GetDim(1) <= 0) {
             std::string gotStr = BuildLogValue("K", gmmDsqParams_.x->GetViewShape().GetDim(1));
             std::ostringstream constraint;
@@ -615,10 +616,13 @@ protected:
             std::string constraintStr = constraint.str();
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "x", std::to_string(gmmDsqParams_.x->GetViewShape().GetDim(1)),
-                "when the value of M is not 0, axis K of x must be a positive number");
+                "when the value of M is not 0 [M=" + std::to_string(xMDim) +
+                    "], axis K of x must be a positive number");
             return false;
         }
-        auto weightKIndex = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum() - LAST_SECOND_DIM_INDEX;
+        auto weightDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
+        auto weightKIndex = weightDimNum - LAST_SECOND_DIM_INDEX;
+        auto weightNDim = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightDimNum - 1);
         if (((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex) <= 0) {
             std::string gotStr = BuildLogValue("K", ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex));
             std::ostringstream constraint;
@@ -627,7 +631,8 @@ protected:
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                 GMM_SWIGLU_ACLNN_OP_NAME, "weight",
                 std::to_string(((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightKIndex)),
-                "when the value of N is not 0, axis K of weight must be a positive number");
+                "when the value of N is not 0 [N=" + std::to_string(weightNDim) +
+                    "], axis K of weight must be a positive number");
             return false;
         }
         return true;
