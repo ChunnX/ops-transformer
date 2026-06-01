@@ -1261,10 +1261,18 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId]).nextDevicePtr))->windowsExp;
     GlobalTensor<uint32_t> selfDataStatusGMAivSend;
     selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
-    selfDataStatusGMAivSend.SetValue(12, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
-    selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(srcFlagRdmaAddr));
-    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
+    // selfDataStatusGMAivSend.SetValue(15, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
+    // selfDataStatusGMAivSend.SetValue(12, static_cast<uint32_t>(srcFlagRdmaAddr));
+    // DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+    //         AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
+
+    LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
+    dumpLt.SetValue(0, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
+    dumpLt.SetValue(1, static_cast<uint32_t>(srcFlagRdmaAddr));
+    dumpLt.SetValue(2, static_cast<uint32_t>(srcFlagRdmaAddr >> 32));
+    PipeBarrier<PIPE_ALL>();
+    DataCopy(selfDataStatusGMAivSend[13], dumpLt, 3);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1276,9 +1284,19 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     GlobalTensor<uint8_t> TokensGtU8;
     TokenFlagGtU64.SetGlobalBuffer((__gm__ uint64_t*)(windowInGM_));    // 指向当前使用的windowIn那50M开头
     TokensGtU8.SetGlobalBuffer((__gm__ uint8_t*)(windowInGM_));
-
     LocalTensor<uint64_t> statusTensor = statusBuf_.Get<uint64_t>();
+    DataCopy(statusTensor, readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
+        FLAG_SIZE / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint64_t endFlagValue = statusTensor.GetValue(0);
+
     uint32_t TokenOffset = serverIdx * serverSizeOnWin_ + tokenIdx * tokenStructLen_;
+    DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
+            FLAG_SIZE / sizeof(uint64_t));
+    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint64_t tokenFlagValue = statusTensor.GetValue(0);
 
     uint32_t nextTokenOffset = serverIdx * serverSizeOnWin_ + (tokenIdx + 1) * tokenStructLen_;
     DataCopy(statusTensor, TokenFlagGtU64[(nextTokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
@@ -1299,14 +1317,11 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     }
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
         AscendC::DcciDst::CACHELINE_OUT>(readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)]);
-    DataCopy(statusTensor, readStatusGMTensor_[(serverIdx) * STATE_OFFSET / sizeof(uint64_t)],
-        FLAG_SIZE / sizeof(uint64_t));
-    PipeBarrier<PIPE_ALL>();
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint64_t endFlagValue = statusTensor.GetValue(0);
+    
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
-    selfDataStatusGMAiv.SetValue(14, (uint32_t)((uint64_t)windowInGM_));
+    selfDataStatusGMAiv.SetValue(1, static_cast<uint32_t>(windowInGM_));
+    selfDataStatusGMAiv.SetValue(2, static_cast<uint32_t>((uint64_t)windowInGM_ >> 32));
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
@@ -1316,11 +1331,7 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
         PipeBarrier<PIPE_ALL>();
         return WAIT_STATUS;
     } else { // 得到上个token->可以处理 读到结束符 先搬运当前最后一个token，再走进来，越界读，读到不存在的token，返回finish
-        DataCopy(statusTensor, TokenFlagGtU64[(TokenOffset + flagOffsetInStruct_) / sizeof(uint64_t)],
-            FLAG_SIZE / sizeof(uint64_t));
-        PipeBarrier<PIPE_ALL>();
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        uint64_t tokenFlagValue = statusTensor.GetValue(0);
+        
         if (tokenFlagValue == SHOULD_SEND_FLAG_VALUE) {
             if (justExpInfo) {
                 DataCopy(receiveTokenStructU8Lt, TokensGtU8[TokenOffset + expOffsetInStruct_], expLenInStruct_);
