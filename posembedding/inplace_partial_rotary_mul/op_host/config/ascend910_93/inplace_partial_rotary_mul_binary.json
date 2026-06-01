@@ -49,7 +49,7 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "rotary_mode",
           "dtype": "int",
           "value": 1
         },
@@ -111,7 +111,7 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "rotary_mode",
           "dtype": "int",
           "value": 1
         },
@@ -173,7 +173,7 @@
       ],
       "attrs": [
         {
-          "name": "mode",
+          "name": "rotary_mode",
           "dtype": "int",
           "value": 1
         },

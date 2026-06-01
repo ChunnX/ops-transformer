@@ -31,7 +31,7 @@ namespace ge {
  * x: A 4D tensor which is the result of inplace rotary position embedding, format supports ND, data type must be
  * the same as input "x", and shape must be the same as input "x".
  * @par Attributes:
- * mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
+ * rotary_mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
  * 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0.
  * partial_slice: An optional attribute of type list int, specifying the slice range [start, end] for partial rotary.
  * Defaults to [0, 0].
@@ -47,7 +47,7 @@ REG_OP(InplacePartialRotaryMul)
     .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16, DT_FLOAT, DT_FLOAT}))
     .INPUT(sin, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16, DT_FLOAT, DT_FLOAT}))
     .OUTPUT(x, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16, DT_FLOAT16, DT_BFLOAT16}))
-    .ATTR(mode, Int, 0)
+    .ATTR(rotary_mode, Int, 0)
     .ATTR(partial_slice, ListInt, {0, 0})
     .OP_END_FACTORY_REG(InplacePartialRotaryMul)
 

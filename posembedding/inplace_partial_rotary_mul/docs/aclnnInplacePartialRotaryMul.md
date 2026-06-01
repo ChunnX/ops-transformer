@@ -18,7 +18,7 @@
 - 接口功能：执行单路旋转位置编码的 Inplace 计算，直接修改输入张量，不产生新的输出张量。
 - 计算公式：
 
-    （1）interleave模式（mode等于1）：
+    （1）interleave模式（rotary_mode等于1）：
 
     $$
     x1 = x[..., ::2].view(-1, 1)
@@ -47,7 +47,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(
     const aclTensor *x,
     const aclTensor *cos,
     const aclTensor *sin,
-    int64_t          mode,
+    int64_t          rotary_mode,
     const aclIntArray *partialSlice,
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
@@ -119,7 +119,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
       <td>√</td>
     </tr>
     <tr>
-      <td>mode</td>
+      <td>rotary_mode</td>
       <td>输入</td>
       <td>旋转模式，当前仅支持interleave模式。</td>
       <td>-</td>
@@ -161,7 +161,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   </tbody>
   </table>
 
-  - 参数mode约束：仅支持interleave模式（mode = 1）。
+  - 参数rotary_mode约束：仅支持interleave模式（rotary_mode = 1）。
 
 - **返回值：**
 
@@ -215,10 +215,10 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 - 确定性计算：
   - aclnnInplacePartialRotaryMul默认确定性实现。
 - 输入张量x最后一维（D）大小不超过1024。
-- interleave模式（mode = 1）下，x最后一维（D）大小必须为2的倍数。
+- interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
 - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
 - partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart > 0。
-- 仅支持interleave模式（mode = 1）。
+- 仅支持interleave模式（rotary_mode = 1）。
 - Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
 - cos/sin的shape必须与x满足广播关系。
 
@@ -296,7 +296,7 @@ int main() {
     std::vector<int64_t> xShape = {96, 1, 1, 512};
     std::vector<int64_t> cosShape = {96, 1, 1, 64};
     std::vector<int64_t> sinShape = {96, 1, 1, 64};
-    int64_t mode = 1;
+    int64_t rotary_mode = 1;
     std::vector<int64_t> partialSlice = {448, 512};
 
     void* xDeviceAddr = nullptr;
@@ -322,7 +322,7 @@ int main() {
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    ret = aclnnInplacePartialRotaryMulGetWorkspaceSize(x, cos, sin, mode, partialSliceArray,
+    ret = aclnnInplacePartialRotaryMulGetWorkspaceSize(x, cos, sin, rotary_mode, partialSliceArray,
                                                         &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

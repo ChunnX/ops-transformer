@@ -42,7 +42,7 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("rotary_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("partial_slice").AttrType(OPTIONAL).ListInt({0, 0});
 
         this->AICore().AddConfig("ascend910b");

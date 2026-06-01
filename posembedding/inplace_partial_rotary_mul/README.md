@@ -16,7 +16,7 @@
 - **算子功能**：执行单路旋转位置编码的 Inplace 计算，直接修改输入张量，不产生新的输出张量。支持通过 `partial_slice` 参数对输入张量的最后一维进行部分旋转位置编码计算，仅对指定范围内的数据进行旋转位置编码。
 - **计算公式**：
 
-    interleave模式（mode等于1）：
+    interleave模式（rotary_mode等于1）：
     $$
     x1 = x[..., ::2]
     $$
@@ -75,9 +75,9 @@
     <td>ND</td>
   </tr>
   <tr>
-    <td>mode</td>
+    <td>rotary_mode</td>
     <td>输入</td>
-    <td>公式中的旋转模式，当前仅支持interleave模式（mode=1）。</td>
+    <td>公式中的旋转模式，当前仅支持interleave模式（rotary_mode=1）。</td>
     <td>INT64</td>
     <td>-</td>
   </tr>
@@ -94,8 +94,8 @@
 ## 约束说明
 
   - 输入张量x最后一维（D）大小不超过1024。
-  - interleave模式（mode = 1）下，x最后一维（D）大小必须为2的倍数。
-  - 仅支持interleave模式（mode = 1）。
+  - interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
+  - 仅支持interleave模式（rotary_mode = 1）。
   - Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
   - 输入张量cos、sin最后一维大小必须相同，且必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。
   - partial_slice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart > 0。
