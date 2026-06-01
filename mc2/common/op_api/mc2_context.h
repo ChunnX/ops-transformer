@@ -50,7 +50,7 @@ private:
     aclnnStatus GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers);
     aclnnStatus InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
                                 const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc);
-    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+    aclnnStatus GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, Mc2MoeContext *mc2ContextStruct,
                                    const CommProtocol &protocol, const CommEngine &engine,
                                    std::vector<ChannelHandle> &channels);
     aclnnStatus GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine, const CommProtocol &protocol,
