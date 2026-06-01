@@ -112,35 +112,61 @@ static bool CheckAndSetAttrs(gert::TilingContext* context, const char *nodeName,
     auto tokenDataShape = attrs->GetListInt(ATTR_TOKEN_DATA_SHAPE)->GetData();
 
     // 当前仅对必选属性进行校空
-    OP_TILING_CHECK((groupPtr == nullptr) || (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-    (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-    OP_LOGE(nodeName, "group is null."), return false);
-    OP_TILING_CHECK(worldSizePtr == nullptr, OP_LOGE(nodeName, "world_size is nullptr!"), return false);
-    OP_TILING_CHECK(tokenInfoTableDimNum != TOKEN_INFO_TABLE_DIM_NUM, OP_LOGE(nodeName, "token_info_table_shape is not equal %u!", TOKEN_INFO_TABLE_DIM_NUM), return false);
-    OP_TILING_CHECK(tokenDataDimNum != TOKEN_DATA_DIM_NUM, OP_LOGE(nodeName, "token_data_shape dims is not equal %u!", TOKEN_DATA_DIM_NUM), return false);
+    OP_TILING_CHECK(groupPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return false);
+    OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
+        (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "group",
+            (std::string("length=") + std::to_string(
+                strnlen(groupPtr, MAX_GROUP_NAME_LENGTH))).c_str(), "valid group name length"), return false);
+    OP_TILING_CHECK(worldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "worldSize"), return false);
+    OP_TILING_CHECK(tokenInfoTableDimNum != TOKEN_INFO_TABLE_DIM_NUM,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape",
+            std::to_string(tokenInfoTableDimNum).c_str(),
+            std::to_string(TOKEN_INFO_TABLE_DIM_NUM).c_str()), return false);
+    OP_TILING_CHECK(tokenDataDimNum != TOKEN_DATA_DIM_NUM,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            std::to_string(tokenDataDimNum).c_str(),
+            std::to_string(TOKEN_DATA_DIM_NUM).c_str()), return false);
     
     OP_TILING_CHECK(tokenInfoTableShape[INDEX_ZERO] != tokenDataShape[INDEX_ZERO],
-        OP_LOGE(nodeName, "token_info_table_shape dims0=%ld is not equal token_data_shape dims0=%ld!",
-        tokenInfoTableShape[INDEX_ZERO], tokenDataShape[INDEX_ZERO]), return false);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            (std::string("dim0=") + std::to_string(tokenDataShape[INDEX_ZERO])).c_str(),
+            (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str()),
+        return false);
     OP_TILING_CHECK(tokenInfoTableShape[INDEX_ONE] != tokenDataShape[INDEX_ONE],
-        OP_LOGE(nodeName, "token_info_table_shape dims1=%ld is not equal token_data_shape dims1=%ld!",
-        tokenInfoTableShape[INDEX_ONE], tokenDataShape[INDEX_ONE]), return false);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            (std::string("dim1=") + std::to_string(tokenDataShape[INDEX_ONE])).c_str(),
+            (std::string("dim1=") + std::to_string(tokenInfoTableShape[INDEX_ONE])).c_str()),
+        return false);
     OP_TILING_CHECK(tokenInfoTableShape[INDEX_TWO] != tokenDataShape[INDEX_TWO],
-        OP_LOGE(nodeName, "token_info_table_shape dims2=%ld is not equal token_data_shape dims2=%ld!",
-        tokenInfoTableShape[INDEX_TWO], tokenDataShape[INDEX_TWO]), return false);
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            (std::string("dim2=") + std::to_string(tokenDataShape[INDEX_TWO])).c_str(),
+            (std::string("dim2=") + std::to_string(tokenInfoTableShape[INDEX_TWO])).c_str()),
+        return false);
     // 判断是否满足其他限制
     int64_t worldSize = *worldSizePtr;
     OP_TILING_CHECK((worldSize < MIN_WORLD_SIZE) || (worldSize > MAX_WORLD_SIZE),
-        OP_LOGE(nodeName, "WorldSize is invalid, only support [%ld, %ld], but got WorldSize=%ld.",
-        MIN_WORLD_SIZE, MAX_WORLD_SIZE, worldSize), return false);
-    OP_TILING_CHECK(tokenInfoTableShape[INDEX_ZERO] != 1, OP_LOGE(nodeName, "MircoBatchNum dims is not equal 1!, but %u ", 
-    tokenInfoTableShape[INDEX_ZERO]), return false);
-    OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] > BS_UPPER_BOUND) || (tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] <= 0),
-    OP_LOGE(nodeName, "xDim0(BS) is invalid. Should be between [1, %ld], but got xDim0=%ld.", BS_UPPER_BOUND,
-            tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX]), return false);
-    OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX] < H_MIN ) || (tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX] > H_MAX + SCALE_SIZE), 
-    OP_LOGE(nodeName,"HS should be in [%ld, %ld], but got %ld.",
-        H_MIN, H_MAX + SCALE_SIZE, tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX]), return false); 
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "worldSize",
+            std::to_string(worldSize).c_str(),
+            (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " +
+             std::to_string(MAX_WORLD_SIZE) + "]").c_str()), return false);
+    OP_TILING_CHECK(tokenInfoTableShape[INDEX_ZERO] != 1,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenInfoTableShape",
+            (std::string("dim0=") + std::to_string(tokenInfoTableShape[INDEX_ZERO])).c_str(),
+            "dim0=1"), return false);
+    OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] > BS_UPPER_BOUND) ||
+        (tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX] <= 0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            (std::string("BS=") + std::to_string(tokenDataShape[TOKEN_DATA_SHAPE_BS_INDEX])).c_str(),
+            (std::string("[1, ") + std::to_string(BS_UPPER_BOUND) + "]").c_str()), return false);
+    OP_TILING_CHECK((tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX] < H_MIN) ||
+        (tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX] > H_MAX + SCALE_SIZE),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenDataShape",
+            (std::string("HS=") + std::to_string(tokenDataShape[TOKEN_DATA_SHAPE_HS_INDEX])).c_str(),
+            (std::string("[") + std::to_string(H_MIN) + ", " +
+             std::to_string(H_MAX + SCALE_SIZE) + "]").c_str()), return false); 
 
     tilingData.ffnToAttentionInfo.worldSize = *worldSizePtr;
     tilingData.ffnToAttentionInfo.microBatchNum = tokenDataShape[TOKEN_DATA_SHAPE_MICRO_BATCH_NUM_INDEX];
@@ -167,31 +193,46 @@ static bool CheckInputDim0Dim1(gert::TilingContext* context, const char *nodeNam
     const uint64_t xDim0 = xShape->GetStorageShape().GetDim(INDEX_ZERO);
     const uint64_t xDim1 = xShape->GetStorageShape().GetDim(INDEX_ONE);
     const int64_t MAX_INT64 = std::numeric_limits<int64_t>::max();
-    OP_TILING_CHECK((xDim0 > static_cast<uint64_t>(MAX_INT64)), OP_LOGE(nodeName,"xShape dims0(Y) exceeds int64_t maximum value %ld, but got %ld.",
-        MAX_INT64, xDim1), return false); 
-    OP_TILING_CHECK((xDim1 < H_MIN) || (xDim1 > H_MAX), OP_LOGE(nodeName,"xShape dims1(H) should be in [%ld, %ld], but got %ld.",
-        H_MIN, H_MAX, xDim1), return false); 
+    OP_TILING_CHECK((xDim0 > static_cast<uint64_t>(MAX_INT64)),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x",
+            (std::string("dim0=") + std::to_string(xDim0)).c_str(),
+            (std::string("dim0 <= ") + std::to_string(MAX_INT64)).c_str()), return false);
+    OP_TILING_CHECK((xDim1 < H_MIN) || (xDim1 > H_MAX),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "x",
+            (std::string("dim1=") + std::to_string(xDim1)).c_str(),
+            (std::string("[") + std::to_string(H_MIN) + ", " +
+             std::to_string(H_MAX) + "]").c_str()), return false); 
     
     // 校验输入sessionIds的维度Y
     const int64_t sessionIdsDim0 = sessionIdsShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(xDim0 != sessionIdsDim0, OP_LOGE(nodeName, "xShape's dim0 not equal to sessionIdShape's dim0, "
-        "xShape's dim0 is %ld, sessionIdShape's dim0 is %ld.", xDim0, sessionIdsDim0), return false);
+    OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(sessionIdsDim0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sessionIds",
+            (std::string("dim0=") + std::to_string(sessionIdsDim0)).c_str(),
+            (std::string("dim0=") + std::to_string(xDim0)).c_str()), return false);
     // 校验输入microBatchIds的维度Y
     const int64_t microBatchIdsDim0 = microBatchIdsShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(xDim0 != microBatchIdsDim0, OP_LOGE(nodeName, "xShape's dim0 not equal to microBatchIdShape's dim0, "
-        "xShape's dim0 is %ld, microBatchIdShape's dim0 is %ld.", xDim0, microBatchIdsDim0), return false);
+    OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(microBatchIdsDim0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "microBatchIds",
+            (std::string("dim0=") + std::to_string(microBatchIdsDim0)).c_str(),
+            (std::string("dim0=") + std::to_string(xDim0)).c_str()), return false);
     // 校验输入tokenIds的维度Y
     const int64_t tokenIdsDim0 = tokenIdsShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(xDim0 != tokenIdsDim0, OP_LOGE(nodeName, "xShape's dim0 not equal to tokenIdShape's dim0, "
-        "xShape's dim0 is %ld, tokenIdShape's dim0 is %ld.", xDim0, tokenIdsDim0), return false);
+    OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(tokenIdsDim0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "tokenIds",
+            (std::string("dim0=") + std::to_string(tokenIdsDim0)).c_str(),
+            (std::string("dim0=") + std::to_string(xDim0)).c_str()), return false);
     // 校验输入expertOffsets的维度Y
     const int64_t expertOffsetsDim0 = expertOffsetsShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(xDim0 != expertOffsetsDim0, OP_LOGE(nodeName, "xShape's dim0 not equal to expertOffsetShape's dim0, "
-        "xShape's dim0 is %ld, expertOffsetShape's dim0 is %ld.", xDim0, expertOffsetsDim0), return false);
+    OP_TILING_CHECK(xDim0 != static_cast<uint64_t>(expertOffsetsDim0),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertOffsets",
+            (std::string("dim0=") + std::to_string(expertOffsetsDim0)).c_str(),
+            (std::string("dim0=") + std::to_string(xDim0)).c_str()), return false);
     // 校验输入actualTokenNum的维度1
     const uint64_t actualTokenNumDim0 = actualTokenNumShape->GetStorageShape().GetDim(INDEX_ZERO);
-    OP_TILING_CHECK(actualTokenNumDim0 != 1, OP_LOGE(nodeName, "actualTokenNumShape's dim0 not equal to 1, "
-        "but actualTokenNumShape's dim0 is %ld.", actualTokenNumDim0), return false);
+    OP_TILING_CHECK(actualTokenNumDim0 != 1,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "actualTokenNum",
+            (std::string("dim0=") + std::to_string(actualTokenNumDim0)).c_str(),
+            "dim0=1"), return false);
     tilingData.ffnToAttentionInfo.H = xDim1;
     return true;
 }
@@ -210,35 +251,51 @@ static bool CheckInputDim(gert::TilingContext* context, const char *nodeName, FF
     const gert::StorageShape *attnRankTableShape = context->GetOptionalInputShape(INPUT_ATTN_RANK_TABLE_INDEX);
     bool isInputRankTable = (attnRankTableShape != nullptr);
  
-    OP_TILING_CHECK(xShape == nullptr, OP_LOGE(nodeName, "x is nullptr!"), return false);
-    OP_TILING_CHECK(sessionIdsShape == nullptr, OP_LOGE(nodeName, "sessionIds is nullptr!"), return false);
-    OP_TILING_CHECK(microBatchIdsShape == nullptr, OP_LOGE(nodeName, "microBatchIds is nullptr!"), return false);
-    OP_TILING_CHECK(tokenIdsShape == nullptr, OP_LOGE(nodeName, "tokenIds is nullptr!"), return false);
-    OP_TILING_CHECK(expertOffsetsShape == nullptr, OP_LOGE(nodeName, "expertOffsets is nullptr!"), return false);
-    OP_TILING_CHECK(actualTokenNumShape == nullptr, OP_LOGE(nodeName, "actualTokenNum is nullptr!"), return false);
+    OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return false);
+    OP_TILING_CHECK(sessionIdsShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "sessionIds"), return false);
+    OP_TILING_CHECK(microBatchIdsShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "microBatchIds"), return false);
+    OP_TILING_CHECK(tokenIdsShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tokenIds"), return false);
+    OP_TILING_CHECK(expertOffsetsShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertOffsets"), return false);
+    OP_TILING_CHECK(actualTokenNumShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "actualTokenNum"), return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-        OP_LOGE(nodeName, "x dim must be equal to 2, cur xDim=%lu!", xShape->GetStorageShape().GetDimNum()), return false);
-    OP_TILING_CHECK(sessionIdsShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-        OP_LOGE(nodeName, "sessionIds dim must be equal to 1, cur sessionIdsDim=%lu!", sessionIdsShape->GetStorageShape().GetDimNum()), return false);
-    OP_TILING_CHECK(microBatchIdsShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-        OP_LOGE(nodeName, "microBatchIds dim must be equal to 1, cur microBatchIdsDim=%lu!", microBatchIdsShape->GetStorageShape().GetDimNum()), return false);
-    OP_TILING_CHECK(tokenIdsShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-        OP_LOGE(nodeName, "tokenIds dim must be equal to 1, cur tokenIdsDim=%lu!", tokenIdsShape->GetStorageShape().GetDimNum()), return false);
-    OP_TILING_CHECK(expertOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-        OP_LOGE(nodeName, "expertOffsets dim must be equal to 1, cur expertOffsetsDim=%lu!", expertOffsetsShape->GetStorageShape().GetDimNum()), return false);
-    OP_TILING_CHECK(actualTokenNumShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-        OP_LOGE(nodeName, "actualTokenNum dim must be equal to 1, cur actualTokenNumDim=%lu!", actualTokenNumShape->GetStorageShape().GetDimNum()), return false);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "x",
+            (std::to_string(xShape->GetStorageShape().GetDimNum()) + "D").c_str(), "2D"), return false);
+    OP_TILING_CHECK(sessionIdsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "sessionIds",
+            (std::to_string(sessionIdsShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"), return false);
+    OP_TILING_CHECK(microBatchIdsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "microBatchIds",
+            (std::to_string(microBatchIdsShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"), return false);
+    OP_TILING_CHECK(tokenIdsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "tokenIds",
+            (std::to_string(tokenIdsShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"), return false);
+    OP_TILING_CHECK(expertOffsetsShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "expertOffsets",
+            (std::to_string(expertOffsetsShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"), return false);
+    OP_TILING_CHECK(actualTokenNumShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "actualTokenNum",
+            (std::to_string(actualTokenNumShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"), return false);
 
     OP_TILING_CHECK(!CheckInputDim0Dim1(context, nodeName, tilingData), OP_LOGE(nodeName,  "Check Inputsdim0ordim1 failed!"), return false);
 
     if (isInputRankTable) {
-        OP_TILING_CHECK(attnRankTableShape->GetStorageShape().GetDimNum() != ONE_DIM, 
-            OP_LOGE(nodeName, "attnRankTable dim must be equal to 1, cur attnRankTableDim=%lu!", attnRankTableShape->GetStorageShape().GetDimNum()), return false);
+        OP_TILING_CHECK(attnRankTableShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "attnRankTable",
+            (std::to_string(attnRankTableShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
+        return false);
         const int32_t attnRankTableDim0 = attnRankTableShape->GetStorageShape().GetDim(INDEX_ZERO);
         tilingData.ffnToAttentionInfo.A = attnRankTableDim0;
 
-        OP_TILING_CHECK(attnRankTableDim0 > worldSize - 1, 
-            OP_LOGE(nodeName, "attnRankTable dim0 must be less than or equal to %lu, cur attnRankTableDim0=%lu!", worldSize - 1, attnRankTableShape->GetStorageShape().GetDimNum()), return false);
+        OP_TILING_CHECK(attnRankTableDim0 > worldSize - 1,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "attnRankTable",
+                (std::string("dim0=") + std::to_string(attnRankTableDim0)).c_str(),
+                (std::string("dim0 <= ") + std::to_string(worldSize - 1)).c_str()),
+            return false);
     }
     tilingData.ffnToAttentionInfo.isInputRankTable = isInputRankTable;
     return true;
@@ -252,45 +309,46 @@ static bool CheckInputDataType(gert::TilingContext* context, const char *nodeNam
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
     OP_TILING_CHECK((xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
-        OP_LOGE(nodeName, "x dataType is invalid, dataType should be bf16 or float16, but is %s.",
-        Ops::Base::ToString(xDesc->GetDataType()).c_str()), return false);
-    
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x",
+            Ops::Base::ToString(xDesc->GetDataType()).c_str(), "BF16, FLOAT16"), return false);
+
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
     OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE(nodeName, "sessionIdDesc is null."), return false);
-    OP_TILING_CHECK(sessionIdDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName, 
-        "sessionId dataType is invalid, dataType should be int32, but is %s.",
-        Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str()), return false);
-    
+    OP_TILING_CHECK(sessionIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "sessionId",
+            Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str(), "INT32"), return false);
+
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
     OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE(nodeName, "microBatchIdDesc is null."), return false);
-    OP_TILING_CHECK(microBatchIdDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName, 
-        "microBatchId dataType is invalid, dataType should be int32, but is %s.",
-        Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str()), return false);
-    
+    OP_TILING_CHECK(microBatchIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "microBatchId",
+            Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str(), "INT32"), return false);
+
     auto tokenIdDesc = context->GetInputDesc(INPUT_TOKEN_IDS_INDEX);
     OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE(nodeName, "tokenIdDesc is null."), return false);
-    OP_TILING_CHECK(tokenIdDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName, 
-        "tokenId dataType is invalid, dataType should be int32, but is %s.",
-        Ops::Base::ToString(tokenIdDesc->GetDataType()).c_str()), return false);
+    OP_TILING_CHECK(tokenIdDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "tokenId",
+            Ops::Base::ToString(tokenIdDesc->GetDataType()).c_str(), "INT32"), return false);
 
     auto expertOffsetDesc = context->GetInputDesc(INPUT_EXPERT_OFFSETS_INDEX);
     OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE(nodeName, "expertOffsetDesc is null."), return false);
-    OP_TILING_CHECK(expertOffsetDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
-        "expertOffset dataType is invalid, dataType should be int32, but is %s.",
-        Ops::Base::ToString(expertOffsetDesc->GetDataType()).c_str()), return false);
-    
+    OP_TILING_CHECK(expertOffsetDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "expertOffset",
+            Ops::Base::ToString(expertOffsetDesc->GetDataType()).c_str(), "INT32"), return false);
+
     auto atcualTokenNumDesc = context->GetInputDesc(INPUT_ACTUAL_TOKEN_NUM_INDEX);
     OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
-    OP_TILING_CHECK(atcualTokenNumDesc->GetDataType() != ge::DT_INT64, OP_LOGE(nodeName,
-        "atcualTokenNum dataType is invalid, dataType should be int64, but is %s.",
-        Ops::Base::ToString(atcualTokenNumDesc->GetDataType()).c_str()), return false);
-    
+    OP_TILING_CHECK(atcualTokenNumDesc->GetDataType() != ge::DT_INT64,
+        OP_LOGE_FOR_INVALID_DTYPE(nodeName, "atcualTokenNum",
+            Ops::Base::ToString(atcualTokenNumDesc->GetDataType()).c_str(), "INT64"), return false);
+
     if (isInputRankTable) {
         auto attnRankTableDesc = context->GetInputDesc(INPUT_ATTN_RANK_TABLE_INDEX);
-         OP_TILING_CHECK(attnRankTableDesc == nullptr, OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
-         OP_TILING_CHECK(attnRankTableDesc->GetDataType() != ge::DT_INT32, OP_LOGE(nodeName,
-            "attnRankTable dataType is invalid, dataType should be int32, but is %s.",
-            Ops::Base::ToString(attnRankTableDesc->GetDataType()).c_str()), return false);      
+         OP_TILING_CHECK(attnRankTableDesc == nullptr,
+            OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
+         OP_TILING_CHECK(attnRankTableDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE_FOR_INVALID_DTYPE(nodeName, "attnRankTable",
+                Ops::Base::ToString(attnRankTableDesc->GetDataType()).c_str(), "INT32"), return false);      
     }
 
     return true;
@@ -304,38 +362,58 @@ static bool CheckInputFormat(gert::TilingContext* context, const char *nodeName)
     auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
     OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "x format is invalid."), return false);
-    
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                xDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
+
     auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
     OP_TILING_CHECK(sessionIdDesc == nullptr, OP_LOGE(nodeName, "sessionIdDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "sessionId format is invalid."), return false);
-    
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "sessionId",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                sessionIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
+
     auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
     OP_TILING_CHECK(microBatchIdDesc == nullptr, OP_LOGE(nodeName, "microBatchIdDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "microBatchId format is invalid."), return false);
-    
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "microBatchId",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                microBatchIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
+
     auto tokenIdDesc = context->GetInputDesc(INPUT_TOKEN_IDS_INDEX);
     OP_TILING_CHECK(tokenIdDesc == nullptr, OP_LOGE(nodeName, "tokenIdDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tokenIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
-        OP_LOGE(nodeName, "tokenId format is invalid."), return false);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tokenIdDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tokenId",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                tokenIdDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     auto expertOffsetDesc = context->GetInputDesc(INPUT_EXPERT_OFFSETS_INDEX);
     OP_TILING_CHECK(expertOffsetDesc == nullptr, OP_LOGE(nodeName, "expertOffsetDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertOffsetDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ, 
-        OP_LOGE(nodeName, "expertOffset format is invalid."), return false);
-    
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertOffsetDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertOffset",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                expertOffsetDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
+
     auto atcualTokenNumDesc = context->GetInputDesc(INPUT_ACTUAL_TOKEN_NUM_INDEX);
     OP_TILING_CHECK(atcualTokenNumDesc == nullptr, OP_LOGE(nodeName, "atcualTokenNumDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(atcualTokenNumDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ, 
-        OP_LOGE(nodeName, "atcualTokenNum format is invalid."), return false);
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(atcualTokenNumDesc->GetStorageFormat())) ==
+        ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "atcualTokenNum",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                atcualTokenNumDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
 
     if (isInputRankTable) {
         auto attnRankTableDesc = context->GetInputDesc(INPUT_ATTN_RANK_TABLE_INDEX);
         OP_TILING_CHECK(attnRankTableDesc == nullptr, OP_LOGE(nodeName, "attnRankTableDesc is null."), return false);
-        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(attnRankTableDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ, 
-            OP_LOGE(nodeName, "attnRankTable format is invalid."), return false);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(attnRankTableDesc->GetStorageFormat())) ==
+            ge::FORMAT_FRACTAL_NZ,
+            OP_LOGE_FOR_INVALID_FORMAT(nodeName, "attnRankTable",
+                Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
+                    attnRankTableDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
     }
     return true;
 }
