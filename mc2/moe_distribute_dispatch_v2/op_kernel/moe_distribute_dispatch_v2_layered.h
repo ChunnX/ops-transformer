@@ -1261,20 +1261,20 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     remoteExpAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[remoteRankId].nextDevicePtr))->windowsExp);
     GlobalTensor<uint32_t> selfDataStatusGMAivSend;
     selfDataStatusGMAivSend.SetGlobalBuffer((__gm__ uint32_t*)(remoteExpAddr + aivId_ * 64));
-    selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
-    selfDataStatusGMAivSend.SetValue(14, static_cast<uint32_t>(dstFlagRdmaAddr));
-    selfDataStatusGMAivSend.SetValue(15, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
-    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
+    // selfDataStatusGMAivSend.SetValue(13, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
+    // selfDataStatusGMAivSend.SetValue(14, static_cast<uint32_t>(dstFlagRdmaAddr));
+    // selfDataStatusGMAivSend.SetValue(15, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
+    // DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+    //         AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAivSend);
 
-    // LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
-    // dumpLt.SetValue(0, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
-    // dumpLt.SetValue(1, static_cast<uint32_t>(dstFlagRdmaAddr));
-    // dumpLt.SetValue(2, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
-    // PipeBarrier<PIPE_ALL>();
-    // DataCopyExtParams params{1, 3 * sizeof(uint32_t), 0, 0, 0};
-    // DataCopyPad(selfDataStatusGMAivSend[13], dumpLt, params);
-    // PipeBarrier<PIPE_ALL>();
+    LocalTensor<uint32_t> dumpLt = sendTokenInfoLocalTensor.ReinterpretCast<uint32_t>();
+    dumpLt.SetValue(0, static_cast<uint32_t>(sendStatusGMTensor_.GetValue(0)));
+    dumpLt.SetValue(1, static_cast<uint32_t>(dstFlagRdmaAddr));
+    dumpLt.SetValue(2, static_cast<uint32_t>(dstFlagRdmaAddr >> 32));
+    PipeBarrier<PIPE_ALL>();
+    DataCopyExtParams params{1, 3 * sizeof(uint32_t), 0, 0, 0};
+    DataCopyPad(selfDataStatusGMAivSend[13], dumpLt, params);
+    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeV2LayeredClass>
@@ -1322,8 +1322,9 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
-    selfDataStatusGMAiv.SetValue(1, (uint32_t)((uint64_t)windowInGM_));
-    selfDataStatusGMAiv.SetValue(2, (uint32_t)((uint64_t)windowInGM_ >> 32));
+    GM_ADDR dstServerGm = windowInGM_ + dataSpaceSize_ + serverIdx * STATE_OFFSET;
+    selfDataStatusGMAiv.SetValue(1, (uint32_t)((uint64_t)dstServerGm));
+    selfDataStatusGMAiv.SetValue(2, (uint32_t)((uint64_t)dstServerGm >> 32));
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
