@@ -33,7 +33,7 @@ public:
 
     __aicore__ inline void Init(
         GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
-        GM_ADDR cachedNumPerExpert, GM_ADDR cachedSlotIdx, GM_ADDR cachedSrcMeta,
+        GM_ADDR cachedSlotIdx,
         GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
         GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
         GM_ADDR workspace, GM_ADDR tilingGM,

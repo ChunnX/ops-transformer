@@ -21,7 +21,7 @@ extern "C" {
 template<uint32_t DO_CPU_SYNC, uint32_t IS_CACHED, uint32_t NETWORK_MODE>
 __global__ __aicore__ void moe_ep_dispatch(
     GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
-    GM_ADDR cachedNumPerExpert, GM_ADDR cachedSlotIdx, GM_ADDR cachedSrcMeta,
+    GM_ADDR cachedSlotIdx,
     GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
     GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
     GM_ADDR workspace, GM_ADDR tilingGM)
@@ -33,7 +33,7 @@ __global__ __aicore__ void moe_ep_dispatch(
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
     KernelMoeEpDispatch<DO_CPU_SYNC, IS_CACHED, NETWORK_MODE> op;
     op.Init(x, topkIdx, topkWeights,
-            cachedNumPerExpert, cachedSlotIdx, cachedSrcMeta,
+            cachedSlotIdx,
             numRecvPerRankHp, numRecvPerExpertHp,
             dstBufferSlotIdx, recvSrcMetadataInternal,
             workspace, tilingGM, &pipe, &tilingData.moeEpDispatchInfo);

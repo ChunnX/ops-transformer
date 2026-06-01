@@ -23,19 +23,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Input("cached_handle_num_recv_tokens_per_expert")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-
         this->Input("cached_handle_dst_buffer_slot_idx")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-
-        this->Input("cached_handle_recv_src_metadata")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
