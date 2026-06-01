@@ -303,7 +303,6 @@ public:
             int64_t y = Get<DETER_IDX_C_OFFSETS>(blockOffset_);
             int64_t tileMOffset = y / n;
             int64_t singleM = Get<MNK_M>(singleShape);
-            // === tile-level workspace overflow check ===
             int64_t wsAccum   = static_cast<int64_t>(cumulativeGroupM_ - deterSync_.windowStartM);
             int64_t tileWsEnd = wsAccum + tileMOffset + singleM;
             if (tileWsEnd > static_cast<int64_t>(deterSync_.windowSize)) {
@@ -316,7 +315,6 @@ public:
                 deterSync_.lowBoundM  = deterSync_.curGroupM + deterSync_.windowSize;
                 SyncAll<false>();
             }
-            // === end overflow check ===
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
