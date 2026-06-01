@@ -64,7 +64,7 @@ public:
     constexpr static uint32_t WAIT_STATUS = 1;
     constexpr static uint32_t ARRIVAL_STATUS = 2;
     constexpr static uint32_t SKIP_STATUS = 3;
-    constexpr static uint32_t RDMA_DATA_SIZE = 400U * 1024U * 1024U;
+    constexpr static uint32_t RDMA_DATA_SIZE = 100U * 1024U * 1024U;
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint32_t MAX_ARR_UB_OFFSET = 6 * 1024;
     constexpr static uint32_t MAX_ARR_LEN = 3;
@@ -1307,6 +1307,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
     selfDataStatusGMAiv.SetValue(14, (uint32_t)((uint64_t)windowInGM_));
+    DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
 
     if (endFlagValue != END_OF_WRITE_FLAG_VALUE) {
