@@ -85,6 +85,11 @@ static constexpr AscendC::MicroAPI::DivSpecificMode DIV_MODE = {
 static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
+// 同 CAST_BF16_FP16_TO_FP32，但 RegLayout=ONE：直接读 src 高 64 个 bf16 → 64 个 fp32。
+// 配合 ZERO 一起可以省掉 Interleave，把 128 bf16 拆 2×64 → 2 个 fp32 reg。
+static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32_HIGH = {
+    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
 static constexpr AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
@@ -237,26 +242,35 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Init(Param
     }
 
     // 重构UB内存。
-    //   UB 已经被 l0cOutUbFirst_ (UB[0..128KB] float) + l0cOutUbSecond_ (UB[128..256KB] float) 占满。
-    //   gluRes_ / quantOutput_ / scales 都是 l0cOutUbFirst_ 区域的别名（time-share）：
-    //     swiglu 把 mmad 输出 (float) 读完后，把 bf16 swiglu 输出写到 UB[0..64KB]（覆盖 mmad 前半），
-    //     quant 把 int8 输出写到 UB[64..96KB]（覆盖 mmad 后半），都是时序串行，不冲突。
-    //   交织和非交织共用同一份布局——交织时 l0cOutUbSecond_ 不用，但保留 64KB 别名给 quantOutput 等。
+    //   bf16+pingpong 下 UB 被 l0cOutUbFirst_ (UB[0..128KB] bf16) + l0cOutUbSecond_ (UB[128..256KB] bf16) 占满。
+    //   alias 组（gluRes_/quantOutput_/scales/quantScaleBlock）必须整组塞进单半区 128KB，pong 整体 +128KB 才不越界。
+    //   原来按 MAX_SINGLE_MN（mmad full N=256 输出）声明 alias 是过度声明：swiglu 输出实际只有 m × n_half = MAX_SINGLE_MN/2
+    //   个元素，CopyOutputFromUb2Gm/CopyScaleFromUb2Gm/ComputeMaxExp 等也都按 m × n_half 访问，故压成一半安全。
+    //   单 buffer（非 pingpong）模式下也能用同样布局，省下来的 UB 闲着也没影响。
+    //   每半区布局 (m=256, n_half=128 时)：
+    //     gluRes_                [0..64KB]    swiglu bf16 输出 = m*n_half*2
+    //     quantOutput_           [64..96KB]   quant int8 = m*n_half
+    //     quantScaleOutput_      [96..97KB]   m*n_half/32 int8
+    //     maxExp_                [97..99KB]   m*n_half/32 uint16
+    //     halfScale_             [99..101KB]  m*n_half/32 uint16
+    //     quantScaleBlockOutput_ [101..109KB] baseM*32 int8
+    //   总计 109KB ≤ 128KB ✓。pong 整体偏移 128KB → 末端 237KB ≤ 256KB ✓。
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS = MAX_SINGLE_MN / SWIGLU_N_HALF; // m*n_half
     constexpr uint32_t gluResOffset = 0;
-    gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN);
-    constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN * sizeof(bfloat16_t);
-    quantOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantOutputOffset, MAX_SINGLE_MN);
-    constexpr uint32_t quantScaleOffset = quantOutputOffset + MAX_SINGLE_MN * sizeof(int8_t);
+    gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
+    constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
+    quantOutput_ = AscendC::LocalTensor<int8_t>(AscendC::TPosition::VECOUT, quantOutputOffset, MAX_SINGLE_MN_ALIAS);
+    constexpr uint32_t quantScaleOffset = quantOutputOffset + MAX_SINGLE_MN_ALIAS * sizeof(int8_t);
     quantScaleOutput_ = AscendC::LocalTensor<int8_t>(
-        AscendC::TPosition::VECOUT, quantScaleOffset, MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
-    constexpr uint32_t maxExpOffset = quantScaleOffset + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(int8_t);
+        AscendC::TPosition::VECOUT, quantScaleOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    constexpr uint32_t maxExpOffset = quantScaleOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(int8_t);
     maxExp_ = AscendC::LocalTensor<uint16_t>(
-        AscendC::TPosition::VECCALC, maxExpOffset, MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
-    constexpr uint32_t halfScaleOffset = maxExpOffset + MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
+        AscendC::TPosition::VECCALC, maxExpOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
+    constexpr uint32_t halfScaleOffset = maxExpOffset + MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
     halfScale_ = AscendC::LocalTensor<uint16_t>(
-        AscendC::TPosition::VECCALC, halfScaleOffset, MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE);
+        AscendC::TPosition::VECCALC, halfScaleOffset, MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE);
     constexpr uint32_t quantScaleBlockOffset = halfScaleOffset +
-        MAX_SINGLE_MN / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
+        MAX_SINGLE_MN_ALIAS / AscendC::ONE_BLK_SIZE * sizeof(uint16_t);
     quantScaleBlockOutput_ = AscendC::LocalTensor<int8_t>(
         AscendC::TPosition::VECOUT, quantScaleBlockOffset, params_->baseM * AscendC::ONE_BLK_SIZE);
 }
@@ -592,30 +606,58 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         static_cast<uint32_t>(AscendC::ONE_BLK_SIZE));
     const float scalarOne = 1.0;
 
-    // swiglu
+    // swiglu (bf16 优化版)
+    //   一次 DataCopy 读 sizePerRepeat=128 个 bf16 进单个 reg。然后用 ZERO/ONE 两种 RegLayout
+    //   直接 Cast 出低 64 / 高 64 → 2 个 fp32 reg。**省掉 PR_5893 版的 2 次 Interleave**。
+    //   两个半区分别跑 swish*y，cast 回 bf16，按 i*calBlockSize 偏移分两段 DIST_PACK_B32 写回。
+    //
+    //   每个 mIdx ops 数对比：
+    //     旧 PR_5893：2 DataCopy + 2 Interleave + 4 Cast(bf16→fp32) + 2×(5 算+1 Cast+1 DataCopy) = 22
+    //     现在     ：2 DataCopy + 0 Interleave + 4 Cast(bf16→fp32) + 2×(5 算+1 Cast+1 DataCopy) = 20
+    //     （比 float 原版 18 多的 2 ops 是 bf16→fp32 cast，是数据类型变更的本质代价，躲不掉）
     __VEC_SCOPE__
     {
-        for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) { // 需要计算m次
+        for (uint16_t mIdx = 0; mIdx < mSize; mIdx++) {
             uint32_t elementNum = nSize;
             AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) { // 每次计算m=1, n=64的数据大小
-                AscendC::MicroAPI::RegTensor<bfloat16_t> vreg7;
-                AscendC::MicroAPI::RegTensor<float> swishInput, gateInput;
-                AscendC::MicroAPI::RegTensor<float> vreg1, vreg2, vreg3, vreg4, vreg5, vreg6, swishOutput;
+            for (uint16_t vfBlockIdx = 0; vfBlockIdx < OneRowRepeatTimes; vfBlockIdx++) {
+                AscendC::MicroAPI::RegTensor<DataTypeIn> swishInput, gateInput;
+                AscendC::MicroAPI::RegTensor<float> swishData0, swishData1, gateData0, gateData1;
 
-                uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat; // 计算的数据的偏移量
+                uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
+                AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);    // 128 bf16
+                AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);    // 128 bf16
 
-                AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);
-                AscendC::MicroAPI::Muls(vreg2, swishInput, -(scalarOne), mask);
-                AscendC::MicroAPI::Exp(vreg3, vreg2, mask);
-                AscendC::MicroAPI::Adds(vreg4, vreg3, scalarOne, mask);
-                AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishInput, vreg4, mask);
-                AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);
-                AscendC::MicroAPI::Mul(vreg6, swishOutput, gateInput, mask);
-                AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(vreg7, vreg6, mask);
-                uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat; // 计算的数据的偏移量
-                AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                    gluResAddr + dstUbOffset, vreg7, mask);
+                // 直接用 ZERO/ONE RegLayout 拆两半到 fp32，不需要 Interleave
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(
+                    swishData0, swishInput, mask);                                   // 低 64 bf16 → fp32
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32_HIGH>(
+                    swishData1, swishInput, mask);                                   // 高 64 bf16 → fp32
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32>(
+                    gateData0, gateInput, mask);
+                AscendC::MicroAPI::Cast<float, DataTypeIn, CAST_BF16_FP16_TO_FP32_HIGH>(
+                    gateData1, gateInput, mask);
+
+                constexpr uint16_t calBlockNum = sizeof(float) / sizeof(DataTypeIn); // 2
+                const uint16_t calBlockSize = sizePerRepeat / calBlockNum;           // 64
+                for (uint16_t i = 0; i < calBlockNum; i++) {
+                    AscendC::MicroAPI::RegTensor<bfloat16_t> output;
+                    AscendC::MicroAPI::RegTensor<float> swishData = (i == 0) ? swishData0 : swishData1;
+                    AscendC::MicroAPI::RegTensor<float> gateData = (i == 0) ? gateData0 : gateData1;
+                    AscendC::MicroAPI::RegTensor<float> vreg2, vreg3, vreg4, vreg6, swishOutput;
+
+                    // swish(x) = x / (1 + exp(-x))
+                    AscendC::MicroAPI::Muls(vreg2, swishData, -(scalarOne), mask);
+                    AscendC::MicroAPI::Exp(vreg3, vreg2, mask);
+                    AscendC::MicroAPI::Adds(vreg4, vreg3, scalarOne, mask);
+                    AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishData, vreg4, mask);
+                    AscendC::MicroAPI::Mul(vreg6, swishOutput, gateData, mask);
+                    AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(output, vreg6, mask);
+
+                    uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat + i * calBlockSize;
+                    AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
+                        gluResAddr + dstUbOffset, output, mask);
+                }
             }
         }
     }
