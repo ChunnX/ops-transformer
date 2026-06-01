@@ -662,7 +662,7 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
 
-        auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Te::LayoutTraitDefault<T>>(runInfo.actMSize, runInfo.actSingleLoopS2Size);
+        auto layoutMM1ResL0C = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<16>>(runInfo.actMSize, runInfo.actSingleLoopS2Size);
         auto tensorMM1ResL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(0), layoutMM1ResL0C);
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,

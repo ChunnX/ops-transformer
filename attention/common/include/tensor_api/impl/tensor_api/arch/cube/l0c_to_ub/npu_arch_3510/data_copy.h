@@ -90,8 +90,6 @@ private:
         uint32_t mSize = Std::min(GetTotalRowShape(srcLayout), GetTotalRowShape(dstLayout));
         uint32_t srcStride = GetElement<AttrInfo::Stride, AttrInfo::Column, 1>(srcLayout) / FRACTAL_FIXED;
         printf("--- L0C==>UB srcStride pre = [%ld] ---\n", srcStride);
-        srcStride = (mSize + 15) >> 4 << 4;
-        printf("--- L0C==>UB srcStride act = [%ld] ---\n", srcStride);
         uint32_t dstStride = 0;
 
         if constexpr (isNdFormat) {
