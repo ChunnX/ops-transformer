@@ -31,6 +31,8 @@ TILING_DATA_FIELD_DEF(int32_t, tokenSizeV);
 TILING_DATA_FIELD_DEF(int32_t, typeByte);
 TILING_DATA_FIELD_DEF(int32_t, hasSeqStarts);
 TILING_DATA_FIELD_DEF(int32_t, isSeqLensCumsum);
+TILING_DATA_FIELD_DEF(int64_t, kCacheBlockStride);
+TILING_DATA_FIELD_DEF(int64_t, vCacheBlockStride);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GatherPaKvCache, GatherPaKvCacheTilingData);
 
