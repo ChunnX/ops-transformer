@@ -316,7 +316,8 @@ namespace SplitFuse {
                                 kvSLoopNumTotal,
                                 pagedBlockSize,
                                 strideK,
-                                kvNIncreIdx);
+                                kvNIncreIdx,
+                                keyBnStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
                             }
@@ -397,7 +398,8 @@ namespace SplitFuse {
                                 strideV,
                                 blockStackNum,
                                 softmaxReady,
-                                (kvNIncreIdx == 0));
+                                (kvNIncreIdx == 0),
+                                keyBnStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 
@@ -563,7 +565,8 @@ namespace SplitFuse {
                                         kvSLoopNumTotal,
                                         pagedBlockSize,
                                         strideK,
-                                        kvNIncreIdx);
+                                        kvNIncreIdx,
+                                        keyBnStride);
                                 }
 
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
@@ -643,7 +646,8 @@ namespace SplitFuse {
                                     strideV,
                                     blockStackNum,
                                     softmaxReady,
-                                    (kvNIncreIdx == 0));
+                                    (kvNIncreIdx == 0),
+                                    keyBnStride);
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
                                     Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
                                 }
