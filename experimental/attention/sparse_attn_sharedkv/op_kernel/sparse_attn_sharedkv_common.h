@@ -26,7 +26,7 @@ using namespace AscendC;
 constexpr SoftmaxConfig SAS_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
 #if defined(SAS_ENABLE_NAN_DEBUG) || defined(ENABLE_DUMP_DATA)
-#define SAS_DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#define SAS_DEBUG_PRINTF(...) AscendC::PRINTF(__VA_ARGS__)
 #define SAS_DUMP_TENSOR(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)
 #else
 #define SAS_DEBUG_PRINTF(...)
