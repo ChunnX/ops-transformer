@@ -226,6 +226,10 @@ private:
     {
         WaitInputBufferReusable(activeBufferId_);
         WaitQkOutBufferReusable(activeBufferId_);
+        if (slice.tokenSize == 0U || slice.rowSize == 0U) {
+            return;
+        }
+
         CopyPreprocessInputs(slice);
         NotifyInputReady(activeBufferId_);
         WaitInputReady(activeBufferId_);

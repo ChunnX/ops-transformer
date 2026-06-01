@@ -159,3 +159,14 @@ under rolling execution, Vec waits the Q/K output reusable event during
 preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K
 postprocess releases that event after FP8 staging MTE3 writeout, including
 empty local slices.
+
+T12 makes empty AIV slices an explicit no-data path without changing the
+CrossCore protocol. `MakeAivSlice` can return `tokenSize == 0` and
+`rowSize == 0`, usually for tail tiles where AIV1 has no token. The AIV still
+runs the basic-block phases and therefore still sets `A_READY`, waits
+`C_READY`, and sets `C_CONSUMED`. Vec preprocess consumes the local input and
+Q/K output reusable events, then skips GM input copy, VF RMSNorm/RoPE, and AL1
+ND2NZ when the slice is empty. V and Q/K postprocess skip data writes for empty
+slices; Q/K postprocess still releases the Q/K output reusable event that
+preprocess consumed. The row ranges remain contiguous because AIV1 starts at
+AIV0's actual row count, not a fixed half-tile offset.

@@ -130,6 +130,42 @@ TileParam MakeTileParamForTest(uint32_t tileId, uint32_t tokenOffset, uint32_t t
     return tile;
 }
 
+struct TileSyncCounts {
+    uint32_t aivAReadySets = 0;
+    uint32_t aicAReadyWaits = 0;
+    uint32_t aicCReadySets = 0;
+    uint32_t aivCReadyWaits = 0;
+    uint32_t aivCConsumedSets = 0;
+    uint32_t aicCConsumedWaits = 0;
+    uint32_t coveredTokens = 0;
+    uint32_t coveredRows = 0;
+    uint32_t emptyAivSlices = 0;
+};
+
+TileSyncCounts CountFixedTileSyncProtocol(const TileParam &tile, uint32_t qkHeadTile)
+{
+    TileSyncCounts counts;
+    if (tile.tokenSize == 0) {
+        return counts;
+    }
+
+    counts.aicAReadyWaits = kAivPerAic;
+    counts.aicCReadySets = kAivPerAic;
+    counts.aicCConsumedWaits = kAivPerAic;
+    for (uint32_t aivLocalId = 0; aivLocalId < kAivPerAic; ++aivLocalId) {
+        const auto slice = MakeAivSlice(tile, qkHeadTile, aivLocalId);
+        ++counts.aivAReadySets;
+        ++counts.aivCReadyWaits;
+        ++counts.aivCConsumedSets;
+        counts.coveredTokens += slice.tokenSize;
+        counts.coveredRows += slice.rowSize;
+        if (slice.tokenSize == 0) {
+            ++counts.emptyAivSlices;
+        }
+    }
+    return counts;
+}
+
 } // namespace
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
@@ -273,6 +309,39 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, AivSlicesUseActualTailRows)
     EXPECT_EQ(tailAiv1.rowOffset, tailAiv0.rowSize);
     EXPECT_EQ(tailAiv1.rowSize, 2U * tiling.qkHeadTile);
     EXPECT_EQ(tailAiv0.rowSize + tailAiv1.rowSize, tailTile.rowSize);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, TailAndEmptySlicesKeepFixedCrossCoreProtocol)
+{
+    ContractTiling tiling;
+    auto input = BuildInput(6, 32, 4, 4);
+    ASSERT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    ASSERT_EQ(tiling.tokenTile, 6U);
+
+    for (uint32_t tokenSize = 1; tokenSize <= tiling.tokenTile; ++tokenSize) {
+        const auto tile = MakeTileParamForTest(tokenSize - 1U, 0U, tokenSize, tokenSize, tiling);
+        const auto aiv0 = MakeAivSlice(tile, tiling.qkHeadTile, 0);
+        const auto aiv1 = MakeAivSlice(tile, tiling.qkHeadTile, 1);
+        const auto counts = CountFixedTileSyncProtocol(tile, tiling.qkHeadTile);
+
+        EXPECT_EQ(tile.tokenSize, tokenSize);
+        EXPECT_EQ(aiv0.tokenOffset, 0U);
+        EXPECT_EQ(aiv1.tokenOffset, aiv0.tokenSize);
+        EXPECT_EQ(aiv0.rowOffset, 0U);
+        EXPECT_EQ(aiv1.rowOffset, aiv0.rowSize);
+        EXPECT_EQ(aiv0.tokenSize + aiv1.tokenSize, tile.tokenSize);
+        EXPECT_EQ(aiv0.rowSize + aiv1.rowSize, tile.rowSize);
+
+        EXPECT_EQ(counts.coveredTokens, tile.tokenSize);
+        EXPECT_EQ(counts.coveredRows, tile.rowSize);
+        EXPECT_EQ(counts.emptyAivSlices, tokenSize == 1U ? 1U : 0U);
+        EXPECT_EQ(counts.aivAReadySets, kAivPerAic);
+        EXPECT_EQ(counts.aicAReadyWaits, kAivPerAic);
+        EXPECT_EQ(counts.aicCReadySets, kAivPerAic);
+        EXPECT_EQ(counts.aivCReadyWaits, kAivPerAic);
+        EXPECT_EQ(counts.aivCConsumedSets, kAivPerAic);
+        EXPECT_EQ(counts.aicCConsumedWaits, kAivPerAic);
+    }
 }
 
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, CoreTokenRangeUsesHostCeilTokenTile)

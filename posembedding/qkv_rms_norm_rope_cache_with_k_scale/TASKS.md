@@ -31,13 +31,13 @@
 | T09 | V branch early postprocess | Done | Basic block now runs V postprocess after `A_READY` and before `C_READY` wait, so CrossCore sequencing stays centralized outside Vec. V postprocess keeps `input_ub` alive through V consumption, scales BF16 V by `v_scale`, casts to FP8 inside `VScaleFp8D128Vf`, and scatters to `v_cache` by `slot_mapping`; `v_out_ub` uses local `V_MTE3`/`MTE3_V` events `0/1`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused V path UT is still pending. | This commit |
 | T10 | AIV Q/K postprocess | Done | Basic block now waits `C_READY`, runs Vec Q/K postprocess, then sends `C_CONSUMED`, keeping CrossCore sequencing centralized. Vec consumes `qk_after_cube_ub`, runs `QkDynamicQuantD128Vf` for D=128 `max_abs / 448`, FP8 RINT/SAT cast, and scale staging, then writes Q rows to `q_out/q_scale` and K rows to `k_cache/k_scale_cache` by `slot_mapping`; Q/K output reuse uses local `V_MTE3`/`MTE3_V` event ids `2/3`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused Q/K postprocess UT is still pending. | This commit |
 | T11 | Rolling pipeline and drain | Done | AIV controller loop now runs `PreprocessTileAiv(tile i)` and V early postprocess before `PostprocessTileAiv(tile i - 1)`, then drains the final pending tile so each real tile still emits one `A_READY`, consumes one `C_READY`, and emits one `C_CONSUMED` per AIV. Basic block keeps all CrossCore sequencing centralized through fixed semantic wrappers. Q/K output pool reuse now waits in preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K postprocess releases it after MTE3 writeout, including empty local slices. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
-| T12 | Tail and empty-slice synchronization | Not started | Kernel compile + Host UT extension | |
+| T12 | Tail and empty-slice synchronization | Done | Empty AIV slices now keep the fixed basic-block CrossCore protocol while Vec preprocess skips GM/UB/L1 data work after consuming input and Q/K output reusable events, so empty slices do not access invalid data paths. Host UT added `TailAndEmptySlicesKeepFixedCrossCoreProtocol`, enumerating tail token sizes `1..tokenTile` to verify contiguous AIV row coverage and fixed per-tile counts: two `A_READY` sets/waits, two `C_READY` sets/waits, and two `C_CONSUMED` sets/waits. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T13 | Synchronization protocol audit | Not started | Kernel compile + static audit | |
 | T14 | Kernel UT/ST closure | Not started | Full UT/ST | |
 
 ## Next Task
 
-Start T12 by tightening tail and empty-slice synchronization coverage.
+Start T13 by auditing the CrossCore and intra-core synchronization protocol.
 
 ## Kernel Layout
 
@@ -95,3 +95,10 @@ C_CONSUMED`. The output DB pool lifecycle is also aligned with rolling reuse:
 preprocess waits the Q/K output reusable event before using
 `qk_after_cube_ub` as BF16 staging, and Q/K postprocess releases that event
 after FP8 staging MTE3 writeout, including empty local slices.
+T12 makes the tail/empty-slice contract explicit. `MakeAivSlice` may return an
+empty slice, and that AIV still enters the same basic-block preprocess and
+postprocess phases so `A_READY/C_READY/C_CONSUMED` counts remain fixed. Vec
+preprocess consumes the reusable input and Q/K output local events, then skips
+input copy, VF RMSNorm/RoPE, and AL1 ND2NZ when the slice has no rows. V and
+Q/K postprocess already skip data work for empty slices; Q/K postprocess still
+releases the Q/K output reusable event consumed during preprocess.
