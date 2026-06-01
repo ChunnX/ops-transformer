@@ -31,7 +31,7 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 class GeneralizedSFA:
-    def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K1, K,
+    def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                  block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv,
                  cmp_residual_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
                  ori_win_right, ori_topk_length, cmp_topk_length):
@@ -47,7 +47,6 @@ class GeneralizedSFA:
         self.N1 = N1
         self.N2 = N2
         self.D = D
-        self.K1 = K1
         self.K = K
         self.block_num1 = block_num1
         self.block_num2 = block_num2
@@ -112,7 +111,7 @@ class GeneralizedSFA:
                     q_curr = q_bnsd[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :]
                     q_curr_fp32 = q_curr.to(dtype=torch.float32)
 
-                    if template_idx == 1 or template_idx == 2 or template_idx == 4:
+                    if template_idx == 1 or template_idx == 2:
                         if template_idx == 1:
                             threshold = 0
                             if self.cmp_mask_mode == 3:
@@ -156,13 +155,8 @@ class GeneralizedSFA:
                         ori_win_start = 0
                         ori_win_end = cur_ori_act_kv
 
-                    if template_idx == 3 or template_idx == 4:
-                        ori_topk_id = ori_sparse_indices_bnsd[i_B, i_N2, i_S1, :]
-                        empty_flag_ori, cur_ori_k_bnsd = self.gather_kv(ori_k_bnsd, ori_topk_id, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q,
-                            self.ori_mask_mode, self.K1, ori_topk_length_bnsd, 1)
-                    else:
-                        cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
-                        empty_flag_ori = False
+                    cur_ori_k_bnsd = ori_k_bnsd[i_B, i_N2, ori_win_start:ori_win_end, :]
+                    empty_flag_ori = False
 
                     cur_attn_out = attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :]
                     if RUN_MODE == 0:
@@ -448,7 +442,7 @@ class GeneralizedSFA:
                 ori_topk_length=None, cmp_topk_length=None, return_softmax_lse=False):
         q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(q, q.shape, self.layout_q, cu_seqlens_q)
         ori_k_bnsd, ori_k_bnsd_shape = self.trans_shape_to_bnsd(ori_k, ori_k.shape, self.layout_kv, cu_seqlens_ori_kv)
-        if template_idx == 1 or template_idx == 2 or template_idx == 4:
+        if template_idx == 1 or template_idx == 2:
             cmp_k_bnsd, cmp_k_bnsd_shape = self.trans_shape_to_bnsd(cmp_k, cmp_k.shape, self.layout_kv, cu_seqlens_cmp_kv)
         else:
             cmp_k_bnsd = None
@@ -459,30 +453,10 @@ class GeneralizedSFA:
                                                                      cu_seqlens_q)
         else:
             cmp_sparse_indices_bnsd = None
-        if template_idx == 3 or template_idx == 4:
-            ori_sparse_indices_bnsd, ori_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(ori_sparse_indices,
-                ori_sparse_indices.shape, self.layout_q, cu_seqlens_q)
-            if ori_topk_length != None:
-                ori_topk_length_bnsd, ori_topk_length_shape = self.trans_topk_length_shape_to_bnsd(ori_topk_length,
-                    ori_topk_length.shape, self.layout_q, cu_seqlens_q)
-            else:
-                ori_topk_length_bnsd = None
-                ori_topk_length_shape = None
-        else:
-            ori_sparse_indices_bnsd = None
-            ori_topk_length_bnsd = None
-        if template_idx == 4:
-            cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(cmp_sparse_indices,
-                cmp_sparse_indices.shape, self.layout_q, cu_seqlens_q)
-            if cmp_topk_length != None:
-                cmp_topk_length_bnsd, cmp_topk_length_shape = self.trans_topk_length_shape_to_bnsd(cmp_topk_length,
-                    cmp_topk_length.shape, self.layout_q, cu_seqlens_q)
-            else:
-                cmp_topk_length_bnsd = None
-                cmp_topk_length_shape = None
-        else:
-            cmp_topk_length_bnsd = None
-            cmp_topk_length_shape = None
+        ori_sparse_indices_bnsd = None
+        ori_topk_length_bnsd = None
+        cmp_topk_length_bnsd = None
+        cmp_topk_length_shape = None
         attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, ori_sparse_indices_bnsd, cu_seqlens_q, cu_seqlens_ori_kv,
                                                        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, template_idx,
                                                        cmp_k_bnsd, cmp_sparse_indices_bnsd, seqused_q, ori_topk_length_bnsd,
@@ -648,7 +622,7 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, cu_seqlens_kv,
                         topk_length[s1_prefix + i_S1] = 1
     return sparse_indices, topk_length
 
-def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, K1, block_num1, block_size1,
+def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, block_num1, block_size1,
     cu_seqlens_q, cu_seqlens_ori_kv, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_mask_mode,
     ori_sparse_indices_mode, ori_kv_topk_mode, template_idx, data_range_left=DATA_RANGE_LEFT,
     data_range_right=DATA_RANGE_RIGHT):
@@ -709,14 +683,8 @@ def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, K1, b
         ori_k_in_pa_shape = ori_k_bnsd
         ori_k = ori_k_bnsd
 
-    if (template_idx == 3 or template_idx == 4) and ori_max_s2 != 0:
-        if layout_q == "BSND":
-            ori_sparse_indices, ori_topk_length = gen_sparse_indices_bsnd(1, B, S1, S2, N2, K1, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_mask_mode, ori_sparse_indices_mode, ori_kv_topk_mode)
-        elif layout_q == "TND":
-            ori_sparse_indices, ori_topk_length = gen_sparse_indices_tnd(1, B, T1, N2, K1, cu_seqlens_q, cu_seqlens_ori_kv, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_mask_mode, ori_sparse_indices_mode, ori_kv_topk_mode)
-    else:
-        ori_sparse_indices = None
-        ori_topk_length = None
+    ori_sparse_indices = None
+    ori_topk_length = None
 
     return ori_k_in_pa_shape, ori_block_table, ori_k, ori_sparse_indices, ori_topk_length
 
@@ -785,7 +753,7 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
         cmp_k_in_pa_shape = cmp_k
 
     # generate cmp_sparse_indices
-    if template_idx == 2 or template_idx == 4:
+    if template_idx == 2:
         if layout_q == "BSND":
             cmp_sparse_indices, cmp_topk_length = gen_sparse_indices_bsnd(cmp_ratio, B, S1, S2, N2, K, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
                                     cmp_mask_mode, cmp_sparse_indices_mode, cmp_kv_topk_mode)
@@ -812,7 +780,6 @@ def gen_data(params, template_mode=None):
     N1 = params.get('N1')
     N2 = params.get('N2')
     D = params.get('D')
-    K1 = params.get('K1')
     K = params.get('K')
     block_num1 = params.get('block_num1')
     block_num2 = params.get('block_num2')
@@ -915,37 +882,22 @@ def gen_data(params, template_mode=None):
     # 路由到三个算子的逻辑：
     template_idx = 0
 
-    mapping = {"SWA": 0, "CFA": 1, "SCFA": 2, "ORI_SCFA": 3, "ALL_SCFA": 4}
+    mapping = {"SWA": 0, "CFA": 1, "SCFA": 2}
     if template_mode is not None:
         template_run_mode = template_mode
         template_idx = mapping[template_mode]
         if template_mode == "SWA":
             cmp_ratio = None
             K = None
-            K1 = None
         elif template_mode == "CFA":
             cmp_ratio = int(cmp_ratio)
             K = None
-            K1 = None
         elif template_mode == "SCFA":
             cmp_ratio = int(cmp_ratio)
             K = int(K)
-        elif template_mode == "ORI_SCFA":
-            cmp_ratio = 1
-            K = int(K)
-            K1 = int(K1)
-        elif template_mode == "ALL_SCFA":
-            cmp_ratio = int(cmp_ratio)
-            K = int(K)
-            K1 = int(K1)
     else:
         if K is None or K == ['None']:
-            if K1 != None:
-                template_idx = 3
-                template_run_mode = 'ORI_SCFA'
-                K1 = int(K1)
-                cmp_ratio = 1
-            elif cmp_ratio is None:
+            if cmp_ratio is None:
                 template_idx = 0  # SWA
                 template_run_mode = 'SWA'
             else:
@@ -953,28 +905,23 @@ def gen_data(params, template_mode=None):
                 template_run_mode = 'CFA'
                 cmp_ratio = int(cmp_ratio)
         else:
+            template_idx = 2  # SCFA
+            template_run_mode = 'SCFA'
             if cmp_ratio == None:
                 cmp_ratio = 1
             else:
                 cmp_ratio = int(cmp_ratio)
-            if K1 == None:
-                template_idx = 2  # SCFA
-                template_run_mode = 'SCFA'
-                K = int(K)
-            else:
-                template_idx = 4  # ALL_SCFA
-                template_run_mode = 'ALL_SCFA'
-                K, K1 = int(K), int(K1)
+            K = int(K)
     print("template_run_mode: ", template_run_mode)
     if layout_kv == "PA_BNBD":
         block_size1, block_num1 = int(block_size1), int(block_num1)
-        if template_idx != 0 and template_idx != 3:
+        if template_idx != 0:
             block_size2, block_num2 = int(block_size2), int(block_num2)
 
-    ori_k_in_pa_shape, ori_block_table, ori_k, ori_sparse_indices, ori_topk_length = gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, K1, block_num1,
+    ori_k_in_pa_shape, ori_block_table, ori_k, ori_sparse_indices, ori_topk_length = gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, block_num1,
         block_size1, cu_seqlens_q, cu_seqlens_ori_kv, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_mask_mode, ori_sparse_indices_mode, ori_kv_topk_mode,
         template_idx, ori_kv_datarange[0], ori_kv_datarange[1])
-    if template_idx == 1 or template_idx == 2 or template_idx == 4:
+    if template_idx == 1 or template_idx == 2:
         cmp_k_in_pa_shape, cmp_sparse_indices, cmp_block_table, cmp_k, cmp_topk_length = gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2,
                                                                                         T1, T2, T3, N2, D, K, block_num2,
                                                                                         block_size2, cu_seqlens_q, cu_seqlens_ori_kv,
@@ -990,7 +937,7 @@ def gen_data(params, template_mode=None):
 
     sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
 
-    test_sas = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K1, K,
+    test_sas = GeneralizedSFA(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, S2, T1, N1, N2, D, K,
                               block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, softmax_scale,
                               cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, ori_topk_length, cmp_topk_length)
     cpu_result, softmax_lse = test_sas.forward(q, ori_k, ori_sparse_indices, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_ori_kv, seqused_cmp_kv,
@@ -1005,7 +952,6 @@ def gen_data(params, template_mode=None):
         'T3': T3,
         'N1': N1,
         'N2': N2,
-        'K1': K1,
         'K': K,
         'layout_q': layout_q,
         'layout_kv': layout_kv,
@@ -1030,8 +976,7 @@ def gen_data(params, template_mode=None):
             'B': B,
             'max_seqlen_q': max_seqlen_q,
             'max_seqlen_kv': max(seqused_ori_kv) if seqused_ori_kv is not None else (T2 if layout_kv == "TND" else S2),
-            'K1': K1,
-            'K': K if template_idx != 3 else None,
+            'K': K,
             'cmp_ratio': cmp_ratio,
             'ori_mask_mode': ori_mask_mode,
             'cmp_mask_mode': cmp_mask_mode,
