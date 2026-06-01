@@ -25,6 +25,34 @@ using namespace AscendC;
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SAS_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
+#if defined(SAS_ENABLE_NAN_DEBUG) || defined(ENABLE_DUMP_DATA)
+#define SAS_DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#define SAS_DUMP_TENSOR(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)
+#else
+#define SAS_DEBUG_PRINTF(...)
+#define SAS_DUMP_TENSOR(srcTensor, id, len)
+#endif
+
+#ifndef SAS_DEBUG_TARGET_B
+#define SAS_DEBUG_TARGET_B 0
+#endif
+
+#ifndef SAS_DEBUG_TARGET_N2
+#define SAS_DEBUG_TARGET_N2 0
+#endif
+
+#ifndef SAS_DEBUG_TARGET_S1
+#define SAS_DEBUG_TARGET_S1 (-1)
+#endif
+
+#ifndef SAS_DEBUG_PERIOD_S1
+#define SAS_DEBUG_PERIOD_S1 512
+#endif
+
+#ifndef SAS_DEBUG_DUMP_LEN
+#define SAS_DEBUG_DUMP_LEN 64
+#endif
+
 enum class SAS_RUN_MODE {
     SWA_MODE = 0,
     SCFA_MODE = 1,
@@ -238,6 +266,46 @@ struct RunInfo {
     uint32_t oriDealSize = 0;
     int32_t cmpMaskRight = 0;
 };
+
+__aicore__ inline uint32_t SasDebugDumpLen(uint32_t len)
+{
+    return len < static_cast<uint32_t>(SAS_DEBUG_DUMP_LEN) ? len : static_cast<uint32_t>(SAS_DEBUG_DUMP_LEN);
+}
+
+__aicore__ inline bool SasDebugMatchTarget(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Idx, uint32_t actS1Size)
+{
+#if SAS_DEBUG_TARGET_B >= 0
+    if (bIdx != static_cast<uint32_t>(SAS_DEBUG_TARGET_B)) {
+        return false;
+    }
+#endif
+#if SAS_DEBUG_TARGET_N2 >= 0
+    if (n2Idx != static_cast<uint32_t>(SAS_DEBUG_TARGET_N2)) {
+        return false;
+    }
+#endif
+#if SAS_DEBUG_TARGET_S1 >= 0
+    return s1Idx == static_cast<uint32_t>(SAS_DEBUG_TARGET_S1);
+#else
+    bool shouldTrace = s1Idx < 4U;
+#if SAS_DEBUG_PERIOD_S1 > 0
+    shouldTrace = shouldTrace || (s1Idx % static_cast<uint32_t>(SAS_DEBUG_PERIOD_S1) == 0U);
+#endif
+    shouldTrace = shouldTrace || ((actS1Size <= 4U) || (s1Idx + 4U >= actS1Size));
+    return shouldTrace;
+#endif
+}
+
+__aicore__ inline bool SasDebugShouldTrace(const RunInfo &info)
+{
+    return info.isValid &&
+           SasDebugMatchTarget(info.bIdx, info.n2IdxReal, info.s1Idx, static_cast<uint32_t>(info.actS1Size));
+}
+
+__aicore__ inline bool SasDebugShouldDump(const RunInfo &info)
+{
+    return SasDebugShouldTrace(info) && (info.isFirstSInnerLoop || info.isLastS2Loop || !info.isOriOnly);
+}
 
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
