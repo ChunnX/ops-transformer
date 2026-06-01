@@ -94,7 +94,7 @@ def check_param_valid(
 # ==============================================================================
 # TileLang Kernel: LightningIndexerGrad (BSND, CV 分离架构)
 # ==============================================================================
-@tilelang.jit(out_idx=[-1], workspace_idx=[-3, -2], pass_configs=pass_configs)
+@tilelang.jit(out_idx=[-1], workspace_idx=[2, 3, 4], pass_configs=pass_configs)
 def tilelang_lightning_indexer_grad_bsnd(
     B, S1, S2, N1, N2, G, D, sparse_count,
     input_dtype, calc_dtype
@@ -105,11 +105,12 @@ def tilelang_lightning_indexer_grad_bsnd(
     计算流程:
         Cube1: Q_group @ Key^T -> reluIn (FP32 workspace)
         Vec2:  weights * dy -> reluGradIn; ReLU反向 -> reluGradOut (FP16 workspace)
-        Cube3: reluGradOut @ Key -> dQuery
+        Cube3: reluGradOut @ Key -> dQuery_ws (FP32 workspace, 避免 L0C->UB 通路)
+        Vec4:  dQuery_ws FP32->FP16 cast -> dQuery
 
     T.Tensor 参数顺序: 输入 -> workspace -> 输出
         输入:     Query, Key, Dy, Weights, actual_q_len, actual_k_len
-        Workspace: reluIn_ws (FP32), reluGrad_ws (FP16)
+        Workspace: reluIn_ws (FP32), reluGrad_ws (FP16), dQuery_ws (FP32)  (idx=2,3,4)
         输出:     dQuery
     """
     block_m = BLOCK_M
@@ -125,12 +126,13 @@ def tilelang_lightning_indexer_grad_bsnd(
     def main(
         Query: T.Tensor((B, S1, N1, D), input_dtype),
         Key: T.Tensor((B, S2, N2, D), input_dtype),
+        reluIn_ws: T.Tensor((B, N2, S1, G, sparse_count), calc_dtype),
+        reluGrad_ws: T.Tensor((B, N2, S1, G, sparse_count), input_dtype),
+        dQuery_ws: T.Tensor((B, S1, N1, D), calc_dtype),
         Dy: T.Tensor((B, S1, N1, sparse_count), input_dtype),
         Weights: T.Tensor((B, S1, N1), input_dtype),
         actual_q_len: T.Tensor((B,), "int32"),
         actual_k_len: T.Tensor((B,), "int32"),
-        reluIn_ws: T.Tensor((B, N2, S1, G, sparse_count), calc_dtype),
-        reluGrad_ws: T.Tensor((B, N2, S1, G, sparse_count), input_dtype),
         dQuery: T.Tensor((B, S1, N1, D), input_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -237,7 +239,7 @@ def tilelang_lightning_indexer_grad_bsnd(
 
                 T.set_cross_flag("FIX", 1)
 
-            # ========== Cube3: reluGradOut @ K -> dQuery ==========
+            # ========== Cube3: reluGradOut @ K -> dQuery_ws ==========
             with T.Scope("C"):
                 T.wait_cross_flag(1)
 
@@ -264,6 +266,32 @@ def tilelang_lightning_indexer_grad_bsnd(
                             T.barrier_all()
                         T.copy(
                             DQ_L0C,
+                            dQuery_ws[bz, s1_start:s1_end, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
+                        )
+                        T.barrier_all()
+
+                T.set_cross_flag("FIX", 2)
+
+            # ========== Vec4: dQuery_ws FP32 -> FP16 cast -> dQuery ==========
+            with T.Scope("V"):
+                T.wait_cross_flag(2)
+
+                dq_fp32_ub = T.alloc_ub((block_m, block_d), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((block_m, block_d), input_dtype)
+
+                for g_idx in T.serial(G):
+                    n1_idx = n2_id * G + g_idx
+                    for d_idx in T.serial(d_num):
+                        T.barrier_all()
+                        T.copy(
+                            dQuery_ws[bz, s1_start:s1_end, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
+                            dq_fp32_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", block_m * block_d)
+                        T.barrier_all()
+                        T.copy(
+                            dq_fp16_ub,
                             dQuery[bz, s1_start:s1_end, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
                         )
                         T.barrier_all()
