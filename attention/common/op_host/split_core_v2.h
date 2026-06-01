@@ -9,9 +9,9 @@
 */
 
 /*!
- * \file split_core.h
+ * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -97,10 +97,10 @@ struct SplitParam {
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
     // 1、归约任务的索引信息
-    uint32_t fdNum{0U};               // 归约任务数量
-    std::vector<uint32_t> fdBN2Idx{}; // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
-    std::vector<uint32_t> fdMIdx{};       // 每个归约任务的GS1索引，脚标为归约任务的序号
-    std::vector<uint32_t> fdS2SplitNum{}; // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
+    uint32_t fdNum{0U};                     // 归约任务数量
+    std::vector<uint32_t> fdBN2Idx{};       // 每个归约任务的BN2索引，脚标为归约任务的序号，最大为核数-1
+    std::vector<uint32_t> fdMIdx{};         // 每个归约任务的GS1索引，脚标为归约任务的序号
+    std::vector<uint32_t> fdS2SplitNum{};   // 每个归约任务的S2核间切分份数，脚标为归约任务的序号
     std::vector<uint32_t> fdWorkspaceIdx{}; // 每个归约任务在workspace中的存放位置
     // 2、FD负载均衡阶段，归约任务的分核（vec）信息
     uint32_t fdUsedVecNum{0U};     // 归约过程使用的vector数量
@@ -119,17 +119,17 @@ struct FlashDecodeResult {
 
 // 分核功能模块输出：FA阶段的核间分核信息
 struct FAMetaData {
-    uint32_t usedCoreNum{0U};       // 使用的核数量
-    uint32_t vecCubeRatio{0U};      // vec 与 cube 核数比例
-    std::vector<uint32_t> bN2End{}; // 每个核处理数据的BN2结束点
-    std::vector<uint32_t> mEnd{};   // 每个核处理数据的GS1结束点
-    std::vector<uint32_t> s2End{};  // 每个核处理数据的S2结束点
-    int64_t maxCost{0};             // 慢核开销
+    uint32_t usedCoreNum{0U};                        // 使用的核数量
+    uint32_t vecCubeRatio{0U};                       // vec 与 cube 核数比例
+    std::vector<uint32_t> bN2End{};                  // 每个核处理数据的BN2结束点
+    std::vector<uint32_t> mEnd{};                    // 每个核处理数据的GS1结束点
+    std::vector<uint32_t> s2End{};                   // 每个核处理数据的S2结束点
+    int64_t maxCost{0};                              // 慢核开销
     std::vector<uint32_t> firstFdDataWorkspaceIdx{}; // 每个core处理的第1个归约任务的数据应存放的workspace位置,绝对偏移
-    FlashDecodeResult fdRes{0U, 0U}; // FD信息
+    FlashDecodeResult fdRes{0U, 0U};                 // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
         : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
