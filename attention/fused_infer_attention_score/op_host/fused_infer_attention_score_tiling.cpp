@@ -1563,6 +1563,7 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
             int64_t blockSize = tempK->GetStorageShape().GetDim(DIM_3);
             bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
                     (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
+            isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
             bool blockSizeSupported = (blockSize == 128);
             if (isFAIDSize && blockSizeSupported) {
                 usingFAI = true;
