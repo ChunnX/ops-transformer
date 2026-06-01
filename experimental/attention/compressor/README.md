@@ -57,9 +57,9 @@
 | kv_state | 输入 | 公式中的$kv\_state$，表示kv\_state的历史数据。 | FLOAT32     | ND         |
 | score_state | 输入 | 公式中的$score\_state$，表示score\_state中的历史数据。 | FLOAT32       | ND         |
 | ape | 输入 | 公式中的$Ape$，表示positional biases。 | FLOAT32       | ND         |
-| norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT16、BFLOAT16       | ND         |
-| rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT16、BFLOAT16       | ND         |
-| rope\_cos | 输入 | 表示Rope计算时cos的权重系数。 | FLOAT16、BFLOAT16       | ND         |
+| norm\_weight | 输入 | 表示计算RmsNorm时的权重系数。 | FLOAT32       | ND         |
+| rope\_sin | 输入 | 表示Rope计算时sin的权重系数。 | FLOAT32       | ND         |
+| rope\_cos | 输入 | 表示Rope计算时cos的权重系数。 | FLOAT32       | ND         |
 | rope\_head\_dim | 属性 | 表示rope_cos和rope_sin的hidden层最小单元大小，当前仅支持64。 | INT32       | -         |
 | cmp\_ratio | 属性 | 用于稀疏计算，表示数据压缩率。 | INT32          | -         |
 | kv\_block\_table | 可选输入 | 表示kv\_state存储使用的block映射表。当其中元素的值为0时，表示当前位置无需进行更新kv\_state操作。 | INT32 | ND         |
@@ -271,9 +271,9 @@
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(data_type).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type).npu()
+    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     kv_state = kv_state.npu()
     score_state = score_state.npu()
     block_table = block_table.npu()
@@ -425,9 +425,9 @@
     wkv = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     wgate = torch.tensor(np.random.uniform(-10, 10, (coff * head_dim, hidden_size))).to(data_type).npu()
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
-    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(data_type).npu()
-    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(data_type).npu()
-    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(data_type).npu()
+    norm_weight = torch.tensor(np.random.uniform(-10, 10, (head_dim))).to(torch.float32).npu()
+    rope_sin = torch.tensor(np.random.uniform(-1, 1, rope_sin_shape)).to(torch.float32).npu()
+    rope_cos = torch.tensor(np.random.uniform(-1, 1, rope_cos_shape)).to(torch.float32).npu()
     kv_state = kv_state.npu()
     score_state = score_state.npu()
     block_table = block_table.npu()
