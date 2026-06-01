@@ -89,19 +89,23 @@ ge::graphStatus NsaSelectTiling::QKVPreProcess()
 {
     OP_CHECK_IF(context_->key.desc->GetDataType() != context_->value.desc->GetDataType(),
         OP_LOGE(context_->opName, "datatype of k tensor and value tensor is different"), return ge::GRAPH_FAILED);
-    batchSizeQ_ = batchSize_ = context_->query.shape->GetStorageShape().GetDim(0);
     inputQType_ = context_->query.desc->GetDataType();
     inputKvType_ = context_->key.desc->GetDataType();
     outputType_ = context_->attenOut.desc->GetDataType();
     std::string layout(context_->layOut);
     // B S1 N2 K
     uint32_t selectedBlockCountShapeRange = 0;
+    int64_t batchDim = context_->query.shape->GetStorageShape().GetDim(0);
     if (layout == "TND") {
-        batchSizeQ_ = batchSize_ = context_->actualQSeqLengths.tensor->GetShapeSize();
+        batchDim = context_->actualQSeqLengths.tensor->GetShapeSize();
         selectedBlockCountShapeRange = context_->topkIndices.shape->GetStorageShape().GetDim(dimTwo);
     } else {
         selectedBlockCountShapeRange = context_->topkIndices.shape->GetStorageShape().GetDim(dimThree);
     }
+    OP_CHECK_IF(batchDim <= 0 || batchDim > static_cast<int64_t>(UINT32_MAX),
+        OP_LOGE(context_->opName, "batch size %ld is invalid", batchDim),
+        return ge::GRAPH_FAILED);
+    batchSizeQ_ = batchSize_ = static_cast<uint32_t>(batchDim);
 
     numHeads_ = *context_->numHeads;
     numKvHeads_ = *context_->kvHeadNums;
@@ -231,7 +235,11 @@ void NsaSelectTiling::SetupPerfMode()
 ge::graphStatus NsaSelectTiling::KvShapePostProcess()
 {
     maxBlockNumPerBatch_ = context_->blockTable.tensor->GetStorageShape().GetDim(1);
-    sMax_ = maxBlockNumPerBatch_ * blockSize_;
+    uint64_t sMaxCalc = static_cast<uint64_t>(maxBlockNumPerBatch_) * blockSize_;
+    OP_CHECK_IF(sMaxCalc > UINT32_MAX,
+        OP_LOGE(context_->opName, "sMax %lu exceeds UINT32_MAX", sMaxCalc),
+        return ge::GRAPH_FAILED);
+    sMax_ = static_cast<uint32_t>(sMaxCalc);
     seqSize_ = sMax_;
     inputKvLayout_ = inputLayout_;
     return ge::GRAPH_SUCCESS;
