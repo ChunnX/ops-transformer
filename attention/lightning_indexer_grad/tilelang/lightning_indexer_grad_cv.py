@@ -17,8 +17,6 @@ BLOCK_M = 64
 BLOCK_N = 128
 BLOCK_D = 128
 
-C0_SIZE = 16
-
 VECTOR_BASEG = 16
 VECTOR_BASEN = 256
 
@@ -105,10 +103,9 @@ def tilelang_lightning_indexer_grad_bsnd(
     LightningIndexerGrad kernel (BSND, CV 分离架构)
 
     计算流程:
-        Cube1: Q_group @ K_gather^T -> reluIn (FP32 workspace)
-        Cube2: weights ⊗ dy -> reluGradIn (FP16 workspace)
-        Vec2:  ReLU反向
-        Cube3: reluGradOut @ K_gather -> dQuery
+        Cube1: Q_group @ Key^T -> reluIn (FP32 workspace)
+        Vec2:  weights * dy -> reluGradIn; ReLU反向 -> reluGradOut (FP16 workspace)
+        Cube3: reluGradOut @ Key -> dQuery
 
     T.Tensor 参数顺序: 输入 -> workspace -> 输出
         输入:     Query, Key, Dy, Weights, actual_q_len, actual_k_len
@@ -121,7 +118,6 @@ def tilelang_lightning_indexer_grad_bsnd(
     s1_tile_num = ceil_div(S1, block_m)
     block_num = B * N2 * s1_tile_num
 
-    m_num = G // block_m
     n_num = sparse_count // block_n
     d_num = D // block_d
 
@@ -144,10 +140,7 @@ def tilelang_lightning_indexer_grad_bsnd(
             s1_start = m * block_m
             s1_end = T.min(s1_start + block_m, S1)
 
-            n1_start = n2_id * G
-            n1_end = (n2_id + 1) * G
-
-            # ========== Cube1 + Cube2 ==========
+            # ========== Cube1: Q @ K^T -> reluIn ==========
             with T.Scope("C"):
                 T.barrier_all()
 
@@ -155,106 +148,96 @@ def tilelang_lightning_indexer_grad_bsnd(
                 K_L1 = T.alloc_L1((block_n, block_d), input_dtype)
                 C_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
 
-                W_L1 = T.alloc_L1((block_m, C0_SIZE), input_dtype)
-                DY_L1 = T.alloc_L1((C0_SIZE, block_n), input_dtype)
-                C2_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
+                for g_idx in T.serial(G):
+                    n1_idx = n2_id * G + g_idx
 
-                for s1_idx in T.serial(s1_start, s1_end):
-                    for g_idx in T.serial(G):
-                        n1_idx = n2_id * G + g_idx
-
-                        # --- Cube1: Q(G,D) @ K_gather^T(TOPK,D) -> reluIn(G,TOPK) ---
-                        # K_gather 需从 Key 和 Indices 中 GatherTopk,
-                        # 但 TileLang 不支持运行时索引，此处直接用 Key 的 S2 维做 matmul
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            for k_idx in T.serial(d_num):
-                                T.copy(
-                                    Query[bz, s1_idx, n1_idx, k_idx * block_d:(k_idx + 1) * block_d],
-                                    Q_L1[0:1, k_idx * block_d:(k_idx + 1) * block_d],
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    Key[bz, n_idx * block_n:(n_idx + 1) * block_n, n2_id, k_idx * block_d:(k_idx + 1) * block_d],
-                                    K_L1,
-                                )
-                                T.barrier_all()
-                            T.gemm_v0(Q_L1, K_L1, C_L0C, transpose_B=True, init=(n_idx == 0) if True else (k_idx == 0))
-                            T.barrier_all()
+                    # --- Cube1: Q(block_m,D) @ K^T(block_n,D) -> reluIn(block_m,block_n) ---
+                    # TileLang 不支持运行时索引，此处直接用 Key 的 S2 维做 matmul
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        for k_idx in T.serial(d_num):
                             T.copy(
-                                C_L0C,
-                                reluIn_ws[bz, n2_id, s1_idx, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            )
-                            T.barrier_all()
-
-                for s1_idx in T.serial(s1_start, s1_end):
-                    # --- Cube2: weights(G,1) ⊗ dy(1,TOPK) -> reluGradIn(G,TOPK) ---
-                    for g_idx in T.serial(G):
-                        n1_idx = n2_id * G + g_idx
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            T.copy(
-                                Weights[bz, s1_idx, n1_idx],
-                                W_L1[0:1, 0:C0_SIZE],
+                                Query[bz, s1_start:s1_end, n1_idx, k_idx * block_d:(k_idx + 1) * block_d],
+                                Q_L1,
                             )
                             T.barrier_all()
                             T.copy(
-                                Dy[bz, s1_idx, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                DY_L1[0:C0_SIZE, :],
+                                Key[bz, n_idx * block_n:(n_idx + 1) * block_n, n2_id, k_idx * block_d:(k_idx + 1) * block_d],
+                                K_L1,
                             )
                             T.barrier_all()
-                            T.gemm_v0(W_L1, DY_L1, C2_L0C, init=True)
-                            T.barrier_all()
-                            T.copy(
-                                C2_L0C,
-                                reluGrad_ws[bz, n2_id, s1_idx, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            )
-                            T.barrier_all()
+                        T.gemm_v0(Q_L1, K_L1, C_L0C, transpose_B=True, init=(n_idx == 0))
+                        T.barrier_all()
+                        T.copy(
+                            C_L0C,
+                            reluIn_ws[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                        )
+                        T.barrier_all()
 
                 T.set_cross_flag("FIX", 0)
 
-            # ========== Vec2: ReLU反向 ==========
+            # ========== Vec2: weights * dy + ReLU反向 ==========
             with T.Scope("V"):
                 T.wait_cross_flag(0)
 
                 relu_in_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                dy_ub = T.alloc_ub((block_m, block_n), input_dtype)
+                dy_fp32_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                weight_ub = T.alloc_ub(block_m, input_dtype)
+                weight_fp32_ub = T.alloc_ub(block_m, calc_dtype)
                 relu_grad_ub = T.alloc_ub((block_m, block_n), calc_dtype)
                 relu_grad_half_ub = T.alloc_ub((block_m, block_n), input_dtype)
                 mask_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                zero_ub = T.alloc_ub(1, calc_dtype)
 
-                for s1_idx in T.serial(s1_start, s1_end):
-                    for g_idx in T.serial(G):
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            T.copy(
-                                reluIn_ws[bz, n2_id, s1_idx, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                relu_in_ub,
-                            )
-                            T.barrier_all()
-                            T.copy(
-                                reluGrad_ws[bz, n2_id, s1_idx, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                relu_grad_half_ub,
-                            )
-                            T.barrier_all()
-                            T.tile.cast(relu_grad_ub, relu_grad_half_ub, "CAST_NONE", block_m * block_n)
-                            T.barrier_all()
+                T.tile.fill(zero_ub, 0.0)
 
-                            T.tile.compare(mask_ub, relu_in_ub, 0.0, "GT")
-                            T.barrier_all()
-                            T.tile.select(relu_grad_ub, mask_ub, relu_grad_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                            T.barrier_all()
-                            T.tile.cast(relu_grad_half_ub, relu_grad_ub, "CAST_ROUND", block_m * block_n)
-                            T.barrier_all()
+                for g_idx in T.serial(G):
+                    n1_idx = n2_id * G + g_idx
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        T.copy(
+                            Weights[bz, s1_start:s1_end, n1_idx],
+                            weight_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(weight_fp32_ub, weight_ub, "CAST_NONE", block_m)
+                        T.barrier_all()
+                        T.copy(
+                            Dy[bz, s1_start:s1_end, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                            dy_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(dy_fp32_ub, dy_ub, "CAST_NONE", block_m * block_n)
+                        T.barrier_all()
+                        T.copy(
+                            reluIn_ws[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                            relu_in_ub,
+                        )
+                        T.barrier_all()
 
-                            T.copy(
-                                relu_grad_half_ub,
-                                reluGrad_ws[bz, n2_id, s1_idx, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            )
-                            T.barrier_all()
+                        # weights * dy -> reluGradIn
+                        for i in range(block_m):
+                            T.tile.mul(dy_fp32_ub[i, :], dy_fp32_ub[i, :], weight_fp32_ub[i])
+                        T.barrier_all()
+
+                        # ReLU反向: reluGradOut = (reluIn > 0) ? reluGradIn : 0
+                        T.tile.compare(mask_ub, relu_in_ub, zero_ub, "GT")
+                        T.barrier_all()
+                        T.tile.select(relu_grad_ub, mask_ub, dy_fp32_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                        T.barrier_all()
+                        T.tile.cast(relu_grad_half_ub, relu_grad_ub, "CAST_ROUND", block_m * block_n)
+                        T.barrier_all()
+
+                        T.copy(
+                            relu_grad_half_ub,
+                            reluGrad_ws[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                        )
+                        T.barrier_all()
 
                 T.set_cross_flag("FIX", 1)
 
-            # ========== Cube3: reluGradOut @ K_gather -> dQuery ==========
+            # ========== Cube3: reluGradOut @ K -> dQuery ==========
             with T.Scope("C"):
                 T.wait_cross_flag(1)
 
@@ -262,29 +245,28 @@ def tilelang_lightning_indexer_grad_bsnd(
                 KG_L1 = T.alloc_L1((block_n, block_d), input_dtype)
                 DQ_L0C = T.alloc_L0C((block_m, block_d), calc_dtype)
 
-                for s1_idx in T.serial(s1_start, s1_end):
-                    for g_idx in T.serial(G):
-                        n1_idx = n2_id * G + g_idx
-                        for d_idx in T.serial(d_num):
-                            T.barrier_all()
-                            for k_idx in T.serial(n_num):
-                                T.copy(
-                                    reluGrad_ws[bz, n2_id, s1_idx, g_idx, k_idx * block_n:(k_idx + 1) * block_n],
-                                    RG_L1,
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    Key[bz, k_idx * block_n:(k_idx + 1) * block_n, n2_id, d_idx * block_d:(d_idx + 1) * block_d],
-                                    KG_L1,
-                                )
-                                T.barrier_all()
-                                T.gemm_v0(RG_L1, KG_L1, DQ_L0C, init=(k_idx == 0))
-                                T.barrier_all()
+                for g_idx in T.serial(G):
+                    n1_idx = n2_id * G + g_idx
+                    for d_idx in T.serial(d_num):
+                        T.barrier_all()
+                        for k_idx in T.serial(n_num):
                             T.copy(
-                                DQ_L0C,
-                                dQuery[bz, s1_idx, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
+                                reluGrad_ws[bz, n2_id, s1_start:s1_end, g_idx, k_idx * block_n:(k_idx + 1) * block_n],
+                                RG_L1,
                             )
                             T.barrier_all()
+                            T.copy(
+                                Key[bz, k_idx * block_n:(k_idx + 1) * block_n, n2_id, d_idx * block_d:(d_idx + 1) * block_d],
+                                KG_L1,
+                            )
+                            T.barrier_all()
+                            T.gemm_v0(RG_L1, KG_L1, DQ_L0C, init=(k_idx == 0))
+                            T.barrier_all()
+                        T.copy(
+                            DQ_L0C,
+                            dQuery[bz, s1_start:s1_end, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
+                        )
+                        T.barrier_all()
 
     return main
 
