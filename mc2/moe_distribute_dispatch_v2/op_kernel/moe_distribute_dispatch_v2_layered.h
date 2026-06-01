@@ -1271,7 +1271,8 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     dumpLt.SetValue(1, static_cast<uint32_t>(srcFlagRdmaAddr));
     dumpLt.SetValue(2, static_cast<uint32_t>(srcFlagRdmaAddr >> 32));
     PipeBarrier<PIPE_ALL>();
-    DataCopy(selfDataStatusGMAivSend[13], dumpLt, 3);
+    DataCopyExtParams params{1, 3 * sizeof(uint32_t), 0, 0, 0};
+    DataCopyPad(selfDataStatusGMAivSend[13], dumpLt, params);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -1320,8 +1321,8 @@ __aicore__ inline uint32_t MoeDistributeDispatchV2Layered<TemplateMC2TypeV2Layer
     
 
     selfDataStatusGMAiv.SetValue(11, static_cast<uint32_t>(endFlagValue));
-    selfDataStatusGMAiv.SetValue(1, static_cast<uint32_t>(windowInGM_));
-    selfDataStatusGMAiv.SetValue(2, static_cast<uint32_t>((uint64_t)windowInGM_ >> 32));
+    selfDataStatusGMAiv.SetValue(1, (uint32_t)((uint64_t)windowInGM_));
+    selfDataStatusGMAiv.SetValue(2, (uint32_t)((uint64_t)windowInGM_ >> 32));
     DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(selfDataStatusGMAiv);
     // selfDataStatusGMAiv.SetValue(11, endFlagValue);
