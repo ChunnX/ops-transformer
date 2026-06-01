@@ -60,6 +60,8 @@ private:
     TBuf<TPosition::VECCALC> tileTopKBuf_;
     TBuf<TPosition::VECCALC> tempBuf_;
 
+    int32_t involvedMask_;
+    int32_t andMask_;
     int16_t involvedMask16_;
     int16_t andMask16_;
     int32_t boundaryBin;
@@ -163,6 +165,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     // 4. SyncAll()
     // 5. Phase 2: TopKPerTile → 直接写 mask（方案 B）
 
+    involvedMask_ = 0;
+    andMask_ = static_cast<int32_t>(0xC0000000);
     involvedMask16_ = 0;
     andMask16_ = static_cast<int16_t>(0xC000);
     totalDefinitelyInTopK_ = 0;
@@ -229,10 +233,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(LocalTensor<float
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(LocalTensor<int16_t> &xLocal,
-                                                               uint64_t dataLen)
+__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(LocalTensor<float> &xLocal, uint64_t dataLen)
 {
-    // TODO: 用 andMask16_ 做位与提取当前 2bit
+    LocalTensor<int32_t> xLocalInt32 = xLocal.template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> maskTensor = maskLocalBuf_.Get<int32_t>();
+    
+    Duplicate<int32_t>(maskTensor, andMask_, dataLen);
+    And(xLocalInt32, xLocalInt32, maskTensor, dataLen);
 }
 
 template <typename BSAT>
