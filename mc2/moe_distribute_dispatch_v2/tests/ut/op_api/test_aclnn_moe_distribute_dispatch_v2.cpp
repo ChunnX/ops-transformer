@@ -50,7 +50,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchFirstAp
     TensorDesc expertScales = TensorDesc({8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -66,11 +66,11 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchFirstAp
     TensorDesc expandIdx = TensorDesc({8*8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp",
+                                                            epWorldSize, epRankId, moeExpertNum, "",
                                                             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
                         OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
@@ -88,7 +88,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchDynamic
     TensorDesc expertScales = TensorDesc({8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -104,11 +104,11 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchDynamic
     TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
-                                                            epWorldSize, epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp",
+                                                            epWorldSize, epRankId, moeExpertNum, "",
                                                             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
                         OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
@@ -128,7 +128,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupTp
     std::string longGroupTp(128, 't');
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -144,7 +144,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupTp
     TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, "test_moe_distribute_dispatch_ep",
@@ -168,7 +168,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupEp
     std::string longGroupEp(128, 'e');
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -184,11 +184,11 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchGroupEp
     TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales, longGroupEp.c_str(),
-                                                            epWorldSize, epRankId, moeExpertNum, "test_moe_distribute_dispatch_tp",
+                                                            epWorldSize, epRankId, moeExpertNum, "",
                                                             tpWorldSize, tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test"),
                         OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
@@ -218,7 +218,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWo
     TensorDesc expertScales = TensorDesc({8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     int64_t epWorldSize = 288;
-    int64_t tpWorldSize = 2;
+    int64_t tpWorldSize = 1;
     int64_t epRankId = 0;
     int64_t tpRankId = 0;
     int64_t expertShardType = 0;
@@ -234,12 +234,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV2Test, TestAclnnMoeDistributeDispatchV2GetWo
     TensorDesc expandIdx = TensorDesc({8 * 8}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expertTokensNums = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc epRecvCounts = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
-    TensorDesc tpRecvCounts = TensorDesc({2}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeDistributeDispatchV2, INPUT(x, expertIds, scales, xActiveMask, expertScales,
                                                             "test_moe_distribute_dispatch_ep", epWorldSize, epRankId,
-                                                            moeExpertNum, "test_moe_distribute_dispatch_tp", tpWorldSize,
+                                                            moeExpertNum, "", tpWorldSize,
                                                             tpRankId, expertShardType, sharedExpertNum, shareExpertRankNum,
                                                             quantMode, globalBs, expertTokenNumsType, "fullmesh_v1"),
                         OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts,
