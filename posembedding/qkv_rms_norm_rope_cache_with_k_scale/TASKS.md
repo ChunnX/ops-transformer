@@ -30,14 +30,14 @@
 | T08 | AIC Fixpipe distribution and C_READY | Done | AIC now Fixpipes L0C rows into AIV0/AIV1 `qk_after_cube_ub` by the actual `ceil(tokenSize/2) * qkHeadTile` row boundary, using single-target Fixpipe with `subBlockId` 0/1 instead of fixed half-tile splitting. Basic block owns `C_READY` and placeholder `C_CONSUMED` CrossCore sequencing with fixed per-tile counts: AIC sets `C_READY` twice and waits `C_CONSUMED` twice; each AIV waits `C_READY` once and sets `C_CONSUMED` once. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T09 | V branch early postprocess | Done | Basic block now runs V postprocess after `A_READY` and before `C_READY` wait, so CrossCore sequencing stays centralized outside Vec. V postprocess keeps `input_ub` alive through V consumption, scales BF16 V by `v_scale`, casts to FP8 inside `VScaleFp8D128Vf`, and scatters to `v_cache` by `slot_mapping`; `v_out_ub` uses local `V_MTE3`/`MTE3_V` events `0/1`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused V path UT is still pending. | This commit |
 | T10 | AIV Q/K postprocess | Done | Basic block now waits `C_READY`, runs Vec Q/K postprocess, then sends `C_CONSUMED`, keeping CrossCore sequencing centralized. Vec consumes `qk_after_cube_ub`, runs `QkDynamicQuantD128Vf` for D=128 `max_abs / 448`, FP8 RINT/SAT cast, and scale staging, then writes Q rows to `q_out/q_scale` and K rows to `k_cache/k_scale_cache` by `slot_mapping`; Q/K output reuse uses local `V_MTE3`/`MTE3_V` event ids `2/3`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused Q/K postprocess UT is still pending. | This commit |
-| T11 | Rolling pipeline and drain | Not started | Kernel compile + static review | |
+| T11 | Rolling pipeline and drain | Done | AIV controller loop now runs `PreprocessTileAiv(tile i)` and V early postprocess before `PostprocessTileAiv(tile i - 1)`, then drains the final pending tile so each real tile still emits one `A_READY`, consumes one `C_READY`, and emits one `C_CONSUMED` per AIV. Basic block keeps all CrossCore sequencing centralized through fixed semantic wrappers. Q/K output pool reuse now waits in preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K postprocess releases it after MTE3 writeout, including empty local slices. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T12 | Tail and empty-slice synchronization | Not started | Kernel compile + Host UT extension | |
 | T13 | Synchronization protocol audit | Not started | Kernel compile + static audit | |
 | T14 | Kernel UT/ST closure | Not started | Full UT/ST | |
 
 ## Next Task
 
-Start T11 by adding the rolling pipeline and final drain.
+Start T12 by tightening tail and empty-slice synchronization coverage.
 
 ## Kernel Layout
 
@@ -67,8 +67,8 @@ T08 binds the AIC-side view of the same output DB pool and emits L0C rows to
 the two AIV UB address spaces with `subBlockId` 0/1. The row boundary is
 derived from the same actual AIV token split used for AL1 input, so tail tiles
 do not use a fixed half-tile C split. CrossCore `C_READY`/`C_CONSUMED` calls
-remain centralized in basic block; `C_CONSUMED` is currently a balanced
-placeholder until T10 adds real Q/K postprocess consumption.
+remain centralized in basic block; T10 replaces the original balanced
+placeholder with real Q/K postprocess consumption.
 T09 inserts the V branch early postprocess in the basic-block AIV sequence
 after `A_READY` and before `C_READY` wait. Vec keeps `input_ub` ownership
 through this V phase, loads `v_scale`, runs BF16 V scale and FP8 cast inside
@@ -85,3 +85,13 @@ Q rows write `q_out` and `q_scale`; K rows write `k_cache` and
 `k_scale_cache` by `slot_mapping`. The Q/K output pool uses local
 `V_MTE3`/`MTE3_V` event ids `2/3`, and CrossCore calls remain only in basic
 block.
+T11 changes the AIV controller loop from single-tile sequential execution to
+rolling execution: for tile `i`, AIV first preprocesses Q/K/V, sends
+`A_READY`, and runs V postprocess, then consumes `C_READY` and Q/K
+postprocess for tile `i - 1` when it exists. After the loop, the final pending
+tile is drained so AIC never waits indefinitely on the last `C_CONSUMED`.
+AIC keeps the per-tile order `A_READY -> Cube/Fixpipe -> C_READY ->
+C_CONSUMED`. The output DB pool lifecycle is also aligned with rolling reuse:
+preprocess waits the Q/K output reusable event before using
+`qk_after_cube_ub` as BF16 staging, and Q/K postprocess releases that event
+after FP8 staging MTE3 writeout, including empty local slices.

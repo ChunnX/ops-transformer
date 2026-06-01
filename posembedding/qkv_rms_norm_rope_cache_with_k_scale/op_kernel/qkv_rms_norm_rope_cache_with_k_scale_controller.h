@@ -77,15 +77,27 @@ private:
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range) const
     {
         uint32_t localTileId = 0U;
+        bool hasPendingQkPostprocess = false;
+        TileParam pendingQkTile = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
         for (uint32_t tokenOffset = range.begin; tokenOffset < range.end;) {
             const uint32_t tokenSize = MinU32(tilingData->tokenTile, range.end - tokenOffset);
             if (tokenSize == 0U) {
                 break;
             }
 
-            basicBlock.ComputeTileAiv(MakeTileParam(tilingData, localTileId, tokenOffset, tokenSize));
+            const TileParam tile = MakeTileParam(tilingData, localTileId, tokenOffset, tokenSize);
+            basicBlock.PreprocessTileAiv(tile);
+            if (hasPendingQkPostprocess) {
+                basicBlock.PostprocessTileAiv(pendingQkTile);
+            }
+            pendingQkTile = tile;
+            hasPendingQkPostprocess = true;
             tokenOffset += tokenSize;
             ++localTileId;
+        }
+
+        if (hasPendingQkPostprocess) {
+            basicBlock.PostprocessTileAiv(pendingQkTile);
         }
     }
 

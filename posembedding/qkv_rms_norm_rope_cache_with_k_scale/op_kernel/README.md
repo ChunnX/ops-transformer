@@ -74,8 +74,8 @@ semantic CrossCore protocol: after Vec finishes the AL1 staging boundary for a
 tile, basic block notifies `A_READY` through `PIPE_MTE3`; before Cube consumes
 `a_rot_l1_nz`, basic block waits `A_READY` through `PIPE_MTE1`. After Cube
 Fixpipe completes, basic block sends `C_READY` through `PIPE_FIX`; the AIV side
-waits it through `PIPE_V` and currently sends the balanced `C_CONSUMED`
-placeholder until T10 adds real Q/K postprocess consumption.
+waits it through `PIPE_V`, runs Q/K postprocess, and sends `C_CONSUMED` after
+the output DB pool is safe for reuse.
 
 T05/T06 keep fixed intra-core event ids inside the AIV/AIC implementation
 classes. Basic block owns only CrossCore protocol sequencing; it does not expose
@@ -145,3 +145,17 @@ staging. The Q branch writes `q_out` and `q_scale`; the K branch writes
 `k_cache` and `k_scale_cache` using the same slot-to-cache address calculation
 as V. Q/K FP8 staging reuses `qk_after_cube_ub`, and the corresponding local
 `V_MTE3`/`MTE3_V` handoff uses event ids `2/3`.
+
+T11 switches the AIV controller path to the rolling schedule from the design:
+for tile `i`, the controller calls the basic-block preprocess phase first,
+which runs Vec preprocess, sends `A_READY`, and completes the V branch. It then
+posts Q/K for tile `i - 1` when a pending tile exists. After the token loop,
+the final pending tile is drained. AIC remains single-tile ordered as
+`A_READY -> Cube/Fixpipe -> C_READY -> C_CONSUMED`, so every real tile still
+has balanced CrossCore counts: each AIV sets one `A_READY`, waits one
+`C_READY`, and sets one `C_CONSUMED`; AIC waits/sets/waits the paired two-AIV
+events through the fixed semantic wrappers. To make output DB reuse explicit
+under rolling execution, Vec waits the Q/K output reusable event during
+preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K
+postprocess releases that event after FP8 staging MTE3 writeout, including
+empty local slices.

@@ -225,6 +225,7 @@ private:
     __aicore__ inline void PreprocessQkv(const TileParam &tile, const AivSlice &slice)
     {
         WaitInputBufferReusable(activeBufferId_);
+        WaitQkOutBufferReusable(activeBufferId_);
         CopyPreprocessInputs(slice);
         NotifyInputReady(activeBufferId_);
         WaitInputReady(activeBufferId_);
@@ -367,10 +368,10 @@ private:
     __aicore__ inline void QuantAndScatterQk(const TileParam &tile, const AivSlice &slice)
     {
         if (slice.rowSize == 0U) {
+            ReleaseQkOutBuffer(activeBufferId_);
             return;
         }
 
-        WaitQkOutBufferReusable(activeBufferId_);
         QuantQkToFp8(slice);
         NotifyQkOutReady(activeBufferId_);
         WaitQkOutReady(activeBufferId_);

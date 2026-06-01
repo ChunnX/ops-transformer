@@ -48,9 +48,19 @@ public:
 
     __aicore__ inline void ComputeTileAiv(const TileParam &tile)
     {
+        PreprocessTileAiv(tile);
+        PostprocessTileAiv(tile);
+    }
+
+    __aicore__ inline void PreprocessTileAiv(const TileParam &tile)
+    {
         vec_.ComputeTile(tile);
         NotifyAReadyToAic();
         vec_.PostprocessV(tile);
+    }
+
+    __aicore__ inline void PostprocessTileAiv(const TileParam &tile)
+    {
         WaitCReadyFromAic();
         vec_.PostprocessQk(tile);
         NotifyCConsumedToAic();
