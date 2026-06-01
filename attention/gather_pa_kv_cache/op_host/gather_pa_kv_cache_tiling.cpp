@@ -141,13 +141,13 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     if (isViewKCache) {
         auto *kCacheStride = context->GetInputStride(DIM_0);
         if (kCacheStride != nullptr) {
-            kCacheBlockStride = *kCacheStride.GetStride(DIM_0);
+            kCacheBlockStride = kCacheStride->GetStride(DIM_0);
         }
     }
     if (isViewVCache) {
         auto *VCacheStride = context->GetInputStride(DIM_1);
         if (VCacheStride != nullptr) {
-            VCacheStride = *VCacheStride.GetStride(DIM_0);
+            VCacheStride = VCacheStride->GetStride(DIM_0);
         }
     }
 

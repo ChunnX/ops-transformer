@@ -573,15 +573,15 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         bool isViewKCache = context_->InputIsView(DIM_1);
         bool isViewVCache = context_->InputIsView(DIM_4);
         if (isViewKCache) {
-            auto *kCacheStride = context->GetInputStride(DIM_0);
+            auto *kCacheStride = context_->GetInputStride(DIM_1);
             if (kCacheStride != nullptr) {
-                params_.kCacheBlockStride = *kCacheStride.GetStride(DIM_0);
+                params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
             }
         }
         if (isViewVCache) {
-            auto *VCacheStride = context->GetInputStride(DIM_1);
+            auto *VCacheStride = context_x->GetInputStride(DIM_4);
             if (VCacheStride != nullptr) {
-                params_.vCacheBlockStride = *VCacheStride.GetStride(DIM_0);
+                params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
             }
         }
     }
