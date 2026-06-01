@@ -24,6 +24,7 @@
     - 输出包含两个张量：纯粹的 Sigmoid 结果和叠加 Bias 后的结果
 
 ## 参数说明
+
 <table style="undefined;table-layout: fixed; width: 820px"><colgroup>
   <col style="width: 100px">
   <col style="width: 150px">
