@@ -639,7 +639,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     
     results = []
     
-    for _, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
+    for i, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
         logger.info(f"{'='*60}")
         logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},"
@@ -840,8 +840,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     processes = []
     for rank in range(world_size):
         rank_configs = [
-            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3],
-            world_size, all_inputs[i][4])
+            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], world_size, all_inputs[i][4])
             for i in range(len(all_inputs))
         ]
         p = Process(
