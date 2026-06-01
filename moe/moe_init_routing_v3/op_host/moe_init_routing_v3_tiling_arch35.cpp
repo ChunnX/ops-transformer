@@ -465,20 +465,18 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     Tiling4VMSMiddleCompute();
     Tiling4SortOutCompute();
     Tiling4ExpertTokensCountCompute();
+    isFullload_ = IsFullLoad();
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         Tiling4GatherOutMxQuant();
     } else if (quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
         Tiling4GatherOutFP8Quant();
-    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
-        Tiling4GatherOutCompute();
+    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD && !isFullload_) {
         Tiling4SrcToDstDropPadCompute();
         Tiling4GatherOutDropPadCompute();
     } else {
         Tiling4GatherOutCompute();
     }
-
-    isFullload_ = IsFullLoad();
     return ge::GRAPH_SUCCESS;
 }
 
