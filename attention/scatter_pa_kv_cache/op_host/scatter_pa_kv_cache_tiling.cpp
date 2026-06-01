@@ -579,7 +579,7 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
             }
         }
         if (isViewVCache) {
-            auto *VCacheStride = context_x->GetInputStride(DIM_4);
+            auto *VCacheStride = context_->GetInputStride(DIM_4);
             if (VCacheStride != nullptr) {
                 params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
             }
