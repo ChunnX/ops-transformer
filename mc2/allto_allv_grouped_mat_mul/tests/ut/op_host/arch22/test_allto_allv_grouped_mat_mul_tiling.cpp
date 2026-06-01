@@ -147,8 +147,8 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
          ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         *mmXShape,
         *mmWeightShape,
     };
@@ -158,14 +158,10 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
     const TilingParams& tilingParams,
     const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmYShape
 ) {
-    auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
-        gert::TilingContextPara::TensorDescription{
-            {{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
-            ge::DT_FLOAT16, ge::FORMAT_ND} : *mmYShape;
     return {
         {{{tilingParams.A, tilingParams.gmmYDim1}, {tilingParams.A, tilingParams.gmmYDim1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        mmYDesc,
+        *mmYShape,
         {{{tilingParams.A, tilingParams.H1}, {tilingParams.A, tilingParams.H1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
     };
@@ -233,6 +229,7 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
     if (!(has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.isNeedMM == false)) {
         mmXShape->shape_ = {};
         mmWeightShape->shape_ = {};
+        mmYShape->shape_ = {};
     }
 
     gert::TilingContextPara tilingContextPara(
