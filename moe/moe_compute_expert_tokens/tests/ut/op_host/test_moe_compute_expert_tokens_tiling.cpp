@@ -106,3 +106,41 @@ TEST_F(MoeComputeExpertTokensTiling, MoeComputeExpertTokens_tiling_int32_3)
     std::vector<size_t> expectWorkspaces = {16802304};    // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
+
+// COM_SCENE_FLAG_3: sortedExpertNum > 12000 && numOfExpert > 256, large tail core path
+TEST_F(MoeComputeExpertTokensTiling, MoeComputeExpertTokens_tiling_int32_4)
+{
+    optiling::MoeComputeExpertTokensCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeComputeExpertTokens",
+                                              {
+                                                  {{{21000}, {21000}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{300}, {300}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_experts", Ops::Transformer::AnyValue::CreateFrom<int64_t>(300)}}},
+                                              &compileInfo);
+    int64_t expectTilingKey = 1003;
+    string expectTilingData = "64 64 33 60 261888 32 21000 5 1 5 5 5 1 5 5 300 329 2 320 9 273 1 273 273 640 520 2 1 320 520 2 256 44 1 320 1 200 16854016 1003 ";
+    std::vector<size_t> expectWorkspaces = {16854016};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// isNetScene: sortedExpertNum == 65536 && numOfExpert == 8
+TEST_F(MoeComputeExpertTokensTiling, MoeComputeExpertTokens_tiling_int32_5)
+{
+    optiling::MoeComputeExpertTokensCompileInfo compileInfo = {40, 65536};
+    gert::TilingContextPara tilingContextPara("MoeComputeExpertTokens",
+                                              {
+                                                  {{{65536}, {65536}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_experts", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}}},
+                                              &compileInfo);
+    int64_t expectTilingKey = 1001;
+    string expectTilingData = "64 64 52 8 261888 48 65536 1 1 1 1 1 1 1 1 8 1024 4 320 64 1024 4 320 64 1280 256 4 1 320 256 1 8 8 1 256 0 0 16779264 1001 ";
+    std::vector<size_t> expectWorkspaces = {16779264};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
