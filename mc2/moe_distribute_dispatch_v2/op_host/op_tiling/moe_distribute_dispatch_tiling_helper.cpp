@@ -132,12 +132,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "epRecvCountShape", std::to_string(epRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *tpRecvCountStorageShape = context->GetOutputShape(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountStorageShape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountShape"), return false);
-    OP_TILING_CHECK(tpRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "tpRecvCountShape", std::to_string(tpRecvCountStorageShape->GetStorageShape().GetDimNum()).c_str(), "should be 1D"), return false);
-    OP_LOGD(nodeName, "tpRecvCount dim0 = %ld", tpRecvCountStorageShape->GetStorageShape().GetDim(0));
     return true;
 }
 
@@ -182,12 +176,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckCommonOutputTensorDataType(
         OP_LOGE(nodeName, "epRecvCounts datatype is invalid, datatype should be int32, but is %s.",
         Ops::Base::ToString(epRecvCountsDesc->GetDataType()).c_str()), return false);
 
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountsDesc"), return false);
-    OP_TILING_CHECK(tpRecvCountsDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "tpRecvCounts datatype is invalid, datatype should be int32, but is %s.",
-        Ops::Base::ToString(tpRecvCountsDesc->GetDataType()).c_str()), return false);
-
     return true;
 }
 
@@ -213,6 +201,7 @@ inline bool MoeDistributeDispatchTilingHelper::CheckInputTensorDataType(const ge
             OP_LOGE(nodeName, "scales datatype is invalid, datatype should be float, but is %s.",
             Ops::Base::ToString(scalesDesc->GetDataType()).c_str()), return false);
     }
+
     return true;
 }
 
@@ -444,14 +433,6 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
     auto epRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(epRecvCountsDesc->GetStorageFormat()));
     if (epRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epRecvCounts", Ops::Base::ToString(epRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
-        return false;
-    }
-
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tpRecvCountsDesc"), return false);
-    auto tpRecvCountsDescFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat()));
-    if (tpRecvCountsDescFormat != ge::FORMAT_FRACTAL_NZ) {
-        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "tpRecvCounts", Ops::Base::ToString(tpRecvCountsDescFormat).c_str(), "FRACTAL_NZ");
         return false;
     }
 
