@@ -17,6 +17,7 @@
 #define GROUPED_MATMUL_SWIGLU_QUANT_V2_WEIGHT_QUANT_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
+#include "grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
 
 #define GMM_SWIGLU_QUANT_NO_TRANS 0
 #define GMM_SWIGLU_QUANT_TRANS 1
@@ -33,5 +34,6 @@ ASCENDC_TPL_ARGS_DECL(GroupedMatmulSwigluQuantV2, // 算子OpType
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANT_B_TRANS, ASCENDC_TPL_UI_LIST, GMM_SWIGLU_QUANT_TRANS),
-                         ASCENDC_TPL_UINT_SEL(QUANT_A_TRANS, ASCENDC_TPL_UI_LIST, GMM_SWIGLU_QUANT_NO_TRANS)));
+                         ASCENDC_TPL_UINT_SEL(QUANT_A_TRANS, ASCENDC_TPL_UI_LIST, GMM_SWIGLU_QUANT_NO_TRANS)),
+                         ASCENDC_TPL_TILING_STRUCT_SEL(GMMSQArch35Tiling::GMMSQWeightQuantTilingData), );
 #endif // GROUPED_MATMUL_SWIGLU_QUANT_V2_WEIGHT_QUANT_TILING_KEY_H
