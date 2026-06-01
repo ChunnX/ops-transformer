@@ -30,18 +30,18 @@ public:
     __aicore__ inline void InitIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
-            ReleaseInputBuffer(bufferId);
-            ReleaseVOutBuffer(bufferId);
-            ReleaseQkOutBuffer(bufferId);
+            SetVToMte2InputBufferReusable(bufferId);
+            SetMte3ToVVOutBufferReusable(bufferId);
+            SetMte3ToVQkOutBufferReusable(bufferId);
         }
     }
 
     __aicore__ inline void EndIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
-            WaitInputBufferReusable(bufferId);
-            WaitVOutBufferReusable(bufferId);
-            WaitQkOutBufferReusable(bufferId);
+            WaitVToMte2InputBufferReusable(bufferId);
+            WaitMte3ToVVOutBufferReusable(bufferId);
+            WaitMte3ToVQkOutBufferReusable(bufferId);
         }
     }
 
@@ -59,7 +59,7 @@ public:
         const AivSlice slice = MakeAivSlice(tile, tilingData_->qkHeadTile, aivLocalId_);
         activeBufferId_ = MakeDataBufferId(tile.bufferId);
         QuantAndScatterV(tile, slice);
-        ReleaseInputBuffer(activeBufferId_);
+        SetVToMte2InputBufferReusable(activeBufferId_);
     }
 
     __aicore__ inline void PostprocessQk(const TileParam &tile)
@@ -98,7 +98,7 @@ private:
     static_assert(EVT_MTE3_TO_PIPE_V_A_L1_DONE <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIV MTE3->V AL1 done event exceeds event id range.");
 
-    __aicore__ inline void WaitInputBufferReusable(uint32_t bufferId)
+    __aicore__ inline void WaitVToMte2InputBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
@@ -107,7 +107,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void ReleaseInputBuffer(uint32_t bufferId)
+    __aicore__ inline void SetVToMte2InputBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE2>(static_cast<event_t>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId));
@@ -116,7 +116,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void NotifyInputReady(uint32_t bufferId)
+    __aicore__ inline void SetMte2ToVInputReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
@@ -125,7 +125,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitInputReady(uint32_t bufferId)
+    __aicore__ inline void WaitMte2ToVInputReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + bufferId));
@@ -134,7 +134,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitVOutBufferReusable(uint32_t bufferId)
+    __aicore__ inline void WaitMte3ToVVOutBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
@@ -143,7 +143,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void ReleaseVOutBuffer(uint32_t bufferId)
+    __aicore__ inline void SetMte3ToVVOutBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
@@ -152,7 +152,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void NotifyVOutReady(uint32_t bufferId)
+    __aicore__ inline void SetVToMte3VOutReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
@@ -161,7 +161,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitVOutReady(uint32_t bufferId)
+    __aicore__ inline void WaitVToMte3VOutReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId));
@@ -170,7 +170,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitQkOutBufferReusable(uint32_t bufferId)
+    __aicore__ inline void WaitMte3ToVQkOutBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
@@ -179,7 +179,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void ReleaseQkOutBuffer(uint32_t bufferId)
+    __aicore__ inline void SetMte3ToVQkOutBufferReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
@@ -188,7 +188,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void NotifyQkOutReady(uint32_t bufferId)
+    __aicore__ inline void SetVToMte3QkOutReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
@@ -197,7 +197,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitQkOutReady(uint32_t bufferId)
+    __aicore__ inline void WaitVToMte3QkOutReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId));
@@ -206,7 +206,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitAl1StageDone()
+    __aicore__ inline void SetAndWaitMte3ToVAl1StageDone()
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_A_L1_DONE));
@@ -214,7 +214,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitAl1StageReady()
+    __aicore__ inline void SetAndWaitVToMte3Al1StageReady()
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(EVT_PIPE_V_TO_MTE3_A_L1_READY));
@@ -224,19 +224,19 @@ private:
 
     __aicore__ inline void PreprocessQkv(const TileParam &tile, const AivSlice &slice)
     {
-        WaitInputBufferReusable(activeBufferId_);
-        WaitQkOutBufferReusable(activeBufferId_);
+        WaitVToMte2InputBufferReusable(activeBufferId_);
+        WaitMte3ToVQkOutBufferReusable(activeBufferId_);
         if (slice.tokenSize == 0U || slice.rowSize == 0U) {
             return;
         }
 
         CopyPreprocessInputs(slice);
-        NotifyInputReady(activeBufferId_);
-        WaitInputReady(activeBufferId_);
+        SetMte2ToVInputReady(activeBufferId_);
+        WaitMte2ToVInputReady(activeBufferId_);
         BuildRopeBf16Nd(tile, slice);
-        WaitAl1StageReady();
+        SetAndWaitVToMte3Al1StageReady();
         WriteRopeBf16NdToL1Nz(tile, slice);
-        WaitAl1StageDone();
+        SetAndWaitMte3ToVAl1StageDone();
     }
 
     __aicore__ inline void CopyPreprocessInputs(const AivSlice &slice)
@@ -326,12 +326,12 @@ private:
             return;
         }
 
-        WaitVOutBufferReusable(activeBufferId_);
+        WaitMte3ToVVOutBufferReusable(activeBufferId_);
         QuantVToFp8(tile, slice);
-        NotifyVOutReady(activeBufferId_);
-        WaitVOutReady(activeBufferId_);
+        SetVToMte3VOutReady(activeBufferId_);
+        WaitVToMte3VOutReady(activeBufferId_);
         ScatterVCache(tile, slice);
-        ReleaseVOutBuffer(activeBufferId_);
+        SetMte3ToVVOutBufferReusable(activeBufferId_);
     }
 
     __aicore__ inline void QuantVToFp8(const TileParam &tile, const AivSlice &slice)
@@ -372,15 +372,15 @@ private:
     __aicore__ inline void QuantAndScatterQk(const TileParam &tile, const AivSlice &slice)
     {
         if (slice.rowSize == 0U) {
-            ReleaseQkOutBuffer(activeBufferId_);
+            SetMte3ToVQkOutBufferReusable(activeBufferId_);
             return;
         }
 
         QuantQkToFp8(slice);
-        NotifyQkOutReady(activeBufferId_);
-        WaitQkOutReady(activeBufferId_);
+        SetVToMte3QkOutReady(activeBufferId_);
+        WaitVToMte3QkOutReady(activeBufferId_);
         ScatterQkOutputs(tile, slice);
-        ReleaseQkOutBuffer(activeBufferId_);
+        SetMte3ToVQkOutBufferReusable(activeBufferId_);
     }
 
     __aicore__ inline void QuantQkToFp8(const AivSlice &slice)

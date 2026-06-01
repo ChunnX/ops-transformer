@@ -29,28 +29,28 @@ public:
     __aicore__ inline void InitIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
-            ReleaseL0Buffer(bufferId);
+            SetMmadToMte1L0Reusable(bufferId);
         }
         for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
-            ReleaseL0CBuffer(bufferId);
+            SetFixToMmadL0CReusable(bufferId);
         }
     }
 
     __aicore__ inline void EndIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0_BUFFER_NUM; ++bufferId) {
-            WaitL0BufferReusable(bufferId);
+            WaitMmadToMte1L0Reusable(bufferId);
         }
         for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
-            WaitL0CBufferReusable(bufferId);
+            WaitFixToMmadL0CReusable(bufferId);
         }
     }
 
     __aicore__ inline void PrepareRotationBeforeLoop()
     {
         CopyRotationGmToL1Nz();
-        NotifyRotationReady();
-        WaitRotationReady();
+        SetMte2ToMte1RotationReady();
+        WaitMte2ToMte1RotationReady();
     }
 
     __aicore__ inline void ComputeTile(const TileParam &tile)
@@ -91,21 +91,21 @@ private:
     static_assert(EVT_FIXP_TO_MMAD_L0C_BASE + AIC_L0C_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIC FIXP->MMAD L0C events exceed event id range.");
 
-    __aicore__ inline void NotifyRotationReady()
+    __aicore__ inline void SetMte2ToMte1RotationReady()
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
 #endif
     }
 
-    __aicore__ inline void WaitRotationReady()
+    __aicore__ inline void WaitMte2ToMte1RotationReady()
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
 #endif
     }
 
-    __aicore__ inline void WaitL0BufferReusable(uint32_t bufferId)
+    __aicore__ inline void WaitMmadToMte1L0Reusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
@@ -114,7 +114,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void ReleaseL0Buffer(uint32_t bufferId)
+    __aicore__ inline void SetMmadToMte1L0Reusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
@@ -123,7 +123,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void NotifyL0ReadyForMmad(uint32_t bufferId)
+    __aicore__ inline void SetMte1ToMmadL0Ready(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
@@ -132,7 +132,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitL0ReadyForMmad(uint32_t bufferId)
+    __aicore__ inline void WaitMte1ToMmadL0Ready(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_L0_BASE + bufferId));
@@ -141,7 +141,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitL0CBufferReusable(uint32_t bufferId)
+    __aicore__ inline void WaitFixToMmadL0CReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId));
@@ -150,7 +150,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void ReleaseL0CBuffer(uint32_t bufferId)
+    __aicore__ inline void SetFixToMmadL0CReusable(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId));
@@ -159,7 +159,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void NotifyL0CReadyForFixpipe(uint32_t bufferId)
+    __aicore__ inline void SetMmadToFixL0CReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         SetFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIXP_L0C_BASE + bufferId));
@@ -168,7 +168,7 @@ private:
 #endif
     }
 
-    __aicore__ inline void WaitL0CReadyForFixpipe(uint32_t bufferId)
+    __aicore__ inline void WaitMmadToFixL0CReady(uint32_t bufferId)
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIXP_L0C_BASE + bufferId));
@@ -201,18 +201,18 @@ private:
         for (uint32_t mStart = 0U; mStart < tile.rowSize; mStart += AIC_M_L0_TILE) {
             const uint32_t mSize = MinU32(AIC_M_L0_TILE, tile.rowSize - mStart);
             const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
-            WaitL0BufferReusable(bufferId);
-            WaitL0CBufferReusable(bufferId);
+            WaitMmadToMte1L0Reusable(bufferId);
+            WaitFixToMmadL0CReusable(bufferId);
             LoadAToL0(tile, mStart, mSize, bufferId, aRotL1Nz);
             LoadRotationToL0(bufferId);
-            NotifyL0ReadyForMmad(bufferId);
-            WaitL0ReadyForMmad(bufferId);
+            SetMte1ToMmadL0Ready(bufferId);
+            WaitMte1ToMmadL0Ready(bufferId);
             ComputeMmad(mSize, bufferId);
-            NotifyL0CReadyForFixpipe(bufferId);
-            WaitL0CReadyForFixpipe(bufferId);
+            SetMmadToFixL0CReady(bufferId);
+            WaitMmadToFixL0CReady(bufferId);
             FixpipeToAivUb(tile, mStart, mSize, bufferId, qkAfterCubeUb);
-            ReleaseL0CBuffer(bufferId);
-            ReleaseL0Buffer(bufferId);
+            SetFixToMmadL0CReusable(bufferId);
+            SetMmadToMte1L0Reusable(bufferId);
         }
     }
 
