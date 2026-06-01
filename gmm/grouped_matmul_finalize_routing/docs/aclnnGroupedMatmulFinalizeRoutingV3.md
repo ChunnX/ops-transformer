@@ -93,7 +93,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
+  <table style="table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
   <col style="width: 400px">
@@ -370,7 +370,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
   <col style="width: 700px">
@@ -405,7 +405,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
+  <table style="table-layout: fixed; width: 953px"><colgroup>
     <col style="width: 173px">
     <col style="width: 112px">
     <col style="width: 668px">
@@ -600,7 +600,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         auto ret = Init(deviceId, &stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init stream failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造输入与输出，需要根据API的接口自定义构造
+        // 2. 构造本示例使用的输入与输出
         int64_t m = 8;
         int64_t k = 2048;
         int64_t n = 7168;
@@ -722,7 +722,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 
         aclIntArray *tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
         CHECK_RET(tuningConfig == nullptr, -1);
-        // 3. 调用CANN算子库API，需要修改为具体的Api名称
+        // 3. 调用CANN算子库API
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
@@ -745,7 +745,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+        // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧
         auto size = GetShapeSize(outShape);
         std::vector<float> resultData(size, 0);
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
@@ -756,7 +756,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
             LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
         }
 
-        // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
+        // 6. 释放aclTensor资源
         aclDestroyTensor(x);
         aclDestroyTensor(w);
         aclDestroyTensor(scale);
@@ -769,7 +769,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
         aclDestroyTensor(rowIndex);
         aclDestroyTensor(out);
 
-        // 7.释放device资源，需要根据具体API的接口定义修改
+        // 7. 释放device资源
         aclrtFree(xDeviceAddr);
         aclrtFree(wDeviceAddr);
         aclrtFree(scaleDeviceAddr);
@@ -911,7 +911,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       auto ret = Init(deviceId, &stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init stream failed. ERROR: %d\n", ret); return ret);
 
-      // 2. 构造输入与输出，需要根据API的接口自定义构造
+      // 2. 构造本示例使用的输入与输出
       int64_t m = 8;
       int64_t k = 2048;
       int64_t n = 7168;
@@ -1042,7 +1042,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       std::unique_ptr<void, aclError (*)(void *)> outDeviceAddrPtr(outDeviceAddr, aclrtFree);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-      // 3. 调用CANN算子库API，需要修改为具体的Api名称
+      // 3. 调用CANN算子库API
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
       void *workspaceAddr = nullptr;
@@ -1064,7 +1064,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       ret = aclrtSynchronizeStream(stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-      // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+      // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧
       auto size = GetShapeSize(outShape);
       std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
@@ -1075,7 +1075,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
           LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
       }
 
-      // 6. 释放aclTensor和aclTensor，需要根据具体API的接口定义修改
+      // 6. 释放aclTensor资源
       aclDestroyTensor(x);
       aclDestroyTensor(w);
       aclDestroyTensor(scale);
@@ -1088,7 +1088,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
       aclDestroyTensor(rowIndex);
       aclDestroyTensor(out);
 
-      // 7.释放device资源，需要根据具体API的接口定义修改
+      // 7. 释放device资源
       aclrtFree(xDeviceAddr);
       aclrtFree(wDeviceAddr);
       aclrtFree(scaleDeviceAddr);

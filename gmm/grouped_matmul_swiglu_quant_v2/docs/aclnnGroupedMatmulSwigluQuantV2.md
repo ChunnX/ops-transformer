@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
+- 接口功能：融合GroupedMatmul、dequant、swiglu和quant，详细解释见计算公式。
 
   相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
     
@@ -68,7 +68,7 @@
           >
           >则第一个输出Q的shape为[30，:]，其中Q[18:，：]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
           >
-          >同理，第二个输出Q的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
+          >同理，第二个输出Q_scale的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
           >
           >即输出的Q[:grouplist[-1],:]和Q\_scale[:grouplist[-1]]为有效数据部分。
 
@@ -125,7 +125,7 @@
 
           - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
             $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
-            $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
+            $X\_low\_4bits_{i} = (X_{i} \& 0x0f) - 8$
           - 3.2.做矩阵乘时，使能per-channel或per-group量化
             per-channel：
 
@@ -321,7 +321,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 ## aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize
 
   - **参数说明**
-    <table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
+    <table style="table-layout: fixed;width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
     <col style="width: 300px">
@@ -562,7 +562,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
+  <table style="table-layout: fixed;width: 1150px"><colgroup>
   <col style="width: 167px">
   <col style="width: 123px">
   <col style="width: 860px">
@@ -611,7 +611,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 ## aclnnGroupedMatmulSwigluQuantV2
 
 - **参数说明**
-  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
+  <table style="table-layout: fixed;width: 1150px"><colgroup>
     <col style="width: 167px">
     <col style="width: 123px">
     <col style="width: 860px">
@@ -638,7 +638,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - A8W8/A8W4/A4W4量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 100px">
           <col style="width: 100px">
           <col style="width: 300px">
@@ -699,7 +699,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 100px">
           <col style="width: 100px">
           <col style="width: 300px">
@@ -788,7 +788,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     - groupList第1维最大支持1024，即最多支持1024个group。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 130px">
           <col style="width: 300px">
@@ -830,7 +830,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 250px">
           <col style="width: 320px">
@@ -870,7 +870,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     
     - Pertoken量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 250px">
           <col style="width: 250px">
           <col style="width: 300px">
@@ -916,7 +916,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <table style="table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 250px">
           <col style="width: 320px">
@@ -1032,10 +1032,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         int32_t deviceId = 0;
         aclrtStream stream;
         auto ret = Init(deviceId, &stream);
-        // check根据自己的需要处理
+        // 检查初始化结果
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造输入与输出，需要根据API的接口自定义构造
+        // 2. 构造本示例使用的输入与输出
         int64_t E = 4;
         int64_t M = 8192;
         int64_t N = 4096;
@@ -1131,7 +1131,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
+        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
         auto size = 10;
         std::vector<int8_t> out1Data(size, 0);
         ret = aclrtMemcpy(out1Data.data(), out1Data.size() * sizeof(out1Data[0]), outputDeviceAddr,
@@ -1147,7 +1147,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         for (int64_t j = 0; j < size; j++) {
             LOG_PRINT("result[%ld] is: %f\n", j, out2Data[j]);
         }
-        // 6. 释放aclTensor、aclTensorList和aclScalar，需要根据具体API的接口定义修改
+        // 6. 释放aclTensor、aclTensorList和aclScalar
         aclDestroyTensor(x);
         aclDestroyTensorList(weight);
         aclDestroyTensorList(weightScale);
@@ -1158,7 +1158,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
         aclDestroyIntArray(tuningConfig);
 
-        // 7. 释放device资源，需要根据具体API的接口定义修改
+        // 7. 释放device资源
         aclrtFree(xDeviceAddr);
         for (int64_t i = 0; i < 1; i++) {
             aclrtFree(weightDeviceAddr[i]);
@@ -1285,7 +1285,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         auto ret = Init(deviceId, &stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造输入与输出，需要根据API的接口自定义构造
+        // 2. 构造本示例使用的输入与输出
         int64_t E = 8;
         int64_t M = 2048;
         int64_t N = 4096;
@@ -1401,7 +1401,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
+        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
         auto size = GetShapeSize(outputShape);
         std::vector<int8_t> outputData(size, 0);
         ret = aclrtMemcpy(outputData.data(), size * sizeof(outputData[0]), outputDeviceAddr,
@@ -1435,4 +1435,3 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
-    

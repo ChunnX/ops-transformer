@@ -65,7 +65,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
+  <table style="table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
   <col style="width: 400px">
@@ -313,9 +313,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
     - x1仅支持INT8。维度m的取值范围为[1,16\*1024\*8]，k支持2048。
-    - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。只支持转置属性为false。
+    - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。该产品场景下只支持转置属性为false。
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和weight的e、n一致。
-    - scaleOptional支持INT64、FLOAT、BF16。
+    - scale支持INT64、FLOAT、BF16。
     - rowIndex支持INT64、INT32。
     - x1、x2、groupList是必选参数，scale、pertokenScaleOptional、logit、rowIndex、bias、sharedInput是可选参数。
   - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -330,7 +330,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <table style="table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
   <col style="width: 700px">
@@ -364,7 +364,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 ## aclnnGroupedMatmulFinalizeRoutingWeightNzV2
 
 - **参数说明**
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
+  <table style="table-layout: fixed; width: 953px"><colgroup>
     <col style="width: 173px">
     <col style="width: 112px">
     <col style="width: 668px">
@@ -415,7 +415,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - 公共约束
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x1维度m的取值范围为 $[1, 16*1024*8]$，k支持2048。
-    - x2的e取值范围$[1, 256]$，k支持2048，n支持7168。只支持转置属性为false。
+    - x2的e取值范围$[1, 256]$，k支持2048，n支持7168。该产品场景下只支持转置属性为false。
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致。
 
   - 输入和输出支持以下数据类型组合
@@ -446,7 +446,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT/null | INT64 | BFLOAT16 | FLOAT | INT64 | FLOAT | null |
     | HIFLOAT8 | HIFLOAT8 | FLOAT/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT/null | INT64 | BFLOAT16 | FLOAT | INT64 | FLOAT | null |
 
-    - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
+    - Ascend 950PR/Ascend 950DT全量化场景下，x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
     - scale的shape为(e, 1, n)，e、n和x2的e、n一致。
     - pertokenScaleOptional的shape为(m)，m和x1的m一致。
 
@@ -586,7 +586,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         auto ret = Init(deviceId, &stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init stream failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造输入与输出，需要根据API的接口自定义构造
+        // 2. 构造本示例使用的输入与输出
         int64_t m = 192;
         int64_t k = 2048;
         int64_t n = 7168;
@@ -698,7 +698,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         std::unique_ptr<aclIntArray, aclnnStatus (*)(const aclIntArray *)> tuningConfigIntArrayPtr(tuningConfig, aclDestroyIntArray);
         std::unique_ptr<void, aclError (*)(void *)> tuningConfigDeviceAddrPtr(tuningConfigDeviceAddr, aclrtFree);
         CHECK_RET(tuningConfig != nullptr, -1);
-        // 3. 调用CANN算子库API，需要修改为具体的Api名称
+        // 3. 调用CANN算子库API
         uint64_t workspaceSize = 0;
         aclOpExecutor *executor;
         void *workspaceAddr = nullptr;
@@ -736,7 +736,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+        // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧
         auto size = GetShapeSize(outShape);
         std::vector<float> resultData(size, 0);
         ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
@@ -747,7 +747,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
             LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
         }
 
-        // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
+        // 6. 释放aclTensor资源
         aclDestroyTensor(x);
         aclDestroyTensor(w);
         aclDestroyTensor(scale);
@@ -758,7 +758,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
         aclDestroyTensor(rowIndex);
         aclDestroyTensor(out);
 
-        // 7.释放device资源，需要根据具体API的接口定义修改
+        // 7. 释放device资源
         aclrtFree(xDeviceAddr);
         aclrtFree(wDeviceAddr);
         aclrtFree(scaleDeviceAddr);
@@ -903,7 +903,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       auto ret = Init(deviceId, &stream);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init stream failed. ERROR: %d\n", ret); return ret);
 
-      // 2. 构造输入与输出，需要根据API的接口自定义构造
+      // 2. 构造本示例使用的输入与输出
       int64_t m = 192;
       int64_t k = 2048;
       int64_t n = 7168;
@@ -990,7 +990,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
       CHECK_FREE_RET(ret == ACL_SUCCESS, return ret);
 
-      // 3. 调用CANN算子库API，需要修改为具体的Api名称
+      // 3. 调用CANN算子库API
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
       void *workspaceAddr = nullptr;
@@ -1019,7 +1019,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       ret = aclrtSynchronizeStream(stream);
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-      // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
+      // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧
       auto size = GetShapeSize(outShape);
       std::vector<float> resultData(size, 0);
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
@@ -1030,7 +1030,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
           LOG_PRINT("result[%lld] is: %f\n", static_cast<long long>(i), resultData[i]);
       }
 
-      // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
+      // 6. 释放aclTensor资源
       aclDestroyTensor(x);
       aclDestroyTensor(w);
       aclDestroyTensor(scale);
@@ -1041,7 +1041,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       aclDestroyTensor(rowIndex);
       aclDestroyTensor(out);
 
-      // 7.释放device资源，需要根据具体API的接口定义修改
+      // 7. 释放device资源
       aclrtFree(xDeviceAddr);
       aclrtFree(wDeviceAddr);
       aclrtFree(scaleDeviceAddr);

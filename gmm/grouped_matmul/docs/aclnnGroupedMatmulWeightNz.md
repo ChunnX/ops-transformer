@@ -23,8 +23,7 @@
     **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
 
       - 输入的weight的数据格式支持AI处理器亲和数据排布格式（FRACTAL_NZ）。
-      - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
-      - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
+      - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小。不涉及分组量化时填0；<term>Ascend 950PR/Ascend 950DT</term>仅A8W4 pergroup量化场景支持quantGroupSize=256。
 
   - **计算公式**：
 
@@ -154,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   - **参数说明：**
 
-    <table style="undefined;table-layout: fixed; width: 1550px;">
+    <table style="table-layout: fixed; width: 1550px;">
     <colgroup>
     <col style="width: 190px">
     <col style="width: 120px">
@@ -359,7 +358,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>quantGroupSize</td>
     <td>输入</td>
     <td>代表分组量化（per-group）的分组大小。</td>
-    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>暂不支持。</td>
+    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>仅A8W4 pergroup量化场景支持quantGroupSize=256。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -423,7 +422,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
       - `offsetOptional`、`antiquantOffsetOptional`暂不支持。
       - `groupType`支持m轴分组，仅非量化支持不分组。
-      - `quantGroupSize`暂不支持。
+      - `quantGroupSize`仅A8W4 pergroup量化场景支持256，其他场景填0。
       - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
       - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor，在全量化场景最多支持1个tensor。
 
@@ -691,7 +690,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:-------:| :------ |
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持非量化|
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional， 且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024<br>3）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
@@ -872,10 +871,10 @@ int main() {
   int32_t deviceId = 0;
   aclrtStream stream;
   auto ret = Init(deviceId, &stream);
-  // check根据自己的需要处理
+  // 检查初始化结果
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // 2. 构造输入与输出，需要根据API的接口自定义构造
+  // 2. 构造本示例使用的输入与输出
   std::vector<std::vector<int64_t>> xShape = {{512, 256}};
   std::vector<std::vector<int64_t>> weightShape = {{2, 256, 256}};
   std::vector<std::vector<int64_t>> yShape = {{512, 256}};
@@ -960,7 +959,7 @@ int main() {
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-  // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
+  // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
   for (int i = 0; i < 1; i++) {
     auto size = GetShapeSize(yShape[i]);
     std::vector<uint16_t> resultData(size, 0);
@@ -973,14 +972,14 @@ int main() {
     LOG_PRINT("......\n");
   }
 
-  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
+  // 6. 释放aclTensor和aclScalar
   aclDestroyTensorList(x);
   aclDestroyTensorList(weight);
   if (bias) aclDestroyTensorList(bias);
   aclDestroyTensorList(out);
   if (groupedList) aclDestroyTensor(groupedList);
 
-  // 7. 释放device资源，需要根据具体API的接口定义修改
+  // 7. 释放device资源
   for (int i = 0; i < 1; i++) {
     if (xDeviceAddr[i]) aclrtFree(xDeviceAddr[i]);
     if (weightDeviceAddr[i]) aclrtFree(weightDeviceAddr[i]);
@@ -1215,7 +1214,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. 构造输入与输出，需要根据API的接口自定义构造
+    // 2. 构造本示例使用的输入与输出
     int64_t m = 512L;
     int64_t k = 256L;
     int64_t n = 4L;
@@ -1325,7 +1324,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
+    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
     for (int i = 0; i < 1; i++) {
         auto size = GetShapeSize(yShape[i]);
         std::vector<uint16_t> resultData(size, 0);

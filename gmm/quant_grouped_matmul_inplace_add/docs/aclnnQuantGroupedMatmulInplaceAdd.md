@@ -66,7 +66,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 ## aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize
 
 - **参数说明**
-  <table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
+  <table style="table-layout: fixed;width: 1567px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
   <col style="width: 300px">
@@ -92,8 +92,8 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>x1</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的输入x1。</td>
-      <td>-</td>
+      <td>Device侧的aclTensor，公式中的输入x1。当前接口要求x1按最后两维转置后的视图参与计算，原始存储shape为(K，M)，计算视图shape为(M，K)。</td>
+      <td>仅支持最后两维转置，transposeX必须为true。</td>
       <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
       <td>ND</td>
       <td>2(K，M)</td>
@@ -111,7 +111,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     </tr>
     <tr>
       <td>scale1Optional</td>
-      <td>可选输入</td>
+      <td>输入</td>
       <td>表示量化参数中的由x1量化引入的缩放因子，Device侧的aclTensor。</td>
       <td>
         <ul>
@@ -133,7 +133,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
         </ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
-      <td>ND</td>
+      <td>ND、NCL</td>
       <td>1-3</td>
       <td>√</td>
     </tr>
@@ -158,13 +158,13 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>Device侧的aclTensor，对应公式中的输入输出y。</td>
       <td>当x1的M轴或者x2的N轴为0时，yRef为空tensor。</td>
       <td>FLOAT32</td>
-      <td>ND</td>
+      <td>ND、NCL</td>
       <td>3(g，M，N)</td>
       <td>√</td>
     </tr>
     <tr>
       <td>groupListType</td>
-      <td>可选输入</td>
+      <td>输入属性</td>
       <td>整数型参数，只支持0和1两个取值。</td>
       <td>
         <ul>
@@ -219,7 +219,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
+  <table style="table-layout: fixed;width: 1030px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
   <col style="width: 650px">
@@ -240,7 +240,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>x1、x2、scale2、groupList、yRef、scale1Optional、groupListType、groupSize的数据类型和数据格式不在支持的范围内。</td>
+      <td>x1、x2、scale2、groupList、yRef、scale1Optional的数据类型和数据格式不在支持的范围内，或groupListType、groupSize的取值不在支持的范围内。</td>
     </tr>
   </tbody></table>
 
@@ -270,7 +270,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     - 动态量化（T-T/T-C量化）场景支持的输入类型为：
       - 不为空的参数支持的数据类型组合要满足下表：
 
-        | x1       | x2  | scale2 | scale1Optional |yRef     |
+        | x1       | x2  | scale2 | scale1Optional | yRef     |
         |:-------:|:-------:| :------      | :------   | :------ |
         |HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32   | FLOAT32 |
 
@@ -284,15 +284,15 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     - 动态量化（mx量化）场景支持的数据类型为：
       - 数据类型组合要满足下表：
 
-        | x1       | x2  |  scale2  | scale1Optional |yRef     |
+        | x1       | x2  |  scale2  | scale1Optional | yRef     |
         |:-------:|:-------:| :-------    | :------   | :------ |
         |FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| FLOAT8_E8M0   | FLOAT8_E8M0    | FLOAT32 |
 
-      - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
+      - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数，i为分组下标且从0开始）：
 
         | 参数 | shape限制 |
         |:---------:| :------ |
-        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + g\_i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
+        |scale1Optional| 3维tensor，shape为((K / 64) + g, M, 2)，scale\_i起始地址偏移为((K\_0 + K\_1 + ...+ K\_{i-1})/ 64 + i) \* M \* 2，即scale_0的起始地址偏移为0，scale_1的起始地址偏移为(K\_0 / 64 + 1) \* M \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* M \* 2, 依此类推|
         |scale2| 3维tensor，shape为((K / 64) + g, N, 2), 起始地址偏移与scale1Optional同理|
 
   - groupList第1维最大支持1024，即最多支持1024个group。
@@ -394,11 +394,11 @@ void Finalize(int32_t deviceId, aclrtStream stream)
 }
 int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream) {
     auto ret = Init(deviceId, &stream);
-    // check根据自己的需要处理
+    // 检查初始化结果
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-    // 2. 构造输入与输出，需要根据API的接口自定义构造
+    // 2. 构造本示例使用的输入与输出
     std::vector<int64_t> x1Shape = {2, 3};
-    std::vector<int64_t> x2Shape= {2, 3};
+    std::vector<int64_t> x2Shape = {2, 3};
     std::vector<int64_t> scale2Shape = {2, 3};
     std::vector<int64_t> yShape = {2, 3, 3};
     std::vector<int64_t> scale1Shape = {2, 1};
@@ -473,11 +473,11 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
+    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
     auto size = GetShapeSize(yShape);
     std::vector<float> resultData(size, 0);
-    ret = aclrtMemcpy(resultData.data(), size * sizeof(uint32_t), yDeviceAddr,
-                      size * sizeof(uint32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,
+                      size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < size; j++) {
         LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
