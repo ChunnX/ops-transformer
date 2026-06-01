@@ -23,11 +23,9 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
                                    GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
-                                   GlobalTensor<uint8_t> &maskTmpGm,
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
-                                   GlobalTensor<int64_t> &actualBlockLenKVGm,
-                                   GlobalTensor<OUT_T> &maskOutGm);
+                                   GlobalTensor<int64_t> &actualBlockLenKVGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -43,7 +41,6 @@ public:
                                                         uint32_t kChunkStart, uint32_t kChunkSize,
                                                         T &mFinal, T &lFinal);
     __aicore__ inline void SoftmaxSecondPassAndCast(uint32_t qBlockIdx, T mFinal, T lFinal);
-    __aicore__ inline void ProcessMaskGen(uint32_t batchIdx, uint32_t headIdx);
 
 private:
     __aicore__ inline void PoolingSingleBlockImpl(GlobalTensor<IN_T> &srcGm, uint64_t srcOffset,
@@ -56,10 +53,8 @@ private:
     GlobalTensor<IN_T> qCmpGmLocal, kCmpGmLocal;
     GlobalTensor<T> attnScoreGmLocal;
     GlobalTensor<T> softmaxTmpGmLocal;
-    GlobalTensor<uint8_t> maskTmpGmLocal;
     GlobalTensor<IN_T> queryGmLocal, keyGmLocal;
     GlobalTensor<int64_t> actualBlockLenQGmLocal, actualBlockLenKVGmLocal;
-    GlobalTensor<OUT_T> maskOutGmLocal;
 
     TBuf<> uBuf_;
 
@@ -69,7 +64,6 @@ private:
     LocalTensor<T> scoreUb_;
     LocalTensor<T> softmaxTmpUb_;
     LocalTensor<T> castOutputUb_;
-    LocalTensor<uint8_t> maskUb_;
     LocalTensor<T> mScalarUb_;
     LocalTensor<T> lScalarUb_;
 
@@ -118,10 +112,6 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
     ubOffset += scoreSize * sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
 
-    maskUb_ = uBuf_.GetWithOffset<uint8_t>(constInfo.yBlocks, ubOffset);
-    ubOffset += constInfo.yBlocks;
-    ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
-
     mScalarUb_ = uBuf_.GetWithOffset<T>(1, ubOffset);
     ubOffset += sizeof(T);
     ubOffset = BSAAlignTo(ubOffset, static_cast<uint32_t>(VEC_ALIGN_SIZE));
@@ -133,21 +123,17 @@ template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitGM(
     GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
     GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
-    GlobalTensor<uint8_t> &maskTmpGm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
-    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm,
-    GlobalTensor<OUT_T> &maskOutGm)
+    GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm)
 {
     this->qCmpGmLocal = qCmpGm;
     this->kCmpGmLocal = kCmpGm;
     this->attnScoreGmLocal = attnScoreGm;
     this->softmaxTmpGmLocal = softmaxTmpGm;
-    this->maskTmpGmLocal = maskTmpGm;
     this->queryGmLocal = queryGm;
     this->keyGmLocal = keyGm;
     this->actualBlockLenQGmLocal = actualBlockLenQGm;
     this->actualBlockLenKVGmLocal = actualBlockLenKVGm;
-    this->maskOutGmLocal = maskOutGm;
 }
 
 template <typename BSAT>
@@ -249,17 +235,6 @@ __aicore__ inline void BSAVectorService<BSAT>::SoftmaxSecondPassAndCast(
     //   attn_score = exp(score - mFinal) / lFinal
     //   Cast FP32 → FP16
     //   写入 attnScoreGm[qBlockIdx * yBlocks :] (FP16)
-}
-
-template <typename BSAT>
-__aicore__ inline void BSAVectorService<BSAT>::ProcessMaskGen(uint32_t batchIdx, uint32_t headIdx)
-{
-    // TODO: 生成 BlockSparseMask
-    // if sparsityMode == TopK:
-    //   初始化mask全0 → topK位置写1
-    // else (BottomK):
-    //   初始化mask全1 → bottomK位置写0
-    // DataCopyPad: maskTmpGm → maskOutGm[batchIdx*numHeads*xBlocks*yBlocks + headIdx*xBlocks*yBlocks]
 }
 
 #endif // BSA_SELECT_BLOCK_MASK_VECTOR_H

@@ -389,8 +389,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tilingData);
         vectorService.InitBuffers(pipe);
-        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreGm, softmaxTmpGm, maskTmpGm,
-                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm, maskOutGm);
+        vectorService.InitGM(qCmpGm, kCmpGm, attnScoreGm, softmaxTmpGm,
+                             queryGm, keyGm, actualBlockLenQGm, actualBlockLenKVGm);
         radixTopKService.InitParams(constInfo, tilingData);
         radixTopKService.InitBuffers(pipe);
         radixTopKService.InitGM(attnScoreGm, topkWorkspaceGm, maskTmpGm);
@@ -449,12 +449,12 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Process()
             SyncAll<false>();
 
             if ASCEND_IS_AIV {
-                radixTopKService.ProcessRadixTopK(batchIdx, headIdx);
+                radixTopKService.ProcessRadixTopKAndWriteMask(batchIdx, headIdx);
             }
             SyncAll();
 
             if ASCEND_IS_AIV {
-                vectorService.ProcessMaskGen(batchIdx, headIdx);
+                radixTopKService.CopyMaskToOutput(batchIdx, headIdx, maskOutGm);
             }
             SyncAll();
         }
