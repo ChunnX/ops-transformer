@@ -83,6 +83,7 @@ comm_alg = "mte"         # 通信算法
 ### 测试数据配置
 
 **单配置测试** (`is_single_test = True`)：
+
 ```python
 bs = 2                   # Batch size
 data_size = 8192         # 数据维度 H
@@ -90,6 +91,7 @@ max_bs = 2               # 最大 batch size
 ```
 
 **多配置测试** (`is_single_test = False`)：
+
 ```python
 test_configs = [
     {'bs': 1, 'data_size': 1024, 'max_bs': 1},     # 2KB
