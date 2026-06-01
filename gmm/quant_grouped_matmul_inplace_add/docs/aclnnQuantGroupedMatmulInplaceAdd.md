@@ -66,7 +66,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
 ## aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize
 
 - **参数说明**
-  <table style="table-layout: fixed;width: 1567px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
   <col style="width: 300px">
@@ -219,7 +219,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="table-layout: fixed;width: 1030px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1030px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
   <col style="width: 650px">
@@ -270,7 +270,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     - 动态量化（T-T/T-C量化）场景支持的输入类型为：
       - 不为空的参数支持的数据类型组合要满足下表：
 
-        | x1       | x2  | scale2 | scale1Optional | yRef     |
+        | x1       | x2  | scale2 | scale1Optional |yRef     |
         |:-------:|:-------:| :------      | :------   | :------ |
         |HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32   | FLOAT32 |
 
@@ -284,7 +284,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     - 动态量化（mx量化）场景支持的数据类型为：
       - 数据类型组合要满足下表：
 
-        | x1       | x2  |  scale2  | scale1Optional | yRef     |
+        | x1       | x2  |  scale2  | scale1Optional |yRef     |
         |:-------:|:-------:| :-------    | :------   | :------ |
         |FLOAT8_E5M2/FLOAT8_E4M3FN  |FLOAT8_E5M2/FLOAT8_E4M3FN| FLOAT8_E8M0   | FLOAT8_E8M0    | FLOAT32 |
 
@@ -394,11 +394,11 @@ void Finalize(int32_t deviceId, aclrtStream stream)
 }
 int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream) {
     auto ret = Init(deviceId, &stream);
-    // 检查初始化结果
+    // check根据自己的需要处理
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-    // 2. 构造本示例使用的输入与输出
+    // 2. 构造输入与输出，需要根据API的接口自定义构造
     std::vector<int64_t> x1Shape = {2, 3};
-    std::vector<int64_t> x2Shape = {2, 3};
+    std::vector<int64_t> x2Shape= {2, 3};
     std::vector<int64_t> scale2Shape = {2, 3};
     std::vector<int64_t> yShape = {2, 3, 3};
     std::vector<int64_t> scale1Shape = {2, 1};
@@ -473,7 +473,7 @@ int aclnnQuantGroupedMatmulInplaceAddTest(int32_t deviceId, aclrtStream &stream)
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
     auto size = GetShapeSize(yShape);
     std::vector<float> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,

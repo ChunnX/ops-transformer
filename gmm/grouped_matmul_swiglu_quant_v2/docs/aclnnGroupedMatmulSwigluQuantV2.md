@@ -321,7 +321,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 ## aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize
 
   - **参数说明**
-    <table style="table-layout: fixed;width: 1567px"><colgroup>
+    <table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
     <col style="width: 300px">
@@ -562,7 +562,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-  <table style="table-layout: fixed;width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
   <col style="width: 167px">
   <col style="width: 123px">
   <col style="width: 860px">
@@ -611,7 +611,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 ## aclnnGroupedMatmulSwigluQuantV2
 
 - **参数说明**
-  <table style="table-layout: fixed;width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
     <col style="width: 167px">
     <col style="width: 123px">
     <col style="width: 860px">
@@ -638,7 +638,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - A8W8/A8W4/A4W4量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 100px">
           <col style="width: 100px">
           <col style="width: 300px">
@@ -699,7 +699,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 100px">
           <col style="width: 100px">
           <col style="width: 300px">
@@ -788,7 +788,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     - groupList第1维最大支持1024，即最多支持1024个group。
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 130px">
           <col style="width: 300px">
@@ -830,7 +830,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 250px">
           <col style="width: 320px">
@@ -870,7 +870,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     
     - Pertoken量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 250px">
           <col style="width: 250px">
           <col style="width: 300px">
@@ -916,7 +916,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
           </table>
 
         - shape约束需要满足下表：
-          <table style="table-layout: fixed; width: 1134px"><colgroup>
+          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
           <col style="width: 130px">
           <col style="width: 250px">
           <col style="width: 320px">
@@ -1032,10 +1032,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         int32_t deviceId = 0;
         aclrtStream stream;
         auto ret = Init(deviceId, &stream);
-        // 检查初始化结果
+        // check根据自己的需要处理
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造本示例使用的输入与输出
+        // 2. 构造输入与输出，需要根据API的接口自定义构造
         int64_t E = 4;
         int64_t M = 8192;
         int64_t N = 4096;
@@ -1131,7 +1131,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
         auto size = 10;
         std::vector<int8_t> out1Data(size, 0);
         ret = aclrtMemcpy(out1Data.data(), out1Data.size() * sizeof(out1Data[0]), outputDeviceAddr,
@@ -1147,7 +1147,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         for (int64_t j = 0; j < size; j++) {
             LOG_PRINT("result[%ld] is: %f\n", j, out2Data[j]);
         }
-        // 6. 释放aclTensor、aclTensorList和aclScalar
+        // 6. 释放aclTensor、aclTensorList和aclScalar，需要根据具体API的接口定义修改
         aclDestroyTensor(x);
         aclDestroyTensorList(weight);
         aclDestroyTensorList(weightScale);
@@ -1158,7 +1158,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
         aclDestroyIntArray(tuningConfig);
 
-        // 7. 释放device资源
+        // 7. 释放device资源，需要根据具体API的接口定义修改
         aclrtFree(xDeviceAddr);
         for (int64_t i = 0; i < 1; i++) {
             aclrtFree(weightDeviceAddr[i]);
@@ -1285,7 +1285,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         auto ret = Init(deviceId, &stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-        // 2. 构造本示例使用的输入与输出
+        // 2. 构造输入与输出，需要根据API的接口自定义构造
         int64_t E = 8;
         int64_t M = 2048;
         int64_t N = 4096;
@@ -1401,7 +1401,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+        // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
         auto size = GetShapeSize(outputShape);
         std::vector<int8_t> outputData(size, 0);
         ret = aclrtMemcpy(outputData.data(), size * sizeof(outputData[0]), outputDeviceAddr,

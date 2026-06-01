@@ -153,7 +153,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   - **参数说明：**
 
-    <table style="table-layout: fixed; width: 1550px;">
+    <table style="undefined;table-layout: fixed; width: 1550px;">
     <colgroup>
     <col style="width: 190px">
     <col style="width: 120px">
@@ -871,10 +871,10 @@ int main() {
   int32_t deviceId = 0;
   aclrtStream stream;
   auto ret = Init(deviceId, &stream);
-  // 检查初始化结果
+  // check根据自己的需要处理
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // 2. 构造本示例使用的输入与输出
+  // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<std::vector<int64_t>> xShape = {{512, 256}};
   std::vector<std::vector<int64_t>> weightShape = {{2, 256, 256}};
   std::vector<std::vector<int64_t>> yShape = {{512, 256}};
@@ -959,7 +959,7 @@ int main() {
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-  // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+  // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
   for (int i = 0; i < 1; i++) {
     auto size = GetShapeSize(yShape[i]);
     std::vector<uint16_t> resultData(size, 0);
@@ -972,14 +972,14 @@ int main() {
     LOG_PRINT("......\n");
   }
 
-  // 6. 释放aclTensor和aclScalar
+  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensorList(x);
   aclDestroyTensorList(weight);
   if (bias) aclDestroyTensorList(bias);
   aclDestroyTensorList(out);
   if (groupedList) aclDestroyTensor(groupedList);
 
-  // 7. 释放device资源
+  // 7. 释放device资源，需要根据具体API的接口定义修改
   for (int i = 0; i < 1; i++) {
     if (xDeviceAddr[i]) aclrtFree(xDeviceAddr[i]);
     if (weightDeviceAddr[i]) aclrtFree(weightDeviceAddr[i]);
@@ -1214,7 +1214,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. 构造本示例使用的输入与输出
+    // 2. 构造输入与输出，需要根据API的接口自定义构造
     int64_t m = 512L;
     int64_t k = 256L;
     int64_t n = 4L;
@@ -1324,7 +1324,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
     for (int i = 0; i < 1; i++) {
         auto size = GetShapeSize(yShape[i]);
         std::vector<uint16_t> resultData(size, 0);

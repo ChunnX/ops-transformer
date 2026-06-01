@@ -84,7 +84,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 - **参数说明**
 
-  <table style="table-layout: fixed; width: 1483px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
   <col style="width: 210px">
   <col style="width: 90px">
   <col style="width: 370px">
@@ -264,7 +264,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
   第一阶段接口完成入参校验，出现以下场景时报错:
 
-  <table style="table-layout: fixed; width: 1055px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1055px"><colgroup>
   <col style="width: 242px">
   <col style="width: 78px">
   <col style="width: 735px">
@@ -307,7 +307,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 ## aclnnGroupedMatmulV2
 
 - **参数说明**
-    <table style="table-layout: fixed; width: 834px"><colgroup>
+    <table style="undefined;table-layout: fixed; width: 834px"><colgroup>
     <col style="width: 118px">
     <col style="width: 87px">
     <col style="width: 629px">
@@ -523,10 +523,10 @@ int main() {
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
-    // 检查初始化结果
+    // check根据自己的需要处理
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-    // 2. 构造本示例使用的输入与输出
+    // 2. 构造输入与输出，需要根据API的接口自定义构造
     std::vector<std::vector<int64_t>> xShape = {{1, 16}, {4, 32}};
     std::vector<std::vector<int64_t>> weightShape= {{16, 24}, {32, 16}};
     std::vector<std::vector<int64_t>> biasShape = {{24}, {16}};
@@ -581,7 +581,7 @@ int main() {
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧
+    // 5. 获取输出的值，将Device侧内存上的结果拷贝至Host侧，需要根据具体API的接口定义修改
     for (int i = 0; i < 2; i++) {
         auto size = GetShapeSize(yShape[i]);
         std::vector<uint16_t> resultData(size, 0);
@@ -593,13 +593,13 @@ int main() {
         }
     }
 
-    // 6. 释放aclTensor和aclScalar
+    // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensorList(x);
     aclDestroyTensorList(weight);
     aclDestroyTensorList(bias);
     aclDestroyTensorList(y);
 
-    // 7. 释放device资源
+    // 7. 释放device资源，需要根据具体API的接口定义修改
     for (int i = 0; i < 2; i++) {
         aclrtFree(xDeviceAddr[i]);
         aclrtFree(weightDeviceAddr[i]);
