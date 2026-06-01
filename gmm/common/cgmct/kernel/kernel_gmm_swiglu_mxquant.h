@@ -244,11 +244,12 @@ public:
 
     __aicore__ inline void UpdateGlobalBuffer(const Params& params)
     {
+        const auto &mmadParams = params.mmadParams;
         if ASCEND_IS_AIC {
-            aGlobal_.SetGlobalBuffer((__gm__ AType*)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
-            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, params.mmadParams.bGmAddr) + Get<IDX_B_OFFSET>(baseOffset_));
-            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
-            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(0, params.mmadParams.x2ScaleGmAddr) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+            aGlobal_.SetGlobalBuffer((__gm__ AType*)mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
+            bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, mmadParams.bGmAddr) + Get<IDX_B_OFFSET>(baseOffset_));
+            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+            x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(0, mmadParams.x2ScaleGmAddr) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
         }
         if ASCEND_IS_AIV {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
@@ -302,8 +303,10 @@ public:
 
     __aicore__ inline void InitParamsAndTensor(const Params& params)
     {
-        Get<N_VALUE>(problemShape_) = params.gmmParams.matmulTiling->N;
-        Get<K_VALUE>(problemShape_) = params.gmmParams.matmulTiling->Ka;
+        const auto &mmadParams = params.mmadParams;
+ 	    const auto &gmmParams = params.gmmParams;
+        Get<N_VALUE>(problemShape_) = gmmParams.matmulTiling->N;
+        Get<K_VALUE>(problemShape_) = gmmParams.matmulTiling->Ka;
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
                 perGroupBOffset_ = Align16(Get<N_VALUE>(problemShape_))
@@ -317,7 +320,7 @@ public:
         } else {
             perGroupBOffset_ = Get<N_VALUE>(problemShape_) * Get<K_VALUE>(problemShape_);
         }
-        groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(params.mmadParams.groupListGmAddr));
+        groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(mmadParams.groupListGmAddr));
         int64_t resN = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF; // SwiGLU: N -> N/2
 
         if constexpr (formatB == CubeFormat::NZ) {
@@ -347,21 +350,22 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        const auto &gmmParams = params.gmmParams;
+        CoordClass coord(m, n, k, gmmParams.baseM, gmmParams.baseN, gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             if (initSingleGroup_) {
                 UpdateOffset(groupIdx);
                 UpdateGlobalBuffer(params);
-                SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
-                                          static_cast<int64_t>(params.gmmParams.baseN));
+                // SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(gmmParams.baseM),
+                //                           static_cast<int64_t>(gmmParams.baseN));
                 initSingleGroup_ = false;
             }
             // isMx = true
-            blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
+            blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE, c0Size>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
-                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
+                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -400,11 +404,12 @@ public:
     __aicore__ inline void operator()(const Params& params)
     {
         // Init mmadOp epilogue
-        mmadOp_.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        const auto &gmmParams = params.gmmParams;
+        mmadOp_.Init(const_cast<TCubeTiling* __restrict>(gmmParams.matmulTiling), GetTPipePtr());
         InitParamsAndTensor(params);
         epilogueOp_.Init(params.epilogueParams);
-        uint32_t groupNum = params.gmmParams.groupNum;
-        BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        uint32_t groupNum = gmmParams.groupNum;
+        BlockSchedulerOp bs(gmmParams.baseM, gmmParams.baseN, gmmParams.baseK);
         if constexpr (!transA) {
             if constexpr (transB) {
                 bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
