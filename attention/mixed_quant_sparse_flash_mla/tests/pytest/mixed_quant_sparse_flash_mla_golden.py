@@ -26,10 +26,10 @@ import custom_ops as ops
 
 RUN_MODE = 1
 
-DATA_RANGE_LEFT = -2
-DATA_RANGE_RIGHT = 2
-FP8_DATA_RANGE_LEFT = -1
-FP8_DATA_RANGE_RIGHT = 1
+DATA_RANGE_LEFT = 1
+DATA_RANGE_RIGHT = 400
+FP8_DATA_RANGE_LEFT = 1
+FP8_DATA_RANGE_RIGHT = 300
 
 FP32_FRACTION_BITS = 23        # fp32尾数位数
 
@@ -688,6 +688,12 @@ def trans_hifuint8_tensor_to_float(in_tensor):
     out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
     return out_tensor
 
+def get_fp8e3m3_to_bf16_table():
+    fp8e4m3_to_bf16_table = torch.zeros(256).to(torch.bfloat16)
+    for i in range(256):
+        fp8e4m3_to_bf16_table[i] = torch.tensor(i, dtype=torch.uint8).view(torch.float8_e4m3fn).to(torch.bfloat16)
+    return fp8e4m3_to_bf16_table
+
 def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, d_aligned_128, kv_type):
     total_t = int(cu_seqlens_kv[-1])
     kv_tnd = torch.zeros((total_t, N2, d_aligned_128), dtype=kv_type)
@@ -708,8 +714,8 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     else:
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
-    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(1, 20,
+        (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
     if kv_quant_mode == 10:
@@ -774,7 +780,13 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
                     for i_N2 in range(N2):
                         ori_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
                             ori_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size1, :]
-
+        fp8e4m3_to_bf16_table = get_fp8e3m3_to_bf16_table()
+        ori_k_nope_bnsd_2 = fp8e4m3_to_bf16_table[ori_k_nope_bnsd_npu.view(torch.uint8).long()]
+        table_bytes = fp8e4m3_to_bf16_table.view(torch.uint8)  # shape (512,)
+        table_rows = table_bytes.view(16, 32)  # shape (16, 32), dtype=uint8
+        target_slice = ori_k_in_pa_shape[0, 0:16, 0, 590:590+32]  # shape (16, 32) fp8
+        target_uint8 = target_slice.view(torch.uint8)             # 同一块内存，现在解释为 uint8
+        target_uint8.copy_(table_rows)
         ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
 
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
@@ -793,7 +805,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(q_type)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
 
     if kv_quant_mode == 10:
@@ -937,7 +949,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
     seqused_cmp_kv = torch.tensor(seqused_cmp_kv).to(torch.int32) if seqused_cmp_kv is not None else None
-
     # generate q
     if layout_q == "BSND":
         q = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, (B, S1, N1, D))).to(q_type)
@@ -963,10 +974,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
-    d_aligned_128 = (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim + 127) // 128 * 128
+    d_aligned_128 = 640
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_128={d_aligned_128}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
-    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim
+    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # 根据输入的data range，计算scale范围，生成scale tensor，取倒数保存为bin
     quant_param_range_left = DATA_RANGE_LEFT / FP8_DATA_RANGE_LEFT
