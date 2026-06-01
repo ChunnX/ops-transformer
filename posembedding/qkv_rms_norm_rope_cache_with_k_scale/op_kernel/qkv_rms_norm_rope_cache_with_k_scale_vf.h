@@ -17,7 +17,6 @@ namespace QkvRmsNormRopeCacheWithKScale {
 namespace MicroAPI = AscendC::MicroAPI;
 
 constexpr uint32_t QKV_RRC_D128_FLOAT_REPEAT_SIZE = 64U;
-constexpr uint32_t QKV_RRC_D128_FLOAT_REPEAT_NUM = 2U;
 constexpr uint32_t QKV_RRC_D128_HALF_SIZE = 64U;
 
 constexpr MicroAPI::CastTrait QKV_RRC_CAST_F32_TO_BF16 = {
@@ -34,37 +33,33 @@ constexpr MicroAPI::CastTrait QKV_RRC_CAST_BF16_TO_F32 = {
     RoundMode::UNKNOWN,
 };
 
-__simd_vf__ inline void QkRmsNormRopeD128Vf(__ubuf__ bfloat16_t *rowBf16, __ubuf__ float *gamma,
-    __ubuf__ float *cosSin, __ubuf__ float *scratchFp32, __ubuf__ bfloat16_t *outBf16,
-    float reciprocal, float epsilon)
+__simd_callee__ inline void QkRmsNormRopeD128RowVf(__ubuf__ bfloat16_t *rowBf16, __ubuf__ float *gamma,
+    __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16, float reciprocal, float epsilon)
 {
+    MicroAPI::RegTensor<bfloat16_t> xLowBf16;
+    MicroAPI::RegTensor<bfloat16_t> xHighBf16;
+    MicroAPI::RegTensor<float> xLow;
+    MicroAPI::RegTensor<float> xHigh;
+    MicroAPI::RegTensor<float> gammaLow;
+    MicroAPI::RegTensor<float> gammaHigh;
+    MicroAPI::RegTensor<float> squareLow;
+    MicroAPI::RegTensor<float> squareHigh;
     MicroAPI::RegTensor<float> squareSum;
     MicroAPI::RegTensor<float> reduceSum;
     MicroAPI::RegTensor<float> divisor;
     MicroAPI::RegTensor<float> rms;
-
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
 
-    for (uint32_t idx = 0U; idx < QKV_RRC_D128_FLOAT_REPEAT_NUM; ++idx) {
-        MicroAPI::RegTensor<bfloat16_t> xBf16;
-        MicroAPI::RegTensor<float> xFp32;
-        const uint32_t offset = idx * QKV_RRC_D128_FLOAT_REPEAT_SIZE;
-        MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xBf16, rowBf16 + offset);
-        MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xFp32, xBf16, mask64);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(scratchFp32 + offset, xFp32, mask64);
-    }
-    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowBf16, rowBf16);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+        xHighBf16, rowBf16 + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+    MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xLow, xLowBf16, mask64);
+    MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xHigh, xHighBf16, mask64);
 
-    MicroAPI::Duplicate<float, float>(squareSum, 0.0F);
-    for (uint32_t idx = 0U; idx < QKV_RRC_D128_FLOAT_REPEAT_NUM; ++idx) {
-        MicroAPI::RegTensor<float> x;
-        MicroAPI::RegTensor<float> square;
-        const uint32_t offset = idx * QKV_RRC_D128_FLOAT_REPEAT_SIZE;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(x, scratchFp32 + offset);
-        MicroAPI::Mul(square, x, x, mask64);
-        MicroAPI::Add(squareSum, squareSum, square, mask64);
-    }
+    MicroAPI::Mul(squareLow, xLow, xLow, mask64);
+    MicroAPI::Mul(squareHigh, xHigh, xHigh, mask64);
+    MicroAPI::Add(squareSum, squareLow, squareHigh, mask64);
 
     MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
         reduceSum, squareSum, mask64);
@@ -73,22 +68,15 @@ __simd_vf__ inline void QkRmsNormRopeD128Vf(__ubuf__ bfloat16_t *rowBf16, __ubuf
     MicroAPI::Sqrt(rms, reduceSum, maskFirst);
     MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(divisor, rms, mask64);
 
-    for (uint32_t idx = 0U; idx < QKV_RRC_D128_FLOAT_REPEAT_NUM; ++idx) {
-        MicroAPI::RegTensor<float> x;
-        MicroAPI::RegTensor<float> gammaValue;
-        const uint32_t offset = idx * QKV_RRC_D128_FLOAT_REPEAT_SIZE;
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(x, scratchFp32 + offset);
-        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaValue, gamma + offset);
-        MicroAPI::Div(x, x, divisor, mask64);
-        MicroAPI::Mul(x, x, gammaValue, mask64);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM>(scratchFp32 + offset, x, mask64);
-    }
-    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaLow, gamma);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaHigh, gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+    MicroAPI::Div(xLow, xLow, divisor, mask64);
+    MicroAPI::Div(xHigh, xHigh, divisor, mask64);
+    MicroAPI::Mul(xLow, xLow, gammaLow, mask64);
+    MicroAPI::Mul(xHigh, xHigh, gammaHigh, mask64);
 
     MicroAPI::RegTensor<float> cosValue;
     MicroAPI::RegTensor<float> sinValue;
-    MicroAPI::RegTensor<float> xLow;
-    MicroAPI::RegTensor<float> xHigh;
     MicroAPI::RegTensor<float> outLow;
     MicroAPI::RegTensor<float> outHigh;
     MicroAPI::RegTensor<float> tmpLow;
@@ -99,8 +87,6 @@ __simd_vf__ inline void QkRmsNormRopeD128Vf(__ubuf__ bfloat16_t *rowBf16, __ubuf
     uint32_t halfMaskValue = QKV_RRC_D128_HALF_SIZE;
     mask64 = MicroAPI::UpdateMask<float>(halfMaskValue);
 
-    MicroAPI::DataCopy(xLow, scratchFp32);
-    MicroAPI::DataCopy(xHigh, scratchFp32 + QKV_RRC_D128_HALF_SIZE);
     MicroAPI::DataCopy(cosValue, cosSin);
     MicroAPI::DataCopy(sinValue, cosSin + QKV_RRC_D128_HALF_SIZE);
 
@@ -117,6 +103,24 @@ __simd_vf__ inline void QkRmsNormRopeD128Vf(__ubuf__ bfloat16_t *rowBf16, __ubuf
     MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outBf16, outLowBf16, mask64);
     MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(
         outBf16 + QKV_RRC_D128_HALF_SIZE, outHighBf16, mask64);
+}
+
+__simd_vf__ inline void QkRmsNormRopeD128Vf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
+    __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16, uint32_t tokenSize, uint32_t qkHeadOffset,
+    uint32_t qkHeadSize, uint32_t qkvStrideT, uint32_t numQHeads, float reciprocal, float epsilon)
+{
+    for (uint32_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
+        for (uint32_t sliceIdx = 0U; sliceIdx < qkHeadSize; ++sliceIdx) {
+            const uint32_t qkHead = qkHeadOffset + sliceIdx;
+            const uint32_t srcOffset = tokenIdx * qkvStrideT + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            const uint32_t dstOffset = (tokenIdx * qkHeadSize + sliceIdx) * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            const uint32_t gammaOffset =
+                qkHead < numQHeads ? 0U : QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            const uint32_t cosSinOffset = tokenIdx * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            QkRmsNormRopeD128RowVf(inputBf16 + srcOffset, gamma + gammaOffset, cosSin + cosSinOffset,
+                outBf16 + dstOffset, reciprocal, epsilon);
+        }
+    }
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale
