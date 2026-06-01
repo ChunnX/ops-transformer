@@ -180,8 +180,25 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
 {
-    // TODO: 对 attn_score 取反 (FP16 翻转符号位)
-    // 逐tile: CopyIn → Muls(-1) → CopyOut
+    for (uint64_t tileIdx = 0; tileIdx < tileNum_; tileIdx++) {
+        uint64_t curTileLen = BSAMin(tileLen_, sortLen_ - tileIdx * tileLen_);
+        uint64_t tileGmOffset = tileIdx * tileLen_;
+        
+        LocalTensor<float> xLocal = xBuf0_.Get<float>();
+        uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+        
+        DataCopyPad(xLocal, attnScoreGmLocal[tileGmOffset],
+                    DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(float)), 0, 0, 0),
+                    DataCopyPadExtParams<float>(false, 0,
+                        static_cast<uint8_t>(alignLen - curTileLen), 0));
+        PipeBarrier<PIPE_V>();
+        
+        Muls(xLocal, xLocal, -1.0f, alignLen);
+        PipeBarrier<PIPE_V>();
+        
+        DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
+                    DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(float)), 0, 0));
+    }
 }
 
 template <typename BSAT>
