@@ -151,20 +151,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
-    // TODO: 完整 Radix TopK 流程
-    // 1. 如果 BottomK 模式: NegateAttnScore()
-    // 2. 初始化状态: involvedMask16_=0, andMask16_=0xC000, remainK_=kValue_
-    // 3. Phase 1: Radix 筛选 (for roundId = round_-1 → 0)
-    //    a. CopyOutHistToWs<true> (清零+保存上轮信息)
-    //    b. ClearHist(roundId)
-    //    c. for each tile: CopyIn → TwiddleInB16 → DoAndMask → CalcCumsumHistogram
-    //    d. CopyOutHistToWs<false>
-    //    e. SyncAll()
-    //    f. Update(roundId) → 如果 earlyExit 则 break
-    //    g. andMask16_ >>= 2
-    // 4. SyncAll()
-    // 5. Phase 2: TopKPerTile → 直接写 mask（方案 B）
-
     involvedMask_ = 0;
     andMask_ = static_cast<int32_t>(0xC0000000);
     involvedMask16_ = 0;
@@ -177,6 +163,43 @@ __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(u
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         NegateAttnScore();
     }
+
+    bool earlyExit = false;
+    for (int32_t roundId = round_ - 1; roundId >= 0; roundId--) {
+        CopyOutHistToWs();
+        ClearHist(roundId);
+        
+        for (uint64_t tileIdx = 0; tileIdx < tileNum_; tileIdx++) {
+            uint64_t curTileLen = BSAMin(tileLen_, sortLen_ - tileIdx * tileLen_);
+            uint64_t tileGmOffset = tileIdx * tileLen_;
+            
+            LocalTensor<float> xLocal = xBuf0_.Get<float>();
+            uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
+            
+            DataCopyPad(xLocal, attnScoreGmLocal[tileGmOffset],
+                        DataCopyExtParams(1, static_cast<uint32_t>(curTileLen * sizeof(float)), 0, 0, 0),
+                        DataCopyPadExtParams<float>(false, 0,
+                            static_cast<uint8_t>(alignLen - curTileLen), 0));
+            PipeBarrier<PIPE_V>();
+            
+            TwiddleInB16(xLocal, curTileLen);
+            DoAndMask(xLocal, curTileLen);
+            CalcCumsumHistogram(xLocal, roundId, tileIdx, curTileLen);
+        }
+        
+        CopyOutHistToWs();
+        SyncAll();
+        earlyExit = Update(roundId);
+        andMask_ >>= bitsPerRound_;
+        
+        if (earlyExit) {
+            break;
+        }
+    }
+    
+    SyncAll();
+    TopKPerTile(batchIdx, headIdx);
+}
 
     // TODO: Phase 1 + Phase 2 完整实现
 }
