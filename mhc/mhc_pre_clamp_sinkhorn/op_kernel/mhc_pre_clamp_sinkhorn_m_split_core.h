@@ -38,7 +38,7 @@ public:
         uint64_t blockIdx = GetBlockIdx();
         uint64_t cubeCoreId = blockIdx;
         uint64_t vecCoreId = blockIdx;
-        
+
         // 计算 workspace 偏移
         int64_t ncSize = tilingData->hcMult * tilingData->d;
 
@@ -170,7 +170,7 @@ public:
                         uint32_t srcShape[2] = {static_cast<uint32_t>(curBs), static_cast<uint32_t>(curNcSize)};
                         AscendC::ReduceSum<float, Pattern::Reduce::AR, true>(squareLocal, squareLocal, srcShape, true);
                         PipeBarrier<PIPE_V>();
-                        
+
                         // 累加到总和
                         Add(sumLocal, sumLocal, squareLocal, curBs);
                         PipeBarrier<PIPE_V>();
@@ -229,7 +229,7 @@ public:
 
     // Cube Compute
     HcCubeCompute<float> cubeCompute_;
-    
+
     // 标志
     bool needGrad_ = true;
     uint64_t ping4vec = 1;
@@ -324,7 +324,7 @@ public:
     {
         SyncAll();
         isTailBsLoop_ = isTailBsLoop;
-        
+
         int64_t curRowOfFormerBlock = isTailBsLoop ? tilingData->tailBsRowOfFormerBlock : tilingData->rowOfFormerBlock;
         int64_t curRowLoopOfFormerBlock = isTailBsLoop ? tilingData->tailBsRowLoopOfFormerBlock : tilingData->rowLoopOfFormerBlock;
         int64_t curRowLoopOfTailBlock = isTailBsLoop ? tilingData->tailBsRowLoopOfTailBlock : tilingData->rowLoopOfTailBlock;
@@ -333,7 +333,7 @@ public:
         int64_t curTailRowFactorOfFormerBlock = isTailBsLoop ? tilingData->tailBsTailRowFactorOfFormerBlock : tilingData->tailRowFactorOfFormerBlock;
         int64_t curTailRowFactorOfTailBlock = isTailBsLoop ? tilingData->tailBsTailRowFactorOfTailBlock : tilingData->tailRowFactorOfTailBlock;
         int64_t curML1Size = isTailBsLoop ? tilingData->tailBsML1Size : tilingData->mL1Size;
-        
+
         if ASCEND_IS_AIV {
             int64_t stage1UsedCoreNum = tilingData->cubeBlockDimK;
             int64_t stage2BlockIdx = GetBlockIdx();
@@ -361,13 +361,13 @@ public:
             for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
                 int64_t xGmBsBaseOffsetPart2 = rowOuterIdx * curStage2RowFactor * tilingData->hcMult * tilingData->d;
                 int64_t curRowFactor = (rowOuterIdx == rowOuterLoop - 1) ? tailRowFactor : curStage2RowFactor;
-                                
+
                 squareSumOutLocal = squareSumQue.AllocTensor<float>();
                 Duplicate(rowBrcbLocal0, static_cast<float>(1.0f), curRowFactor);
 
                 CopyIn(invRmsGm[stage2BlockIdx * curRowOfFormerBlock + rowOuterIdx * curStage2RowFactor],
                         squareSumOutLocal, 1, curRowFactor);
-                
+
                 squareSumQue.EnQue(squareSumOutLocal);
                 squareSumOutLocal = squareSumQue.DeQue<float>();
                 // 搬运矩阵乘的前两段结果--> 内存格式的变更： 连续地址改为 bs *n ; bs *n ,n为4 非对齐，则需要pad出对齐的8
@@ -413,7 +413,7 @@ public:
                     xQue.template FreeTensor(xLocal);
                     yQue.template EnQue(yLocal);
                     yLocal = yQue.template DeQue<T>();
-                    
+
                     CopyOut(yLocal,
                             yGm[stage2BlockIdx * curRowOfFormerBlock * tilingData->d +
                                 rowOuterIdx * curStage2RowFactor * tilingData->d + dLoopIdx * tilingData->dFactor],
@@ -463,18 +463,41 @@ public:
                     CopyOut(mxies02ReduceLocal, reduceOutGm[reduceOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
                     MTE3ToVSync();
                 }
-                if (tilingData->min != 0.0f || tilingData->max != 0.0f) {
+                // AscendC::printf("pre clamp-mxies02ReduceLocal: %f\n", mxies02ReduceLocal.GetValue(0));
+                AscendC::printf("min: %f, max: %f\n", tilingData->clamp_min, tilingData->clamp_max);
+                AscendC::printf("pre clamp-mxies02ReduceLocal: %f %f %f %f\n",
+                    mxies02ReduceLocal.GetValue(0),
+                    mxies02ReduceLocal.GetValue(1),
+                    mxies02ReduceLocal.GetValue(2),
+                    mxies02ReduceLocal.GetValue(3));
+                
+                //* CLAMP Start
+                if (tilingData->clamp_min != 0.0f || tilingData->clamp_max != 0.0f) {
+                    AscendC::printf("[clamped]\n");
                     PipeBarrier<PIPE_V>();
-                    Maxs(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->min,
-                         curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
+                    Maxs(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->clamp_min,
+                         curRowFactor * tilingData->hcMult * tilingData->hcMult);
+                    AscendC::printf("after Maxs mxies02ReduceLocal: %f %f %f %f\n",
+                        mxies02ReduceLocal.GetValue(0),
+                        mxies02ReduceLocal.GetValue(1),
+                        mxies02ReduceLocal.GetValue(2),
+                        mxies02ReduceLocal.GetValue(3));
                     PipeBarrier<PIPE_V>();
-                    Mins(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->max,
-                         curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
+                    Mins(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->clamp_max,
+                         curRowFactor * tilingData->hcMult * tilingData->hcMult);
                     PipeBarrier<PIPE_V>();
                 }
+                // AscendC::printf("post clamp-mxies02ReduceLocal: %f\n", mxies02ReduceLocal.GetValue(0));
+                AscendC::printf("after Mins mxies02ReduceLocal: %f %f %f %f\n",
+                    mxies02ReduceLocal.GetValue(0),
+                    mxies02ReduceLocal.GetValue(1),
+                    mxies02ReduceLocal.GetValue(2),
+                    mxies02ReduceLocal.GetValue(3));
+                //* CLAMP End
+
                 SoftmaxFP32Perf(mxies02ReduceLocal, mxies02ReduceLocal, reduceLocal, hcBrcbLocal1, curRowFactor * tilingData->hcMult,
                                 tilingData->hcMult, tilingData->hcEps);
-                
+
                 if (needGrad_) {
                     int64_t normOutBaseOffset = (stage2BlockIdx * curRowOfFormerBlock +
                                                 rowOuterIdx * curStage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
@@ -565,7 +588,7 @@ public:
                     DivABABrcInline(combFragLocal, combFragLocal, reduceLocal3, curRowFactor, tilingData->hcMult,
                                     tilingData->hcMult);
                 }
-                
+
                 squareSumQue.template FreeTensor(squareSumOutLocal);
 
                 combFragQue.EnQue(combFragLocal);

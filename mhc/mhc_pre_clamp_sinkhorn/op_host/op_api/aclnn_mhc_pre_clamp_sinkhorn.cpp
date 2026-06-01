@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
  /*!
  * \file aclnn_mhc_pre_clamp_sinkhorn.cpp
  * \brief aclnn_mhc_pre_clamp_sinkhorn
@@ -66,7 +66,7 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *phi, const aclT
     OP_CHECK_DTYPE_NOT_SUPPORT(hin, DTYPE_X_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(hPost, DTYPE_OTHER_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(hRes, DTYPE_OTHER_SUPPORT_LIST, return false);
-    
+
     if (needBackward) {
         OP_CHECK_DTYPE_NOT_SUPPORT(hPre, DTYPE_OTHER_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(hcBeforeNorm, DTYPE_OTHER_SUPPORT_LIST, return false);
@@ -91,7 +91,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 "x dim must be 4 (bs, seq_len, n, c), but got dim = %ld.", xDim);
         return false;
     }
-    
+
     int64_t bs = xShape.GetDim(0);
     int64_t seqLen = xShape.GetDim(1);
     int64_t n = xShape.GetDim(2);
@@ -103,19 +103,19 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 "hcMult must be in range [%ld], but got hcMult = %ld.", HCMULT_DEFAULT_VALUE, hcMult);
         return false;
     }
-    
+
     if (n != hcMult) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "x shape[2] (n=%ld) must equal hcMult (%ld), but they are different.", n, hcMult);
         return false;
     }
-    
+
     if (numIters != NUM_ITERS_DEFAULT_VALUE) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "numIters must be in range [%ld], but got numIters = %ld.", NUM_ITERS_DEFAULT_VALUE, numIters);
         return false;
     }
-    
+
     auto hinShape = hin->GetViewShape();
     if (hinShape.GetDimNum() != 3 ||
         hinShape.GetDim(0) != bs || hinShape.GetDim(1) != seqLen ||
@@ -126,7 +126,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 hinShape.GetDim(0), hinShape.GetDim(1), hinShape.GetDim(2));
         return false;
     }
-    
+
     auto phiShape = phi->GetViewShape();
     if (phiShape.GetDimNum() != 2) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -139,7 +139,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 hcMix, n * c, phiShape.GetDim(0), phiShape.GetDim(1));
         return false;
     }
-    
+
     auto alphaShape = alpha->GetViewShape();
     if (alphaShape.GetDimNum() != 1 || alphaShape.GetDim(0) != 3) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -147,7 +147,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 alphaShape.GetDimNum(), alphaShape.GetDimNum() > 0 ? alphaShape.GetDim(0) : 0);
         return false;
     }
-    
+
     auto biasShape = bias->GetViewShape();
     if (biasShape.GetDimNum() != 1 || biasShape.GetDim(0) != hcMix) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -155,7 +155,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 hcMix, biasShape.GetDimNum(), biasShape.GetDimNum() > 0 ? biasShape.GetDim(0) : 0);
         return false;
     }
-    
+
     auto hPostShape = hPost->GetViewShape();
     if (hPostShape.GetDimNum() != 3 ||
         hPostShape.GetDim(0) != bs || hPostShape.GetDim(1) != seqLen || hPostShape.GetDim(2) != n) {
@@ -165,7 +165,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 hPostShape.GetDim(0), hPostShape.GetDim(1), hPostShape.GetDim(2));
         return false;
     }
-    
+
     auto hResShape = hRes->GetViewShape();
     if (hResShape.GetDimNum() != 3 ||
         hResShape.GetDim(0) != bs || hResShape.GetDim(1) != seqLen || hResShape.GetDim(2) != n * n) {
@@ -175,7 +175,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                 hResShape.GetDim(0), hResShape.GetDim(1), hResShape.GetDim(2));
         return false;
     }
-    
+
     if (needBackward) {
         auto hPreShape = hPre->GetViewShape();
         if (hPreShape.GetDimNum() != 3 ||
@@ -186,7 +186,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                     hPreShape.GetDim(0), hPreShape.GetDim(1), hPreShape.GetDim(2));
             return false;
         }
-    
+
         auto hcBeforeNormShape = hcBeforeNorm->GetViewShape();
         if (hcBeforeNormShape.GetDimNum() != 3 ||
             hcBeforeNormShape.GetDim(0) != bs || hcBeforeNormShape.GetDim(1) != seqLen ||
@@ -197,7 +197,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                     hcBeforeNormShape.GetDim(0), hcBeforeNormShape.GetDim(1), hcBeforeNormShape.GetDim(2));
             return false;
         }
-    
+
         auto invRmsShape = invRms->GetViewShape();
         if (invRmsShape.GetDimNum() != 3 ||
             invRmsShape.GetDim(0) != bs || invRmsShape.GetDim(1) != seqLen || invRmsShape.GetDim(2) != 1) {
@@ -207,7 +207,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                     invRmsShape.GetDim(0), invRmsShape.GetDim(1), invRmsShape.GetDim(2));
             return false;
         }
-    
+
         auto sumOutShape = sumOut->GetViewShape();
         int64_t expectedSumOutDim0 = numIters * 2;
         if (sumOutShape.GetDimNum() != 4 ||
@@ -219,7 +219,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
                     sumOutShape.GetDim(0), sumOutShape.GetDim(1), sumOutShape.GetDim(2), sumOutShape.GetDim(3));
             return false;
         }
-    
+
         auto normOutShape = normOut->GetViewShape();
         int64_t expectedNormOutDim0 = numIters * 2;
         if (normOutShape.GetDimNum() != 5 ||
@@ -247,7 +247,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -268,16 +268,15 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
 
 aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    float min, float max,
-    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward,
+    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward, double clamp_min, double clamp_max,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
     aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
     uint64_t *workspaceSize, aclOpExecutor **executor)
-    
+
 {
     L2_DFX_PHASE_1(aclnnMhcPreClampSinkhorn,
-                   DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward),
+                   DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max),
                    DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut));
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -301,7 +300,7 @@ aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     const aclTensor *kernelOut = l0op::MhcPreClampSinkhorn(
-        xContiguous, phiContiguous, alphaContiguous, biasContiguous, min, max, hcMult, numIters, hcEps, normEps, needBackward,
+        xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max,
         hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, uniqueExecutor.get());
     CHECK_RET(kernelOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 

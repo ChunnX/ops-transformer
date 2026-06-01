@@ -290,8 +290,8 @@ int main()
     std::vector<int64_t> norm_out_shape = {num_iters * 2, bs, seq_len, n, n};
     std::vector<int64_t> reduce_out_shape = {num_iters * 2, bs, seq_len, n, n};
     
-    float min_val = 0.0f;
-    float max_val = 1.0f;
+    float min_val = -5.0f;
+    float max_val = 2.0f;
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
 
@@ -307,8 +307,7 @@ int main()
 
     aclnnStatus aclnn_ret = aclnnMhcPreClampSinkhornGetWorkspaceSize(
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
-        min_val, max_val,
-        hc_mult, num_iters, hc_eps, norm_eps, need_backward,
+        hc_mult, num_iters, hc_eps, norm_eps, need_backward, min_val, max_val,
         tensors.hin, tensors.h_post, tensors.h_res,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
         tensors.sum_out, tensors.norm_out, tensors.reduce_out,

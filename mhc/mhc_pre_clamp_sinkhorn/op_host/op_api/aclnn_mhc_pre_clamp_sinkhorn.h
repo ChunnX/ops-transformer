@@ -35,8 +35,7 @@ extern "C" {
  */
 aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    float min, float max,
-    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward,
+    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward, double clamp_min, double clamp_max,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
     aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,

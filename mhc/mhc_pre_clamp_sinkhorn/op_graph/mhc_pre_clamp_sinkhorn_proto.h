@@ -12,7 +12,7 @@
  * \file mhc_pre_clamp_sinkhorn_proto.h
  * \brief MhcPreClampSinkhorn operator proto definition
  */
- 
+
 #ifndef OPS_BUILT_IN_OP_PROTO_INC_MHC_PRE_SINKHORN_PROTO_H_
 #define OPS_BUILT_IN_OP_PROTO_INC_MHC_PRE_SINKHORN_PROTO_H_
 #include "graph/operator_reg.h"
@@ -35,6 +35,8 @@ REG_OP(MhcPreClampSinkhorn)
     .ATTR(hc_eps, Float, 1e-6f)
     .ATTR(norm_eps, Float, 1e-6f)
     .ATTR(need_backward, Bool, true)
+    .ATTR(clamp_min, Float, 0.0f)
+    .ATTR(clamp_max, Float, 0.0f)
     .OP_END_FACTORY_REG(MhcPreClampSinkhorn)
 
 } // namespace ge
