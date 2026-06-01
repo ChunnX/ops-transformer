@@ -86,7 +86,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS2OriSize = actualS2OriSize;
     runParam.actualS2CmpSize = actualS2CmpSize;
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        runParam.cmpResidual = cmpResidualKvAddr[bIdx];
+        runParam.cmpResidual = (cmpResidualKvAddr != nullptr) ? cmpResidualKvAddr[bIdx] : 0;
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
