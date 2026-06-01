@@ -73,13 +73,6 @@ inline bool MoeDistributeCombineTilingHelper::CheckInputSendCountsTensorDim(cons
                     return false);
     OP_LOGD(nodeName, "epSendCounts dim0 = %ld", epSendCountsStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *tpSendCountsStorageShape = context->GetOptionalInputShape(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsStorageShape == nullptr, OP_LOGE(nodeName, "tpSendCounts is null."), return false);
-    OP_TILING_CHECK(tpSendCountsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "tpSendCounts must be 1-dimension, but got %lu dim",
-                            tpSendCountsStorageShape->GetStorageShape().GetDimNum()),
-                    return false);
-    OP_LOGD(nodeName, "tpSendCounts dim0 = %ld", tpSendCountsStorageShape->GetStorageShape().GetDim(0));
     return true;
 }
 
@@ -178,11 +171,6 @@ bool MoeDistributeCombineTilingHelper::CheckTensorDataType(const gert::TilingCon
     OP_TILING_CHECK((epSendCountsDesc->GetDataType() != ge::DT_INT32),
                     OP_LOGE(nodeName, "epSendCounts dataType is invalid, dataType should be int32, but is %s",
                             Ops::Base::ToString(epSendCountsDesc->GetDataType()).c_str()), return false);
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-    OP_TILING_CHECK((tpSendCountsDesc->GetDataType() != ge::DT_INT32),
-                    OP_LOGE(nodeName, "tpSendCounts dataType is invalid, dataType should be int32, but is %s",
-                            Ops::Base::ToString(tpSendCountsDesc->GetDataType()).c_str()), return false);
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
     OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
@@ -230,12 +218,6 @@ bool MoeDistributeCombineTilingHelper::CheckTensorFormat(const gert::TilingConte
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epSendCountsDesc->GetStorageFormat())) ==
                         ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE(nodeName, "epSendCountsFormat is invalid"), return false);
-
-    auto tpSendCountsDesc = context->GetOptionalInputDesc(TP_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(tpSendCountsDesc == nullptr, OP_LOGE(nodeName, "tpSendCountsDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpSendCountsDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE(nodeName, "tpSendCountsFormat is invalid"), return false);
 
     auto expertScalesDesc = context->GetInputDesc(EXPERT_SCALES_INDEX);
     OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE(nodeName, "expertScalesDesc is null."), return false);
