@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_aclnn_allto_allv_grouped_mat_mul.cpp
+ * \file test_aclnn_allto_allv_grouped_mat_mul_v2.cpp
  * \brief
  */
 
@@ -164,8 +164,8 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
 
     // 调用第一阶段接口
     ret = aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(gmmX, gmmW, sendCountsTensor, recvCountsTensor, mmX, mmW,
-                                                      hcomName, EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
-                                                      true, gmmY, mmY, permute, &workspaceSize, &executor);
+                                                        hcomName, "ccu", EP_WORLD_SIZE, sendCounts, recvCounts, false, false,
+                                                        true, gmmY, mmY, permute, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize failed. ret = %d \n", ret);
               return ret);
@@ -177,13 +177,13 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
 
     // 调用第二阶段接口
     ret = aclnnAlltoAllvGroupedMatMulV2(workspaceAddr, workspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMul failed. ret = %d \n", ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAlltoAllvGroupedMatMulV2 failed. ret = %d \n", ret);
               return ret);
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
-    LOG_PRINT("[INFO] device_%d aclnnAlltoAllvGroupedMatMul execute successfully.\n", args.rankId);
+    LOG_PRINT("[INFO] device_%d aclnnAlltoAllvGroupedMatMulV2 execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (args.rankId == 0) {
         size_t size = A * H * sizeof(int16_t);
