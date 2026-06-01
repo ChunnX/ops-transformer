@@ -175,7 +175,7 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
         OP_LOGI(context_->GetNodeName(), "mask mode is:%d", *opParamInfo_.maskMode);
     }
     if (opParamInfo_.cmpRatio != nullptr) {
-        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%d", *opParamInfo_.cmpRatio);
+        OP_LOGI(context_->GetNodeName(), "cmpRatio is:%lld", *opParamInfo_.cmpRatio);
     }
     if (opParamInfo_.returnValue != nullptr) {
         OP_LOGI(context_->GetNodeName(), "return value is:%d", *opParamInfo_.returnValue);
@@ -487,7 +487,7 @@ ge::graphStatus LIV2InfoParser::GetS2SizeForPageAttention()
     }
     maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     s2Size_ = maxBlockNumPerBatch_ * blockSize_;
-    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %d, blockSize_ is %d, s2Size_ is %d",
+    OP_LOGI(context_->GetNodeName(), "maxBlockNumPerBatch_ is %u, blockSize_ is %d, s2Size_ is %lld",
             maxBlockNumPerBatch_, blockSize_, s2Size_);
     return ge::GRAPH_SUCCESS;
 }
