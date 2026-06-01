@@ -221,9 +221,6 @@ def tilelang_lightning_indexer_grad_bsnd(
                 relu_grad_ub = T.alloc_ub((block_m, block_n), calc_dtype)
                 relu_grad_half_ub = T.alloc_ub((block_m, block_n), input_dtype)
                 mask_ub = T.alloc_ub((block_m, block_n), calc_dtype)
-                zero_ub = T.alloc_ub(1, calc_dtype)
-
-                T.tile.fill(zero_ub, 0.0)
 
                 for s1_idx in T.serial(s1_start, s1_end):
                     for g_idx in T.serial(G):
@@ -242,7 +239,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                             T.tile.cast(relu_grad_ub, relu_grad_half_ub, "CAST_NONE", block_m * block_n)
                             T.barrier_all()
 
-                            T.tile.compare(mask_ub, relu_in_ub, zero_ub, "GT")
+                            T.tile.compare(mask_ub, relu_in_ub, 0.0, "GT")
                             T.barrier_all()
                             T.tile.select(relu_grad_ub, mask_ub, relu_grad_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
                             T.barrier_all()
