@@ -13,16 +13,33 @@
  * \brief
  */
 
-#include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
+#include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
+
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
+
+#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
+// 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
+    #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
+    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
+    #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
+    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
+#else
+// 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#endif
+
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
     #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
-#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 
@@ -49,6 +66,25 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                                                           GM_ADDR bias, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
+#if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
+    // MxA8W4场景
+    AscendC::InitSocState();
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+    // enable overflow mode to avoid nan/inf value
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    REGISTER_TILING_DEFAULT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData);
+    GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
+
+    GMMSQWeightQuant::GMMSQWeightQuantResplitController<
+        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE,
+        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC>
+        controller;
+
+    controller.Init(x, weight, weightScale, groupList, xScale, y, yScale, &tilingDataIn);
+    controller.Process();
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#else
     TPipe tPipe;
     GM_ADDR userWorkspace = GetUserWorkspace(workspace);
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
@@ -94,4 +130,5 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     }
 #endif
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
 }
