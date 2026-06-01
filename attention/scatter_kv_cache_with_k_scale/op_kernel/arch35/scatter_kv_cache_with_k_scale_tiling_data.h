@@ -31,6 +31,4 @@ struct ScatterKvCacheWithKScaleTilingData {
     int64_t keyScaleCacheStride[4];
 };
 
-
-
 #endif // SCATTER_KV_CACHE_WITH_K_SCALE_TILING_DATA_H

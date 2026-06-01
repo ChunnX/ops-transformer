@@ -185,7 +185,8 @@ static ge::graphStatus ScatterKvCacheWithKScaleTilingFunc(gert::TilingContext *c
     OP_CHECK_IF(ValidateDtype(context) != ge::GRAPH_SUCCESS, OP_LOGE(context, "ValidateDtype error"),
                 return ge::GRAPH_FAILED);
 
-    int64_t keyShapeArr[3], keyStrideArr[3];
+    int64_t keyShapeArr[3];
+    int64_t keyStrideArr[3];
     int64_t keyDim;
     GetTensorInfo(context, 0, keyShapeArr, keyStrideArr, keyDim);
     OP_CHECK_IF((keyDim != 3), OP_LOGE(context, "key must be 3D"), return ge::GRAPH_FAILED);
@@ -193,31 +194,37 @@ static ge::graphStatus ScatterKvCacheWithKScaleTilingFunc(gert::TilingContext *c
     int64_t numHead = keyShapeArr[1];
     int64_t kHeadSize = keyShapeArr[2];
 
-    int64_t valueShapeArr[3], valueStrideArr[3];
+    int64_t valueShapeArr[3];
+    int64_t valueStrideArr[3];
     int64_t valueDim;
     GetTensorInfo(context, 1, valueShapeArr, valueStrideArr, valueDim);
     int64_t vHeadSize = valueShapeArr[2];
 
-    int64_t kcShapeArr[4], kcStrideArr[4];
+    int64_t kcShapeArr[4];
+    int64_t kcStrideArr[4];
     int64_t kcDim;
     GetTensorInfo(context, 2, kcShapeArr, kcStrideArr, kcDim);
     OP_CHECK_IF((kcDim != 4), OP_LOGE(context, "key_cache must be 4D"), return ge::GRAPH_FAILED);
     int64_t numBlocks = kcShapeArr[0];
     int64_t blockSize = kcShapeArr[2];
 
-    int64_t vcShapeArr[4], vcStrideArr[4];
+    int64_t vcShapeArr[4];
+    int64_t vcStrideArr[4];
     int64_t vcDim;
     GetTensorInfo(context, 3, vcShapeArr, vcStrideArr, vcDim);
 
-    int64_t smShapeArr[1], smStrideArr[1];
+    int64_t smShapeArr[1];
+    int64_t smStrideArr[1];
     int64_t smDim;
     GetTensorInfo(context, 4, smShapeArr, smStrideArr, smDim);
 
-    int64_t ksShapeArr[2], ksStrideArr[2];
+    int64_t ksShapeArr[2];
+    int64_t ksStrideArr[2];
     int64_t ksDim;
     GetTensorInfo(context, 5, ksShapeArr, ksStrideArr, ksDim);
 
-    int64_t kscShapeArr[4], kscStrideArr[4];
+    int64_t kscShapeArr[4];
+    int64_t kscStrideArr[4];
     int64_t kscDim;
     GetTensorInfo(context, 6, kscShapeArr, kscStrideArr, kscDim);
 
