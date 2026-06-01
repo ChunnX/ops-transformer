@@ -58,6 +58,7 @@ constexpr size_t kCsvColumnCount =
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
+        // 跳过未启用的case
         if (!enable) {
             return;
         }

@@ -28,9 +28,7 @@ using AscendC::GlobalTensor;
 using AscendC::HardEvent;
 using AscendC::IsSameType;
 using AscendC::LocalTensor;
-using AscendC::PipeBarrier;
 using AscendC::SetFlag;
-using AscendC::TBuf;
 using AscendC::TPosition;
 using AscendC::WaitFlag;
 using namespace WeightQuantBatchMatmulV2::Arch35;
@@ -56,6 +54,8 @@ public:
                                            uint64_t kbL1RealSize = 0);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam,
                                           uint64_t kbL1RealSize = 0);
+    __aicore__ inline void SetMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline void SetWeightMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset);
@@ -191,6 +191,15 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::WaitMTE1ToMTE2(uint64_t kaGm
 }
 
 GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetWeightMTE1ToMTE2(const BasicBlockOffsetParam &offsetParam)
+{
+    if (offsetParam.kbL1Size >= offsetParam.kSize && offsetParam.kSize % K_ALIGNMENT64 != 0) {
+        // 首轮weight清零
+        SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_WEIGHT_MTE1_TO_MTE2);
+    }
+}
+
+GMMSQ_WQ_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::SetMTE1ToMTE2(uint64_t kaGmOffset,
                                                                   const BasicBlockOffsetParam &offsetParam,
                                                                   uint64_t kbL1RealSize)
@@ -262,7 +271,6 @@ __aicore__ inline void GMMSQ_WQ_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const Basi
     auto f16ScaleBGateLocal =
         weightScaleBL1_[(scaleBufIdx_ & 1) * weightScaleBL1DbOffset_ + (nHalfSize * scaleKL1RealSize)]
             .template ReinterpretCast<half>();
-
     DataCopy(f16ScaleBGateLocal, f16ScaleBGateGlobal, scaleBdn2NzParamsGate);
 }
 

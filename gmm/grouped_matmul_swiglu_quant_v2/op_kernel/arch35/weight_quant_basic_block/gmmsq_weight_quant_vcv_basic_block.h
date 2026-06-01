@@ -188,6 +188,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offs
                                                              const BasicBlockOffsetParam &curOffsetParam)
 {
     uint64_t kMte2BaseSize = curOffsetParam.kbL1Size / DOUBLE_BUFFER_NUM;
+    uint64_t nL1AlignSize = CeilAlign(curOffsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
 
     for (; kMte2Offset < kMte2Limit; kMte2Offset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
         vecCompute_.WaitVToMTE2();
@@ -203,8 +204,7 @@ GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::VecComputeNzNkWithStartLimit(uint64_t &kMte2Offs
 
         vecCompute_.WeightAntiQuantComputeNzNk(
             mte2RealK, kMte2Offset,
-            weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ +
-                      CeilAlign(curOffsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * kL1Offset],
+            weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ + nL1AlignSize * kL1Offset],
             curOffsetParam);
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
         vecCompute_.SetVToMTE2();
@@ -221,10 +221,7 @@ __aicore__ inline void GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const
         SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
     }
 
-    // 1: 首轮weight清零ID
-    if (curOffsetParam.kbL1Size >= curOffsetParam.kSize && curOffsetParam.kSize % K_ALIGNMENT64 != 0) {
-        SetFlag<HardEvent::MTE1_MTE2>(1);
-    }
+    cubeCompute_.SetWeightMTE1ToMTE2(curOffsetParam);
     uint64_t kMutilLoadL1Size = MX_SCALE_K_L1_SIZE;
     for (uint64_t kbL1Offset = 0; kbL1Offset < curOffsetParam.kSize;
          kbL1Offset += curOffsetParam.kbL1Size, cvLoopIdx_++) {
