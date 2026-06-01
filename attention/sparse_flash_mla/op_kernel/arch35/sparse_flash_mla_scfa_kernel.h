@@ -88,9 +88,10 @@ private:
     /* 编译期常量的基本块信息 */
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 2;
+
+    uint32_t crossCoreSyncBufId = 0;
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
-    BufferManager<BufferType::GM> s2LenGmBufferManager;
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
@@ -98,21 +99,20 @@ private:
 
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BACKWARD> l1PBuffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     GlobalTensor<uint32_t> metadataGm;
-    __gm__ int32_t *cuSeqlensQAddr = nullptr;
-    __gm__ int32_t *cuSeqlensOriKvAddr = nullptr;
-    __gm__ int32_t *cuSeqlensCmpKvAddr = nullptr;
-    __gm__ int32_t *actualSeqOriKvlenAddr = nullptr;
-    __gm__ int32_t *actualSeqCmpKvlenAddr = nullptr;
-    __gm__ int32_t *cmpResidualKvAddr = nullptr;
-    __gm__ int32_t *actualSeqQlenAddr = nullptr;
+    GlobalTensor<int32_t> cuSeqlensQGm;
+    GlobalTensor<int32_t> cuSeqlensOriKvGm;
+    GlobalTensor<int32_t> cuSeqlensCmpKvGm;
+    GlobalTensor<int32_t> actualSeqOriKvlenGm;
+    GlobalTensor<int32_t> actualSeqCmpKvlenGm;
+    GlobalTensor<int32_t> cmpResidualKvGm;
+    GlobalTensor<int32_t> actualSeqQlenGm;
     GlobalTensor<int32_t> oriTopkLengthGm;
     GlobalTensor<int32_t> cmpTopkLengthGm;
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
-    BuffersPolicy3buff<BufferType::GM> s2LenGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -205,7 +205,6 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
     constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
-    // constInfo.actualSeqLenKVSize = constInfo.bSize; // del
     constInfo.actualLenDimsOriKV = sparseFlashMLABaseParams.actualLenDimsOriKV;
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.actualLenDimsCmpKV = sparseFlashMLABaseParams.actualLenDimsCmpKV;
@@ -227,7 +226,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pa
     constInfo.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
         int64_t s2Size;
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BNBD) {
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
             GlobalTensor<int32_t> actualSeqLengthsKVGm;
             actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
             s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
@@ -264,34 +263,31 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     const SparseFlashMlaTilingData *__restrict tiling, TPipe *tPipe)
 {
     if (cuSeqlensQ != nullptr) {
-        cuSeqlensQAddr = (__gm__ int32_t *)cuSeqlensQ;
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
     }
     if (cuSeqlensOriKv != nullptr) {
-        cuSeqlensOriKvAddr = (__gm__ int32_t *)cuSeqlensOriKv;
+        cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
     }
     if (cuSeqlensCmpKv != nullptr) {
-        cuSeqlensCmpKvAddr = (__gm__ int32_t *)cuSeqlensCmpKv;
+        cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
     }
     if (sequsedQ != nullptr) {
-        actualSeqQlenAddr = (__gm__ int32_t *)sequsedQ;
+        actualSeqQlenGm.SetGlobalBuffer((__gm__ int32_t *)sequsedQ);
     }
-    // if (sequsedKv != nullptr) {
-    //     actualSeqKvlenAddr = (__gm__ int32_t *)sequsedKv;
-    // }
     if (seqUsedOriKV != nullptr) {
-        actualSeqOriKvlenAddr = (__gm__ int32_t *)seqUsedOriKV;
+        actualSeqOriKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedOriKV);
     }
     if (seqUsedCmpKV != nullptr) {
-        actualSeqCmpKvlenAddr = (__gm__ int32_t *)seqUsedCmpKV;
+        actualSeqCmpKvlenGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedCmpKV);
     }
     if (cmpResidualKV != nullptr) {
-        cmpResidualKvAddr = (__gm__ int32_t *)cmpResidualKV;
+        cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKV);
     }
 
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ,
                               sinks, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV);
     cubeBlock.InitCubeInput(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, cuSeqlensQ,
-                            cuSeqlensOriKv, cuSeqlensCmpKv, constInfo);
+                            cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedOriKV, seqUsedCmpKV, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -304,14 +300,31 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    l1PBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+    crossCoreSyncBufId++;
 
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
@@ -327,27 +340,12 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::In
         }
         v0ResGmBufferManager.Init(workspace + v0ResTotalOffset);
         v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
-
-        bool allocS2LenBuf = false;
-        if constexpr (TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-            if (!constInfo.hasCmpTopkLength) {
-                allocS2LenBuf = true;
-            }
-        }
-        // v0聚合的s2实际长度
-        if (allocS2LenBuf) {
-            int64_t v0ResTotalSize = v0ResSize * 3;
-            int64_t aicNum = GetBlockNum();
-            if constexpr (IS_SPLIT_G) {
-                v0ResTotalSize *= (aicNum >> 1U);
-            } else {
-                v0ResTotalSize *= aicNum;
-            }
-            int64_t s2LenBufferSize = 128 * sizeof(int32_t) * 4; // Cube要看到相邻核4个vector的结果;
-            int64_t s2LenTotalOffset = s2LenBufferSize * 3 * (aicIdx >> 1);
-            s2LenGmBufferManager.Init(workspace + v0ResTotalSize + s2LenTotalOffset);
-            s2LenGmBuffers.Init(s2LenGmBufferManager, s2LenBufferSize);
-        }
+        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+        crossCoreSyncBufId++;
+        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+        crossCoreSyncBufId++;
+        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+        crossCoreSyncBufId++;
     }
 }
 
@@ -449,8 +447,8 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
         runParam.boIdx = bnIdx;
         runParam.n2oIdx = 0;
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(runParam, this->constInfo,
-            this->cuSeqlensQAddr, this->cuSeqlensOriKvAddr, this->cuSeqlensCmpKvAddr, this->actualSeqQlenAddr,
-            this->actualSeqOriKvlenAddr, this->actualSeqCmpKvlenAddr, this->cmpResidualKvAddr);
+            this->cuSeqlensQGm, this->cuSeqlensOriKvGm, this->cuSeqlensCmpKvGm, this->actualSeqQlenGm,
+            this->actualSeqOriKvlenGm, this->actualSeqCmpKvlenGm, this->cmpResidualKvGm);
         ComputeS1LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo, lastBN, nextGs1Idx, gS1StartIdx);
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
@@ -473,9 +471,9 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
             if (notLastTwoLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<TEMPLATE_INTF_ARGS>(
-                    runParam, this->constInfo, gS1Index, this->cuSeqlensQAddr);
+                    runParam, this->constInfo, gS1Index, this->cuSeqlensQGm);
                 bool s2NoNeedCalc =
-                    ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQAddr,
+                    ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQGm,
                         oriTopkLengthGm, constInfo.hasOriTopkLength, cmpTopkLengthGm,
                         constInfo.hasCmpTopkLength, runParam, this->constInfo);
                 // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
@@ -500,7 +498,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                                 runInfo1, this->constInfo);
                         } else {
                             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
-                                s2LenGmBuffers.Get(), runInfo1, this->constInfo, 0);
+                                runInfo1, this->constInfo, 0);
                         }
                     } else {
                         if ASCEND_IS_AIV {
@@ -517,7 +515,7 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                         auto &runInfo2 = runInfo[(taskId + 2) % 3];
                         if ASCEND_IS_AIV {
                             this->vecBlock.ProcessVec1(
-                                this->l1PBuffers.Get(), this->bmm1Buffers.Get(), s2LenGmBuffers.GetReused(),
+                                this->l1PBuffers.Get(), this->bmm1Buffers.Get(),
                                 runInfo2, this->constInfo);
                         } else {
                             RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];
@@ -532,52 +530,6 @@ __aicore__ inline void SparseFlashMlaScfaKernel<CubeBlockType, VecBlockType>::Pr
                         }
                     }
                 }
-                // else if constexpr (TEMPLATE_MODE == SMLATemplateMode::SCFA_TEMPLATE_MODE) {
-                //     if (notLastTwoLoop) {
-                //         RunInfo &runInfo0 = runInfo[taskId % 3];
-                //         this->SetRunInfo(runInfo0, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                //         if ASCEND_IS_AIC {
-                //             this->cubeBlock.MergeKv(this->l1RightBuffers.Get(), runInfo0, this->constInfo, 0);
-                //         } else {
-                //             this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
-                //                 runInfo0, this->constInfo, 32);
-                //         }
-                //     }
-                //     if (taskId > 0 && notLast) {
-                //         RunInfo &runInfo1 = runInfo[(taskId + 2) % 3];
-                //         if ASCEND_IS_AIC {
-                //             // this->cubeBlock.IterateBmm1(
-                //                    this->bmm1Buffers.Get(), this->l1RightBuffers.Get((taskId + 2) % 3),
-                //             //     v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                //             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(),
-                //                                         this->l1RightBuffers.GetReused(),
-                //                                         v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                //         } else {
-                //             this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo1,
-                //                 this->constInfo);
-                //         }
-                //     }
-                //     if (taskId > 1) {
-                //         RunInfo &runInfo2 = runInfo[(taskId + 1) % 3];
-                //         if ASCEND_IS_AIC {
-                //             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
-                //                 this->l1RightBuffers.Get((taskId + 1) % 3), runInfo2, this->constInfo);
-                //         } else {
-                //             this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo2, this->constInfo);
-                //         }
-                //     }
-                //     // if (notLastTwoLoop) {
-                //     //     RunInfo &runInfo0 = runInfo[taskId % 3];
-                //     //     if ASCEND_IS_AIC {
-                //     //         this->cubeBlock.MergeKv(
-                //                  this->l1RightBuffers.Get(taskId % 3), runInfo0, this->constInfo, 16);
-                //     //     } else {
-                //     //         this->vecBlock.ProcessVec0(
-                //                    this->l1RightBuffers.Get(taskId % 3), v0ResGmBuffers.GetReused(),
-                //     //             runInfo0, this->constInfo, 80);
-                //     //     }
-                //     // }
-                // }
                 ++taskId;
             }
             ++multiCoreInnerIdx;

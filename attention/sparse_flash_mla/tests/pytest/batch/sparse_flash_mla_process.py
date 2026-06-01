@@ -38,7 +38,6 @@ def call_npu(input_data):
     print("用例参数: ", params)
 
     # metadata解析
-    K1 = metadata_input['K1']
     K = metadata_input['K']
     cmp_ratio = metadata_input['cmp_ratio']
     N1 = metadata_input['N1']

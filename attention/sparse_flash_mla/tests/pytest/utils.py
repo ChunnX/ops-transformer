@@ -96,7 +96,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             # 'kv_quant_mode': "Int64",
         })
         # 处理可能为空的列
-        default_None_columns = ["K1", "cu_seqlens_ori_kv","cu_seqlens_cmp_kv","T2","T3",
+        default_None_columns = ["cu_seqlens_ori_kv","cu_seqlens_cmp_kv","T2","T3",
                                 "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv"]
         for key in default_None_columns:
             if key not in df.columns:
@@ -114,7 +114,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 "S2",
                 "N1",
                 "N2",
-                "K1",
                 "K",
                 "layout_q",
                 "layout_kv",
@@ -124,7 +123,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K1", "K",
+            "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
             "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
             "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "testcase_name"
         ]
@@ -325,7 +324,7 @@ def generate_case_with_default_param(param_combinations):
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
 
-    if layout_kv == "PA_BNBD":
+    if layout_kv == "PA_BBND":
         for cur_ori_act_kv in case_param['seqused_ori_kv']:
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param['block_size1'])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
