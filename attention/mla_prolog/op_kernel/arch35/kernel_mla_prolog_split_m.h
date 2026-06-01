@@ -969,8 +969,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQcQr(AicOffset &aicOffset
     // [32, 1536] * [1536, 32*(128+64)] = [32, 32*192]
     constexpr uint32_t mSize =
         (sizeof(mmQcQrInputType) == sizeof(int8_t)) ? INT8_AFULLLOAD_MAX_MSIZE : BF16_AFULLLOAD_MAX_MSIZE;
-    bool isAFullLoad =
-        (mmQcQrParam_.m <= mSize && !(std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0)) ? true : false;
+    bool isAFullLoad = (mmQcQrParam_.m <= mSize) ? true : false;
 
     uint32_t nInput = mmQcQrParam_.n;
     uint32_t nL1SplitSize = mmQcQrParam_.baseN;
@@ -979,10 +978,12 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::MatmulQcQr(AicOffset &aicOffset
     if (isAFullLoad) {
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             uint32_t offsetL1B = L1_B_SIZE / 2 / sizeof(rmsNormCqOutputType);
+            WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
             LoadL1AAndScale<rmsNormCqOutputType, dequantScaleType, false, true>(
                 rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
                 dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset], mmQcQrParam_.m, mmQcQrParam_.k,
                 mmQcQrParam_.k, mmQcQrParam_.kScale, offsetL1B, bufParam_);
+            SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
         }
         WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufParam_.aL1BufIter & 1u));
     }
