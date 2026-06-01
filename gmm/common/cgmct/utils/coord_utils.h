@@ -268,7 +268,8 @@ public:
 
     template <GroupedMatmul::QuantMode aQuantMode>
     __aicore__ inline AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
-    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0)
+    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0,
+                     int64_t bC0Align = MATMUL_MNK_ALIGN_INT8)
     {
         int64_t mOffset = mTileIdx * l1M + mSplitOffset;
         int64_t nOffset = nTileIdx * l1N + nSplitOffset;
@@ -278,20 +279,7 @@ public:
         } else {
             Get<0>(offset) = mOffset;
         }
-        if constexpr (layoutB == CubeFormat::NZ) {
-            if constexpr (isTransB) {
-                Get<1>(offset) = nOffset * MATMUL_MNK_ALIGN_INT8;
-            } else {
-                Get<1>(offset) = nOffset * CeilAlign(k, MATMUL_MNK_ALIGN);
-            }
-        }
-        else {
-            if constexpr (!isTransB) {
-                Get<1>(offset) = nOffset;
-            } else {
-                Get<1>(offset) = nOffset * k;
-            }
-        }
+        Get<1>(offset) = GetBOffset(nTileIdx, 0, 0, bC0Align, nSplitOffset);
         Get<5>(offset) = mOffset * n / 2 + nOffset; // 5: idx of y
         if constexpr (aQuantMode == GroupedMatmul::QuantMode::PERGROUP_MODE ||
                       aQuantMode == GroupedMatmul::QuantMode::PERBLOCK_MODE) {

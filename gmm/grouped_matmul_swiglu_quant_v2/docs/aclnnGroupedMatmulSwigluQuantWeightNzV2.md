@@ -211,7 +211,7 @@
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
-        * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
+        * $Q∈\mathbb{F}_{8E4M3FN}^{M \times N / 2}$或$Q∈\mathbb{F}_{4E1M2}^{M \times N / 2}$或$Q∈\mathbb{F}_{4E2M1}^{M \times N / 2}$：量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
         * $Q\_scale∈\mathbb{R}^{M \times ceil((N / 2) / 64) \times 2}$：量化缩放因子。
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
@@ -236,6 +236,8 @@
             |   DataType    | emax |
             | :-----------: | :--: |
             | FLOAT8_E4M3FN |  8   |
+            | FLOAT4_E1M2   |  1   |
+            | FLOAT4_E2M1   |  2   |
   
           - $blocksize$：指每次量化的元素个数，仅支持32。
     </details>
@@ -304,7 +306,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示左矩阵，对应公式中的X。</td>
         <td>-</td>
-        <td>INT8、INT4、INT32、FLOAT8_E4M3FN</td>
+        <td>INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -314,7 +316,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示权重矩阵，对应公式中的W。</td>
         <td>此接口weight强制视为FRACTAL_NZ格式。</td>
-        <td>INT8、INT4、INT32、FLOAT8_E4M3FN</td>
+        <td>INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1、FLOAT4_E1M2</td>
         <td>FRACTAL_NZ</td>
         <td>4、5</td>
         <td>√</td>
@@ -458,7 +460,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输出</td>
         <td>表示输出的量化结果，公式中的Q。</td>
         <td>-</td>
-        <td>INT8、FLOAT8_E4M3FN</td>
+        <td>INT8、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -513,6 +515,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
       - weight和weightScale目前仅支持tensorlist长度为1。
+      - MXFP4场景支持weight NZ格式，x和weight为FLOAT4_E2M1或FLOAT4_E1M2（支持交叉），output支持FLOAT8_E4M3FN、FLOAT4_E1M2或FLOAT4_E2M1。
 
 - **返回值**
   
@@ -773,11 +776,48 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
             </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E1M2</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E1M2</td>
+            <td>FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT4_E1M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
           </tbody>
           </table>
 
         - shape约束需要满足下表：
           <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+          <col style="width: 130px">
           <col style="width: 130px">
           <col style="width: 250px">
           <col style="width: 320px">
@@ -787,6 +827,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           </colgroup>
           <thead>
             <tr>
+              <th>MX量化场景</th>
               <th>x</th>
               <th>weight</th>
               <th>weightScale</th>
@@ -796,10 +837,24 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
             </tr></thead>
           <tbody>
             <tr>
+              <td>MXFP8</td>
               <td>(M, K)</td>
               <td><ul>
-              <li>非转置shape形如{(E, N/32, K/16, 16, 32)}</li>
-              <li>转置shape形如{(E, K/32, N/16, 16, 32)}</li></ul></td>
+              <li>非转置shape形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
+              <li>转置shape形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}</li></ul></td>
+              <td><ul>
+              <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+              <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
+              <td>(M, ceil(K / 64), 2)</td>
+              <td>(M, N / 2)</td>
+              <td>(M, ceil((N / 2) / 64), 2)</td>
+            </tr>
+            <tr>
+              <td>MXFP4</td>
+              <td>(M, K)</td>
+              <td><ul>
+              <li>非转置shape形如{(E, ceil(N / 64), ceil(K / 16), 16, 64)}</li>
+              <li>转置shape形如{(E, ceil(K / 64), ceil(N / 16), 16, 64)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
@@ -812,6 +867,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
 
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，需满足N为128对齐。
+        - MXFP4场景下，K需大于2。
+        - MXFP4场景下，左右矩阵内轴均需为偶数。
+        - MXFP4场景下，weight后两轴均不能为1。
 
 ## 调用示例
 
