@@ -878,6 +878,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Muls(max0, max0, 0.5f, preg_108);
+    Muls(max1, max1, 0.5f, preg_108);
+    Muls(max2, max2, 0.5f, preg_108);
+    Muls(max3, max3, 0.5f, preg_108);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
@@ -1246,6 +1250,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Muls(max0, max0, 0.5f, preg_108);
+    Muls(max1, max1, 0.5f, preg_108);
+    Muls(max2, max2, 0.5f, preg_108);
+    Muls(max3, max3, 0.5f, preg_108);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
