@@ -261,8 +261,6 @@ def tilelang_lightning_indexer_grad_bsnd(
                 RG_L1 = T.alloc_L1((block_m, block_n), input_dtype)
                 KG_L1 = T.alloc_L1((block_n, block_d), input_dtype)
                 DQ_L0C = T.alloc_L0C((block_m, block_d), calc_dtype)
-                DQ_fp32_ub = T.alloc_ub((block_m, block_d), calc_dtype)
-                DQ_ub = T.alloc_ub((block_m, block_d), input_dtype)
 
                 for s1_idx in T.serial(s1_start, s1_end):
                     for g_idx in T.serial(G):
@@ -282,12 +280,8 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 T.barrier_all()
                                 T.gemm_v0(RG_L1, KG_L1, DQ_L0C, init=(k_idx == 0))
                                 T.barrier_all()
-                            T.copy(DQ_L0C, DQ_fp32_ub)
-                            T.barrier_all()
-                            T.tile.cast(DQ_ub, DQ_fp32_ub, "CAST_ROUND", block_m * block_d)
-                            T.barrier_all()
                             T.copy(
-                                DQ_ub,
+                                DQ_L0C,
                                 dQuery[bz, s1_idx, n1_idx, d_idx * block_d:(d_idx + 1) * block_d],
                             )
                             T.barrier_all()
