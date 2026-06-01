@@ -184,7 +184,6 @@ private:
         WriteRopeBf16NdToL1Nz(tile, slice);
         WaitAl1StageDone();
         ReleaseInputBuffer(activeBufferId_);
-        NotifyAReadyToAic();
     }
 
     __aicore__ inline void CopyPreprocessInputs(const AivSlice &slice)

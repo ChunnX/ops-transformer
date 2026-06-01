@@ -246,36 +246,6 @@ __aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
 #endif
 }
 
-__aicore__ inline void NotifyAReadyToAic()
-{
-    SetAivToAic<PIPE_MTE3>(SYNC_A_READY);
-}
-
-__aicore__ inline void WaitAReadyFromAiv()
-{
-    WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
-}
-
-__aicore__ inline void NotifyCReadyToAiv()
-{
-    SetAicToAiv<PIPE_FIX>(SYNC_C_READY);
-}
-
-__aicore__ inline void WaitCReadyFromAic()
-{
-    WaitAicToAiv<PIPE_V>(SYNC_C_READY);
-}
-
-__aicore__ inline void NotifyCConsumedToAic()
-{
-    SetAivToAic<PIPE_MTE3>(SYNC_C_CONSUMED);
-}
-
-__aicore__ inline void WaitCConsumedFromAiv()
-{
-    WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
-}
-
 __aicore__ inline uint32_t GetAicCubeIndex()
 {
     return GetBlockIdx();

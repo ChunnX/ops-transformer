@@ -35,6 +35,7 @@ public:
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
+        WaitAReadyFromAiv();
         cube_.ComputeTile(tile);
     }
 
@@ -46,6 +47,7 @@ public:
     __aicore__ inline void ComputeTileAiv(const TileParam &tile)
     {
         vec_.ComputeTile(tile);
+        NotifyAReadyToAic();
     }
 
     __aicore__ inline void End()
@@ -58,6 +60,36 @@ public:
     }
 
 private:
+    __aicore__ inline void NotifyAReadyToAic()
+    {
+        SetAivToAic<PIPE_MTE3>(SYNC_A_READY);
+    }
+
+    __aicore__ inline void WaitAReadyFromAiv()
+    {
+        WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
+    }
+
+    __aicore__ inline void NotifyCReadyToAiv()
+    {
+        SetAicToAiv<PIPE_FIX>(SYNC_C_READY);
+    }
+
+    __aicore__ inline void WaitCReadyFromAic()
+    {
+        WaitAicToAiv<PIPE_V>(SYNC_C_READY);
+    }
+
+    __aicore__ inline void NotifyCConsumedToAic()
+    {
+        SetAivToAic<PIPE_MTE3>(SYNC_C_CONSUMED);
+    }
+
+    __aicore__ inline void WaitCConsumedFromAiv()
+    {
+        WaitAivToAic<PIPE_FIX>(SYNC_C_CONSUMED);
+    }
+
     bool isAiv_;
     D128FastCube cube_;
     D128FastVec vec_;

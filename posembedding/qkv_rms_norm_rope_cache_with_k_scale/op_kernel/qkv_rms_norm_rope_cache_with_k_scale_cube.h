@@ -55,7 +55,6 @@ public:
     {
         const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
         LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[bufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        WaitAReadyFromAiv();
         ConsumePreprocessedA(tile, aRotL1Nz);
         (void)workspaceGm_;
         (void)cubeIndex_;

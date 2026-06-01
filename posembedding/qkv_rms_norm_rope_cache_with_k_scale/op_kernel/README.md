@@ -14,8 +14,8 @@ fast-path implementation is split by module:
 - `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level
   core token range helper, token-size tile expansion, and explicit AIC/AIV
   entry dispatch.
-- `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: lifecycle dispatch and
-  single-tile AIC/AIV compute entry points.
+- `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: lifecycle dispatch,
+  single-tile AIC/AIV compute entry points, and CrossCore tile protocol.
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vf.h`: D=128 RMSNorm + half-RoPE BF16
@@ -68,15 +68,16 @@ only selects data buffers; it is not used to derive CrossCore flag ids.
 | `C_CONSUMED` | AIV -> AIC | `PIPE_MTE3` | `PIPE_FIX` | `SYNC_C_CONSUMED = 2` |
 
 AIV code sets or waits only the base flag id. AIC wrappers handle both AIV0 and
-AIV1 using `flag + 16` for AIV1 and the base id for AIV0. T06 attaches
-`A_READY`: AIV notifies through `PIPE_MTE3` after the AL1 staging boundary, and
-AIC waits through `PIPE_MTE1` before consuming `a_rot_l1_nz`. `C_READY` and
-`C_CONSUMED` remain later-stage hooks.
+AIV1 using `flag + 16` for AIV1 and the base id for AIV0. Basic block owns the
+semantic CrossCore protocol: after Vec finishes the AL1 staging boundary for a
+tile, basic block notifies `A_READY` through `PIPE_MTE3`; before Cube consumes
+`a_rot_l1_nz`, basic block waits `A_READY` through `PIPE_MTE1`. `C_READY` and
+`C_CONSUMED` remain later-stage hooks in the same basic-block boundary.
 
 T05/T06 keep fixed intra-core event ids inside the AIV/AIC implementation
-classes. Basic block only dispatches lifecycle calls; it does not expose event
-ids or pipe-pair details. Event ids are local to their `HardEvent` pipe pair and
-are statically checked to stay in `0..5`.
+classes. Basic block owns only CrossCore protocol sequencing; it does not expose
+or manage intra-core event ids. Event ids are local to their `HardEvent` pipe
+pair and are statically checked to stay in `0..5`.
 
 | Pipe pair | Buffer | Event ids |
 |-----------|--------|-----------|
@@ -101,16 +102,17 @@ loads QKV/gamma/slot-mapping/cos-sin through the 2D copy helper, publishes and
 consumes the `MTE2 -> V` input-ready event, runs the D=128 VF for
 RMSNorm + half-RoPE into a BF16 ND staging area, converts that ND staging into
 the logical AL1 NZ buffer, waits for the private MTE3 completion event,
-releases input UB reuse, and then issues `A_READY`. AIC waits `A_READY` before
-touching the logical AL1 buffer. V preprocess/postprocess and Q/K dynamic
-quant/cache writeback are still later tasks.
+releases input UB reuse, and returns to basic block. Basic block then issues
+`A_READY`. On the AIC side, basic block waits `A_READY` before entering Cube
+compute that touches the logical AL1 buffer. V preprocess/postprocess and Q/K
+dynamic quant/cache writeback are still later tasks.
 
 T07 adds the AIC resident-rotation and Cube matmul slice. The AIC branch calls
 `PrepareRotationBeforeLoop()` after lifecycle init and before the tile loop,
 copies the external dense BF16 `[128,128]` `rotation` matrix to
 `rotation_l1_nz` with MTE2 ND2NZ, and uses a local `MTE2 -> MTE1` event for
 the resident L1 visibility boundary. No CrossCore flag is introduced for
-rotation. Per tile, AIC still waits `A_READY` from both AIVs before reading
-`a_rot_l1_nz`, then loads A and resident rotation into L0 in up-to-128-row M
-chunks and issues BF16 x BF16 -> FP32 MMAD into L0C. Fixpipe distribution,
-`C_READY`, and Q/K postprocess remain later tasks.
+rotation. Per tile, basic block still waits `A_READY` from both AIVs before
+entering Cube compute; Cube then loads A and resident rotation into L0 in
+up-to-128-row M chunks and issues BF16 x BF16 -> FP32 MMAD into L0C. Fixpipe
+distribution, `C_READY`, and Q/K postprocess remain later tasks.
