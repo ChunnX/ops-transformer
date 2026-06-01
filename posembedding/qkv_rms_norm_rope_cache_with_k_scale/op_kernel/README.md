@@ -148,15 +148,16 @@ staging. The Q branch writes `q_out` and `q_scale`; the K branch writes
 as V. Q/K FP8 staging reuses `qk_after_cube_ub`, and the corresponding local
 `V_MTE3`/`MTE3_V` handoff uses event ids `2/3`.
 
-T11 keeps the rolling schedule inside basic block, matching the grouped-matmul
-basic-block pattern where the block tracks pending state and `End()` drains the
-last stage. The controller only expands tiles. For tile `i`, AIV preprocesses
-Q/K/V, sends `A_READY`, completes V, then Q/K-postprocesses pending tile
-`i - 1`; after the token loop, `End()` drains the final pending tile. AIC keeps
-up to the output double-buffer depth in flight: before starting a tile it waits
+T11 keeps rolling scheduling in basic block while passing current/previous tile
+params from a controller-owned two-slot ring, matching the grouped-matmul
+`curOffsetParam/lastOffsetParam` pattern and avoiding a stored `TileParam`
+member in basic block. For tile `i`, AIV preprocesses Q/K/V, sends `A_READY`,
+completes V, then Q/K-postprocesses the previous ring slot when `i > 0`; after
+the token loop, `EndAiv(lastTile)` drains the final tile. AIC keeps up to the
+output double-buffer depth in flight: before starting a tile it waits
 `C_CONSUMED` only when the output DB window is full, then waits `A_READY`, runs
 Cube/Fixpipe, sends `C_READY`, and records one pending output consumption.
-`End()` waits the remaining `C_CONSUMED` events. This lets Cube/Fixpipe for
+`EndAic()` waits the remaining `C_CONSUMED` events. This lets Cube/Fixpipe for
 tile `i + 1` overlap with AIV Q/K postprocess for tile `i` when they use
 different output DB buffers. Every real tile still has balanced CrossCore
 counts: each AIV sets one `A_READY`, waits one `C_READY`, and sets one
