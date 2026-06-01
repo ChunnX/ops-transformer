@@ -57,17 +57,17 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
 
 // 入参教验
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
-                               const char* groupTp, int64_t quantMode, aclTensor* expandX, aclTensor* dynamicScales,
-                               aclTensor* expandIdx, aclTensor* expertTokensNums, aclTensor* epRecvCounts,
-                               aclTensor* tpRecvCounts)
+                               const char* groupTp, int64_t tpWorldSize, int64_t quantMode, aclTensor* expandX,
+                               aclTensor* dynamicScales, aclTensor* expandIdx, aclTensor* expertTokensNums,
+                               aclTensor* epRecvCounts, aclTensor* tpRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts),
         ACLNN_ERR_PARAM_NULLPTR);
-    const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
-    if (is910B) {
-        OP_LOGD("A2 platform, groupTp should be empty");
-        CHECK_RET(strnlen(groupTp, HCCL_GROUP_NAME_MAX) == 0, ACL_ERROR_INVALID_PARAM);
+    // TP (tensor parallelism) domain is no longer supported
+    if (tpWorldSize >= 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", tpWorldSize);
+        return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (quantMode == DISPATCH_DYNAMIC_QUANT_MODE) {
         OP_LOGD("quantMode = 2, dynamicScales can't be null");
@@ -96,8 +96,8 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const aclT
                                                                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnMoeDistributeDispatchGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, quantMode, expandX, dynamicScales, expandIdx,
-                                 expertTokensNums, epRecvCounts, tpRecvCounts);
+    auto ret_param = CheckParams(x, expertIds, groupEp, groupTp, tpWorldSize, quantMode, expandX, dynamicScales,
+                                 expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
@@ -118,16 +118,6 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(const aclTensor* x, const
                                                                         aclTensor* tpRecvCounts, aclTensor* expandScales,
                                                                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-        const char* groupTpEmptyWord = "";
-        aclnnStatus distributeDispatchRet = MoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
-                                                                                groupEp, epWorldSize, epRankId, moeExpertNum,
-                                                                                groupTpEmptyWord, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-                                                                                sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-                                                                                expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts, tpRecvCounts,
-                                                                                expandScales, workspaceSize, executor);
-        return distributeDispatchRet;
-    }
     aclnnStatus ret = MoeDistributeDispatchGetWorkspaceSize(x, expertIds, scales, xActiveMask, expertScales,
                                                                             groupEp, epWorldSize, epRankId, moeExpertNum,
                                                                             groupTp, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,

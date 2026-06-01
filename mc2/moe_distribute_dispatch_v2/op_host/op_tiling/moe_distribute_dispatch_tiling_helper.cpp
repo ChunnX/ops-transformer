@@ -137,13 +137,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckEpTpRecvTensorDim(
         epRecvCountStorageShape->GetStorageShape().GetDimNum()), return false);
     OP_LOGD(nodeName, "epRecvCount dim0 = %ld", epRecvCountStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *tpRecvCountStorageShape = context->GetOutputShape(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountStorageShape == nullptr,
-        OP_LOGE(nodeName, "tpRecvCountShape is null."), return false);
-    OP_TILING_CHECK(tpRecvCountStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "tpRecvCountShape dims must be 1, but current dim num is %lu.",
-        tpRecvCountStorageShape->GetStorageShape().GetDimNum()), return false);
-    OP_LOGD(nodeName, "tpRecvCount dim0 = %ld", tpRecvCountStorageShape->GetStorageShape().GetDim(0));
     return true;
 }
 
@@ -187,12 +180,6 @@ inline bool MoeDistributeDispatchTilingHelper::CheckCommonOutputTensorDataType(
     OP_TILING_CHECK(epRecvCountsDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(nodeName, "epRecvCounts datatype is invalid, datatype should be int32, but is %s.",
         Ops::Base::ToString(epRecvCountsDesc->GetDataType()).c_str()), return false);
-
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountsDesc == nullptr, OP_LOGE(nodeName, "tpRecvCountsDesc is null."), return false);
-    OP_TILING_CHECK(tpRecvCountsDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(nodeName, "tpRecvCounts datatype is invalid, datatype should be int32, but is %s.",
-        Ops::Base::ToString(tpRecvCountsDesc->GetDataType()).c_str()), return false);
 
     return true;
 }
@@ -425,11 +412,6 @@ bool MoeDistributeDispatchTilingHelper::CheckTensorFormat(const gert::TilingCont
     OP_TILING_CHECK(epRecvCountsDesc == nullptr, OP_LOGE(nodeName, "epRecvCountsDesc is null."), return false);
     OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(epRecvCountsDesc->GetStorageFormat())) ==
         ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "epRecvCounts format is invalid."), return false);
-
-    auto tpRecvCountsDesc = context->GetOutputDesc(OUTPUT_TP_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(tpRecvCountsDesc == nullptr, OP_LOGE(nodeName, "tpRecvCountsDesc is null."), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(tpRecvCountsDesc->GetStorageFormat())) ==
-        ge::FORMAT_FRACTAL_NZ, OP_LOGE(nodeName, "tpRecvCounts format is invalid."), return false);
 
     return true;
 }

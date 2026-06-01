@@ -155,6 +155,11 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
                                         assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
+    if (tpWorldSize >= 2) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "tpWorldSize >= 2 is NOT supported, got tpWorldSize=%ld.", tpWorldSize);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
     const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
