@@ -32,6 +32,17 @@
 #define BUFFERS_POLICY_H
 #endif
 
+// buffers_policy.h 原本定义的数值宏，随守卫一并提供
+#ifndef NUM_2
+#define NUM_2 2
+#endif
+#ifndef NUM_3
+#define NUM_3 3
+#endif
+#ifndef NUM_4
+#define NUM_4 4
+#endif
+
 #include "lib/matmul_intf.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
