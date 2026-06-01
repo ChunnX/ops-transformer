@@ -76,7 +76,6 @@ private:
     static constexpr uint32_t QK_PREPROCESS_SCRATCH_FLOAT_ELEMENTS =
         (QKV_RRC_OUTPUT_ONE_BUFFER_BYTES - QK_PREPROCESS_BF16_ND_BYTES) / sizeof(float);
     static constexpr uint32_t QK_PREPROCESS_ROW_FLOAT_ELEMENTS = QKV_RRC_HEAD_DIM_D128;
-    static constexpr uint32_t QKV_RRC_NZ_C0 = 16U;
     static constexpr float QKV_RRC_HEAD_DIM_D128_RECIP = 1.0F / static_cast<float>(QKV_RRC_HEAD_DIM_D128);
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE = 0U;

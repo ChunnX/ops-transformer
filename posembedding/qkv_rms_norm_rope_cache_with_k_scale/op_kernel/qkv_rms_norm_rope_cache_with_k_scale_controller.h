@@ -110,6 +110,7 @@ private:
         const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
         D128FastBasicBlock basicBlock;
         basicBlock.InitAic(tensors, cubeIndex);
+        basicBlock.PrepareBeforeLoopAic();
         ForEachTileAic(basicBlock, tilingData, tokenRange);
         basicBlock.End();
     }

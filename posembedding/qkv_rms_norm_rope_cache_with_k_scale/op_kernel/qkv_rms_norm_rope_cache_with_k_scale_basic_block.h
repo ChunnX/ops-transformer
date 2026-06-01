@@ -38,6 +38,11 @@ public:
         cube_.ComputeTile(tile);
     }
 
+    __aicore__ inline void PrepareBeforeLoopAic()
+    {
+        cube_.PrepareRotationBeforeLoop();
+    }
+
     __aicore__ inline void ComputeTileAiv(const TileParam &tile)
     {
         vec_.ComputeTile(tile);

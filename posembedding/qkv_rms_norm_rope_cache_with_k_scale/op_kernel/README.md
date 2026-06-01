@@ -85,6 +85,7 @@ are statically checked to stay in `0..5`.
 | `MTE3 -> V` | v-out DB pool reuse | `0/1` |
 | `MTE3 -> V` | output DB pool Q/K reuse | `2/3` |
 | `V -> MTE3` / `MTE3 -> V` | AIV-private AL1 staging pipe boundary | `4` |
+| `MTE2 -> MTE1` | resident AIC rotation L1 ready | `5` |
 | `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
 | `MMAD -> FIX` / `FIX -> MMAD` | AIC L0C pingpong path | `0/1` |
 
@@ -103,3 +104,13 @@ the logical AL1 NZ buffer, waits for the private MTE3 completion event,
 releases input UB reuse, and then issues `A_READY`. AIC waits `A_READY` before
 touching the logical AL1 buffer. V preprocess/postprocess and Q/K dynamic
 quant/cache writeback are still later tasks.
+
+T07 adds the AIC resident-rotation and Cube matmul slice. The AIC branch calls
+`PrepareRotationBeforeLoop()` after lifecycle init and before the tile loop,
+copies the external dense BF16 `[128,128]` `rotation` matrix to
+`rotation_l1_nz` with MTE2 ND2NZ, and uses a local `MTE2 -> MTE1` event for
+the resident L1 visibility boundary. No CrossCore flag is introduced for
+rotation. Per tile, AIC still waits `A_READY` from both AIVs before reading
+`a_rot_l1_nz`, then loads A and resident rotation into L0 in up-to-128-row M
+chunks and issues BF16 x BF16 -> FP32 MMAD into L0C. Fixpipe distribution,
+`C_READY`, and Q/K postprocess remain later tasks.

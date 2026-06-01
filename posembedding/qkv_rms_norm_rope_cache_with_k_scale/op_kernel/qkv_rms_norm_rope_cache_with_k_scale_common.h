@@ -23,6 +23,7 @@ using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTi
 constexpr uint32_t QKV_RRC_MIX_AIV_PER_AIC = 2U;
 constexpr uint32_t QKV_RRC_DOUBLE_BUFFER_NUM = 2U;
 constexpr uint32_t QKV_RRC_HEAD_DIM_D128 = 128U;
+constexpr uint32_t QKV_RRC_NZ_C0 = 16U;
 constexpr uint32_t QKV_RRC_BLOCK_BYTES = 32U;
 constexpr uint32_t QKV_RRC_KIB = 1024U;
 
