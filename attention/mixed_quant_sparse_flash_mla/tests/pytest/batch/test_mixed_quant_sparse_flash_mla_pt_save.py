@@ -31,8 +31,6 @@ excel_file = os.environ.get("QSMLA_EXCEL", "./excel/example.xlsx")
 sheet_name = os.environ.get("QSMLA_SHEET", "decode")
 ENABLED_PARAMS = utils.load_excel_test_cases(excel_file, sheet_name)
 
-env_prefix = os.environ.get("QSMLA_PREFIX", "")
-
 param_combinations = []
 for _, params in enumerate(ENABLED_PARAMS):
     normalized_params = {}
@@ -48,7 +46,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
-    normalized_params["tc_prefix"] = params.get("tc_prefix", env_prefix) or env_prefix
+    normalized_params["tc_prefix"] = params.get("tc_prefix", "")
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
