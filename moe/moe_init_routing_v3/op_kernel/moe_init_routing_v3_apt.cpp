@@ -295,7 +295,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, float32_t>::value || IsSameType<DTYPE_X, int8_t>::value ||
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
             TPipe rowIdxGatherDropPadPipe;
-            MoeV3SrcToDstWithCapacity<DTYPE_X> rowIdxGatherDropPadOp;
+            MoeV3RowIdxGatherDropPad<DTYPE_X> rowIdxGatherDropPadOp;
             rowIdxGatherDropPadOp.Init(expandedRowIdx, expandedX, expandedScale, userWS, t, &rowIdxGatherDropPadPipe);
             rowIdxGatherDropPadOp.Process();
             rowIdxGatherDropPadPipe.Destroy();
@@ -336,7 +336,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_X, hifloat8_t>::value) {
             // 非量化、Drop/Pad
             TPipe gatherPipe;
-            MoeGatherOutDroppad<DTYPE_X> gatherDroppadOp;
+            MoeV3GatherOutDropPad<DTYPE_X> gatherDroppadOp;
             gatherDroppadOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherDroppadOp.Process();
             gatherPipe.Destroy();

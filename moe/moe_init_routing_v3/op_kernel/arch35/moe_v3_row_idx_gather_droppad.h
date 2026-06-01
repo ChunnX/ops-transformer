@@ -22,9 +22,9 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV3SrcToDstWithCapacity {
+class MoeV3MoeV3RowIdxGatherDropPad {
 public:
-    __aicore__ inline MoeV3SrcToDstWithCapacity(){};
+    __aicore__ inline MoeV3RowIdxGatherDropPad(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale, GM_ADDR workspace,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -81,7 +81,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::AssistInit()
 {
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         LocalTensor<uint8_t> outLocal = copyOutZeroQueue_.AllocTensor<uint8_t>();
@@ -114,7 +114,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::AssistInit()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyScaleZeroOut(int64_t index)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyScaleZeroOut(int64_t index)
 {
     if (this->isInputScale_ != 1) {
         return;
@@ -125,7 +125,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyScaleZeroOut(int64_t in
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyIn(int64_t progress)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyIn(int64_t progress)
 {
     LocalTensor<int32_t> inLocal = copyInQueue_.AllocTensor<int32_t>();
     int64_t length = Align(currentLoopRows_, sizeof(int32_t));
@@ -135,7 +135,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyIn(int64_t progress)
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOut(int64_t progress)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOut(int64_t progress)
 {
     LocalTensor<int32_t> inLocal = copyInQueue_.DeQue<int32_t>();
     LocalTensor<int32_t> outLocal = copyOutQueue_.AllocTensor<int32_t>();
@@ -189,7 +189,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOut(int64_t progress)
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOutRemain()
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
 {
     if (this->blockIdx_ != this->srcToDstTilingData_->needCoreNum - 1) {
         if constexpr (IsSameType<T, hifloat8_t>::value) {
@@ -235,7 +235,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::CopyOutRemain()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::SyncAll()
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::SyncAll()
 {
     if (coreNum_ == 1) {
         return;
@@ -246,10 +246,10 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::SyncAll()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                          GM_ADDR expandedScale, GM_ADDR workspace,
-                                                          const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                                          TPipe *tPipe)
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+                                                         GM_ADDR expandedScale, GM_ADDR workspace,
+                                                         const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                         TPipe *tPipe)
 {
     int64_t blockNum = GetBlockNum();
     pipe_ = tPipe;
@@ -305,7 +305,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
     // expert_tokens_count.h偏移: Align(n*k)*2 + Align(actualExpertNum)*2
     int64_t actualExpertNumOffset = Align(tilingData->actualExpertNum, sizeof(int32_t)) * 2;
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset, 
+        (__gm__ int32_t *)workspace + length * 2 + actualExpertNumOffset,
         this->coreNum_ * 2);
 
     pipe_->InitBuffer(copyInQueue_, 1, AlignBytes(this->perLoopRows_, sizeof(int32_t)) * 2);
@@ -321,7 +321,7 @@ __aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Init(GM_ADDR expandedRowIdx
 }
 
 template <typename T>
-__aicore__ inline void MoeV3SrcToDstWithCapacity<T>::Process()
+__aicore__ inline void MoeV3RowIdxGatherDropPad<T>::Process()
 {
     if (this->blockIdx_ < this->srcToDstTilingData_->needCoreNum) {
         AssistInit();
