@@ -134,8 +134,6 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckAttrsInfo(const gert::TilingConte
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commMode == nullptr, OP_LOGE(opName, "The input attr comm_mode is null pointer."),
-                    return ge::GRAPH_FAILED);
     // 判断group是否超过127
     size_t groupLen = strlen(group);
     OP_TILING_CHECK(groupLen > MAX_GROUP_NAME_LEN,
