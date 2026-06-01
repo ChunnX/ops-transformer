@@ -147,10 +147,10 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
          ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, // placeholder
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, // placeholder
         *mmXShape,
-        *mmWeightShape,
+        *mmWeightShape, 
     };
 }
 
@@ -158,14 +158,10 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
     const TilingParams& tilingParams,
     const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmYShape
 ) {
-    auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
-        gert::TilingContextPara::TensorDescription{
-            {{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
-            ge::DT_FLOAT16, ge::FORMAT_ND} : *mmYShape;
     return {
         {{{tilingParams.A, tilingParams.gmmYDim1}, {tilingParams.A, tilingParams.gmmYDim1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        mmYDesc,
+        *mmYShape,
         {{{tilingParams.A, tilingParams.H1}, {tilingParams.A, tilingParams.H1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
     };
@@ -222,10 +218,10 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
 
     std::vector<std::string> targets = {"BS", "H2", "mmWeightDim0", "N2"};
 
-    auto mmXShape = CreateTensorShape({{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}},
+    auto mmXShape = CreateTensorShape({{tilingParams.BS, tilingParams.H2}, {tilingParams.BS, tilingParams.H2}}, 
                                         ge::DT_FLOAT16, ge::FORMAT_ND);
-    auto mmWeightShape = CreateTensorShape({{tilingParams.mmWeightDim0, tilingParams.N2},
-                                              {tilingParams.mmWeightDim0, tilingParams.N2}},
+    auto mmWeightShape = CreateTensorShape({{tilingParams.mmWeightDim0, tilingParams.N2}, 
+                                              {tilingParams.mmWeightDim0, tilingParams.N2}}, 
                                               ge::DT_FLOAT16, ge::FORMAT_ND);
     auto mmYShape = CreateTensorShape({{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
                                          ge::DT_FLOAT16, ge::FORMAT_ND);
@@ -233,6 +229,7 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
     if (!(has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.isNeedMM == false)) {
         mmXShape->shape_ = {};
         mmWeightShape->shape_ = {};
+        mmYShape->shape_ = {};
     }
 
     gert::TilingContextPara tilingContextPara(
@@ -284,7 +281,7 @@ static TestParam testParams[] = {
     {"Test_H_3", {{"H2", "7168"}, {"mmWeightDim0", "7169"}, {"permuteOutFlag", "true"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_H_4", {{"H1", "65536"}, {"permuteOutFlag", "true"}}, {}, {}, ge::GRAPH_FAILED},
     {"Test_send_counts_0",
-     {{"BSK", "16386"}, {"BS", "2048"}, {"permuteOutFlag", "true"}},
+     {{"BSK", "16386"}, {"permuteOutFlag", "true"}},
      {{"sendCounts",
        std::vector<int64_t>{
            3201, 3201, 3200, 3200, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
@@ -328,15 +325,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, H4)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4096, 7169}, {4096, 7169}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
@@ -365,15 +362,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4097, 7168}, {4097, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
@@ -402,16 +399,16 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, BS1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2047, 64}, {2047, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-    },
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },    
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -438,17 +435,17 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim1)
     {
         {{{2, 4096, 7168}, {2, 4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-    },
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },    
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -475,17 +472,17 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim2)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 4096}, {7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-    },
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+    },    
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
         {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
@@ -512,15 +509,16 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim3)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        
     },
     {
-        {{{4096, 4097}, {4096, 4097}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -548,15 +546,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim5)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2, 2048, 7168}, {2, 2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},  
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2047, 64}, {2047, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -584,15 +582,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim6)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 7168, 64}, {2, 7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2047, 64}, {2047, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -620,15 +618,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim7)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 7168, 64}, {2, 7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},     
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2047, 64}, {2047, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -656,15 +654,15 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim10)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4096}, {4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
@@ -693,15 +691,16 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, TransMmWeight1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{64, 7169}, {64, 7169}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{2048, 64}, {2048, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
@@ -709,7 +708,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, TransMmWeight1)
         {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(sendCounts)},
         {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
         {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+        {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
     },
     &compileInfo, socVersion, coreNum, ubSize, tilingDataSize);
