@@ -339,18 +339,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
 
-    LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
-    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
-    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
-    Sum(sumOutTensor, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
-
-    SyncFunc<AscendC::HardEvent::V_S>();
-
-    LocalTensor<int64_t> resTensor = sumOutTensor.template ReinterpretCast<int64_t>();
-    int64_t totalCnt = resTensor.GetValue(0);
-
-    SyncFunc<AscendC::HardEvent::S_V>();
-    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
 }
 
 template <TemplateMegaMoeTypeClass>
