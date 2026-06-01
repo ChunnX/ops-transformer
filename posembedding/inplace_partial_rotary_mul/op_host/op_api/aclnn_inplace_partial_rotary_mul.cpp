@@ -16,7 +16,6 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "aclnn_kernels/contiguous.h"
 
 using namespace op;
 
@@ -24,52 +23,14 @@ using namespace op;
 extern "C" {
 #endif
 
-namespace {
-
-static inline bool TensorContiguousProcess(const aclTensor *&contiguousTensor, aclOpExecutor *executor)
-{
-    if (contiguousTensor == nullptr) {
-        OP_LOGD("InplacePartialRotaryMul no need to do contiguous process.");
-        return true;
-    }
-
-    contiguousTensor = l0op::Contiguous(contiguousTensor, executor);
-    CHECK_RET(contiguousTensor != nullptr, false);
-    return true;
-}
-
-static aclnnStatus PreProcess(const aclTensor *&x, const aclTensor *&cos, const aclTensor *&sin,
-                              aclOpExecutor *executor)
-{
-    CHECK_RET(TensorContiguousProcess(x, executor), ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(TensorContiguousProcess(cos, executor), ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(TensorContiguousProcess(sin, executor), ACLNN_ERR_INNER_NULLPTR);
-    return ACLNN_SUCCESS;
-}
-
 static aclnnStatus InplacePartialRotaryMulCommonProcess(const aclTensor *x, const aclTensor *cos, const aclTensor *sin,
                                                          int64_t mode, const aclIntArray *partialSlice,
                                                          aclOpExecutor *executor)
 {
-    const aclTensor *xProcessed = x;
-    const aclTensor *cosProcessed = cos;
-    const aclTensor *sinProcessed = sin;
-
-    auto ret = PreProcess(xProcessed, cosProcessed, sinProcessed, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    auto result = l0op::InplacePartialRotaryMul(xProcessed, cosProcessed, sinProcessed, mode, partialSlice, executor);
+    auto result = l0op::InplacePartialRotaryMul(x, cos, sin, mode, partialSlice, executor);
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    auto xContiguous = l0op::Contiguous(x, executor);
-    CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    auto viewCopyResult = l0op::ViewCopy(result, xContiguous, executor);
-    CHECK_RET(viewCopyResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     return ACLNN_SUCCESS;
-}
-
 }
 
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(const aclTensor* x, const aclTensor* cos, const aclTensor* sin,
