@@ -30,6 +30,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchSetupTilingData);
     TPipe pipe;
     auto tiling = (__gm__ MoeDistributeDispatchSetupTilingData*)tilingGM;
+    int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #if (ORIG_DTYPE_Y == DT_BF16 || ORIG_DTYPE_Y == DT_FLOAT16)
     if (TILING_KEY_IS(1000)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
@@ -76,7 +77,7 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
             workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-
 #endif
+    AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
