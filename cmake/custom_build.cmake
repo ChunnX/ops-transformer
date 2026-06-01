@@ -228,6 +228,11 @@ if (BUILD_OPEN_PROJECT)
             CONFIG ${OP_DEBUG_CONFIG}
     )
 
+    add_opc_config_bisheng_flags(
+            OP_NAME "ALL"
+            BISHENG_FLAGS ${BISHENG_FLAGS}
+    )
+
     if(ADD_OPS_COMPILE_OPTION_V2)
         add_ops_compile_options(
                 OP_NAME "ALL"

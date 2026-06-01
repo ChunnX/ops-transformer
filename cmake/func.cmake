@@ -394,6 +394,40 @@ function(add_opc_config)
     endif()
 endfunction()
 
+function(add_opc_config_bisheng_flags)
+    cmake_parse_arguments(OP_COMPILE "" "OP_NAME" "COMPUTE_UNIT;BISHENG_FLAGS" ${ARGN})
+
+    if(NOT ADD_OPS_COMPILE_OPTION_V2)
+        return()
+    endif()
+
+    if(NOT OP_COMPILE_BISHENG_FLAGS)
+        return()
+    endif()
+
+    set(_OPC_CONFIG)
+    string(REPLACE "," ";" OP_COMPILE_BISHENG_FLAGS_LIST "${OP_COMPILE_BISHENG_FLAGS}")
+
+    foreach(_option ${OP_COMPILE_BISHENG_FLAGS_LIST})
+        if("${_option}" STREQUAL "ccec_g")
+            list(APPEND _OPC_CONFIG "-g")
+        elseif("${_option}" STREQUAL "ccec_O0")
+            list(APPEND _OPC_CONFIG "-O0")
+        elseif("${_option}" STREQUAL "sanitizer")
+            list(APPEND _OPC_CONFIG "-sanitizer")
+        elseif("${_option}" STREQUAL "dump_cce")
+            list(APPEND _OPC_CONFIG "--save-temp-files")
+        endif()
+    endforeach()
+
+    if(_OPC_CONFIG)
+        add_ops_compile_options(
+                OP_NAME ${OP_COMPILE_OP_NAME}
+                OPTIONS ${_OPC_CONFIG}
+        )
+    endif()
+endfunction()
+
 function(add_ops_src_copy)
     cmake_parse_arguments(SRC_COPY "" "TARGET_NAME;SRC;DST;BE_RELIED;COMPUTE_UNIT" "" ${ARGN})
 
