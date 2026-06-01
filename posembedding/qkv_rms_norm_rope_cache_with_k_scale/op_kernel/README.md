@@ -105,10 +105,9 @@ loads QKV/gamma/slot-mapping/cos-sin through the 2D copy helper, publishes and
 consumes the `MTE2 -> V` input-ready event, runs the D=128 VF for
 RMSNorm + half-RoPE into a BF16 ND staging area, converts that ND staging into
 the logical AL1 NZ buffer, waits for the private MTE3 completion event,
-releases input UB reuse, and returns to basic block. Basic block then issues
-`A_READY`. On the AIC side, basic block waits `A_READY` before entering Cube
-compute that touches the logical AL1 buffer. V preprocess/postprocess and Q/K
-dynamic quant/cache writeback are still later tasks.
+and returns to basic block. Basic block then issues `A_READY`. On the AIC
+side, basic block waits `A_READY` before entering Cube compute that touches
+the logical AL1 buffer.
 
 T07 adds the AIC resident-rotation and Cube matmul slice. The AIC branch calls
 `PrepareRotationBeforeLoop()` after lifecycle init and before the tile loop,
@@ -123,9 +122,8 @@ T08 adds AIC Fixpipe distribution from L0C to the shared output DB pool in AIV
 UB. Cube derives the AIV0/AIV1 split from the actual per-tile token split,
 emits the intersecting row ranges with single-target Fixpipe and `subBlockId`
 0/1, then releases L0C for reuse. Basic block owns the CrossCore sequencing:
-after Cube compute AIC sends `C_READY`, and the AIV side waits it before
-signaling the current placeholder `C_CONSUMED`. Q/K postprocess will replace
-that placeholder consumption in T10.
+after Cube compute AIC sends `C_READY`, and the AIV side waits it before Q/K
+postprocess and `C_CONSUMED`.
 
 T09 adds the V branch early postprocess without moving CrossCore sync into Vec.
 The AIV basic-block path now preprocesses Q/K/V, notifies `A_READY`, runs V
@@ -137,3 +135,13 @@ the VF function, then scatters the packed FP8 rows into `v_cache` by
 `slot_mapping`, cache block, cache head, and cache token strides. `v_out_ub`
 uses local `V_MTE3`/`MTE3_V` event ids `0/1`; CrossCore calls remain only in
 basic block through the semantic wrappers.
+
+T10 adds Q/K postprocess after `C_READY` and before `C_CONSUMED`. Basic block
+still owns the semantic CrossCore calls; Vec only consumes the already-visible
+`qk_after_cube_ub`, quantizes it, and writes results. `QkDynamicQuantD128Vf`
+keeps the row loop and numeric work inside VF: D=128 FP32 row load,
+`max_abs`, `scale = max_abs / 448`, divide, FP8 RINT/SAT cast, and scale
+staging. The Q branch writes `q_out` and `q_scale`; the K branch writes
+`k_cache` and `k_scale_cache` using the same slot-to-cache address calculation
+as V. Q/K FP8 staging reuses `qk_after_cube_ub`, and the corresponding local
+`V_MTE3`/`MTE3_V` handoff uses event ids `2/3`.
