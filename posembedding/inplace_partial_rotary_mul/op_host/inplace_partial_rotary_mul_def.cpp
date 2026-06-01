@@ -45,8 +45,13 @@ public:
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("partial_slice").AttrType(OPTIONAL).ListInt({0, 0});
 
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910_93");
+        OpAICoreConfig membaseCfg;
+        membaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "inplace_partial_rotary_mul");
+        this->AICore().AddConfig("ascend910b", membaseCfg);
+        this->AICore().AddConfig("ascend910_93", membaseCfg);
 
         OpAICoreConfig config950;
         config950.Input("x")
@@ -75,7 +80,7 @@ public:
         config950.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
-            .ExtendCfgInfo("opFile.value", "inplace_partial_rotary_mul");
+            .ExtendCfgInfo("opFile.value", "inplace_partial_rotary_mul_apt");
         this->AICore().AddConfig("ascend950", config950);
     }
 };
