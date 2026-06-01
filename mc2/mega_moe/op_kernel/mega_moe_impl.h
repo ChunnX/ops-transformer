@@ -312,6 +312,13 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
         startBlockIdx = (startBlockIdx + tileNum) % blockNum;
         return;
     }
+
+    typename BlockMmad::L1Params l1Params{
+        .kL1 = L1_TILE_K,
+        .scaleKL1 = 4096, // MX_SCALE_K_L1_SIZE in block_mmad_mx_fp8fp4.h
+        .l1BufNum = 2
+    };
+
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         // Init parameters match the original internal constants & runtime behavior:
@@ -320,11 +327,6 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
         //   l0TileShape.k = 128 — original l0KSize for 256×256 tiles
         //   problemShape.K = k — original kSize from tensorA.Layout() (full problem K, not tile K)
         bool enableL0CPingPong = false;
-        typename BlockMmad::L1Params l1Params{
-            .kL1 = L1_TILE_K,
-            .scaleKL1 = 4096, // MX_SCALE_K_L1_SIZE in block_mmad_mx_fp8fp4.h
-            .l1BufNum = 2
-        };
         typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{m, outputN, k, 0};
         blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
@@ -375,7 +377,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
                     auto nOffset = nLoc + weightBlock * outputN;
                     auto mL1Size = Get<M_VALUE>(actualShape);
                     auto nL1Size = Get<N_VALUE>(actualShape);
-                    blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
+                    blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n, l1Params.kL1);
                 }
                 WaitForCubeFinishCopyout();
             }
@@ -681,6 +683,13 @@ __aicore__ inline void GroupMatmul2A8W4(
         startBlockIdx = (startBlockIdx + tileNum) % blockNum;
         return;
     }
+
+    typename BlockMmad::L1Params l1Params{
+        .kL1 = L1_TILE_K,
+        .scaleKL1 = 4096, // MX_SCALE_K_L1_SIZE in block_mmad_mx_fp8fp4.h
+        .l1BufNum = 2
+    };
+
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
         // Init parameters match the original internal constants & runtime behavior:
@@ -689,11 +698,6 @@ __aicore__ inline void GroupMatmul2A8W4(
         //   l0TileShape.k = 128 — original l0KSize for 256×256 tiles
         //   problemShape.K = k — original kSize from tensorA.Layout() (full K for this group, not tile K)
         bool enableL0CPingPong = false;
-        typename BlockMmad::L1Params l1Params{
-            .kL1 = L1_TILE_K,
-            .scaleKL1 = 4096, // MX_SCALE_K_L1_SIZE in block_mmad_mx_fp8fp4.h
-            .l1BufNum = 2
-        };
         typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{m, n, k, 0};
         blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
@@ -735,7 +739,7 @@ __aicore__ inline void GroupMatmul2A8W4(
         }
     } else {
         if (subBlockIdx == 0) {
-        BlockPrologue blockPrologue;
+            BlockPrologue blockPrologue;
             for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
                 auto blockCoord = scheduler.GetBlockCoord(loopIdx);
                 auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -747,7 +751,7 @@ __aicore__ inline void GroupMatmul2A8W4(
                 auto nOffset = nLoc;
                 auto mL1Size = Get<M_VALUE>(actualShape);
                 auto nL1Size = Get<N_VALUE>(actualShape);
-                blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n);
+                blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n, l1Params.kL1);
                 WaitForCubeFinishCopyout();
             }
         } else {
