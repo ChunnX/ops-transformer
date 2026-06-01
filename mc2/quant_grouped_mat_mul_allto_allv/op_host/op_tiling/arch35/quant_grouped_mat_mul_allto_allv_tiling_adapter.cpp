@@ -110,8 +110,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParamete
 
 ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::Process()
 {
-    GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
-    GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
+    MC2_CHECK_GRAPH_STATUS(inputParams_.opName, DoOpTiling());
+    MC2_CHECK_GRAPH_STATUS(inputParams_.opName, DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 
