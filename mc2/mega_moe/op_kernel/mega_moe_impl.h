@@ -151,6 +151,23 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
+    // L2 cache hint：打在 Te:: tensor 上（ViewEngine.mode），被 gm_to_l1 DMA 通过 src.Engine().GetCacheMode() 读取。
+    // 类型必须是 AscendC::Te::CacheMode（位于 tensor_api/utils/utils.h），不要跟 AscendC::CacheMode 混。
+    //
+    // 条件 DISABLE 而非无脑全 DISABLE，关键：L2 是跨核共享的，一个 wave 内多个 cube 核可能读同一份切片。
+    //   B 在 M 方向被 CeilDiv(m, L1_TILE_M) 次读：==1 表示无跨 m-tile reuse → DISABLE 省 HBM 带宽；
+    //                                           >1 表示有 reuse → 保 NORMAL 让 L2 hit。
+    //   A 在 N 方向被 CeilDiv(n, L1_TILE_N) 次读：==1 → DISABLE；>1 → NORMAL。
+    // 无脑全 DISABLE 会破坏跨核 A 复用，导致 16 个核都直接打 HBM，反而劣化。
+    if (CeilDiv(m, L1_TILE_M) == 1) {
+        gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+    }
+    if (CeilDiv(n, L1_TILE_N) == 1) {
+        gmA.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        gmScaleA.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+    }
+
     // Scheduler 的 N 轴：
     //   非交织：在 swiglu 输出 N (= outputN = n/2) 上 tile，每个 scheduler tile = 1 个 swiglu 输出块（覆盖 B 的 2 个 256 列段）
     //   交织  ：在 mmad 输出 N (= n，全 B 宽) 上 tile，每个 scheduler tile = 1 次 mmad（256 列 = 128 gate + 128 up）
@@ -352,210 +369,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     }
 }
 
-// GroupMatmul2 - GMM2矩阵乘法，直接输出到GM（参考kernel_qbmm_mx.h的做法）
-//   coreInGroup / coresPerWave 控制本核在 wave 内的分片任务；
-//   groupIdx 即 expertIdx，传给 CombineTile 用于查 tokenPerExpert；
-//   waveRowOffset 是本 wave 在 expert 内的起始行，用于把 wave 内 mLoc 翻译成 expert 内行号。
-//   IsInterleaved 必须与 GMM1 保持一致——决定等待 GMM1 完成 flag 的目标计数：
-//      非交织：targetLoops = (waveM/L1_TILE_M) * (outputN/L1_TILE_N)
-//      交织  ：targetLoops = (waveM/L1_TILE_M) * (n/L1_TILE_N)  ，是非交织的 2 倍。
-// template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
-//           bool IsInterleaved = false>
-// __aicore__ inline void GroupMatmul2(
-//     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-//     const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave,
-//     uint32_t groupIdx, int32_t rankId, uint64_t waveRowOffset,
-//     int waveTraceIdx)
-// {
-//     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
-//     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
-//     gmBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bGlobal));
-//     gmScaleAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aScaleGlobal));
-//     gmScaleBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bScaleGlobal));
-
-//     uint32_t m = Get<M_VALUE>(problemShape);
-//     uint32_t n = Get<K_VALUE>(problemShape);
-//     uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
-
-//     // 绝对的 cube 核 id，用于 rowReadyFlags 这种逐核计数器
-//     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-
-//     GlobalTensor<int32_t> groupFlagListGm;
-//     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
-
-//     // 信号量表，每个核心一个计数器
-//     GlobalTensor<int32_t> rowReadyFlags;
-//     rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrGmm2RowReady);
-
-//     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-
-//     constexpr bool transA = false;
-//     constexpr bool transB = true;
-
-//     constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-//     constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
-//     constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
-//     constexpr uint32_t c0SizeScale = 2U;
-
-//     using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-//     using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
-//     using LayoutBias = Te::NDExtLayoutPtn;
-//     using LayoutC = Te::NDExtLayoutPtn;
-
-//     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-//     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
-//     using MakeLayoutScaleA = Std::conditional_t<
-//         transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
-//         Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
-//     using MakeLayoutScaleB = Std::conditional_t<
-//         transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
-//         Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
-//     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
-
-//     auto layoutA = MakeLayoutA{}(m, k);
-//     auto layoutB = MakeLayoutB{}(k, n);
-//     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
-//     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-//     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
-//     auto layoutC = MakeLayoutC{}(m, n);  // 使用完整m,n而不是tile大小
-
-//     using BiasType = float;
-//     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
-//     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
-//         DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC, BiasType, LayoutBias, void>;
-//     BlockMmad blockMmad;
-//     bool enableL0CPingPong = false;
-//     typename BlockMmad::L1Params l1Params{
-//         .kL1 = L1_TILE_K,
-//         .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
-//         .l1BufNum = 2
-//     };
-//     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
-//     typename BlockMmad::TupleShape matmulShape{m, n, k};
-//     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
-
-//     auto gmC = Te::MakeTensor(
-//         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
-
-//     auto gmA = Te::MakeTensor(
-//         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)), layoutA);
-//     auto gmB = Te::MakeTensor(
-//         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)), layoutB);
-//     auto gmScaleA = Te::MakeTensor(
-//         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-//         layoutScaleA);
-//     auto gmScaleB = Te::MakeTensor(
-//         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-//         layoutScaleB);
-//     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
-
-//     BlockScheduler scheduler(
-//         {m, n, k},
-//         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
-//     uint32_t tileNum = scheduler.GetTileNum();
-
-//     // 本核负责本 wave 内 loopIdx ∈ {coreInGroup, coreInGroup + coresPerWave, ...} 的 tile
-//     for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
-//         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
-//         auto actualShape = scheduler.GetBlockShape(blockCoord);
-
-//         uint32_t mLoc = Get<M_VALUE>(blockCoord);
-//         uint32_t nLoc = Get<N_VALUE>(blockCoord);
-//         uint32_t kLoc = Get<K_VALUE>(blockCoord);
-
-//         bool isFirstTile = (loopIdx == coreInGroup);
-//         bool isLastTile = (loopIdx + coresPerWave >= tileNum);
-
-//         if constexpr (g_coreType == AscendC::AIC) {
-//             // AIC: 执行gmm2计算
-//             if (loopIdx == coreInGroup) {
-//                 // GMM1 实际 tile 数（用于 wait flag 目标计数）：
-//                 //   非交织：GMM1 scheduler 在 {m, k=outputN, n=k_orig} 上 tile L1_TILE_M×L1_TILE_N
-//                 //   交织  ：GMM1 scheduler 在 {m, k_full=outputN*2, n=k_orig} 上 tile，N 方向 tile 数翻倍
-//                 int64_t schedulerN = static_cast<int64_t>(k);
-//                 if constexpr (IsInterleaved) {
-//                     schedulerN = schedulerN * static_cast<int64_t>(SWIGLU_N_HALF);
-//                 }
-//                 BlockScheduler gmmBlockScheduler(
-//                     {static_cast<int64_t>(m), schedulerN, static_cast<int64_t>(n)},
-//                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M),
-//                         static_cast<int64_t>(L1_TILE_N))});
-//                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
-//                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
-//                 while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-//                     int64_t st = AscendC::GetSystemCycle();
-//                     while (AscendC::GetSystemCycle() - st < 100) {
-//                     }
-//                 }
-//                 // [TRACE] sp7: AIC 第一个 tile 等到 GMM1 swiglu flag
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
-//             }
-
-//             auto gmBlockA = gmA.Slice(
-//                 Te::MakeCoord(mLoc, kLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-//             auto gmBlockScaleA = gmScaleA.Slice(
-//                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-//                 Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
-
-//             auto gmBlockC = gmC.Slice(
-//                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-
-//             auto gmBlockB = gmB.Slice(
-//                 Te::MakeCoord(kLoc, nLoc), Te::MakeShape(Get<K_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
-//             auto gmBlockScaleB = gmScaleB.Slice(
-//                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-//                 Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
-
-//             typename BlockMmad::BlockShape singleShape{
-//                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
-//             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-//             event_t eventIdFIX_S = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
-//             SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
-//             WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
-//             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
-
-//             // [TRACE] sp8 / sp9: AIC GMM2 first / last tile 完成（mmad+atomic_add 后）
-//             if (isFirstTile) {
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
-//             }
-//             if (isLastTile) {
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
-//             }
-//         } else {
-//             // AIV: 等待对应C核完成并combine发送
-//             while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
-//                 int64_t st = GetSystemCycle();
-//                 while (GetSystemCycle() - st < 100) {}
-//             }
-//             // [TRACE] sp7: AIV1 第一个 tile 等到 rowReady flag
-//             if (isFirstTile) {
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
-//             }
-//             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
-//             // 裸分配UB用于GM→UB→远端GM（与gmm1串行，offset 0不冲突）
-//             int64_t ubOffset = 0;
-//             LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-//             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
-//                 groupIdx, mLoc, nLoc, n, rankId,
-//                 gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape, waveRowOffset);
-
-//             // [TRACE] sp8 / sp9: AIV1 GMM2 combine first / last tile 完成（CombineTile 返回后）
-//             if (isFirstTile) {
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
-//             }
-//             if (isLastTile) {
-//                 MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
-//                                               MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
-//             }
-//         }
-//     }
-// }
-
 // GroupMatmul2Optimize - GMM2 (GM-direct) + Combine via triple-info routing (per-wave)
 // merge_static 路径专用：与 GroupMatmul2 结构完全一致，区别在于：
 //   - 取 ParamsOptimize（dispatchRev / triple 用的 workspace）
@@ -569,12 +382,6 @@ __aicore__ inline void GroupMatmul2Optimize(
     uint32_t groupCnt, uint32_t expertIdx, int32_t rankId, uint64_t waveRowOffset,
     int waveTraceIdx)
 {
-    GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
-    gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
-    gmBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bGlobal));
-    gmScaleAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aScaleGlobal));
-    gmScaleBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bScaleGlobal));
-
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<K_VALUE>(problemShape);
     uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
@@ -648,6 +455,16 @@ __aicore__ inline void GroupMatmul2Optimize(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
         layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
+
+    // L2 cache hint：条件 DISABLE，保留跨核 reuse 的 L2 hit。详细推理见 GMM1 同名注释。
+    if (CeilDiv(m, L1_TILE_M) == 1) {
+        gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+    }
+    if (CeilDiv(n, L1_TILE_N) == 1) {
+        gmA.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        gmScaleA.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+    }
 
     BlockScheduler scheduler(
         {m, n, k},
