@@ -108,7 +108,6 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
-        {reinterpret_cast<void **>(&HcommChannelGetPtrByHandle), "HcommChannelGetPtrByHandle"},
     };
 
     for (auto &sym : symbols) {
@@ -258,7 +257,11 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
+        auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
+    } else {
+        auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    }
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
@@ -300,17 +303,6 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             }
             mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
             OP_LOGI("epHcclBuffer_[%u] = %u", i, mc2ContextStruct->epHcclBuffer_[i]);
-        }
-    }
-    if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
-        auto hcommRet = HcommChannelGetPtrByHandle(channels.data(), channels.size(), mc2ContextStruct->hcommHandle_);
-        if (hcommRet != HCCL_SUCCESS) {
-            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL urma channel ptr failed");
-            return ACLNN_ERR_INNER;
-        }
-        OP_LOGI("Get HCCL urma channel ptr success");
-        for (uint32_t i =0; i < channels.size(); ++i) {
-            OP_LOGI("hcommHandle_[%u] = %u", i, mc2ContextStruct->hcommHandle_[i]);
         }
     }
     OP_LOGD("Get HCCL CommResource success");
