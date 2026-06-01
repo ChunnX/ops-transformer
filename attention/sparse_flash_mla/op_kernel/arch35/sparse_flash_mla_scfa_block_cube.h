@@ -277,6 +277,12 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
         }
     } else {
         // BSND不需要初始化
+        this->oriKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size,
+                constInfo.s2Size, constInfo.dSize);
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+            this->cmpKvGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size,
+                constInfo.s2Size / constInfo.cmpRatio, constInfo.dSize);
+        }
     }
 }
 
