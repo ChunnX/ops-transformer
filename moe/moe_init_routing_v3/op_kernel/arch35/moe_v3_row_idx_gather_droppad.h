@@ -22,7 +22,7 @@ namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
 template <typename T>
-class MoeV3MoeV3RowIdxGatherDropPad {
+class MoeV3RowIdxGatherDropPad {
 public:
     __aicore__ inline MoeV3RowIdxGatherDropPad(){};
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale, GM_ADDR workspace,
@@ -210,12 +210,14 @@ __aicore__ inline void MoeV3RowIdxGatherDropPad<T>::CopyOutRemain()
                 if (i == this->colLoops_ - 1) {
                     col = this->lastLoopCols_;
                 }
-                DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(col * sizeof(T)), 0, 0, 0};
+                DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(col * sizeof(T)),
+                                             0, 0, 0};
                 if constexpr (IsSameType<T, hifloat8_t>::value) {
                     DataCopyPad(expandedXUint8Gm_[index * this->cols_ + i * this->perLoopCols_],
                                 this->outTmpUint8Local_, copyParams);
                 } else {
-                    DataCopyPad(expandedXGm_[index * this->cols_ + i * this->perLoopCols_], this->outTmpLocal_, copyParams);
+                    DataCopyPad(expandedXGm_[index * this->cols_ + i * this->perLoopCols_],
+                                this->outTmpLocal_, copyParams);
                 }
             }
             CopyScaleZeroOut(index);

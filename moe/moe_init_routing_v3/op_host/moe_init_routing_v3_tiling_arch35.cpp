@@ -1947,7 +1947,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
     int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
     
     // 理论最大每次循环行数（假设列全载）
-    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE) 
+    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE)
                                          / sizeof(int32_t) / NUM_TWO;
     theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
 
@@ -1978,7 +1978,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
         int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
 
         // 计算每循环最大行数（需要考虑固定开销）
-        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead) 
+        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead)
                                       / sizeof(int32_t) / NUM_TWO;
         basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
 
