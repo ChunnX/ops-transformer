@@ -1308,7 +1308,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
     uint64_t aivNum = ascendcPlatform.GetCoreNumAiv();
 
     size_t *workspace = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspace == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "get workspace failed"),
+    OP_TILING_CHECK(workspace == nullptr, OP_LOGE(nodeName, "get workspace failed"),
         return ge::GRAPH_FAILED);
     workspace[0] = SYSTEM_NEED_WORKSPACE + aivNum * MASK_CALC_NEED_WORKSPACE;
     OP_LOGD(nodeName, "workspace[0] size is %ld", workspace[0]);
@@ -1630,7 +1630,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
         config) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetWorkspace(context, nodeName) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set workspace Failed"),
+                    OP_LOGE(context->GetNodeName(), "Tiling set workspace Failed"),
                     return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeCombineV2Info.tpWorldSize;
@@ -1644,7 +1644,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3Tili
     context->SetTilingKey(tilingKey);
 
     OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName, config) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "Tiling set platformInfo Failed"),
+                    OP_LOGE(context->GetNodeName(), "Tiling set platformInfo Failed"),
                     return ge::GRAPH_FAILED);
 
     PrintTilingDataInfo(nodeName, *tilingData);
