@@ -202,6 +202,17 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
 class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType,
                                                    dVTemplateType, KvLayoutType, useDn, bmm2Write2Ub, splitD> {
 public:
+    static constexpr AscendC::Te::CopyL0C2UBTrait CUSTOM_COPY_L0C2UB_TRAIT = AscendC::Te::CopyL0C2UBTrait{
+        AscendC::Te::RoundMode::DEFAULT,
+        false,
+        false,
+        AscendC::Te::DualDstMode::DUAL_DST_SPLIT_M
+    };
+    struct CopyL0C2UBTraitCustom {
+        using TraitType = AscendC::Te::CopyL0C2UBTrait;
+        static constexpr const TraitType value = CUSTOM_COPY_L0C2UB_TRAIT;
+    };
+
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
         using Type = std::conditional_t<(dBaseSize > 256), 
@@ -680,7 +691,7 @@ public:
         LocalTensor<T> mmRes = outputBuf.template GetTensor<T>();
         uint64_t outputUBPtr = mmRes.GetPhyAddr();
         auto tensorUB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(outputUBPtr), layoutUB);
-        auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
+        auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{}, CopyL0C2UBTraitCustom{});
         AscendC::Te::Copy(CopyL0C2UB, tensorUB, tensorMM1ResL0C);
 
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(2);
