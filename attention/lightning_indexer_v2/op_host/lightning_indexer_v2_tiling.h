@@ -98,7 +98,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maskMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
-TILING_DATA_FIELD_DEF(bool, batchSupperFlag)
+TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LIV2TilingData)
@@ -131,7 +131,7 @@ struct LiV2ParaInfo {
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
     const int64_t *cmpRatio = nullptr;
-    const bool *returnValue = nullptr;
+    const int32_t *returnValue = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -161,8 +161,8 @@ public:
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;
-    bool batchSupperFlag = false;
-    bool returnValue = false;
+    uint32_t batchSupperFlag = 0;
+    uint32_t returnValue = 0;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -229,7 +229,7 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
-    bool batchSupperFlag_ = false;
+    uint32_t batchSupperFlag_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::BnBsND;
