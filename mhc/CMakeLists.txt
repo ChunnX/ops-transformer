@@ -19,6 +19,11 @@ foreach(SUB_DIR ${CURRENT_DIRS})
         endif ()
     endif ()
 
+    get_filename_component(SUB_DIR_ABS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}" REALPATH)
+    if(SUB_DIR_ABS IN_LIST OP_DIR_LIST)
+        continue()
+    endif()
+
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")
         add_subdirectory(${SUB_DIR})
     else()
