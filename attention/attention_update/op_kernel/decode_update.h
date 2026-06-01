@@ -115,7 +115,7 @@ private:
         } else {
             blockLength = tdata->tailLength;
             this->gmStartOffset = tdata->formerNum * tdata->formerLength +
-                                  (GetBlockIdx() - tdata->formerNum) * tdata->tailLength;
+                                  (GetBlockIdx() - tdata->formerNum) * tdata->tailLength; // tail block
         }
         
         if (sp <= MAX_EFFECTIVE_SP) {
@@ -153,11 +153,11 @@ private:
         if (sp >= NUM8) {
             maxTileLength = maxTileLength / SPLIT_TO_2;
         }
-        maxTileLength = maxTileLength < 1 ? 1 : maxTileLength;
+        maxTileLength = maxTileLength < NUM1 ? NUM1 : maxTileLength;
         this->tileLength = maxTileLength < blockLength ? maxTileLength : blockLength;
         this->curLength = this->tileLength;
         this->lastLength = blockLength % tileLength;
-        this->loopCount = blockLength / tileLength + (lastLength == 0 ? 0 : 1);
+        this->loopCount = blockLength / tileLength + (lastLength == NUM0 ? NUM0 : NUM1);
         this->tileLengthAlig = ((tileLength + NUM7) / NUM8) * NUM8;
         this->lastLengthAlig = ((lastLength + NUM7) / NUM8) * NUM8;
     }
