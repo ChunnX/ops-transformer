@@ -69,7 +69,7 @@ private:
     void *hcclHandle_ = nullptr;
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
-    FuncGetRankSize getRankSize_ = nullptr;
+    FuncGetRankSizeEx getRankSizeEx_ = nullptr;
     FuncGetTopoTypeByLayer getTopoTypeByLayer_ = nullptr;
 #else
     FuncGetNetLayers getNetLayers_ = nullptr;
