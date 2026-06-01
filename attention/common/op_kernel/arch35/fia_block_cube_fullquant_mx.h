@@ -1019,6 +1019,11 @@ public:
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
             mm2B.Wait<HardEvent::MTE1_MTE2>();
+            if (realK % 64 != 0) {
+                LocalTensor<uint16_t> mm2BFakeTensor = mm2B.GetTensor<uint16_t>();
+                InitConstValue(mm2BFakeTensor, {1, mBaseSize * s2BaseSize / 2 / 32, 0, 0});
+                PipeBarrier<PIPE_MTE2>();
+            }
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
             uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
