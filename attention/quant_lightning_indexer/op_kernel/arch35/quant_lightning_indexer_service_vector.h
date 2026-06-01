@@ -80,6 +80,7 @@ protected:
 private:
     __aicore__ inline void GetKeyScale(const QLICommon::RunInfo &runInfo, LocalTensor<SCALE_T> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
+    __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int32_t kb_offset, int32_t num_prompt_k);
     // ================================Local Buffer区====================================
 
     // tmp buff for vector
@@ -415,6 +416,54 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
 }
 
 template <typename QLIT>
+__aicore__ inline uint32_t QLIVector<QLIT>::CalcDynamicTopkCount(
+    uint32_t s1Idx, int32_t kb_offset, int32_t num_prompt_k)
+{
+    // 常量定义
+    const int32_t K_SMALL_SEQ_MAX = 56;
+    const int32_t K_MEDIUM_SEQ_MAX = 160;
+    const float K_BLOCK_NUM_RATE_MEDIUM = 0.35f;
+    const float K_BLOCK_NUM_RATE_LARGE = 0.15f;
+    const int32_t K_BLOCK_NUM_BIAS_MEDIUM = 2;
+    const int32_t K_BLOCK_NUM_BIAS_LARGE = 3;
+    const float ALPHA = 0.5f;
+    
+    // 计算 k_start（分段函数）
+    int32_t k_start;
+    if (num_prompt_k < K_SMALL_SEQ_MAX) {
+        k_start = K_SMALL_SEQ_MAX;
+    } else if (num_prompt_k < K_MEDIUM_SEQ_MAX) {
+        k_start = (int32_t)(num_prompt_k * K_BLOCK_NUM_RATE_MEDIUM + K_BLOCK_NUM_BIAS_MEDIUM);
+    } else {
+        k_start = (int32_t)(num_prompt_k * K_BLOCK_NUM_RATE_LARGE + K_BLOCK_NUM_BIAS_LARGE);
+    }
+    
+    // 计算 s1Pos 和 decay_len
+    int32_t s1Pos = (int32_t)s1Idx + kb_offset;
+    int32_t decay_len = num_prompt_k - k_start;
+    
+    // 边界条件：s1Pos < k_start 或 decay_len < 1 时，直接返回 k_start
+    if (s1Pos < k_start || decay_len < 1) {
+        return (uint32_t)k_start;
+    }
+    
+    // 计算 k_end
+    int32_t k_end = (int32_t)(k_start * ALPHA);
+    
+    // 计算插值系数 t
+    float t = (float)(s1Pos - k_start) / (float)(decay_len - 1);
+    t = Max(0.0f, Min(1.0f, t));
+    
+    // 计算 dynamicTopkCount
+    uint32_t dynamicTopkCount = (uint32_t)floorf((float)k_start + t * (float)(k_end - k_start));
+    
+    // 限制范围：下限为 1，上限为 k_start
+    dynamicTopkCount = dynamicTopkCount < 1 ? 1 : (dynamicTopkCount > (uint32_t)k_start ? (uint32_t)k_start : dynamicTopkCount);
+    
+    return dynamicTopkCount;
+}
+
+template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &info)
 {
     // 等待MTE3到MTE2的同步事件，确保之前的内存搬运完成
@@ -458,12 +507,28 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
 
     // 有效S2总长度（用于计算必选块位置）
     int32_t validS2Len = cuRealAcSeq;
+    
+    // 计算动态 topkCount 所需的块级常量
+    uint32_t s2Size = info.actS2SizeOrig;
+    uint32_t s1Size = info.actS1Size;
+    int32_t kb_offset = (int32_t)s2Size - (int32_t)s1Size;
+    int32_t num_prompt_k = (int32_t)s2Size;  // 穿刺测试：假设 num_prompt_k = s2Size
+    
+    // 累计输出偏移（用于计算每行的 GM 输出地址）
+    int64_t cumulativeOutputOffset = 0;
+    
     // 遍历当前AIV核需要处理的每个S1行
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
         // 当前S1行在核内的相对索引（用于计算输出偏移）
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         // 当前S1行在scoreGm中的偏移（score存储按行组织）
         uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
+        
+        // 全局 s1 索引
+        uint32_t s1Idx = curS1Idx + rowIdx;
+        
+        // 计算动态 topkCount
+        uint32_t dynamicTopkCount = CalcDynamicTopkCount(s1Idx, kb_offset, num_prompt_k);
 
         // 常量定义：用于填充零值和无效索引
         uint16_t zero = 0;
@@ -487,8 +552,8 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         int32_t topkValidEnd = validS2Len - actualWindow;
         // TopK需要处理的中间有效长度
         int32_t topkValidLen = topkValidEnd - topkValidStart;
-        // topkCount_已经是实际TopK选取数量，与init/window无关
-        int32_t topkSelectNum = (int32_t)topkCount_;
+        // 使用动态计算的 topkCount
+        int32_t topkSelectNum = (int32_t)dynamicTopkCount;
         // 总输出大小 = 前必选 + TopK选出 + 后必选
         int32_t totalOutput = actualInit + topkSelectNum + actualWindow;
 
@@ -501,15 +566,16 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
         // 边界检查：有效长度不足，输出全部无效索引
-        // 此时 actualInit=0, actualWindow=0, totalOutput=topkCount_
+        // 此时 actualInit=0, actualWindow=0, totalOutput=dynamicTopkCount
         if (validS2Len <= 0) {
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, totalOutput);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             copyOutParams.blockLen = (uint16_t)((uint32_t)totalOutput * sizeof(int32_t));
-            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * totalOutput],
+            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + cumulativeOutputOffset],
                                  indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+            cumulativeOutputOffset += totalOutput;
             continue;
         }
 
@@ -517,12 +583,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         AscendC::DataCopyPadExtParams<uint16_t> padParams{true, 0, 0, 0};
 
         // ========== 无需TopK的分支：中间有效元素不够TopK选取 ==========
-        // 条件: topkValidLen < topkCount_ → 中间元素不够选，直接取全部+填-1
+        // 条件: topkValidLen < dynamicTopkCount → 中间元素不够选，直接取全部+填-1
         // 输出布局: [前必选(actualInit)] + [中间全部(topkValidLen)] + [后必选(actualWindow)] + [-1填充]
-        // 总输出: totalOutput = actualInit + topkCount_ + actualWindow
-        int64_t gmBase = info.indiceOutOffset + (curS1Idx + rowIdx) * totalOutput;
+        // 总输出: totalOutput = actualInit + dynamicTopkCount + actualWindow
+        int64_t gmBase = info.indiceOutOffset + cumulativeOutputOffset;
 
-        if (topkValidLen < (int32_t)topkCount_) {
+        if (topkValidLen < (int32_t)dynamicTopkCount) {
             // === 段1: 前必选索引 → GM ===
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
                                      (int32_t)zero, actualInit);
@@ -583,7 +649,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             }
 
             // === 段4: -1填充 → GM ===
-            int32_t padCount = (int32_t)topkCount_ - topkValidLen;
+            int32_t padCount = (int32_t)dynamicTopkCount - topkValidLen;
             if (padCount > 0) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 
@@ -596,6 +662,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                                      indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
                 SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             }
+            cumulativeOutputOffset += totalOutput;
             continue;
         }
 
@@ -737,6 +804,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         // --- Step 3: 在indicesOutLocal_起始位置生成前必选索引 [0, 1, ..., actualInit-1] ---
         AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
                                  (int32_t)zero, actualInit);
+        PipeBarrier<PIPE_V>();
 
         // === 写入段1+段2到GM ===
         // 此时：indicesOutLocal_ = 前必选索引，mrgValueLocal_ = TopK索引
@@ -777,6 +845,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 indicesOutLocal_.ReinterpretCast<int32_t>(),
                 mrgValueLocal_.ReinterpretCast<int32_t>(),
                 (uint32_t)actualWindow);
+            PipeBarrier<PIPE_V>();
 
             // 段3: 后必选索引 → GM[base+actualInit+topkSelectNum, base+totalOutput)
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -788,6 +857,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
 
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         }
+        
+        // 累加当前行的输出大小
+        cumulativeOutputOffset += totalOutput;
     }
 }
 }  // namespace QLIKernel
