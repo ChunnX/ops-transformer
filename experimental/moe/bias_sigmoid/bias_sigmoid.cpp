@@ -142,9 +142,7 @@ private:
         LocalTensor<T> expertXLocal = inQueue_expertX.AllocTensor<T>();
 
         DataCopyParams copy_pas{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0, 0};
-        DataCopyPadParams pad_pas{
-            true, 0, uint8_t(align_cnt - TILE_LENGTH),
-            0};
+        DataCopyPadParams pad_pas{true, 0, uint8_t(align_cnt - TILE_LENGTH), 0};
         DataCopyPad(expertXLocal, expertX_Gm[rows_offset_], copy_pas, pad_pas);
 
         inQueue_expertX.EnQue(expertXLocal);
@@ -185,12 +183,10 @@ private:
     {
         LocalTensor<T> expertXoutLocal = outQueue_expertXout.DeQue<T>();
         LocalTensor<T> biasXoutLocal = outQueue_biasXout.DeQue<T>();
-        DataCopyParams copyParams{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0,
-                                  0};
+        DataCopyParams copyParams{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0, 0};
         DataCopyPad(sigmoidOut_Gm[rows_offset_], expertXoutLocal, copyParams);
 
-        DataCopyParams copyParams1{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0,
-                                   0};
+        DataCopyParams copyParams1{(uint16_t)rows_per_core_per_loop_, (uint16_t)(TILE_LENGTH * sizeof(T)), 0, 0};
         DataCopyPad(biasOut_Gm[rows_offset_], biasXoutLocal, copyParams1);
 
         outQueue_expertXout.FreeTensor(expertXoutLocal);
