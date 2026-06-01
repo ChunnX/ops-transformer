@@ -90,6 +90,10 @@ constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_INPUT_ONE_BUFFER_BYTES;
 constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_OUTPUT_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS = QKV_RRC_INPUT_ONE_BUFFER_BYTES / sizeof(bfloat16_t);
+constexpr uint32_t QKV_RRC_INPUT_DB_POOL_ELEMENTS = QKV_RRC_INPUT_DB_POOL_BYTES / sizeof(bfloat16_t);
+constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / sizeof(float);
+constexpr uint32_t QKV_RRC_OUTPUT_DB_POOL_FLOAT_ELEMENTS = QKV_RRC_OUTPUT_DB_POOL_BYTES / sizeof(float);
 
 constexpr uint32_t QKV_RRC_ROTATION_L1_BYTES =
     QKV_RRC_HEAD_DIM_D128 * QKV_RRC_HEAD_DIM_D128 * sizeof(bfloat16_t);
@@ -101,6 +105,10 @@ constexpr uint32_t QKV_RRC_ROTATION_L1_OFFSET = 0U;
 constexpr uint32_t QKV_RRC_A_ROT_L1_POOL_OFFSET = QKV_RRC_ROTATION_L1_OFFSET + QKV_RRC_ROTATION_L1_BYTES;
 constexpr uint32_t QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES =
     QKV_RRC_A_ROT_L1_POOL_BYTES / QKV_RRC_DOUBLE_BUFFER_NUM;
+constexpr uint32_t QKV_RRC_ROTATION_L1_ELEMENTS = QKV_RRC_ROTATION_L1_BYTES / sizeof(bfloat16_t);
+constexpr uint32_t QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS =
+    QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES / sizeof(bfloat16_t);
+constexpr uint32_t QKV_RRC_A_ROT_L1_POOL_ELEMENTS = QKV_RRC_A_ROT_L1_POOL_BYTES / sizeof(bfloat16_t);
 
 constexpr uint32_t QKV_RRC_RESERVE_UB_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_GAMMA_UB_BYTES = 1U * QKV_RRC_KIB;
@@ -118,6 +126,18 @@ constexpr uint32_t QKV_RRC_V_SCALE_UB_OFFSET =
 constexpr uint32_t QKV_RRC_V_OUT_DB_POOL_OFFSET = QKV_RRC_V_SCALE_UB_OFFSET + QKV_RRC_V_SCALE_UB_BYTES;
 constexpr uint32_t QKV_RRC_RESERVE_USED_BYTES =
     QKV_RRC_V_OUT_DB_POOL_OFFSET + QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_V_OUT_ONE_BUFFER_BYTES;
+constexpr uint32_t QKV_RRC_GAMMA_UB_ELEMENTS = QKV_RRC_GAMMA_UB_BYTES / sizeof(float);
+constexpr uint32_t QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS = QKV_RRC_COS_SIN_ONE_BUFFER_BYTES / sizeof(float);
+constexpr uint32_t QKV_RRC_COS_SIN_DB_POOL_ELEMENTS =
+    QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS =
+    QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES / sizeof(int32_t);
+constexpr uint32_t QKV_RRC_SLOT_MAPPING_DB_POOL_ELEMENTS =
+    QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_RRC_V_SCALE_UB_ELEMENTS = QKV_RRC_V_SCALE_UB_BYTES / sizeof(float);
+constexpr uint32_t QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS = QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t);
+constexpr uint32_t QKV_RRC_V_OUT_DB_POOL_ELEMENTS =
+    QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_V_OUT_ONE_BUFFER_ELEMENTS;
 
 static_assert(QKV_RRC_RESERVE_USED_BYTES <= QKV_RRC_RESERVE_UB_BYTES,
     "QkvRmsNormRopeCacheWithKScale reserve UB layout exceeds 40 KiB.");
@@ -197,19 +217,6 @@ struct VecGlobalTensors {
     GlobalTensor<fp8_e4m3fn_t> vCacheOut;
     GlobalTensor<float> kScaleCacheOut;
     GlobalTensor<uint8_t> workspace;
-};
-
-struct StaticLocalTensors {
-    LocalTensor<bfloat16_t> rotationL1Nz;
-    LocalTensor<bfloat16_t> aRotL1Nz[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<bfloat16_t> vUb[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<float> qkAfterCubeUb[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<fp8_e4m3fn_t> qkFp8StagingUb[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<float> gammaUb;
-    LocalTensor<float> cosSinUb[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<int32_t> slotMappingUb[QKV_RRC_DOUBLE_BUFFER_NUM];
-    LocalTensor<float> vScaleUb;
-    LocalTensor<fp8_e4m3fn_t> vOutUb[QKV_RRC_DOUBLE_BUFFER_NUM];
 };
 
 __aicore__ inline uint32_t CeilDiv(uint32_t value, uint32_t factor)

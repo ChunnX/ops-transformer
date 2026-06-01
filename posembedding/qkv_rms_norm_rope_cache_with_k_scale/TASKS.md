@@ -47,9 +47,10 @@ The D=128 fast path keeps the kernel entry as a thin dispatch shell that
 includes `controller` directly. Shared constants, raw GM argument bundle, scalar
 helpers, AIV slice helper, and CrossCore wrappers live in `common`; controller
 owns core-range derivation, token-size tile expansion, and explicit AIC/AIV
-entry dispatch; basic block owns lifecycle hooks and static local tensor
-binding; Cube and Vector code bind their own typed GM tensor subsets in their
-module headers.
+entry dispatch; basic block owns lifecycle hooks only; Cube and Vector code bind
+their own typed GM tensor subsets and local base tensors in their module
+headers. Pingpong local tensor views are derived inside compute by applying
+offsets to those base tensors, not stored as `LocalTensor` arrays.
 Host tiling owns the ceil-div core token split and writes the resulting
 `coreTokenTile` and `coreGroupNum` into the kernel POD tiling data.
 

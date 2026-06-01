@@ -13,9 +13,8 @@ fast-path implementation is split by module:
 - `qkv_rms_norm_rope_cache_with_k_scale_controller.h`: controller-level
   core token range helper, token-size tile expansion, and explicit AIC/AIV
   entry dispatch.
-- `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: resource binding,
-  static local tensor binding, lifecycle hooks, and single-tile AIC/AIV compute
-  entry points.
+- `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: lifecycle hooks and
+  single-tile AIC/AIV compute entry points.
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_tiling_data.h`: kernel-side POD tiling
@@ -43,13 +42,16 @@ these fixed L1/UB regions:
 - Cube and Vec each wrap only their own typed `GlobalTensor` subset during
   module `Init`; controller and basic block do not retain a shared bound-GM
   bundle.
-- AIC owns resident `rotation_l1_nz`; `a_rot_l1_nz[2]` exposes two logical
-  pingpong AL1 data buffers. The static L1 budget still reserves the 4 * 64 KiB
-  A_L1 pool, and AIV0/AIV1 write disjoint row ranges into the same logical
-  `bufferId`.
+- AIC owns resident `rotation_l1_nz`; `a_rot_l1_pool` is one member tensor and
+  the current logical pingpong AL1 buffer is derived inside compute with
+  `bufferId * aRotL1SingleBufferElements`. The static L1 budget still reserves
+  the 4 * 64 KiB A_L1 pool, and AIV0/AIV1 write disjoint row ranges into the
+  same logical `bufferId`.
 - AIV UB is split into input DB, output DB, and 40 KiB reserve areas. The
-  reserve area holds `gamma_ub`, `cos_sin_ub[2]`, `slot_mapping_ub[2]`,
-  `v_scale_ub`, and `v_out_ub[2]`.
+  input/output/reserve DB areas are stored as member base tensors; per-buffer
+  local tensor views are derived at the use site with offsets. The reserve area
+  holds `gamma_ub`, `cos_sin_db_pool`, `slot_mapping_db_pool`, `v_scale_ub`,
+  and `v_out_db_pool`.
 - Q/K FP8 staging reuses the `qk_after_cube_ub` output DB buffer instead of
   allocating another static region.
 
@@ -74,12 +76,12 @@ their `HardEvent` pipe pair and are statically checked to stay in `0..5`.
 
 | Pipe pair | Buffer | Event ids |
 |-----------|--------|-----------|
-| `MTE2 -> V` | `vUb[2]`, `cosSinUb[2]`, `slotMappingUb[2]` input path | `0/1` |
+| `MTE2 -> V` | input/cos-sin/slot-mapping DB pool current buffer | `0/1` |
 | `V -> MTE2` | input UB reuse | `0/1` |
-| `V -> MTE3` | `vOutUb[2]` output path | `0/1` |
-| `MTE3 -> V` | `vOutUb[2]` reuse | `0/1` |
-| `V -> MTE3` | `qkAfterCubeUb[2]` FP8 staging/write-out path | `2/3` |
-| `MTE3 -> V` | `qkAfterCubeUb[2]` reuse | `2/3` |
+| `V -> MTE3` | v-out DB pool current buffer | `0/1` |
+| `MTE3 -> V` | v-out DB pool reuse | `0/1` |
+| `V -> MTE3` | output DB pool current buffer for Q/K FP8 staging/write-out | `2/3` |
+| `MTE3 -> V` | output DB pool Q/K reuse | `2/3` |
 | `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
 | `MMAD -> FIX` / `FIX -> MMAD` | AIC L0C pingpong path | `0/1` |
 

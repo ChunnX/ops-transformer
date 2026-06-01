@@ -21,7 +21,6 @@ public:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
     {
         isAiv_ = false;
-        InitStaticL1Tensors();
         cube_.Init(cubeIndex, tensors);
         InitIntraCoreEvents();
     }
@@ -30,20 +29,18 @@ public:
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
         isAiv_ = true;
-        InitStaticL1Tensors();
-        InitAivStaticBuffers();
         vec_.Init(tilingData, aivLocalId, tensors);
         InitIntraCoreEvents();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
-        cube_.ComputeTile(tile, localTensors_);
+        cube_.ComputeTile(tile);
     }
 
     __aicore__ inline void ComputeTileAiv(const TileParam &tile)
     {
-        vec_.ComputeTile(tile, localTensors_);
+        vec_.ComputeTile(tile);
     }
 
     __aicore__ inline void End()
@@ -52,64 +49,6 @@ public:
     }
 
 private:
-    __aicore__ inline void InitStaticL1Tensors()
-    {
-        localTensors_.rotationL1Nz = LocalTensor<bfloat16_t>(
-            TPosition::TSCM, QKV_RRC_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_L1_BYTES / sizeof(bfloat16_t));
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            localTensors_.aRotL1Nz[i] = LocalTensor<bfloat16_t>(TPosition::TSCM,
-                QKV_RRC_A_ROT_L1_POOL_OFFSET + i * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES,
-                QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_BYTES / sizeof(bfloat16_t));
-        }
-    }
-
-    __aicore__ inline void InitAivStaticBuffers()
-    {
-        constexpr uint32_t inputOneBufferElements = QKV_RRC_INPUT_ONE_BUFFER_BYTES / sizeof(bfloat16_t);
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            localTensors_.vUb[i] = LocalTensor<bfloat16_t>(TPosition::LCM,
-                QKV_RRC_INPUT_DB_POOL_OFFSET + i * QKV_RRC_INPUT_ONE_BUFFER_BYTES,
-                inputOneBufferElements);
-        }
-
-        constexpr uint32_t outputOneBufferFloatElements = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / sizeof(float);
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            localTensors_.qkAfterCubeUb[i] = LocalTensor<float>(TPosition::LCM,
-                QKV_RRC_OUTPUT_DB_POOL_OFFSET + i * QKV_RRC_OUTPUT_ONE_BUFFER_BYTES,
-                outputOneBufferFloatElements);
-            localTensors_.qkFp8StagingUb[i] =
-                localTensors_.qkAfterCubeUb[i].template ReinterpretCast<fp8_e4m3fn_t>();
-        }
-
-        BindReserveUbTensors();
-    }
-
-    __aicore__ inline void BindReserveUbTensors()
-    {
-        localTensors_.gammaUb = LocalTensor<float>(TPosition::LCM,
-            QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_GAMMA_UB_OFFSET,
-            QKV_RRC_GAMMA_UB_BYTES / sizeof(float));
-
-        for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            localTensors_.cosSinUb[i] = LocalTensor<float>(TPosition::LCM,
-                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_COS_SIN_DB_POOL_OFFSET +
-                    i * QKV_RRC_COS_SIN_ONE_BUFFER_BYTES,
-                QKV_RRC_COS_SIN_ONE_BUFFER_BYTES / sizeof(float));
-            localTensors_.slotMappingUb[i] = LocalTensor<int32_t>(TPosition::LCM,
-                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_SLOT_MAPPING_DB_POOL_OFFSET +
-                    i * QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES,
-                QKV_RRC_SLOT_MAPPING_ONE_BUFFER_BYTES / sizeof(int32_t));
-            localTensors_.vOutUb[i] = LocalTensor<fp8_e4m3fn_t>(TPosition::LCM,
-                QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_OUT_DB_POOL_OFFSET +
-                    i * QKV_RRC_V_OUT_ONE_BUFFER_BYTES,
-                QKV_RRC_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t));
-        }
-
-        localTensors_.vScaleUb = LocalTensor<float>(TPosition::LCM,
-            QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_SCALE_UB_OFFSET,
-            QKV_RRC_V_SCALE_UB_BYTES / sizeof(float));
-    }
-
     __aicore__ inline void InitIntraCoreEvents()
     {
         if (isAiv_) {
@@ -167,7 +106,6 @@ private:
     }
 
     bool isAiv_;
-    StaticLocalTensors localTensors_;
     D128FastCube cube_;
     D128FastVec vec_;
 };

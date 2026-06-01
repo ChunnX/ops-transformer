@@ -20,20 +20,30 @@ public:
     __aicore__ inline void Init(uint32_t cubeIndex, const GlobalTensors &tensors)
     {
         cubeIndex_ = cubeIndex;
+        BindLocalTensors();
         BindGlobalTensors(tensors);
     }
 
-    __aicore__ inline void ComputeTile(const TileParam &tile, const StaticLocalTensors &localTensors)
+    __aicore__ inline void ComputeTile(const TileParam &tile)
     {
         const uint32_t bufferId = MakeDataBufferId(tile.bufferId);
+        LocalTensor<bfloat16_t> aRotL1Nz = aRotL1Pool_[bufferId * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
         (void)globalTensors_;
-        (void)localTensors.rotationL1Nz;
-        (void)localTensors.aRotL1Nz[bufferId];
+        (void)rotationL1Nz_;
+        (void)aRotL1Nz;
         (void)tile;
         (void)cubeIndex_;
     }
 
 private:
+    __aicore__ inline void BindLocalTensors()
+    {
+        rotationL1Nz_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_ROTATION_L1_OFFSET, QKV_RRC_ROTATION_L1_ELEMENTS);
+        aRotL1Pool_ =
+            LocalTensor<bfloat16_t>(TPosition::TSCM, QKV_RRC_A_ROT_L1_POOL_OFFSET, QKV_RRC_A_ROT_L1_POOL_ELEMENTS);
+    }
+
     __aicore__ inline void BindGlobalTensors(const GlobalTensors &tensors)
     {
         globalTensors_.rotation.SetGlobalBuffer((__gm__ bfloat16_t *)tensors.rotation);
@@ -42,6 +52,8 @@ private:
 
     uint32_t cubeIndex_;
     CubeGlobalTensors globalTensors_;
+    LocalTensor<bfloat16_t> rotationL1Nz_;
+    LocalTensor<bfloat16_t> aRotL1Pool_;
 };
 
 } // namespace QkvRmsNormRopeCacheWithKScale
