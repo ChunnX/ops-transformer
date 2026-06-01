@@ -174,8 +174,9 @@ constexpr int P_KERNEL_ENTRY = 0;
 constexpr int P_ROUTING_DONE = 1;
 constexpr int P_CROSSRANK_DONE = 2;
 constexpr int P_EXPERT_LOOP_END = 3;
-constexpr int P_PROCESS_END = 4;
-constexpr int P_STAGE_NUM = 5;
+constexpr int P_SYNC_END = 4;
+constexpr int P_PROCESS_END  = 5;
+constexpr int P_STAGE_NUM = 6;
 
 // ----- Per-expert dispatch（仅 AIV1=subBlock1 上有效） -----
 // 4 sub-points / expert：
