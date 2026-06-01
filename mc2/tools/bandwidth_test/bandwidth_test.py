@@ -563,14 +563,14 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         queue.put([rank, []])
         return
     
-    _, _, test_world_size, _, _ = configs[0]
+    _, _, _, _, test_world_size, _ = configs[0]
     
     print(f'[INFO] device_{rank} 创建通信域（多配置共享）')
     hcomm_info, _ = init_hccl_comm(rank, test_world_size)
     
     results = []
     
-    for i, (x, dstrank_id, test_max_bs, test_data_size, config_index) in enumerate(configs):
+    for i, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
         print(f"\n{'='*60}")
         print(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size}, max_bs={test_max_bs}")
@@ -762,7 +762,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     processes = []
     for rank in range(world_size):
         rank_configs = [
-            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], all_inputs[i][4])
+            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], world_size, all_inputs[i][4])
             for i in range(len(all_inputs))
         ]
         p = Process(
