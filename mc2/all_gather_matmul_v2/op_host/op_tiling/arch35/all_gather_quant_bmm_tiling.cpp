@@ -66,6 +66,7 @@ constexpr uint32_t X2_INDEX = 1;
 
 static constexpr int64_t CCU_LEN = 3;
 static constexpr int64_t AI_CPU_LEN = 5;
+static constexpr int64_t EMPTY_LEN = 1;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 
 bool AllGatherQuantBmmTiling::IsCapable()
@@ -434,7 +435,7 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
     uint8_t commEngine = Mc2Comm::ENGINE_AICPU;
     if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
         commEngine = Mc2Comm::ENGINE_CCU;
-    } else if (std::strlen(commMode_) == 0) { // empty string
+    } else if (std::strncmp(commMode_, "", EMPTY_LEN) == 0) { // empty string
         if (rankSize_ <= COMM_MODE_RANKSIZE) {
             commEngine = Mc2Comm::ENGINE_CCU;
         }
@@ -527,7 +528,7 @@ uint64_t AllGatherQuantBmmTiling::GetTilingKey() const
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
         commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (std::strlen(commMode_) == 0) { // empty string
+    } else if (std::strncmp(commMode_, "", EMPTY_LEN) == 0) { // empty string
         if (rankSize_ <= COMM_MODE_RANKSIZE) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }

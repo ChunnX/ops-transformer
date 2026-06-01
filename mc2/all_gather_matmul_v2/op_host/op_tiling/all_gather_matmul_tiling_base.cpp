@@ -43,6 +43,7 @@ const std::set<int> SUPPORT_RANK_SIZE{ 2, 4, 8, 16, 32, 64 };
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
 static constexpr int64_t CCU_LEN = 3;
 static constexpr int64_t AI_CPU_LEN = 5;
+static constexpr int64_t EMPTY_LEN = 1;
 static constexpr int64_t COMM_MODE_RANKSIZE = 8;
 
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
@@ -593,7 +594,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(commMode_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "comm_mode"), return false);
     OP_TILING_CHECK(!((std::strncmp(commMode_, "ccu", CCU_LEN) == 0) ||
-        (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == 0) || (std::strlen(commMode_) == 0)),
+        (std::strncmp(commMode_, "ai_cpu", AI_CPU_LEN) == 0) || (std::strncmp(commMode_, "", EMPTY_LEN) == 0)),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "comm_mode", commMode_,
         "should be ccu or ai_cpu or empty string"),
         return false);
@@ -714,7 +715,7 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
     if (npuArch_ == NpuArch::DAV_3510) {
         if (std::strncmp(commMode_, "ccu", CCU_LEN) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strlen(commMode_) == 0) { // empty string
+        } else if (std::strncmp(commMode_, "", EMPTY_LEN) == 0) { // empty string
             if (rankSize_ <= COMM_MODE_RANKSIZE) {
                 commMode = Mc2Comm::COMM_MODE_CCU;
             }
