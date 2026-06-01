@@ -147,7 +147,7 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     if (isViewVCache) {
         auto *VCacheStride = context->GetInputStride(DIM_1);
         if (VCacheStride != nullptr) {
-            VCacheStride = VCacheStride->GetStride(DIM_0);
+            vCacheBlockStride = VCacheStride->GetStride(DIM_0);
         }
     }
 
