@@ -16,9 +16,13 @@
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if __has_include("version/hcomm_version.h")
+#include "version/hcomm_version.h"
+#endif
+#ifndef HCOMM_VERSION_NUM
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION + 1)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
 #include <string>
@@ -92,6 +96,5 @@ private:
 };
 } // namespace Mc2Aclnn
 
-#endif // EXCEPTION_DUMP_SUPPORT_VERSION
-#endif // BUILD_OPEN_PROJECT
+#endif
 #endif // MC2_CONTEXT_H
