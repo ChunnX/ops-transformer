@@ -75,9 +75,6 @@ public:
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
-
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
@@ -127,6 +124,10 @@ public:
     static constexpr uint32_t FA_MTE3_TO_MTE2_ID = 2U;
     static constexpr uint32_t FA_MTE2_TO_V_SINK  = 4U;
 
+    // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
+    static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
+    static constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr LAYOUT_Q MASK_LAYOUT =
         (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
@@ -136,9 +137,6 @@ public:
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
-
-    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
 
@@ -263,28 +261,28 @@ public:
                                            constInfo.logSumExpSize);
         }
     }
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
+    __aicore__ inline void ProcessVec1(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
+                                       LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
                                        RunInfoX runInfo)
     {
 #ifdef SKIP_V1
-        bmm1ResBuf.WaitCrossCore();
-        bmm1ResBuf.SetCrossCore();
-        outputBuf.SetCrossCore();
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
         return;
 #endif
 
-        bmm1ResBuf.WaitCrossCore();
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm1ResBuf.SetCrossCore();
-            outputBuf.SetCrossCore();
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
             return;
         }
 
         if constexpr (useDn) {
-            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo);
+            ProcessVec1Dn(l1PTensor, l1PCcId, bmm1UbTensor, bmm1CcId, runInfo);
         } else {
-            ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo);
+            ProcessVec1Nd(l1PTensor, l1PCcId, bmm1UbTensor, bmm1CcId, runInfo);
         }
     }
 
@@ -354,9 +352,9 @@ public:
 
     // =================================Private Functions=================================
 
-    __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+    __aicore__ inline void ProcessVec1Dn(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
+                                          LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
+                                          RunInfoX runInfo)
     {
         LocalTensor<uint8_t> attenMaskUb;
 
@@ -368,7 +366,7 @@ public:
 
         float descaleQK = 1.0;
 
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = bmm1UbTensor;
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf[stage1Offset];
         if (unlikely(runInfo.isFirstS2Loop)) {
             fa_static::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
@@ -381,12 +379,12 @@ public:
                 runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
                 static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, false);
         }
-        bmm1ResBuf.SetCrossCore();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         //-------------------------Data copy to l1-------------------------
-        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = l1PTensor;
 
         if (runInfo.actSingleLoopS2Size > vec1S2CopyLenDn) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.actSingleLoopS2SizeAlign],
@@ -404,8 +402,8 @@ public:
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
-        outputBuf.SetCrossCore();
-        //-----------------------------------------------------------------
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
+        //----------------------------------------------------------------
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         }
@@ -505,9 +503,9 @@ public:
         SetFlag<HardEvent::MTE2_V>(FA_MTE2_TO_V_SINK);
     }
 
-    __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo)
+    __aicore__ inline void ProcessVec1Nd(LocalTensor<INPUT_T> &l1PTensor, uint32_t l1PCcId,
+                                          LocalTensor<T> &bmm1UbTensor, uint32_t bmm1CcId,
+                                          RunInfoX runInfo)
     {
         LocalTensor<uint8_t> dropMaskUb;
         LocalTensor<INPUT_T> nonePseUb; // PSE不支持，占位
@@ -533,7 +531,7 @@ public:
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 
-        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = bmm1UbTensor;
         LocalTensor<INPUT_T> stage1CastTensor = this->stage1OutBuf[stage1Offset];
         if (runInfo.isFirstS2Loop) {
             if (likely(runInfo.actSingleLoopS2Size == 128)) {
@@ -600,13 +598,13 @@ public:
                 }
             }
         }
-        bmm1ResBuf.SetCrossCore();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
 
         // ===================DataCopy to L1 ====================
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[stage1Offset]);
         LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        mm2AL1Tensor = l1PTensor;
 
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
@@ -616,7 +614,7 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
 
-        outputBuf.SetCrossCore();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
         // ======================================================
         if (!runInfo.isFirstS2Loop) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
@@ -627,18 +625,18 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+    __aicore__ inline void ProcessVec2OnUb(LocalTensor<T> &bmm2UbTensor, uint32_t bmm2CcId,
                                            RunInfoX runInfo)
     {
         if (unlikely(runInfo.actVecMSize == 0)) {
-            bmm2ResBuf.SetCrossCore();
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
             return;
         }
 
         int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
-        LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
+        LocalTensor<T> mmRes = bmm2UbTensor;
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
@@ -657,7 +655,7 @@ public:
                     1.0);
             }
         }
-        bmm2ResBuf.SetCrossCore();
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)];
@@ -975,26 +973,25 @@ public:
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
     }
 
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
+    template<typename BmmResT>
+    __aicore__ inline void ProcessVec2(BmmResT &bmm2ResTensor, uint32_t bmm2CcId, RunInfoX runInfo)
     {
 #ifdef SKIP_V2
-        bmm2ResBuf.WaitCrossCore();
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
         if constexpr (bmm2Write2Ub) {
-            bmm2ResBuf.SetCrossCore();
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
         }
         return;
 #endif
 
-        bmm2ResBuf.WaitCrossCore();
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm2CcId);
 
         if constexpr (bmm2Write2Ub) {
-            ProcessVec2OnUb(bmm2ResBuf, runInfo);
+            ProcessVec2OnUb(bmm2ResTensor, bmm2CcId, runInfo);
         } else if constexpr (splitD) {
-            GlobalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-            ProcessVec2DSplit(mmRes, runInfo);
+            ProcessVec2DSplit(bmm2ResTensor, runInfo);
         } else {
-            GlobalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-            ProcessVec2_C2GmUpdateUb(mmRes, runInfo);
+            ProcessVec2_C2GmUpdateUb(bmm2ResTensor, runInfo);
         }
         return;
     }

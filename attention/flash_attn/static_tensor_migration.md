@@ -12,12 +12,17 @@
 2. [基础概念：UB、TBuf/TQue、LocalTensor 三者的关系](#2-基础概念)
 3. [Ping-Pong 缓冲区——从零讲解](#3-ping-pong-缓冲区)
 4. [事件（Event）同步机制](#4-事件同步机制)
+   - 4.1 为什么需要事件同步
+   - 4.2 动态 vs 静态事件 ID
+   - 4.3 全量静态事件 ID 对照表（VEC 侧 + Cube 侧）
 5. [具体修改内容（修改前后对比）](#5-具体修改内容)
    - 5.1 成员变量类型替换
-   - 5.2 `InitBuffers` 重写
-   - 5.3 `AllocEventID / FreeEventID` 静态化
+   - 5.2 `InitBuffers` 重写（VEC 侧）
+   - 5.3 `AllocEventID / FreeEventID` 静态化（VEC 侧）
    - 5.4 Vec2 内部事件 ID 静态化
    - 5.5 新建 `fa_vec1_vf_static.h`（vselrIndexesBuf 参数替换）
+   - 5.6 Cube 侧（C 核）静态化修改
+   - 5.7 `fa_static_buffer.h`（消除 common buffer 文件依赖）
 6. [Ping-Pong 实现细节](#6-ping-pong-实现细节)
 7. [性能影响分析](#7-性能影响分析)
 
@@ -228,6 +233,118 @@ constexpr uint32_t vToMte2 = FA_V_TO_MTE2_ID;
 ```
 
 **注意**：不同硬件事件类型（`MTE2_V` 和 `V_MTE2`）的事件 ID 空间是**独立的**，所以它们可以都取值 `2` 而不冲突。
+
+---
+
+### 4.3 全量静态事件 ID 对照表（VEC 侧 + Cube 侧）
+
+#### 4.3.1 硬件事件类型命名规则
+
+昇腾硬件事件名称格式为 `SOURCE_DEST`，含义是：**SOURCE 单元完成操作，DEST 单元可以继续**。
+
+```
+AI Core 数据流方向（Cube 路径）：
+  GM → [MTE2] → L1 → [MTE1] → L0A/L0B → [M 单元/CUBE] → L0C → [FixPipe] → UB/L1/GM
+
+  MTE2_MTE1 : MTE2 写完 L1     → MTE1 可以读 L1 (p2c for L1)
+  MTE1_MTE2 : MTE1 读完 L1     → MTE2 可以覆写 L1 (c2p for L1) ← 初始化时预置
+  MTE1_M    : MTE1 写完 L0A/B  → CUBE 可以读 L0A/B (p2c for L0A/B)
+  M_MTE1    : CUBE 读完 L0A/B  → MTE1 可以覆写 L0A/B (c2p for L0A/B) ← 初始化时预置
+  M_FIX     : CUBE 写完 L0C    → FixPipe 可以读 L0C (p2c for L0C)
+  FIX_M     : FixPipe 读完 L0C → CUBE 可以写 L0C (c2p for L0C) ← 初始化时预置
+
+AI Core 数据流方向（Vector 路径）：
+  GM → [MTE2] → UB → [VEC] → UB → [MTE3] → L1/GM
+
+  MTE2_V    : MTE2 写完 UB   → VEC 可以读 UB (p2c)
+  V_MTE2    : VEC 读完 UB    → MTE2 可以覆写 UB (c2p)
+  V_MTE3    : VEC 写完 UB    → MTE3 可以读 UB (p2c for stage1OutBuf) ← 计算时设置
+  MTE3_V    : MTE3 读完 UB   → VEC 可以覆写 UB (c2p for stage1OutBuf) ← 初始化时预置
+  MTE3_MTE2 : MTE3 搬运结束  → MTE2 可以继续 (vec2 内部协调)
+```
+
+#### 4.3.2 为什么预置 c2p 事件（初始化时 SetFlag）？
+
+c2p 事件的语义是"消费者已处理完，生产者可以重新写入"。在流水线启动之前，所有槽都是空的（消费者还没开始工作），所以需要**预置**这些事件，告诉生产者"槽是空的，你可以立即开始写"。如果不预置，生产者第一次 `WaitFlag<c2p>` 会永久阻塞。
+
+p2c 事件由生产者在每次写完后自然 `SetFlag`，不需要预置。
+
+#### 4.3.3 VEC 侧事件 ID 一览（`flash_attn_block_vec_noquant_gqa.h`）
+
+| 常量名 | 值 | HardEvent 类型 | 方向 | 含义 |
+|--------|-----|---------------|------|------|
+| `FA_MTE3_TO_V_0` | `0` | `MTE3_V` | c2p | MTE3 读完 stage1OutBuf[0]，VEC 可覆写（**预置**） |
+| `FA_MTE3_TO_V_1` | `1` | `MTE3_V` | c2p | MTE3 读完 stage1OutBuf[1]，VEC 可覆写（**预置**） |
+| `FA_V_TO_MTE3_0` | `0` | `V_MTE3` | p2c | VEC 写完 stage1OutBuf[0]，MTE3 可读（计算时 SetFlag）|
+| `FA_V_TO_MTE3_1` | `1` | `V_MTE3` | p2c | VEC 写完 stage1OutBuf[1]，MTE3 可读（计算时 SetFlag）|
+| `FA_MTE2_TO_V_ID` | `2` | `MTE2_V` | p2c | MTE2 写完 UB 局部区域，VEC 可读（Vec2 内部）|
+| `FA_V_TO_MTE2_ID` | `2` | `V_MTE2` | c2p | VEC 读完，MTE2 可覆写（Vec2 内部）|
+| `FA_MTE3_TO_MTE2_ID` | `2` | `MTE3_MTE2` | - | MTE3 完成，MTE2 可继续（Vec2 内部）|
+| `FA_MTE2_TO_V_SINK` | `4` | `MTE2_V` | p2c | MTE2 加载 sink 数据完毕，VEC 可读 |
+
+> **ID 复用说明**：`MTE3_V`、`V_MTE3`、`MTE2_V` 等不同 HardEvent 类型拥有**完全独立的 ID 空间**。因此 `FA_MTE3_TO_V_0 = 0`（MTE3_V 空间中的 ID 0）与 `FA_V_TO_MTE3_0 = 0`（V_MTE3 空间中的 ID 0）互不干扰。同理，Vec2 内部使用的三个 ID=2 事件均来自不同类型，不存在冲突。
+
+#### 4.3.4 Cube 侧事件 ID 一览（`flash_attn_block_cube_noquant_gqa.h`）
+
+各缓冲区均仅使用 **c2p 方向**的事件（初始化时预置，计算过程中由硬件/API 内部管理）。
+
+**L1 缓冲区 — HardEvent::MTE1_MTE2（MTE1 读完 L1，MTE2 可覆写）**
+
+| 常量名 | 值 | 适用场景 | 对应槽位 |
+|--------|-----|---------|---------|
+| `FA_L1_Q_C2P_0` | `0` | l1QBuffers ping（或 SingleBuffer 唯一槽）| L1Q ping/single |
+| `FA_L1_Q_C2P_1` | `1` | l1QBuffers pong（仅 DB 模式，dBaseSize≤256）| L1Q pong |
+| `FA_L1_K_C2P_0` | `2` | l1KBuffers ping/single | L1K ping/single |
+| `FA_L1_K_C2P_1` | `3` | l1KBuffers pong（DB 模式）| L1K pong |
+| `FA_L1_V_C2P_0` | `4` | l1VBuffers ping/single | L1V ping/single |
+| `FA_L1_V_C2P_1` | `5` | l1VBuffers pong（DB 模式）| L1V pong |
+
+> L1Q/K/V 三组缓冲区共享同一 HardEvent 类型（`MTE1_MTE2`），所以必须使用不同的 ID 值（0~5）来区分。ID 6、7 预留未用。
+
+**L0A 缓冲区 — HardEvent::M_MTE1（CUBE 读完 L0A，MTE1 可覆写）**
+
+| 常量名 | 值 | 对应槽位 |
+|--------|-----|---------|
+| `FA_L0A_C2P_0` | `0` | L0A ping（DB 模式，始终为 DB）|
+| `FA_L0A_C2P_1` | `1` | L0A pong |
+
+**L0B 缓冲区 — HardEvent::M_MTE1（同类型，ID 空间与 L0A 共享）**
+
+| 常量名 | 值 | 适用场景 | 对应槽位 |
+|--------|-----|---------|---------|
+| `FA_L0B_C2P_0` | `2` | L0B ping（或 Single）| L0B ping/single |
+| `FA_L0B_C2P_1` | `3` | L0B pong（DB 模式）| L0B pong |
+
+> L0A 和 L0B 共享 `M_MTE1` 事件类型，因此 L0B 的 ID 从 2 开始（避免与 L0A 的 0/1 冲突）。
+
+**L0C 缓冲区 — HardEvent::FIX_M（FixPipe 读完 L0C，CUBE 可写入）**
+
+| 常量名 | 值 | 适用场景 | 对应槽位 |
+|--------|-----|---------|---------|
+| `FA_L0C_C2P_0` | `0` | slot 0（4buff 或 DB 模式）|
+| `FA_L0C_C2P_1` | `1` | slot 1 |
+| `FA_L0C_C2P_2` | `2` | slot 2（仅 4buff 模式）|
+| `FA_L0C_C2P_3` | `3` | slot 3（仅 4buff 模式）|
+
+> L0C 使用独立的 `FIX_M` 事件类型，ID 空间与 L0A/L0B 的 `M_MTE1` 完全隔离，所以从 0 重新起编。
+
+#### 4.3.5 各缓冲区使用的 Buffer 策略类型
+
+缓冲区选择 Single 还是 DB（Double Buffer，乒乓）取决于编译期模板参数：
+
+| 缓冲区 | 策略类型 | 条件 |
+|--------|---------|------|
+| `l1QBuffers` | `BuffersPolicySingleBuffer` | `dBaseSize > 256`（Q 矩阵宽度大，L1 放不下两份）|
+| `l1QBuffers` | `BuffersPolicyDB` | `dBaseSize ≤ 256` |
+| `l1KBuffers` | `BuffersPolicySingleBuffer` | `s2BaseSize == 256 && dBaseSize > 128` |
+| `l1KBuffers` | `BuffersPolicyDB` | 其他情况 |
+| `l1VBuffers` | `BuffersPolicySingleBuffer` | `s2BaseSize == 256 && dBaseSize > 128` |
+| `l1VBuffers` | `BuffersPolicyDB` | 其他情况 |
+| `mmL0ABuffers` | `BuffersPolicyDB` | **始终** |
+| `mmL0BBuffers` | `BuffersPolicySingleBuffer` | `s2BaseSize == 256 && dBaseSize > 128` |
+| `mmL0BBuffers` | `BuffersPolicyDB` | 其他情况 |
+| `mmL0CBuffers` | `BuffersPolicy4Buff` | 两个方向矩阵均可 4 等分 L0C |
+| `mmL0CBuffers` | `BuffersPolicyDB` | 否则 |
 
 ---
 
@@ -612,6 +729,281 @@ fa_static::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize>(
 
 ---
 
+### 5.6 Cube 侧（C 核）静态化修改
+
+**位置**：`flash_attn_block_cube_noquant_gqa.h`（`FANoQuantGqaBlockCube` 类）
+
+#### 5.6.1 问题根因
+
+在静态 Tensor 编程模型中，Cube Block 没有 `TPipe` 对象。但原有 `Buffer::Init()` 接口内部调用了 `GetTPipePtr()->AllocEventID()`。当 TPipe 指针为 NULL 时，触发设备错误 507015（空指针解引用）。
+
+```
+原始调用链（触发崩溃）：
+  cubeBlock.InitBuffers()
+    → l1QBuffers.Init(*l1BufferManagerPtr, mm1LeftSize)
+      → Buffer::Init()
+        → GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>()   ← TPipe=NULL → CRASH
+```
+
+**错误修复方式**（被否决）：在静态环境中添加一个 `TPipe tPipe` 成员——这与静态 Tensor 规范矛盾，引入未定义行为。
+
+**正确修复方式**：为 `Buffer` 和所有 `BuffersPolicy*` 类添加 `InitStaticDirect` 接口，使用预定义的静态事件 ID 直接初始化，完全绕过 `TPipe`。
+
+#### 5.6.2 Cube 侧数据流与 Buffer 布局
+
+Cube 侧矩阵计算的 L1/L0 缓冲区布局如下：
+
+```
+L1 内存布局（从 offset=0 起，总大小约 512KB）：
+┌─────────────────────────────────────────┐  offset = 0
+│  l1PBuffers（3-slot 旋转）               │  3 × mBaseSize × s2BaseSize × sizeof(Q_T)
+│  用于 BMM2 的左矩阵中间结果               │  由 InitMMResBuf() 初始化
+├─────────────────────────────────────────┤  FA_L1_CUBE_BASE = 3 × 上述大小
+│  l1QBuffers（Q 矩阵，Single 或 DB）      │  mBaseSize × dBaseSize × sizeof(Q_T) [× 1 或 2]
+│  l1KBuffers（K 矩阵，Single 或 DB）      │  s2BaseSize × dBaseSize × sizeof(KV_T) [× 1 或 2]
+│  l1VBuffers（V 矩阵，Single 或 DB）      │  s2BaseSize × dBaseSize × sizeof(KV_T) [× 1 或 2]
+└─────────────────────────────────────────┘
+
+L0A（独立硬件内存，64KB 总）：
+  ping: offset 0,     大小 32KB  ← BMM1 左矩阵 slot 0
+  pong: offset 32KB,  大小 32KB  ← BMM1 左矩阵 slot 1
+
+L0B（独立硬件内存，64KB 总）：
+  ping: offset 0,     大小 32KB  ← BMM1/BMM2 右矩阵 slot 0
+  pong: offset 32KB,  大小 32KB  ← 右矩阵 slot 1（DB 模式）
+
+L0C（独立硬件内存，256KB 总）：
+  4buff 模式：4 × 64KB  ← 矩阵乘积输出槽
+  DB    模式：2 × 128KB ← 矩阵乘积输出槽
+```
+
+#### 5.6.3 成员变量对比（去除 TPipe/BufferManager 依赖）
+
+**修改前（master 版本）**：
+
+```cpp
+class FANoQuantGqaBlockCube {
+    TPipe *tPipe;                              // 外部传入的管道对象
+    BufferManager<BufferType::L1> *l1BufferManagerPtr;  // 外部 L1 管理器指针
+    BufferManager<BufferType::L0A> l0aBufferManager;    // 本地 L0A 管理器
+    BufferManager<BufferType::L0B> l0bBufferManager;
+    BufferManager<BufferType::L0C> l0cBufferManager;
+
+    // 缓冲区策略对象（地址由 BufferManager 运行时分配）
+    L1QType   l1QBuffers;   // e.g. BuffersPolicySingleBuffer<L1>
+    L1KvType  l1KBuffers;
+    L1KvType  l1VBuffers;
+    L0AType   mmL0ABuffers;
+    L0BType   mmL0BBuffers;
+    L0CType   mmL0CBuffers;
+};
+```
+
+**修改后（tensor 静态版本）**：
+
+```cpp
+class FANoQuantGqaBlockCube {
+    // 无 TPipe、无 BufferManager —— 所有地址由静态 constexpr 偏移决定
+
+    L1QType   l1QBuffers;   // 同类型，但通过 InitStaticDirect 初始化
+    L1KvType  l1KBuffers;
+    L1KvType  l1VBuffers;
+    L0AType   mmL0ABuffers;
+    L0BType   mmL0BBuffers;
+    L0CType   mmL0CBuffers;
+
+    // 编译期静态事件 ID 常量（完整列表见 4.3.4 节）
+    static constexpr TEventID FA_L1_Q_C2P_0 = static_cast<TEventID>(0);
+    static constexpr TEventID FA_L1_Q_C2P_1 = static_cast<TEventID>(1);
+    // ... 共 12 个事件 ID 常量（L1×6 + L0A×2 + L0B×2 + L0C×4）
+
+    static constexpr uint32_t FA_L1_CUBE_BASE = 3U * mBaseSize * s2BaseSize * sizeof(Q_T);
+};
+```
+
+`InitCubeBlock` 函数签名也相应简化，去掉了 `tPipe` 和 `l1BufferManagerPtr` 参数：
+
+```cpp
+// master 版本（旧）
+__aicore__ inline void InitCubeBlock(TPipe *pipe,
+                                     BufferManager<BufferType::L1> *l1BuffMgr,
+                                     __gm__ uint8_t *query, ...);
+
+// tensor 静态版本（新）：无需 TPipe 和 BufferManager
+__aicore__ inline void InitCubeBlock(__gm__ uint8_t *query, ...);
+```
+
+#### 5.6.4 `InitBuffers` 重写（纯地址初始化，不含同步）
+
+与 VEC 侧完全对称：`InitBuffers` **只负责建立缓冲区地址**，不插入任何 `SetFlag` 同步原语。
+
+**修改前（master 版本）**：
+
+```cpp
+__aicore__ inline void InitBuffers()
+{
+    // 全部通过 BufferManager 动态分配地址 + 动态 AllocEventID + 隐式 SetFlag
+    if constexpr (dBaseSize > 256) {
+        l1QBuffers.Init(*l1BufferManagerPtr, mm1LeftSize);   // → AllocEventID + SetFlag(c2p)
+        l1KBuffers.Init(*l1BufferManagerPtr, mm1RightSize);  // → AllocEventID + SetFlag(c2p)
+        l1VBuffers.Init(*l1BufferManagerPtr, mm2RightSize);  // → AllocEventID + SetFlag(c2p)
+    } else { /* 类似 */ }
+    l0aBufferManager.Init(tPipe, 65536);
+    mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);  // → AllocEventID + SetFlag(c2p)
+    mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
+    mmL0CBuffers.Init(l0cBufferManager, slotSize);
+}
+```
+
+**修改后（tensor 静态版本）**：
+
+```cpp
+__aicore__ inline void InitBuffers()
+{
+    // 与 VEC 侧保持一致：仅初始化地址，不插入任何同步原语
+    // SetFlag 流水预置统一由 AllocEventID() 完成
+    if constexpr (dBaseSize > 256) {
+        constexpr uint32_t mm1LeftSize  = mBaseSize * dBaseSize * sizeof(Q_T);
+        constexpr uint32_t mm1RightSize = s2BaseSize * l1BaseD * sizeof(KV_T);
+        constexpr uint32_t l1QOff       = FA_L1_CUBE_BASE;
+        constexpr uint32_t l1KOff       = l1QOff + mm1LeftSize;
+
+        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+            // dBaseSize>256, s2==256&&d>128 → Single + Single + Single
+            l1QBuffers.InitStaticDirect(l1QOff, mm1LeftSize, FA_L1_Q_C2P_0, FA_L1_Q_C2P_0);
+            l1KBuffers.InitStaticDirect(l1KOff, mm1RightSize, FA_L1_K_C2P_0, FA_L1_K_C2P_0);
+            l1VBuffers.InitStaticDirect(l1KOff + mm1RightSize, mm2RightSize,
+                                        FA_L1_V_C2P_0, FA_L1_V_C2P_0);
+        } else {
+            // dBaseSize>256, else → Single + DB + DB
+            l1QBuffers.InitStaticDirect(l1QOff, mm1LeftSize, FA_L1_Q_C2P_0, FA_L1_Q_C2P_0);
+            l1KBuffers.InitStaticDirect(l1KOff, l1KOff + mm1RightSize, mm1RightSize,
+                                        FA_L1_K_C2P_0, FA_L1_K_C2P_0,
+                                        FA_L1_K_C2P_1, FA_L1_K_C2P_1);
+            // l1V 类似...
+        }
+    } else { /* dBaseSize<=256 情况：l1Q 用 DB */ }
+
+    // L0A/B/C：LocalTensor 直接构造，固定偏移 0 起始
+    constexpr uint32_t FA_L0_BUF_SIZE = 32U * 1024U;
+    mmL0ABuffers.InitStaticDirect(0U, FA_L0_BUF_SIZE, FA_L0_BUF_SIZE,
+                                  FA_L0A_C2P_0, FA_L0A_C2P_0,
+                                  FA_L0A_C2P_1, FA_L0A_C2P_1);
+    // L0B、L0C 类似，按策略类型选择 Single/DB/4buff 重载
+}
+```
+
+**关键改变**：`InitStaticDirect` 接口由 `buffer.h` 中新增，语义与 VEC 侧的 `LocalTensor(pos, offset, size)` 等价——仅存储地址，不调用任何 TPipe 方法，不发出任何硬件事件。
+
+#### 5.6.5 `AllocEventID` 重写（统一流水预置，与 VEC 侧对称）
+
+**修改前**：空实现（SetFlag 错误地放在 InitBuffers 中）。  
+**修改后**：所有 `SetFlag` 集中于此，与 VEC 侧的 `AllocEventID` 结构完全对称。
+
+```cpp
+__aicore__ inline void AllocEventID()
+{
+    // L1 c2p 预置：MTE1 告知 MTE2 当前 slot 空闲，可以重新从 GM 加载
+    if constexpr (dBaseSize > 256) {
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);  // L1Q: Single
+        if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);    // Single + Single + Single
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+        } else {
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_0);    // Single + DB + DB
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_K_C2P_1);
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_0);
+            SetFlag<HardEvent::MTE1_MTE2>(FA_L1_V_C2P_1);
+        }
+    } else {
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_0);   // L1Q: DB ping
+        SetFlag<HardEvent::MTE1_MTE2>(FA_L1_Q_C2P_1);   // L1Q: DB pong
+        // L1K/V 类似...
+    }
+    // L0A c2p 预置：CUBE 告知 MTE1 当前 slot 空闲，可重新从 L1 加载（始终 DB）
+    SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_0);
+    SetFlag<HardEvent::M_MTE1>(FA_L0A_C2P_1);
+    // L0B c2p 预置（Single 或 DB）
+    if constexpr (s2BaseSize == 256 && dBaseSize > 128) {
+        SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
+    } else {
+        SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_0);
+        SetFlag<HardEvent::M_MTE1>(FA_L0B_C2P_1);
+    }
+    // L0C c2p 预置：FixPipe 告知 CUBE 当前 slot 空闲，可写入新矩阵结果（4buff 或 DB）
+    if constexpr (/* 4buff 条件 */) {
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_2);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_3);
+    } else {
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_0);
+        SetFlag<HardEvent::FIX_M>(FA_L0C_C2P_1);
+    }
+}
+```
+
+#### 5.6.6 `FreeEventID` 重写（排干流水，与 VEC 侧对称）
+
+**修改前（master 版本）**：
+
+```cpp
+__aicore__ inline void FreeEventID()
+{
+    // Uninit 内部：WaitFlag<EventC2P>(id) + ReleaseEventID（需要 TPipe）
+    l1QBuffers.Uninit(*l1BufferManagerPtr);
+    l1KBuffers.Uninit(*l1BufferManagerPtr);
+    l1VBuffers.Uninit(*l1BufferManagerPtr);
+    mmL0ABuffers.Uninit(l0aBufferManager);
+    mmL0BBuffers.Uninit(l0bBufferManager);
+    mmL0CBuffers.Uninit(l0cBufferManager);
+}
+```
+
+**修改后（tensor 静态版本）**：
+
+```cpp
+__aicore__ inline void FreeEventID()
+{
+    // UninitStaticDirect 内部仅调用 Buffer::UnInitStatic()：
+    // → WaitFlag<EventC2P>(c2pEventId_)  排干流水
+    // 无需 ReleaseEventID（静态 ID 不需要归还给 TPipe）
+    l1QBuffers.UninitStaticDirect();
+    l1KBuffers.UninitStaticDirect();
+    l1VBuffers.UninitStaticDirect();
+    mmL0ABuffers.UninitStaticDirect();
+    mmL0BBuffers.UninitStaticDirect();
+    mmL0CBuffers.UninitStaticDirect();
+}
+```
+
+#### 5.6.7 修改前后同步开销对比
+
+两种版本的 `SetFlag`/`WaitFlag` 调用数量**完全相同**——master 版本的 `Buffer::Init()` 内部也在调用 `SetFlag`，只是被封装隐藏了。
+
+| | master 版本 | tensor 静态版本 |
+|--|--|--|
+| `SetFlag` 数量 | 与缓冲区槽位数相同（隐藏在 Init 内部）| **相同**（显式写在 AllocEventID 中）|
+| `WaitFlag` 数量 | 与缓冲区槽位数相同（隐藏在 Uninit 内部）| **相同**（显式写在 UninitStaticDirect 内部）|
+| `AllocEventID` 调用 | 每个 Buffer 槽位一次（运行时 TPipe 查表）| **零次**（全部静态 constexpr）|
+| `ReleaseEventID` 调用 | 每个 Buffer 槽位一次（运行时 TPipe 操作）| **零次** |
+| `BufferManager` 分配 | 每个 Buffer 槽位一次（运行时指针算术）| **零次** |
+
+> 结论：tensor 静态版本在同步语义上与 master 完全等价，**不引入任何额外的 WaitFlag/SetFlag**，同时消除了所有运行时 TPipe/BufferManager 开销。
+
+#### 5.6.8 与 VEC 侧修改的对比
+
+| 对比维度 | VEC 侧（`flash_attn_block_vec_noquant_gqa.h`）| Cube 侧（`flash_attn_block_cube_noquant_gqa.h`）|
+|---------|---------------------------------------------|-----------------------------------------------|
+| 缓冲区对象 | `LocalTensor<T>`（完全绕过 Buffer 框架）| `BuffersPolicy*<L1/L0A/B/C>`（保留，供 Bmm API 使用）|
+| `InitBuffers` | 直接 `LocalTensor(pos, offset, size)` 构造 | `InitStaticDirect(offset, size, p2cId, c2pId)` 构造 |
+| `AllocEventID` | `SetFlag<MTE3_V>(id0/1)`（stage1OutBuf c2p 预置）| 全部 L1/L0 缓冲区 c2p 预置（对应多个 HardEvent 类型）|
+| `FreeEventID` | `WaitFlag<MTE3_V>(id0/1)` | `UninitStaticDirect()`（各 Policy 类内部 WaitFlag）|
+| 去除的依赖 | `TPipe`、`TBuf`、`TQue`、`LocalMemAllocator` | `TPipe`、`BufferManager`（L1/L0A/B/C 全部）|
+| 保留的依赖 | 无（纯 LocalTensor）| `BuffersPolicyDB/Single/4Buff` 接口（Bmm API 要求）|
+
+---
+
 ## 6. Ping-Pong 实现细节
 
 ### 6.1 UB 内存中的物理布局
@@ -853,4 +1245,5 @@ CUBE 矩阵计算（Mm1 + Mm2）占总时间 ~80%，这部分未被本次改动�
 | `common/op_kernel/buffer.h` | `InitStaticDirect` 参数类型修正（`event_t` → `TEventID`），移除 `SetStaticEventIds`（无调用方）|
 | `common/op_kernel/buffers_policy.h` | 移除 `InitStatic/UninitStatic/AllocStaticAddr`（无调用方的死代码）|
 | `common/op_kernel/buffer_manager.h` | `InitStatic()` 修正：使用 `LocalTensor(Position, 0, maxSize)` 替代 `TBuf` |
-| `flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h` | `static constexpr event_t` → `static constexpr TEventID`（枚举类型隐式转换修正）|
+| `flash_attn/op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h` | 去除 `TPipe*`/`BufferManager` 成员；`InitBuffers` 改用 `InitStaticDirect`（纯地址初始化，无同步）；`AllocEventID` 统一预置所有 L1/L0A/L0B/L0C 的 c2p `SetFlag`；`FreeEventID` 改用 `UninitStaticDirect`；新增 12 个 `static constexpr TEventID` 常量；**新增** `#include "fa_static_buffer.h"` 置于 `matmul.h` 之前，通过 include-guard 遮蔽阻止 common 下的 `buffer.h`/`buffer_manager.h`/`buffers_policy.h` 被拉入 |
+| `flash_attn/op_kernel/arch35/fa_static_buffer.h` | **新建**：将 `common/op_kernel/` 下 `buffer.h`、`buffer_manager.h`、`buffers_policy.h` 的全部类型定义（`Buffer`、`BufferInfo`、`BufferManager`、`BuffersPolicySingleBuffer`/`DB`/`3buff`/`4buff`/`Matrix2x2BufferPolicy`）合并到此文件；预定义 `BUFFER_H`/`BUFFER_MANAGER_H`/`BUFFERS_POLICY_H` include-guard 宏，使 `matmul.h` 的 `#include "buffers_policy.h"` 自动跳过 common 版本；保留 `InitStaticDirect`/`UninitStaticDirect`/`SetCrossCore`/`WaitCrossCore` 等全部接口，确保 matmul API 和核间同步功能不受影响 |
