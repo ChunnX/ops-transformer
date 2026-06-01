@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -103,6 +103,10 @@ public:
         ds_l1_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 24e5fc134 (rebase)
         if ASCEND_IS_AIC {
             // printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
