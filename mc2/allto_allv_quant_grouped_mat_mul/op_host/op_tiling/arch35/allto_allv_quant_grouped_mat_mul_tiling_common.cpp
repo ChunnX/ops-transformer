@@ -99,10 +99,31 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
+    // maxMergeTokenNum
+    expertNum_ = 1;
+    uint64_t maxMergeTokenNum = 0;
+    if (expertNum_ > 1) {
+        for (uint64_t startExpertIdx = 0; startExpertIdx < e_; startExpertIdx += expertNum_) {
+            uint64_t mergeTokenNum = 0;
+            for (uint64_t localExpertIdx = startExpertIdx; localExpertIdx <std::min(
+                    startExpertIdx + expertNum_, e_); localExpertIdx++) {
+                for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
+                    mergeTokenNum += recvCounts[rankIdx * e_ + localExpertIdx];
+                }
+            }
+            maxMergeTokenNum = std::max(maxMergeTokenNum, mergeTokenNum);
+        }
+    }
+    SetWorkspaceInfo(maxMergeTokenNum);
+    // tensorListSize为kernel侧tensorlist开辟的空间
     const uint64_t tensorListSize = 512;
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
-    // tensorListSize为kernel侧tensorlist开辟的空间
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize + tensorListSize;
+    tilingData->workspaceInfo.gmmComputeSize += groupListSize + tensorListSize;
+    workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
+                    tilingData->workspaceInfo.permuteXOutSize +
+                    tilingData->workspaceInfo.commXScaleSize +
+                    tilingData->workspaceInfo.permuteScaleOutSize +
+                    tilingData->workspaceInfo.gmmComputeSize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -156,13 +177,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    uint32_t expertNum = 1;
-    tilingData->taskTilingInfo.expertNum = expertNum;
-    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
+    tilingData->taskTilingInfo.expertNum = expertNum_;
+    tilingData->taskTilingInfo.mainLoopExpertNum = expertNum_;
     tilingData->taskTilingInfo.tailLoopExpertNum =
-        (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
+        (e_ % expertNum_ == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum_);
     tilingData->taskTilingInfo.totalLoopCount =
-        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum)));
+        static_cast<uint32_t>(Ops::Base::CeilDiv(e_, static_cast<uint64_t>(expertNum_)));
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
