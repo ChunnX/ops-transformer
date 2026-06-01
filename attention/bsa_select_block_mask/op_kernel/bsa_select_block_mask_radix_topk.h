@@ -243,16 +243,38 @@ __aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(LocalTensor<float> &
 }
 
 template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(LocalTensor<int16_t> &xLocal,
-    int32_t roundId, int32_t tileId, uint64_t curTileLen)
+__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
+    LocalTensor<float> &xLocal, int32_t roundId, int32_t tileId, uint64_t curTileLen)
 {
-    // TODO: 累积直方图统计
-    // for binMask = 3 → 1:
-    //   involvedMaskTemp = involvedMask16_ | (binMask << (roundId * 2))
-    //   Compares + GatherMask 统计匹配数
-    //   cumSumOne += rsvdCnt
-    //   tileHist[binMask][tileId] = cumSumOne
-    //   globalHist[binMask] += cumSumOne
+    LocalTensor<int32_t> xLocalInt32 = xLocal.template ReinterpretCast<int32_t>();
+    LocalTensor<half> tempHalf = globalHistBuf_.Get<half>();
+    LocalTensor<uint8_t> cmpMaskTensor = tempBuf_.Get<uint8_t>();
+    LocalTensor<int32_t> tileHist = tempBuf_.GetWithOffset<int32_t>(
+        curTileLen / BYTE_SIZE, curTileLen / BYTE_SIZE);
+    LocalTensor<int32_t> globalHist = maskLocalBuf_.Get<int32_t>();
+    
+    uint32_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
+    
+    int32_t cumSumOne = 0;
+    for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+        int32_t involvedMaskTemp = involvedMask_ | (binMask << (roundId * bitsPerRound_));
+        
+        Compares<int32_t, uint8_t>(
+            cmpMaskTensor,
+            xLocalInt32,
+            involvedMaskTemp,
+            AscendC::CMPMODE::EQ,
+            curTileLenAlign);
+        
+        uint64_t rsvdCnt = 0;
+        GatherMask(tempHalf, tempHalf, cmpMaskTensor.template ReinterpretCast<uint16_t>(), 
+                   true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
+        PipeBarrier<PIPE_V>();
+        
+        cumSumOne += static_cast<int32_t>(rsvdCnt);
+        tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
+        globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
+    }
 }
 
 template <typename BSAT>
