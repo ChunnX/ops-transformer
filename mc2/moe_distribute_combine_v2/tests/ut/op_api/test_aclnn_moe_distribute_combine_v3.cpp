@@ -23,7 +23,7 @@ using namespace std;
 namespace MoeDistributeCombineV3 {
 namespace {
 constexpr int64_t EP_WORLD_SIZE = 288;
-constexpr int64_t TP_WORLD_SIZE = 2;
+constexpr int64_t TP_WORLD_SIZE = 1;
 constexpr int64_t EP_RANK_ID = 0;
 constexpr int64_t TP_RANK_ID = 0;
 constexpr int64_t EXPERT_SHARD_TYPE = 0;
