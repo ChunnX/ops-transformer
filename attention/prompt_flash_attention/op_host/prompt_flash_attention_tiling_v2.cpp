@@ -259,14 +259,14 @@ void PromptFlashAttentionTilingV2::PromptFlashAttentionInitOutputSplit(int64_t t
 {
     PromptAttentionInitOutputParams *initParams = &tilingData.promptAttentionInitOutputParams;
     // Upward rounding, coreNum has been verified to be non-zero when obtained.
-    uint32_t singleCoreSize = (totalSize + coreNum - 1) / (coreNum);
+    uint64_t singleCoreSize = (static_cast<uint64_t>(totalSize) + coreNum - 1) / coreNum;
 
     if (enablePostQuant) {
         // requiring that the number of points allocated to each kernel must be even.
         singleCoreSize = ((singleCoreSize + 1) / 2) * 2; // 2 : fill in 0
     }
 
-    initParams->set_singleCoreSize(singleCoreSize);
+    initParams->set_singleCoreSize(static_cast<uint32_t>(singleCoreSize));
     initParams->set_totalOutputSize(totalSize);
 }
 
@@ -523,6 +523,10 @@ bool PromptFlashAttentionTilingV2::GetAndCheckShape(ContextParamsForPFATiling& c
         "batch size of %s should be less than or equal to %u and > 0, but batch size = %ld.", sName.c_str(), BLIMIT, b), return false);
     OP_CHECK_IF((s < 0), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
         "seq size of %s should >= 0, but sequence size = %ld.", sName.c_str(), s), return false);
+    OP_CHECK_IF(s > static_cast<int64_t>(UINT32_MAX),
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "seq size of %s exceeds UINT32_MAX, seq = %ld.", sName.c_str(), s),
+        return false);
     if (s > SLIMIT) {
         OP_LOGW(contextKeyParams.opName, "sequence size of %s should <= 20M, but seq = %ld.", sName.c_str(), s);
     }
@@ -3267,6 +3271,9 @@ void PromptFlashAttentionTilingV2::SetTilingData(ContextParamsForPFATiling& cont
     }
     tilingData.promptAttentionBaseParams.set_vHeadSize(valueShapeInfo.d);
     tilingData.promptAttentionBaseParams.set_seqInnerSize(S2);
+    OP_CHECK_IF(queryShapeInfo.s > UINT32_MAX,
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "query seq size exceeds UINT32_MAX."),
+        return);
     tilingData.promptAttentionBaseParams.set_seqSize(queryShapeInfo.s);
     tilingData.promptAttentionBaseParams.set_headNumSize(queryShapeInfo.n);
     tilingData.promptAttentionBaseParams.set_batchSize(queryShapeInfo.b);
