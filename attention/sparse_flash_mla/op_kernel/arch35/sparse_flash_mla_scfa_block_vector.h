@@ -301,7 +301,8 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(
     DataCopyPadExtParams<KV_T> padParams;
     padParams.isPad = true;
     padParams.leftPadding = 0;
-    padParams.rightPadding = CeilAlign(constInfo.dSize * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
+    padParams.rightPadding = (CeilAlign(constInfo.dSize * sizeof(KV_T), BUFFER_SIZE_BYTE_32B) -
+ 	                          constInfo.dSize * sizeof(KV_T)) / sizeof(KV_T);
     padParams.paddingValue = 0;
     DataCopyPad(kvInUb[startRow * constInfo.dSize], keyGm[keyOffset], intriParams, padParams);
 }
@@ -332,6 +333,10 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
         intriParams.dstStride = 0;
         intriParams.srcStride = keySrcStride;
         DataCopyPadExtParams<KV_T> padParams;
+        padParams.isPad = true;
+        padParams.leftPadding = 0;
+        padParams.rightPadding = (CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) - combineBytes) / sizeof(KV_T);
+        padParams.paddingValue = 0;
 
         int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
         if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
