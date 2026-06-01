@@ -34,8 +34,9 @@ static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_X =
 static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
 
 static inline bool CheckNotNull(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
-                                const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+                                const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut, const aclTensor *permuteTokens)
 {
+    OP_CHECK_NULL(permuteTokens, return false);
     OP_CHECK_NULL(unpermutedTokensGrad, return false);
     OP_CHECK_NULL(sortedIndices, return false);
     OP_CHECK_NULL(permutedTokensGradOut, return false);
@@ -74,7 +75,7 @@ static aclnnStatus CheckParams(const aclTensor *unpermutedTokensGrad, const aclT
                                const aclTensor *permuteTokens, const aclTensor *probsOptional,
                                const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
 {
-    CHECK_RET(CheckNotNull(unpermutedTokensGrad, sortedIndices, permutedTokensGradOut, probsGradOut),
+    CHECK_RET(CheckNotNull(unpermutedTokensGrad, sortedIndices, permutedTokensGradOut, probsGradOut, permuteTokens),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(unpermutedTokensGrad, sortedIndices, permuteTokens, probsOptional, permutedTokensGradOut,
                               probsGradOut),
@@ -99,7 +100,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
             probsOptional, paddedMode, restoreShapeOptional),
         DFX_OUT(permutedTokensGradOut, probsGradOut));
 
-    static bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
+    bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2Grad) {
         return aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
             permuteTokens, unpermutedTokensGrad, sortedIndices, probsOptional, paddedMode, restoreShapeOptional,

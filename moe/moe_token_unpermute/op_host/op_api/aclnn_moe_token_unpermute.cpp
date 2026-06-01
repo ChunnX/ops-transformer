@@ -85,7 +85,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
                    DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
                    DFX_OUT(out));
 
-    static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
+    bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2) {
         return aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
             permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional, out, workspaceSize,

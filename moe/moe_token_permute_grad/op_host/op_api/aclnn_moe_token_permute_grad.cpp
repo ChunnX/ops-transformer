@@ -77,7 +77,7 @@ aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
         DFX_IN(permutedOutputGrad, sortedIndices, numTopk, paddedMode),
                    DFX_OUT(out));
 
-    static bool useMoeInitRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
+    bool useMoeInitRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeInitRoutingV2Grad) {
         return aclnnInnerMoeTokenPermuteGradGetWorkspaceSize(
             permutedOutputGrad, sortedIndices, numTopk, paddedMode, out, workspaceSize, executor);
