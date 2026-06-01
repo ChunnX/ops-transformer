@@ -80,6 +80,7 @@ struct ContractInput {
     uint32_t maxSeqLen = 0;
     uint32_t blockNum = 0;
     uint32_t blockSize = 0;
+    uint32_t aicNum = 0;
 
     TensorContractInfo qkv;
     TensorContractInfo qGamma;
@@ -95,6 +96,8 @@ struct ContractInput {
 };
 
 struct ContractTiling {
+    uint32_t coreTokenTile = 0;
+    uint32_t coreGroupNum = 0;
     uint32_t tokenTile = 0;
     uint32_t tokenTilePerAiv = 0;
     uint32_t rowTile = 0;
@@ -102,11 +105,6 @@ struct ContractTiling {
     uint32_t qkHeadTile = 0;
     uint32_t vHeadTile = 0;
     uint32_t dimTile = 0;
-};
-
-struct TokenRange {
-    uint32_t begin = 0;
-    uint32_t end = 0;
 };
 
 struct TileParam {
@@ -133,10 +131,8 @@ uint32_t AlignUp(uint32_t value, uint32_t align);
 uint32_t CeilDiv(uint32_t value, uint32_t divisor);
 ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling &tiling);
 uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile);
+uint32_t CalcCoreTokenTile(uint32_t totalTokens, uint32_t aicNum);
 uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum);
-TokenRange MakeCoreTokenRange(uint32_t totalTokens, uint32_t cubeIndex, uint32_t coreGroupNum);
-TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize, uint32_t totalTokens,
-    const ContractTiling &tiling);
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId);
 const char *ContractStatusName(ContractStatus status);
 

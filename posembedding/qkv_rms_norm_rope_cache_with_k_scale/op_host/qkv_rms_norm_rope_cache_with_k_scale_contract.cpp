@@ -84,6 +84,9 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     if (input.blockNum == 0 || input.blockSize == 0) {
         return ContractStatus::kInvalidBlockShape;
     }
+    if (input.aicNum == 0) {
+        return ContractStatus::kUnsupportedResource;
+    }
     if (!input.rotation.shape.present) {
         return ContractStatus::kMissingRotation;
     }
@@ -141,6 +144,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         return ContractStatus::kUnsupportedResource;
     }
 
+    tiling.coreTokenTile = CeilDiv(input.totalTokens, input.aicNum);
+    tiling.coreGroupNum = CeilDiv(input.totalTokens, tiling.coreTokenTile);
     tiling.tokenTilePerAiv = taMax;
     tiling.tokenTile = 2 * taMax;
     tiling.qkHeadTile = hqk;
@@ -160,43 +165,15 @@ uint32_t CalcTileNum(uint32_t totalTokens, uint32_t tokenTile)
     return CeilDiv(totalTokens, tokenTile);
 }
 
+uint32_t CalcCoreTokenTile(uint32_t totalTokens, uint32_t aicNum)
+{
+    return CeilDiv(totalTokens, aicNum);
+}
+
 uint32_t CalcCoreGroupNum(uint32_t totalTokens, uint32_t aicNum)
 {
-    return std::min(totalTokens, aicNum);
-}
-
-TokenRange MakeCoreTokenRange(uint32_t totalTokens, uint32_t cubeIndex, uint32_t coreGroupNum)
-{
-    TokenRange range;
-    if (coreGroupNum == 0 || cubeIndex >= coreGroupNum || totalTokens == 0) {
-        return range;
-    }
-
-    const uint32_t baseTokenSize = totalTokens / coreGroupNum;
-    const uint32_t extraTokenNum = totalTokens - baseTokenSize * coreGroupNum;
-    range.begin = cubeIndex * baseTokenSize + std::min(cubeIndex, extraTokenNum);
-    range.end = range.begin + baseTokenSize + (cubeIndex < extraTokenNum ? 1U : 0U);
-    return range;
-}
-
-TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize, uint32_t totalTokens,
-    const ContractTiling &tiling)
-{
-    TileParam tile;
-    tile.tileId = tileId;
-    tile.bufferId = tileId & 1U;
-    tile.tokenOffset = tokenOffset;
-    if (tile.tokenOffset >= totalTokens || tokenSize == 0) {
-        return tile;
-    }
-    tile.tokenSize = std::min({tokenSize, tiling.tokenTile, totalTokens - tile.tokenOffset});
-    tile.qkHeadOffset = 0;
-    tile.qkHeadSize = tiling.qkHeadTile;
-    tile.vHeadOffset = 0;
-    tile.vHeadSize = tiling.vHeadTile;
-    tile.rowOffset = 0;
-    tile.rowSize = tile.tokenSize * tiling.qkHeadTile;
-    return tile;
+    const uint32_t coreTokenTile = CalcCoreTokenTile(totalTokens, aicNum);
+    return CeilDiv(totalTokens, coreTokenTile);
 }
 
 AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)

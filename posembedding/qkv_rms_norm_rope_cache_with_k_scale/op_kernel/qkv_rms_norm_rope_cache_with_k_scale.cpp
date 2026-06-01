@@ -39,7 +39,6 @@ extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
         };
 
         D128FastController controller;
-        controller.Init(tensors, tilingData);
-        controller.Process();
+        controller.Process(tensors, tilingData);
     }
 }

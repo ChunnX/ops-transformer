@@ -25,7 +25,6 @@ using qkv_rms_norm_rope_cache_with_k_scale::ContractDtype;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractStatus;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractStatusName;
 using qkv_rms_norm_rope_cache_with_k_scale::ContractTiling;
-using qkv_rms_norm_rope_cache_with_k_scale::CalcCoreGroupNum;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorContractInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::TensorShapeInfo;
 using qkv_rms_norm_rope_cache_with_k_scale::ValidateAndBuildTiling;
@@ -182,6 +181,8 @@ void FillTilingData(const ContractInput &input, const ContractTiling &contractTi
     tilingData.maxSeqLen = input.maxSeqLen;
     tilingData.blockNum = input.blockNum;
     tilingData.blockSize = input.blockSize;
+    tilingData.coreTokenTile = contractTiling.coreTokenTile;
+    tilingData.coreGroupNum = contractTiling.coreGroupNum;
     tilingData.qkvStrideT = (input.numQHeads + input.numKHeads + input.numVHeads) * input.headDim;
     tilingData.qkvStrideH = input.headDim;
     tilingData.cacheStrideBlock = input.numKHeads * input.blockSize * input.headDim;
@@ -215,6 +216,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
     OP_CHECK_IF(BuildContractInput(context, input, epsilon) != ge::GRAPH_SUCCESS,
         OP_LOGE(context->GetNodeName(), "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
         return ge::GRAPH_FAILED);
+    input.aicNum = compileInfo->aicNum;
 
     ContractTiling contractTiling;
     const ContractStatus status = ValidateAndBuildTiling(input, contractTiling);
@@ -238,7 +240,7 @@ ge::graphStatus Tiling4QkvRmsNormRopeCacheWithKScale(gert::TilingContext *contex
         return ge::GRAPH_FAILED);
     context->GetRawTilingData()->SetDataSize(tilingDataSize);
     context->SetTilingKey(kTilingKeyArch35D128);
-    context->SetBlockDim(CalcCoreGroupNum(input.totalTokens, compileInfo->aicNum));
+    context->SetBlockDim(contractTiling.coreGroupNum);
     return ge::GRAPH_SUCCESS;
 }
 

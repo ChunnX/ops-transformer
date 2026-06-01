@@ -81,11 +81,6 @@ constexpr uint32_t QKV_RRC_UB_USED_BYTES = QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_R
 static_assert(QKV_RRC_UB_USED_BYTES <= 248U * QKV_RRC_KIB,
     "QkvRmsNormRopeCacheWithKScale static UB layout exceeds 248 KiB.");
 
-struct TokenRange {
-    uint32_t begin;
-    uint32_t end;
-};
-
 struct TileParam {
     uint32_t tileId;
     uint32_t bufferId;
@@ -255,49 +250,6 @@ __aicore__ inline uint32_t GetCubeIndex()
         return GetBlockIdx();
     }
     return GetBlockIdx() / QKV_RRC_MIX_AIV_PER_AIC;
-}
-
-__aicore__ inline uint32_t GetCubeGroupNum()
-{
-    if (g_coreType == AIC) {
-        return GetBlockNum();
-    }
-    return CeilDiv(GetBlockNum(), QKV_RRC_MIX_AIV_PER_AIC);
-}
-
-__aicore__ inline TokenRange MakeCoreTokenRange(uint32_t totalTokens, uint32_t cubeIndex, uint32_t cubeGroupNum)
-{
-    TokenRange range = {0U, 0U};
-    if (cubeGroupNum == 0U || cubeIndex >= cubeGroupNum || totalTokens == 0U) {
-        return range;
-    }
-
-    const uint32_t baseTokenSize = totalTokens / cubeGroupNum;
-    const uint32_t extraTokenNum = totalTokens - baseTokenSize * cubeGroupNum;
-    range.begin = cubeIndex * baseTokenSize + MinU32(cubeIndex, extraTokenNum);
-    range.end = range.begin + baseTokenSize + (cubeIndex < extraTokenNum ? 1U : 0U);
-    return range;
-}
-
-__aicore__ inline TileParam MakeTileParam(uint32_t tileId, uint32_t tokenOffset, uint32_t tokenSize,
-    const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
-{
-    TileParam tile = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
-    tile.tileId = tileId;
-    tile.bufferId = tileId & 1U;
-    tile.tokenOffset = tokenOffset;
-    if (tile.tokenOffset >= tilingData->totalTokens || tokenSize == 0U) {
-        return tile;
-    }
-
-    tile.tokenSize = MinU32(MinU32(tokenSize, tilingData->tokenTile), tilingData->totalTokens - tile.tokenOffset);
-    tile.qkHeadOffset = 0U;
-    tile.qkHeadSize = tilingData->qkHeadTile;
-    tile.vHeadOffset = 0U;
-    tile.vHeadSize = tilingData->vHeadTile;
-    tile.rowOffset = 0U;
-    tile.rowSize = tile.tokenSize * tilingData->qkHeadTile;
-    return tile;
 }
 
 __aicore__ inline AivSlice MakeAivSlice(const TileParam &tile, uint32_t qkHeadTile, uint32_t aivLocalId)
