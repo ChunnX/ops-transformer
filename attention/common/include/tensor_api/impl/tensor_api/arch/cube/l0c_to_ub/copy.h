@@ -30,12 +30,7 @@
 namespace AscendC {
 namespace Te {
 
-constexpr CopyL0C2UBTrait DEFAULT_COPY_L0C2UB_TRAIT = CopyL0C2UBTrait{
-    AscendC::Te::RoundMode::DEFAULT,
-    false,
-    false,
-    AscendC::Te::DualDstMode::DUAL_DST_SPLIT_M
-};
+constexpr CopyL0C2UBTrait DEFAULT_COPY_L0C2UB_TRAIT = CopyL0C2UBTrait{};
 struct CopyL0C2UBTraitDefault {
     using TraitType = CopyL0C2UBTrait;
     static constexpr const TraitType value = DEFAULT_COPY_L0C2UB_TRAIT;
