@@ -50,7 +50,7 @@ public:
     using K_T = typename LIT::keyType;
     using QK_T = typename LIT::queryKeyType;
     using SCORE_T = typename LIT::scoreType;
-    using W_T = typename LightningIndexerV2TypeTraits<Q_T, 
+    using W_T = typename LightningIndexerV2TypeTraits<Q_T,
                 typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     __aicore__ inline LIV2Vector(){};
@@ -182,7 +182,7 @@ __aicore__ inline void LIV2Vector<LIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
     // 大小：topkCountAlign256_ * sizeof(SCORE_T)
-    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T)); 
+    pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(SCORE_T));
     scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
@@ -480,7 +480,7 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
                         copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
                         AscendC::DataCopyPad(mrgValueLocal_,
                                              scoreGm[vecOffset * LIV2Common::Align(
-                                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)], 
+                                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
                                             copyInParams, padParams);
                         SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                         WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
@@ -553,7 +553,7 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
         
         if (validS2Len / 8 * 8 + 64 < topkCount_) {
             PipeBarrier<PIPE_V>();
-            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64], 
+            Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64],
                       neg, topkCount_ - (validS2Len / 8 * 8 + 64));
         }
 
@@ -593,7 +593,7 @@ __aicore__ inline void LIV2Vector<LIT>::ProcessTopK(const LIV2Common::RunInfo &i
             // 搬运到GM
             AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
             valueOutLocal_, copyOutValueParams);
-        }        
+        }
     }
 }
 }  // namespace LIKernel

@@ -47,7 +47,7 @@ public:
 
     static constexpr uint32_t KEY_MTE1_MTE2_EVENT = EVENT_ID2;
     // KEY_MTE1_MTE2_EVENT + KEY_BUF_NUM;
-    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5;     
+    static constexpr uint32_t QUERY_MTE1_MTE2_EVENT = EVENT_ID5;
     static constexpr uint32_t M_MTE1_EVENT = EVENT_ID3;
 
     static constexpr uint32_t MTE2_MTE1_EVENT = EVENT_ID2;

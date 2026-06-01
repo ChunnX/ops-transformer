@@ -567,10 +567,10 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
 
 // 计算S1=2
 // float in uint16 out
-__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_, 
+__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
                                                __ubuf__ uint16_t* out1_,
                                                uint32_t outStride,
-                                               __ubuf__ float* qk0_,      
+                                               __ubuf__ float* qk0_,
                                                __ubuf__ float* qk1_,
                                                uint32_t qkVLStride,
                                                uint32_t qkStride,
@@ -648,10 +648,10 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
 
 // 计算S1=2
 // float in uint16 out
-__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_, 
+__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
                                                __ubuf__ uint16_t* out1_,
                                                uint32_t outStride,
-                                               __ubuf__ float* qk0_,      
+                                               __ubuf__ float* qk0_,
                                                __ubuf__ float* qk1_,
                                                uint32_t qkVLStride,
                                                uint32_t qkStride,
@@ -737,10 +737,10 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
 
 // 计算S1=2
 // float in uint16 out
-__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_, 
+__simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
                                                __ubuf__ uint16_t* out1_,
                                                uint32_t outStride,
-                                               __ubuf__ float* qk0_,      
+                                               __ubuf__ float* qk0_,
                                                __ubuf__ float* qk1_,
                                                uint32_t qkVLStride,
                                                uint32_t qkStride,
@@ -843,7 +843,7 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
     auto weight = (__ubuf__ W_T *)weight_.GetPhyAddr();
     auto weightFloat = (__ubuf__ float *)weightFloat_.GetPhyAddr();
     auto qk = (__ubuf__ float *)qk_.GetPhyAddr();
-    auto out = (__ubuf__ uint16_t *)out_.GetPhyAddr();    
+    auto out = (__ubuf__ uint16_t *)out_.GetPhyAddr();
     if (batch == 2) {
         auto weight1 = weight + weightStride;
         auto qk1 = qk + qkStride;
