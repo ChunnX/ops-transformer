@@ -21,6 +21,9 @@ public:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
     {
         isAiv_ = false;
+        pendingCConsumedCount_ = 0U;
+        hasPendingQkPostprocess_ = false;
+        pendingQkTile_ = EmptyTileParam();
         cube_.Init(cubeIndex, tensors);
         cube_.InitIntraCoreEvents();
     }
@@ -29,16 +32,20 @@ public:
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
         isAiv_ = true;
+        pendingCConsumedCount_ = 0U;
+        hasPendingQkPostprocess_ = false;
+        pendingQkTile_ = EmptyTileParam();
         vec_.Init(tilingData, aivLocalId, tensors);
         vec_.InitIntraCoreEvents();
     }
 
     __aicore__ inline void ComputeTileAic(const TileParam &tile)
     {
+        WaitReusableOutputBufferAic();
         WaitAReadyFromAiv();
         cube_.ComputeTile(tile);
         NotifyCReadyToAiv();
-        WaitCConsumedFromAiv();
+        ++pendingCConsumedCount_;
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
@@ -49,7 +56,56 @@ public:
     __aicore__ inline void ComputeTileAiv(const TileParam &tile)
     {
         PreprocessTileAiv(tile);
-        PostprocessTileAiv(tile);
+        if (hasPendingQkPostprocess_) {
+            PostprocessTileAiv(pendingQkTile_);
+        }
+        pendingQkTile_ = tile;
+        hasPendingQkPostprocess_ = true;
+    }
+
+    __aicore__ inline void End()
+    {
+        if (isAiv_) {
+            DrainAiv();
+            vec_.EndIntraCoreEvents();
+        } else {
+            DrainAic();
+            cube_.EndIntraCoreEvents();
+        }
+    }
+
+private:
+    __aicore__ inline TileParam EmptyTileParam() const
+    {
+        TileParam tile = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+        return tile;
+    }
+
+    __aicore__ inline void WaitReusableOutputBufferAic()
+    {
+        if (pendingCConsumedCount_ < QKV_RRC_DOUBLE_BUFFER_NUM) {
+            return;
+        }
+        WaitCConsumedFromAiv();
+        --pendingCConsumedCount_;
+    }
+
+    __aicore__ inline void DrainAic()
+    {
+        while (pendingCConsumedCount_ > 0U) {
+            WaitCConsumedFromAiv();
+            --pendingCConsumedCount_;
+        }
+    }
+
+    __aicore__ inline void DrainAiv()
+    {
+        if (!hasPendingQkPostprocess_) {
+            return;
+        }
+        PostprocessTileAiv(pendingQkTile_);
+        pendingQkTile_ = EmptyTileParam();
+        hasPendingQkPostprocess_ = false;
     }
 
     __aicore__ inline void PreprocessTileAiv(const TileParam &tile)
@@ -66,16 +122,6 @@ public:
         NotifyCConsumedToAic();
     }
 
-    __aicore__ inline void End()
-    {
-        if (isAiv_) {
-            vec_.EndIntraCoreEvents();
-        } else {
-            cube_.EndIntraCoreEvents();
-        }
-    }
-
-private:
     __aicore__ inline void NotifyAReadyToAic()
     {
         SetAivToAic<PIPE_MTE3>(SYNC_A_READY);
@@ -107,6 +153,9 @@ private:
     }
 
     bool isAiv_;
+    uint32_t pendingCConsumedCount_;
+    bool hasPendingQkPostprocess_;
+    TileParam pendingQkTile_;
     D128FastCube cube_;
     D128FastVec vec_;
 };

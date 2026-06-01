@@ -15,7 +15,7 @@ fast-path implementation is split by module:
   core token range helper, token-size tile expansion, and explicit AIC/AIV
   entry dispatch.
 - `qkv_rms_norm_rope_cache_with_k_scale_basic_block.h`: lifecycle dispatch,
-  single-tile AIC/AIV compute entry points, and CrossCore tile protocol.
+  rolling AIC/AIV tile scheduling, CrossCore tile protocol, and drain.
 - `qkv_rms_norm_rope_cache_with_k_scale_cube.h`: AIC/Cube branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vec.h`: AIV/Vector branch.
 - `qkv_rms_norm_rope_cache_with_k_scale_vf.h`: D=128 RMSNorm + half-RoPE BF16
@@ -27,8 +27,10 @@ fast-path implementation is split by module:
 The controller reads the kernel-side POD tiling data, maps AIC `GetBlockIdx()`
 and AIV `GetBlockIdx() / 2` to the same cube group, consumes host-computed
 `coreTokenTile`/`coreGroupNum`, expands the resulting contiguous token range
-into token-size tiles, and passes each tile to the AIC or AIV basic-block entry.
-Lower layers do not inspect `g_coreType`.
+into token-size tiles, and passes each tile to the AIC or AIV basic-block
+scheduler entry. The controller does not split AIV preprocess/postprocess
+phases; basic block retains the rolling pipeline state. Lower layers do not
+inspect `g_coreType`.
 
 The host side owns the ceil-div token-per-core calculation. Kernel code only
 uses the resulting tiling fields, which keeps the core range policy in tiling
@@ -146,19 +148,23 @@ staging. The Q branch writes `q_out` and `q_scale`; the K branch writes
 as V. Q/K FP8 staging reuses `qk_after_cube_ub`, and the corresponding local
 `V_MTE3`/`MTE3_V` handoff uses event ids `2/3`.
 
-T11 switches the AIV controller path to the rolling schedule from the design:
-for tile `i`, the controller calls the basic-block preprocess phase first,
-which runs Vec preprocess, sends `A_READY`, and completes the V branch. It then
-posts Q/K for tile `i - 1` when a pending tile exists. After the token loop,
-the final pending tile is drained. AIC remains single-tile ordered as
-`A_READY -> Cube/Fixpipe -> C_READY -> C_CONSUMED`, so every real tile still
-has balanced CrossCore counts: each AIV sets one `A_READY`, waits one
-`C_READY`, and sets one `C_CONSUMED`; AIC waits/sets/waits the paired two-AIV
-events through the fixed semantic wrappers. To make output DB reuse explicit
-under rolling execution, Vec waits the Q/K output reusable event during
-preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K
-postprocess releases that event after FP8 staging MTE3 writeout, including
-empty local slices.
+T11 keeps the rolling schedule inside basic block, matching the grouped-matmul
+basic-block pattern where the block tracks pending state and `End()` drains the
+last stage. The controller only expands tiles. For tile `i`, AIV preprocesses
+Q/K/V, sends `A_READY`, completes V, then Q/K-postprocesses pending tile
+`i - 1`; after the token loop, `End()` drains the final pending tile. AIC keeps
+up to the output double-buffer depth in flight: before starting a tile it waits
+`C_CONSUMED` only when the output DB window is full, then waits `A_READY`, runs
+Cube/Fixpipe, sends `C_READY`, and records one pending output consumption.
+`End()` waits the remaining `C_CONSUMED` events. This lets Cube/Fixpipe for
+tile `i + 1` overlap with AIV Q/K postprocess for tile `i` when they use
+different output DB buffers. Every real tile still has balanced CrossCore
+counts: each AIV sets one `A_READY`, waits one `C_READY`, and sets one
+`C_CONSUMED`; AIC waits/sets/waits the paired two-AIV events through the fixed
+semantic wrappers. Vec waits the Q/K output reusable event during preprocess
+before `qk_after_cube_ub` is reused as BF16 staging, and Q/K postprocess
+releases that event after FP8 staging MTE3 writeout, including empty local
+slices.
 
 T12 makes empty AIV slices an explicit no-data path without changing the
 CrossCore protocol. `MakeAivSlice` can return `tokenSize == 0` and
