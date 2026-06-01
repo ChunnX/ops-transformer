@@ -486,14 +486,10 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto& platformInfo = op::GetCurrentPlatformInfo();
-    auto socVersion = platformInfo.GetCurNpuArch();
-    bool isArch35 = (socVersion == NpuArch::DAV_3510);
-
     bool isCacheModeNorm = (cacheMode == nullptr ||
                             strlen(cacheMode) == 0 ||
                             strcmp(cacheMode, "Norm") == 0);
-    if (isArch35 && isCacheModeNorm) {
+    if (isCacheModeNorm) {
         bool isCacheNonContiguous = IsSupportNonContiguousCache(keyCache, valueCache);
         bool isKeyAndCacheNonContiguous = IsSupportNonContiguousKeyAndCache(keyCache, valueCache, keyRef, valueRef);
         if (isCacheNonContiguous || isKeyAndCacheNonContiguous) {
