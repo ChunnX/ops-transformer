@@ -38,13 +38,11 @@ using namespace MoeDistributeCombineA2Impl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<bool HasTp, uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
-__global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-                                                GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount,
-                                                GM_ADDR xActiveMask, GM_ADDR activationScale,
-                                                GM_ADDR weightScale, GM_ADDR groupList,
-                                                GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM,
-                                                GM_ADDR tilingGM)
+template <uint8_t QuantMode, uint8_t LayeredMode, uint8_t ArchTag>
+__global__ __aicore__ void
+moe_distribute_combine(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount, GM_ADDR scales,
+                       GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale, GM_ADDR weightScale,
+                       GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeCombineA2TilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeDistributeCombineTilingData);
@@ -52,59 +50,57 @@ __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR exper
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A2", MoeDistributeCombineA2TilingData);
 
     TPipe pipe;
-    
+
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
-        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
+        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT> op;
+        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 #else
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingGM);
-        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, HasTp, QuantMode == TILINGKEY_INT8_QUANT> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
+        MoeDistributeCombine<DTYPE_EXPAND_X, int32_t, QuantMode == TILINGKEY_INT8_QUANT> op;
+        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 
-    if constexpr ((ArchTag == TILINGKEY_TPL_A2) && 
-                (LayeredMode == TILINGKEY_TPL_MTE) && (QuantMode == TILINGKEY_NO_QUANT)) {
+    if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (LayeredMode == TILINGKEY_TPL_MTE) &&
+                  (QuantMode == TILINGKEY_NO_QUANT)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineA2TilingData, tilingData, tilingGM);
         MoeDistributeCombineA2<DTYPE_EXPAND_X, int32_t> op;
-        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, xActiveMask,
-          nullptr, nullptr, nullptr, nullptr, nullptr, XOut, workspaceGM, &pipe, &tilingData);
+        op.Init(expandX, expertIds, expandIdx, epSendCount, scales, xActiveMask, nullptr, nullptr, nullptr, nullptr,
+                nullptr, XOut, workspaceGM, &pipe, &tilingData);
         op.Process();
-    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) && 
-                        (QuantMode == TILINGKEY_NO_QUANT) && (LayeredMode == TILINGKEY_TPL_AICPU)) {
+    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (QuantMode == TILINGKEY_NO_QUANT) &&
+                         (LayeredMode == TILINGKEY_TPL_AICPU)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineA2TilingData, tilingData, tilingGM);
         auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
         if (dataplaneMode == DataplaneMode::AICPU) {
             MoeDistributeCombineA2LayeredAicpu<DTYPE_EXPAND_X, int32_t> op;
             op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, XOut, workspaceGM, &pipe, &tilingData,
-              contextGM0);
+                    contextGM0);
             op.Process();
         } else if (dataplaneMode == DataplaneMode::AIV) {
             MoeDistributeCombineA2Layered<DTYPE_EXPAND_X, int32_t, DTYPE_EXPAND_X> op;
-            op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, 
-                    XOut, workspaceGM, &pipe, &tilingData,
-              contextGM0);
+            op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, XOut, workspaceGM, &pipe,
+                    &tilingData, contextGM0);
             op.Process();
         }
-    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) && 
-                        (QuantMode == TILINGKEY_INT8_QUANT) && (LayeredMode == TILINGKEY_TPL_AICPU)) {
-            GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineA2TilingData, tilingData, tilingGM);
-            auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-            DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
-            if (dataplaneMode == DataplaneMode::AIV) {
-                MoeDistributeCombineA2Layered<DTYPE_EXPAND_X, int32_t, int8_t> op;
-                op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, 
-                        XOut, workspaceGM, &pipe, &tilingData,
-                  contextGM0);
-                op.Process();
-            }
+    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (QuantMode == TILINGKEY_INT8_QUANT) &&
+                         (LayeredMode == TILINGKEY_TPL_AICPU)) {
+        GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineA2TilingData, tilingData, tilingGM);
+        auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
+        if (dataplaneMode == DataplaneMode::AIV) {
+            MoeDistributeCombineA2Layered<DTYPE_EXPAND_X, int32_t, int8_t> op;
+            op.Init(expandX, expertIds, expandIdx, epSendCount, expandScales, nullptr, XOut, workspaceGM, &pipe,
+                    &tilingData, contextGM0);
+            op.Process();
+        }
     }
 #endif
 #endif

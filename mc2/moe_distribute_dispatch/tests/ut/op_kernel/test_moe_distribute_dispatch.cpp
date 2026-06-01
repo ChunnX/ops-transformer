@@ -40,7 +40,7 @@ TEST_F(MoeDistributeDispatchTest, MoeDistributeDispatchTest1000)
 
     MoeDistributeDispatchTilingData *tilingData = reinterpret_cast<MoeDistributeDispatchTilingData*>(tiling);
     tilingData->moeDistributeDispatchInfo.epWorldSize = 8;
-    tilingData->moeDistributeDispatchInfo.tpWorldSize = 2;
+    tilingData->moeDistributeDispatchInfo.tpWorldSize = 1;
     tilingData->moeDistributeDispatchInfo.epRankId = 0;
     tilingData->moeDistributeDispatchInfo.tpRankId = 0;
     tilingData->moeDistributeDispatchInfo.expertShardType = 0;
