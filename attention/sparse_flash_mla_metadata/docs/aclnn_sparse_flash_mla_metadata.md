@@ -52,7 +52,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     char              *layoutKvOptional,
     bool               hasOriKv,
     bool               hasCmpKv,
-    const aclTensor   *metaData,
+    const aclTensor   *metadata,
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
@@ -361,7 +361,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>metaData</td>
+      <td>metadata</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>-</td>
@@ -579,7 +579,7 @@ struct ArgContext {
     bool hasOriKv { true };
     bool hasCmpKv { true };
     // output
-    Tensor metaData {};
+    Tensor metadata {};
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) 
@@ -648,7 +648,7 @@ void DestroyTensor(Tensor &tensor)
 
 void DestroyArgs(ArgContext &context)
 {
-    DestroyTensor(context.metaData);
+    DestroyTensor(context.metadata);
     DestroyTensor(context.cuSeqlensQOptional);
     DestroyTensor(context.cuSeqlensOriKvOptional);
     DestroyTensor(context.cuSeqlensCmpKvOptional);
@@ -678,7 +678,7 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     context.numHeadsQ = 64;
     context.numHeadsKv = 1;
     context.headDim = 512;
-    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
+    ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metadata);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
     context.oriTopk = 0;
     context.cmpTopk = 0;
@@ -763,7 +763,7 @@ int main() {
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.batchSize, context.maxSeqlenQ,
         context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk, context.cmpRatio,
         context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft = 127, context.oriWinRight = 0,
-        context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.metaData.data,
+        context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv, context.metadata.data,
         &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -789,7 +789,7 @@ int main() {
 
     // 5. 打印输出
     QliV2MetaData result {};
-    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
     for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
@@ -818,9 +818,3 @@ int main() {
     return 0;
 }
 ```
-
-## 调用说明
-
-| 调用方式  | 样例代码                                                                | 说明                                                                                          |
-| ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_sparse_flash_mla_metadata.cpp](./examples/test_aclnn_sparse_flash_mla_metadata.cpp) | 通过[`aclnnSparseFlashMlaMetadata`](./docs/aclnnSparseFlashMlaMetadata.md)接口方式调用 |
