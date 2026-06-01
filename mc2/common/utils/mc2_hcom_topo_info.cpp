@@ -29,11 +29,8 @@ namespace {
 }
 
 namespace Mc2Hcom {
-#if defined(ASC_DEVKIT_VERSION_NUM) && (ASC_DEVKIT_VERSION_NUM >= 90000000)
-const std::string HCOM_GET_COMM_FUNC_NAME = "HcclCommGetHandleWithName";
-#else
 const std::string HCOM_GET_COMM_FUNC_NAME = "HcomGetCommHandleByGroup";
-#endif
+
 #ifdef BUILD_OPEN_PROJECT
 const std::string HCCL_GET_RANK_SIZE_NAME = "HcclGetRankSize";
 const std::string HCCL_GET_TOPO_TYPE_NAME = "HcclRankGraphGetTopoTypeByLayer";
