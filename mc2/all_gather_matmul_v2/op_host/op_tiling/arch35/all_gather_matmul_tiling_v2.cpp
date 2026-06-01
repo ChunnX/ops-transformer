@@ -59,7 +59,7 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 {
     auto rawTilingData = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingData == nullptr), OP_LOGE(opName_, "Fail to get rawTilingData."),
-                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
     allGatherMatmulTilingDataV2_ = context_->GetTilingData<AllGatherMatmulTilingDataV2>();
     return ge::GRAPH_SUCCESS;
 }
@@ -69,9 +69,8 @@ ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
     GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
     GE_ASSERT_GRAPH_SUCCESS(CheckInput());
     GE_ASSERT_GRAPH_SUCCESS(SetRawTilingData());
-    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
+        return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
     GE_ASSERT_GRAPH_SUCCESS(DoVersion2Tiling());
@@ -117,9 +116,8 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.",
-                            sizeof(AllGatherMatmulTilingDataV2)),
-                    return ge::GRAPH_FAILED);
+        OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.", sizeof(AllGatherMatmulTilingDataV2)),
+        return ge::GRAPH_FAILED);
     PrintAllTilingData();
     context_->SetBlockDim(args_.aicCoreNum);
     // 独占全核，设置以后会让所有核空闲以后才启动，有多核同步指令需要设置避免出现网络挂死
@@ -155,8 +153,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 {
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platformInfo."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platformInfo."), return ge::GRAPH_FAILED);
 
     // 获取 compileInfo
     if (mc2_matmul_v3_advanced::InitCompileInfo(platformInfo, &compileInfo_) != ge::GRAPH_SUCCESS) {
@@ -237,15 +234,15 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCf
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
-    OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x1Scale", "not nullptr",
-                    "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x1ScaleShape != nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1Scale", "not nullptr",
+        "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+        return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
-    OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x2Scale", "not nullptr",
-                    "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(x2ScaleShape != nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x2Scale", "not nullptr",
+        "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
