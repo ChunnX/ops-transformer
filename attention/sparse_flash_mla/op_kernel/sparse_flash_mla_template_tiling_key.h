@@ -20,7 +20,7 @@
 
 #define SMLA_LAYOUT_BSND 0
 #define SMLA_LAYOUT_TND 1
-#define SMLA_LAYOUT_PA_BNBD 2
+#define SMLA_LAYOUT_PA_BBND 2
 
 #define ASCENDC_TPL_4_BW 4
 
@@ -33,7 +33,7 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMla, // 算子OpType
                       ASCENDC_TPL_UINT_DECL(LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND,
                                             SMLA_LAYOUT_TND),
                       ASCENDC_TPL_UINT_DECL(KV_LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND,
-                                            SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BNBD),
+                                            SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BBND),
                       ASCENDC_TPL_UINT_DECL(TEMPLATE_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SWA_TEMPLATE,
                                             CFA_TEMPLATE, SCFA_TEMPLATE),
                       ASCENDC_TPL_BOOL_DECL(SPLIT_G, 0, 1),
@@ -45,7 +45,7 @@ ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_BOOL_SEL(FLASH_DECODE, 0),
                          ASCENDC_TPL_UINT_SEL(LAYOUT_T, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND, SMLA_LAYOUT_TND),
                          ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND,
-                                              SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BNBD),
+                                              SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BBND),
                          ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST, SWA_TEMPLATE,
                                               CFA_TEMPLATE, SCFA_TEMPLATE),
                          ASCENDC_TPL_BOOL_SEL(SPLIT_G, 0, 1),
