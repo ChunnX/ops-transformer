@@ -194,6 +194,7 @@ ge::graphStatus MatmulAllreduceExecuteFunc(gert::OpExecuteContext* host_api_ctx)
         OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get all reduce paras."), return ge::GRAPH_FAILED);
 
     const auto x3 = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2InputIdx::K_X3));
+    
     const auto comm_quant_scale_1 =
         host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(ops::MC2InputIdx::K_COMMQUANTSCALE1));
     const auto comm_quant_scale_2 =
