@@ -43,7 +43,7 @@ def test_example(param_combinations):
     print("npu_result.size():", npu_result.size())
     # 结果精度对比
     result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
-    if test_data.get("return_softmax_lse", False):
+    if test_data.get("return_softmax_lse", True):
         result, fulfill_percent = result_compare_method.check_result(input_data['softmax_lse'], softmax_lse)
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)

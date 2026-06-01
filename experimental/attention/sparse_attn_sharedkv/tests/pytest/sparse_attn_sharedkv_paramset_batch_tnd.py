@@ -145,7 +145,6 @@ TEST_PARAMS = {
         "N2": [1],
         "D": [512],
         "softmax_scale": [0.04419417],
-        "cmp_ratio": [128],
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],

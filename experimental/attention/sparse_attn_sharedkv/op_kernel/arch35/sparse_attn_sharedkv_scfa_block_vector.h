@@ -81,11 +81,11 @@ public:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-        Buffer<BufferType::GM> &s2LenGm,
+        Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
         const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-        Buffer<BufferType::GM> &s2LenGm, RunInfo &runInfo,
+        Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm, RunInfo &runInfo,
         ConstInfo &constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
@@ -94,7 +94,7 @@ public:
 private:
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-        Buffer<BufferType::GM> &s2LenGm,
+        Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
         const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
     __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
@@ -111,9 +111,10 @@ private:
         LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx, const RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset, ConstInfo &constInfo);
-    __aicore__ inline void UpdateS2RealLengthToGm(uint32_t size, Buffer<BufferType::GM> &s2LenGm,
+    __aicore__ inline void UpdateS2RealLengthToGm(uint32_t size, Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void UpdateS2RealSizeFromGm(Buffer<BufferType::GM> &s2LenGm, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void UpdateS2RealSizeFromGm(Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm, RunInfo &runInfo,
+        ConstInfo &constInfo);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     template <typename VEC2_RES_T>
     __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
@@ -368,7 +369,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-    Buffer<BufferType::GM> &s2LenGm,
+    Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || \
@@ -403,7 +404,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
             }
         }
-        outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
     }
 
@@ -433,13 +433,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
             }
         }
-        outputL1.SetCrossCore();
         v0ResGm.SetCrossCore();
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::UpdateS2RealLengthToGm(uint32_t size, Buffer<BufferType::GM> &s2LenGm,
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::UpdateS2RealLengthToGm(uint32_t size,
+    Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
     LocalTensor<int32_t> s2LenUb = this->s2LenBuf[runInfo.taskIdMod3].template Get<int32_t>();
@@ -467,7 +467,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-    Buffer<BufferType::GM> &s2LenGm,
+    Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
     const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos)
 {
     if constexpr (TEMPLATE_MODE == SASTemplateMode::ORI_SCFA_TEMPLATE_MODE || TEMPLATE_MODE == SASTemplateMode::ORI_CMP_SCFA_TEMPLATE_MODE || \
@@ -525,7 +525,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::UpdateS2RealSizeFromGm(Buffer<BufferType::GM> &s2LenGm,
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::UpdateS2RealSizeFromGm(
+    Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<int32_t> s2LenGmTensor = s2LenGm.template GetTensor<int32_t>();
@@ -573,7 +574,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-    Buffer<BufferType::GM> &s2LenGm, RunInfo &runInfo,
+    Buffer<BufferType::GM, SyncType::NO_SYNC> &s2LenGm, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
     bmm1ResBuf.WaitCrossCore();
