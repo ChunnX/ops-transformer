@@ -83,9 +83,9 @@ TILING_DATA_FIELD_DEF(uint32_t, kvCacheLayout);
 
 // BNSD格式的最大序列长度（用于计算stride）
 // 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen);  // BNSD格式Q的第三维（S维度），或统一的qseqlen值
+TILING_DATA_FIELD_DEF(uint64_t, maxQSeqlen);  // BNSD格式Q的第三维（S维度），或统一的qseqlen值
 // 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen);  // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+TILING_DATA_FIELD_DEF(uint64_t, maxKvSeqlen);  // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
 TILING_DATA_FIELD_DEF(uint32_t, useUniformQSeqlen);  // 是否使用统一的qseqlen值（1=是，0=否）
 TILING_DATA_FIELD_DEF(uint32_t, useUniformKvSeqlen);  // 是否使用统一的kvseqlen值（1=是，0=否）
 
@@ -244,8 +244,8 @@ private:
     uint64_t workSpaceSize_ = 0;
     uint64_t libapiSize_ = 0;
     
-    uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
-    uint32_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
+    uint64_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
+    uint64_t maxKvSeqlen_ = 0;  // BNSD格式KV的第三维（S维度）
     int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
     int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数
 

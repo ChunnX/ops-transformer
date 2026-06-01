@@ -97,10 +97,10 @@ public:
         InitSyncFlags<4, 4, 4>();
 #ifdef __DAV_VEC__
         EpilogueMask2Idx epilogueMask2Idx(resource);
-        uint32_t totalRowNumBlockMask = batch_ * qHeads_ * xBlockNumAligned_;
+        uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch_) * qHeads_ * xBlockNumAligned_;
         epilogueMask2Idx(
             gBlockSparseMask, gSparseIdx, gSparseCount,
-            totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
+            static_cast<uint32_t>(totalRowNumBlockMask), yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
 #endif
         AscendC::SyncAll<false>();
 #ifdef __DAV_CUBE__
@@ -126,15 +126,15 @@ public:
         int64_t strideKVN = 0;  // BNSD head stride for KV
         int64_t strideKVS = 0;  // BNSD seq stride for KV
         if constexpr (qFormat == Format::BNSD) {
-            strideQOB = qHeads_ * qSeqlenAligned_ * embed_;  // batch_ stride
-            strideQON = qSeqlenAligned_ * embed_;  // head stride
+            strideQOB = static_cast<uint64_t>(qHeads_) * static_cast<uint64_t>(qSeqlenAligned_) * embed_;
+            strideQON = static_cast<uint64_t>(qSeqlenAligned_) * embed_;
             strideQOS = embed_;  // seq stride
         } else if constexpr (qFormat == Format::TND) {
             strideQO = qHeads_ * embed_;
         }
         if constexpr (kvFormat == Format::BNSD) {
-            strideKVB = kvHeads_ * kvSeqlenAligned_ * embed_;  // batch_ stride
-            strideKVN = kvSeqlenAligned_ * embed_;  // head stride
+            strideKVB = static_cast<uint64_t>(kvHeads_) * static_cast<uint64_t>(kvSeqlenAligned_) * embed_;
+            strideKVN = static_cast<uint64_t>(kvSeqlenAligned_) * embed_;
             strideKVS = embed_;  // seq stride
         } else if constexpr (kvFormat == Format::TND) {
             strideKV = kvHeads_ * embed_;
@@ -216,12 +216,13 @@ public:
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
                 (xBlockSize - qSTileIdxCurXBlock * qBaseTile_) : qBaseTile_;
             // calc the gathered kvS from sparse mask
-            uint32_t gmOffsetSparseCount =
-                curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
+            uint64_t gmOffsetSparseCount =
+                static_cast<uint64_t>(curBatch) * qHeads_ * xBlockNumAligned_ +
+                static_cast<uint64_t>(qHeadIdx) * xBlockNumAligned_ + xBlockIdx;
             uint32_t yBlockNumRsvd = gSparseCount.GetValue(gmOffsetSparseCount);
 
-            uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
-            uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+            uint64_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
+            uint64_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
             uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
 
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));

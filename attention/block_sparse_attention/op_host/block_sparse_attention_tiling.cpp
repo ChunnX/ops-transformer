@@ -291,8 +291,13 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_D));
     auto embeddingSizeK = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BNSD_DIM_D));
     auto embeddingSizeV = static_cast<uint32_t>(valueShape->GetStorageShape().GetDim(BNSD_DIM_D));
-    maxQSeqlen_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_S));
-    maxKvSeqlen_ = static_cast<uint32_t>(keyShape->GetStorageShape().GetDim(BNSD_DIM_S));
+    int64_t qSeqlenDim = queryShape->GetStorageShape().GetDim(BNSD_DIM_S);
+    int64_t kvSeqlenDim = keyShape->GetStorageShape().GetDim(BNSD_DIM_S);
+    OP_CHECK_IF(qSeqlenDim <= 0 || kvSeqlenDim <= 0,
+        OP_LOGE(bsaContext->GetNodeName(), "BNSD seqlen must be positive, got qS=%ld kvS=%ld", qSeqlenDim, kvSeqlenDim),
+        return ge::GRAPH_FAILED);
+    maxQSeqlen_ = static_cast<uint64_t>(qSeqlenDim);
+    maxKvSeqlen_ = static_cast<uint64_t>(kvSeqlenDim);
     if (batch_ != kBatch || batch_ != vBatch) {
         OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent batch with each other, "
             "but got qBatch %u, kBatch %u, vBatch %u.", batch_, kBatch, vBatch);
@@ -591,24 +596,28 @@ void BSATiling::CalcSplitCoreTilingParams950()
 {
     CalcBaseTileTilingParams950();
     for (uint32_t bIdx = 0; bIdx < batch_; bIdx++) {
-        int64_t curQSeqlen = useUniformQSeqlen_ ? maxQSeqlen_ : qSeqLenList_[bIdx];
-        int64_t curKvSeqlen = useUniformKvSeqlen_ ? maxKvSeqlen_ : kvSeqLenList_[bIdx];
+        int64_t curQSeqlen = useUniformQSeqlen_ ? static_cast<int64_t>(maxQSeqlen_) : qSeqLenList_[bIdx];
+        int64_t curKvSeqlen = useUniformKvSeqlen_ ? static_cast<int64_t>(maxKvSeqlen_) : kvSeqLenList_[bIdx];
         uint32_t curQSTileNum = GetCurQSTileNum950(curQSeqlen);
         uint32_t curBatchTaskNum = curQSTileNum * numHeads_;
         totalTaskNum_ += curBatchTaskNum;
         if (bIdx == 0) {
             firstBatchTaskNum_ = curBatchTaskNum;
         }
-        maxQSeqlen_ = (curQSeqlen > maxQSeqlen_) ? curQSeqlen : maxQSeqlen_;
-        maxKvSeqlen_ = (curKvSeqlen > maxKvSeqlen_) ? curKvSeqlen : maxKvSeqlen_;
+        maxQSeqlen_ = static_cast<uint64_t>((curQSeqlen > static_cast<int64_t>(maxQSeqlen_)) ? curQSeqlen :
+            static_cast<int64_t>(maxQSeqlen_));
+        maxKvSeqlen_ = static_cast<uint64_t>((curKvSeqlen > static_cast<int64_t>(maxKvSeqlen_)) ? curKvSeqlen :
+            static_cast<int64_t>(maxKvSeqlen_));
     }
     blockDim_ = aicNum_;
     // mask2idx split core
-    xBlockNumAligned_ = (maxQSeqlen_ + blockShapeX_ - 1) / blockShapeX_;
-    yBlockNumAligned_ = (maxKvSeqlen_ + blockShapeY_ - 1) / blockShapeY_;
-    uint32_t totalRowNumBlockMask = batch_ * numHeads_ * xBlockNumAligned_;
-    avgRowPerSubCore_ = (totalRowNumBlockMask + aivNum_ - 1) / aivNum_;
-    preActiveSubCoreNum_ = (totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_;
+    xBlockNumAligned_ = static_cast<uint32_t>((maxQSeqlen_ + static_cast<uint64_t>(blockShapeX_) - 1) /
+        static_cast<uint64_t>(blockShapeX_));
+    yBlockNumAligned_ = static_cast<uint32_t>((maxKvSeqlen_ + static_cast<uint64_t>(blockShapeY_) - 1) /
+        static_cast<uint64_t>(blockShapeY_));
+    uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_;
+    avgRowPerSubCore_ = static_cast<uint32_t>((totalRowNumBlockMask + aivNum_ - 1) / aivNum_);
+    preActiveSubCoreNum_ = static_cast<uint32_t>((totalRowNumBlockMask + avgRowPerSubCore_ - 1) / avgRowPerSubCore_);
 }
 
 ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
@@ -661,8 +670,8 @@ ge::graphStatus BSATiling::CalculateTaskSplit(gert::TilingContext *bsaContext)
 
 void BSATiling::CalcWorkspaceTilingParams950(gert::TilingContext *bsaContext)
 {
-    selectIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
-    selectNumIdxSize_ = batch_ * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
+    selectIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * yBlockNumAligned_ * sizeof(int32_t);
+    selectNumIdxSize_ = static_cast<uint64_t>(batch_) * numHeads_ * xBlockNumAligned_ * sizeof(int32_t);
     workSpaceSize_ = libapiSize_ + selectIdxSize_ + selectNumIdxSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
 }
@@ -677,8 +686,10 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     maxKvBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(3);
     maxQBlockNum_ = blockSparseMaskShape->GetStorageShape().GetDim(2);
-    selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
-    selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
+    selectIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * CeilDiv(maxKvBlockNum_, 32) * 32 *
+        sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
+    selectNumIdxSize_ = static_cast<uint64_t>(CeilDiv(blockShapeX_, 128)) * sizeof(uint32_t) * 32 * batch_ *
+        numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
     
     mm1OutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float) * NUM3;
@@ -688,9 +699,12 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
     
     workSpaceSize_ = libapiSize_ + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ + selectNumIdxSize_ + selectIdxSize_ + syncSize_;
     bsaContext->GetWorkspaceSizes(1)[0] = workSpaceSize_;
-    uint32_t totalTaskNumMask = batch_ * numHeads_ * maxQBlockNum_;
-    avgRowNumPerSubCore_ = CeilDiv(totalTaskNumMask, blockDim_ * 2);
-    preActivateSubCoreNum_ = CeilDiv(totalTaskNumMask, avgRowNumPerSubCore_);
+    uint64_t totalTaskNumMask = static_cast<uint64_t>(batch_) * numHeads_ * maxQBlockNum_;
+    OP_CHECK_IF(totalTaskNumMask > UINT32_MAX,
+        OP_LOGE(bsaContext->GetNodeName(), "totalTaskNumMask overflow"),
+        return ge::GRAPH_FAILED);
+    avgRowNumPerSubCore_ = CeilDiv(static_cast<uint32_t>(totalTaskNumMask), blockDim_ * 2);
+    preActivateSubCoreNum_ = CeilDiv(static_cast<uint32_t>(totalTaskNumMask), avgRowNumPerSubCore_);
     
     return ge::GRAPH_SUCCESS;
 }

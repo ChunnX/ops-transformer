@@ -137,9 +137,9 @@ namespace BlockSparse {
 
             uint32_t subCoreIdx = AscendC::GetBlockIdx();
             uint32_t curStartRowIdx = subCoreIdx * avgRowPerSubCore;
-            uint32_t totalRowNumBlockMask = batch * qHeads * maxQBlockNum;
+            uint64_t totalRowNumBlockMask = static_cast<uint64_t>(batch) * qHeads * maxQBlockNum;
             uint32_t actDealtRow = (subCoreIdx == preActivateSubCoreNum - 1) ?
-                (totalRowNumBlockMask - curStartRowIdx) : avgRowPerSubCore;
+                static_cast<uint32_t>(totalRowNumBlockMask - curStartRowIdx) : avgRowPerSubCore;
             if (subCoreIdx < preActivateSubCoreNum) {
                 uint32_t rowLoop = CeilDiv(actDealtRow, PRE_ROW_TILE);
                 uint32_t colLoop = CeilDiv(maxKvBlockNum, PRE_COL_TILE);
@@ -283,8 +283,8 @@ namespace BlockSparse {
             uint32_t qBlockNum = totalQBlocks / qBlockX;
             uint32_t qBlockInX = (qBlockX + BASIC_BLOCK_SIZE - 1) / BASIC_BLOCK_SIZE;
             uint32_t firstQBlockNum = blockSparseAttentionTilingData->firstQBlockNum;
-            uint32_t maxQSeqlen = blockSparseAttentionTilingData->maxQSeqlen;
-            uint32_t maxKvSeqlen = blockSparseAttentionTilingData->maxKvSeqlen;
+            uint64_t maxQSeqlen = blockSparseAttentionTilingData->maxQSeqlen;
+            uint64_t maxKvSeqlen = blockSparseAttentionTilingData->maxKvSeqlen;
             uint32_t useUniformQSeqlen = blockSparseAttentionTilingData->useUniformQSeqlen;
             uint32_t useUniformKvSeqlen = blockSparseAttentionTilingData->useUniformKvSeqlen;
 
@@ -398,23 +398,23 @@ namespace BlockSparse {
                 // BNSD: [B, N, S, D]
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
-                strideQOB = qHeads * maxQSeqlen * embed;  // batch stride
-                strideQON = maxQSeqlen * embed;  // head stride
+                strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
+                strideQON = static_cast<uint64_t>(maxQSeqlen) * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideQO = qHeads * embed;
+                strideQO = static_cast<uint64_t>(qHeads) * embed;
             }
             
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
-                strideKVB = kvHeads * maxKvSeqlen * embed;  // batch stride
-                strideKVN = maxKvSeqlen * embed;  // head stride
+                strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
+                strideKVN = static_cast<uint64_t>(maxKvSeqlen) * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideKV = kvHeads * embed;
+                strideKV = static_cast<uint64_t>(kvHeads) * embed;
             }
             
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
@@ -431,10 +431,10 @@ namespace BlockSparse {
             uint32_t preTotalQBlockNum = 0;
             uint32_t curBatch = 0;
             // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-            uint32_t qSeqlen = useUniformQSeqlen ? maxQSeqlen :
+            uint32_t qSeqlen = useUniformQSeqlen ? static_cast<uint32_t>(maxQSeqlen) :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
             // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-            uint32_t kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
+            uint32_t kvSeqlen = useUniformKvSeqlen ? static_cast<uint32_t>(maxKvSeqlen) :
                                static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
@@ -457,7 +457,7 @@ namespace BlockSparse {
                         // BNSD: [B, N, S, D], offset = batch * strideB
                         qBOffset = curBatch * strideQOB;
                         oBOffset = curBatch * strideQOB;
-                        lseBOffset = curBatch * qHeads * maxQSeqlen;
+                        lseBOffset = static_cast<uint64_t>(curBatch) * qHeads * maxQSeqlen;
                     } else {
                         // TND
                         qBOffset += qSeqlen * strideQO;
@@ -479,10 +479,10 @@ namespace BlockSparse {
                         blockBOffset += maxNumBlocksPerBatch;
                     }
                     // 根据useUniformQSeqlen标志位决定使用actualSeqLengths数组还是maxQSeqlen
-                    qSeqlen = useUniformQSeqlen ? maxQSeqlen :
+                    qSeqlen = useUniformQSeqlen ? static_cast<uint32_t>(maxQSeqlen) :
                              static_cast<uint32_t>(static_cast<int64_t>(gActualQseqlen.GetValue(curBatch)));
                     // 根据useUniformKvSeqlen标志位决定使用actualSeqLengthsKv数组还是maxKvSeqlen
-                    kvSeqlen = useUniformKvSeqlen ? maxKvSeqlen :
+                    kvSeqlen = useUniformKvSeqlen ? static_cast<uint32_t>(maxKvSeqlen) :
                               static_cast<uint32_t>(static_cast<int64_t>(gActualKvseqlen.GetValue(curBatch)));
                     curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
                     qNBlockNumPerGroup = curQNBlockTile == 0 ? 1 : (groupSize + curQNBlockTile - 1) / curQNBlockTile;
@@ -529,7 +529,7 @@ namespace BlockSparse {
                     gmOffsetQ = qBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
                     gmOffsetO = oBOffset + qHeadIdx * strideQON + qSeqOffset * strideQOS;
                     // LSE format: [B, N, S] - strideN = maxQSeqlen
-                    gmOffsetLse = lseBOffset + qHeadIdx * maxQSeqlen + qSeqOffset;
+                    gmOffsetLse = lseBOffset + static_cast<uint64_t>(qHeadIdx) * maxQSeqlen + qSeqOffset;
                 } else {
                     // TND: [T, N, D]
                     uint32_t qSeqOffset = qXIdx * qBlockX + qXInnerIdx * BASIC_BLOCK_SIZE;
