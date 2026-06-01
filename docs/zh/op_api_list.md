@@ -42,9 +42,10 @@
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现| 默认确定性实现 |
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现| - |
 |[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
+|[aclnnBlockSparseAttentionV2](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttentionV2.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现| - |
 |[aclnnFusedCausalConv1d](../../attention/fused_causal_conv1d/docs/aclnnFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接等特性。| - | 默认确定性实现 |
-|[aclnnInplaceFusedCausalConv1d](../../attention/fused_causal_conv1d/docs/aclnnInplaceFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。| - | 默认确定性实现 |
+|[aclnnInplaceFusedCausalConv1d](../../attention/inplace_fused_causal_conv1d/docs/aclnnInplaceFusedCausalConv1d.md)|对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列部分数据更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。支持 APC（Automatic Prefix Caching）、MTP（投机解码）、残差连接、原地更新等特性。| - | 默认确定性实现 |
 |[aclnnAttentionToFFN](../../mc2/attention_to_ffn/docs/aclnnAttentionToFFN.md)|将Attention节点上数据发往FFN节点。|默认确定性实现| - |
 |[aclnnChunkGatedDeltaRule](../../attention/chunk_gated_delta_rule/docs/aclnnChunkGatedDeltaRule.md)|完成chunk版的Gated Delta Rule计算。|默认确定性实现| - |
 |[aclnnFFNToAttention](../../mc2/ffn_to_attention/docs/aclnnFFNToAttention.md)|将FFN节点上的token数据发往Attention节点。|默认非确定性实现| - |
@@ -98,6 +99,7 @@
 |[aclnnInterleaveRope](../../posembedding/interleave_rope/docs/aclnnInterleaveRope.md)|针对单输入 x 进行旋转位置编码。|默认确定性实现| 默认确定性实现 |
 |[aclnnLightningIndexer](../../attention/lightning_indexer/docs/aclnnLightningIndexer.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。|默认确定性实现| - |
 |[aclnnLightningIndexerGrad](../../attention/lightning_indexer_grad/docs/aclnnLightningIndexerGrad.md)|训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。|默认非确定性实现，不支持配置开启|
+|[aclnnLightningIndexerV2Metadata](../../attention/lightning_indexer_v2_metadata/docs/aclnnLightingIndexerV2Metadata.md)| aclnnLightningIndexerV2接口的前置接口，用于计算aclnnLightningIndexerV2的负载均衡。| - |默认确定性实现|
 |[aclnnMaskedCausalConv1d](../../attention/masked_causal_conv1d/docs/aclnnMaskedCausalConv1d.md)|对hidden层的token之间进行带mask的因果一维分组卷积操作。| - | 默认确定性实现 |
 |[aclnnMaskedCausalConv1dBackward](../../attention/masked_causal_conv1d_backward/docs/aclnnMaskedCausalConv1dBackward.md)|对hidden层的token之间进行一维分组卷积操作的反向梯度计算。| - | 默认确定性实现 |
 |[aclnnMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAll.md)|完成MatMul计算与AlltoAll通信融合。|默认确定性实现| 默认确定性实现 |
@@ -126,6 +128,7 @@
 |[aclnnMoeFinalizeRoutingV2Grad](../../moe/moe_finalize_routing_v2_grad/docs/aclnnMoeFinalizeRoutingV2Grad.md)|aclnnMoeFinalizeRoutingV2的反向传播。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeFusedTopk](../../moe/moe_fused_topk/docs/aclnnMoeFusedTopk.md)|MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。|默认确定性实现| - |
 |[aclnnMoeGatingTopK](../../moe/moe_gating_top_k/docs/aclnnMoeGatingTopK.md)|MoE计算中，对输入x做Sigmoid计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。|默认确定性实现| 默认确定性实现 |
+|[aclnnMoeGatingTopKBackward](../../moe/moe_gating_top_k_backward/docs/aclnnMoeGatingTopKBackward.md)|aclnnMoeGatingTopK的反向算子。|默认确定性实现| - |
 |[aclnnMoeGatingTopKSoftmax](../../moe/moe_gating_top_k_softmax/docs/aclnnMoeGatingTopKSoftmax.md)|MoE计算中，对x的输出做Softmax计算，取TopK操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeGatingTopKSoftmaxV2](../../moe/moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)|MoE计算中，如果renorm=0，先对x的输出做Softmax计算，再取TopK操作；如果renorm=1，先对x的输出做TopK操作，再进行Softmax操作。|默认确定性实现| 默认确定性实现 |
 |[aclnnMoeInitRouting](../../moe/moe_init_routing/docs/aclnnMoeInitRouting.md)|MoE的routing计算，根据aclnnMoeGatingTopKSoftmax的计算结果做Routing处理。|默认确定性实现| 默认确定性实现 |
@@ -153,8 +156,8 @@
 |[aclnnMhcPostBackward](../../mhc/mhc_post_backward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向。|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcSinkhornBackward](../../mhc/mhc_sinkhorn_backward/docs/aclnnMhcSinkhornBackward.md)|[aclnnMhcSinkhorn](../../mhc\mhc_sinkhorn\docs\aclnnMhcSinkhorn.md)的反向传播。| - | 默认确定性实现 |
 |[aclnnMhcPreSinkhornBackward](../../mhc/mhc_pre/docs/aclnnMhcPreSinkhornBackward.md)|[aclnnMhcPreSinkhorn](../../mhc/mhc_pre_sinkhorn/docs/aclnnMhcPreSinkhorn.md)的反向传播。|默认非确定性实现，支持配置开启|
-|[aclnnNormRopeConcat](../../posembedding/norm_rope_concat/docs/aclnnNormRopeConcat.md)|transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）。|默认确定性实现| 默认确定性实现 |
-|[aclnnNormRopeConcatBackward](../../posembedding/norm_rope_concat_grad/docs/aclnnNormRopeConcatBackward.md)|transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。|默认非确定性实现，支持配置开启| 默认确定性实现 |
+|[aclnnNormRopeConcat](../../posembedding/norm_rope_concat/docs/aclnnNormRopeConcat.md)|transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）。|默认确定性实现| 默认确定性实现 |
+|[aclnnNormRopeConcatBackward](../../posembedding/norm_rope_concat_grad/docs/aclnnNormRopeConcatBackward.md)|transformer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnNsaCompress](../../attention/nsa_compress/docs/aclnnNsaCompress.md)|训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。|默认确定性实现| - |
 |[aclnnNsaCompressAttention](../../attention/nsa_compress_attention/docs/aclnnNsaCompressAttention.md)|NSA中compress attention以及select topk索引计算。|默认确定性实现| - |
 |[aclnnNsaCompressAttentionInfer](../../attention/nsa_compress_attention_infer/docs/aclnnNsaCompressAttentionInfer.md)|Native Sparse Attention推理过程中，Compress Attention的计算。|默认确定性实现| - |
@@ -169,6 +172,7 @@
 |[aclnnQuantGroupedMatmulDequantWeightNZ](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequantWeightNZ.md)|对输入x进行量化，分组矩阵乘以及反量化，输入权重Weight会被强制视为NZ格式。|默认确定性实现| - |
 |[aclnnQuantLightningIndexer](../../attention/quant_lightning_indexer/docs/aclnnQuantLightningIndexer.md)|QuantLightningIndexer在LightningIndexer的基础上支持了Per-Token-Head量化输入。| - | 默认确定性实现 |
 |[aclnnQuantGroupedMatmulInplaceAdd](../../gmm/quant_grouped_matmul_inplace_add/docs/aclnnQuantGroupedMatmulInplaceAdd.md)|实现分组矩阵乘计算和加法计算，基本功能为矩阵乘和加法的组合。| - | 默认确定性实现 |
+|[aclnnQuantLightningIndexerV2Metadata](../../attention/quant_lightning_indexer_v2_metadata/docs/aclnnQuantLightingIndexerV2Metadata.md)| aclnnQuantLightningIndexerV2接口的前置接口，用于计算aclnnQuantLightningIndexerV2的负载均衡。| - |默认确定性实现|
 |[aclnnQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduce.md)|对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV2.md)|aclnnQuantMatmulAllReduceV2接口是对[aclnnQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduce.md)接口的功能扩展。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnQuantMatmulAllReduceV3](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV3.md)|aclnnQuantMatmulAllReduceV3接口是对[aclnnQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV2.md)接口的功能扩展。|默认非确定性实现，支持配置开启| 默认确定性实现 |
@@ -191,6 +195,8 @@
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnSparseFlashMlaGrad](../../attention/sparse_flash_mla_grad/docs/aclnnSparseFlashMlaGrad.md)|计算SparseFlashMla训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。|默认非确定性实现，不支持配置开启| - |
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启| 默认确定性实现 |
+|[aclnnSparseLightningIndexerKLLossGrad](../../attention/sparse_lightning_indexer_kl_loss_grad/docs/aclnnSparseLightningIndexerKLLossGrad.md)|LightningIndexer的反向算子，支持输出Loss计算所需Index部分的分数。|默认非确定性实现，不支持配置开启| 默认确定性实现 |
+|[aclnnSwigluGatedMlp](../../experimental/ffn/swiglu_gated_mlp/docs/aclnnSwigluGatedMlp.md)|完成融合SwiGLU门控MLP计算，包括首个MatMul、SwiGLU激活和第二个MatMul。|默认确定性实现| - |
 |[aclnnSwinAttentionScoreQuant](../../attention/swin_attention_score_quant/docs/aclnnSwinAttentionScoreQuant.md)|完成swin-transformer场景的Attention计算。|默认确定性实现| - |
 |[aclnnSwinTransformerLnQkvQuant](../../ffn/swin_transformer_ln_qkv_quant/docs/aclnnSwinTransformerLnQkvQuant.md)|Swin Transformer网络模型完成 Q、K、V 的计算。| - | - |
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |

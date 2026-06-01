@@ -166,6 +166,7 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint64_t modeVal = fiaInfo_->sysPrefixFlag ? 2U : 1U;
     uint8_t kvLayoutVal = 0;
     uint8_t cvRatioVal = (cvRatio_ == 1) ? 1 : 0; // CV1:1场景为1，其他场景为0
+    uint8_t enableTreeVal = (fiaInfo_->sparseMode == SPARSE_MODE_TREE) ? 2 : 0; // sparse_mode为 tree时为2，其他场景为0
 
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
         {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U},
@@ -200,7 +201,7 @@ void FiaTilingNonQuantMla::GenTilingKey()
     uint64_t baseOffset =
         modeVal * FIA_TILINGKEYOFFSET + (static_cast<uint64_t>(perfMode_)) * FIA_PERF_MODE_TILINGKEYOFFSET;
     tilingKey_ = baseOffset + FIA_GET_TILINGKEY(layoutVal, inputQVal, inputKvVal, outputVal, originVal,
-        (paVal + splitKvVal), antiquantModeVal, kvLayoutVal, cvRatioVal);
+        (paVal + splitKvVal), antiquantModeVal, kvLayoutVal, (cvRatioVal + enableTreeVal));
 
     OP_LOGI(fiaInfo_->opName, "FIA tilingKey_: %lu.", tilingKey_);
 }

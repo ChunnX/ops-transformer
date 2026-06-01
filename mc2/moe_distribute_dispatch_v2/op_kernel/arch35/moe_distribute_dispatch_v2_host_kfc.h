@@ -226,20 +226,6 @@ private:
         return GetBaseWindStateAddrByRankId(winContext_[ctxIdx], rankId, curRankId) + dataState_ * WIN_STATE_OFFSET;
     }
 
-    __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
-    {
-        return (x < y) ? x : y;
-    }
-
-    __aicore__ inline int32_t ReduceSumWorkNeedSize(int32_t calCnt)
-    {
-        int typeSize = static_cast<int>(sizeof(int32_t));
-        int32_t elementsPerBlock = 32 / typeSize;
-        int32_t iter1OutputCount = calCnt;
-        int32_t iter1AlignEnd = ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
-        return iter1AlignEnd;
-    }
-
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> expertIdsGMTensor_;
@@ -2125,7 +2111,6 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::WaitAndFormatOutput
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = reinterpret_cast<GM_ADDR>(windowGM_ + srcDataBlockIdx * expertPerSizeOnWin_);
             CopyOut(xOutInt32Tensor, wAddr, index, dstPosition, copyCnt);
-            // finish更新并clean
             expertFinishNumTensor_(index) += copyCnt;
             expertLeftNumTensor_(index) -= copyCnt;
             if (expertLeftNumTensor_(index) == 0) {

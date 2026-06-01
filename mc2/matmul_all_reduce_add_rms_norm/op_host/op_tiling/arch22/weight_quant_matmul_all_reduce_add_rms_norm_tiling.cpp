@@ -45,10 +45,10 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const 
     auto residualType = mrnCtxInfo.arnCtxInfo.x2->GetDataType();
     OP_TILING_CHECK(
         x1Type != residualType,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            context_->GetNodeName(),
-            "In the antiquant scenario, type of x1 and residual should be"
-            " same"),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            context_->GetNodeName(), "x1 and residual",
+            (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(residualType)).c_str(),
+            "The dtype of x1 should be the same as the dtype of residual"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -149,7 +149,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
+        OP_LOGE(
             helper_->opName_,
             "tiling data size[%zu] not aligned to"
             " 8",

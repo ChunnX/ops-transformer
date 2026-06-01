@@ -50,16 +50,21 @@ aclnnStatus aclnnBlitzSparseAttentionGetWorkspaceSize(
     int64_t numKeyValueHeads,
     int64_t sparseMode,
     int64_t innerPrecise,
+    bool softmaxLseFlag,
+    const aclIntArray *blockShape,
     const aclTensor *attentionOut,
+    const aclTensor *softmaxLse,
     uint64_t *workspaceSize,
     aclOpExecutor **executor) {
-        return InnerBlitzSparseAttentionGetWorkspaceSize(query, key, value, pseShift, attenMask, sabi,
-                                                              actualSeqLengths, actualSeqLengthsKv,
-                                                              deqScale1, quantScale1, deqScale2,
-                                                              quantScale2, quantOffset2,
-                                                              numHeads, scaleValue, preTokens, nextTokens,
-                                                              inputLayout, numKeyValueHeads, sparseMode,
-                                                              innerPrecise, attentionOut, workspaceSize, executor);
+        return InnerBlitzSparseAttentionGetWorkspaceSize(
+            query, key, value, pseShift, attenMask, sabi,
+            actualSeqLengths, actualSeqLengthsKv,
+            deqScale1, quantScale1, deqScale2,
+            quantScale2, quantOffset2,
+            numHeads, scaleValue, preTokens, nextTokens,
+            inputLayout, numKeyValueHeads, sparseMode,
+            innerPrecise, softmaxLseFlag, blockShape,
+            attentionOut, softmaxLse, workspaceSize, executor);
     }
 
 aclnnStatus aclnnBlitzSparseAttention(

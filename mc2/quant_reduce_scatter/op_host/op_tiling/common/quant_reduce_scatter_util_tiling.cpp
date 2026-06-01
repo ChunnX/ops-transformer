@@ -38,28 +38,27 @@ static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, Tiling
 {
     const char *nodeName = context->GetNodeName();
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "attrs"), return ge::GRAPH_FAILED);
     // 校验group是否为空
     const char *groupPtr = attrs->GetAttrPointer<char>(GROUP_INDEX);
-    OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(std::string(groupPtr).empty(), OP_LOGE(nodeName, "group should not be empty."),
+    OP_TILING_CHECK(groupPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(std::string(groupPtr).empty(), OP_LOGE_WITH_INVALID_INPUT(nodeName, "group"),
                     return ge::GRAPH_FAILED);
     runInfo.groupPtr = groupPtr;
     runInfo.group = std::string(groupPtr);
     // 校验reduce_op的类型是否为sum
     const char *reduceOpPtr = attrs->GetAttrPointer<char>(REDUCE_OP_INDEX);
-    OP_TILING_CHECK(reduceOpPtr == nullptr, OP_LOGE(nodeName, "reduceOpPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(reduceOpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "reduce_op"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         std::strcmp(reduceOpPtr, REDUCE_OP_TYPE.c_str()) != 0,
-        OP_LOGE(nodeName, "reduce_op type should be %s, but actual value is %s.", REDUCE_OP_TYPE.c_str(), reduceOpPtr),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "reduce_op", reduceOpPtr, REDUCE_OP_TYPE.c_str()),
         return ge::GRAPH_FAILED);
     // 校验output_dtype
     const int64_t *outputTypePtr = attrs->GetAttrPointer<int64_t>(OUTPUT_DTYPE_INDEX);
-    OP_TILING_CHECK(outputTypePtr == nullptr, OP_LOGE(nodeName, "outputTypePtr is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(outputTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "outputType"), return ge::GRAPH_FAILED);
     ge::DataType outputType = static_cast<ge::DataType>(*outputTypePtr);
     OP_TILING_CHECK(!IsContains(OUTPUT_DTYPE_LIST, outputType),
-                    OP_LOGE(nodeName, "outPutType should be bfloat16/float/float16, but actual value is %s.",
-                            Ops::Base::ToString(outputType).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "outputType", Ops::Base::ToString(outputType).c_str(), "bfloat16/float/float16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -86,8 +85,7 @@ static ge::graphStatus SetRankSize(const gert::TilingContext *context, TilingRun
         runInfo.rankSize = *rankSizePtr;
     }
     OP_TILING_CHECK(std::find(RANK_SIZE_LIST.begin(), RANK_SIZE_LIST.end(), runInfo.rankSize) >= RANK_SIZE_LIST.end(),
-                    OP_LOGE(nodeName, "The rankSize should be in %s, but actual value is %ld.",
-                    VectorToString(RANK_SIZE_LIST).c_str(), runInfo.rankSize),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "rankSize", std::to_string(runInfo.rankSize).c_str(), VectorToString(RANK_SIZE_LIST).c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -131,28 +129,24 @@ static bool CheckTensorDataType(const gert::TilingContext *context, TilingRunInf
     const char *nodeName = context->GetNodeName();
     // 校验x的dtype
     auto xDesc = context->GetInputDesc(X_INDEX);
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName, "xDesc is null."), return false);
+    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "x"), return false);
     ge::DataType xDtype = context->GetInputDesc(X_INDEX)->GetDataType();
     OP_TILING_CHECK(!IsContains(X_DTYPE_LIST, xDtype),
-                    OP_LOGE(nodeName,
-                            "x dataType should be int8/hifloat8/float8_e4m3fn/float8_e5m2, but actual value is %s.",
-                            Ops::Base::ToString(xDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "x", Ops::Base::ToString(xDtype).c_str(), "int8/hifloat8/float8_e4m3fn/float8_e5m2"),
                     return false);
     // 校验scales的dtype
     auto scalesDesc = context->GetInputDesc(SCALES_INDEX);
-    OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE(nodeName, "scalesDesc is null"), return false);
+    OP_TILING_CHECK(scalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"), return false);
     ge::DataType scalesDtype = context->GetInputDesc(SCALES_INDEX)->GetDataType();
     OP_TILING_CHECK(!IsContains(SCALES_DTYPE_LIST, scalesDtype),
-                    OP_LOGE(nodeName, "scale dataType should be float/float8_e8m0, but actual value is %s.",
-                            Ops::Base::ToString(scalesDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "scales", Ops::Base::ToString(scalesDtype).c_str(), "float/float8_e8m0"),
                     return false);
     // 校验output的dtype
     auto outputDesc = context->GetOutputDesc(OUTPUT_INDEX);
-    OP_TILING_CHECK(outputDesc == nullptr, OP_LOGE(nodeName, "OutputDesc is null."), return false);
+    OP_TILING_CHECK(outputDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "output"), return false);
     ge::DataType outputType = outputDesc->GetDataType();
     OP_TILING_CHECK(!IsContains(OUTPUT_DTYPE_LIST, outputType),
-                    OP_LOGE(nodeName, "output dataType should be float16/bfloat16/float, but actual value is %s.",
-                            Ops::Base::ToString(outputType).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPE(nodeName, "output", Ops::Base::ToString(outputType).c_str(), "float16/bfloat16/float"),
                     return false);
     // 设置量化模式
     OP_TILING_CHECK(!SetQuantMode(context, runInfo), OP_LOGE(nodeName, "get quantMode error."), return false);
@@ -174,7 +168,7 @@ static bool CheckXDimValid(const gert::TilingContext *context, const OpType opTy
     // quant_all_reduce和quant_reduce_scatter算子的x可能是2维或者3维，即x.shape(bs, h)或x.shape(b, s, h)
     bool inValidDimNum = (xDimNum != TWO_DIMS) && (xDimNum != THREE_DIMS);
     OP_TILING_CHECK(inValidDimNum,
-                    OP_LOGE(nodeName, "xDimNum is invalid, it should be 2 or 3, but the actual input xDimNum is %lu.", xDimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "x", (std::to_string(xDimNum) + "D").c_str(), "2D or 3D"),
                     return false);
 
     return true;
@@ -365,7 +359,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
     // 1.校验x相关
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
     // 校验x不为空
-    OP_TILING_CHECK(xShape == nullptr, OP_LOGE(nodeName, "xShape is null."), return false);
+    OP_TILING_CHECK(xShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "xShape"), return false);
     // 校验x维度数量合法性
     OP_TILING_CHECK(!CheckXDimValid(context, opType), OP_LOGE(nodeName, "x dimensions is invalid."), return false);
     // 校验x.shape合法性
@@ -376,7 +370,7 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, TilingRunInf
     // 根据x计算正确的scales, 当scale形状不匹配时，会打印预期的形状和实际的形状
     std::vector<uint64_t> expectedScalesDims = CalculateExpectedScalesShape(context, runInfo);
     // 校验scales不为空
-    OP_TILING_CHECK(scalesShape == nullptr, OP_LOGE(nodeName, "scaleShape is null."), return false);
+    OP_TILING_CHECK(scalesShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "scales"), return false);
     // 校验scales维度和shape是否正确
     OP_TILING_CHECK(!CheckScalesValid(context, expectedScalesDims, runInfo),
                     OP_LOGE(nodeName, "scales dimensions and shapes is invalid in the quantmode."), return false);
@@ -395,14 +389,13 @@ static bool CheckOutputDimSize(const gert::TilingContext *context, size_t output
         // 对于quant_all_reduce，输出维度必须与与输入维度一致, 必须是2维或3维
         invalidOutputDim = outputDim != xDimNum;
         OP_TILING_CHECK(invalidOutputDim,
-                        OP_LOGE(nodeName, "Invalid output dim %lu for quant_all_reduce, expected %lu (2D or 3D)", 
-                                outputDim, xDimNum),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(), (std::to_string(xDimNum) + "D").c_str()),
                         return false);
     } else {
         // 对于quant_reduce_scatter，输出维度必须是2维
         invalidOutputDim = outputDim != TWO_DIMS;
         OP_TILING_CHECK(invalidOutputDim,
-                        OP_LOGE(nodeName, "Invalid output dim %lu for quant_reduce_scatter, expected 2D", outputDim),
+                        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, "output", (std::to_string(outputDim) + "D").c_str(), "2D"),
                         return false);
     }
     return true;
@@ -549,7 +542,7 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, TilingRunIn
     const char *nodeName = context->GetNodeName();
     // 红线校验
     const gert::StorageShape *outputShape = context->GetOutputShape(OUTPUT_INDEX);
-    OP_TILING_CHECK(outputShape == nullptr, OP_LOGE(nodeName, "The outputShape is null."), return false);
+    OP_TILING_CHECK(outputShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "output"), return false);
     return CheckOutputDim(context, runInfo, opType);
 }
 
@@ -566,20 +559,18 @@ static bool CheckTensorFormat(const gert::TilingContext *context)
     ge::Format xFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
     OP_TILING_CHECK(
         xFormat != ge::FORMAT_ND,
-        OP_LOGE(nodeName, "x format should be ND, but actual value is %s.", Ops::Base::ToString(xFormat).c_str()),
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "x", Ops::Base::ToString(xFormat).c_str(), "ND"),
         return false);
     auto scalesDesc = context->GetInputDesc(SCALES_INDEX);
     ge::Format scalesFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat()));
     OP_TILING_CHECK(scalesFormat != ge::FORMAT_ND,
-                    OP_LOGE(nodeName, "scale format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(scalesFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "scales", Ops::Base::ToString(scalesFormat).c_str(), "ND"),
                     return false);
     // context->GetOutputDesc在CheckTensorDataType函数中已经校验
     auto outputDesc = context->GetOutputDesc(OUTPUT_INDEX);
     ge::Format outPutFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(outputDesc->GetStorageFormat()));
     OP_TILING_CHECK(outPutFormat != ge::FORMAT_ND,
-                    OP_LOGE(nodeName, "output format should be ND, but actual value is %s.",
-                            Ops::Base::ToString(outPutFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "output", Ops::Base::ToString(outPutFormat).c_str(), "ND"),
                     return false);
     return true;
 }

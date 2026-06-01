@@ -23,22 +23,22 @@ static graphStatus MoeDistributeCombineV2ExecuteFunc(OpExecuteContext* host_api_
   OP_LOGD(MoeDistributeCombineV2Info, "start to fallback for moeDistributeCombineV2");
   OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"host_api_ctx is null"), return ge::GRAPH_FAILED);
   const auto expand_x = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
-  OP_CHECK_IF(expand_x == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"expand_x is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(expand_x == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"expand_x"), return ge::GRAPH_FAILED);
 
   const auto expert_ids = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
-  OP_CHECK_IF(expert_ids == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"expert_ids is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(expert_ids == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"expert_ids"), return ge::GRAPH_FAILED);
 
   const auto assist_info_for_combine = host_api_ctx->GetInputTensor(static_cast<size_t>(2));
-  OP_CHECK_IF(assist_info_for_combine == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"assist_info_for_combine is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(assist_info_for_combine == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"assist_info_for_combine"), return ge::GRAPH_FAILED);
 
   const auto ep_send_counts = host_api_ctx->GetInputTensor(static_cast<size_t>(3));
-  OP_CHECK_IF(ep_send_counts == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"ep_send_counts is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(ep_send_counts == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"ep_send_counts"), return ge::GRAPH_FAILED);
 
   const auto expert_scales = host_api_ctx->GetInputTensor(static_cast<size_t>(4));
-  OP_CHECK_IF(expert_scales == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"expert_scales is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(expert_scales == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"expert_scales"), return ge::GRAPH_FAILED);
 
   const auto tp_send_counts = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(5));
-  OP_CHECK_IF(tp_send_counts == nullptr, OP_LOGE(MoeDistributeCombineV2Info,"tp_send_counts is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(tp_send_counts == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeCombineV2Info,"tp_send_counts"), return ge::GRAPH_FAILED);
 
   const auto x_active_mask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(6));
 

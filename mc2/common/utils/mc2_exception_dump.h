@@ -49,7 +49,7 @@ const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 
-const std::map<std::string, std::string> kMc2OperatorContextMap = {
+const std::map<std::string, std::string> MC2_OP_CONTEXT = {
     {"MoeDistributeDispatchV3", "Mc2MoeContext"},
     {"MoeDistributeCombineV3", "Mc2MoeContext"},
     {"MoeDistributeDispatchV2", "HcclCombinOpParam"},
@@ -209,8 +209,8 @@ inline int ProcessArgsForA5(uint64_t argsAddr, std::vector<uint8_t> &winBuf, con
     }
     void* winAddr = nullptr;
     aclError ret = ACL_SUCCESS;
-    auto is_support_op = kMc2OperatorContextMap.find(op);
-    if (is_support_op == kMc2OperatorContextMap.end()) {
+    auto is_support_op = MC2_OP_CONTEXT.find(op);
+    if (is_support_op == MC2_OP_CONTEXT.end()) {
         // 不支持的算子
         OP_LOGE(OP_NAME, "Get winarr does not support this operator, op_name = %s", op);
         return -1;

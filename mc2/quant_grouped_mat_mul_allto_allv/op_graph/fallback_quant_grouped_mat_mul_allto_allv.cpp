@@ -125,15 +125,15 @@ static ge::graphStatus CheckInputsAndAttrs(
     const int64_t* epWorldSize)
 {
     OPS_ERR_IF(gmmX == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "gmmX is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "gmmX"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(gmmWeight == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "gmmWeight is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "gmmWeight"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(group == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "group is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "group"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(epWorldSize == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "epWorldSize is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "epWorldSize"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(transGmmWeight == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "transGmmWeight is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "transGmmWeight"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -141,25 +141,25 @@ static ge::graphStatus CheckInputsAndAttrs(
 static ge::graphStatus CheckQuantAttrs(const QuantGroupedMatMulAlltoAllvAttrs& attrsData)
 {
     OPS_ERR_IF(attrsData.transMmWeight == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "transMmWeight is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "transMmWeight"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.gmmXQuantMode == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "gmmXQuantMode is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "gmmXQuantMode"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.gmmWeightQuantMode == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "gmmWeightQuantMode is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "gmmWeightQuantMode"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.mmXQuantMode == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "mmXQuantMode is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "mmXQuantMode"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.mmWeightQuantMode == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "mmWeightQuantMode is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "mmWeightQuantMode"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.commQuantMode == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "commQuantMode is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "commQuantMode"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.groupSize == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "groupSize is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "groupSize"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.yDtype == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "yDtype is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "yDtype"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.mmDtype == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "mmDtype is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "mmDtype"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.commQuantDtype == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "commQuantDtype is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "commQuantDtype"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -171,9 +171,9 @@ static ge::graphStatus ParseSendRecvCounts(
     std::vector<int64_t>& actRecvCountsSeqArray)
 {
     OPS_ERR_IF(sendCounts == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "sendCounts is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "sendCounts"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(recvCounts == nullptr,
-        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "recvCounts is null"), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "recvCounts"), return ge::GRAPH_FAILED);
 
     const size_t sendLen = static_cast<size_t>(sendCounts->GetSize());
     const int64_t* actSendSeqData = sendCounts->GetData();
@@ -192,7 +192,7 @@ static ge::graphStatus ParseSendRecvCounts(
 
 static ge::graphStatus CheckOutputTensors(const gert::Tensor* y, const gert::Tensor*& mmY)
 {
-    OPS_ERR_IF(y == nullptr, OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "y is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(y == nullptr, OP_LOGE_WITH_INVALID_INPUT("QuantGroupedMatMulAlltoAllvFallback", "y"), return ge::GRAPH_FAILED);
     if ((mmY != nullptr) && (mmY->GetStorageShape().GetDimNum() == 0)) {
         mmY = nullptr;
     }

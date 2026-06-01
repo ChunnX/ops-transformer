@@ -268,9 +268,9 @@ bool GroupedNoQuantMatmulTiling::GetAttrs(const gert::TilingContext *context)
                 return false); // check attr is not null
     const bool *transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_W);
     const bool *transposeXPtr = attr->GetAttrPointer<bool>(ATTR_IDX_TRANS_X);
-    const int32_t *groupTypePtr = attr->GetAttrPointer<int32_t>(ATTR_IDX_GROUPTYPE);
+    const int64_t *groupTypePtr = attr->GetAttrPointer<int64_t>(ATTR_IDX_GROUPTYPE);
     const int64_t *splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_IDX_SPLIT_ITEM);
-    const uint32_t *groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_IDX_GROUP_LIST_TYPE);
+    const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_IDX_GROUP_LIST_TYPE);
     transposeWeight_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
     transposeX_ = transposeXPtr != nullptr ? *transposeXPtr : false;
     groupType_ = groupTypePtr != nullptr ? *groupTypePtr : NO_SPLIT;
