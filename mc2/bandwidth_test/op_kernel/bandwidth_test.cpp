@@ -46,7 +46,7 @@ __global__ __aicore__ void bandwidth_test(
             //PRINTF("URAMA  start\n");
             BandwidthUrmaTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            // op.Process(); 
+            op.Process(); 
             // PRINTF("URAMA  end\n");
         }
     }

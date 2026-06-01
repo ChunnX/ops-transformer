@@ -645,7 +645,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
-            WaitDispatch();
+            // WaitDispatch();
         }
     }
 }
