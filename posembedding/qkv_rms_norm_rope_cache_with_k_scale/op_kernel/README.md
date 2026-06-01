@@ -68,3 +68,22 @@ defined but not yet called from the stub compute path; T06/T08/T10 will attach
 them to the real producer/consumer stages. `a_rot_l1_nz` participates in the
 later CrossCore-protected AL1 data handoff, but it does not consume AIV
 intra-core event ids.
+
+T05 adds fixed intra-core event ids and Init/End pairing. Event ids are local to
+their `HardEvent` pipe pair and are statically checked to stay in `0..5`.
+
+| Pipe pair | Buffer | Event ids |
+|-----------|--------|-----------|
+| `MTE2 -> V` | `vUb[2]`, `cosSinUb[2]`, `slotMappingUb[2]` input path | `0/1` |
+| `V -> MTE2` | input UB reuse | `0/1` |
+| `V -> MTE3` | `vOutUb[2]` output path | `0/1` |
+| `MTE3 -> V` | `vOutUb[2]` reuse | `0/1` |
+| `V -> MTE3` | `qkAfterCubeUb[2]` FP8 staging/write-out path | `2/3` |
+| `MTE3 -> V` | `qkAfterCubeUb[2]` reuse | `2/3` |
+| `MTE1 -> MMAD` / `MMAD -> MTE1` | AIC L0 pingpong path | `3/4` |
+| `MMAD -> FIX` / `FIX -> MMAD` | AIC L0C pingpong path | `0/1` |
+
+Init currently sets only reusable reverse events (`V_MTE2`, `MTE3_V`,
+`M_MTE1`, `FIX_M`); End waits the same events to consume the final reusable
+tokens. The optional A temporary UB staging path is not present in the static
+layout, so ids `4/5` are not initialized or waited for that purpose.

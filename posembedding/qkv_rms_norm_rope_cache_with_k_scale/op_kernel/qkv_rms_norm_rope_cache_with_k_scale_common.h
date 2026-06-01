@@ -37,6 +37,55 @@ static_assert(SYNC_A_READY != SYNC_C_READY && SYNC_A_READY != SYNC_C_CONSUMED &&
 static_assert(SYNC_C_CONSUMED < QKV_RRC_FLAG_ID_MAX,
     "QkvRmsNormRopeCacheWithKScale CrossCore base flag ids must not overlap AIV1 offset.");
 
+constexpr uint32_t QKV_RRC_INTRA_EVENT_ID_MAX = 5U;
+constexpr uint32_t QKV_RRC_AIC_L0_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM;
+constexpr uint32_t QKV_RRC_AIC_L0C_BUFFER_NUM = QKV_RRC_DOUBLE_BUFFER_NUM;
+
+constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE = 0U;
+constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
+constexpr uint32_t EVT_PIPE_V_TO_MTE3_V_OUT_UB_BASE = 0U;
+constexpr uint32_t EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE = 0U;
+constexpr uint32_t EVT_PIPE_V_TO_MTE3_QK_OUT_UB_BASE = 2U;
+constexpr uint32_t EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE = 2U;
+
+constexpr uint32_t EVT_MTE2_TO_MTE1_L1_BASE = 3U;
+constexpr uint32_t EVT_MTE1_TO_MTE2_L1_BASE = 3U;
+constexpr uint32_t EVT_MTE1_TO_MMAD_L0_BASE = 3U;
+constexpr uint32_t EVT_MMAD_TO_MTE1_L0_BASE = 3U;
+constexpr uint32_t EVT_MMAD_TO_FIXP_L0C_BASE = 0U;
+constexpr uint32_t EVT_FIXP_TO_MMAD_L0C_BASE = 0U;
+
+static_assert(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MTE2->V input UB events exceed event id range.");
+static_assert(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale V->MTE2 input UB events exceed event id range.");
+static_assert(EVT_PIPE_V_TO_MTE3_V_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale V->MTE3 V output events exceed event id range.");
+static_assert(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MTE3->V V output events exceed event id range.");
+static_assert(EVT_PIPE_V_TO_MTE3_QK_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale V->MTE3 QK output events exceed event id range.");
+static_assert(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MTE3->V QK output events exceed event id range.");
+static_assert(EVT_MTE1_TO_MMAD_L0_BASE + QKV_RRC_AIC_L0_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MTE1->MMAD L0 events exceed event id range.");
+static_assert(EVT_MMAD_TO_MTE1_L0_BASE + QKV_RRC_AIC_L0_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MMAD->MTE1 L0 events exceed event id range.");
+static_assert(EVT_MMAD_TO_FIXP_L0C_BASE + QKV_RRC_AIC_L0C_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale MMAD->FIXP L0C events exceed event id range.");
+static_assert(EVT_FIXP_TO_MMAD_L0C_BASE + QKV_RRC_AIC_L0C_BUFFER_NUM - 1U <=
+        QKV_RRC_INTRA_EVENT_ID_MAX,
+    "QkvRmsNormRopeCacheWithKScale FIXP->MMAD L0C events exceed event id range.");
+
 constexpr uint32_t QKV_RRC_INPUT_ONE_BUFFER_BYTES = 40U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_OUTPUT_ONE_BUFFER_BYTES = 64U * QKV_RRC_KIB;
 constexpr uint32_t QKV_RRC_INPUT_DB_POOL_BYTES = QKV_RRC_DOUBLE_BUFFER_NUM * QKV_RRC_INPUT_ONE_BUFFER_BYTES;
@@ -220,6 +269,26 @@ __aicore__ inline void WaitAicToAiv(uint64_t syncFlag)
     CrossCoreWaitFlag<QKV_RRC_SYNC_MODE4, pipe>(syncFlag);
 #else
     (void)syncFlag;
+#endif
+}
+
+template <HardEvent event>
+__aicore__ inline void SetIntraCoreEvent(uint32_t eventId)
+{
+#ifndef __CCE_KT_TEST__
+    SetFlag<event>(static_cast<event_t>(eventId));
+#else
+    (void)eventId;
+#endif
+}
+
+template <HardEvent event>
+__aicore__ inline void WaitIntraCoreEvent(uint32_t eventId)
+{
+#ifndef __CCE_KT_TEST__
+    WaitFlag<event>(static_cast<event_t>(eventId));
+#else
+    (void)eventId;
 #endif
 }
 

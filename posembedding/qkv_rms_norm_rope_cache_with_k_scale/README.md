@@ -27,12 +27,15 @@ Current state:
 5. T04 adds fixed CrossCore flag ids and wrappers for `A_READY`, `C_READY`, and
    `C_CONSUMED`. CrossCore flag ids are semantic constants and are not derived
    from pingpong `bufferId` or loop generation.
-6. After T04 the D=128 fast-path code is split into `common`, `controller`,
+6. T05 adds fixed intra-core event constants and Init/End pairing for reusable
+   AIV/AIC buffers. Active event ids stay within `0..5`; `a_rot_l1_nz` remains
+   CrossCore-protected AL1 and does not consume AIV intra-core event ids.
+7. After T04 the D=128 fast-path code is split into `common`, `controller`,
    `basic_block`, `cube`, and `vec` headers instead of keeping those larger
    modules inside one file. Core-type dispatch is centralized in the
    controller AIC/AIV entry split; lower layers do not inspect `g_coreType`.
-7. Real compute and the concrete synchronization call sites are left to later
+8. Real compute and the concrete synchronization call sites are left to later
    tasks.
-8. Implementation work must follow `TASKS.md`.
-9. After each task is coded and verified, update `TASKS.md` and commit the
+9. Implementation work must follow `TASKS.md`.
+10. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.

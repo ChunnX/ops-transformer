@@ -20,6 +20,7 @@ class D128FastBasicBlock {
 public:
     __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
     {
+        isAiv_ = false;
         InitStaticL1Tensors();
         cube_.Init(cubeIndex, tensors);
         InitIntraCoreEvents();
@@ -28,6 +29,7 @@ public:
     __aicore__ inline void InitAiv(const GlobalTensors &tensors,
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t aivLocalId)
     {
+        isAiv_ = true;
         InitStaticL1Tensors();
         InitAivStaticBuffers();
         vec_.Init(tilingData, aivLocalId, tensors);
@@ -110,14 +112,61 @@ private:
 
     __aicore__ inline void InitIntraCoreEvents()
     {
-        // T05 will add the real event-id initialization. T01 keeps lifecycle hooks in place.
+        if (isAiv_) {
+            InitAivIntraCoreEvents();
+        } else {
+            InitAicIntraCoreEvents();
+        }
     }
 
     __aicore__ inline void EndIntraCoreEvents()
     {
-        // T05 will add the matching event-id waits.
+        if (isAiv_) {
+            EndAivIntraCoreEvents();
+        } else {
+            EndAicIntraCoreEvents();
+        }
     }
 
+    __aicore__ inline void InitAivIntraCoreEvents()
+    {
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
+            SetIntraCoreEvent<HardEvent::V_MTE2>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId);
+            SetIntraCoreEvent<HardEvent::MTE3_V>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId);
+            SetIntraCoreEvent<HardEvent::MTE3_V>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId);
+        }
+    }
+
+    __aicore__ inline void EndAivIntraCoreEvents()
+    {
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_DOUBLE_BUFFER_NUM; ++bufferId) {
+            WaitIntraCoreEvent<HardEvent::V_MTE2>(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + bufferId);
+            WaitIntraCoreEvent<HardEvent::MTE3_V>(EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE + bufferId);
+            WaitIntraCoreEvent<HardEvent::MTE3_V>(EVT_MTE3_TO_PIPE_V_QK_OUT_UB_BASE + bufferId);
+        }
+    }
+
+    __aicore__ inline void InitAicIntraCoreEvents()
+    {
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_AIC_L0_BUFFER_NUM; ++bufferId) {
+            SetIntraCoreEvent<HardEvent::M_MTE1>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId);
+        }
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_AIC_L0C_BUFFER_NUM; ++bufferId) {
+            SetIntraCoreEvent<HardEvent::FIX_M>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId);
+        }
+    }
+
+    __aicore__ inline void EndAicIntraCoreEvents()
+    {
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_AIC_L0_BUFFER_NUM; ++bufferId) {
+            WaitIntraCoreEvent<HardEvent::M_MTE1>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId);
+        }
+        for (uint32_t bufferId = 0U; bufferId < QKV_RRC_AIC_L0C_BUFFER_NUM; ++bufferId) {
+            WaitIntraCoreEvent<HardEvent::FIX_M>(EVT_FIXP_TO_MMAD_L0C_BASE + bufferId);
+        }
+    }
+
+    bool isAiv_;
     StaticLocalTensors localTensors_;
     D128FastCube cube_;
     D128FastVec vec_;
