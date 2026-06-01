@@ -101,7 +101,6 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
 constexpr uint32_t ATTR_TOPK_VALUE_MODE = 8;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 9;
-constexpr uint32_t ATTR_BATCH_INVARIANT_INDEX = 10;
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
@@ -153,7 +152,6 @@ TILING_DATA_FIELD_DEF(int64_t, oriWinRight)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 
 TILING_DATA_FIELD_DEF(int64_t, topkValueMode)
-TILING_DATA_FIELD_DEF(int64_t, batchInvariant)
 
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 
@@ -217,7 +215,6 @@ struct SMLAParaInfo {
     const char *layoutKv = nullptr;
     const uint32_t *topkValueMode = nullptr;
     const bool *returnSoftmaxLse = nullptr;
-    const uint32_t *batchInvariant = nullptr;
 };
 
 static std::string SMLADataTypeToSerialString(ge::DataType type);
@@ -266,7 +263,6 @@ public:
     int64_t cmpSparseBlockCount = 0;
 
     int64_t topkValueMode = 0;
-    int64_t batchInvariant = 0;
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
@@ -405,7 +401,6 @@ private:
     int64_t oriWinRight_ = 0;
 
     int64_t topkValueMode_;
-    int64_t batchInvariant_;
 
     SMLALayout qLayout_ = SMLALayout::TND;
     SMLALayout cmpSparseIndicesLayout_ = SMLALayout::TND;
@@ -514,7 +509,6 @@ public:
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
     int64_t topkValueMode_ = 0;
-    int64_t batchInvariant_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
