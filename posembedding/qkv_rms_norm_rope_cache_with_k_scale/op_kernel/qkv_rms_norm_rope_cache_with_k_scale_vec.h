@@ -34,6 +34,7 @@ public:
             SetMte3ToVVOutBufferReusable(bufferId);
             SetMte3ToVQkOutBufferReusable(bufferId);
         }
+        CopyPersistentInputs();
     }
 
     __aicore__ inline void EndIntraCoreEvents()
@@ -222,6 +223,18 @@ private:
 #endif
     }
 
+    __aicore__ inline void CopyPersistentInputs()
+    {
+        DataCopyGmToUb2D(gammaUb_, qGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
+        DataCopyGmToUb2D(
+            gammaUb_[QKV_RRC_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
+        if (tilingData_->numVHeads > 0U) {
+            DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, tilingData_->numVHeads, tilingData_->numVHeads});
+        }
+        SetMte2ToVInputReady(activeBufferId_);
+        WaitMte2ToVInputReady(activeBufferId_);
+    }
+
     __aicore__ inline void PreprocessQkv(const TileParam &tile, const AivSlice &slice)
     {
         WaitVToMte2InputBufferReusable(activeBufferId_);
@@ -243,14 +256,6 @@ private:
     {
         DataCopyGmToUb2D(InputUb(), qkvGm_[slice.tokenOffset * tilingData_->qkvStrideT],
             {slice.tokenSize, tilingData_->qkvStrideT, tilingData_->qkvStrideT});
-        if (tilingData_->headDim > 0U) {
-            DataCopyGmToUb2D(gammaUb_, qGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
-            DataCopyGmToUb2D(
-                gammaUb_[tilingData_->headDim], kGammaGm_, {1U, tilingData_->headDim, tilingData_->headDim});
-        }
-        if (tilingData_->numVHeads > 0U) {
-            DataCopyGmToUb2D(vScaleUb_, vScaleGm_, {1U, tilingData_->numVHeads, tilingData_->numVHeads});
-        }
         if (slice.tokenSize > 0U) {
             DataCopyGmToUb2D(
                 SlotMappingUb(), slotMappingGm_[slice.tokenOffset],
@@ -458,6 +463,9 @@ private:
         vScaleUb_ = LocalTensor<float>(TPosition::LCM,
             QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_V_SCALE_UB_OFFSET,
             QKV_RRC_V_SCALE_UB_ELEMENTS);
+        qkScaleStagingUb_ = LocalTensor<float>(TPosition::LCM,
+            QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_QK_SCALE_UB_OFFSET,
+            QKV_RRC_QK_SCALE_UB_ELEMENTS);
         cosSinDbPoolUb_ = LocalTensor<float>(TPosition::LCM,
             QKV_RRC_RESERVE_UB_OFFSET + QKV_RRC_COS_SIN_DB_POOL_OFFSET,
             QKV_RRC_COS_SIN_DB_POOL_ELEMENTS);
@@ -486,7 +494,7 @@ private:
 
     __aicore__ inline LocalTensor<float> QkScaleStagingUb()
     {
-        return vScaleUb_;
+        return qkScaleStagingUb_;
     }
 
     __aicore__ inline LocalTensor<fp8_e4m3fn_t> QkFp8StagingUb()
@@ -560,6 +568,7 @@ private:
     LocalTensor<float> cosSinDbPoolUb_;
     LocalTensor<int32_t> slotMappingDbPoolUb_;
     LocalTensor<float> vScaleUb_;
+    LocalTensor<float> qkScaleStagingUb_;
     LocalTensor<fp8_e4m3fn_t> vOutDbPoolUb_;
 };
 
