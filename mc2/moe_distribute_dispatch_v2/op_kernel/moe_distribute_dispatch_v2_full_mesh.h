@@ -75,8 +75,8 @@ constexpr uint32_t FLAG_OFFSET = STATE_OFFSET / sizeof(float);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
 #define TemplateMC2TypeFullmeshClass typename XType, typename ExpandXOutType, int32_t QuantMode, \
-                                     bool IsSmoothScaleExist, bool IsNeedAllgather
-#define TemplateMC2TypeFullmeshFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
+                                     bool IsSmoothScaleExist
+#define TemplateMC2TypeFullmeshFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -103,7 +103,7 @@ public:
     __aicore__ inline MoeDistributeDispatchV2FullMesh() {};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo,
                                 GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR sendCountsOut, GM_ADDR tpSendCountsOut,
+                                GM_ADDR sendCountsOut,
                                 GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -180,7 +180,6 @@ private:
     GlobalTensor<int64_t> expertTokenNumsOutGMTensor_;
     GlobalTensor<float> windowInstatusFp32Tensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
-    GlobalTensor<XOutType> winTpGatherOutGMTensor_;
     GlobalTensor<int32_t> expandIdxGMTensor_;
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<int32_t> performanceInfoGMTensor_;
@@ -248,7 +247,6 @@ private:
     TBuf<> calEndBuf_;
     GM_ADDR expandXOutGM_;
     GM_ADDR sendCountsOutGM_;
-    GM_ADDR sendTpCountOutGM_;
     GM_ADDR statusSpaceGM_;
     GM_ADDR windowGM_;
     GM_ADDR recvCntWorkspaceGM_;
@@ -337,7 +335,7 @@ private:
     DataCopyParams dataStateParams_{1U, sizeof(uint32_t), 0U, 0U};
 
     MoeDistributeDispatchV2Quant<XInType, ExpandXOutType,
-                XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather> quantInst_;
+                XOutType, QuantMode, IsSmoothScaleExist, false> quantInst_;
 };
 
 template <TemplateMC2TypeFullmeshClass>
@@ -471,7 +469,7 @@ template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, 
     GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
-    GM_ADDR tpSendCountsOut, GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
+    GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
@@ -504,7 +502,6 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     SetDataStatus();
     expandXOutGM_ = expandXOut;
     sendCountsOutGM_ = sendCountsOut;
-    sendTpCountOutGM_ = tpSendCountsOut;
     recvCntWorkspaceGM_ = workspaceGM;
     statusSpaceGM_ = GetWindStateAddrByRankId(epRankIdOriginal_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
