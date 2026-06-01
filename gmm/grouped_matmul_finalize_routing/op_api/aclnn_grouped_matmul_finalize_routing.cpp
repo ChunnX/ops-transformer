@@ -9,8 +9,6 @@
  */
 
 #include <dlfcn.h>
-#include <sstream>
-
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 #include "aclnn_grouped_matmul_finalize_routing_v3.h"
@@ -40,23 +38,6 @@ extern "C" {
 
 
 namespace {
-
-std::string ShapeToStringWithoutBracket(const op::Shape &shape)
-{
-    std::ostringstream oss;
-    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
-        if (i != 0) {
-            oss << ", ";
-        }
-        oss << shape.GetDim(i);
-    }
-    return oss.str();
-}
-
-std::string ViewShapeToString(const aclTensor *tensor)
-{
-    return ShapeToStringWithoutBracket(tensor->GetViewShape());
-}
 
 static constexpr int INDEX_X1_IN_MANDTORY_TUPLE = 0;
 static constexpr int INDEX_X2_IN_MANDTORY_TUPLE = 1;
@@ -1450,7 +1431,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
                   op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510))) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
             "aclnnGroupedMatmulFinalizeRoutingV3", "x and weight",
-            "x=" + ViewShapeToString(x1) + ", weight=" + ViewShapeToString(x2),
+            "x=" + GmmFinalizeRouting::ViewShapeToString(x1) +
+                ", weight=" + GmmFinalizeRouting::ViewShapeToString(x2),
             "the value of x and weight transpose config must be false/false or false/true on DAV_3510");
         return ACLNN_ERR_PARAM_INVALID;
     }
