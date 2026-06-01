@@ -22,7 +22,7 @@ public:
                                       const optiling::BSASelectBlockMaskTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGM(GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-                                   GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
+                                   GlobalTensor<IN_T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
                                    GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
                                    GlobalTensor<int64_t> &actualBlockLenQGm,
                                    GlobalTensor<int64_t> &actualBlockLenKVGm);
@@ -51,7 +51,7 @@ private:
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
 
     GlobalTensor<IN_T> qCmpGmLocal, kCmpGmLocal;
-    GlobalTensor<T> attnScoreGmLocal;
+    GlobalTensor<IN_T> attnScoreGmLocal;
     GlobalTensor<T> softmaxTmpGmLocal;
     GlobalTensor<IN_T> queryGmLocal, keyGmLocal;
     GlobalTensor<int64_t> actualBlockLenQGmLocal, actualBlockLenKVGmLocal;
@@ -122,7 +122,7 @@ __aicore__ inline void BSAVectorService<BSAT>::InitBuffers(TPipe *pipe)
 template <typename BSAT>
 __aicore__ inline void BSAVectorService<BSAT>::InitGM(
     GlobalTensor<IN_T> &qCmpGm, GlobalTensor<IN_T> &kCmpGm,
-    GlobalTensor<T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
+    GlobalTensor<IN_T> &attnScoreGm, GlobalTensor<T> &softmaxTmpGm,
     GlobalTensor<IN_T> &queryGm, GlobalTensor<IN_T> &keyGm,
     GlobalTensor<int64_t> &actualBlockLenQGm, GlobalTensor<int64_t> &actualBlockLenKVGm)
 {

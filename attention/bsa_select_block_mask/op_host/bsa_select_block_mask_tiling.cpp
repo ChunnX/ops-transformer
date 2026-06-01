@@ -217,7 +217,7 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
 {
     uint64_t qCmpSize = static_cast<uint64_t>(xBlocks) * dSize * sizeof(float);
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * sizeof(float);
-    uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
+    uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(half);
     uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
     uint64_t topkWorkspaceSize = static_cast<uint64_t>(RADIX_NUM_BINS * aicNum + aicNum + aicNum) * sizeof(int32_t);
     uint64_t maskSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint8_t);

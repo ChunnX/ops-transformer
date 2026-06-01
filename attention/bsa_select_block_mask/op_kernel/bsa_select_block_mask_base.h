@@ -67,7 +67,7 @@ private:
     GlobalTensor<OUT_T> maskOutGm;
 
     GlobalTensor<IN_T> qCmpGm, kCmpGm;
-    GlobalTensor<MM_OUT_T> attnScoreGm;
+    GlobalTensor<IN_T> attnScoreGm;
     GlobalTensor<T> softmaxTmpGm;
     GlobalTensor<uint8_t> maskTmpGm;
     GlobalTensor<int32_t> topkWorkspaceGm;
@@ -135,7 +135,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitConstInfo()
             uint32_t expYBlocksPerCore = constInfo.yBlocks / expActiveYCoreNum + (expExtraYCores > 0 ? 1 : 0);
             uint64_t expQCmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.dSize * sizeof(float);
             uint64_t expKCmpSize = static_cast<uint64_t>(constInfo.yBlocks) * constInfo.dSize * sizeof(float);
-            uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
+            uint64_t expAttnScoreSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(IN_T);
             uint64_t expSoftmaxTmpSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(float);
             uint64_t expMaskSize = static_cast<uint64_t>(constInfo.xBlocks) * constInfo.yBlocks * sizeof(uint8_t);
             uint64_t expTopkWsSize = static_cast<uint64_t>(RADIX_NUM_BINS * constInfo.coreNum + constInfo.coreNum + constInfo.coreNum) * sizeof(int32_t);
@@ -286,8 +286,8 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::InitWorkspace(__gm__ uint8_
                            outInfo.qCmpSize / sizeof(IN_T));
     kCmpGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.kCmpOffset),
                            outInfo.kCmpSize / sizeof(IN_T));
-    attnScoreGm.SetGlobalBuffer((__gm__ MM_OUT_T *)(workspace + constInfo.attnScoreOffset),
-                                outInfo.attnScoreSize / sizeof(MM_OUT_T));
+    attnScoreGm.SetGlobalBuffer((__gm__ IN_T *)(workspace + constInfo.attnScoreOffset),
+                                 outInfo.attnScoreSize / sizeof(IN_T));
     softmaxTmpGm.SetGlobalBuffer((__gm__ T *)(workspace + constInfo.softmaxTmpOffset),
                                  outInfo.softmaxTmpSize / sizeof(T));
     topkWorkspaceGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + constInfo.topkWorkspaceOffset),
@@ -397,7 +397,7 @@ __aicore__ inline void BSASelectBlockMaskBase<BSAT>::Init(
     } else if ASCEND_IS_AIC {
         matmulService.InitParams(constInfo);
         matmulService.InitBuffers(pipe);
-        matmulService.InitGM(qCmpGm, kCmpGm, attnScoreGm);
+        matmulService.InitGM(qCmpGm, kCmpGm, softmaxTmpGm);
     }
 }
 
