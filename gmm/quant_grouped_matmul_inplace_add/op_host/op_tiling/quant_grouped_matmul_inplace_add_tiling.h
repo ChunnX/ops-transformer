@@ -41,6 +41,10 @@ public:
     }
 
 protected:
+    const char *GetOpType() const override
+    {
+        return "QuantGroupedMatmulInplaceAdd";
+    }
     // 2、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
