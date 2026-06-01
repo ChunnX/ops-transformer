@@ -62,6 +62,7 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetPlatformInfo() override;
+    uint32_t expertNum_ = 1;
 };
 
 class AlltoAllvGmmTilingCommon
