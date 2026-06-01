@@ -17,8 +17,8 @@
 
 #include "kernel_cube_intf.h"
 #include "op_kernel/math_util.h"
-#include "../common/basic_block_config.h"
-#include "../common/basic_block_vf_mx.h"
+#include "basic_block_config.h"
+#include "basic_block_vf_mx.h"
 #include "weight_quant_tool.h"
 #include "gmmsq_quant_mx_vf.h"
 #include "gmmsq_weight_quant_cube_compute_tools.h"
