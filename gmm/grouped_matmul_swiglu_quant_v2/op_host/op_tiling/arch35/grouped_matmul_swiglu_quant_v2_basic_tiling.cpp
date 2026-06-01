@@ -560,7 +560,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetWorkspaceSize()
         } else {
             workSize = GmmConstant::FP32_WORKSIZE;
         }
-        workspaces[0] += static_cast<uint32_t>((inputParams_.nSize >> 1) * inputParams_.mSize * workSize);
+        workspaces[0] += static_cast<size_t>(inputParams_.nSize >> 1) * inputParams_.mSize * workSize;
     }
     return ge::GRAPH_SUCCESS;
 }

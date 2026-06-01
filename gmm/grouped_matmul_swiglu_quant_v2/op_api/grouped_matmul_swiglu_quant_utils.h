@@ -11,6 +11,8 @@
 #ifndef OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
 #define OP_HOST_OP_API_GROUPED_MATMUL_SWIGLU_QUANT_UTILS_H
 
+#include <sstream>
+#include <string>
 #include "aclnn_kernels/contiguous.h"
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
@@ -33,6 +35,22 @@ constexpr int64_t OUTPUT_IDX_0 = 0L;
 constexpr int64_t OUTPUT_IDX_1 = 1L;
 constexpr size_t WEIGHT_NZ_DIM_LIMIT = 5UL;
 constexpr size_t WEIGHT_ND_DIM_LIMIT = 3UL;
+
+template <typename T>
+inline std::string BuildLogValue(const char *name, T value)
+{
+    std::ostringstream oss;
+    oss << name << " " << value;
+    return oss.str();
+}
+
+template <typename T0, typename T1>
+inline std::string BuildLogValues(const char *name0, T0 value0, const char *name1, T1 value1)
+{
+    std::ostringstream oss;
+    oss << name0 << " " << value0 << ", " << name1 << " " << value1;
+    return oss.str();
+}
 
 struct GroupedMatmulSwigluQuantParamsBase {
     const aclTensor *x = nullptr;
@@ -197,7 +215,7 @@ protected:
 
         if (!gmmDsqParams_.weight || !gmmDsqParams_.weightScale) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-            "The weight or weightScale is nullptr.");
+                    "In op [%s], [%s] must not be nullptr.", opName_.c_str(), "weight or weightScale");
             return false;
         }
         return true;
@@ -206,7 +224,8 @@ protected:
     virtual bool CheckEmptyTensor(void)
     {
         if ((*gmmDsqParams_.weight)[0]->IsEmpty() || (*gmmDsqParams_.weightScale)[0]->IsEmpty()) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The weight or weightScale is an empty container.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "In op [%s], [%s] must not be an empty container.", opName_.c_str(), "weight or weightScale");
             return false;
         }
         return true;
@@ -327,9 +346,10 @@ protected:
     }
 
 public:
-    void Initialize(const char *interfaceName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize, aclOpExecutor **executor)
+    void Initialize(const char *opName, GroupedMatmulSwigluQuantParamsBase &params, uint64_t *workspaceSize,
+                    aclOpExecutor **executor)
     {
-        interfaceName_ = interfaceName;
+        opName_ = opName;
         gmmDsqParams_ = params;
         workspaceSize_ = workspaceSize;
         executor_ = executor;
@@ -395,7 +415,7 @@ public:
     }
 
 protected:
-    string interfaceName_;
+    string opName_;
     GroupedMatmulSwigluQuantParamsBase gmmDsqParams_;
     uint64_t *workspaceSize_;
     aclOpExecutor **executor_;
