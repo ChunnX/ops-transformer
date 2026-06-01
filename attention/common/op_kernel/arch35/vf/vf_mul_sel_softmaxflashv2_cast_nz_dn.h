@@ -1110,7 +1110,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
     }
-    
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
