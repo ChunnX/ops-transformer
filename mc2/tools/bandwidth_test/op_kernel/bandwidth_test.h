@@ -365,12 +365,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     if (startTokenId >= axisBS_) { return; }
 
-    // ============ 读取dst_rank_id数组到UB ============
     GlobalTensor<XType> dstWinGMTensor;
-    DataCopyExtParams dstRankIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> dstRankIdsCopyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_, dstRankIdsParams, dstRankIdsCopyPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
@@ -601,6 +596,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
     // mode=0: 完整流程 (发送 + 同步 + 接收)
     // mode=1: 仅发送模式 (用于单向带宽测试)
     if ASCEND_IS_AIV {
+        // 所有核统一填充dstRankIds数据，确保后续SetStatus统计时数据有效
+        DataCopyExtParams dstRankIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> dstRankIdsCopyPadParams{false, 0U, 0U, 0U};
+        DataCopyPad(dstRankIdsTensor_, dstRankIdGMTensor_, dstRankIdsParams, dstRankIdsCopyPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
