@@ -1315,8 +1315,7 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, const char *no
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MoeDistributeCombineV2TilingFuncBase::CalTilingKey(const uint32_t tpWorldSize,
-    uint32_t commQuantMode, bool isLayered)
+static uint64_t CalTilingKey(const uint32_t tpWorldSize, uint32_t commQuantMode, bool isLayered)
 {
     bool tp = false;
     uint32_t quantMode = TILINGKEY_NO_QUANT;
