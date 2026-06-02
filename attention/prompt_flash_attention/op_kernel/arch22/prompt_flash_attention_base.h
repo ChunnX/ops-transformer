@@ -223,12 +223,12 @@ protected:
     uint32_t tensorACoreOffset = 0;
     uint32_t tensorBCoreOffset = 0;
     uint32_t attentionOutOffset = 0;
-    uint32_t offsetSS = 0;
-    uint32_t offsetSH = 0;
-    uint32_t offsetSTypeNum = 0;
-    uint32_t offsetNSTypeNum = 0;
-    uint32_t offsetNSS = 0;
-    uint32_t offsetNSH = 0;
+    uint64_t offsetSS = 0;
+    uint64_t offsetSH = 0;
+    uint64_t offsetSTypeNum = 0;
+    uint64_t offsetNSTypeNum = 0;
+    uint64_t offsetNSS = 0;
+    uint64_t offsetNSH = 0;
     uint32_t maskDataType = 0;
     uint32_t attenMaskBatch = 0;
     uint32_t pseShiftBatch = 0;
@@ -591,12 +591,14 @@ __aicore__ inline void PromptFlashAttentionBase<int8_t, float, CubeFormat::ND, i
 #endif
 template<typename T, typename U, CubeFormat FORMAT, typename O,  OptimizationMode M>
 __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::initOffset() {
-    offsetSS = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.seqSize;
-    offsetSH = tilingData->promptAttentionBaseParams.seqSize * tilingData->promptAttentionBaseParams.headSize;
-    offsetSTypeNum = tilingData->promptAttentionBaseParams.seqSize * typeByteNum;
-    offsetNSTypeNum = tilingData->promptAttentionBaseParams.headNumSize * offsetSTypeNum;
-    offsetNSS = tilingData->promptAttentionBaseParams.headNumSize * offsetSS;
-    offsetNSH = tilingData->promptAttentionBaseParams.headNumSize * offsetSH;
+    offsetSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.seqSize;
+    offsetSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) *
+        tilingData->promptAttentionBaseParams.headSize;
+    offsetSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.seqSize) * typeByteNum;
+    offsetNSTypeNum = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSTypeNum;
+    offsetNSS = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSS;
+    offsetNSH = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headNumSize) * offsetSH;
 }
 
 template<typename T, typename U, CubeFormat FORMAT, typename O,  OptimizationMode M>
@@ -1201,26 +1203,27 @@ __aicore__ inline void PromptFlashAttentionBase<T, U, FORMAT, O, M>::LoopSOuterO
     }
     attenMaskCoreOffset = (uint64_t)sOuterOffset * (uint64_t)tilingData->promptAttentionBaseParams.maskKVsSize + attenMaskBatchOffset;
    
-    uint32_t head_stride_q = tilingData->promptAttentionBaseParams.headSize *
+    uint64_t head_stride_q = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
                              tilingData->promptAttentionBaseParams.seqSize;
-    uint32_t head_stride_kv = tilingData->promptAttentionBaseParams.headSize *
+    uint64_t head_stride_kv = static_cast<uint64_t>(tilingData->promptAttentionBaseParams.headSize) *
                               tilingData->promptAttentionBaseParams.seqInnerSize;
-    uint32_t seq_stride = tilingData->promptAttentionBaseParams.headSize;
+    uint64_t seq_stride = tilingData->promptAttentionBaseParams.headSize;
 
     CalPseShiftOffset(sIdx);
 
-    tensorACoreOffset = seqListOffsetSize + batchNOffset * head_stride_q + sOuterOffset*seq_stride;
+    tensorACoreOffset = seqListOffsetSize + batchNOffset * head_stride_q + static_cast<uint64_t>(sOuterOffset) * seq_stride;
 
-    uint32_t seqInnerOffsetSize =
+    uint64_t seqInnerOffsetSize =
         tilingData->promptAttentionBaseParams.seqSize == tilingData->promptAttentionBaseParams.seqInnerSize ?
-        seqListOffsetSize / headNumRatio : sIdx * head_stride_kv *
+        seqListOffsetSize / headNumRatio : static_cast<uint64_t>(sIdx) * head_stride_kv *
         tilingData->promptAttentionBaseParams.headNumSize / headNumRatio;
 
     tensorBCoreOffset = seqInnerOffsetSize + batchNOffset / headNumRatio * head_stride_kv;
 
     valueCoreOffset = tensorBCoreOffset;
 
-    attentionOutOffset = seqListOffsetSize + batchNOffset * head_stride_q + (sOuterOffset + nextTokensOffset) * seq_stride;
+    attentionOutOffset = seqListOffsetSize + batchNOffset * head_stride_q +
+        static_cast<uint64_t>(sOuterOffset + nextTokensOffset) * seq_stride;
 }
 
 template<typename T, typename U, CubeFormat FORMAT, typename O,  OptimizationMode M>
