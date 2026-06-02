@@ -904,12 +904,13 @@ bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
                    32 < nSize && nSize <= 128 && nSize % 32 != 0 &&
                    dSize == 128 && 1 <= bSize && bSize <= 16);
 
-    // SBH: S1>30K, S2 in [128,256] not 32-aligned, dSize=128
+    // SBH: S1>30K, S2 in [128,256] not 32-aligned, dSize=128, B in [1,16]
     bool sbhOk = (layoutType == LAYOUT_SBH &&
                   dSize == 128 &&
                   s1Size > 30000 &&
                   128 <= s2Size && s2Size <= 256 &&
-                  s2Size % 32 != 0);
+                  s2Size % 32 != 0 &&
+                  1 <= bSize && bSize <= 16);
 
     return (l2CacheSize == B4_1_L2_CACHESIZE) &&
            (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
