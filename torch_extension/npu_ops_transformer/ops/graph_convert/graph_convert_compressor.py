@@ -1,3 +1,14 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+# GE Converter for Graph Mode
+
 try:
     import torch
     import torch_npu
@@ -25,7 +36,8 @@ if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
         [False, False, False, False, False, False, False, False, True, True, True, True],
         [False, False, False, False, False, False, False, False, False, False, False, False])
-    def Compressor(x: Tensor,
+    def Compressor(
+        x: Tensor,
         wkv: Tensor,
         wgate: Tensor,
         state_cache: Tensor,
@@ -72,7 +84,8 @@ if _TORCHAIR_AVAILABLE:
 
         
         raise AssertionError(f"GE not supported!")
-        return Compressor(x = x,
+        return Compressor(
+                        x = x,
                         wkv = wkv,
                         wgate = wgate,
                         state_cache = state_cache,

@@ -44,18 +44,18 @@ class CompressorOpBuilder(OpBuilder):
                                 seqused=None, start_pos=None,
                                 coff=1, norm_eps=1e-6, rotary_mode=1, cache_mode=1):
             if x.dim() == 3:
-                B = x.size(0)
-                S = x.size(1)
-                H = x.size(2)
-                Sr = (S + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (B, Sr, H)
+                b = x.size(0)
+                s = x.size(1)
+                h = x.size(2)
+                sr = (s + cmp_ratio - 1) // cmp_ratio
+                cmp_kv_size = (b, sr, h)
             else:
-                T = x.size(0)
-                H = x.size(1)
-                Sr = (T + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (Sr, H)
+                t = x.size(0)
+                h = x.size(1)
+                sr = (t + cmp_ratio - 1) // cmp_ratio
+                cmp_kv_size = (sr, h)
             
-            return torch.empty(cmp_kv_size, dtype=x.dtype, device='meta')
+            return torch.empty(cmp_kv_size, dtype=x.dtype, device='npu')
 
 
 compressor_op_builder = CompressorOpBuilder()

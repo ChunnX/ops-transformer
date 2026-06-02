@@ -28,7 +28,6 @@ std::vector<bool> is_contiguous_axes(const at::Tensor &tensor)
     auto sizes = tensor.sizes();
     auto strides = tensor.strides();
     int64_t ndim = sizes.size();
-
     if (ndim == 0) {
         return {};
     }
