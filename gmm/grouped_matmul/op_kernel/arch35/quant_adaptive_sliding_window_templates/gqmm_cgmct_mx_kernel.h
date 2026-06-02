@@ -27,7 +27,7 @@ using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 using QuantBasicApiMMTiling = GroupedMatmulTilingData::QuantBasicApiMMTiling;
 using namespace Cgmct::Gemm;
 template <class xType, class wType, class biasType, class scaleType, class ptScaleType, class yType, class xLayout,
-          class wLayout, class yLayout, class l0cType>
+          class wLayout, class yLayout, class l0cType, uint64_t L1BufferNum = 2UL>
 __aicore__ inline void GmmCgmctMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                         GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
                                         const GMMQuantParams *gmmBaseParamsIn,
@@ -48,6 +48,11 @@ __aicore__ inline void GmmCgmctMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
 
     using LayoutA = xLayout;
     using LayoutB = wLayout;
+#if defined(FORMAT_SCALE) && defined(FORMAT_FRACTAL_NZ) && FORMAT_SCALE == FORMAT_FRACTAL_NZ
+    using LayoutScaleB = layout::Nz;
+#else
+    using LayoutScaleB = layout::RowMajor;
+#endif
     using LayoutC = yLayout;
     using LayoutY = yLayout;
     using LayoutBias = yLayout;
@@ -61,7 +66,7 @@ __aicore__ inline void GmmCgmctMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
     // 定义MMAD类型
     using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
     using BlockMmad = Block::BlockMmadMx<BlockMmadPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType, LayoutB,
-                                         YType, LayoutC, BiasType, LayoutBias, void>;
+                                         LayoutScaleB, YType, LayoutC, BiasType, LayoutBias, void, L1BufferNum>;
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;
     // 定义Kernel类型
