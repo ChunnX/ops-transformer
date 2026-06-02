@@ -16,6 +16,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_bandwidth_test.h"
 
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
@@ -38,15 +39,15 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* dstRankId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    int64_t cclBufferSize, const char *commAlg, int64_t aivNum,
-    aclTensor* y, aclTensor* receiveCnt,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+// extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
+//     const aclTensor* context, const aclTensor* x, const aclTensor* dstRankId,
+//     const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, 
+//     int64_t cclBufferSize, const char *commAlg, int64_t aivNum,
+//     aclTensor* y, aclTensor* receiveCnt,
+//     uint64_t* workspaceSize, aclOpExecutor** executor);
 
-extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
-                                           aclOpExecutor* executor, aclrtStream stream);
+// extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
+//                                            aclOpExecutor* executor, aclrtStream stream);
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
