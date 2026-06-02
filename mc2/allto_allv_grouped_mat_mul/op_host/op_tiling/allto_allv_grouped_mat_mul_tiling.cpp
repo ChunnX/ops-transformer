@@ -41,7 +41,7 @@ constexpr uint32_t MAX_SHAPE_SIZE = 65536;
 
 static inline bool IsShapePresent(const gert::StorageShape* shape)
 {
-    return shape != nullptr && shape->GetStorageShape() != nullptr && shape->GetStorageShape().GetDimNum() > 0;
+    return shape != nullptr && shape->GetStorageShape().GetDimNum() > 0;
 }
 
 ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* context)
