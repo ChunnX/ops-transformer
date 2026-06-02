@@ -6,7 +6,6 @@
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_ep_dispatch.h"
 
-using namespace Ops::Transformer;
 using namespace op;
 
 extern "C" {

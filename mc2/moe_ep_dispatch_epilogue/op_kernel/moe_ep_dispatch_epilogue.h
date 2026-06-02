@@ -1,11 +1,8 @@
 #ifndef MOE_EP_DISPATCH_EPILOGUE_H
 #define MOE_EP_DISPATCH_EPILOGUE_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
+#include "kernel_operator_data_copy_intf.h"
 
 #include "moe_ep_dispatch_epilogue_tiling_key.h"
 
@@ -17,8 +14,12 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
+
+#ifndef ALIGN_UP
+#define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
+#endif
 
 namespace MoeEpDispatchEpilogueImpl {
 
@@ -154,27 +155,30 @@ private:
 
                 GM_ADDR slotAddr = srcRankWinBase + slotIdx * td_->cfg.perSlotBytes;
 
-                DataCopyPad(ubToken_[slotIdx % 2],
-                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-                        *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
-                    {td_->cfg.hidden, 0, 0, 0, false});
+                GlobalTensor<bfloat16_t> srcTokenTensor;
+                srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(slotAddr), td_->cfg.hidden);
+                uint16_t copyLen = static_cast<uint16_t>(td_->cfg.hidden);
+                DataCopyPad(ubToken_[slotIdx % 2], srcTokenTensor,
+                    DataCopyParams(1, copyLen, 0, 0),
+                    DataCopyPadParams(false, 0, 0, 0));
                 DataCopyPad(recvXGm_[a * td_->cfg.hidden], ubToken_[slotIdx % 2],
-                            {td_->cfg.hidden, 0, 0, 0, false});
+                    DataCopyParams(1, copyLen, 0, 0));
 
                 uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
                 __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
-                DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
-                         td_->cfg.topK * 2 + 2);
+                GlobalTensor<int32_t> srcMetaTensor;
+                srcMetaTensor.SetGlobalBuffer(metaPtr, td_->cfg.topK * 2 + 2);
+                DataCopy(ubMeta_, srcMetaTensor,
+                    DataCopyParams(1, static_cast<uint16_t>(td_->cfg.topK * 2 + 2), 0, 0));
 
                 for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
                     recvTopkIdxGm_.SetValue(a * td_->cfg.topK + kk, ubMeta_.GetValue(kk));
                 }
 
-                __gm__ float* weightsOutPtr = reinterpret_cast<__gm__ float*>(
-                    &recvTopkWeightsGm_[a * td_->cfg.topK]);
                 for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
                     int32_t rawBits = ubMeta_.GetValue(td_->cfg.topK + kk);
-                    *reinterpret_cast<__gm__ int32_t*>(&weightsOutPtr[kk]) = rawBits;
+                    recvTopkWeightsGm_.SetValue(a * td_->cfg.topK + kk,
+                        *reinterpret_cast<float*>(&rawBits));
                 }
 
                 int32_t src_rank_id   = ubMeta_.GetValue(td_->cfg.topK * 2);

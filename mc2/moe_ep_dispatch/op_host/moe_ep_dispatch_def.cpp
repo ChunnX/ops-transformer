@@ -13,40 +13,40 @@ public:
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_idx")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cached_handle_dst_buffer_slot_idx")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
         this->Output("num_recv_tokens_per_rank_host_pinned")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("num_recv_tokens_per_expert_host_pinned")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("recv_src_metadata_internal")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
