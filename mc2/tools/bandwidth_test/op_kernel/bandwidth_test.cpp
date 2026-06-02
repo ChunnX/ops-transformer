@@ -20,14 +20,15 @@
 #endif
 #include "bandwidth_test_tiling_key.h"
 #include "bandwidth_test.h"
+#include "bandWidth_Urma_test.h"
 
 using namespace BandwidthTestImpl;
 using namespace BandwidthTestTiling;
 using namespace AscendC;
 
-template<uint8_t ArchTag>
+template<uint8_t CommMode, uint8_t ArchTag>
 __global__ __aicore__ void bandwidth_test(
-    GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
+    GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
@@ -37,8 +38,14 @@ __global__ __aicore__ void bandwidth_test(
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y> op;
-        op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-        op.Process();
+        if constexpr (CommMode == TILINGKEY_TPL_MTE) {
+            BandwidthTest<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process(); 
+        } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
+            BandwidthUrmaTest<DTYPE_X, DTYPE_Y> op;
+            op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process(); 
+        }
     }
 }
