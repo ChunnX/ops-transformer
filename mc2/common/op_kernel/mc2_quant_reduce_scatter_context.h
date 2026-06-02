@@ -29,12 +29,6 @@ struct Mc2QuantReduceScatterContext {
     uint64_t winSize; // ccu不使用
     uint64_t windowsIn[HCCL_MTE_MAX_RANK_NUM]; // ccu不使用, MTE 数据区
     uint64_t windowsOut[HCCL_MTE_MAX_RANK_NUM]; // ccu不使用，MTE 状态区
-
-    // for ccu
-    uint64_t xnAddr; // Xn寄存器起始地址
-    uint64_t ckeAddr; // CKE寄存器起始地址
-    uint64_t msAddr; // MS地址，预留
-    uint64_t msSize; // 可写的MS个数，预留
 };
 
 }
