@@ -83,8 +83,11 @@ static bool CheckFormat(const aclTensor *x, int64_t outFlag, const aclTensor *ou
 {
     // 输入输出的格式需要一致
     if (x->GetStorageFormat() != output->GetStorageFormat()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of input and output should be same. x [%s], output [%s].",
-                ToString(x->GetStorageFormat()).GetString(), ToString(output->GetStorageFormat()).GetString());
+        std::string formats = std::string("x=") + ToString(x->GetStorageFormat()).GetString() +
+            ", output=" + ToString(output->GetStorageFormat()).GetString();
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
+            "aclnnMhcSinkhorn", "x, output", formats.c_str(),
+            "input and output format must be the same");
         return false;
     }
     return true;
@@ -98,15 +101,17 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
 
     // numIters在1~100范围内
     if (numIters <= MIN_NUMITERS || numIters > MAX_NUMITERS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "numIters value error, numIters must in 1 to 100, but got numIters = %ld .",
-                numIters);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMhcSinkhorn", "numIters", std::to_string(numIters).c_str(),
+            "numIters must be in [1, 100]");
         return false;
     }
 
     // outFlag为0或1
     if (outFlag != 0 && outFlag != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "outFlag value error, outFlag must be 0 or 1, but got outFlag = %ld .",
-                outFlag);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMhcSinkhorn", "outFlag", std::to_string(outFlag).c_str(),
+            "outFlag must be 0 or 1");
         return false;
     }
 
@@ -114,7 +119,8 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
     auto xShape = x->GetViewShape();
     auto xDim = xShape.GetDimNum();
     if (xDim != SUPPORT_DIM_NUM_3 && xDim != SUPPORT_DIM_NUM_4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dim value error, input dim must be 3 or 4, but got Dim = %ld .", xDim);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            "aclnnMhcSinkhorn", "x", std::to_string(xDim).c_str(), "3 or 4");
         return false;
     }
 
@@ -129,9 +135,10 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
         n1 = xShape.GetDim(DIM_THREE);
     }
     if ((n0 != n1) || (n0 != N_VALID_4 && n0 != N_VALID_6 && n0 != N_VALID_8)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "n0 must equal n1, and n must be %ld or %ld or %ld, but got n0 = %ld, n1 = %ld", N_VALID_4, N_VALID_6,
-                N_VALID_8, n0, n1);
+        std::string vals = "n0=" + std::to_string(n0) + ", n1=" + std::to_string(n1);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnMhcSinkhorn", "n0, n1", vals.c_str(),
+            "n0 must equal n1, and n must be 4, 6, or 8");
         return false;
     }
     return true;
@@ -178,7 +185,8 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     if (x->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Do not support empty input tensor.");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            "aclnnMhcSinkhorn", "x", "empty tensor", "each dimension must be >= 1");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
