@@ -774,7 +774,8 @@ function(protobuf_generate_external comp c_var h_var)
       COMMAND ${CMAKE_COMMAND} -E make_directory "${proto_output_path}"
       COMMAND ${CMAKE_COMMAND} -E echo "generate proto cpp_out ${comp} by ${abs_file}"
       COMMAND ${PROTOBUF_HOST_PROTOC_DIR}/protoc -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
-      DEPENDS ${abs_file} protobuf_static_build host_protoc
+      #DEPENDS ${abs_file} protobuf_static_build host_protoc
+      DEPENDS ${abs_file} 
       COMMENT "Running C++ protocol buffer compiler on ${file}" VERBATIM)
 
   endforeach()
@@ -804,6 +805,7 @@ function(add_onnx_plugin_modules)
       CXX_STANDARD_REQUIRED ON
       CXX_EXTENSIONS OFF
     )
+    message("11111111111111111111 PROTOBUF_SRC_DIR:${PROTOBUF_SRC_DIR}, HOST_PROTOC_SRC: ${HOST_PROTOC_SRC}, HOST_PROTOC_PATH: ${HOST_PROTOC_PATH}")
     target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${HOST_PROTOC_SRC} ${HOST_PROTOC_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABS_INSTALL_DIR})
     target_compile_definitions(${ONNX_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="ONNX_PLUGIN" LOG_CPP)
 
@@ -825,6 +827,9 @@ function(add_onnx_plugin_modules)
               $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
               $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
               json
+              #protobuf_static_build host_protoc
+              host_protoc
+              ascend_protobuf_static
       )
   endif()
 
