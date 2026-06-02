@@ -87,15 +87,17 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
     GM_ADDR computeGmmXScaleGM = gmmWeightScaleGM;
     // A2avGmmScheduler
     using HcclOpType = HcclA2avOp<DTYPE_GMM_WEIGHT, true, TILINGKEY_COMM_MODE>;
+    // isLocal=false, isA2avGmm=true
     using ComputeOpType =
         QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-        DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, W_FORMAT, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false, true>; // isLocal=false, isA2avGmm=true
+        DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, W_FORMAT, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false, true>;
+    // isLocal=true, isA2avGmm=true
     using LocalComputeOpType =
         QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-        DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, W_FORMAT, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true, true>; // isLocal=true, isA2avGmm=true
+        DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, W_FORMAT, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true, true>;
     using A2avGmmSchedulerType =
         A2avGmmScheduler<HcclOpType, ComputeOpType, LocalComputeOpType>;
-    //comm
+    // comm
     HcclOpType commOp;
     commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
     computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
@@ -103,7 +105,7 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
         commOp.InitScaleBuffer(gmmxScaleGM, commScaleOutGm, gmmXScalePermuteGM);
         computeGmmXScaleGM = isNeedPermute ? gmmXScalePermuteGM : commScaleOutGm;
     }
-    //compute
+    // compute
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, gmmQuantTilingData,
         gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, mmQuantTilingData,
@@ -114,7 +116,7 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
     LocalComputeOpType localComputeOp;
     localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM, gmmXComputeGM,
                     tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe, true);
-    //scheduler
+    // scheduler
     A2avGmmSchedulerType a2avGmmScheduler(commOp, computeOp, localComputeOp, &tilingData_->taskTilingInfo,
                                         tilingData_->isNeedMM);
     a2avGmmScheduler.Process();

@@ -896,7 +896,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         }
         mMaxSize = std::max(mSize, mMaxSize);
     }
-    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize, static_cast<uint32_t>(localParams_.ep)));
+    MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
+        static_cast<uint32_t>(localParams_.ep)));
     MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 
