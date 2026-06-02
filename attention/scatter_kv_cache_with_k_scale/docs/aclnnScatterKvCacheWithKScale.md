@@ -368,11 +368,11 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
 
     std::vector<int64_t> keyShape = {2, 2, 64};
     std::vector<int64_t> valueShape = {2, 2, 64};
-    std::vector<int64_t> keyCacheShape = {4, 16, 2, 64};
-    std::vector<int64_t> valueCacheShape = {4, 16, 2, 64};
-    std::vector<int64_t> slotMappingShape = {4};
+    std::vector<int64_t> keyCacheShape = {4, 2, 16, 64};
+    std::vector<int64_t> valueCacheShape = {4, 2, 16, 64};
+    std::vector<int64_t> slotMappingShape = {2};
     std::vector<int64_t> keyScaleShape = {2, 2};
-    std::vector<int64_t> keyScaleCacheShape = {4, 16, 2, 1};
+    std::vector<int64_t> keyScaleCacheShape = {4, 2, 16, 1};
 
     void* keyDeviceAddr = nullptr;
     void* valueDeviceAddr = nullptr;
@@ -396,7 +396,7 @@ aclnnStatus aclnnScatterKvCacheWithKScale(
     std::vector<int32_t> hostSlotMapping(4, 1);
     std::vector<uint8_t> hostKeyCacheRef(8192, 1);
     std::vector<uint8_t> hostValueCacheRef(8192, 1);
-    std::vector<float> hostKeyScale(4, 1.0f);
+    std::vector<float> hostKeyScale(2, 1.0f);
     std::vector<float> hostKeyScaleCacheRef(128, 1.0f);
 
     ret = CreateAclTensor(hostKey, keyShape, &keyDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &key, aclFormat::ACL_FORMAT_ND);
