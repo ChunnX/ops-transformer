@@ -39,6 +39,11 @@ constexpr uint32_t E_MAX_VALUE_NON_QUANT = 48;
 constexpr uint32_t MAX_BSK = 52428800;
 constexpr uint32_t MAX_SHAPE_SIZE = 65536;
 
+static inline bool IsShapePresent(const gert::StorageShape* shape)
+{
+    return shape != nullptr && shape->GetStorageShape().GetDimNum() > 0;
+}
+
 ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
@@ -69,7 +74,14 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
         return ge::GRAPH_FAILED);
 
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
-    tilingData->isPermuteOut = (mmXStorageShape != nullptr);
+    hasSharedExpertFlag_ = IsShapePresent(mmXStorageShape);
+
+    auto permuteOutFlagPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
+    if (permuteOutFlagPtr != nullptr) {
+        tilingData->isPermuteOut = *permuteOutFlagPtr;
+    } else {
+        tilingData->isPermuteOut = hasSharedExpertFlag_;
+    }
 
     groupPtr_ = groupEpPtr;
     group_ = groupEpPtr;
@@ -83,7 +95,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK(transMmWeightPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "transMmWeight"), return ge::GRAPH_FAILED);
-    transMmWeight_ = (mmXStorageShape != nullptr) ? *transMmWeightPtr : false;
+    transMmWeight_ = hasSharedExpertFlag_ ? *transMmWeightPtr : false;
 
     OP_LOGI(A_INNER_DEBUG, "EpGroup is %s, epWorldSize is %lld.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
@@ -114,7 +126,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMKN(const gert::TilingContext* context)
             (std::string(std::to_string(maxM_)) + ", " + std::to_string(maxN_) + ", " + std::to_string(maxK_)).c_str(),
             "within 32B-aligned max range"),
         return ge::GRAPH_FAILED);
-    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         OP_TILING_CHECK(
             maxMForMM_ > maxMKN || maxNForMM_ > maxMKN || maxKForMM_ > maxMKN,
             OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "Mm M, N, K",
@@ -217,7 +229,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         uint64_t BS = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(0);
         if (BS <= NUM_ZERO || BS >= MAX_BSK) {
             OP_LOGE_FOR_INVALID_VALUE(A_INNER_DEBUG, "BS",
@@ -338,6 +350,19 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         return ge::GRAPH_FAILED;
     }
 
+    // Check mmX/mmWeight/mmY consistency
+    auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
+    auto mmWeightStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX);
+    auto outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
+    
+    // If mmY is present, mmX and mmWeight must also be present
+    if (IsShapePresent(outputMmYStorageShape)) {
+        if (!IsShapePresent(mmXStorageShape) || !IsShapePresent(mmWeightStorageShape)) {
+            OP_LOGE(A_INNER_DEBUG, "mmY is present but mmX or mmWeight is missing!");
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     // Check gmmY output: N1 dimension should match gmmWeight
     OP_TILING_CHECK(context->GetOutputShape(OUTPUT_GMM_Y_INDEX) == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmmY"),
@@ -359,11 +384,11 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         return ge::GRAPH_FAILED);
     auto permuteOutFlagPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
     if (permuteOutFlagPtr != nullptr && *permuteOutFlagPtr) {
-        OP_TILING_CHECK(context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX) == nullptr,
+        auto permuteOutStorageShape = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX);
+        OP_TILING_CHECK(!IsShapePresent(permuteOutStorageShape),
             OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "permuteOut"),
             return ge::GRAPH_FAILED);
-        auto permuteOutShape =
-            context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape();
+        auto permuteOutShape = permuteOutStorageShape->GetStorageShape();
         uint64_t permuteOutA = permuteOutShape.GetDim(DIM_ZERO);
         uint64_t gmmYA = gmmYShape.GetDim(DIM_ZERO);
         if (permuteOutA != gmmYA) {
@@ -379,9 +404,18 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
                 "H1 should be equal");
             return ge::GRAPH_FAILED;
         }
+    } else if (permuteOutFlagPtr != nullptr && !(*permuteOutFlagPtr)) {
+        auto permuteOutStorageShape = context->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX);
+        if (IsShapePresent(permuteOutStorageShape)) {
+            OP_LOGE(A_INNER_DEBUG, "The permuteOut should be null or empty when permuteOutFlag is false!");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (tilingData->isPermuteOut) {
+        OP_TILING_CHECK(!IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)),
+            OP_LOGE(A_INNER_DEBUG, "MmX input shape is null or empty when isPermuteOut is true."),
+            return ge::GRAPH_FAILED);
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         uint64_t BS = mmXShape.GetDim(DIM_ZERO);
@@ -411,7 +445,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         }
 
         // Check mmY output when mmX is present
-        OP_TILING_CHECK(context->GetOutputShape(OUTPUT_MM_Y_INDEX) == nullptr,
+        OP_TILING_CHECK(!IsShapePresent(context->GetOutputShape(OUTPUT_MM_Y_INDEX)),
             OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "mmY"),
             return ge::GRAPH_FAILED);
         auto mmYShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape();
@@ -468,7 +502,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     gmmWeightDataType_ = context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
     mmDataTypeSize = GetSizeByDataType(mmXDataType_);
 
-    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmXShape.GetDimNum() != DIM_TWO,
             OP_LOGE_FOR_INVALID_SHAPEDIM(A_INNER_DEBUG, "mmX",
@@ -530,7 +564,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         ge::DataType mmXDtype = context->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
         ge::DataType mmWeightDtype = context->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
         if (mmXDtype != mmWeightDtype) {
@@ -644,9 +678,9 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
         GetContextAttr(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Failed to get context attr."),
         return ge::GRAPH_FAILED);
 
-    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
-        OP_TILING_CHECK(context_->GetOutputShape(OUTPUT_MM_Y_INDEX) == nullptr,
-            OP_LOGE(A_INNER_DEBUG, "MmY output shape is null when mmX is present, expected non-null."),
+    if (IsShapePresent(context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
+        OP_TILING_CHECK(!IsShapePresent(context_->GetOutputShape(OUTPUT_MM_Y_INDEX)),
+            OP_LOGE(A_INNER_DEBUG, "MmY output shape is null or empty when mmX is present, expected non-null."),
             return ge::GRAPH_FAILED);
     }
     OP_TILING_CHECK(
@@ -746,7 +780,7 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
         OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "transGmmWeight or transMmWeight"),
         return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
-    transMmWeight_ = (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) ? *transMmWeightPtr : false;
+    transMmWeight_ = IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)) ? *transMmWeightPtr : false;
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     e_ = gmmWeightShape.GetDim(0);
@@ -756,7 +790,7 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     auto gmmYShape = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape();
     a_ = gmmYShape.GetDim(0);
 
-    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         bs_ = mmXShape.GetDim(0);
         h2_ = mmXShape.GetDim(1);
@@ -934,7 +968,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     if (transMmWeightPtr_ != nullptr) {
         transMmWeight_ = *transMmWeightPtr_;
     }
-    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) == nullptr) {
+    if (!IsShapePresent(context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         transMmWeight_ = false;
     }
     permuteOutFlagPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
@@ -942,7 +976,7 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
         permuteOutFlag_ = *permuteOutFlagPtr_;
     }
 
-    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         auto mmXShape = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         bs_ = mmXShape.GetDim(0);
         h2_ = mmXShape.GetDim(1);
@@ -954,6 +988,49 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
         n2_ = mmWeightShape.GetDim(n2DimIndex);
     } else {
         transMmWeight_ = false;
+    }
+
+    constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
+    constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "sendCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX)),
+        OP_LOGE(A_INNER_DEBUG, "recvCountsTensor should be null, expected null."),
+        return ge::GRAPH_FAILED);
+
+    auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
+    OP_TILING_CHECK(gmmXDesc == nullptr || gmmXDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmX storage format should be ND."), return ge::GRAPH_FAILED);
+    auto gmmWeightDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(gmmWeightDesc == nullptr || gmmWeightDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+    auto mmXDesc = context_->GetOptionalInputDesc(NON_QUANT_MM_X_INDEX);
+    if (mmXDesc != nullptr) {
+        OP_TILING_CHECK(mmXDesc->GetStorageFormat() != ge::FORMAT_ND,
+            OP_LOGE(A_INNER_DEBUG, "mmX storage format should be ND."), return ge::GRAPH_FAILED);
+    }
+    auto mmWeightDesc = context_->GetOptionalInputDesc(NON_QUANT_MM_WEIGHT_INDEX);
+    if (mmWeightDesc != nullptr) {
+        OP_TILING_CHECK(mmWeightDesc->GetStorageFormat() != ge::FORMAT_ND,
+            OP_LOGE(A_INNER_DEBUG, "mmWeight storage format should be ND."), return ge::GRAPH_FAILED);
+    }
+    auto gmmYDesc = context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX);
+    OP_TILING_CHECK(gmmYDesc == nullptr || gmmYDesc->GetStorageFormat() != ge::FORMAT_ND,
+        OP_LOGE(A_INNER_DEBUG, "gmmY storage format should be ND."), return ge::GRAPH_FAILED);
+    if (hasSharedExpertFlag_) {
+        auto mmYDesc = context_->GetOutputDesc(OUTPUT_MM_Y_INDEX);
+        if (mmYDesc != nullptr) {
+            OP_TILING_CHECK(mmYDesc->GetStorageFormat() != ge::FORMAT_ND,
+                OP_LOGE(A_INNER_DEBUG, "mmY storage format should be ND."), return ge::GRAPH_FAILED);
+        }
+    }
+    if (permuteOutFlag_) {
+        auto permuteOutDesc = context_->GetOutputDesc(OUTPUT_PERMUTE_OUT_INDEX);
+        if (permuteOutDesc != nullptr) {
+            OP_TILING_CHECK(permuteOutDesc->GetStorageFormat() != ge::FORMAT_ND,
+                OP_LOGE(A_INNER_DEBUG, "permuteOut storage format should be ND."), return ge::GRAPH_FAILED);
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -978,14 +1055,14 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeInfo()
         OP_LOGE_WITH_INVALID_INPUT(A_INNER_DEBUG, "gmmY"), return ge::GRAPH_FAILED);
     a_ = context_->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
 
-    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+    if (IsShapePresent(context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX))) {
         hasSharedExpertFlag_ = true;
         bs_ = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
         h2_ = context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape().GetDim(DIM_ONE);
         mmXDataType_ = context_->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
     }
 
-    if (context_->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX) != nullptr) {
+    if (IsShapePresent(context_->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX))) {
         auto mmWeightShape = context_->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         uint64_t n2DimIndex = transMmWeight_ ? DIM_ZERO : DIM_ONE;
         n2_ = mmWeightShape.GetDim(n2DimIndex);

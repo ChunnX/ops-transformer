@@ -32,7 +32,7 @@ using namespace Mc2GroupedMatmulTilingData;
 #if defined(CONST_TILING)
 #define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
     const outerType *outerPtr##var = (const outerType *)(tiling);                                       \
-    const innerType *innerPtr##var = &(outerPtr##var->outerMember);                                     \
+    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                   \
     const int32_t *(var) = (const int32_t)((const uint8_t *)&(innerPtr##var->innerMember));
 #else
 #define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
@@ -57,9 +57,15 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    if (workspaceGM == nullptr) {
+        return;
+    }
+    SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
+    if (userWorkspace == nullptr) {
+        return;
+    }
     TPipe pipe;
-    GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
