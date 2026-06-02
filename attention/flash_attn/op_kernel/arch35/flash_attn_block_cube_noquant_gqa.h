@@ -450,15 +450,15 @@ public:
     {
         uint32_t nopeDealSize = dRealSize;
 
-        uint32_t dstStride = (runInfo.actMSize + 15) >> 4 << 4;
+        uint32_t dstStride = (runInfo.hot.actMSize + 15) >> 4 << 4;
         if (nopeDealSize > 0) {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
+            GmCoord gmCoord{.bIdx = runInfo.hot.bIdx,
+                            .n2Idx = runInfo.hot.n2Idx,
+                            .gS1Idx = runInfo.cold.gS1Idx,
                             .dIdx = dOffset,
-                            .gS1DealSize = runInfo.actMSize,
+                            .gS1DealSize = runInfo.hot.actMSize,
                             .dDealSize = nopeDealSize};
             copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
         }
@@ -474,7 +474,7 @@ public:
     __aicore__ inline void CopyKeySlice(const LocalTensor<KV_T> &dstTensor, uint32_t dOffset, uint32_t dRealSize,
                                         RunInfoX &runInfo)
     {
-        uint32_t dstStride = (runInfo.actSingleLoopS2Size + 15) >> 4 << 4;
+        uint32_t dstStride = (runInfo.hot.actSingleLoopS2Size + 15) >> 4 << 4;
 
         uint32_t nopeDealSize = dRealSize;
         uint32_t ropeDealSize = 0;
@@ -482,11 +482,11 @@ public:
         if (nopeDealSize > 0) {
             FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
-                              .n2Idx = runInfo.n2Idx,
-                              .s2Idx = runInfo.s2Idx,
+            GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.hot.bIdx : 0,
+                              .n2Idx = runInfo.hot.n2Idx,
+                              .s2Idx = runInfo.cold.s2Idx,
                               .dIdx = dOffset,
-                              .s2DealSize = runInfo.actSingleLoopS2Size,
+                              .s2DealSize = runInfo.hot.actSingleLoopS2Size,
                               .dDealSize = nopeDealSize};
             copyKvGmToL1(l1Tensor, keyGm, gmCoord);
         }
@@ -497,13 +497,13 @@ public:
                                           RunInfoX &runInfo)
     {
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor{.tensor = dstTensor,
-                                                .rowCount = Align(runInfo.actSingleLoopS2Size, 16U)};
+                                                .rowCount = Align(runInfo.hot.actSingleLoopS2Size, 16U)};
 
-        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.bIdx : 0,
-                          .n2Idx = runInfo.n2Idx,
-                          .s2Idx = runInfo.s2Idx,
+        GmKvCoord gmCoord{.bIdx = constInfo.isKvContinuous ? runInfo.hot.bIdx : 0,
+                          .n2Idx = runInfo.hot.n2Idx,
+                          .s2Idx = runInfo.cold.s2Idx,
                           .dIdx = dOffset,
-                          .s2DealSize = runInfo.actSingleLoopS2Size,
+                          .s2DealSize = runInfo.hot.actSingleLoopS2Size,
                           .dDealSize = dRealSize};
         copyKvGmToL1(l1Tensor, valueGm, gmCoord);
     }
@@ -543,8 +543,8 @@ public:
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateKey(runInfo.bIdx);
+            if (runInfo.hot.isChangeBatch) {
+                UpdateKey(runInfo.hot.bIdx);
             }
         }
 
@@ -574,9 +574,9 @@ public:
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // L0C上的bmm1结果矩阵N方向的size大小, 使能NZ2ND, nSize*sizeof(T) 必须是32B的倍数
-        fixpipeParams.nSize = (runInfo.actSingleLoopS2Size + 7) >> 3 << 3;
+        fixpipeParams.nSize = (runInfo.hot.actSingleLoopS2Size + 7) >> 3 << 3;
         // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+        fixpipeParams.mSize = (runInfo.hot.actMSize + 1) >> 1 << 1;
         // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
@@ -594,7 +594,7 @@ public:
     {
         Buffer<BufferType::L1> mm1A;
         const uint32_t localDSize = constInfo.dSize;
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        if (unlikely(runInfo.hot.isFirstS2Loop)) {
             mm1A = l1QBuffers.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
@@ -616,7 +616,7 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
+        MMParam param = MakeMMParam((uint32_t)runInfo.hot.actMSize, (uint32_t)runInfo.hot.actSingleLoopS2Size,
                                     (uint32_t)(localDSize), false, true);
         if constexpr (dBaseSize > 128) {
             if constexpr (s2BaseSize == 256) {
@@ -634,7 +634,7 @@ public:
                 param);
         }
 
-        if (unlikely(runInfo.isLastS2Loop)) {
+        if (unlikely(runInfo.hot.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
         }
         mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
@@ -659,11 +659,11 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        uint32_t dstNzC0Stride = ((runInfo.actMSize + 15) >> 4 << 4);
+        uint32_t dstNzC0Stride = ((runInfo.hot.actMSize + 15) >> 4 << 4);
         uint64_t l1BaseKOffset = baseK * dstNzC0Stride;
 
         Buffer<BufferType::L1> mm1A = l1QBuffers.Get();
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        if (unlikely(runInfo.hot.isFirstS2Loop)) {
             mm1A.Wait<HardEvent::MTE1_MTE2>();
         }
 
@@ -673,7 +673,7 @@ public:
             if (k == kLoops - 1) {
                 realK = localDSize - k * baseK;
             }
-            if (unlikely(runInfo.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
+            if (unlikely(runInfo.hot.isFirstS2Loop)) { // sOuter循环第一个基本快：搬运0
                 LocalTensor<Q_T> mm1ATensor = mm1A.GetTensor<Q_T>();
                 CopyQuerySlice(mm1ATensor[k * l1BaseKOffset], k * baseK, realK, runInfo);
 
@@ -691,7 +691,7 @@ public:
             mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
             mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
-            MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size, realK, false,
+            MMParam param = MakeMMParam((uint32_t)runInfo.hot.actMSize, (uint32_t)runInfo.hot.actSingleLoopS2Size, realK, false,
                                         true, k == 0, k == 0);
 
             MatmulFull<Q_T, KV_T, T, 128, 128, baseK, ABLayout::MK, ABLayout::KN>(
@@ -700,7 +700,7 @@ public:
 
             mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
         }
-        if (unlikely(runInfo.isLastS2Loop)) {
+        if (unlikely(runInfo.hot.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
         }
         mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
@@ -718,7 +718,7 @@ public:
     {
         Buffer<BufferType::L1> mm1B;
         const uint32_t localDSize = constInfo.dSize;
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        if (unlikely(runInfo.hot.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
@@ -743,13 +743,13 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
+        MMParam param = MakeMMParam((uint32_t)runInfo.hot.actSingleLoopS2Size, (uint32_t)runInfo.hot.actMSize,
                                     (uint32_t)(localDSize), false, true);
 
         MatmulK<KV_T, Q_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
-        if (unlikely(runInfo.isLastS2Loop)) {
+        if (unlikely(runInfo.hot.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
         mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -767,8 +767,8 @@ public:
     __aicore__ inline void FixpipeMm1Dn(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
     {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (runInfo.actMSize + 31) >> 5 << 5; // 双目标模式, 按照N方向切分，N必须为32的倍数
-        fixpipeParams.mSize = runInfo.actSingleLoopS2Size;
+        fixpipeParams.nSize = (runInfo.hot.actMSize + 31) >> 5 << 5; // 双目标模式, 按照N方向切分，N必须为32的倍数
+        fixpipeParams.mSize = runInfo.hot.actSingleLoopS2Size;
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
         fixpipeParams.dualDstCtl = 2; // 按照N方向切分
@@ -782,7 +782,7 @@ public:
     {
         Buffer<BufferType::L1> mm1B;
         const uint32_t localDSize = constInfo.dSize;
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        if (unlikely(runInfo.hot.isFirstS2Loop)) {
             mm1B = l1QBuffers.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
@@ -805,13 +805,13 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
-        MMParam param = MakeMMParam((uint32_t)runInfo.actSingleLoopS2Size, (uint32_t)runInfo.actMSize,
+        MMParam param = MakeMMParam((uint32_t)runInfo.hot.actSingleLoopS2Size, (uint32_t)runInfo.hot.actMSize,
                                     (uint32_t)(localDSize), false, true);
 
         MatmulBase<KV_T, Q_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
             mm1A.GetTensor<KV_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
 
-        if (unlikely(runInfo.isLastS2Loop)) {
+        if (unlikely(runInfo.hot.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
         mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -828,8 +828,8 @@ public:
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
-            if (runInfo.isChangeBatch) {
-                UpdateValue(runInfo.bIdx);
+            if (runInfo.hot.isChangeBatch) {
+                UpdateValue(runInfo.hot.bIdx);
             }
         }
 
@@ -877,10 +877,10 @@ public:
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
+            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.hot.actSingleLoopS2Size),
                                         useDn, false);
             if constexpr (!useDn) {
-                param.realM = (uint32_t)runInfo.actMSize;
+                param.realM = (uint32_t)runInfo.hot.actMSize;
             }
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MatmulFull<Q_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN>(
@@ -908,7 +908,7 @@ public:
         }
 
         if constexpr (!useDn) {
-            fixpipeParams.mSize = (runInfo.actMSize + 1) >> 1 << 1;
+            fixpipeParams.mSize = (runInfo.hot.actMSize + 1) >> 1 << 1;
             fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         } else {
             fixpipeParams.mSize = mBaseSize;
@@ -943,12 +943,12 @@ public:
         MMParam param = {
             (uint32_t)mBaseSize,                   // singleM 128
             (uint32_t)localDSizeV,            // singleN 128
-            (uint32_t)runInfo.actSingleLoopS2Size, // singleK
+            (uint32_t)runInfo.hot.actSingleLoopS2Size, // singleK
             useDn,                                 // isLeftTranspose
             false                                  // isRightTranspose
         };
         if constexpr (!useDn) {
-            param.realM = (uint32_t)runInfo.actMSize;
+            param.realM = (uint32_t)runInfo.hot.actMSize;
         }
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
 

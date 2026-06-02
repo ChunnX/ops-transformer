@@ -607,7 +607,7 @@ public:
     {
         RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
-        if (runInfo0.isValid) {
+        if (runInfo0.cold.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
             } else {
@@ -615,13 +615,13 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
-            if (runInfoNegN.isValid) {
+            if (runInfoNegN.cold.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
                 } else {
                     ComputeVec2(runInfoNegN);
                 }
-                runInfoNegN.isValid = false;
+                runInfoNegN.cold.isValid = false;
             }
         }
     }
@@ -659,7 +659,7 @@ public:
     {
         RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
-        runInfo.isValid = true;
+        runInfo.cold.isValid = true;
     }
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
@@ -669,73 +669,67 @@ public:
         const bool localIsKvContinuous = constInfo.isKvContinuous;
         const uint8_t localSubBlockIdx = constInfo.subBlockIdx;
 
-        info.loop = loop;
-        info.mloop = mloop;
-        info.bIdx = prevBIdx;
-        info.n2Idx = bN2Cur - prevBIdx * localN2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
-                      LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            info.s1Idx = info.gS1Idx / localGSize;
-        } else {
-            info.s1Idx = info.gS1Idx % actSeqLensQ;
-        }
-        info.s2Idx = s2Cur * s2BaseSize;
-        info.actS1Size = actSeqLensQ;
-        info.actS2Size = actSeqLensKv;
+        info.hot.loop = loop;
+        info.hot.mloop = mloop;
+        info.hot.bIdx = prevBIdx;
+        info.hot.n2Idx = bN2Cur - prevBIdx * localN2Size;
+        info.cold.gS1Idx = gS1Cur * mBaseSize;
+        info.cold.s2Idx = s2Cur * s2BaseSize;
+        info.hot.actS1Size = actSeqLensQ;
+        info.cold.actS2Size = actSeqLensKv;
 
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * localGSize;
+        info.hot.actMSize = mBaseSize;
+        uint64_t gS1Size = info.hot.actS1Size * localGSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
+            info.hot.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
-        info.actSingleLoopS2Size = s2BaseSize;
-        if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
-            info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
+        info.hot.actSingleLoopS2Size = s2BaseSize;
+        if (((s2Cur + 1) * s2BaseSize) > info.cold.actS2Size) {
+            info.hot.actSingleLoopS2Size = info.cold.actS2Size - s2Cur * s2BaseSize;
         }
-        info.actSingleLoopS2SizeAlign =
-            Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+        info.hot.actSingleLoopS2SizeAlign =
+            Align((uint32_t)info.hot.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
         if (localIsKvContinuous) {
-            info.isChangeBatch = false;
+            info.hot.isChangeBatch = false;
         } else {
             if (loop == 0) {
-                info.isChangeBatch = true;
+                info.hot.isChangeBatch = true;
             } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
+                info.hot.isChangeBatch = (info.hot.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
 
-        info.preTokensLeftUp = cachedPreTokensLeftUp;
-        info.nextTokensLeftUp = cachedNextTokensLeftUp;
+        info.cold.preTokensLeftUp = cachedPreTokensLeftUp;
+        info.cold.nextTokensLeftUp = cachedNextTokensLeftUp;
 
-        info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
-        info.isS2SplitCore = false;
-        info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
-        info.isLastS2Loop = (s2Cur + 1 == curS2End);
+        info.hot.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
+        info.hot.isS2SplitCore = false;
+        info.cold.faTmpOutWsPos = coreFirstTmpOutWsPos_;
+        info.hot.isLastS2Loop = (s2Cur + 1 == curS2End);
 
         if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
+            info.hot.actMSizeAlign32 = (info.hot.actMSize + 31) >> 5 << 5;
+            info.hot.actVecMSize = info.hot.actMSize <= 16 ? info.hot.actMSize : (info.hot.actMSizeAlign32 >> 1);
         } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
+            info.hot.actVecMSize = (info.hot.actMSize + 1) >> 1;
         }
-        info.vecMbaseIdx = 0;
+        info.hot.vecMbaseIdx = 0;
         if (localSubBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
-            info.actVecMSize = info.actMSize - info.actVecMSize;
+            info.hot.vecMbaseIdx = info.hot.actVecMSize;
+            info.hot.actVecMSize = info.hot.actMSize - info.hot.actVecMSize;
         }
 
         if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
             // 所有任务属于同一个S1G
-            info.isS2SplitCore = true;
+            info.hot.isS2SplitCore = true;
         } else {
             if (headS2Split && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
                 // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
-                info.isS2SplitCore = true;
+                info.hot.isS2SplitCore = true;
             } else if (tailS2Split && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
                 // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
-                info.isS2SplitCore = true;
-                info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
+                info.hot.isS2SplitCore = true;
+                info.cold.faTmpOutWsPos = headS2Split ? (info.cold.faTmpOutWsPos + 1) : info.cold.faTmpOutWsPos;
             }
         }
     }

@@ -475,3 +475,77 @@ cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 | **合计** | **15** | **~57 处** | **每轮 3 项冗余计算** |
 
 > 来源：`/mnt/workspace/skill/cann-skills-zyh/ops/ascendc-performance-best-practices/reference/scalar/`
+
+---
+
+## 实施记录：第二批（P1）— 2026-06-02
+
+### 已完成的修改
+
+#### 1. Softmax Buffer 位掩码索引 [P1]（优化项 3）
+
+**文件**：`op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h`
+
+**修改内容**：
+- 将 `softmaxMaxBuf`、`softmaxSumBuf`、`softmaxExpBuf` 的深度从 `PRELOAD_N + 1` (=3) 改为 `SOFTMAX_BUF_DEPTH` (=4)
+- 添加 `static constexpr uint32_t SOFTMAX_BUF_DEPTH = 4` 和 `static_assert` 确保 2 的幂
+- 将所有 `% (PRELOAD_N + 1)` 取模操作替换为 `& (SOFTMAX_BUF_DEPTH - 1)` 位掩码操作
+- `SoftmaxInitBuffer()` 中添加第 4 个 buffer 的初始化（`softmaxSumBuf[3]`、`softmaxMaxBuf[3]`、`softmaxExpBuf[3]`）
+
+**消除的 Scalar 开销**：
+- 16 处取模运算（`% 3`）→ 位掩码运算（`& 3`）
+- 每次取模节省 ~5-10 cycle 的 Scalar 除法开销
+
+#### 2. RunInfoX 结构体拆分 [P7]（优化项 4）
+
+**文件**：`op_kernel/utils/flash_attn_common_def.h`
+
+**修改内容**：
+- 将 `RunInfoX` 拆分为 `HotRunInfoX`（~64B）和 `ColdRunInfoX`（~40B）
+- `HotRunInfoX` 包含 15 个热路径字段：`loop`、`mloop`、`isFirstS2Loop`、`isLastS2Loop`、`isChangeBatch`、`isS2SplitCore`、`actMSize`、`actMSizeAlign32`、`actVecMSize`、`vecMbaseIdx`、`actSingleLoopS2Size`、`actSingleLoopS2SizeAlign`、`bIdx`、`n2Idx`、`actS1Size`
+- `ColdRunInfoX` 包含 7 个冷路径字段：`isValid`、`gS1Idx`、`s2Idx`、`actS2Size`、`faTmpOutWsPos`、`preTokensLeftUp`、`nextTokensLeftUp`
+- `RunInfoX` 改为组合结构：`HotRunInfoX hot; ColdRunInfoX cold;`
+- 删除 4 个未使用字段：`s1Idx`、`gIdx`、`qPaddingBeginOffset`、`kvPaddingBeginOffset`
+
+**字段使用频率分析**（子 agent 扫描结果）：
+- 热字段（Hot > 5 次）：12 个字段占 205/217 次热路径访问（94%）
+- 冷字段（Cold only）：`isValid` 仅在 `ExecuteTask` 使用
+- 未使用字段：4 个字段 0 次访问，已删除
+
+#### 3. RunInfoX 字段引用更新（3 个文件）
+
+**文件 1**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+- `ExecuteTask`：`runInfo0.isValid` → `runInfo0.cold.isValid`，`runInfoNegN.isValid` → `runInfoNegN.cold.isValid`
+- `CalcParams`：40 处字段访问更新为 `info.hot.*` / `info.cold.*`
+- 删除 `s1Idx` 赋值代码块（6 行）
+
+**文件 2**：`op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h`
+- 热字段迁移：`loop`、`mloop`、`isFirstS2Loop`、`isLastS2Loop`、`isChangeBatch`、`isS2SplitCore`、`actMSize`、`actMSizeAlign32`、`actVecMSize`、`vecMbaseIdx`、`actSingleLoopS2Size`、`actSingleLoopS2SizeAlign`、`bIdx`、`n2Idx`、`actS1Size`
+- 冷字段迁移：`gS1Idx`、`s2Idx`、`actS2Size`、`faTmpOutWsPos`、`preTokensLeftUp`、`nextTokensLeftUp`
+- 删除 `Vec1SinkCompute` 中的 `runInfo.gIdx` 引用
+
+**文件 3**：`op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h`
+- 42 处 `runInfo` 字段引用更新
+- 热字段迁移 39 处：`actMSize`(10)、`actSingleLoopS2Size`(10)、`isFirstS2Loop`(5)、`bIdx`(4)、`isLastS2Loop`(4)、`n2Idx`(3)、`isChangeBatch`(2)
+- 冷字段迁移 3 处：`s2Idx`(2)、`gS1Idx`(1)
+
+### 修改统计
+
+| 文件 | 修改类型 | 修改数量 |
+|------|---------|---------|
+| `flash_attn_common_def.h` | 结构体定义 | 拆分 RunInfoX，删除 4 个未使用字段 |
+| `flash_attn_block_vec_noquant_gqa.h` | Buffer 索引 | 16 处取模 → 位掩码 |
+| `flash_attn_block_vec_noquant_gqa.h` | Buffer 初始化 | 添加 3 个 buffer 初始化 |
+| `flash_attn_kernel_base_gqa_template.h` | 字段引用 | 40 处 `.hot.*` / `.cold.*` |
+| `flash_attn_block_vec_noquant_gqa.h` | 字段引用 | ~30 处 `.hot.*` / `.cold.*` |
+| `flash_attn_block_cube_noquant_gqa.h` | 字段引用 | 42 处 `.hot.*` / `.cold.*` |
+| **合计** | — | **~130 处修改** |
+
+### 预期收益
+
+1. **Softmax Buffer 位掩码**：消除 16 处取模运算，每处节省 ~5-10 cycle
+2. **RunInfoX 拆分**：
+   - 热结构体 64B vs 原 120B → 47% 减少
+   - Task 数组（4 slots）：256B 热数据 vs 480B → 更少 cacheline
+   - 94% 热路径访问集中在连续 64B 区域，提升 L1 命中率
+3. **删除未使用字段**：每个 RunInfoX 节省 24B，4 slots 共 96B
