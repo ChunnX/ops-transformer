@@ -11,6 +11,3 @@
 import torch
 import torch_npu
 from . import ops
-from .ops.elastic_buffer import MoEElasticBuffer, EPHandle
-
-__all__ = ["MoEElasticBuffer", "EPHandle"]

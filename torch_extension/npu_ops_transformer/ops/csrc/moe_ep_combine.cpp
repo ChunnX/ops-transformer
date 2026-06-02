@@ -1,3 +1,18 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_ep_combine.cpp
+ * \brief
+ */
+
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -7,17 +22,12 @@ using npu_utils = at_npu::native::NpuUtils;
 using tensor_list = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
 const int DIM_TWO = 2;
 
-tensor_list npu_moe_ep_combine(
-    const at::Tensor &context,
-    const at::Tensor &x,
-    const at::Tensor &dst_buffer_slot_idx,
-    const at::Tensor &recv_src_metadata,
-    const at::Tensor &num_recv_tokens_per_rank,
-    const c10::optional<at::Tensor> &topk_weights,
-    const c10::optional<at::Tensor> &bias_0,
-    const c10::optional<at::Tensor> &bias_1,
-    int64_t ep_world_size, int64_t ep_rank_id,
-    int64_t num_experts, int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size)
+tensor_list npu_moe_ep_combine(const at::Tensor &context, const at::Tensor &x,
+    const at::Tensor &dst_buffer_slot_idx, const at::Tensor &recv_src_metadata,
+    const at::Tensor &num_recv_tokens_per_rank, const c10::optional<at::Tensor> &topk_weights,
+    const c10::optional<at::Tensor> &bias_0, const c10::optional<at::Tensor> &bias_1,
+    int64_t ep_world_size, int64_t ep_rank_id, int64_t num_experts,
+    int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
     TORCH_CHECK(x.dtype() == at::kBFloat16, "x must be bfloat16");
@@ -29,27 +39,22 @@ tensor_list npu_moe_ep_combine(
 
     at::Tensor combined_x;
     at::Tensor combined_topk_weights;
-    {
-        auto localDevice = c10::Device(x.device());
-        const c10::OptionalDeviceGuard deviceGuard(localDevice);
-        combined_x = at::empty({num_tokens, hidden}, x.options());
-        if (topk_weights.has_value()) {
-            int64_t top_k = dst_buffer_slot_idx.size(1);
-            combined_topk_weights = at::empty({num_tokens, top_k}, x.options().dtype(at::kFloat));
-        } else {
-            combined_topk_weights = at::Tensor();
-        }
+
+    combined_x = at::empty({num_tokens, hidden}, x.options());
+    if (topk_weights.has_value()) {
+        int64_t top_k = dst_buffer_slot_idx.size(1);
+        combined_topk_weights = at::empty({num_tokens, top_k}, x.options().dtype(at::kFloat));
+    } else {
+        combined_topk_weights = at::Tensor();
     }
 
     at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
     at::Tensor bias0_tensor = at::Tensor();
     at::Tensor bias1_tensor = at::Tensor();
 
-    ACLNN_CMD(aclnnMoeEpCombine,
-        context, x, dst_buffer_slot_idx, recv_src_metadata, num_recv_tokens_per_rank,
-        topk_weights_tensor, bias0_tensor, bias1_tensor,
-        ep_world_size, ep_rank_id,
-        num_experts, num_max_tokens_per_rank, ccl_buffer_size,
+    ACLNN_CMD(aclnnMoeEpCombine, context, x, dst_buffer_slot_idx, recv_src_metadata,
+        num_recv_tokens_per_rank, topk_weights_tensor, bias0_tensor, bias1_tensor,
+        ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank, ccl_buffer_size,
         combined_x, combined_topk_weights);
 
     c10::optional<at::Tensor> combined_topk_weights_opt;
