@@ -88,7 +88,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
-    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, static_cast<uint32_t>(e_)));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, expertNum_));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }

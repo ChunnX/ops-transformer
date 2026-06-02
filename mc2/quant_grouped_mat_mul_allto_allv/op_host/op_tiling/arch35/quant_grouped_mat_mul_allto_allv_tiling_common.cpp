@@ -864,8 +864,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetGmmA2avWorkspaceInfo
     uint64_t sharedGmmComputeWsSize = localParams_.ep * sizeof(int64_t) + tensorListSize + sharedTtScaleRepeatSize;
     localTilingData_.workspaceInfo.wsSharedGmmComputeWorkspaceSize =
         mc2tiling::AlignUp(sharedGmmComputeWsSize, alignAddrLen);
-    // set expertNum
-    expertNum_ = 1;
     expertNum_ = Ops::Base::CeilDiv(localParams_.ep, expertNum_) > MAX_HCCL_HANDLE_NUM ?
         Ops::Base::CeilDiv(localParams_.ep, static_cast<uint64_t>(MAX_HCCL_HANDLE_NUM)) : expertNum_;
     // PermuteSend 数据重排空间 (后通信模式: GMM输出 → expert优先→rank优先重排 → AlltoAllv发送)
@@ -897,7 +895,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
         mMaxSize = std::max(mSize, mMaxSize);
     }
     MC2_CHECK_LOG_RET(opName_, gmmTile.SetGroupExpertInputParameters(localParams_, mMaxSize,
-        static_cast<uint32_t>(localParams_.ep)));
+        expertNum_));
     MC2_CHECK_LOG_RET(opName_, gmmTile.Process());
     localTilingData_.gmmBaseTiling = gmmTile.GetGmmQuantTilingAdapterData();
 

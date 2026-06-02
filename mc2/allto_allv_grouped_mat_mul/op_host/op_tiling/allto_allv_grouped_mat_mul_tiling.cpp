@@ -1007,8 +1007,6 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
         OP_LOGE(context_->GetNodeName(), "Workspace is null, expected non-null."), return ge::GRAPH_FAILED);
-    // set expertNum
-    expertNum_ = 1;
     // check
     expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
         Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
