@@ -31,9 +31,9 @@ namespace optiling {
 
     ge::graphStatus AlltoAllvGmmTilingFuncA5::AlltoAllvGmmOpTilingFunc(gert::TilingContext* context)
     {
-        AlltoAllvGmmTilingA5 tiling(context);
+        AlltoAllvGmmTilingA5 tiling;
         OP_TILING_CHECK(
-            tiling.Init() != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
+            tiling.Init(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
             return ge::GRAPH_FAILED);
         return tiling.RunFusionKernelTiling(context);
     }
@@ -44,6 +44,5 @@ namespace optiling {
         return funcA5.AlltoAllvGmmOpTilingFunc(context_);
     }
 
-    REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA5,
-                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);
+    REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA5, 0);
 }  // namespace optiling
