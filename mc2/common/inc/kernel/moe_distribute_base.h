@@ -419,7 +419,7 @@ __aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t le
         __asm__("NOP");
         AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(global[i]);
-        DataSyncBarrier<MemDsbT::ALL>();
+        AscendC::DataSyncBarrier<AscendC::MemDsbT::ALL>();
     }
 }
 __aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0) {
