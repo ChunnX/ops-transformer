@@ -274,22 +274,22 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
     mm1ResL0C.Wait<HardEvent::M_FIX>();   // 等待L0C
 
     outputBuf.WaitCrossCore();
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> sfaFixpipeParams; // L0C→UB
     // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
-    fixpipeParams.nSize = Align8Func(runInfo.s2RealSize);
+    sfaFixpipeParams.nSize = Align8Func(runInfo.s2RealSize);
     // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.mSize = Align2Func(runInfo.mRealSize);
+    sfaFixpipeParams.mSize = Align2Func(runInfo.mRealSize);
     // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T)
-    fixpipeParams.srcStride = Align16Func(fixpipeParams.mSize);
+    sfaFixpipeParams.srcStride = Align16Func(sfaFixpipeParams.mSize);
     // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
-    fixpipeParams.dstStride = s2BaseSize;
-    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
+    sfaFixpipeParams.dstStride = s2BaseSize;
+    sfaFixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    sfaFixpipeParams.params.ndNum = 1;
+    sfaFixpipeParams.params.srcNdStride = 0;
+    sfaFixpipeParams.params.dstNdStride = 0;
 
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), \
-        mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+        mm1ResL0C.GetTensor<T>(), sfaFixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
     outputBuf.SetCrossCore();
 }
@@ -325,17 +325,17 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::IterateBmm2SFA(
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
     outputBuf.WaitCrossCore();
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;      // L0C→UB;FixpipeParamsM300:L0C→UB
-    fixpipeParams.nSize = Align8Func(constInfo.dSizeNope);      // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
-    fixpipeParams.mSize = Align2Func(runInfo.mRealSize);        // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小;
-    fixpipeParams.srcStride = Align16Func(fixpipeParams.mSize); // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-    fixpipeParams.dstStride = Align16Func(constInfo.dSizeNope);
-    fixpipeParams.dualDstCtl = 1;
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> sfaFixpipeParams;      // L0C→UB;FixpipeParamsM300:L0C→UB
+    sfaFixpipeParams.nSize = Align8Func(constInfo.dSizeNope);      // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
+    sfaFixpipeParams.mSize = Align2Func(runInfo.mRealSize);        // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小;
+    sfaFixpipeParams.srcStride = Align16Func(sfaFixpipeParams.mSize); // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+    sfaFixpipeParams.dstStride = Align16Func(constInfo.dSizeNope);
+    sfaFixpipeParams.dualDstCtl = 1;
+    sfaFixpipeParams.params.ndNum = 1;
+    sfaFixpipeParams.params.srcNdStride = 0;
+    sfaFixpipeParams.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(),
-        mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+        mm2ResL0C.GetTensor<T>(), sfaFixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
 
     outputBuf.SetCrossCore();
