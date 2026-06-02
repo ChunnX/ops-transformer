@@ -224,12 +224,12 @@ ge::graphStatus BSATiling::GetInputLayout(gert::TilingContext *bsaContext)
         qInputLayout_ = BSAQInputLayout::BNSD_Q;
         kvCacheLayout_ = BSAKvCacheLayout::BNSD_KV;
     } else if (it->first == "BSND") {
-        qInputLayout_ = BSAQInputLayout::BSND_Q;
-        kvCacheLayout_ = BSAKvCacheLayout::BSND_KV;
         if (socVer_ != SOC_VER_950_CODE) {
             OP_LOGE(bsaContext->GetNodeName(), "Only the chip 950 supports BSND inputLayout.");
             return ge::GRAPH_FAILED;
         }
+        qInputLayout_ = BSAQInputLayout::BSND_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::BSND_KV;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -482,16 +482,15 @@ ge::graphStatus BSATiling::ParseSeqlensInNonTND(gert::TilingContext *bsaContext)
         // 校验BNSD/BSND格式时，每个batch的actualSeqLength须小于等于maxSeqLength
         for (uint32_t i = 0; i < batch_; i++) {
             if (qSeqLenList_[i] > maxQSeqlen_) {
-                OP_LOGE(
-                    bsaContext->GetNodeName(),
-                    "The actualSeqLength of each batch must be less than the maxSeqLength. The maxSeqLength is %u, "
-                    "but the value at index %u of the actualSeqLengths is %ld",
-                    maxQSeqlen_, i, qSeqLenList_[i]);
+                OP_LOGE(bsaContext->GetNodeName(),
+                        "The actualSeqLength of each batch must be less than or equal to the maxSeqLength. The "
+                        "maxSeqLength is %u, but the value at index %u of the actualSeqLengths is %ld",
+                        maxQSeqlen_, i, qSeqLenList_[i]);
             }
             if (kvSeqLenList_[i] > maxKvSeqlen_) {
                 OP_LOGE(bsaContext->GetNodeName(),
-                        "The actualSeqLengthKv of each batch must be less than the maxSeqLengthKv. The maxSeqLengthKv "
-                        "is %u, but the value at index %u of the actualSeqLengthsKv is %ld",
+                        "The actualSeqLengthKv of each batch must be less or equal to than the maxSeqLengthKv. The "
+                        "maxSeqLengthKv is %u, but the value at index %u of the actualSeqLengthsKv is %ld",
                         maxQSeqlen_, i, qSeqLenList_[i]);
             }
         }
