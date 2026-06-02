@@ -9,7 +9,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-
 import os
 import torch
 import logging
@@ -31,6 +30,8 @@ from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
 from atk.tasks.backends.lib_interface.acl_wrapper import AclIntArray,pointer
+
+import FIA_splitFuse_golden_swa as splitefuse
 
 # public function
 def get_np_dtype(type_str):
@@ -216,6 +217,33 @@ def _create_mask(m_shape, pre_tokens, next_tokens):
 
     return atten_masks
 
+def _create_mask_band(m_shape, pre_tokens, next_tokens, actualSeqLengths, actualSeqLengthsKV, actualprefixKV,
+                      prefix_kvs, batch, numheads, kvs_list, m_dtype):
+    mask_s_q = m_shape[0]
+    mask_s_kv = m_shape[1]
+
+    pre_tokens_list = []
+    next_tokens_list = []
+    re_mask_batch = []
+    for i in range(batch):
+        if len(actualSeqLengths) == 0:
+            S1 = mask_s_q
+        else:
+            S1 = actualSeqLengths[i]
+        if len(actualSeqLengthsKV) != 0:
+            S2 = actualSeqLengthsKV[i] + actualprefixKV
+        elif len(kvs_list) > 1:
+            S2 = kvs_list[i] + actualprefixKV
+        else:
+            S2 = mask_s_kv - prefix_kvs + actualprefixKV
+        pre_tokens_new = S1 - S2 + pre_tokens
+        pre_tokens_list.append(pre_tokens_new)
+
+        next_tokens_new = S2 - S1 + next_tokens
+        next_tokens_list.append(next_tokens_new)
+        atten_masks = _create_mask(m_shape, pre_tokens_new, next_tokens_new)
+        re_mask_batch.append(atten_masks)
+    return re_mask_batch, pre_tokens_list, next_tokens_list
 
 def get_attention_mask_batch_num(npu_m_shape, q_bnsd_shape):
     batch, numhead = None, None
@@ -259,6 +287,40 @@ def _create_mask_right_down(m_shape, pre_tokens, next_tokens, actualSeqLengths, 
         atten_masks = _create_mask(m_shape, pre_tokens, next_tokens)
         re_mask_batch.append(atten_masks)
     return re_mask_batch, next_tokens_list
+
+def _random_fill_tensor(tensor, shape, random_number, value=0):
+    for i in range(0, random_number):
+        point = []
+        for k in range(0, len(shape)):
+            point.append(random.randint(1, shape[k]) - 1)
+        tensor[point[0], point[1]] = value
+    return tensor
+
+
+def _t_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor):
+    factor = numHeads // numKeyValueHeads
+    kv_shape = kv_tensor.shape
+    B = kv_shape[0]
+    S = kv_shape[2]
+    D = kv_shape[3]
+    kv_res = torch.zeros([B, numHeads, S, D])
+    for i in range(numHeads):
+        j = i // factor
+        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    return kv_res, kv_res.shape
+
+
+def _np_broadcastKV_sigle(numHeads, numKeyValueHeads, kv_tensor, dtype):
+    factor = numHeads // numKeyValueHeads
+    kv_shape = kv_tensor.shape
+    B = kv_shape[0]
+    S = kv_shape[2]
+    D = kv_shape[3]
+    kv_res = np.zeros([B, numHeads, S, D], dtype=dtype)
+    for i in range(numHeads):
+        j = i // factor
+        kv_res[:, i:i + 1, :, :] = kv_tensor[:, j:j + 1, :, :]
+    return kv_res, kv_res.shape
 
 
 def _create_random_mask_by_spars(cpu_m_shape, npu_m_shape, m_dtype, pre_tokens, next_tokens, actualSeqLengths,
@@ -1945,7 +2007,7 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
             h = shape[0]
             d_num = int(h / numKeyValueHeads)
             print(f"[INFO]_trans_h_to_1n1d: layout={layout}, h={h}, n={numKeyValueHeads} ,d(h/n)={d_num}")
-            new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(0, 2, 1, 3)
+            new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
         elif len(shape) == 2:
             if shape[0] == 1:
                 h = shape[1]
@@ -1954,18 +2016,17 @@ def _trans_antiparam_to_1n1d(shape, tensor, layout, numKeyValueHeads, d, mode):
                 new_tensor = tensor.reshape(1, 1, numKeyValueHeads, d_num).transpose(1, 2)
             else:
                 print(f"[INFO]_trans_nd_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[1]}")
-                new_tensor = tensor.reshape(1, 1, shape[0], shape[1]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[0], shape[1]).transpose(1, 2)
         elif len(shape) == 3:
             if shape[0] == 1:
-                print(f"[INFO]_trans_1nd_to_1n1d : layout={layout}, n={shape[1]} ,d={shape[2]}")
-                new_tensor = tensor.reshape(1, 1, shape[1], shape[2]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[1], shape[2]).transpose(1, 2)
             else:
                 print(f"[INFO]_trans_n1d_to_1n1d : layout={layout}, n={shape[0]} ,d={shape[2]}")
-                new_tensor = tensor.reshape(1, 1, shape[0], shape[2]).transpose(0, 2, 1, 3)
+                new_tensor = tensor.reshape(1, 1, shape[0], shape[2]).transpose(1, 2)
         elif len(shape) == 4:
             if shape[1] == 1:
                 print(f"[INFO]_trans_11nd_to_1n1d : layout={layout}, n={shape[2]} ,d={shape[3]}")
-                new_tensor = tensor.transpose(0, 2, 1, 3)
+                new_tensor = tensor.transpose(1, 2)
             else:
                 new_tensor = tensor
         else:
@@ -3328,22 +3389,8 @@ def deepseek_inquant_preprocessing(ifa_param, params):
                                             actualSeqLengths_q)
     k_int8_npu = trans_bnsd_to_input_layout(k_int8_bnsd_tensor, k_shape, kv_layout, actualSeqLengths)
 
-    tools.modify_alcnn_input_file(ids=0, origin_index=[0], type='tensor', mode='rewrite', tensors=q_int8_npu,
-                                  params=params, data_range=[qmin_datarange, qmax_datarange], data_dtype="int8")
-    tools.modify_alcnn_input_file(ids=1, origin_index=[1], type='tensor_list', mode='rewrite',
-                                  tensors=[k_int8_npu], params=params, data_range=[[kmin_datarange, kmax_datarange]],
-                                  data_dtype="int8")
-    tools.modify_alcnn_input_file(ids=2, origin_index=[2], type='tensor_list', mode='rewrite',
-                                  tensors=[k_int8_npu], params=params, data_range=[[kmin_datarange, kmax_datarange]],
-                                  data_dtype="int8")
     dequantScaleQ = torch.from_numpy(scaleQ).to(torch.float32)
     dequantScaleQ = trans_bnsd_to_dequant_layout(dequantScaleQ, dequantScaleQ.shape, inputLayout, actualSeqLengths_q)
-    tools.modify_alcnn_input_file(ids=27, origin_index=[27], type='tensor', mode='rewrite', tensors=dequantScaleQ,
-                                  params=params)
-    tools.modify_alcnn_input_file(ids=15, origin_index=[15], type='tensor', mode='rewrite', tensors=dequantScale2,
-                                  params=params)
-    tools.modify_alcnn_input_file(ids=17, origin_index=[17], type='tensor', mode='rewrite', tensors=dequantScale2,
-                                  params=params)
 
     ifa_param['k_tensor_list_bnsd'] = k_tensor_list
     ifa_param['v_tensor_list_bnsd'] = v_tensor_list
@@ -3391,10 +3438,6 @@ def deepseek_inquant_preprocessing_for_recovery(ifa_param, torch_tensor_list, pa
         g_q_rope = trans_bnsd_to_input_layout(g_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
         npu_q_rope = trans_bnsd_to_input_layout(npu_q_rope, rope_shape, inputLayout, actualSeqLengths_q)
 
-        tools.modify_alcnn_input_file(ids=28, origin_index=[28], type='tensor', mode='add', tensors=g_q_rope,
-                                      params=params)
-        tools.modify_alcnn_input_file(ids=23, origin_index=[23], type='tensor', mode='rewrite', tensors=npu_q_rope,
-                                      params=params)
     else:
         q_rope_bnsd_tensor, q_rope_bnsd_shape = _n_trans_shape_to_bnsd(torch_tensor_list[28], rope_shape,
                                                                        inputLayout, numHeads, actualSeqLengths_q)
@@ -3592,12 +3635,7 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
 
         if action_type in ["bm_output", "bm_output_gold"]:
             pass
-        else:
-            tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite', tensors=npu_m_tensor,
-                                          params=params)
-
         if sparse_mode == 0 or sparse_mode == 1:
-            # m_bnsd_tensor = _np_broadcast_mask_n(cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0])
             pass
         else:
             cpu_m_tensor = np.array(cpu_m_tensor)
@@ -3664,10 +3702,6 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                 block_idx += 1
             block_table_batch_idx += 1
         ifa_param['block_table'] = block_table
-        # 将block_table 覆盖原有的input
-        tools.modify_alcnn_input_file(ids=12, origin_index=[12], type='tensor', mode='rewrite',
-                                      tensors=torch.tensor(block_table, dtype=torch.int32),
-                                      params=params)
         k_np_dtype = tools.get_np_dtype(params['dtype_input'][1])
         v_np_dtype = tools.get_np_dtype(params['dtype_input'][2])
         ifa_param['k_np_dtype'] = k_np_dtype
@@ -3767,16 +3801,6 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
 
             k_cache_index = 21
             v_cache_index = 22
-            tools.modify_alcnn_input_file(ids=k_cache_index, origin_index=[k_cache_index], type='tensor_list',
-                                          mode='rewrite',
-                                          tensors=[k_cache],
-                                          params=params,
-                                          data_dtype=params['dtype_input'][1])
-            tools.modify_alcnn_input_file(ids=v_cache_index, origin_index=[v_cache_index], type='tensor_list',
-                                          mode='rewrite',
-                                          tensors=[v_cache],
-                                          params=params,
-                                          data_dtype=params['dtype_input'][2])
         else:
             print('[INFO]:PA + Deepseek！')
             if ifa_param['in_quant_flag']:
@@ -4995,7 +5019,6 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
     k_tensor = k_tensor[:, :, kvs_begin:kvs_end, :]
     v_tensor = v_tensor[:, :, kvs_begin:kvs_end, :]
     qDtype = q_tensor.dtype
-
     # KVcahce反量化  这块逻辑需要修改
     if k_tensor.dtype == np.int8:
         k_tensor = k_tensor.astype(np.float16)
@@ -5068,14 +5091,6 @@ def _np_pfaattention_act(q_tensor, k_tensor, v_tensor, pse_tensor, mask_tensor, 
         bmm2Res = np.where(bmm2Res > 127, 127, bmm2Res)
         bmm2Res = np.where(bmm2Res < -128, -128, bmm2Res)
         bmm2Res = bmm2Res.astype(np.int8)
-
-    # if q_tensor.shape[2] > k_tensor.shape[2] + preTokens:
-    #     ss0 = k_tensor.shape[2] + preTokens
-    #     bmm2Res[:, :, ss0:, :] = 0
-    #
-    # if nextTokens < 0:
-    #     ss1 = -nextTokens
-    #     bmm2Res[:, :, :ss1, :] = 0
 
     print(f"return shape:{bmm2Res.shape}")
     return bmm2Res, lse
@@ -5253,9 +5268,9 @@ def _np_promtattention_bnsd(q_tensor, q_shape, k_tensor_list, k_shape_list, v_te
 
         # bnsd
         if sparse == 4:
-            preTokens = preTokens_list[b_index]
+            preTokens =  preTokens_list[b_index] if isinstance(preTokens_list, list) else preTokens_list
         if sparse == 3 or sparse == 4:
-            nextTokens = nextTokens_list[b_index]
+            nextTokens = nextTokens_list[b_index] if isinstance(nextTokens_list, list) else nextTokens_list
 
         for n_index in range(numhead_value):
             if len(q_shape) == 4 and len(k_shape) == 4 and len(v_shape) == 4:
@@ -5958,21 +5973,6 @@ def deepseek_ds_pa_preprocessing(pfa_param, params,torch_tensor_list):
         v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
         k_rope_cache = torch.from_numpy(k_rope_cache.astype(kv_dtype))
 
-    tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
-                                  mode='rewrite',
-                                  tensors=[k_cache],
-                                  params=params,
-                                  data_dtype=params['dtype_input'][1])
-    tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
-                                  mode='rewrite',
-                                  tensors=[v_cache],
-                                  params=params,
-                                  data_dtype=params['dtype_input'][2])
-    tools.modify_alcnn_input_file(ids=25, origin_index=[25], type='tensor',
-                                  mode='rewrite',
-                                  tensors=k_rope_cache,
-                                  params=params,
-                                  data_dtype=params['dtype_input'][1])
 def deepseek_preprocessing(params, pfa_param, torch_tensor_list, numHeads, numKeyValueHeads, tnd_flag):
     v_end_index = pfa_param['v_end_index']
     # >> q rope info
@@ -6256,7 +6256,7 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
     if flagList[3] == 0 or 0 in pse_shift_shape:
         pse_bnsd_tensor = None
     else:
-        pse_dtype_torch = tools.get_pt_dtype(params['dtype_input'][v_end_index + 1])
+        pse_dtype_torch = get_pt_dtype(params['dtype_input'][v_end_index + 1])
         pse_shift = None
         pse_shift_random_flag = True
         if action_type in gold:
@@ -6276,9 +6276,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 pse_shift[:, :, :, kvs:] = 1
                 npu_pse_shift = torch.from_numpy(pse_shift).to(pse_dtype_torch)
                 pse_shift = npu_pse_shift.to(torch.float32).numpy().astype(np.float32)
-                tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor', mode='rewrite',
-                                              tensors=npu_pse_shift,
-                                              params=params)
         cpu_pse_shift = pse_shift[:, :, :qs, :kvs]
 
         pse_bnsd_tensor = _np_broadcast_pseShift_n(cpu_pse_shift, pse_shift_shape, q_bnsd_shape[0])  # to bnsd
@@ -6320,8 +6317,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
             npu_m_tensor[..., :randoms] = 1
 
         npu_m_tensor = torch.from_numpy(npu_m_tensor)
-        tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite', tensors=npu_m_tensor,
-                                      params=params)
 
         if sp_mode == 0 or sp_mode == 1:
             m_bnsd_tensor = _np_broadcast_mask_n(cpu_m_tensor, npu_m_shape, cpu_m_shape, numHeads, q_bnsd_shape[0])
@@ -6511,9 +6506,6 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                 for j in range(block_per_b):
                     block_table[idx][j] = (block_idx_list[block_idx])
                     block_idx += 1
-            tools.modify_alcnn_input_file(ids=12, origin_index=[12], type='tensor', mode='rewrite',
-                                          tensors=torch.from_numpy(block_table),
-                                          params=params)
             pfa_param['blockNumPerBlock'] = blockNumPerBlock
             pfa_param['block_table'] = block_table
             if  flagList[26]:
@@ -6622,16 +6614,16 @@ def aclnnPromptFlashAttention_unification(torch_tensor_list, params):
                     k_cache = torch.from_numpy(k_cache.astype(kv_dtype))
                     v_cache = torch.from_numpy(v_cache.astype(kv_dtype))
 
-                tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
-                                              mode='rewrite',
-                                              tensors=[k_cache],
-                                              params=params,
-                                              data_dtype=params['dtype_input'][1])
-                tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
-                                              mode='rewrite',
-                                              tensors=[v_cache],
-                                              params=params,
-                                              data_dtype=params['dtype_input'][2])
+                # tools.modify_alcnn_input_file(ids=21, origin_index=[21], type='tensor_list',
+                #                               mode='rewrite',
+                #                               tensors=[k_cache],
+                #                               params=params,
+                #                               data_dtype=params['dtype_input'][1])
+                # tools.modify_alcnn_input_file(ids=22, origin_index=[22], type='tensor_list',
+                #                               mode='rewrite',
+                #                               tensors=[v_cache],
+                #                               params=params,
+                #                               data_dtype=params['dtype_input'][2])
 
     if flagList[15]:
         pfa_param['queryPaddingSize'] = torch_tensor_list[v_end_index + 11]
@@ -8291,7 +8283,8 @@ class FiaOpPreprocess():
         self.preprocess_shared_prefix()
         self.preprocess_pse_shift()
         # 需要保证输入的mask是正确的
-        # self.preprocess_atten_mask()
+        if self.op_params.sparse_mode in [2, 3, 4] and self.op_params.query.S > 1 :
+            self.preprocess_atten_mask()
         self.preprocess_block_table()
         self.preprocess_kv_cache()
         self.preprocess_post_quant()
@@ -8491,7 +8484,6 @@ class FiaOpPreprocess():
             mrandom_type = self.params['mrandomtype']
             if mrandom_type == 'ones':
                 randoms = int(self.params['mrandom'])
-
         if (not self.op_params.atten_mask_flag) or self.op_params.atten_mask.empty():
             self.op_params.pre_tokens = 214748647
             self.op_params.next_tokens = 214748647
@@ -8531,7 +8523,6 @@ class FiaOpPreprocess():
                 npu_m_tensor[..., :randoms] = 1
             if self.op_params.is_mask_bs:
                 npu_m_tensor = npu_m_tensor.reshape(self.op_params.atten_mask.shape)
-
             atten_mask_index = FiaOpParam.get_param_index("atten_mask")
             # tools.modify_alcnn_input_file(ids=atten_mask_index, origin_index=[atten_mask_index],
             #                               type='tensor', mode='rewrite', tensors=torch.from_numpy(npu_m_tensor),
@@ -9007,8 +8998,8 @@ class FiaOpForward():
 
     def route_to_old_ifa(self):
         if self.op_params.sparse_mode == 4:
-            fia_debug("*********************************ROUTE TO PFA")
-            return False
+            self.op_params.sparse_mode = 0
+        
         if (self.op_params.query.S == 1) or (self.op_params.rope_flag and self.op_params.query.D == 512) or \
                 (self.op_params.query.dtype != self.op_params.key.dtype):
             fia_debug("*********************************ROUTE TO IFA")
@@ -9031,8 +9022,6 @@ class FiaOpForward():
             return torch.zeros(self.op_params.output.shape)
 
         self.fia_op_preprocess.preprocess()
-        if self.params['is_preprocess']:
-            return
 
         self.query = self.op_params.query
         self.key = self.op_params.key
@@ -9119,6 +9108,7 @@ dtype_map = {
     torch.int32: "int32",
     torch.int64: "int32",
     torch.uint8: "uin8",
+    torch.int4: "int4",
     torch.float64: "fp64"
 }
 
@@ -9197,6 +9187,10 @@ def overwrite_structured_mask(input_data):
     # 3. 覆盖回 input_data
     input_data.kwargs['attenMaskOptional'] = new_mask_tensor
     return input_data
+
+def get_split_fuse_flag(input_data):
+    layout = input_data.kwargs["inputLayout"]
+    return layout == "TND"
 
 def load_kv_cache(input_data: InputDataset):
     key_shape = list(input_data.kwargs["key"][0].shape)
@@ -9438,12 +9432,12 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         dtype_input[20] = dtype_map[input_data.kwargs["valueSharedPrefixOptional"].dtype]
         shape_input[20] = list(input_data.kwargs["valueSharedPrefixOptional"].shape)
     
-    if input_data.kwargs["queryRopeOptional"]is not None:
+    if input_data.kwargs["queryRopeOptional"] is not None:
         params['flaglist'][26] = 1
         dtype_input[23] = dtype_map[input_data.kwargs["queryRopeOptional"].dtype]
         shape_input[23] = list(input_data.kwargs["queryRopeOptional"].shape)
         
-    if input_data.kwargs["keyRopeOptional"]is not None:
+    if input_data.kwargs["keyRopeOptional"] is not None:
         params['flaglist'][27] = 1
         dtype_input[24] = dtype_map[input_data.kwargs["keyRopeOptional"].dtype]
         shape_input[24] = list(input_data.kwargs["keyRopeOptional"].shape)
@@ -9494,7 +9488,6 @@ def init_kv_cache(input_data : InputDataset, is_benchmark_task, is_preprocess=Tr
 def aclnn_op_func_fia_cpu(input_data : InputDataset, is_benchmark_task, is_preprocess=False):
     
     tensor_list, params = trans_input_to_params(input_data, is_benchmark_task, is_preprocess)
-  
     if input_data.kwargs["softmaxLseFlag"]:
         output, output_lse = FiaOpForward(tensor_list, params).forward()
         output_lse = output_lse.to(dtype=torch.float32)
@@ -9519,30 +9512,63 @@ class fusedInferAttentionScoreApi(BaseApi):
     def init_by_input_data(self, input_data: InputDataset):
         # 将cache生成逻辑数据直接存放input_data里
         input_data = overwrite_structured_mask(input_data)
-        if input_data.kwargs["blockTableOptional"] is not None: 
+        self.split_fuse_flag = get_split_fuse_flag(input_data)
+        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] != None: 
             init_kv_cache(input_data, is_benchmark_task = True, is_preprocess=True)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
-
-        if input_data.kwargs["softmaxLseFlag"]:
-            output, output_lse = aclnn_op_func_fia_cpu(input_data, is_benchmark_task = True, is_preprocess=False)
-            return output, output_lse
+        if self.split_fuse_flag :
+            output, output_lse = splitefuse.aclnn_op_func_fia_split_fuse_golden(input_data, self.task_result.is_benchmark_task)
+            if input_data.kwargs["softmaxLseFlag"] == True:
+                return output, output_lse
+            else:
+                return output
         else:
-            output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task = True, is_preprocess=False)
-            # print("cpu output is: ", output)
-            return output
+            is_benchmark_task = True # 单标杆
+            # is_benchmark_task = self.task_result.is_benchmark_task # 双标杆
+            if input_data.kwargs["softmaxLseFlag"]:
+                output, output_lse = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                return output, output_lse
+            else:
+                output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task, is_preprocess=False)
+                # print("cpu output is: ", output)
+                return output
 
 @register("executor_aclnn_fused_infer_attention_score_v4")
 class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
     def __init__(self, task_result: TaskResult, backend):
         super(aclnnFusedInferAttentionScoreApi, self).__init__(task_result, backend)
+
+    def gen_compressed_triU_mask(self, dim_num, mask_dtype):
+        mask_shape_four_dims = (1, 1, 2048, 2048)
+        mask_four_dims = torch.zeros(mask_shape_four_dims, dtype = mask_dtype)
+        mask_triU = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        mask_four_dims[:] = mask_triU
+        if dim_num == 2:
+            return mask_four_dims[0][0]
+        elif dim_num == 3:
+            return mask_four_dims[0]
+        elif dim_num == 4:
+            return mask_four_dims
+        else:
+            print("invalid dim num, will provide a four dim mask anyway")
+            return mask_four_dims
+        return mask_four_dims[0][0]
     
     def init_by_input_data(self, input_data: InputDataset):
         torch.npu.synchronize()
-        input_args = []  # 算子的入参列表
-        if input_data.kwargs["blockTableOptional"] is not None: 
-            load_kv_cache(input_data)
+        self.split_fuse_flag = get_split_fuse_flag(input_data)
+        if self.split_fuse_flag:
+            np.random.seed(self.task_result.case_config.id)
+            if input_data.kwargs["attenMaskOptional"] != None:
+                mask_dim_num = len(input_data.kwargs["attenMaskOptional"].shape)
+                mask_dtype = input_data.kwargs["attenMaskOptional"].dtype
+                input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(mask_dim_num, mask_dtype).npu()
+            splitefuse.inspect_kwargs(input_data.kwargs)
 
+        input_args = []  # 算子的入参列表
+        if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] is not None: 
+            load_kv_cache(input_data)
         
         # 处理actual输入None
         input_args, output_packages = super().init_by_input_data(input_data)
@@ -9583,6 +9609,8 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
         output = []
         for output_pack in output_packages:
             temp_output_pack = self.acl_tensor_to_torch(output_pack)
+            if self.split_fuse_flag:
+                temp_output_pack = temp_output_pack.to(dtype=torch.float32)
             output.append(temp_output_pack)
         # print("gloden output is: ", output)
         return output
