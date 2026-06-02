@@ -166,7 +166,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
     CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
                        axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
@@ -181,7 +181,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommData(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     if constexpr (commBeforeComputeFlag) {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         CalcA2avCommBeforeParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
@@ -201,7 +201,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
     PermuteImpl<fp8_e8m0_t, false, true>(
         recvScaleGlobalBuffer_, scalePermuteOutBuffer_,
@@ -213,7 +213,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
     PermuteImpl<CommBufType, false, true>(
         recvGlobalBuffer_, permuteOutBuffer_,
@@ -225,7 +225,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteSendAfterCompute(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     PermuteImpl<CommBufType, true, false>(
         permuteSrcBuffer_, sendGlobalBuffer_,
         sendCounts_, e_, rankDim_, startExpertIdx, expertNum,
@@ -235,14 +235,14 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitScale(uint32_t startExpertIdx)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     hccl_.Wait(alltoAllvScaleHandleId_[startExpertIdx]);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Wait(uint32_t startExpertIdx)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
 }
 
@@ -250,7 +250,7 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(
     uint32_t allNum, uint32_t step)
 {
-    A2AV_AIV_ONLY();
+    if (!A2avAivOnly()) { return; }
     for (uint32_t i = 0U; i < allNum; i += step) {
         hccl_.Wait(alltoAllvHandleId_[i]);
     }

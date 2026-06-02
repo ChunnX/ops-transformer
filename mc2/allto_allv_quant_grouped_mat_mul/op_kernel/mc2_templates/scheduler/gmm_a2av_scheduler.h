@@ -28,7 +28,7 @@ template <typename CommOpType, typename ComputationOpType, typename SharedComput
 class GmmA2avScheduler {
 public:
     __aicore__ inline GmmA2avScheduler(CommOpType &hcclOp, ComputationOpType &computeOp,
-                                       SharedComputationOpType &shareComputeOp, TaskTilingInfo *taskTilingInfo)
+                                       SharedComputationOpType &shareComputeOp, const TaskTilingInfo *taskTilingInfo)
         : hcclOp_(hcclOp), computeOp_(computeOp), shareComputeOp_(shareComputeOp), taskTilingInfo_(taskTilingInfo){};
     __aicore__ inline void Init();
 
