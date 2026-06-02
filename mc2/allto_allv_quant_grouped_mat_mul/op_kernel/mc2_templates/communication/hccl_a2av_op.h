@@ -167,9 +167,8 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     uint32_t startExpertIdx, uint32_t expertNum)
 {
     A2AV_AIV_ONLY();
-    const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    CalcA2avCommBeforeParams(scaleCommParams_, sendCnt, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
+    CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
                        axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
         (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt,
@@ -183,13 +182,12 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     uint32_t startExpertIdx, uint32_t expertNum)
 {
     A2AV_AIV_ONLY();
-    const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
     if constexpr (commBeforeComputeFlag) {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-        CalcA2avCommBeforeParams(dataCommParams_, sendCnt, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
+        CalcA2avCommBeforeParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
                         axis, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     } else {
-        CalcA2avCommAfterParams(dataCommParams_, sendCnt, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
+        CalcA2avCommAfterParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
                         N1_, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     }
     alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
