@@ -32,4 +32,4 @@ from .graph_convert.graph_convert_quant_lightning_indexer_v2_metadata import (
 )
 from .npu_sparse_lightning_indexer_kl_loss_grad import npu_sparse_lightning_indexer_kl_loss_grad
 from .npu_sparse_lightning_indexer_kl_loss_grad_metadata import npu_sparse_lightning_indexer_kl_loss_grad_metadata
-
+from .lightning_indexer_v2 import npu_lightning_indexer_v2
