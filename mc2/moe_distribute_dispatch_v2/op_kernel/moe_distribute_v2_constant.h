@@ -65,9 +65,7 @@ constexpr uint8_t SHARE_RANK_NUM_IDX = 2U;
 constexpr uint8_t MOE_NUM_IDX = 3U;
 constexpr int32_t BITS_PER_BYTE = 8;
 // 0b10: 选择status block中的count字段
-constexpr uint32_t STATUS_BLOCK_COUNT_SEL_MASK = 2U;
-// 每个status datablock只处理flag/count两个字段
-constexpr uint32_t STATUS_BLOCK_FIELD_NUM = 2U;
+constexpr uint32_t STATUS_BLOCK_COUNT_SEL_PATTERN = 2U;
 // status block中的count字段偏移
 constexpr uint32_t STATUS_BLOCK_COUNT_FIELD_OFFSET = 1U;
 constexpr uint32_t MAX_UB_SIZE = 170U * 1024U;
