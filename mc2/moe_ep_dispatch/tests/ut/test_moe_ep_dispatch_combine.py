@@ -124,7 +124,7 @@ def test_combine_forward_pure_sum():
     recv_x, recv_topk_idx, recv_topk_weights, handle = buf.dispatch(x, topk_idx, topk_weights)
 
     A = recv_x.shape[0]
-    weighted_x = recv_x * recv_topk_weights.unsqueeze(-1)
+    weighted_x = recv_x * recv_topk_weights[:, 0:1]
 
     combined_x, combined_topk_weights = buf.combine(weighted_x, handle)
 
@@ -166,7 +166,7 @@ def test_4helper_full_training_step():
     # ---- 用户侧 FFN (mock) ----
     A = recv_x.shape[0]
     expert_out = torch.randn(A, hidden, dtype=torch.bfloat16, device=f"npu:{rank}")
-    weighted_out = expert_out * recv_topk_weights.unsqueeze(-1)
+    weighted_out = expert_out * recv_topk_weights[:, 0:1]
 
     # ---- 前向 combine ----
     combined_x, _ = buf.combine(weighted_out, handle)

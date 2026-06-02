@@ -13,47 +13,47 @@ public:
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("recv_src_metadata")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights_optional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("bias_optional_0")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("bias_optional_1")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
         this->Output("combined_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("combined_topk_weights_optional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();

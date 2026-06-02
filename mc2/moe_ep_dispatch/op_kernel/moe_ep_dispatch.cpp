@@ -16,9 +16,7 @@ using namespace MoeEpDispatchImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-extern "C" {
-
-template<uint32_t DO_CPU_SYNC, uint32_t IS_CACHED, uint32_t NETWORK_MODE>
+template<uint32_t DO_CPU_SYNC, uint32_t IS_CACHED, uint32_t NETWORK_MODE, uint32_t ARCH_TAG>
 __global__ __aicore__ void moe_ep_dispatch(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
     GM_ADDR cachedSlotIdx,
@@ -39,5 +37,3 @@ __global__ __aicore__ void moe_ep_dispatch(
             workspace, tilingGM, &pipe, &tilingData.moeEpDispatchInfo);
     op.Process();
 }
-
-}  // extern "C"
