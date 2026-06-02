@@ -74,15 +74,6 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
         return ge::GRAPH_FAILED);
 
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
-    auto mmWeightStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX);
-    auto outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
-    if (!((mmXStorageShape == nullptr) && (mmWeightStorageShape == nullptr) &&
-          (outputMmYStorageShape == nullptr || outputMmYStorageShape->GetStorageShape().GetDimNum() == NUM_ZERO)) &&
-        !((IsShapePresent(mmXStorageShape)) && (IsShapePresent(mmWeightStorageShape)) &&
-          (IsShapePresent(outputMmYStorageShape)))) {
-        OP_LOGE(A_INNER_DEBUG, "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!");
-        return ge::GRAPH_FAILED;
-    }
     hasSharedExpertFlag_ = IsShapePresent(mmXStorageShape);
 
     auto permuteOutFlagPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
@@ -357,6 +348,19 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
             (std::string("H1=") + std::to_string(H1) + ", gmmWeight_H1=" + std::to_string(H2)).c_str(),
             "H1 should be equal");
         return ge::GRAPH_FAILED;
+    }
+
+    // Check mmX/mmWeight/mmY consistency
+    auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
+    auto mmWeightStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX);
+    auto outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
+    
+    // If mmY is present, mmX and mmWeight must also be present
+    if (IsShapePresent(outputMmYStorageShape)) {
+        if (!IsShapePresent(mmXStorageShape) || !IsShapePresent(mmWeightStorageShape)) {
+            OP_LOGE(A_INNER_DEBUG, "mmY is present but mmX or mmWeight is missing!");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     // Check gmmY output: N1 dimension should match gmmWeight
