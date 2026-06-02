@@ -1303,8 +1303,8 @@ private:
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         int32_t pingpongIdx = 0;
+        icache_preload(8);
         if constexpr (std::is_same_v<ElementB, int8_t>) {
-            icache_preload(8);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
@@ -1390,8 +1390,10 @@ private:
                 }
             }
         }
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        if constexpr (std::is_same_v<ElementB, int8_t>) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
 #ifdef SYNC_MODE
         AscendC::SyncAll<false>();
 #endif
