@@ -37,7 +37,7 @@
 ## 函数原型
 
 ```
-npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
+npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
 ```
 
 ## 参数说明
