@@ -913,6 +913,7 @@ public:
 
 #ifdef SKIP_C2
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
         if constexpr (bmm2Write2Ub) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1);
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(outCcId1 + AIV0_AIV1_OFFSET);
@@ -933,7 +934,10 @@ public:
     __aicore__ inline void IterateBmm2L1SplitN(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
                                                 LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
     {
+        // L1 P 由两个 AIV 子核分别写入上下两半（行 0-63 / 64-127），
+        // AIC 必须同时等待 AIV0(l1PCcId) 与 AIV1(l1PCcId+OFFSET) 两个 flag。
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
 
         // dVTemplateType > 256, L1切N, 左矩阵不变，右矩阵每次循环搬运S2 * 128
         if constexpr (bmm2Write2Ub) {
@@ -1013,7 +1017,11 @@ public:
     __aicore__ inline void IterateBmm2l0Split(OutTensorT &outputTensor, uint32_t outCcId0, uint32_t outCcId1,
                                                LocalTensor<Q_T> &l1PTensor, uint32_t l1PCcId, RunInfoX &runInfo)
     {
+        // L1 P 由两个 AIV 子核分别写入上下两半（行 0-63 / 64-127），
+        // AIC 必须同时等待 AIV0(l1PCcId) 与 AIV1(l1PCcId+OFFSET) 两个 flag，
+        // 否则会在 AIV1 写完前读取 L1 下半部分，导致行 64-127 读到脏数据。
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(l1PCcId + AIV0_AIV1_OFFSET);
         uint32_t vIdx = L1VGet();
         WaitFlag<HardEvent::MTE1_MTE2>(L1VEvt(vIdx)); // 占用L1B
         LocalTensor<KV_T> mm2BTensor = l1VSlot[vIdx].template ReinterpretCast<KV_T>();
