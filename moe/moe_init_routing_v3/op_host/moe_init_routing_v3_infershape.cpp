@@ -303,20 +303,132 @@ static ge::graphStatus GetAndCheckAttrRowIdxType(const gert::RuntimeAttrs *attrs
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckScaleShapeForNonQuant(gert::InferShapeContext *context, const gert::Shape *xShape,
+                                                   const gert::Shape *scaleShape)
+{
+    if (scaleShape->GetDimNum() == DIM_ONE) {
+        OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape), "-1 or -2"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(xShape->GetDim(0))),
+                    return ge::GRAPH_FAILED);
+    } else if (scaleShape->GetDimNum() == DIM_THREE) {
+        OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
+                    scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
+                    scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape), "each dim is -1"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(0) > 0 && xShape->GetDim(0) > 0 &&
+                        !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(xShape->GetDim(0))),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(1) > 0 && xShape->GetDimNum() > 2 && xShape->GetDim(1) > 0 &&
+                        !isSameDim(scaleShape->GetDim(1),
+                            Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(Ops::Base::CeilDiv<int64_t>(
+                                                  xShape->GetDim(1), SCALE_BLOCK_SIZE))),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
+                                                                  SCALE_THIRD_DIM_SIZE),
+                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
+                                              Ops::Base::ToString(*scaleShape),
+                                              std::to_string(SCALE_THIRD_DIM_SIZE)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1 or 3");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckScaleShapeForStaticQuant(gert::InferShapeContext *context, const gert::Shape *scaleShape)
+{
+    if (scaleShape->GetDimNum() == DIM_ONE) {
+        OP_CHECK_IF(
+            scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO &&
+                !isSameDim(scaleShape->GetDim(0), DIM_ONE),
+            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                                      "-1, -2 or 1"),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckScaleShapeForDynamicQuant(gert::InferShapeContext *context, const gert::Shape *xShape,
+                                                      const gert::Shape *scaleShape, int64_t expertStart,
+                                                      int64_t expertEnd)
+{
+    int64_t activeExpertRange = expertEnd - expertStart;
+    if (scaleShape->GetDimNum() == DIM_ONE) {
+        OP_CHECK_IF(scaleShape->GetDim(0) != NEG_TWO,
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
+                                              std::to_string(scaleShape->GetDim(0)), "-2"),
+                    return ge::GRAPH_FAILED);
+    } else if (scaleShape->GetDimNum() == DIM_TWO) {
+        if (scaleShape->GetDim(0) > 0) {
+            OP_CHECK_IF(
+                !isSameDim(scaleShape->GetDim(0), activeExpertRange) && !isSameDim(scaleShape->GetDim(0), DIM_ONE),
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
+                                          std::to_string(scaleShape->GetDim(0)),
+                                          ("1 or " + std::to_string(activeExpertRange))),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                !isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
+                OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
+                                          std::to_string(scaleShape->GetDim(1)),
+                                          std::to_string(xShape->GetDim(1))),
+                return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(
+                scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
+                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
+                                          ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
+                return ge::GRAPH_FAILED);
+        }
+    } else {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1(dynamic shape) or 2");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckScaleShapeForHif8PerTensor(gert::InferShapeContext *context, const gert::Shape *scaleShape)
+{
+    if (scaleShape->GetDimNum() != DIM_ONE) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
+                                     "1");
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(
+        !isSameDim(scaleShape->GetDim(0), DIM_ONE),
+        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "1"),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, const gert::Shape *xShape,
                                             const gert::Shape *scaleShape, const int64_t expertStart,
                                             const int64_t expertEnd, const int64_t quantMode)
 {
-    // When quant_mode is STATIC_QUANT, scale cannot be none.
     OP_CHECK_IF((nullptr == scaleShape && QuantMode::STATIC_QUANT == quantMode),
                 OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "scale"),
                 return ge::GRAPH_FAILED);
 
-    /*
-        When quant_mode is:
-            NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN/MXQUANT_FP4_E2M1
-        scale can be none.
-    */
     OP_CHECK_IF((nullptr == scaleShape &&
                  (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode ||
                   QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode ||
@@ -326,107 +438,14 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                 OP_LOGI(context, "When quant_mode is %ld , scale can be none.", quantMode), return ge::GRAPH_SUCCESS);
 
     if (QuantMode::NON_QUANT == quantMode) {
-        if (scaleShape->GetDimNum() == DIM_ONE) {
-            OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape), "-1 or -2"),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape),
-                                                  std::to_string(xShape->GetDim(0))),
-                        return ge::GRAPH_FAILED);
-        } else if (scaleShape->GetDimNum() == DIM_THREE) {
-            OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
-                        scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
-                        scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape), "each dim is -1"),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleShape->GetDim(0) > 0 && xShape->GetDim(0) > 0 &&
-                            !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape),
-                                                  std::to_string(xShape->GetDim(0))),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleShape->GetDim(1) > 0 && xShape->GetDimNum() > 2 && xShape->GetDim(1) > 0 &&
-                            !isSameDim(scaleShape->GetDim(1),
-                                Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape),
-                                                  std::to_string(Ops::Base::CeilDiv<int64_t>(
-                                                      xShape->GetDim(1), SCALE_BLOCK_SIZE))),
-                        return ge::GRAPH_FAILED);
-             OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
-                                                                       SCALE_THIRD_DIM_SIZE),
-                        OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale",
-                                                  Ops::Base::ToString(*scaleShape),
-                                                  std::to_string(SCALE_THIRD_DIM_SIZE)),
-                        return ge::GRAPH_FAILED);
-        } else {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
-                                         "1 or 3");
-            return ge::GRAPH_FAILED;
-        }
+        return CheckScaleShapeForNonQuant(context, xShape, scaleShape);
     } else if (QuantMode::STATIC_QUANT == quantMode) {
-        if (scaleShape->GetDimNum() == DIM_ONE) {
-            OP_CHECK_IF(
-                scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO &&
-                    !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-                OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                          "-1, -2 or 1"),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
-                                         "1");
-            return ge::GRAPH_FAILED;
-        }
+        return CheckScaleShapeForStaticQuant(context, scaleShape);
     } else if (QuantMode::DYNAMIC_QUANT == quantMode) {
-        int64_t activeExpertRange = expertEnd - expertStart;
-        if (scaleShape->GetDimNum() == DIM_ONE) {
-            OP_CHECK_IF(scaleShape->GetDim(0) != NEG_TWO,
-                        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
-                                                  std::to_string(scaleShape->GetDim(0)), "-2"),
-                        return ge::GRAPH_FAILED);
-        } else if (scaleShape->GetDimNum() == DIM_TWO) {
-            if (scaleShape->GetDim(0) > 0) {
-                OP_CHECK_IF(
-                    !isSameDim(scaleShape->GetDim(0), activeExpertRange) && !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[0]",
-                                              std::to_string(scaleShape->GetDim(0)),
-                                              ("1 or " + std::to_string(activeExpertRange))),
-                    return ge::GRAPH_FAILED);
-                OP_CHECK_IF(
-                    !isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "scale dim[1]",
-                                              std::to_string(scaleShape->GetDim(1)),
-                                              std::to_string(xShape->GetDim(1))),
-                    return ge::GRAPH_FAILED);
-            } else {
-                OP_CHECK_IF(
-                    scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
-                    OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape),
-                                              ("(-1, -1) or (-1, " + std::to_string(xShape->GetDim(1)) + ")")),
-                    return ge::GRAPH_FAILED);
-            }
-        } else {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
-                                         "1(dynamic shape) or 2");
-            return ge::GRAPH_FAILED;
-        }
+        return CheckScaleShapeForDynamicQuant(context, xShape, scaleShape, expertStart, expertEnd);
     } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
-        // The dimension of scale must be 1
-        if (scaleShape->GetDimNum() != DIM_ONE) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "scale", std::to_string(scaleShape->GetDimNum()),
-                                         "1");
-            return ge::GRAPH_FAILED;
-        }
-        // the dimension value of scale must be 1
-        OP_CHECK_IF(
-            !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-            OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "scale", Ops::Base::ToString(*scaleShape), "1"),
-            return ge::GRAPH_FAILED);
-        }
+        return CheckScaleShapeForHif8PerTensor(context, scaleShape);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
