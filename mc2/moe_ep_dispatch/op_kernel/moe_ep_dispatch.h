@@ -17,7 +17,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "moe_ep_dispatch_tiling.h"
 
 namespace MoeEpDispatchImpl {

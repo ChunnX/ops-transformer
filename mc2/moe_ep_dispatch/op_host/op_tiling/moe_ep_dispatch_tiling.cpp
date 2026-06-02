@@ -16,6 +16,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 namespace optiling {
 
@@ -94,8 +95,8 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
                OPS_LOG_E(nodeName, "xDim1(hidden) is invalid, should be in [%ld, %ld], but got %ld.",
                          H_MIN, H_MAX, xDim1),
                return false);
-    info.numTokens = static_cast<uint32_t>(xDim0);
-    info.hidden = static_cast<uint32_t>(xDim1);
+    info.cfg.numTokens = static_cast<uint32_t>(xDim0);
+    info.cfg.hidden = static_cast<uint32_t>(xDim1);
 
     const gert::StorageShape *topkIdxStorageShape = context->GetInputShape(TOPK_IDX_INDEX);
     OPS_ERR_IF(topkIdxStorageShape == nullptr, OPS_LOG_E(nodeName, "topkIdxShape is null."), return false);
@@ -110,7 +111,7 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
                OPS_LOG_E(nodeName, "topkIdx dim1(topK) is invalid, should be in (0, %ld], got %ld.",
                          K_MAX, topkDim1),
                return false);
-    info.topK = static_cast<uint32_t>(topkDim1);
+    info.cfg.topK = static_cast<uint32_t>(topkDim1);
 
     return true;
 }

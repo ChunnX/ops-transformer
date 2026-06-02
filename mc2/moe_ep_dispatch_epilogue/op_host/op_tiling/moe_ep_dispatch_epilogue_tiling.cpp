@@ -16,6 +16,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 namespace optiling {
 
@@ -79,11 +80,11 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
     info.numLocalExperts = info.cfg.numLocalExperts;
 
-    auto recvXDesc = context->GetOutputDesc(0);
-    OPS_ERR_IF(recvXDesc == nullptr, OPS_LOG_E(nodeName, "recvX output desc is null."),
+    auto recvXShape = context->GetOutputShape(0);
+    OPS_ERR_IF(recvXShape == nullptr, OPS_LOG_E(nodeName, "recvX output shape is null."),
                return ge::GRAPH_FAILED);
-    info.aAlloc = static_cast<uint32_t>(recvXDesc->GetStorageShape().GetDim(0));
-    info.cfg.hidden = static_cast<uint32_t>(recvXDesc->GetStorageShape().GetDim(1));
+    info.aAlloc = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(0));
+    info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
     info.cfg.perSlotBytes = static_cast<uint32_t>(
         ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
         + 80UL + 16UL);

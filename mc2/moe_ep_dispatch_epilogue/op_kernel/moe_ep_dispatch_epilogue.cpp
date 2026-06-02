@@ -1,8 +1,4 @@
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 
 #include "moe_ep_dispatch_epilogue_tiling_key.h"
 #include "moe_ep_dispatch_epilogue_tiling.h"
@@ -16,8 +12,7 @@ using namespace MoeEpDispatchEpilogueImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-extern "C" {
-
+template<uint32_t ARCH_TAG>
 __global__ __aicore__ void moe_ep_dispatch_epilogue(
     GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
     GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
@@ -38,5 +33,3 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
             workspace, tilingGM, &pipe, &tilingData.moeEpDispatchEpilogueInfo);
     op.Process();
 }
-
-}  // extern "C"
