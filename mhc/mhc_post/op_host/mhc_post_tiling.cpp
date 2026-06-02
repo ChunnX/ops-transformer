@@ -132,9 +132,9 @@ ge::graphStatus MhcPostTilingBase::GetPlatformInfo()
 ge::graphStatus MhcPostTilingBase::GetShapeAttrsInfo()
 {
     auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
-    OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE(context_, "x shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "null", "input shape cannot be null"), return ge::GRAPH_FAILED);
     xShape_ = &xShapePtr->GetStorageShape();
-    OP_CHECK_IF(xShape_ == nullptr, OP_LOGE(context_, "x shape is null"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(xShape_ == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x", "null", "input shape cannot be null"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckParam failed"), return ge::GRAPH_FAILED);
 
@@ -148,14 +148,14 @@ ge::graphStatus MhcPostTilingBase::CheckNullptr()
         auto desc = context_->GetInputDesc(i);
         OP_CHECK_IF(desc == nullptr, OP_LOGE(context_, "input %ld desc is nullptr", i), return ge::GRAPH_FAILED);
         auto shape = context_->GetInputShape(i);
-        OP_CHECK_IF(shape == nullptr, OP_LOGE(context_, "input %ld shape is nullptr", i), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), std::string("input_") + std::to_string(i).c_str(), "null", "input shape cannot be null"), return ge::GRAPH_FAILED);
     }
 
     // Check output desc and shape
     auto desc = context_->GetOutputDesc(OUTPUT_INDEX);
     OP_CHECK_IF(desc == nullptr, OP_LOGE(context_, "output desc is nullptr"), return ge::GRAPH_FAILED);
     auto shape = context_->GetOutputShape(OUTPUT_INDEX);
-    OP_CHECK_IF(shape == nullptr, OP_LOGE(context_, "output shape is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "output", "null", "output shape cannot be null"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
