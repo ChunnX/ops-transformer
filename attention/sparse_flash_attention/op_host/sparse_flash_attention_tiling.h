@@ -210,22 +210,6 @@ template <typename T> inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
-template <typename T>
-std::string SFAShape2String(const T &shape)
-{
-    std::ostringstream oss;
-    oss << "[";
-    if (shape.GetDimNum() > 0) {
-        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
-            oss << shape.GetDim(i) << ", ";
-        }
-        oss << shape.GetDim(shape.GetDimNum() - 1);
-    }
-    oss << "]";
-    return oss.str();
-}
-
-static std::string GetShapeStr(gert::Shape shape);
 static std::string SFADataTypeToSerialString(ge::DataType type);
 std::string SFATensorDesc2String(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor);
 std::string SFADebugTilingContext(const gert::TilingContext *context);
@@ -342,8 +326,6 @@ private:
 
     void CalcBlockDim();
 
-    uint32_t GetTypeSize(ge::DataType dtype) const;
-
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
 
@@ -433,8 +415,6 @@ private:
     ge::graphStatus CheckParaExistenceGqaNoquant() const;
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        const SFALayout &layout, const std::string &name) const;
     void SetSFAShapeCompare();
     ge::graphStatus CheckQRope();
     ge::graphStatus CheckQRopeShape();
@@ -536,8 +516,6 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-        SFALayout &layout, const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -575,17 +553,11 @@ public:
     void GenerateInfo(SFATilingInfo &sfaInfo);
     ge::graphStatus Parse(SFATilingInfo &sfaInfo);
 
-public:
-    bool HasAxis(const SFAAxis &axis, const SFALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const SFAAxis &axis, const SFALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const SFAAxis &axis,const SFALayout &layout) const;
-
     const gert::TilingContext *context_ = nullptr;
 
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     SFAParaInfo opParamInfo_;
-    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
