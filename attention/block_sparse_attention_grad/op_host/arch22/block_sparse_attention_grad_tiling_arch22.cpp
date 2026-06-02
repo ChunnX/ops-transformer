@@ -90,7 +90,7 @@ static inline uint32_t GetQBlocks(int32_t qseqlen, int32_t x)
 ge::graphStatus BSAGradTiling::GetNpuInfo(gert::TilingContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    
+
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
@@ -105,7 +105,7 @@ ge::graphStatus BSAGradTiling::ProcessTND(gert::TilingContext *context)
     const auto *kvShape = context->GetInputShape(KEY_INDEX);
 
     if (queryShape->GetOriginShape().GetDimNum() != TND_DIM_NUM ||
-        kvShape->GetOriginShape().GetDimNum() != TND_DIM_NUM ) {
+        kvShape->GetOriginShape().GetDimNum() != TND_DIM_NUM) {
         OP_LOGE(context->GetNodeName(), "TND format must have 3 dimensions");
         return ge::GRAPH_FAILED;
     }
@@ -114,14 +114,14 @@ ge::graphStatus BSAGradTiling::ProcessTND(gert::TilingContext *context)
     numHeads_ = static_cast<uint32_t>(queryShape->GetOriginShape().GetDim(TND_DIM_N));
     headDim_ = static_cast<uint32_t>(queryShape->GetOriginShape().GetDim(TND_DIM_D));
     kvHeads_ = static_cast<uint32_t>(kvShape->GetOriginShape().GetDim(TND_DIM_N));
-    dqSize_ = totalTokensT_ * numHeads_  * headDim_;
-    dkvSize_ = kvTotalSeqlen_ * kvHeads_  * headDim_;
-    
+    dqSize_ = totalTokensT_ * numHeads_ * headDim_;
+    dkvSize_ = kvTotalSeqlen_ * kvHeads_ * headDim_;
+
     auto actualSeqLengths = context->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_INDEX);
     if (actualSeqLengths == nullptr) {
         OP_LOGE(context->GetNodeName(), "TND format must have is actualSeqLengthsOptional");
         return ge::GRAPH_FAILED;
-    } 
+    }
     batch_ = static_cast<uint32_t>(actualSeqLengths->GetShapeSize());
     qSeqLenList = actualSeqLengths->GetData<int64_t>();
     if (qSeqLenList == nullptr) {
@@ -141,7 +141,7 @@ ge::graphStatus BSAGradTiling::ProcessTND(gert::TilingContext *context)
     }
 
     maxQSeqlen_ = 0;
-    maxKvSeqlen_ = 0 ;
+    maxKvSeqlen_ = 0;
     for (uint32_t i = 0; i < batch_; ++i) {
         maxQSeqlen_ = std::max(maxQSeqlen_, static_cast<uint32_t>(qSeqLenList[i]));
         maxKvSeqlen_ = std::max(maxKvSeqlen_, static_cast<uint32_t>(kvSeqLenList[i]));
@@ -205,14 +205,14 @@ ge::graphStatus BSAGradTiling::ProcessAttrs(gert::TilingContext *context)
         dataType_ = qInputDesc->GetDataType();
     }
 
-    if (kvHeads_ == 0){
+    if (kvHeads_ == 0) {
         OP_LOGE(context->GetNodeName(), "kvHeads can not be zero.");
         return ge::GRAPH_FAILED;
     }
 
-    if (!(numHeads_ >= kvHeads_ && numHeads_ % kvHeads_ == 0)){
+    if (!(numHeads_ >= kvHeads_ && numHeads_ % kvHeads_ == 0)) {
         OP_LOGE(context->GetNodeName(), "Invalid head config: query heads(%u) must be >=kv heads(%u) and divisible by it.",
-    numHeads_, kvHeads_);
+            numHeads_, kvHeads_);
         return ge::GRAPH_FAILED;
     }
 

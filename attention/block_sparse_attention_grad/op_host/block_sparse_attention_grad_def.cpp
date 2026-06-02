@@ -51,7 +51,7 @@ public:
         this->Input("blockShapeOptional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND}); 
+            .FormatList({ge::FORMAT_ND});
         this->Input("actualSeqLengthsOptional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64})
@@ -72,7 +72,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        
+
         this->Attr("qInputLayout").AttrType(OPTIONAL);
         this->Attr("kvInputLayout").AttrType(OPTIONAL);
         this->Attr("numKeyValueHeads").AttrType(OPTIONAL).Int(1);

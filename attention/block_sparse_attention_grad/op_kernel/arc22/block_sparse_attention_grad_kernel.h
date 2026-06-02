@@ -105,10 +105,10 @@ namespace BSA {
             GM_ADDR v;
             GM_ADDR out;
             GM_ADDR softmaxLse;
-            GM_ADDR blockSparseMask; 
+            GM_ADDR blockSparseMask;
             GM_ADDR blockShape;
             GM_ADDR attentionMask;
-            GM_ADDR actualQseqlen; 
+            GM_ADDR actualQseqlen;
             GM_ADDR actualKvseqlen;
             GM_ADDR dq;
             GM_ADDR dk;
@@ -146,7 +146,8 @@ namespace BSA {
             uint64_t sOffset; //workspace : S, P, dp, ds
         };
 
-        __aicore__ inline void SetFlag() {
+        __aicore__ inline void SetFlag()
+        {
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
@@ -167,7 +168,8 @@ namespace BSA {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
         }
 
-        __aicore__ inline void WaitFlag() {
+        __aicore__ inline void WaitFlag()
+        {
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID2);
@@ -188,7 +190,8 @@ namespace BSA {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
         }
 
-        __aicore__ inline void UpdateTaskInfoCalQSize(uint32_t blockShapeX, uint32_t basicQBlockSize, TaskInfo &taskInfo) {
+        __aicore__ inline void UpdateTaskInfoCalQSize(uint32_t blockShapeX, uint32_t basicQBlockSize, TaskInfo &taskInfo)
+        {
             taskInfo.curQBlcokIdx = taskInfo.curQSeqIdx / blockShapeX;
             uint32_t curQBlcokSeqIdx = taskInfo.curQBlcokIdx * blockShapeX;
             if (curQBlcokSeqIdx + blockShapeX <= taskInfo.qSeqlen) {

@@ -53,29 +53,28 @@ TILING_DATA_FIELD_DEF(uint32_t, headDim);
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNum);
 TILING_DATA_FIELD_DEF(uint32_t, maskType);
 TILING_DATA_FIELD_DEF(float, scaleValue);
-TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // T: 所有batch中Q方向切块的总数
+TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // 所有 batch 中 Q 方向切块总数
 
+// 稀疏分块参数（blockShapeOptional）
+TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block 的 x 维度（Q 方向）
+TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block 的 y 维度（KV 方向）
 
-// 稀疏分块参数 (blockShapeOptional)
-TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
-TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
+// selectIdx 相关参数
 
-// selectIdx相关参数
-
-// Layout: 0=TND, 1=BNSD
+// Layout: 0 = TND, 1 = BNSD
 TILING_DATA_FIELD_DEF(uint32_t, inputLayout);
 
-// BNSD格式的最大序列长度（用于计算stride）
-// 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen); // BNSD格式Q的第三维（S维度），或统一的qseqlen值
-// 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen); // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+// BNSD 格式的最大序列长度（用于计算 stride）
+// 当 actualSeqLengths 为 nullptr 时，maxQSeqlen 也用作统一的 qseqlen 值
+TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen); // BNSD 格式 Q 的第三维（S 维），或统一的 qseqlen 值
+// 当 actualSeqLengthsKv 为 nullptr 时，maxKvSeqlen 也用作统一的 kvseqlen 值
+TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen); // BNSD 格式 KV 的第三维（S 维），或统一的 kvseqlen 值
 
-// TilingKey for kernel dispatch (生成在tiling层)
+// Tiling key for kernel dispatch (generated in tiling layer)
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, gradSize);
 
-// Workspace大小
+// Workspace size
 TILING_DATA_FIELD_DEF(uint64_t, sOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dPOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dQOutSize);
@@ -102,7 +101,11 @@ TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxGradTilingData);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad, BlockSparseAttentionGradTilingData)
 REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1000, BlockSparseAttentionGradTilingDataArch35)
-
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1001, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1002, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1003, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1004, BlockSparseAttentionGradTilingDataArch35)
+REGISTER_TILING_DATA_CLASS(BlockSparseAttentionGrad_1005, BlockSparseAttentionGradTilingDataArch35)
 // BlockSparseAttentionGrad编译信息
 struct BlockSparseAttentionGradCompileInfo {
     uint32_t inputDataByte = 2;
