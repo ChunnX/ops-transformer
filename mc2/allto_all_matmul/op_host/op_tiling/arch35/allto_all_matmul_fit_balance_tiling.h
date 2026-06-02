@@ -19,19 +19,13 @@
 
 namespace MC2Tiling {
 class AlltoAllMatmulFitBalanceTiling : public Mc2FitBasedBalanceTiling {
-public:
-    enum class QuantType {
-        FP_QUANT,
-        KC_QUANT,
-        MXFP8_QUANT,
-        MXFP4_QUANT
-    };
+   public:
+    enum class QuantType { FP_QUANT, KC_QUANT, MXFP8_QUANT, MXFP4_QUANT };
     explicit AlltoAllMatmulFitBalanceTiling(QuantType matmulQuantType, const mc2tiling::TilingArgs &args,
                                             TopoType topoType = TopoType::STANDARD_CARD,
                                             SocVersion socVersion = SocVersion::SOC950)
         : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, topoType, socVersion),
-          matmulQuantType_(matmulQuantType)
-    {
+          matmulQuantType_(matmulQuantType) {
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
         commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
@@ -43,7 +37,7 @@ public:
     void SetLongTileLen() override;
     void AdjustLongShortTileLen() override;
 
-protected:
+   protected:
     QuantType matmulQuantType_ = QuantType::FP_QUANT;
     double CalcMatmulTime(uint64_t tileM);
     double CalcPermuteTime(uint64_t tileM);
@@ -57,5 +51,5 @@ protected:
     double totalMatmulTime_ = 0.0;
     double totalTpTime_ = 0.0;
 };
-} // namespace MC2Tiling
-#endif // ALLTO_ALL_FIT_BALANCE_TILING_H
+}  // namespace MC2Tiling
+#endif  // ALLTO_ALL_FIT_BALANCE_TILING_H

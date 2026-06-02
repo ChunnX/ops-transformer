@@ -16,16 +16,16 @@
 #ifndef ALLTO_ALL_FP_MATMUL_TILING_BASE_H
 #define ALLTO_ALL_FP_MATMUL_TILING_BASE_H
 
-#include "securec.h"
-#include "mc2_matmul_tiling_cfg.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
-#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_key.h"
 #include "../allto_all_matmul_tiling_base.h"
 #include "./allto_all_matmul_fit_balance_tiling.h"
+#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
+#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "mc2_matmul_tiling_cfg.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "securec.h"
 
 namespace MC2Tiling {
 using QuantType = MC2Tiling::AlltoAllMatmulFitBalanceTiling::QuantType;
@@ -33,11 +33,11 @@ using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 
 class AllToAllFpMatmulTilingBase : public AllToAllMatmulTilingBase {
-public:
+   public:
     explicit AllToAllFpMatmulTilingBase(gert::TilingContext *context);
     ~AllToAllFpMatmulTilingBase() override = default;
 
-protected:
+   protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
@@ -51,7 +51,7 @@ protected:
     ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
 
-private:
+   private:
     void PrintAlltoAllMatmulTilingData(AlltoAllMatmulTilingData &alltoAllMatmulTilingData);
     void PrintAlltoAllMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
@@ -62,5 +62,5 @@ private:
     QuantType matmulQuantType_ = QuantType::FP_QUANT;
 };
 
-} // namespace MC2Tiling
+}  // namespace MC2Tiling
 #endif

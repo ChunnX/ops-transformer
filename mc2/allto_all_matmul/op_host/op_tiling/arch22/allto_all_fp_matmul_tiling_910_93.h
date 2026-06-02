@@ -17,14 +17,15 @@
 #define ALLTO_ALL_FP_MATMUL_TILING_910_93_H
 
 #include <string>
-#include "securec.h"
-#include "mc2_matmul_tiling_cfg.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "mc2/3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
+
 #include "../allto_all_matmul_tiling_base.h"
+#include "mc2/3rd/mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 #include "mc2/allto_all_matmul/op_kernel/arch22/allto_all_matmul_tiling_data_910_93.h"
 #include "mc2/allto_all_matmul/op_kernel/arch22/allto_all_matmul_tiling_key.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "mc2_matmul_tiling_cfg.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "securec.h"
 
 namespace MC2Tiling {
 
@@ -34,11 +35,11 @@ using namespace mc2_matmul_v3_advanced;
 class AllToAllFpMatmulTilingBaseA3 : public AllToAllMatmulTilingBase {
     friend class AllToAllFpMatmulHelper;
 
-public:
+   public:
     explicit AllToAllFpMatmulTilingBaseA3(gert::TilingContext *context);
     ~AllToAllFpMatmulTilingBaseA3() override = default;
 
-protected:
+   protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
@@ -52,7 +53,7 @@ protected:
     ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfoA3 &tilingInfo) const;
 
-private:
+   private:
     void PrintAlltoAllMatmulTilingData(AlltoAllMatmulTilingDataA3 &alltoAllMatmulTilingDataA3);
     void PrintAlltoAllMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfoA3 &tilingInfo);
     void PrintMMV3TilingData(const std::string &opName, Mc2MatmulV3TilingData &tiling);
@@ -62,14 +63,14 @@ private:
 };
 
 class AllToAllFpMatmulHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling {
-public:
+   public:
     AllToAllFpMatmulHelper(AllToAllFpMatmulTilingBaseA3 &alltoAllMatmulTilingA3, Mc2MatmulV3TilingData &data);
 
     ge::graphStatus GetShapeAttrsInfo() override;
 
-private:
+   private:
     AllToAllFpMatmulTilingBaseA3 &tilingProcesser_;
 };
 
-} // namespace MC2Tiling
+}  // namespace MC2Tiling
 #endif
