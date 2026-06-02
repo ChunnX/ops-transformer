@@ -39,22 +39,24 @@ public:
         WaitAivMte3ToAicMte1AReady();
         WaitAivMte3ToAicFixCConsumed();
         cube_.ComputeTile(tile);
-        SetAicFixToAivMte3AConsumed();
+        SetAicMte1ToAivMte3AConsumed();
         SetAicFixToAivVCReady();
     }
 
     __aicore__ inline void PrepareBeforeLoopAic()
     {
         cube_.PrepareRotationBeforeLoop();
-        SetInitialAicFixToAivMte3AConsumedCredits();
+        SetInitialAicMte1ToAivMte3AConsumedCredits();
     }
 
     __aicore__ inline void ComputeTileAiv(const TileParam &tile, const TileParam &lastTile)
     {
-        WaitAicFixToAivMte3AConsumed();
+        WaitAicMte1ToAivMte3AConsumed();
+        vec_.WaitVToMte2InputBufferReusable(tile);
         vec_.ComputeTile(tile);
         SetAivMte3ToAicMte1AReady();
         vec_.PostprocessV(tile);
+        vec_.SetVToMte2InputBufferReusable(tile);
         if (aivTileCount_ > 0U) {
             WaitAicFixToAivVCReady();
             vec_.PostprocessQk(lastTile);
@@ -77,15 +79,15 @@ public:
             SetAivMte3ToAicFixCConsumed();
             aivTileCount_ = 0U;
         }
-        DrainAicFixToAivMte3AConsumedCredits();
+        DrainAicMte1ToAivMte3AConsumedCredits();
         vec_.EndIntraCoreEvents();
     }
 
 private:
-    __aicore__ inline void SetInitialAicFixToAivMte3AConsumedCredits()
+    __aicore__ inline void SetInitialAicMte1ToAivMte3AConsumedCredits()
     {
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            SetAicFixToAivMte3AConsumed();
+            SetAicMte1ToAivMte3AConsumed();
         }
     }
 
@@ -96,10 +98,10 @@ private:
         }
     }
 
-    __aicore__ inline void DrainAicFixToAivMte3AConsumedCredits()
+    __aicore__ inline void DrainAicMte1ToAivMte3AConsumedCredits()
     {
         for (uint32_t i = 0U; i < QKV_RRC_DOUBLE_BUFFER_NUM; ++i) {
-            WaitAicFixToAivMte3AConsumed();
+            WaitAicMte1ToAivMte3AConsumed();
         }
     }
 
@@ -120,12 +122,12 @@ private:
         WaitAivToAic<PIPE_MTE1>(SYNC_A_READY);
     }
 
-    __aicore__ inline void SetAicFixToAivMte3AConsumed()
+    __aicore__ inline void SetAicMte1ToAivMte3AConsumed()
     {
-        SetAicToAiv<PIPE_FIX>(SYNC_A_CONSUMED);
+        SetAicToAiv<PIPE_MTE1>(SYNC_A_CONSUMED);
     }
 
-    __aicore__ inline void WaitAicFixToAivMte3AConsumed()
+    __aicore__ inline void WaitAicMte1ToAivMte3AConsumed()
     {
         WaitAicToAiv<PIPE_MTE3>(SYNC_A_CONSUMED);
     }
