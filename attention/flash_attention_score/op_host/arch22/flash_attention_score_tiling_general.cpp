@@ -895,20 +895,28 @@ bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
     int64_t origDataPerCore = 8L * std::min(128L, alignedS1) * alignedS2 * calcTypeSize * 2;
     int64_t totalAttnData = alignedS1 * alignedS2 * calcTypeSize;
     auto layoutType = tilingData->inputParams.get_layoutType();
-    bool isS2Pow2 = (s2Size & (s2Size - 1)) == 0;                              // S2 aligned to s2BasicBlock 128: bank conflict / cache thrashing
-    bool s2AlignOk = !isS2Pow2 || s2Size >= 4096;                               // exception: S2≥4096, workload dominates alignment overhead
-    return (l2CacheSize == B4_1_L2_CACHESIZE) &&                               // B4_1 168MB L2 only
-           (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&     // half-precision only
-           (layoutType == LAYOUT_SBH ||
-            layoutType == LAYOUT_BNSD ||
-            layoutType == LAYOUT_BSND) &&
-           dSize == 128 &&                                                      // D<128: low compute/launch; D>128: D-tiling explodes tiles
+    auto nSize = n1Size * gSize;
+
+    // BSND: S1,S2>1024, not 32-aligned (avoids tile-boundary bank conflict), N in (32,128] not 32-multiple
+    bool bsndOk = (layoutType == LAYOUT_BSND &&
+                   s1Size > 1024 && s2Size > 1024 &&
+                   s1Size % 32 != 0 && s2Size % 32 != 0 &&
+                   32 < nSize && nSize <= 128 && nSize % 32 != 0 &&
+                   dSize == 128 && 1 <= bSize && bSize <= 16);
+
+    // SBH: S1>30K, S2 in [128,256] not 32-aligned, dSize=128
+    bool sbhOk = (layoutType == LAYOUT_SBH &&
+                  dSize == 128 &&
+                  s1Size > 30000 &&
+                  128 <= s2Size && s2Size <= 256 &&
+                  s2Size % 32 != 0);
+
+    return (l2CacheSize == B4_1_L2_CACHESIZE) &&
+           (inputDtype == ge::DT_BF16 || inputDtype == ge::DT_FLOAT16) &&
            (static_cast<uint64_t>(origDataPerCore) >= perCoreL2 ||
-            static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&              // too little data: L2 sufficient, tiling pure overhead
-           ((s2Size <= 1024 && layoutType == LAYOUT_SBH) ||                    // S1Bn2gs1 SBH: S1 contiguous→all S1 OK
-            (s2Size <= 1024 && 256 <= s2Size && s1Size <= 4096 && s2AlignOk) || // S1Bn2gs1 BSND/BNSD: S2≥256, S2≠pow2, S1≤4096
-            (s2Size > 1024 && layoutType != LAYOUT_BNSD &&                    // S1s2Bn2gs1: BNSD excluded (N-stride miss)
-             256 <= s1Size && s1Size <= 3072 && s2AlignOk));                  //   S1 [256,3072], S2≠pow2
+            static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&
+           (bsndOk || sbhOk);
+}
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
