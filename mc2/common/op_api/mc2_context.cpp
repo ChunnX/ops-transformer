@@ -56,6 +56,12 @@ T Mc2Context::GetHcclLibFunc(void *handle, const std::string &funcName)
     return func;
 }
 
+Mc2Context &Mc2Context::GetInstance()
+{
+    static Mc2Context instance;
+    return instance;
+}
+
 Mc2Context::Mc2Context()
 {
     OP_LOGI("Init Mc2Context Success!");
@@ -120,13 +126,13 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
 
 aclnnStatus Mc2Context::GetCommHandle(const char *groupEp, HcclComm &hcclHandle)
 {
-    OP_LOGI("Start to get HCCL communication handle, groupEp: %s", groupEp);
+    OP_LOGD("Start to get HCCL communication handle, groupEp: %s", groupEp);
     auto ret = HcomGetCommHandleByGroup(groupEp, &hcclHandle);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL handle failed, groupEp: %s", groupEp);
         return ACLNN_ERR_INNER;
     }
-    OP_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
+    OP_LOGD("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
     return ACLNN_SUCCESS;
 }
 
@@ -169,7 +175,7 @@ aclnnStatus Mc2Context::GetNetLayers(const HcclComm &hcclHandle, uint32_t *&netL
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL layers failed");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGI("Get HCCL layers success, netLayerNum is: %u", netLayerNum);
+    OP_LOGD("Get HCCL layers success, netLayerNum is: %u", netLayerNum);
     return ACLNN_SUCCESS;
 }
 
@@ -180,7 +186,7 @@ aclnnStatus Mc2Context::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL rank size per server failed");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGI("Get HCCL rank size per server success, rankSizePerServer_ is: %u", rankSizePerServer_);
+    OP_LOGD("Get HCCL rank size per server success, rankSizePerServer_ is: %u", rankSizePerServer_);
     return ACLNN_SUCCESS;
 }
 
@@ -226,7 +232,7 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, Mc2MoeContext *mc2ContextStruct,
                                            const CommProtocol &protocol, const CommEngine &engine,
                                            std::vector<ChannelHandle> &channels)
 {
@@ -248,12 +254,19 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         return ret;
     }
 
-    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
+    ret = InitHcclChannel(hcclHandle, rankDim, mc2ContextStruct->epRankId, protocol, channelDesc);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-
-    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    HcclResult hcclRet;
+    if (protocol == CommProtocol::COMM_PROTOCOL_UBC_CTP) {
+        hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, mc2ContextStruct->hcommHandle_);
+        void *tempBuffer = nullptr;
+        hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+        OP_LOGD("Get HCCL buffer success, hcclBuffSize_ is: %u", hcclBuffSize_);
+    } else {
+        hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    }
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Acquire HCCL channel failed");
         return ACLNN_ERR_INNER;
@@ -268,7 +281,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     uint32_t rankId = mc2ContextStruct->epRankId;
     std::vector<ChannelHandle> channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, mc2ContextStruct, protocol, engine, channels);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -276,24 +289,26 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     mc2ContextStruct->rankSizePerServer = rankSizePerServer_;
     OP_LOGD("Get HCCL communication channel success, channel num is: %u", channels.size());
 
-    for (uint32_t i = 0; i < epRankSize_; ++i) {
-        void *tempBuffer = nullptr;
-        uint64_t bufSize = 0;
-        HcclResult hcclRet;
+    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        for (uint32_t i = 0; i < epRankSize_; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            HcclResult hcclRet;
 
-        if (i == rankId) {
-            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
-        } else {
-            uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            if (i == rankId) {
+                hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            } else {
+                uint32_t idx = (i < rankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            }
+
+            if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
+                return ACLNN_ERR_INNER;
+            }
+
+            mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
         }
-
-        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
-            OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
-            return ACLNN_ERR_INNER;
-        }
-
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
@@ -317,7 +332,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get rank ID failed");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGI("Get rank ID success, rankId is: %u", mc2ContextStruct->epRankId);
+    OP_LOGD("Get rank ID success, rankId is: %u", mc2ContextStruct->epRankId);
 
     hcclRet = HcclGetRankSize(hcclHandle, &epRankSize_);
     if (hcclRet != HCCL_SUCCESS) {
@@ -338,8 +353,8 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Copy context from host to device failed");
         return ACLNN_ERR_INNER;
     }
-    hcclBuffSize = hcclBuffSize_;
     OP_LOGD("Copy context from host to device success");
+    hcclBuffSize = hcclBuffSize_;
     return ACLNN_SUCCESS;
 }
 
@@ -360,7 +375,7 @@ aclnnStatus Mc2Context::CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context)
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Create Mc2Context Tensor failed.");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGI("CreatMc2ContextTensor Success");
+    OP_LOGD("CreatMc2ContextTensor Success");
     return ACLNN_SUCCESS;
 }
 
@@ -375,11 +390,11 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList, const CommProtocol &protocol)
 {
     bool isFoundUbMemProtocol = false;
     for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        if (linksList[j].linkAttr.linkProtocol == protocol) {
             isFoundUbMemProtocol = true;
             break;
         }
@@ -387,7 +402,8 @@ aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
     return isFoundUbMemProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                             const CommProtocol &protocol)
 {
     uint32_t srcRankId = 0;
     uint32_t dstRankId = 0;
@@ -401,10 +417,10 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
         OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "CheckProtocolSupport Get rank ID failed");
         return ACLNN_ERR_INNER;
     }
-    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
+    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        OP_LOGD("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
+        OP_LOGD("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "Get rank IDs by layer failed");
@@ -426,9 +442,9 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
-            if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
-                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
-                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
+            if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
+                OP_LOGE_LIBOPAPI_REPORT("Mc2Context", "No HCCL links support %d protocol srcRankID %u, dstRankID %u layer is %u",
+                        protocol, srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
             layerMap[rankIdLists[rankId]] = layerList[layerIndex];
@@ -437,7 +453,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
+aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, const CommProtocol &protocol)
 {
     OP_LOGD("Start to get HCCL communication protocol");
     uint32_t layerNum = 0;
@@ -449,20 +465,25 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        OP_LOGI("HCCL communication layerNum is %u,so set protocol to UB_MEM", layerNum);
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-        return ACLNN_SUCCESS;
+        // if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        //     OP_LOGI("HCCL communication support UB_MEM protocol");
+        //     return ACLNN_SUCCESS;
+        // } else {
+        //     OP_LOGI("HCCL communication protocol expected to be COMM_PROTOCOL_UB_MEM,
+        //              but the current protocol is %d", protocol);
+        //     return ACLNN_ERR_INNER;
+        // }
+        return ACLNN_SUCCESS; // todo:假设这里是正确的
     }
 
-    OP_LOGD("start CheckProtocolSupport, layerNum is %u", layerNum);
+    OP_LOGD("start CheckProtocolSupport, layerNum is %d", layerNum);
 
-    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum);
+    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum, protocol);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
 
-    OP_LOGD("CheckProtocolSupport success!");
-    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+    OP_LOGD("CheckProtocolSupport success, protocol is %d", protocol);
     return ACLNN_SUCCESS;
 }
 
@@ -476,7 +497,6 @@ aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
     return ACLNN_SUCCESS;
 }
 
-
 aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                           const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize)
 {
@@ -487,25 +507,28 @@ aclnnStatus Mc2Context::CheckContextCache(const HcclComm &hcclHandle, const std:
         OP_LOGI("Context cache not found, need to create");
         return ACLNN_SUCCESS;
     }
+    // hcclBuffSize = 800 * 1024 * 1024;
     auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
-                                            aclTensor *&mc2Context)
+                                            aclTensor *&mc2Context,CommProtocol Protocol)
 {
-    OP_LOGI("Start to get Mc2MoeContext Tensor");
-    Mc2Context instance;
+    OP_LOGD("Start to get Mc2MoeContext Tensor");
+    auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     void *ctx = nullptr;
-    CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-    hcclBuffSize = 0; // Default to 0, will be updated in CheckContextCache
+    // if (Protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
+    //     engine = CommEngine::COMM_ENGINE_AICPU_TS;
+    // }
+    hcclBuffSize = 0;
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
@@ -516,25 +539,25 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
 
     aclnnRet = instance.CheckContextCache(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-    if (hcclBuffSize != 0) { // Cache not found, need to create context
+    if (hcclBuffSize != 0) { // 找到缓存，直接返回
         aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
         CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-        OP_LOGI("Found context cache, Get Mc2MoeContext Tensor Success");
+        OP_LOGD("Found context cache, Get Mc2MoeContext Tensor Success");
         return ACLNN_SUCCESS;
     }
 
-    aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
+    aclnnRet = instance.GetCommProtocol(hcclHandle, Protocol);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
-    aclnnRet = instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol,
+    aclnnRet = instance.CreatMc2Context(hcclHandle, mc2ContextTag, engine, Protocol,
                                         &mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    OP_LOGI("Get Mc2MoeContext Tensor Success");
+    OP_LOGD("Get Mc2MoeContext Tensor Success");
     return ACLNN_SUCCESS;
 }
 

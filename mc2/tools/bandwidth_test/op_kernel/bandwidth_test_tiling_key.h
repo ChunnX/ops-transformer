@@ -8,9 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-/*!
+/* !
  * \file bandwidth_test_tiling_key.h
- * \brief
+ * \brief Bandwidth test tiling key definitions
  */
  
 #ifndef BANDWIDTH_TEST_TILING_KEY_H
@@ -19,13 +19,18 @@
 
 namespace BandwidthTestTiling {
 #define TILINGKEY_TPL_A5 2
+#define TILINGKEY_TPL_MTE 0
+#define TILINGKEY_TPL_URAMA 1
 
 ASCENDC_TPL_ARGS_DECL(BandwidthTest,
+    ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE,ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 
+                        TILINGKEY_TPL_MTE, TILINGKEY_TPL_URAMA),
     ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
 );
 ASCENDC_TPL_SEL(
     // A5
     ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(TILINGKEY_COMM_MODE, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_MTE, TILINGKEY_TPL_URAMA),
         ASCENDC_TPL_UINT_SEL(ARCH_TAG, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A5),
         ASCENDC_TPL_TILING_STRUCT_SEL(BandwidthTestTilingData)
     ),
