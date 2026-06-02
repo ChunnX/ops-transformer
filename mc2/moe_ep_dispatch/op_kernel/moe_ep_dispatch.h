@@ -1,3 +1,18 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_ep_dispatch.h
+ * \brief
+ */
+
 #ifndef MOE_EP_DISPATCH_H
 #define MOE_EP_DISPATCH_H
 
@@ -8,6 +23,7 @@
 #endif
 
 #include "moe_ep_dispatch_tiling_key.h"
+#include "kernel_tiling/kernel_tiling.h"
 
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
@@ -25,6 +41,10 @@ namespace MoeEpDispatchImpl {
 using namespace AscendC;
 using Mc2Aclnn::Mc2MoeContext;
 using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
+
+#ifndef ALIGN_UP
+#define ALIGN_UP(x, align) (((x) + (align)-1) & ~((align)-1))
+#endif
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 
@@ -92,11 +112,11 @@ public:
 
     __aicore__ inline void Process()
     {
-        if constexpr (NETWORK_MODE == 0) {
-            Process_Direct();
-        } else {
-            Process_Hybrid();
-        }
+        // if constexpr (NETWORK_MODE == 0) {
+        //     Process_Direct();
+        // } else {
+        //     Process_Hybrid();
+        // }
     }
 
 private:
@@ -152,6 +172,11 @@ private:
         }
     }
 
+    __aicore__ inline void HcclBarrier()
+    {
+
+    }
+
     __aicore__ inline void ResetCounters()
     {
         GM_ADDR counterBase = workspace_;
@@ -188,7 +213,7 @@ private:
         int32_t  seen_slot[MAX_TOPK];
         uint32_t n_seen = 0;
 
-        DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+        // DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
 
         for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
             int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
@@ -208,10 +233,11 @@ private:
                 continue;
             }
 
-            uint32_t slot = SetAtomicAdd<int32_t>(
-                reinterpret_cast<__gm__ int32_t*>(
-                    workspace_ + dst_rank * sizeof(int32_t)),
-                1);
+            // uint32_t slot = SetAtomicAdd<int32_t>(
+            //     reinterpret_cast<__gm__ int32_t*>(
+            //         workspace_ + dst_rank * sizeof(int32_t)),
+            //     1);
+            uint32_t slot = 0;
             seen_dst[n_seen]  = dst_rank;
             seen_slot[n_seen] = slot;
             n_seen++;
@@ -227,9 +253,9 @@ private:
         GM_ADDR dstWinBase = GetBaseWinAddrByRankId(dst_rank);
         GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
 
-        DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
-            ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
+        // DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+        //     *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+        //     ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
         PipeBarrier<PIPE_ALL>();
 
         uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
@@ -245,8 +271,8 @@ private:
         ubMeta_.SetValue(td_->cfg.topK * 2, my_rank);
         ubMeta_.SetValue(td_->cfg.topK * 2 + 1, t);
 
-        DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
-                 td_->cfg.topK * 2 + 2);
+        // DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
+        //          td_->cfg.topK * 2 + 2);
         cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(metaPtr),
                           (td_->cfg.topK * 2 + 2) * sizeof(int32_t));
     }
@@ -258,7 +284,7 @@ private:
         uint32_t my_rank = rankId_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
-            DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+            // DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
 
             for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
                 int32_t slot = cachedSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
@@ -294,21 +320,22 @@ private:
             GM_ADDR srcRankBase = localWinBase + sr * td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes;
 
             for (int32_t slotIdx = 0; slotIdx < numRecvFromSrc; ++slotIdx) {
-                uint32_t a = SetAtomicAdd<int32_t>(
-                    reinterpret_cast<__gm__ int32_t*>(actualABase), 1);
+                // uint32_t a = SetAtomicAdd<int32_t>(
+                //     reinterpret_cast<__gm__ int32_t*>(actualABase), 1);
+                uint32_t a = 0;
                 actualA_ = a + 1;
 
                 GM_ADDR slotAddr = srcRankBase + slotIdx * td_->cfg.perSlotBytes;
 
-                DataCopyPad(ubSlot_[slotIdx % 2],
-                    reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-                        *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
-                    {td_->cfg.hidden, 0, 0, 0, false});
+                // DataCopyPad(ubSlot_[slotIdx % 2],
+                //     reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                //         *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                //     {td_->cfg.hidden, 0, 0, 0, false});
 
                 uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
                 __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
-                DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
-                         td_->cfg.topK * 2 + 2);
+                // DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
+                //          td_->cfg.topK * 2 + 2);
 
                 int32_t src_rank_id    = ubMeta_.GetValue(td_->cfg.topK * 2);
                 int32_t src_token_idx  = ubMeta_.GetValue(td_->cfg.topK * 2 + 1);
@@ -319,8 +346,8 @@ private:
                 recvSrcMetaInternalGm_.SetValue(a * 3 + 2, slotIdx);
 
                 int32_t expert_local_0 = ubMeta_.GetValue(0) % td_->cfg.numLocalExperts;
-                SetAtomicAdd<int64_t>(
-                    reinterpret_cast<__gm__ int64_t*>(&numRecvPerExpertHpGm_[expert_local_0]), 1);
+                // SetAtomicAdd<int64_t>(
+                //     reinterpret_cast<__gm__ int64_t*>(&numRecvPerExpertHpGm_[expert_local_0]), 1);
             }
         }
 
@@ -361,7 +388,7 @@ private:
         uint32_t target_scaleup_mask[MAX_TOPK] = {0};
         uint32_t n_so = 0;
 
-        DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+        // DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
 
         for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
             int32_t expert = topkIdxGm_.GetValue(t * td_->cfg.topK + k);
@@ -387,9 +414,10 @@ private:
             GM_ADDR scaleoutCounterBase = workspace_
                                            + td_->cfg.epWorldSize * sizeof(int32_t)
                                            + sizeof(int32_t);
-            uint32_t slot = SetAtomicAdd<int32_t>(
-                reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + dst_scaleout * sizeof(int32_t)),
-                1);
+            // uint32_t slot = SetAtomicAdd<int32_t>(
+            //     reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + dst_scaleout * sizeof(int32_t)),
+            //     1);
+            uint32_t slot = 0;
             seen_so[n_so]          = dst_scaleout;
             seen_so_slot[n_so]     = slot;
             target_scaleup_mask[n_so] = (1u << dst_scaleup);
@@ -407,9 +435,9 @@ private:
         GM_ADDR dstWinBase = GetBaseWinAddrByRankId(proxy_rank);
         GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
 
-        DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
-            ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
+        // DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+        //     *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+        //     ubXIn_, {td_->cfg.hidden, 0, 0, 0, false});
         PipeBarrier<PIPE_ALL>();
 
         uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
@@ -426,8 +454,8 @@ private:
         ubMeta_.SetValue(td_->cfg.topK * 2 + 1, t);
         ubMeta_.SetValue(td_->cfg.topK * 2 + 2, mask);
 
-        DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
-                 td_->cfg.topK * 2 + 3);
+        // DataCopy(reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr), ubMeta_,
+        //          td_->cfg.topK * 2 + 3);
         cacheWriteThrough(reinterpret_cast<__gm__ uint8_t*>(metaPtr),
                           (td_->cfg.topK * 2 + 3) * sizeof(int32_t));
     }
@@ -439,7 +467,7 @@ private:
         uint32_t my_rank = rankId_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
-            DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
+            // DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
 
             for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
                 int32_t slot = cachedSlotIdxGm_.GetValue(t * td_->cfg.topK + k);
@@ -478,8 +506,8 @@ private:
                 uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
                 __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
 
-                DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
-                         td_->cfg.topK * 2 + 3);
+                // DataCopy(ubMeta_, reinterpret_cast<GlobalTensor<int32_t>&>(*metaPtr),
+                //          td_->cfg.topK * 2 + 3);
 
                 uint32_t mask = ubMeta_.GetValue(td_->cfg.topK * 2 + 2);
 
@@ -487,23 +515,24 @@ private:
                     uint32_t dst_su = __builtin_ctz(mask);
                     mask &= mask - 1;
 
-                    uint32_t su_slot = SetAtomicAdd<int32_t>(
-                        reinterpret_cast<__gm__ int32_t*>(
-                            workspace_ + dst_su * sizeof(int32_t)),
-                        1);
+                    // uint32_t su_slot = SetAtomicAdd<int32_t>(
+                    //     reinterpret_cast<__gm__ int32_t*>(
+                    //         workspace_ + dst_su * sizeof(int32_t)),
+                    //     1);
+                    uint32_t su_slot =0;
 
                     GM_ADDR scaleupRecvBase = localWinBase;
                     GM_ADDR scaleupDstAddr = scaleupRecvBase
                         + (dst_su * td_->numScaleoutRanks * td_->cfg.numMaxTokensPerRank + su_slot)
                         * td_->cfg.perSlotBytes;
 
-                    DataCopyPad(ubSlot_[slotIdx % 2],
-                        reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-                            *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
-                        {td_->cfg.hidden, 0, 0, 0, false});
-                    DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
-                        *reinterpret_cast<__gm__ bfloat16_t*>(scaleupDstAddr)),
-                        ubSlot_[slotIdx % 2], {td_->cfg.hidden, 0, 0, 0, false});
+                    // DataCopyPad(ubSlot_[slotIdx % 2],
+                    //     reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                    //         *reinterpret_cast<__gm__ bfloat16_t*>(slotAddr)),
+                    //     {td_->cfg.hidden, 0, 0, 0, false});
+                    // DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
+                    //     *reinterpret_cast<__gm__ bfloat16_t*>(scaleupDstAddr)),
+                    //     ubSlot_[slotIdx % 2], {td_->cfg.hidden, 0, 0, 0, false});
                     PipeBarrier<PIPE_ALL>();
                 }
             }

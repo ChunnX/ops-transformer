@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 #include "aclnn_moe_ep_dispatch.h"
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -8,17 +18,25 @@
 
 using namespace op;
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 
-static aclnnStatus CheckNotNull(const aclTensor* context,
-                                 const aclTensor* x,
-                                 const aclTensor* topkIdx,
-                                 const aclTensor* topkWeights,
-                                 const aclTensor* cachedHandleDstBufferSlotIdx,
-                                 aclTensor* numRecvTokensPerRankHostPinned,
-                                 aclTensor* numRecvTokensPerExpertHostPinned,
-                                 aclTensor* dstBufferSlotIdx,
-                                 aclTensor* recvSrcMetadataInternal) {
+enum NnopbaseHcclServerType {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
+static aclnnStatus CheckNotNull(const aclTensor* context, const aclTensor* x, const aclTensor* topkIdx,
+                                const aclTensor* topkWeights, const aclTensor* cachedHandleDstBufferSlotIdx,
+                                aclTensor* numRecvTokensPerRankHostPinned,
+                                aclTensor* numRecvTokensPerExpertHostPinned, aclTensor* dstBufferSlotIdx,
+                                aclTensor* recvSrcMetadataInternal)
+{
     CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(x != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerRankHostPinned != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -34,11 +52,11 @@ static aclnnStatus CheckNotNull(const aclTensor* context,
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId,
-                                int64_t numExperts, int64_t numMaxTokensPerRank,
-                                int64_t cclBufferSize,
-                                int64_t expertAlignment, bool doCpuSync,
-                                const aclTensor* cachedHandleDstBufferSlotIdx) {
+static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+                               int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+                               int64_t expertAlignment, bool doCpuSync,
+                               const aclTensor* cachedHandleDstBufferSlotIdx)
+{
     CHECK_RET(epWorldSize > 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(epRankId >= 0 && epRankId < epWorldSize, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numExperts % epWorldSize == 0, ACLNN_ERR_PARAM_INVALID);
@@ -52,68 +70,45 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId,
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus MoeEpDispatchGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x,
-    const aclTensor* topkIdx, const aclTensor* topkWeights,
-    const aclTensor* cachedHandleDstBufferSlotIdx,
-    int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
-    int64_t expertAlignment, bool doCpuSync,
-    aclTensor* numRecvTokensPerRankHostPinned,
-    aclTensor* numRecvTokensPerExpertHostPinned,
-    aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal,
-    uint64_t* workspaceSize, aclOpExecutor** executor) {
-    OP_LOGD("MoeEpDispatch", "Begin to do MoeEpDispatchGetWorkspaceSize");
-    CHECK_RET(CheckNotNull(context, x, topkIdx, topkWeights,
-                            cachedHandleDstBufferSlotIdx,
-                            numRecvTokensPerRankHostPinned,
-                            numRecvTokensPerExpertHostPinned,
-                            dstBufferSlotIdx, recvSrcMetadataInternal),
-              ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
-                          cclBufferSize, expertAlignment, doCpuSync,
-                          cachedHandleDstBufferSlotIdx),
-              ACLNN_ERR_PARAM_INVALID);
-
-    return aclnnInnerMoeEpDispatchGetWorkspaceSize(
-        context, x, topkIdx, topkWeights,
-        cachedHandleDstBufferSlotIdx,
-        epWorldSize, epRankId,
-        numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync,
-        numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
-        dstBufferSlotIdx, recvSrcMetadataInternal,
-        workspaceSize, executor);
-}
-
 aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x,
-    const aclTensor* topkIdx, const aclTensor* topkWeights,
-    const aclTensor* cachedHandleDstBufferSlotIdx,
-    int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
-    int64_t expertAlignment, bool doCpuSync,
-    aclTensor* numRecvTokensPerRankHostPinned,
-    aclTensor* numRecvTokensPerExpertHostPinned,
-    aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal,
-    uint64_t* workspaceSize, aclOpExecutor** executor) {
-    return MoeEpDispatchGetWorkspaceSize(
-        context, x, topkIdx, topkWeights,
-        cachedHandleDstBufferSlotIdx,
-        epWorldSize, epRankId,
+    const aclTensor* context, const aclTensor* x, const aclTensor* topkIdx, const aclTensor* topkWeights,
+    const aclTensor* cachedHandleDstBufferSlotIdx, int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, int64_t expertAlignment,
+    bool doCpuSync, aclTensor* numRecvTokensPerRankHostPinned, aclTensor* numRecvTokensPerExpertHostPinned,
+    aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal, uint64_t* workspaceSize,
+    aclOpExecutor** executor)
+{
+    OP_LOGD("aclnnMoeEpDispatch WorkspaceSize start");
+
+    auto retNotNull = CheckNotNull(context, x, topkIdx, topkWeights, cachedHandleDstBufferSlotIdx,
+                                        numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
+                                        dstBufferSlotIdx, recvSrcMetadataInternal);
+    CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
+
+    auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize,
+                                 expertAlignment, doCpuSync, cachedHandleDstBufferSlotIdx);
+    CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
+
+    aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeEpDispatchGetWorkspaceSize(
+        context, x, topkIdx, topkWeights, cachedHandleDstBufferSlotIdx,epWorldSize, epRankId,
         numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync,
-        numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
-        dstBufferSlotIdx, recvSrcMetadataInternal,
-        workspaceSize, executor);
+        numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned, dstBufferSlotIdx,
+        recvSrcMetadataInternal, workspaceSize, executor);
+    
+    return getWorkspaceSizesRes;
 }
 
-enum NnopbaseHcclServerType { NNOPBASE_HCCL_SERVER_TYPE_MTE = 0, NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1 };
-extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
-
-aclnnStatus aclnnMoeEpDispatch(
-    void* workspace, uint64_t workspaceSize,
-    aclOpExecutor* executor, aclrtStream stream) {
-    NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    return aclnnInnerMoeEpDispatch(workspace, workspaceSize, executor, stream);
+aclnnStatus aclnnMoeEpDispatch(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
+{
+    OP_LOGD("aclnnMoeEpDispatch start");
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
+    aclnnStatus ret = aclnnInnerMoeEpDispatch(workspace, workspaceSize, executor, stream);
+    OP_LOGD("aclnnMoeEpDispatch success");
+    return ret;
 }
 
-}  // extern "C"
+#ifdef __cplusplus
+}
+#endif  // extern "C"
