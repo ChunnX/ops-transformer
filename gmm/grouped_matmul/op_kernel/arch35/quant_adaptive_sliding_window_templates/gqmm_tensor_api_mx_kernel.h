@@ -19,7 +19,7 @@
 
 #include <stdio.h>
 
-#include "blaze/gemm/block/block_mmad_qbmm_mx.h"
+#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/kernel/kernel_qgmm_mx.h"
 #include "../../grouped_matmul_utils.h"
 #include "../grouped_matmul_tiling_data_apt.h"
@@ -56,19 +56,28 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using LayoutC = yLayout;
     using ProblemShape = Blaze::Gemm::MatmulShape;
     using BlockMmadPolicy = Blaze::Gemm::MatmulWithScaleMx<0>;
-    using BlockMmad =
-        Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC, BiasType,
-                                      LayoutC>;
+    using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmadQGmmMx<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType,
+                                                              LayoutC, BiasType, LayoutC>;
     using BlockEpilogue = void;
-    using GmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, BlockMmad, BlockEpilogue>;
-    using Params = typename GmmKernel::Params;
-    using GMMTiling = typename GmmKernel::GMMTiling;
+    using QgmmKernel = Blaze::Gemm::Kernel::KernelQGmmMx<ProblemShape, QgmmBlockMmad, BlockEpilogue>;
+    using Params = typename QgmmKernel::Params;
+    using GMMTiling = typename QgmmKernel::GMMTiling;
 
-    GMMTiling gmmParams{gmmBaseParamsIn->groupNum, mmTilingDataIn->m,          mmTilingDataIn->n,
-                        mmTilingDataIn->k,         mmTilingDataIn->baseM,      mmTilingDataIn->baseN,
-                        mmTilingDataIn->baseK,     mmTilingDataIn->kAL1,       mmTilingDataIn->kBL1,
-                        mmTilingDataIn->scaleKAL1, mmTilingDataIn->scaleKBL1,  mmTilingDataIn->isBias,
-                        mmTilingDataIn->dbL0C,     gmmBaseParamsIn->groupType, gmmBaseParamsIn->groupListType};
+    GMMTiling gmmParams{static_cast<uint32_t>(gmmBaseParamsIn->groupNum),
+                        static_cast<uint32_t>(mmTilingDataIn->m),
+                        static_cast<uint32_t>(mmTilingDataIn->n),
+                        static_cast<uint32_t>(mmTilingDataIn->k),
+                        static_cast<uint32_t>(mmTilingDataIn->baseM),
+                        static_cast<uint32_t>(mmTilingDataIn->baseN),
+                        static_cast<uint32_t>(mmTilingDataIn->baseK),
+                        static_cast<uint32_t>(mmTilingDataIn->kAL1),
+                        static_cast<uint32_t>(mmTilingDataIn->kBL1),
+                        static_cast<uint32_t>(mmTilingDataIn->scaleKAL1),
+                        static_cast<uint32_t>(mmTilingDataIn->scaleKBL1),
+                        static_cast<uint8_t>(mmTilingDataIn->isBias),
+                        static_cast<uint8_t>(mmTilingDataIn->dbL0C),
+                        static_cast<int8_t>(gmmBaseParamsIn->groupType),
+                        static_cast<uint8_t>(gmmBaseParamsIn->groupListType)};
 
     if ASCEND_IS_AIC {
         if (AscendC::GetBlockIdx() == 0) {
@@ -116,7 +125,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
             AscendC::printf("[zzzlog][gqmm_tensor_api][L111] before gmm(params)\n");
         }
     }
-    GmmKernel gmm;
+    QgmmKernel gmm;
     gmm(params);
     if ASCEND_IS_AIC {
         if (AscendC::GetBlockIdx() == 0) {
