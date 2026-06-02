@@ -31,35 +31,35 @@ namespace optiling {
 
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, 
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Shape of tensor query is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, 
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Desc of tensor query is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, 
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Shape of tensor key is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, 
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Desc of tensor key is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, 
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Shape of tensor value is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, 
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Desc of tensor value is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, 
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Shape of tensor output is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, 
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [Desc of tensor output is nullptr]"),
                 return ge::GRAPH_FAILED);
@@ -69,7 +69,7 @@ ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.numHeads == nullptr, 
+    OP_CHECK_IF(opParamInfo_.numHeads == nullptr,
                 OP_LOGE(opName_,"The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr numHeads is nullptr]"),
                 return ge::GRAPH_FAILED);
@@ -77,43 +77,43 @@ ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr scaleValue is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.kvHeadNums == nullptr, 
+    OP_CHECK_IF(opParamInfo_.kvHeadNums == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr kvHeadNums is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, 
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
-                        "the reason is: [attr layout is nullptr]"), 
+                        "the reason is: [attr layout is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.blockSize == nullptr, 
+    OP_CHECK_IF(opParamInfo_.blockSize == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr blockSize is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.antiquantMode == nullptr, 
+    OP_CHECK_IF(opParamInfo_.antiquantMode == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr antiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxLseFlag == nullptr, 
+    OP_CHECK_IF(opParamInfo_.softmaxLseFlag == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr softmaxLseFlag is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.keyAntiquantMode == nullptr, 
+    OP_CHECK_IF(opParamInfo_.keyAntiquantMode == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr keyAntiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valueAntiquantMode == nullptr, 
+    OP_CHECK_IF(opParamInfo_.valueAntiquantMode == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr valueAntiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.innerPrecise == nullptr, 
+    OP_CHECK_IF(opParamInfo_.innerPrecise == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr innerPrecise is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, 
+    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                        "the reason is: [attr queryQuantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.pseType == nullptr, 
+    OP_CHECK_IF(opParamInfo_.pseType == nullptr,
                 OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
                         "the reason is: [attr pseType is nullptr]"),
                 return ge::GRAPH_FAILED);
@@ -211,7 +211,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
     if (shapeSize <= 0) {
         OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
-                "%s's shape size is %ld, it should be greater than 0.", 
+                "%s's shape size is %ld, it should be greater than 0.",
                 ACTUAL_SEQ_Q_LEN_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
     }
@@ -877,7 +877,7 @@ ge::graphStatus FiaInfoParser::GetRopeMode()
         return ge::GRAPH_SUCCESS;
     }
     if (qkHeadDim_ < vHeadDim_) {
-        OP_LOGE(opName_, "In op [FusedInferAttentionScore], " 
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
                 "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)",
                 qkHeadDim_, vHeadDim_);
         return ge::GRAPH_FAILED;
@@ -1078,8 +1078,10 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
     if (tmpAntiquantMode == 6) {
         if (systemPrefixFlag_) {
             if (tmpAntiquant.GetDimNum() != 5) {
-                OP_LOGE(opName_, "In op [FusedInferAttentionScore], pseType is %d, it should be 2 or 3.",
-                        pseType_);
+                OP_LOGE(opName_,
+                        "In op [FusedInferAttentionScore], "
+                        "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.",
+                        tmpAntiquant.GetDimNum());
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
