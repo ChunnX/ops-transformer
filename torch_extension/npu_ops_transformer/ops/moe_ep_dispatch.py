@@ -1,3 +1,12 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 import torch
 import torch_npu
 from torch.library import impl
@@ -13,35 +22,42 @@ class MoeEpDispatchOpBuilder(OpBuilder):
         return ['ops/csrc/moe_ep_dispatch.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_ep_dispatch("
-               "Tensor context, Tensor x, Tensor? topk_idx, Tensor? topk_weights, "
-               "Tensor? cached_handle_dst_buffer_slot_idx, "
-               "int ep_world_size, int ep_rank_id, "
+        return "npu_moe_ep_dispatch(Tensor context, Tensor x, Tensor? topk_idx, Tensor? topk_weights, "
+               "Tensor? cached_handle_dst_buffer_slot_idx, int ep_world_size, int ep_rank_id, "
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, "
-               "*, int expert_alignment=1, bool do_cpu_sync=True"
-               ") -> (Tensor, Tensor, Tensor, Tensor)"
+               "*, int expert_alignment=1, bool do_cpu_sync=True) -> (Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_ep_dispatch_meta(context, x, topk_idx, topk_weights,
-                                     cached_handle_dst_buffer_slot_idx,
-                                     ep_world_size, ep_rank_id,
-                                     num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-                                     *, expert_alignment=1, do_cpu_sync=True):
+        def npu_moe_ep_dispatch_meta(context, x, topk_idx, topk_weights, cached_handle_dst_buffer_slot_idx,
+                                     ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
+                                     ccl_buffer_size, *, expert_alignment=1, do_cpu_sync=True):
+            torch._check(
+                ep_world_size != 0,
+                lambda: (
+                    f"ep_world_size should not be 0, "
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
+
             num_tokens = x.shape[0]
-            top_k = 8
+            # top_k = 8
             if topk_idx is not None:
                 top_k = topk_idx.shape[1]
-            elif cached_handle_dst_buffer_slot_idx is not None:
+            else:
                 top_k = cached_handle_dst_buffer_slot_idx.shape[1]
+            # elif cached_handle_dst_buffer_slot_idx is not None:
+            #     top_k = cached_handle_dst_buffer_slot_idx.shape[1]
             num_local_experts = num_experts // ep_world_size
             upper_a = ep_world_size * num_max_tokens_per_rank
-            return (
-                x.new_empty(ep_world_size, dtype=torch.int32),
-                x.new_empty(num_local_experts, dtype=torch.int64),
-                x.new_empty(num_tokens, top_k, dtype=torch.int32),
-                x.new_empty(upper_a, 3, dtype=torch.int32),
-            )
+
+            num_recv_tokens_per_rank_host_pinned = x.new_empty((ep_world_size,), dtype=torch.int32)
+            num_recv_tokens_per_expert_host_pinned = x.new_empty((num_local_experts,), dtype=torch.int64)
+            dst_buffer_slot_idx = x.new_empty((num_tokens, top_k), dtype=torch.int32)
+            recv_src_metadata_internal = x.new_empty((upper_a, 3), dtype=torch.int32)
+
+            return (num_recv_tokens_per_rank_host_pinned, num_recv_tokens_per_expert_host_pinned,
+                    dst_buffer_slot_idx, recv_src_metadata_internal)
 
 
 class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
@@ -52,35 +68,37 @@ class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
         return ['ops/csrc/moe_ep_dispatch_epilogue.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_ep_dispatch_epilogue("
-               "Tensor context, Tensor dst_buffer_slot_idx, Tensor recv_src_metadata_internal, "
-               "Tensor num_recv_tokens_per_rank_host_pinned, "
-               "Tensor num_recv_tokens_per_expert_host_pinned, "
-               "int ep_world_size, int ep_rank_id, "
+        return "npu_moe_ep_dispatch_epilogue(Tensor context, Tensor dst_buffer_slot_idx, "
+               "Tensor recv_src_metadata_internal, Tensor num_recv_tokens_per_rank_host_pinned, "
+               "Tensor num_recv_tokens_per_expert_host_pinned, int ep_world_size, int ep_rank_id, "
                "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, "
-               "*, int expert_alignment=1"
-               ") -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
+               "*, int expert_alignment=1) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
 
-    def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_moe_ep_dispatch_epilogue_meta(context, dst_buffer_slot_idx, recv_src_metadata_internal,
-                                               num_recv_per_rank_hp, num_recv_per_expert_hp,
-                                               ep_world_size, ep_rank_id,
-                                               num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-                                               *, expert_alignment=1):
-            top_k = dst_buffer_slot_idx.shape[1]
-            num_local_experts = num_experts // ep_world_size
-            upper_a = ep_world_size * num_max_tokens_per_rank
-            hidden = upper_a
-            bf16 = torch.bfloat16
-            return (
-                dst_buffer_slot_idx.new_empty(upper_a, hidden, dtype=bf16),
-                dst_buffer_slot_idx.new_empty(upper_a, top_k, dtype=torch.int32),
-                dst_buffer_slot_idx.new_empty(upper_a, top_k, dtype=torch.float32),
-                dst_buffer_slot_idx.new_empty(upper_a, 3, dtype=torch.int32),
-                dst_buffer_slot_idx.new_empty(ep_world_size, dtype=torch.int32),
-                dst_buffer_slot_idx.new_empty(num_local_experts, dtype=torch.int64),
-            )
+    # def register_meta(self):
+    #     @impl(AS_LIBRARY, self.name, "Meta")
+    #     def npu_moe_ep_dispatch_epilogue_meta(context, dst_buffer_slot_idx, recv_src_metadata_internal,
+    #                                           num_recv_per_rank_hp, num_recv_per_expert_hp,
+    #                                           ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
+    #                                           ccl_buffer_size, *, expert_alignment=1):
+    #         top_k = dst_buffer_slot_idx.shape[1]
+    #         num_local_experts = num_experts // ep_world_size
+    #         upper_a = ep_world_size * num_max_tokens_per_rank
+    #         hidden = upper_a
+    #         bf16 = torch.bfloat16
+
+    #         recv_x, recv_topk_idx, recv_topk_weights, \
+    #         recv_src_meta, num_recv_per_rank, num_recv_per_expert
+
+    #         return (
+    #             recv_x, recv_topk_idx, recv_topk_weights,
+    #     recv_src_metadata, num_recv_tokens_per_rank, num_recv_tokens_per_expert
+    #             dst_buffer_slot_idx.new_empty(upper_a, hidden, dtype=bf16),
+    #             dst_buffer_slot_idx.new_empty(upper_a, top_k, dtype=torch.int32),
+    #             dst_buffer_slot_idx.new_empty(upper_a, top_k, dtype=torch.float32),
+    #             dst_buffer_slot_idx.new_empty(upper_a, 3, dtype=torch.int32),
+    #             dst_buffer_slot_idx.new_empty(ep_world_size, dtype=torch.int32),
+    #             dst_buffer_slot_idx.new_empty(num_local_experts, dtype=torch.int64),
+    #         )
 
 
 moe_ep_dispatch_op_builder = MoeEpDispatchOpBuilder()
@@ -101,20 +119,20 @@ def npu_moe_ep_dispatch(context, x, topk_idx, topk_weights,
         cached_handle_dst_buffer_slot_idx,
         ep_world_size, ep_rank_id,
         num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-        expert_alignment, do_cpu_sync,
+        expert_alignment, do_cpu_sync
     )
 
 
 @impl(AS_LIBRARY, moe_ep_dispatch_epilogue_op_builder.name, "PrivateUse1")
 def npu_moe_ep_dispatch_epilogue(context, dst_buffer_slot_idx, recv_src_metadata_internal,
-                                  num_recv_per_rank_hp, num_recv_per_expert_hp,
-                                  ep_world_size, ep_rank_id,
-                                  num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-                                  *, expert_alignment=1):
+                                 num_recv_per_rank_hp, num_recv_per_expert_hp,
+                                 ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
+                                 ccl_buffer_size, *, expert_alignment=1, recv_x, recv_topk_idx,
+                                 recv_topk_weights, recv_src_metadata, num_recv_tokens_per_rank,
+                                 num_recv_tokens_per_expert):
     return op_module_epilogue.npu_moe_ep_dispatch_epilogue(
-        context, dst_buffer_slot_idx, recv_src_metadata_internal,
-        num_recv_per_rank_hp, num_recv_per_expert_hp,
-        ep_world_size, ep_rank_id,
-        num_experts, num_max_tokens_per_rank, ccl_buffer_size,
-        expert_alignment,
+        context, dst_buffer_slot_idx, recv_src_metadata_internal, num_recv_per_rank_hp,
+        num_recv_per_expert_hp, ep_world_size, ep_rank_id, num_experts, num_max_tokens_per_rank,
+        ccl_buffer_size, expert_alignment, recv_x, recv_topk_idx, recv_topk_weights,
+        recv_src_metadata, num_recv_tokens_per_rank, num_recv_tokens_per_expert
     )
