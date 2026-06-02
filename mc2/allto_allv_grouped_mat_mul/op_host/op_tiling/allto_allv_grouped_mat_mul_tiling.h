@@ -105,7 +105,8 @@ public:
     bool AnalyzeInputs() override { return true; }
     void Reset() override {}
     ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-                                    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype);
+                                    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype,
+                                    uint32_t expertNum);
     ge::graphStatus Process();
 private:
     AlltoAllvGmmTiling& parent_;
