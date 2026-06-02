@@ -151,7 +151,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
-    // epRankId_ = tilingData->rank_id; // 获取当前rank ID
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
@@ -167,7 +166,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     mode_ = tilingData->mode;
 
     // ============ 初始化窗口状态 ============
-    // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
