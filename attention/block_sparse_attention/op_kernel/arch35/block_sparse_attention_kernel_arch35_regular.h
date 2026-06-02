@@ -232,6 +232,7 @@ public:
                 gmOffsetK = kBOffset + kvHeadIdx * strideKVN;
                 gmOffsetV = vBOffset + kvHeadIdx * strideKVN;
             } 
+
             // the actual x block num of cur batch_, calc by actual qseqlen
             uint32_t xBlockNumAval = static_cast<uint32_t>(CeilDiv(qSeqlen, static_cast<int64_t>(blockShapeX_)));
             uint32_t xBlockSize = (xBlockIdx == xBlockNumAval - 1) ?
