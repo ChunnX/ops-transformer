@@ -243,10 +243,12 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeLayout()
     OP_LOGD(context_, "get input_layout [%s].", inputLayout);
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
                valueShape.GetDimNum() != layoutLen,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid layout[%s].", inputLayout), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                   "The layout string length should match the number of dims of input query, key and value"), return false);
     OP_CHECK_IF(!Analyze3DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape)||
                !Analyze4DimLayout(queryShape, keyShape, valueShape, layoutLen, queryRopeShape),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "get unsupported layout: %s", inputLayout), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", inputLayout,
+                   "The input layout should be one of BSH, SBH, BSND, BNSD or TND"), return false);
     if (s1Size > std::numeric_limits<int32_t>::max() || s2Size > std::numeric_limits<int32_t>::max()) {
         OP_LOGE(context_, "s1Size[%ld] and s2Size[%ld] config error, both should not greater than max int value.",
             s1Size, s2Size);
@@ -410,7 +412,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             tilingKeyLayout = LayoutType::LAYOUT_SBH;
         } else if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[DIM_NUM_2] == 'D') {
             OP_CHECK_IF(!AnalyzeTndLayout(queryShape, keyShape, valueShape),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "Analyze tnd layout error."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "input_layout", "TND",
+                   "Failed to analyze TND layout, the shapes of input query, key and value are invalid"), return false);
             h1 = n1Size * dSize;
             h2 = n2Size * dSize;
             h3 = n2Size * dSizeV;
@@ -1376,7 +1379,8 @@ bool FlashAttentionScoreTilingRegbase::GetSparseInfo(SparseEnum &sparseType)
 bool FlashAttentionScoreTilingRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray, int64_t bIdx)
 {
     OP_CHECK_IF(sparseValidArray.empty(),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
+                   "The size of sparseValidArray should be larger than 0"), return false);
     uint8_t sparseType = inputParamsRegbase_->get_sparseType();
     if (sparseType == static_cast<uint8_t>(SparseEnum::PREFIX)) {
         for (int64_t i = 0; i < static_cast<int64_t>(sparseValidArray.size()); i++) {
@@ -1418,10 +1422,13 @@ bool FlashAttentionScoreTilingRegbase::PartitionSparseData(const std::vector<int
                                                         int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult)
 {
     OP_CHECK_IF(partitionResult.empty(),
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "partitionResult size should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "partitionResult", "0",
+                   "The size of partitionResult should be larger than 0"), return false);
 
     OP_CHECK_IF(sparseRollingArraySum <= 0,
-               OPS_REPORT_VECTOR_INNER_ERR(opName, "sparseRollingArraySum should be larger than 0."), return false);
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseRollingArraySum",
+                   std::to_string(sparseRollingArraySum).c_str(),
+                   "The value of sparseRollingArraySum should be larger than 0"), return false);
     int64_t s1OuterCutEachCore = loadMaxEachCore / sparseRollingArraySum;
     int64_t s1OuterLoadEachCore = s1OuterCutEachCore * sparseRollingArraySum;
     int64_t s1OuterNumEachCore = s1OuterCutEachCore * sparseRollingArray.size();
@@ -1547,7 +1554,8 @@ bool FlashAttentionScoreTilingRegbase::SetSparseStartIdx(const std::vector<int64
     std::vector<int64_t> lastValidPartitionResult(validAivNum, totalSize);
     int64_t sparseArraySum = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
     int64_t loadTotal = sparseArraySum * (totalSize / sparseValidArray.size());
-    OP_CHECK_IF(validAivNum <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "validAivNum should be larger than 0."),
+    OP_CHECK_IF(validAivNum <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "validAivNum",
+               std::to_string(validAivNum).c_str(), "The value of validAivNum should be larger than 0"),
                return false);
     int64_t loadEachCoreLowerBound = loadTotal / validAivNum - 1;
     int64_t loadEachCoreUpperBound =
