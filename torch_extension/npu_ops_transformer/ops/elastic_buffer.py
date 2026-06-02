@@ -1,9 +1,17 @@
+import os
 import torch
 import torch.distributed as dist
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
 
+from .update_context_by_hccl_channel import update_context_by_hccl_channel
+
 _op = torch.ops.npu_ops_transformer
+
+
+class IntWrapper:
+    def __init__(self, value=0):
+        self.value = value
 
 
 @dataclass
@@ -22,13 +30,6 @@ class EPHandle:
         return int(self.num_recv_tokens_per_rank.sum().item())
 
 
-def _get_hccl_info(group: dist.ProcessGroup) -> Tuple[str, int, int]:
-    rank = dist.get_rank(group)
-    world = dist.get_world_size(group)
-    backend = group._get_backend(torch.device("npu"))
-    return backend.get_hccl_comm_name(rank), world, rank
-
-
 class _Topology:
     __slots__ = ("num_scaleup_ranks", "num_scaleout_ranks", "intra_bw_GBps", "inter_bw_GBps")
 
@@ -42,7 +43,7 @@ class _Topology:
 class MoEElasticBuffer:
     def __init__(
         self,
-        group: dist.ProcessGroup,
+        group,
         num_max_tokens_per_rank: int,
         hidden: int,
         num_topk: int,
@@ -50,15 +51,18 @@ class MoEElasticBuffer:
         *,
         expert_alignment: int = 1,
     ):
-        self._group_ep, self._ep_world_size, self._ep_rank_id = _get_hccl_info(group)
-
-        assert self._ep_world_size > 1
-        assert 0 <= self._ep_rank_id < self._ep_world_size
-        assert num_experts % self._ep_world_size == 0, \
-            f"num_experts({num_experts}) must be divisible by ep_world_size({self._ep_world_size})"
+        self.group = group
+        self.rank_id = torch.distributed.get_rank(group)
+        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
+        self.ccl_buffer_size = IntWrapper()
+        self.ep_world_size = IntWrapper()
+        context_struct_size = (2 + 1024)
+        context_tensor_size = ((context_struct_size * 8) + 3) // 4
+        self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
+        update_context_by_hccl_channel(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
 
         per_slot_bytes = ((hidden * 2 + 511) // 512) * 512
-        win_need = self._ep_world_size * num_max_tokens_per_rank * per_slot_bytes
+        win_need = self.ep_world_size * num_max_tokens_per_rank * per_slot_bytes
         self._check_hccl_buffsize(win_need)
 
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -66,8 +70,7 @@ class MoEElasticBuffer:
         self.num_topk = num_topk
         self.num_experts = num_experts
         self.expert_alignment = expert_alignment
-        self.group = group
-        self.topology = _Topology(self._ep_world_size)
+        self.topology = _Topology(self.ep_world_size)
         self._host_pinned_counter = None
 
     def dispatch(
@@ -100,9 +103,10 @@ class MoEElasticBuffer:
         num_recv_per_rank_hp, num_recv_per_expert_hp, \
             dst_slot, recv_src_meta_internal = \
             _op.npu_moe_ep_dispatch(
-                x, topk_idx, topk_weights, cached_dst_slot,
-                self._group_ep, self._ep_world_size, self._ep_rank_id,
-                ne, nm, expert_alignment=ea,
+                self._context, x, topk_idx, topk_weights, cached_dst_slot,
+                self.ep_world_size, self.rank_id,
+                ne, nm, self._ccl_buffer_size.value,
+                expert_alignment=ea,
                 do_cpu_sync=do_cpu_sync and not cached,
             )
 
@@ -114,27 +118,30 @@ class MoEElasticBuffer:
                 self._host_pinned_counter = HostPinnedCounter()
             actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
         else:
-            actual_a = self._ep_world_size * nm
+            actual_a = self.ep_world_size * nm
 
-        recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)
-        recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)
-        recv_topk_weights = torch.empty((actual_a, self.num_topk), dtype=torch.float32, device=x.device)
-        recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)
-        num_recv_per_rank = torch.empty((self._ep_world_size,), dtype=torch.int32, device=x.device)
-        num_recv_per_expert = torch.empty((ne // self._ep_world_size,), dtype=torch.int64, device=x.device)
+        recv_x = torch.empty((actual_a, self.hidden), dtype=torch.bfloat16, device=x.device)	 
+        recv_topk_idx = torch.empty((actual_a, self.num_topk), dtype=torch.int32, device=x.device)	 
+        recv_topk_weights = torch.empty((actual_a, self.num_topk), dtype=torch.float32, device=x.device)	 
+        recv_src_meta = torch.empty((actual_a, 3), dtype=torch.int32, device=x.device)	 
+        num_recv_per_rank = torch.empty((self.ep_world_size,), dtype=torch.int32, device=x.device)	 
+        num_recv_per_expert = torch.empty((ne // self.ep_world_size,), dtype=torch.int64, device=x.device)
 
-        _op.npu_moe_ep_dispatch_epilogue_(
-            dst_slot, recv_src_meta_internal,
-            num_recv_per_rank_hp, num_recv_per_expert_hp,
-            self._group_ep, self._ep_world_size, self._ep_rank_id,
-            ne, nm, expert_alignment=ea,
-            recv_x=recv_x,
-            recv_topk_idx=recv_topk_idx,
-            recv_topk_weights=recv_topk_weights,
-            recv_src_metadata=recv_src_meta,
-            num_recv_tokens_per_rank=num_recv_per_rank,
-            num_recv_tokens_per_expert=num_recv_per_expert,
-        )
+        recv_x, recv_topk_idx, recv_topk_weights, \
+            recv_src_meta, num_recv_per_rank, num_recv_per_expert = \
+            _op.npu_moe_ep_dispatch_epilogue(
+                self._context, dst_slot, recv_src_meta_internal,
+                num_recv_per_rank_hp, num_recv_per_expert_hp,
+                self.ep_world_size, self.rank_id,
+                ne, nm, self._ccl_buffer_size.value,
+                expert_alignment=ea,
+                recv_x=recv_x, 
+                recv_topk_idx=recv_topk_idx, 
+                recv_topk_weights=recv_topk_weights, 
+                recv_src_metadata=recv_src_meta, 
+                num_recv_tokens_per_rank=num_recv_per_rank, 
+                num_recv_tokens_per_expert=num_recv_per_expert,
+            )
 
         new_handle = EPHandle(
             dst_buffer_slot_idx=dst_slot,
@@ -157,14 +164,14 @@ class MoEElasticBuffer:
         bias_0, bias_1 = self._unpack_bias(bias)
         assert bias_0 is None and bias_1 is None, "bias not supported in first release"
 
-        combined_x, combined_topk_weights = _op.npu_moe_ep_combine(
-            x,
+combined_x, combined_topk_weights = _op.npu_moe_ep_combine(
+            self._context, x,
             handle.dst_buffer_slot_idx,
             handle.recv_src_metadata,
             handle.num_recv_tokens_per_rank,
             topk_weights, bias_0, bias_1,
-            self._group_ep, self._ep_world_size, self._ep_rank_id,
-            handle.num_experts, handle.num_max_tokens_per_rank,
+            self.ep_world_size, self.rank_id,
+            handle.num_experts, handle.num_max_tokens_per_rank, self._ccl_buffer_size.value,
         )
         return combined_x, combined_topk_weights
 
@@ -179,12 +186,11 @@ class MoEElasticBuffer:
         raise TypeError(f"unsupported bias type: {type(bias)}")
 
     def _check_hccl_buffsize(self, need_bytes: int):
-        import os
         avail = int(os.environ.get("HCCL_BUFFSIZE", str(200 * 1024 * 1024)))
         if need_bytes > avail:
             raise RuntimeError(
                 f"HCCL_BUFFSIZE={avail} insufficient; need {need_bytes} for "
-                f"ep={self._ep_world_size} x num_max_tokens_per_rank x per_slot_bytes")
+                f"ep={self.ep_world_size} x num_max_tokens_per_rank x per_slot_bytes")
 
     def destroy(self):
         if self._host_pinned_counter is not None:

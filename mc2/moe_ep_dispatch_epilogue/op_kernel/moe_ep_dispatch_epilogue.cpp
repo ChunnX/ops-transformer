@@ -5,7 +5,7 @@
 #endif
 
 #include "moe_ep_dispatch_epilogue_tiling_key.h"
-#include "moe_ep_dispatch_epilogue_tiling_data.h"
+#include "moe_ep_dispatch_epilogue_tiling.h"
 #include "moe_ep_dispatch_epilogue.h"
 
 #if __has_include("arch35/moe_ep_dispatch_epilogue_arch35.h")
@@ -19,7 +19,7 @@ using namespace AscendC;
 extern "C" {
 
 __global__ __aicore__ void moe_ep_dispatch_epilogue(
-    GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
+    GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
     GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
     GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
     GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
@@ -31,7 +31,7 @@ __global__ __aicore__ void moe_ep_dispatch_epilogue(
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchEpilogueTilingData, tilingData, tilingGM);
     KernelDispatchEpilogue op;
-    op.Init(dstBufferSlotIdx, recvSrcMetadataInternal,
+    op.Init(context, dstBufferSlotIdx, recvSrcMetadataInternal,
             numRecvPerRankHp, numRecvPerExpertHp,
             recvX, recvTopkIdx, recvTopkWeights,
             recvSrcMetadata, numRecvPerRank, numRecvPerExpert,

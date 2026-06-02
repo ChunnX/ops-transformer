@@ -17,11 +17,21 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "moe_ep_dispatch_tiling_data.h"
+#include "mc2_moe_context.h"
+#include "moe_ep_dispatch_tiling.h"
 
 namespace MoeEpDispatchImpl {
 
 using namespace AscendC;
+using Mc2Aclnn::Mc2MoeContext;
+using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
+
+inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+
+__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
+{
+    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
+}
 
 static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
@@ -32,7 +42,7 @@ public:
     __aicore__ inline KernelMoeEpDispatch() {};
 
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
+        GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
         GM_ADDR cachedSlotIdx,
         GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
         GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
@@ -46,6 +56,12 @@ public:
         actualA_ = 0;
         workspace_ = workspace;
 
+        mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+        rankId_ = mc2Context_->epRankId;
+        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
+            winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
+        }
+
         xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)x, td_->cfg.numTokens * td_->cfg.hidden);
         topkIdxGm_.SetGlobalBuffer((__gm__ int32_t*)topkIdx, td_->cfg.numTokens * td_->cfg.topK);
         topkWeightsGm_.SetGlobalBuffer((__gm__ float*)topkWeights, td_->cfg.numTokens * td_->cfg.topK);
@@ -58,8 +74,6 @@ public:
             cachedSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)cachedSlotIdx,
                                                td_->cfg.numTokens * td_->cfg.topK);
         }
-
-        winContext_ = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(workspace);
 
         uint32_t ubXInBytes    = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
         uint32_t ubSlotBytes   = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
@@ -140,7 +154,7 @@ private:
 
     __aicore__ inline void ResetCounters()
     {
-        GM_ADDR counterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR counterBase = workspace_;
         GM_ADDR actualABase = counterBase + td_->cfg.epWorldSize * sizeof(int32_t);
 
         for (uint32_t i = aivId_; i < td_->cfg.epWorldSize; i += td_->aivNum) {
@@ -196,7 +210,7 @@ private:
 
             uint32_t slot = SetAtomicAdd<int32_t>(
                 reinterpret_cast<__gm__ int32_t*>(
-                    workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam) + dst_rank * sizeof(int32_t)),
+                    workspace_ + dst_rank * sizeof(int32_t)),
                 1);
             seen_dst[n_seen]  = dst_rank;
             seen_slot[n_seen] = slot;
@@ -209,8 +223,8 @@ private:
 
     __aicore__ inline void WriteSlotToRemoteWindow(uint32_t dst_rank, uint32_t slot, uint32_t t)
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
-        GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, dst_rank, my_rank);
+        uint32_t my_rank = rankId_;
+        GM_ADDR dstWinBase = GetBaseWinAddrByRankId(dst_rank);
         GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
 
         DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
@@ -241,7 +255,7 @@ private:
     {
         uint32_t tStart = ComputePerAivTokenStart();
         uint32_t tEnd   = ComputePerAivTokenEnd();
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t my_rank = rankId_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
             DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
@@ -260,16 +274,16 @@ private:
 
     __aicore__ inline void RecvPhase()
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t my_rank = rankId_;
         actualA_ = 0;
 
         uint32_t srStart = aivId_ * td_->cfg.epWorldSize / td_->aivNum;
         uint32_t srEnd   = (aivId_ + 1) * td_->cfg.epWorldSize / td_->aivNum;
 
-        GM_ADDR actualABase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+        GM_ADDR actualABase = workspace_
                               + td_->cfg.epWorldSize * sizeof(int32_t);
-        GM_ADDR counterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
-        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+        GM_ADDR counterBase = workspace_;
+        GM_ADDR localWinBase = GetBaseWinAddrByRankId(my_rank);
 
         for (uint32_t sr = srStart; sr < srEnd; ++sr) {
             int32_t numRecvFromSrc = *reinterpret_cast<__gm__ int32_t*>(
@@ -370,7 +384,7 @@ private:
                 continue;
             }
 
-            GM_ADDR scaleoutCounterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+            GM_ADDR scaleoutCounterBase = workspace_
                                            + td_->cfg.epWorldSize * sizeof(int32_t)
                                            + sizeof(int32_t);
             uint32_t slot = SetAtomicAdd<int32_t>(
@@ -382,15 +396,15 @@ private:
             dstSlotIdxGm_.SetValue(t * td_->cfg.topK + k, slot);
             n_so++;
 
-            uint32_t proxy_rank = dst_scaleout * td_->numScaleupRanks + (Mc2Kernel::GetRankId(winContext_) % td_->numScaleupRanks);
+            uint32_t proxy_rank = dst_scaleout * td_->numScaleupRanks + (rankId_ % td_->numScaleupRanks);
             WriteSlotToRemoteScaleoutWindow(proxy_rank, slot, t, target_scaleup_mask[n_so - 1]);
         }
     }
 
     __aicore__ inline void WriteSlotToRemoteScaleoutWindow(uint32_t proxy_rank, uint32_t slot, uint32_t t, uint32_t mask)
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
-        GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, proxy_rank, my_rank);
+        uint32_t my_rank = rankId_;
+        GM_ADDR dstWinBase = GetBaseWinAddrByRankId(proxy_rank);
         GM_ADDR slotAddr = dstWinBase + (my_rank * td_->cfg.numMaxTokensPerRank + slot) * td_->cfg.perSlotBytes;
 
         DataCopyPad(reinterpret_cast<GlobalTensor<bfloat16_t>&>(
@@ -422,7 +436,7 @@ private:
     {
         uint32_t tStart = ComputePerAivTokenStart();
         uint32_t tEnd   = ComputePerAivTokenEnd();
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t my_rank = rankId_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
             DataCopyPad(ubXIn_, xGm_[t * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
@@ -443,9 +457,9 @@ private:
 
     __aicore__ inline void SendPhaseScaleupFanout()
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
+        uint32_t my_rank = rankId_;
         uint32_t my_scaleup_rank = my_rank % td_->numScaleupRanks;
-        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+        GM_ADDR localWinBase = GetBaseWinAddrByRankId(my_rank);
 
         for (uint32_t src_so = 0; src_so < td_->numScaleoutRanks; ++src_so) {
             GM_ADDR scaleoutRecvBase = localWinBase
@@ -453,7 +467,7 @@ private:
                 + td_->cfg.numMaxTokensPerRank * td_->cfg.perSlotBytes
                 + src_so * (td_->cfg.numMaxTokensPerRank + 64) * td_->cfg.perSlotBytes;
 
-            GM_ADDR scaleoutCounterBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam)
+            GM_ADDR scaleoutCounterBase = workspace_
                                            + td_->cfg.epWorldSize * sizeof(int32_t)
                                            + sizeof(int32_t);
             int32_t count = *reinterpret_cast<__gm__ int32_t*>(scaleoutCounterBase + src_so * sizeof(int32_t));
@@ -475,7 +489,7 @@ private:
 
                     uint32_t su_slot = SetAtomicAdd<int32_t>(
                         reinterpret_cast<__gm__ int32_t*>(
-                            workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam) + dst_su * sizeof(int32_t)),
+                            workspace_ + dst_su * sizeof(int32_t)),
                         1);
 
                     GM_ADDR scaleupRecvBase = localWinBase;
@@ -498,7 +512,8 @@ private:
 
     TPipe* tpipe_{nullptr};
     const MoeEpDispatchInfo* td_{nullptr};
-    __gm__ Mc2Kernel::HcclOpParam* winContext_{nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    uint32_t rankId_{0};
 
     GlobalTensor<bfloat16_t> xGm_;
     GlobalTensor<int32_t> topkIdxGm_;

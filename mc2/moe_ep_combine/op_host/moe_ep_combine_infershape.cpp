@@ -3,22 +3,23 @@
 
 namespace ops {
 
-static constexpr size_t COMBINE_INPUT_X_INDEX = 0;
-static constexpr size_t COMBINE_INPUT_DST_SLOT_IDX_INDEX = 1;
-static constexpr size_t COMBINE_INPUT_RECV_SRC_METADATA_INDEX = 2;
-static constexpr size_t COMBINE_INPUT_NUM_RECV_PER_RANK_INDEX = 3;
-static constexpr size_t COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX = 4;
-static constexpr size_t COMBINE_INPUT_BIAS_0_INDEX = 5;
-static constexpr size_t COMBINE_INPUT_BIAS_1_INDEX = 6;
+static constexpr size_t COMBINE_INPUT_CONTEXT_INDEX = 0;
+static constexpr size_t COMBINE_INPUT_X_INDEX = 1;
+static constexpr size_t COMBINE_INPUT_DST_SLOT_IDX_INDEX = 2;
+static constexpr size_t COMBINE_INPUT_RECV_SRC_METADATA_INDEX = 3;
+static constexpr size_t COMBINE_INPUT_NUM_RECV_PER_RANK_INDEX = 4;
+static constexpr size_t COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX = 5;
+static constexpr size_t COMBINE_INPUT_BIAS_0_INDEX = 6;
+static constexpr size_t COMBINE_INPUT_BIAS_1_INDEX = 7;
 
 static constexpr size_t COMBINE_OUTPUT_COMBINED_X_INDEX = 0;
 static constexpr size_t COMBINE_OUTPUT_COMBINED_TOPK_WEIGHTS_OPTIONAL_INDEX = 1;
 
-static constexpr size_t COMBINE_ATTR_GROUP_EP_INDEX = 0;
-static constexpr size_t COMBINE_ATTR_EP_WORLD_SIZE_INDEX = 1;
-static constexpr size_t COMBINE_ATTR_EP_RANK_ID_INDEX = 2;
-static constexpr size_t COMBINE_ATTR_NUM_EXPERTS_INDEX = 3;
-static constexpr size_t COMBINE_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 4;
+static constexpr size_t COMBINE_ATTR_EP_WORLD_SIZE_INDEX = 0;
+static constexpr size_t COMBINE_ATTR_EP_RANK_ID_INDEX = 1;
+static constexpr size_t COMBINE_ATTR_NUM_EXPERTS_INDEX = 2;
+static constexpr size_t COMBINE_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 3;
+static constexpr size_t COMBINE_ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
 static constexpr size_t DIM_TWO = 2UL;
 

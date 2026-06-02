@@ -11,22 +11,22 @@ using namespace op;
 
 extern "C" {
 
-static aclnnStatus CheckNotNull(const aclTensor* dstBufferSlotIdx,
+static aclnnStatus CheckNotNull(const aclTensor* context,
+                                 const aclTensor* dstBufferSlotIdx,
                                  const aclTensor* recvSrcMetadataInternal,
                                  const aclTensor* numRecvTokensPerRankHostPinned,
                                  const aclTensor* numRecvTokensPerExpertHostPinned,
-                                 const char* groupEp,
                                  aclTensor* recvX,
                                  aclTensor* recvTopkIdx,
                                  aclTensor* recvTopkWeights,
                                  aclTensor* recvSrcMetadata,
                                  aclTensor* numRecvTokensPerRank,
                                  aclTensor* numRecvTokensPerExpert) {
+    CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(dstBufferSlotIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvSrcMetadataInternal != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerRankHostPinned != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerExpertHostPinned != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(groupEp != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvX != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvTopkIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvTopkWeights != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -38,61 +38,68 @@ static aclnnStatus CheckNotNull(const aclTensor* dstBufferSlotIdx,
 
 static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId,
                                 int64_t numExperts, int64_t numMaxTokensPerRank,
+                                int64_t cclBufferSize,
                                 int64_t expertAlignment) {
     CHECK_RET(epWorldSize > 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(epRankId >= 0 && epRankId < epWorldSize, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numExperts % epWorldSize == 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numMaxTokensPerRank > 0, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(cclBufferSize > 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(expertAlignment > 0, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MoeEpDispatchEpilogueGetWorkspaceSize(
+    const aclTensor* context,
     const aclTensor* dstBufferSlotIdx,
     const aclTensor* recvSrcMetadataInternal,
     const aclTensor* numRecvTokensPerRankHostPinned,
     const aclTensor* numRecvTokensPerExpertHostPinned,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
+    int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+    int64_t expertAlignment,
     aclTensor* recvX, aclTensor* recvTopkIdx, aclTensor* recvTopkWeights,
     aclTensor* recvSrcMetadata, aclTensor* numRecvTokensPerRank,
     aclTensor* numRecvTokensPerExpert,
     uint64_t* workspaceSize, aclOpExecutor** executor) {
     OP_LOGD("MoeEpDispatchEpilogue", "Begin to do MoeEpDispatchEpilogueGetWorkspaceSize");
-    CHECK_RET(CheckNotNull(dstBufferSlotIdx, recvSrcMetadataInternal,
+    CHECK_RET(CheckNotNull(context, dstBufferSlotIdx, recvSrcMetadataInternal,
                             numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
-                            groupEp, recvX, recvTopkIdx, recvTopkWeights,
+                            recvX, recvTopkIdx, recvTopkWeights,
                             recvSrcMetadata, numRecvTokensPerRank, numRecvTokensPerExpert),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, expertAlignment),
+    CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
+                          cclBufferSize, expertAlignment),
               ACLNN_ERR_PARAM_INVALID);
 
     return aclnnInnerMoeEpDispatchEpilogueGetWorkspaceSize(
-        dstBufferSlotIdx, recvSrcMetadataInternal,
+        context, dstBufferSlotIdx, recvSrcMetadataInternal,
         numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
-        const_cast<char*>(groupEp), epWorldSize, epRankId,
-        numExperts, numMaxTokensPerRank, expertAlignment,
+        epWorldSize, epRankId,
+        numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment,
         recvX, recvTopkIdx, recvTopkWeights,
         recvSrcMetadata, numRecvTokensPerRank, numRecvTokensPerExpert,
         workspaceSize, executor);
 }
 
 aclnnStatus aclnnMoeEpDispatchEpilogueGetWorkspaceSize(
+    const aclTensor* context,
     const aclTensor* dstBufferSlotIdx,
     const aclTensor* recvSrcMetadataInternal,
     const aclTensor* numRecvTokensPerRankHostPinned,
     const aclTensor* numRecvTokensPerExpertHostPinned,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
+    int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+    int64_t expertAlignment,
     aclTensor* recvX, aclTensor* recvTopkIdx, aclTensor* recvTopkWeights,
     aclTensor* recvSrcMetadata, aclTensor* numRecvTokensPerRank,
     aclTensor* numRecvTokensPerExpert,
     uint64_t* workspaceSize, aclOpExecutor** executor) {
     return MoeEpDispatchEpilogueGetWorkspaceSize(
-        dstBufferSlotIdx, recvSrcMetadataInternal,
+        context, dstBufferSlotIdx, recvSrcMetadataInternal,
         numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
-        groupEp, epWorldSize, epRankId,
-        numExperts, numMaxTokensPerRank, expertAlignment,
+        epWorldSize, epRankId,
+        numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment,
         recvX, recvTopkIdx, recvTopkWeights,
         recvSrcMetadata, numRecvTokensPerRank, numRecvTokensPerExpert,
         workspaceSize, executor);

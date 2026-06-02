@@ -5,7 +5,7 @@
 #endif
 
 #include "moe_ep_dispatch_tiling_key.h"
-#include "moe_ep_dispatch_tiling_data.h"
+#include "moe_ep_dispatch_tiling.h"
 #include "moe_ep_dispatch.h"
 
 #if __has_include("arch35/moe_ep_dispatch_arch35.h")
@@ -20,7 +20,7 @@ extern "C" {
 
 template<uint32_t DO_CPU_SYNC, uint32_t IS_CACHED, uint32_t NETWORK_MODE>
 __global__ __aicore__ void moe_ep_dispatch(
-    GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
+    GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
     GM_ADDR cachedSlotIdx,
     GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
     GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
@@ -32,7 +32,7 @@ __global__ __aicore__ void moe_ep_dispatch(
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
     KernelMoeEpDispatch<DO_CPU_SYNC, IS_CACHED, NETWORK_MODE> op;
-    op.Init(x, topkIdx, topkWeights,
+    op.Init(context, x, topkIdx, topkWeights,
             cachedSlotIdx,
             numRecvPerRankHp, numRecvPerExpertHp,
             dstBufferSlotIdx, recvSrcMetadataInternal,

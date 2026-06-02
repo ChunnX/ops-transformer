@@ -17,11 +17,21 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "moe_ep_dispatch_epilogue_tiling_data.h"
+#include "mc2_moe_context.h"
+#include "moe_ep_dispatch_epilogue_tiling.h"
 
 namespace MoeEpDispatchEpilogueImpl {
 
 using namespace AscendC;
+using Mc2Aclnn::Mc2MoeContext;
+using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
+
+inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+
+__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
+{
+    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
+}
 
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
 
@@ -30,7 +40,7 @@ public:
     __aicore__ inline KernelDispatchEpilogue() {};
 
     __aicore__ inline void Init(
-        GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
+        GM_ADDR context, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadataInternal,
         GM_ADDR numRecvPerRankHp, GM_ADDR numRecvPerExpertHp,
         GM_ADDR recvX, GM_ADDR recvTopkIdx, GM_ADDR recvTopkWeights,
         GM_ADDR recvSrcMetadata, GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
@@ -41,6 +51,12 @@ public:
         td_ = tilingData;
         aivId_ = GetBlockIdx();
         workspace_ = workspace;
+
+        mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+        rankId_ = mc2Context_->epRankId;
+        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
+            winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
+        }
 
         dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx,
                                         td_->cfg.numTokens * td_->cfg.topK);
@@ -62,8 +78,6 @@ public:
                                             td_->cfg.epWorldSize);
         numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t*)numRecvPerExpert,
                                               td_->numLocalExperts);
-
-        winContext_ = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(workspace);
 
         uint32_t ubTokenBytes  = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
         uint32_t ubMetaBytes   = 256;
@@ -109,7 +123,7 @@ private:
             ubPrefixSum_.SetValue(i, acc);
         }
 
-        GM_ADDR pfxWorkspace = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR pfxWorkspace = workspace_;
         for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
             *reinterpret_cast<__gm__ int32_t*>(pfxWorkspace + i * sizeof(int32_t))
                 = ubPrefixSum_.GetValue(i);
@@ -118,13 +132,13 @@ private:
 
     __aicore__ inline void CopyFromWindow()
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
-        GM_ADDR pfxWorkspace = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        uint32_t my_rank = rankId_;
+        GM_ADDR pfxWorkspace = workspace_;
 
         uint32_t srStart = aivId_ * td_->cfg.epWorldSize / td_->aivNum;
         uint32_t srEnd   = (aivId_ + 1) * td_->cfg.epWorldSize / td_->aivNum;
 
-        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
+        GM_ADDR localWinBase = GetBaseWinAddrByRankId(my_rank);
 
         for (uint32_t sr = srStart; sr < srEnd; ++sr) {
             int32_t base = *reinterpret_cast<__gm__ int32_t*>(pfxWorkspace + sr * sizeof(int32_t));
@@ -189,7 +203,8 @@ private:
 
     TPipe* tpipe_{nullptr};
     const MoeEpDispatchEpilogueInfo* td_{nullptr};
-    __gm__ Mc2Kernel::HcclOpParam* winContext_{nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    uint32_t rankId_{0};
 
     GlobalTensor<int32_t> dstSlotIdxGm_;
     GlobalTensor<int32_t> recvSrcMetaInternalGm_;

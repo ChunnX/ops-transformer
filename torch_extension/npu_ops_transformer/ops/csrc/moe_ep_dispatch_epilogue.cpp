@@ -8,13 +8,13 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, a
 const int DIM_TWO = 2;
 
 tensor_list npu_moe_ep_dispatch_epilogue(
+    const at::Tensor &context,
     const at::Tensor &dst_buffer_slot_idx,
     const at::Tensor &recv_src_metadata_internal,
     const at::Tensor &num_recv_per_rank_hp,
     const at::Tensor &num_recv_per_expert_hp,
-    const std::string &group_ep,
     int64_t ep_world_size, int64_t ep_rank_id,
-    int64_t num_experts, int64_t num_max_tokens_per_rank,
+    int64_t num_experts, int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size,
     int64_t expert_alignment)
 {
     TORCH_CHECK(dst_buffer_slot_idx.dim() == DIM_TWO, "dst_buffer_slot_idx must be 2D");
@@ -40,13 +40,11 @@ tensor_list npu_moe_ep_dispatch_epilogue(
         num_recv_per_expert = at::empty({num_local_experts}, dst_buffer_slot_idx.options().dtype(at::kLong));
     }
 
-    char *group_ep_ptr = const_cast<char *>(group_ep.c_str());
-
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue,
-        dst_buffer_slot_idx, recv_src_metadata_internal,
+        context, dst_buffer_slot_idx, recv_src_metadata_internal,
         num_recv_per_rank_hp, num_recv_per_expert_hp,
-        group_ep_ptr, ep_world_size, ep_rank_id,
-        num_experts, num_max_tokens_per_rank, expert_alignment,
+        ep_world_size, ep_rank_id,
+        num_experts, num_max_tokens_per_rank, ccl_buffer_size, expert_alignment,
         recv_x, recv_topk_idx, recv_topk_weights,
         recv_src_metadata, num_recv_per_rank, num_recv_per_expert);
 

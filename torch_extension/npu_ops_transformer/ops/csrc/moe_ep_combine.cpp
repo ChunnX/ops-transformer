@@ -8,6 +8,7 @@ using tensor_list = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
 const int DIM_TWO = 2;
 
 tensor_list npu_moe_ep_combine(
+    const at::Tensor &context,
     const at::Tensor &x,
     const at::Tensor &dst_buffer_slot_idx,
     const at::Tensor &recv_src_metadata,
@@ -15,9 +16,8 @@ tensor_list npu_moe_ep_combine(
     const c10::optional<at::Tensor> &topk_weights,
     const c10::optional<at::Tensor> &bias_0,
     const c10::optional<at::Tensor> &bias_1,
-    const std::string &group_ep,
     int64_t ep_world_size, int64_t ep_rank_id,
-    int64_t num_experts, int64_t num_max_tokens_per_rank)
+    int64_t num_experts, int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
     TORCH_CHECK(x.dtype() == at::kBFloat16, "x must be bfloat16");
@@ -45,13 +45,11 @@ tensor_list npu_moe_ep_combine(
     at::Tensor bias0_tensor = at::Tensor();
     at::Tensor bias1_tensor = at::Tensor();
 
-    char *group_ep_ptr = const_cast<char *>(group_ep.c_str());
-
     ACLNN_CMD(aclnnMoeEpCombine,
-        x, dst_buffer_slot_idx, recv_src_metadata, num_recv_tokens_per_rank,
+        context, x, dst_buffer_slot_idx, recv_src_metadata, num_recv_tokens_per_rank,
         topk_weights_tensor, bias0_tensor, bias1_tensor,
-        group_ep_ptr, ep_world_size, ep_rank_id,
-        num_experts, num_max_tokens_per_rank,
+        ep_world_size, ep_rank_id,
+        num_experts, num_max_tokens_per_rank, ccl_buffer_size,
         combined_x, combined_topk_weights);
 
     c10::optional<at::Tensor> combined_topk_weights_opt;
