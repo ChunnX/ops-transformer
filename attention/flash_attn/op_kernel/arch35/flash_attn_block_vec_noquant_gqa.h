@@ -358,8 +358,6 @@ public:
         auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)][0];
         int64_t stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
         float descaleQK = 1.0;
 
         LocalTensor<T> mmRes = bmm1UbTensor;
@@ -398,10 +396,10 @@ public:
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
-        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        // 与动态版本一致：DataCopy 完成后用 CrossCoreSetFlag 通知 AIC L1P 数据已就绪
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
+        // stage1 双缓冲反向同步：确保复用水印安全后再覆写 stage1OutBuf[stage1Offset]
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
         //----------------------------------------------------------------
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
@@ -528,8 +526,6 @@ public:
         int64_t stage1Offset = 0;
         stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 
@@ -616,11 +612,10 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
 
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
-        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
-        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        // 与动态版本一致：DataCopy 完成后用 CrossCoreSetFlag 通知 AIC L1P 数据已就绪
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
+        // stage1 双缓冲反向同步：确保复用水印安全后再覆写 stage1OutBuf[stage1Offset]
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
         // ======================================================
         if (!runInfo.isFirstS2Loop) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
@@ -639,11 +634,15 @@ public:
             return;
         }
 
+        int64_t stage1Offset = runInfo.loop & (DB - 1);
         int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf;
         LocalTensor<T> mmRes = bmm2UbTensor;
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        // stage1 双缓冲反向同步：确保 Vec1 已完成向 stage1OutBuf[stage1Offset] 的写入，
+        // Vec2 才能安全地读取（静态版本无 TQue 框架的 slot 管理保护）
+        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
@@ -1164,6 +1163,7 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
+        // 静态分配 event ID（跳过 6/7 通道）
         mte3ToVId[0] = FA_MTE3_TO_V_0;
         mte3ToVId[1] = FA_MTE3_TO_V_1;
         vToMte3Id[0] = FA_V_TO_MTE3_0;
