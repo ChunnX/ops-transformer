@@ -46,5 +46,7 @@ namespace optiling {
         return funcA3.AlltoAllvGmmOpTilingFunc(context_);
     }
 
-    REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA3, 0);
-}
+// 注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA3,
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 0);
+}  // namespace optiling

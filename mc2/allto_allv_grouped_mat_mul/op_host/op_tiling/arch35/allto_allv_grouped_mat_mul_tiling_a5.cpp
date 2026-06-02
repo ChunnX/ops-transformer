@@ -44,5 +44,7 @@ namespace optiling {
         return funcA5.AlltoAllvGmmOpTilingFunc(context_);
     }
 
-    REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA5, 0);
-}
+// 注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllvGroupedMatMul, AlltoAllvGmmTilingStructA5,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+}  // namespace optiling

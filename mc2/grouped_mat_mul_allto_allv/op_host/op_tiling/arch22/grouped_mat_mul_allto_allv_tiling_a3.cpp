@@ -20,5 +20,7 @@ using namespace ge;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GroupedMatmulAllToAllvTiling, 0);
-}
+// 注册Tiling类
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(GroupedMatMulAlltoAllv, GroupedMatmulAllToAllvTiling,
+                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 0);
+}  // namespace optiling
