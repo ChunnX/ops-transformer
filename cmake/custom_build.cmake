@@ -291,6 +291,7 @@ else()
     # add_subdirectory(${op_class})
     add_subdirectory(attention)
     add_subdirectory(mhc)
+    add_subdirectory(mamba)
 endif()
 
 # 编译examples目录下算子
