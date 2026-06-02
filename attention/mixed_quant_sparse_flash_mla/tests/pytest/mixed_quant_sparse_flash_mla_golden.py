@@ -688,12 +688,6 @@ def trans_hifuint8_tensor_to_float(in_tensor):
     out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
     return out_tensor
 
-def get_fp8e3m3_to_bf16_table():
-    fp8e4m3_to_bf16_table = torch.zeros(256).to(torch.bfloat16)
-    for i in range(256):
-        fp8e4m3_to_bf16_table[i] = torch.tensor(i, dtype=torch.uint8).view(torch.float8_e4m3fn).to(torch.bfloat16)
-    return fp8e4m3_to_bf16_table
-
 def trans_kv_bnsd_to_tnd(kv_bnsd_npu, cu_seqlens_kv, seqused_kv, B, N2, d_aligned_128, kv_type):
     total_t = int(cu_seqlens_kv[-1])
     kv_tnd = torch.zeros((total_t, N2, d_aligned_128), dtype=kv_type)
@@ -780,13 +774,6 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
                     for i_N2 in range(N2):
                         ori_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
                             ori_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size1, :]
-        fp8e4m3_to_bf16_table = get_fp8e3m3_to_bf16_table()
-        ori_k_nope_bnsd_2 = fp8e4m3_to_bf16_table[ori_k_nope_bnsd_npu.view(torch.uint8).long()]
-        table_bytes = fp8e4m3_to_bf16_table.view(torch.uint8)  # shape (512,)
-        table_rows = table_bytes.view(16, 32)  # shape (16, 32), dtype=uint8
-        target_slice = ori_k_in_pa_shape[0, 0:16, 0, 590:590+32]  # shape (16, 32) fp8
-        target_uint8 = target_slice.view(torch.uint8)             # 同一块内存，现在解释为 uint8
-        target_uint8.copy_(table_rows)
         ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
 
     return ori_k_bnsd, ori_k_in_pa_shape, ori_block_table
