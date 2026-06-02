@@ -21,18 +21,20 @@ def run_precision_test():
     print("精度测试 - SparseLightningIndexerGradKLLoss TileLang CV 分离架构")
     print("=" * 70)
 
+    # 对齐官方示例参数: s1=1, s2=1, n1=128, n2=1, nQueryIndex=64
+    # 但BSND layout需要B维度, 使用s1=128以匹配BLOCK_M=128
     batch = 1
     seqlen_q = 128
-    seqlen_k = 2048
+    seqlen_k = 128
     d_query = 512
     d_query_index = 128
     topk = 2048
     head_num_q = 128
     head_num_k = 1
     head_num_idx = 64
-    G = head_num_q // head_num_k
+    G = head_num_q // head_num_k  # G=128 (N1/N2)
 
-    print(f"\n测试配置:")
+    print(f"\n测试配置 (对齐官方示例, BSND layout):")
     print(f"  batch={batch}, seqlen_q={seqlen_q}, seqlen_k={seqlen_k}")
     print(f"  d_query={d_query}, d_query_index={d_query_index}, topk={topk}")
     print(f"  head_num_q={head_num_q}, head_num_k={head_num_k}, head_num_idx={head_num_idx}, G={G}")
@@ -44,6 +46,8 @@ def run_precision_test():
     query_index = torch.randn(batch, seqlen_q, head_num_idx, d_query_index, dtype=torch.float16).npu()
     key_index = torch.randn(batch, seqlen_k, head_num_k, d_query_index, dtype=torch.float16).npu()
     weights = torch.randn(batch, seqlen_q, head_num_idx, dtype=torch.float16).npu()
+    # sparse_indices: (B, S1, Nidx2, K) = (B, S1, N2, K), Nidx2=N2=1
+    # indices must be in [0, S2)
     sparse_indices = torch.randint(0, seqlen_k, (batch, seqlen_q, head_num_k, topk), dtype=torch.int32).npu()
 
     # Compute softmaxMax/softmaxSum from query @ key^T
