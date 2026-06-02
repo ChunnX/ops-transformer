@@ -21,6 +21,15 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/utils/hccl_util.h"
+#include "mc2_comm_utils.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
 
 // 量化与非量化共用的方法和常量、枚举值
 namespace matmul_allto_all_check {
@@ -194,6 +203,40 @@ aclnnStatus CheckX2Valid(const aclTensor* x2) {
     	return ACLNN_ERR_PARAM_INVALID;
   	}
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+// 检查commMode参数是否合法，并获取commMode对应枚举值
+aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
+{
+    const size_t maxLength = 6UL;
+    // 获取通信引擎参数
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_CCU;
+        } else if (strncmp(commModeStr, "", maxLength) == 0) {
+            // default：小于等于8P走CCU，否则走AICPU
+            // 获取卡数
+            uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+            auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+            CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+            commModeEnum = (rankSize <= MAX_CCU_RANKSIZE) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        OP_LOGD("The commMode is [%s].", commModeStr);
+    } else {
+        // 910B和910_93只支持默认通信引擎
+        if (strncmp(commModeStr, "", maxLength) != 0) {
+            OP_LOGI("The commMode is illegal, will use default communication engine.");
+        }
+    }
+
     return ACLNN_SUCCESS;
 }
 

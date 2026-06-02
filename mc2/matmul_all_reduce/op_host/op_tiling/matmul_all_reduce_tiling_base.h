@@ -134,7 +134,7 @@ public:
         OP_TILING_CHECK(memset_s(
                             context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                             context_->GetRawTilingData()->GetCapacity()) != EOK,
-                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to memset tiling data"), return;);
+                        OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
     MatmulAllReduceTilingBase(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)

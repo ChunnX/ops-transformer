@@ -85,7 +85,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
                    DFX_IN(permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional),
                    DFX_OUT(out));
 
-    static bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
+    bool useMoeFinalizeRoutingV2 = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeFinalizeRoutingV2) {
         return aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
             permutedTokens, sortedIndices, probsOptional, paddedMode, restoreShapeOptional, out, workspaceSize,
@@ -93,12 +93,13 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
 
+    aclnnStatus ret = MoeTokenUnpermuteCheck::CheckParams(permutedTokens, sortedIndices, probsOptional, out);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    aclnnStatus ret = MoeTokenUnpermuteCheck::CheckParams(permutedTokens, sortedIndices, probsOptional, out);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // 固定写法，将输入转换成连续的tensor
     auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
     CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);

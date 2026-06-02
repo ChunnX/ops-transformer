@@ -27,6 +27,7 @@ static constexpr uint32_t A16W8_MSD_PREPROCESS_MAX_GROUP = 12;
 static constexpr uint32_t FACTOR_FOR_FLOAT_ALIGN_TO_32 = 8;
 static constexpr uint32_t ALIGN_UB_BASE_K = 128;
 static constexpr uint32_t POST_SKIP_ITER_NUM = 3;
+static constexpr uint32_t NZ_B16_LAST_DIM_16 = 16;
 
 struct PreMNConfig {
     uint32_t m = 0;
@@ -136,16 +137,19 @@ __aicore__ inline void GMMA16W8MSDProcess<ComputeType>::SetMNConfigs(
 }
 
 template <typename ComputeType>
-__aicore__ inline void GMMA16W8MSDProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig) {
+__aicore__ inline void GMMA16W8MSDProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfig)
+{
     if constexpr (B::format == CubeFormat::NZ) {
-        mnConfig.wBaseOffset += AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.n);  // 16: nz format last two dim size
+        mnConfig.wBaseOffset +=
+            static_cast<uint64_t>(AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.k)) *
+            AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.n);
     } else {
-        mnConfig.wBaseOffset += mnConfig.k * mnConfig.n;
+        mnConfig.wBaseOffset += static_cast<uint64_t>(mnConfig.k) * mnConfig.n;
     }
     mnConfig.mAxisBaseOffset += mnConfig.m;
     mnConfig.nAxisBaseOffset += mnConfig.n;
-    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+    mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
 }
 
 template <typename ComputeType>
@@ -453,7 +457,7 @@ __aicore__ inline uint64_t GMMA16W8MSDCompute<mmType, sync>::SetWOffset(uint32_t
     if constexpr (mmType::BT::format == CubeFormat::NZ && transposeW) {
         wOffset = tailN * (UB_BLOCK_UNIT_SIZE / sizeof(BT));  // 32: quant is 32, float16 is 16
     } else if constexpr (mmType::BT::format == CubeFormat::NZ) {
-        wOffset = tailN * AlignUp<16>(k);  // 16: nz format last two dim size
+        wOffset = tailN * AlignUp<NZ_B16_LAST_DIM_16>(k);
     } else if constexpr (transposeW) {
         wOffset = k * tailN;
     } else {
@@ -1014,16 +1018,16 @@ __aicore__ inline void GMMA16W8MSDMSparseProcess<ComputeType>::UpdateMnConfigFor
 {
     if (groupIdx > 0) {
         mnConfig.mAxisBaseOffset += mnConfig.m;
-        mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-        mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+        mnConfig.xBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.k;
+        mnConfig.yBaseOffset += static_cast<uint64_t>(mnConfig.m) * mnConfig.n;
     }
 
-    mnConfig.nAxisBaseOffset = expertIdx * mnConfig.n;
+    mnConfig.nAxisBaseOffset = static_cast<uint64_t>(expertIdx) * mnConfig.n;
     if constexpr (GMMA16W8MSDProcess<ComputeType>::B::format == CubeFormat::NZ) {
-        // 16: nz format last two dim size
-        mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
+        mnConfig.wBaseOffset = static_cast<uint64_t>(AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.k)) *
+            AlignUp<NZ_B16_LAST_DIM_16>(mnConfig.nAxisBaseOffset);
     } else {
-        mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
+        mnConfig.wBaseOffset = static_cast<uint64_t>(mnConfig.k) * mnConfig.nAxisBaseOffset;
     }
     mnConfig.m = splitValue;
 }
