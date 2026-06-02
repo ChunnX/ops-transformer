@@ -28,6 +28,7 @@
 
 using namespace AscendC;
 using namespace matmul;
+// test mxfp4
 
 namespace {
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
