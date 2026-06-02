@@ -153,6 +153,7 @@ private:
     GM_ADDR statusSpaceGm_;    // 状态空间的GM地址
     GM_ADDR windowGM_;         // 本地窗口的GM地址
     GM_ADDR localUrmaWorkspace_;      // 工作空间的GM地址
+    GM_ADDR sendHandleWorkspace_;     // 发送状态句柄的GM地址
 
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2MoeContext* context_{nullptr};
