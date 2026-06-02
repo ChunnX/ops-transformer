@@ -38,7 +38,7 @@ aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward, double clamp_min, double clamp_max,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-    aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
+    aclTensor *sumOut, aclTensor *normOut, aclTensor *hResLogits,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**

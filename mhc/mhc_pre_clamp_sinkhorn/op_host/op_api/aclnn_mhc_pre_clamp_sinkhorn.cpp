@@ -57,7 +57,7 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *phi, const aclTens
 static bool CheckDtypeValid(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
                             const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
                             const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
-                            const aclTensor *sumOut, const aclTensor *normOut, const aclTensor *reduceOut, bool needBackward)
+                            const aclTensor *sumOut, const aclTensor *normOut, const aclTensor *hResLogits, bool needBackward)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(x, DTYPE_X_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(phi, DTYPE_OTHER_SUPPORT_LIST, return false);
@@ -73,7 +73,7 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *phi, const aclT
         OP_CHECK_DTYPE_NOT_SUPPORT(invRms, DTYPE_OTHER_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(sumOut, DTYPE_OTHER_SUPPORT_LIST, return false);
         OP_CHECK_DTYPE_NOT_SUPPORT(normOut, DTYPE_OTHER_SUPPORT_LIST, return false);
-        OP_CHECK_DTYPE_NOT_SUPPORT(reduceOut, DTYPE_OTHER_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(hResLogits, DTYPE_OTHER_SUPPORT_LIST, return false);
     }
     return true;
 }
@@ -81,7 +81,7 @@ static bool CheckDtypeValid(const aclTensor *x, const aclTensor *phi, const aclT
 static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
                        const aclTensor *hin, const aclTensor *hPost, const aclTensor *hRes,
                        const aclTensor *hPre, const aclTensor *hcBeforeNorm, const aclTensor *invRms,
-                       const aclTensor *sumOut, const aclTensor *normOut, const aclTensor *reduceOut,
+                       const aclTensor *sumOut, const aclTensor *normOut, const aclTensor *hResLogits,
                        int64_t hcMult, int64_t numIters, bool needBackward)
 {
     auto xShape = x->GetViewShape();
@@ -234,13 +234,13 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
             return false;
         }
 
-        auto reduceOutShape = reduceOut->GetViewShape();
+        auto reduceOutShape = hResLogits->GetViewShape();
         if (reduceOutShape.GetDimNum() != 5 ||
             reduceOutShape.GetDim(0) != expectedNormOutDim0 ||
             reduceOutShape.GetDim(1) != bs || reduceOutShape.GetDim(2) != seqLen ||
             reduceOutShape.GetDim(3) != n || reduceOutShape.GetDim(4) != n) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "reduceOut shape must be (%ld, %ld, %ld, %ld, %ld), but got (%ld, %ld, %ld, %ld, %ld).",
+                    "hResLogits shape must be (%ld, %ld, %ld, %ld, %ld), but got (%ld, %ld, %ld, %ld, %ld).",
                     expectedNormOutDim0, bs, seqLen, n, n,
                     reduceOutShape.GetDim(0), reduceOutShape.GetDim(1), reduceOutShape.GetDim(2),
                     reduceOutShape.GetDim(3), reduceOutShape.GetDim(4));
@@ -255,13 +255,13 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
                                       const aclTensor *bias, const aclTensor *hin, const aclTensor *hPost,
                                       const aclTensor *hRes, const aclTensor *hPre, const aclTensor *hcBeforeNorm,
                                       const aclTensor *invRms, const aclTensor *sumOut, const aclTensor *normOut,
-                                      const aclTensor *reduceOut,
+                                      const aclTensor *hResLogits,
                                       int64_t hcMult, int64_t numIters, bool needBackward)
 {
     CHECK_RET(CheckNotNull(x, phi, alpha, bias, hin, hPost, hRes), ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckDtypeValid(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, needBackward),
+    CHECK_RET(CheckDtypeValid(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, needBackward),
               ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckShape(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, hcMult, numIters, needBackward),
+    CHECK_RET(CheckShape(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, hcMult, numIters, needBackward),
               ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -271,17 +271,18 @@ aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
     int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward, double clamp_min, double clamp_max,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-    aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
+    aclTensor *sumOut, aclTensor *normOut, aclTensor *hResLogits,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 
 {
+    printf("[aclnnMhcPreClampSinkhorn] hcEps: %f, normEps: %f, needBackward: %d, clamp_min: %f, clamp_max: %f\n", hcEps, normEps, needBackward, clamp_min, clamp_max);
     L2_DFX_PHASE_1(aclnnMhcPreClampSinkhorn,
                    DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max),
-                   DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut));
+                   DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits));
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = CheckParams(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, hcMult, numIters, needBackward);
+    auto ret = CheckParams(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, hcMult, numIters, needBackward);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // Check if input tensors are empty
     if (x->IsEmpty() || hin->IsEmpty() || hPost->IsEmpty() || hRes->IsEmpty()) {
@@ -301,7 +302,7 @@ aclnnStatus aclnnMhcPreClampSinkhornGetWorkspaceSize(
 
     const aclTensor *kernelOut = l0op::MhcPreClampSinkhorn(
         xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max,
-        hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, uniqueExecutor.get());
+        hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, uniqueExecutor.get());
     CHECK_RET(kernelOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

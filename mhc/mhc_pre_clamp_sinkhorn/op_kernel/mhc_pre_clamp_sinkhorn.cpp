@@ -26,7 +26,7 @@ using namespace AscendC;
 extern "C" __global__ __aicore__ void mhc_pre_clamp_sinkhorn(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias,
                                              GM_ADDR hin, GM_ADDR hPost, GM_ADDR hRes,
                                              GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                             GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR reduceOut,
+                                             GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR hResLogits,
                                              GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -55,7 +55,7 @@ extern "C" __global__ __aicore__ void mhc_pre_clamp_sinkhorn(GM_ADDR x, GM_ADDR 
         TPipe pipeStage2;
         MhcPreClampSinkhorn::MhcPreClampSinkhornStage2<DTYPE_X> op2;
         op2.Init(x, alpha, bias, hin, hPost, hRes,
-                    hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut,
+                    hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits,
                     userWs, tilingData, &pipeStage2);
         op2.Process(false);
         pipeStage2.Destroy();
@@ -74,7 +74,7 @@ extern "C" __global__ __aicore__ void mhc_pre_clamp_sinkhorn(GM_ADDR x, GM_ADDR 
             TPipe pipeStage2;
             MhcPreClampSinkhorn::MhcPreClampSinkhornMembaseKSplitCorePart2<DTYPE_X> op2;
             op2.Init(x, alpha, bias, hin, hPost, hRes,
-                        hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut,
+                        hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits,
                         userWs, tilingData, &pipeStage2, curBsOffset, isTailBsLoop);
             op2.Process(curBsOffset, curBs, isTailBsLoop);
             pipeStage2.Destroy();

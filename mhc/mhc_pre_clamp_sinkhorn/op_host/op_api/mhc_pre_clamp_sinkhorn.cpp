@@ -34,16 +34,16 @@ static const aclTensor *MhcPreClampSinkhornAiCore(const aclTensor *x, const aclT
                                              double normEps, bool needBackward,  double clamp_min, double clamp_max,
                                              aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                              aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                             aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
+                                             aclTensor *sumOut, aclTensor *normOut, aclTensor *hResLogits,
                                              aclOpExecutor *executor)
 {
     L0_DFX(MhcPreClampSinkhornAiCore, x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max,
-           hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut);
+           hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits);
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
         MhcPreClampSinkhorn,
         OP_INPUT(x, phi, alpha, bias),
-        OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut),
+        OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits),
         OP_ATTR(hcMult, numIters,  static_cast<float>(hcEps),  static_cast<float>(normEps), needBackward, static_cast<float>(clamp_min), static_cast<float>(clamp_max)));
 
     OP_CHECK(ret == ACLNN_SUCCESS,
@@ -58,11 +58,11 @@ const aclTensor *MhcPreClampSinkhorn(const aclTensor *x, const aclTensor *phi, c
                                 double normEps, bool needBackward, double clamp_min, double clamp_max,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                aclTensor *sumOut, aclTensor *normOut, aclTensor *reduceOut,
+                                aclTensor *sumOut, aclTensor *normOut, aclTensor *hResLogits,
                                 aclOpExecutor *executor)
 {
     return MhcPreClampSinkhornAiCore(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward, clamp_min, clamp_max,
-                                hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, reduceOut, executor);
+                                hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, hResLogits, executor);
 }
 
 } // namespace l0op

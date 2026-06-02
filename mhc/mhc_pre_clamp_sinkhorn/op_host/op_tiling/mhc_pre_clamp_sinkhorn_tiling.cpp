@@ -105,10 +105,11 @@ ge::graphStatus MhcPreClampSinkhornTiling::GetAttr()
     needGrad_ = needBackwardAttr == nullptr ? true : *needBackwardAttr;
 
     auto minValAttr = attrs->GetAttrPointer<float>(MIN_VAL_ATTR_IDX);
-    minVal_ = minValAttr == nullptr ? 0.0f : *minValAttr;
+    clamp_min_ = minValAttr == nullptr ? 0.0f : *minValAttr;
 
     auto maxValAttr = attrs->GetAttrPointer<float>(MAX_VAL_ATTR_IDX);
-    maxVal_ = maxValAttr == nullptr ? 0.0f : *maxValAttr;
+    clamp_max_ = maxValAttr == nullptr ? 0.0f : *maxValAttr;
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -275,8 +276,8 @@ ge::graphStatus MhcPreClampSinkhornTiling::CalcMKSplitCoreMembasePart2Tiling()
     tilingData_.set_iterTimes(iterTimes_);
     tilingData_.set_hcEps(hcEps_);
     tilingData_.set_normEps(normEps_);
-    tilingData_.set_min(minVal_);
-    tilingData_.set_max(maxVal_);
+    tilingData_.set_clamp_min(clamp_min_);
+    tilingData_.set_clamp_max(clamp_max_);
     tilingData_.set_needGrad(needGrad_ ? 1 : 0);
     return ge::GRAPH_SUCCESS;
 }

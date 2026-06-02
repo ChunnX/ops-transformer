@@ -251,7 +251,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
                                 GM_ADDR post, GM_ADDR combFrag,
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
-                                GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR reduceOut,
+                                GM_ADDR sumOut, GM_ADDR normOut, GM_ADDR hResLogits,
                                 GM_ADDR workspace,
                                 const MhcPreClampSinkhornTilingData *tilingDataPtr, TPipe *pipePtr)
     {
@@ -273,7 +273,7 @@ public:
             invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
             sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
             normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
-            reduceOutGm.SetGlobalBuffer((__gm__ float *)reduceOut);
+            reduceOutGm.SetGlobalBuffer((__gm__ float *)hResLogits);
         } else {
             int64_t xCastWsTotalSize = tilingData->stage1XCastWsSize / sizeof(float);
             invRmsGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize);
@@ -463,36 +463,33 @@ public:
                     CopyOut(mxies02ReduceLocal, reduceOutGm[reduceOutBaseOffset], curRowFactor * tilingData->hcMult, tilingData->hcMult);
                     MTE3ToVSync();
                 }
-                // AscendC::printf("pre clamp-mxies02ReduceLocal: %f\n", mxies02ReduceLocal.GetValue(0));
-                AscendC::printf("min: %f, max: %f\n", tilingData->clamp_min, tilingData->clamp_max);
-                AscendC::printf("pre clamp-mxies02ReduceLocal: %f %f %f %f\n",
-                    mxies02ReduceLocal.GetValue(0),
-                    mxies02ReduceLocal.GetValue(1),
-                    mxies02ReduceLocal.GetValue(2),
-                    mxies02ReduceLocal.GetValue(3));
-                
+
                 //* CLAMP Start
                 if (tilingData->clamp_min != 0.0f || tilingData->clamp_max != 0.0f) {
-                    AscendC::printf("[clamped]\n");
+                    // AscendC::printf("[clamped]\n");
+                    // AscendC::printf("[clamp debug] hcMult=%ld hcMultAlign=%ld curRowFactor=%ld\n", tilingData->hcMult, tilingData->hcMultAlign, curRowFactor);
+                    // float min_val = mxies02ReduceLocal.GetValue(0);
+                    // float max_val = mxies02ReduceLocal.GetValue(0);
+                    // int64_t clamp_elem_cnt = tilingData->hcMult * tilingData->hcMultAlign;
+                    // for (int64_t idx = 1; idx < clamp_elem_cnt; ++idx) {
+                    //     float val = mxies02ReduceLocal.GetValue(idx);
+                    //     if (val < min_val) min_val = val;
+                    //     if (val > max_val) max_val = val;
+                    // }
+                    // AscendC::printf("[clamp debug] min=%f, max=%f\n", min_val, max_val);
+
+                    // AscendC::DumpTensor(mxies02ReduceLocal, 9, tilingData->hcMult * tilingData->hcMultAlign);
                     PipeBarrier<PIPE_V>();
                     Maxs(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->clamp_min,
-                         curRowFactor * tilingData->hcMult * tilingData->hcMult);
-                    AscendC::printf("after Maxs mxies02ReduceLocal: %f %f %f %f\n",
-                        mxies02ReduceLocal.GetValue(0),
-                        mxies02ReduceLocal.GetValue(1),
-                        mxies02ReduceLocal.GetValue(2),
-                        mxies02ReduceLocal.GetValue(3));
+                        curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
+                    // AscendC::DumpTensor(mxies02ReduceLocal, 10, tilingData->hcMult * tilingData->hcMultAlign);
+
                     PipeBarrier<PIPE_V>();
                     Mins(mxies02ReduceLocal, mxies02ReduceLocal, tilingData->clamp_max,
-                         curRowFactor * tilingData->hcMult * tilingData->hcMult);
+                        curRowFactor * tilingData->hcMult * tilingData->hcMultAlign);
                     PipeBarrier<PIPE_V>();
+                    // AscendC::DumpTensor(mxies02ReduceLocal, 11, tilingData->hcMult * tilingData->hcMultAlign);
                 }
-                // AscendC::printf("post clamp-mxies02ReduceLocal: %f\n", mxies02ReduceLocal.GetValue(0));
-                AscendC::printf("after Mins mxies02ReduceLocal: %f %f %f %f\n",
-                    mxies02ReduceLocal.GetValue(0),
-                    mxies02ReduceLocal.GetValue(1),
-                    mxies02ReduceLocal.GetValue(2),
-                    mxies02ReduceLocal.GetValue(3));
                 //* CLAMP End
 
                 SoftmaxFP32Perf(mxies02ReduceLocal, mxies02ReduceLocal, reduceLocal, hcBrcbLocal1, curRowFactor * tilingData->hcMult,
