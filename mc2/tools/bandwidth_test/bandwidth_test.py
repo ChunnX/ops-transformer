@@ -295,6 +295,7 @@ def compile_model(model):
 
     return compiled_model
 
+
 class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -320,6 +321,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 def set_device(rank):
     torch_npu.npu.set_device(rank % rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
+
 
 def init_hccl_comm(rank, world_size_local):
     logger.info(f'[INFO] device_{rank} 创建HCCL通信链路')
@@ -375,6 +377,7 @@ def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tenso
 # endregion
 
 # region Golden 生成
+
 
 def gen_golden_data(
     rank: int, x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
@@ -604,7 +607,8 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     for _, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
         logger.info(f"\n{'='*60}")
-        logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size}, max_bs={test_max_bs}")
+        logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},
+        max_bs={test_max_bs}")
         logger.info(f"{'='*60}")
         
         if is_save_tensor_to_bin:
@@ -732,6 +736,7 @@ def run_precision_test(
     
     return all_pass
 
+
 def run_bandwidth_test(
     x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
     test_max_bs: int, test_data_size: int
@@ -771,6 +776,7 @@ def run_bandwidth_test(
     perf_result = get_bandwidth_performance(profiling_path, data_size_bytes, world_size, len(x_per_rank[0]))
     
     return perf_result
+
 
 def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     """运行多配置带宽测试（共享通信域）"""
@@ -838,6 +844,7 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     print_summary_table(all_results)
     
     return all_results
+
 
 def print_summary_table(results: List[Dict[str, Any]]):
     """打印汇总结果表格"""
