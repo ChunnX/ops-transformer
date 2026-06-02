@@ -111,7 +111,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     </tr>
     <tr>
       <td>scale1Optional</td>
-      <td>输入</td>
+      <td>可选输入</td>
       <td>表示量化参数中的由x1量化引入的缩放因子，Device侧的aclTensor。</td>
       <td>
         <ul>
@@ -164,7 +164,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     </tr>
     <tr>
       <td>groupListType</td>
-      <td>输入属性</td>
+      <td>可选输入</td>
       <td>整数型参数，只支持0和1两个取值。</td>
       <td>
         <ul>
