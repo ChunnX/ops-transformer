@@ -155,6 +155,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
+    baseParams_->usedCoreNum = aicNum_;
 
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
             baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,
@@ -348,8 +349,6 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData* tilin
             return ge::GRAPH_FAILED;
         }
     }
-
-    baseParams_->usedCoreNum = aicNum_;
 
     context_->blockDim = aicNum_;
 
