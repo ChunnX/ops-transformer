@@ -63,7 +63,8 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     if (workspaceGM == nullptr) {
         return;
     }
-    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
+    SetSysWorkspace(workspaceGM);
+    GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
     if (userWorkspace == nullptr) {
         return;
     }
