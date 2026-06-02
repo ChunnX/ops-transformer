@@ -206,8 +206,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout is not supported with the given dim_num");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("FlashAttentionScore", "input_layout", shapeInfo.dimNum,
+            "The shape dim of input_layout must be dim_num");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
@@ -1156,7 +1156,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
     }
     if (strcmp(inputLayout, "TND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout should be TND for this function");
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1665,7 +1665,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
     }
     if (strcmp(inputLayout, "TND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout should be TND for this function");
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1774,7 +1774,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
 
     if (strcmp(inputLayout, "TND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout should be TND for this function");
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1882,7 +1882,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
     }
     if (strcmp(inputLayout, "TND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout should be TND for this function");
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1985,7 +1985,7 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
 
     if (strcmp(inputLayout, "TND") != 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
-            "The input_layout should be TND for this function");
+            "The value of input_layout must be TND");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
