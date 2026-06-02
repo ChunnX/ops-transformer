@@ -13,29 +13,9 @@
  * \brief
  */
 
-#include <queue>
-#include <vector>
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <sys/types.h>
-#include <unistd.h>
-#include <cmath>
-#include <cstdint>
-#include <string>
-#include <type_traits>
-
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "platform/platform_infos_def.h"
-#include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
-#include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "moe_distribute_combine_add_rms_norm_tiling_base.h"
 

@@ -29,9 +29,9 @@ class _MegaMoeOpBuilder(OpBuilder):
         return "npu_mega_moe(Tensor context, Tensor x, Tensor topk_ids, Tensor topk_weights, " \
             "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, " \
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, Tensor? x_active_mask=None, " \
-            "Tensor? scales=None, int? max_recv_token_num=0, int? dispatch_quant_mode=0, " \
-            "int? combine_quant_mode=0, str? comm_alg=\"\", int? global_bs=0, " \
-            "int? dispatch_quant_out_type=28, int? weight1_type=28, int? weight2_type=28) -> (Tensor, Tensor)"
+            "Tensor? scales=None, int max_recv_token_num=0, int dispatch_quant_mode=0, " \
+            "int combine_quant_mode=0, str comm_alg=\"\", int global_bs=0, " \
+            "int? dispatch_quant_out_type=None, int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
@@ -40,7 +40,7 @@ class _MegaMoeOpBuilder(OpBuilder):
                               weight_scales1=None, weight_scales2=None, x_active_mask=None,
                               scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
                               combine_quant_mode=0, comm_alg="", global_bs=0,
-                              dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                              dispatch_quant_out_type=None, weight1_type=None, weight2_type=None):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -67,7 +67,7 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   x_active_mask=None, scales=None, max_recv_token_num=0,
                   dispatch_quant_mode=0, combine_quant_mode=0,
                   comm_alg="", global_bs=0,
-                  dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                  dispatch_quant_out_type=None, weight1_type=None, weight2_type=None):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
@@ -91,7 +91,7 @@ class SymmBuffer:
         intermediate_hidden: int,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
-        dispatch_quant_out_type: int = 28,
+        dispatch_quant_out_type: Optional[int] = None,
         combine_quant_mode: int = 0,
         comm_alg: str = ""
     ):
@@ -157,9 +157,10 @@ def get_symm_buffer_for_mega_moe(
     num_topk: int,
     hidden: int,
     intermediate_hidden: int,
+    *,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
-    dispatch_quant_out_type: int = 28,
+    dispatch_quant_out_type: Optional[int] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = ""
 ) -> SymmBuffer:
@@ -186,12 +187,13 @@ def mega_moe(
     l1_weights: List[torch.Tensor],
     l2_weights: List[torch.Tensor],
     sym_buffer: SymmBuffer,
+    *,
     scales: Optional[torch.Tensor] = None,
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
-    weight1_type: int = 28,
-    weight2_type: int = 28
+    weight1_type: Optional[int] = None,
+    weight2_type: Optional[int] = None
 ):
 
     return torch.ops.npu_ops_transformer.npu_mega_moe(

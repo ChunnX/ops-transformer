@@ -532,9 +532,8 @@ private:
                     softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
             } else {
                 if (tilingData->col < CONSTANT_EIGHT) {
-                    Cast(
-                        tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
-                        {1, 1, 1, 1});
+                    Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
+                         {1, 1, 1, 1});
                 } else {
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }

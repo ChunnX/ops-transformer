@@ -37,6 +37,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 const char *A_INNER_DEBUG_BARRIER = "DistributeBarrier Tiling Debug";
@@ -181,7 +182,7 @@ static void DistributeBarrierConfigIndexSet(DistributeBarrierConfig& config)
     return;
 }
 
-static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName,
+static ge::graphStatus CheckMc2Context(const gert::TilingContext *context, const char *nodeName,
     const DistributeBarrierConfig &config)
 {
     const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
