@@ -56,17 +56,16 @@ __simd_callee__ inline void ScatterRopeBf16HalfToNz(MicroAPI::RegTensor<bfloat16
 }
 
 __simd_callee__ inline void StoreRopeBf16RowToNzByScatter(MicroAPI::RegTensor<bfloat16_t> &outLowBf16,
-    MicroAPI::RegTensor<bfloat16_t> &outHighBf16, __ubuf__ bfloat16_t *outBf16Nz,
-    __ubuf__ uint16_t *nzScatterIndex, uint32_t localRow)
+    MicroAPI::RegTensor<bfloat16_t> &outHighBf16, __ubuf__ bfloat16_t *rowOutNz,
+    __ubuf__ uint16_t *nzScatterIndex)
 {
-    __ubuf__ bfloat16_t *rowOutNz = outBf16Nz + localRow * QKV_RRC_NZ_C0;
     ScatterRopeBf16HalfToNz(outLowBf16, rowOutNz, nzScatterIndex, 0U);
     ScatterRopeBf16HalfToNz(outHighBf16, rowOutNz, nzScatterIndex, QKV_RRC_D128_HALF_SIZE);
 }
 
-__simd_callee__ inline void QkRmsNormRopeD128RowNzVf(__ubuf__ bfloat16_t *rowBf16, __ubuf__ float *gamma,
-    __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz, __ubuf__ uint16_t *nzScatterIndex,
-    uint32_t localRow, float reciprocal, float epsilon)
+__simd_callee__ inline void QkRmsNormRopeD128RowNzVf(__ubuf__ bfloat16_t *inputBf16, uint32_t qkHead,
+    __ubuf__ float *gamma, __ubuf__ float *cosSin, __ubuf__ bfloat16_t *rowOutNz,
+    __ubuf__ uint16_t *nzScatterIndex, float reciprocal, float epsilon)
 {
     MicroAPI::RegTensor<bfloat16_t> xLowBf16;
     MicroAPI::RegTensor<bfloat16_t> xHighBf16;
@@ -83,9 +82,10 @@ __simd_callee__ inline void QkRmsNormRopeD128RowNzVf(__ubuf__ bfloat16_t *rowBf1
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
 
-    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowBf16, rowBf16);
     MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        xHighBf16, rowBf16 + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+        xLowBf16, inputBf16 + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+        xHighBf16, inputBf16 + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
     MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xLow, xLowBf16, mask64);
     MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xHigh, xHighBf16, mask64);
 
@@ -132,25 +132,38 @@ __simd_callee__ inline void QkRmsNormRopeD128RowNzVf(__ubuf__ bfloat16_t *rowBf1
 
     MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outLowBf16, outLow, mask64);
     MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outHighBf16, outHigh, mask64);
-    StoreRopeBf16RowToNzByScatter(outLowBf16, outHighBf16, outBf16Nz, nzScatterIndex, localRow);
+    StoreRopeBf16RowToNzByScatter(outLowBf16, outHighBf16, rowOutNz, nzScatterIndex);
+}
+
+__simd_callee__ inline void QkRmsNormRopeD128HeadRangeNzVf(__ubuf__ bfloat16_t *inputBf16,
+    uint32_t qkHeadBase, __ubuf__ float *gamma, __ubuf__ float *cosSin, __ubuf__ bfloat16_t *rowOutNz,
+    __ubuf__ uint16_t *nzScatterIndex, uint32_t headSize, float reciprocal, float epsilon)
+{
+    for (uint32_t headIdx = 0U; headIdx < headSize; ++headIdx) {
+        QkRmsNormRopeD128RowNzVf(inputBf16, qkHeadBase + headIdx, gamma, cosSin, rowOutNz,
+            nzScatterIndex, reciprocal, epsilon);
+        rowOutNz += QKV_RRC_NZ_C0;
+    }
 }
 
 __simd_vf__ inline void QkRmsNormRopeD128NzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
     __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz, __ubuf__ uint16_t *nzScatterIndex,
-    uint32_t tokenSize, uint32_t qkHeadOffset, uint32_t qkHeadSize, uint32_t qkvStrideT,
-    uint32_t numQHeads, float reciprocal, float epsilon)
+    uint32_t tokenSize, uint32_t numQHeads, uint32_t numKHeads, uint32_t qkvStrideT,
+    float reciprocal, float epsilon)
 {
+    const uint32_t qkHeadSize = numQHeads + numKHeads;
+    __ubuf__ bfloat16_t *tokenInput = inputBf16;
+    __ubuf__ float *tokenCosSin = cosSin;
+    __ubuf__ bfloat16_t *tokenOutNz = outBf16Nz;
     for (uint32_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        for (uint32_t sliceIdx = 0U; sliceIdx < qkHeadSize; ++sliceIdx) {
-            const uint32_t qkHead = qkHeadOffset + sliceIdx;
-            const uint32_t srcOffset = tokenIdx * qkvStrideT + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
-            const uint32_t localRow = tokenIdx * qkHeadSize + sliceIdx;
-            const uint32_t gammaOffset =
-                qkHead < numQHeads ? 0U : QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
-            const uint32_t cosSinOffset = tokenIdx * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
-            QkRmsNormRopeD128RowNzVf(inputBf16 + srcOffset, gamma + gammaOffset, cosSin + cosSinOffset,
-                outBf16Nz, nzScatterIndex, localRow, reciprocal, epsilon);
-        }
+        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, 0U, gamma, tokenCosSin, tokenOutNz,
+            nzScatterIndex, numQHeads, reciprocal, epsilon);
+        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, numQHeads,
+            gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U, tokenCosSin,
+            tokenOutNz + numQHeads * QKV_RRC_NZ_C0, nzScatterIndex, numKHeads, reciprocal, epsilon);
+        tokenInput += qkvStrideT;
+        tokenCosSin += QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+        tokenOutNz += qkHeadSize * QKV_RRC_NZ_C0;
     }
 }
 
