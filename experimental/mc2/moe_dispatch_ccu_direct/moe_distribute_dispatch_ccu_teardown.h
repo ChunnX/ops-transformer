@@ -19,7 +19,7 @@
  *   语法实现，通过 `<<<blockDim, stream>>>` 直接 launch（即"AIV 直驱"）。
  *
  *   配套调整：
- *     - 0.5RTT 等齐 + 清零（WaitAllPeersArriveNotify / ClearAllPeersArriveNotify）
+ *     - 0.5RTT 等齐 + 清零（WaitallpeersarriveNotify / clearallpeersarriveNotify）
  *       从 v9 teardown 上移到 v10 setup CCU 末尾（setup CCU 的段 9）。
  *     - setup CCU 完成时所有对端 0.5RTT 数据已就位；stream 顺序保证 AIV teardown
  *       跑时 y / commCmdInfo 内容稳定，无需再做等齐。
@@ -50,7 +50,7 @@ struct MoeDistributeDispatchCcuTeardownTilingData {
     uint32_t epWorldSize;            // EP 通信域大小（WaitForAllSrcRanks + 段循环）
     uint32_t bs;                      // batch size
     uint32_t topK;                    // topK
-    uint64_t tokenMsgLen;            // = Align256(H)*2 [BF16] / Align32(H+H/32) [MXFP8]（metaOffsetElems 用）
+    uint64_t tokenMsgLen;            // = Align256(H)*2 [BF16] / Align32(H+H/32) [MXFP8]（干净 data 拷贝 stride = tokenMsgLen/sizeof(YType)）
     uint64_t tokenWithMetaLen;       // = tokenMsgLen + 32（commWindow 每槽 data + metadata）
 };
 
@@ -67,7 +67,7 @@ struct MoeDistributeDispatchCcuTeardownTilingData {
 
 // 彻底精简版签名：只保留 device 端实际读写的 GM。
 //   IN : commCmdInfo（token 数 + sentinel）/ commWindow（接收数据）
-//   OUT: expandX（紧密区）/ assistInfoForCombine（metadata 三元组）
+//   OUT: expandX（紧密区，干净 data）/ assistInfoForCombine（单字段 dstByteOff int64）/ commCmdInfo（sendBytes+negCnt）
 extern "C" __global__ __aicore__ void moe_distribute_dispatch_ccu_teardown(
     GM_ADDR commCmdInfo, GM_ADDR commWindow, GM_ADDR expandX,
     GM_ADDR assistInfoForCombine, GM_ADDR tilingGM);

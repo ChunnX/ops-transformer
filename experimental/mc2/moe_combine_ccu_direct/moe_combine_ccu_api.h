@@ -17,7 +17,7 @@
  *   - combine_teardown 走 AIV ascendc 路径（直调），内部轮询等齐 + K-stride 取 j=0 副本
  *
  * Mc2CcuKernelBase 占位基类 + 4 个 0.5RTT API 声明（RecordExpectCount /
- *   WriteNbWithArriveNotify / WaitAllPeersArriveNotify / ClearAllPeersArriveNotify）
+ *   WriteNbWithArriveNotify / WaitallpeersarriveNotify / clearallpeersarriveNotify）
  *   直接复用 moe_dispatch_ccu_api.h——dispatch / combine 共享同一基类，只是 tag 不同。
  *
  * CCU 0.5RTT 资源组：CCU 最多 4 组 wishCntXn/totalCntXn 资源；本工程占用 2 组：

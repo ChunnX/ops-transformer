@@ -14,7 +14,7 @@
  *
  * Algorithm 两段（纯 vector，无通信）：
  *   1. WaitForAllSrcRanks：轮询本卡 commCmdInfo 的 ready 区 [0,R) 等全为 1
- *      （combine_setup CCU 段 9 WaitAllPeersArriveNotify 收齐反向数据后，段 10 LocalCopyNb 置 ready=1）。
+ *      （combine_setup CCU 段 9 WaitallpeersarriveNotify 收齐反向数据后，段 10 LocalCopyNb 置 ready=1）。
  *   2. K-stride 取 commWindow[i*K]（token i 的 j=0 副本）→ xOut[i]。
  *      identity 模式下 commWindow[i*K] 即 x[i]，故 xOut==x 闭环成立。
  *      生产版需对每 i 的 K 个副本加权求和（Cast + Muls expertScales + Add）。
@@ -53,7 +53,7 @@ public:
         topK_             = tiling->topK;
         hiddenSize_       = tiling->hiddenSize;
         commQuantMode_    = tiling->commQuantMode;     // v17 Phase 2 ★
-        tokenWithMetaLen_ = tiling->tokenWithMetaLen;
+        tokenMsgLen_      = tiling->tokenMsgLen;        // v20.6 ★ 干净槽 stride（无 metadata）
 
         // v16 ★ 复用 dispatch 同款 commWindow（hccl 开辟），不再用 yCombine
         commWindowGM_.SetGlobalBuffer((__gm__ YType*)commWindow);
@@ -68,7 +68,7 @@ public:
     /**
      * 收口 ★ 等齐：轮询本卡 commCmdInfo 的 ready 区 [0, R) 等全为 1（与 dispatch_teardown 完全相同）。
      *
-     * 等齐信号 = "专用 ready 区全 1"。combine_setup CCU 段 9 WaitAllPeersArriveNotify(R-1) 确认本卡
+     * 等齐信号 = "专用 ready 区全 1"。combine_setup CCU 段 9 WaitallpeersarriveNotify(R-1) 确认本卡
      *   收齐反向数据后，段 10 用 1 次 LocalCopyNb 把 oneBuf 整块写到 ready 区置 ready[0..R)=1。
      *
      * 布局收口：commCmdInfo 简化为只剩 ready 区，从偏移 0 起（删了 tokenCount/scratch）。
@@ -115,8 +115,8 @@ public:
         WaitForAllSrcRanks();
 
         LocalTensor<YType> ubLocal = ubBuf_.Get<YType>();
-        // v16 ★ commWindow 中每槽 tokenWithMetaLen 字节（含 metadata），按 BF16 元素数算 stride
-        const uint64_t tokenWithMetaElems = tokenWithMetaLen_ / sizeof(YType);
+        // v20.6 ★ combine commWindow 每槽 tokenMsgLen 字节（干净，无 metadata），按 BF16 元素数算 stride
+        const uint64_t tokenMsgElems = tokenMsgLen_ / sizeof(YType);
 
         // ====== 阶段 2：以 K 为 stride 取 commWindow[i*K] → xOut[i] ======
         //
@@ -146,8 +146,8 @@ public:
         const uint64_t copyElemsPerToken = dataBytesPerToken / sizeof(YType); // 按 BF16 视图换元素数
 
         for (uint32_t i = 0; i < bs_; ++i) {
-            // commWindow[i*K] 起始元素偏移（j=0 副本的位置，按 BF16 视图）
-            const uint64_t srcOffset = static_cast<uint64_t>(i) * topK_ * tokenWithMetaElems;
+            // commWindow[i*K] 起始元素偏移（j=0 副本的位置，按 BF16 视图）；v20.6 ★ 干净 stride
+            const uint64_t srcOffset = static_cast<uint64_t>(i) * topK_ * tokenMsgElems;
             // xOut[i] 起始元素偏移（按 BF16 视图）
             const uint64_t dstOffset = static_cast<uint64_t>(i) * copyElemsPerToken;
 
@@ -174,7 +174,7 @@ private:
     uint32_t topK_;
     uint32_t hiddenSize_;
     uint32_t commQuantMode_;       // v17 Phase 2 ★ 0=BF16, 1=MXFP8（影响 copyLen）
-    uint64_t tokenWithMetaLen_;    // v15 ★
+    uint64_t tokenMsgLen_;         // v20.6 ★ combine commWindow 干净槽 stride（无 metadata）
 };
 
 /**
