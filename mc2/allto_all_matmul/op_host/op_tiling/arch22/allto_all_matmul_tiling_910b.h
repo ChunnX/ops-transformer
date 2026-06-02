@@ -16,15 +16,15 @@
 #ifndef ALLTO_ALL_MATMUL_TILING_910_H
 #define ALLTO_ALL_MATMUL_TILING_910_H
 
-#include "securec.h"
-#include "mc2_matmul_tiling_cfg.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
-#include "../allto_all_matmul_tiling_base.h"
 #include "../../../op_kernel/arch22/allto_all_matmul_tiling.h"
 #include "../../../op_kernel/arch22/allto_all_matmul_tiling_key.h"
+#include "../allto_all_matmul_tiling_base.h"
+#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
+#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "mc2_matmul_tiling_cfg.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "securec.h"
 
 namespace MC2Tiling {
 using namespace optiling;
@@ -33,18 +33,16 @@ struct AlltoAllMatmulTilingValue {
     int32_t value = -1;
     std::map<int, std::vector<std::vector<int>>> conditionMap = {};
     explicit AlltoAllMatmulTilingValue(int32_t v = -1, std::map<int, std::vector<std::vector<int>>> m = {})
-        : value(v), conditionMap(std::move(m))
-    {
-    }
+        : value(v), conditionMap(std::move(m)) {}
 };
 
 class AlltoAllMatmulTiling910b : public AllToAllMatmulTilingBase {
-public:
+   public:
     explicit AlltoAllMatmulTiling910b(gert::TilingContext *context);
     ~AlltoAllMatmulTiling910b() override = default;
 
-protected:
-    bool IsCapable() override; // 恒为true
+   protected:
+    bool IsCapable() override;  // 恒为true
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
@@ -77,7 +75,7 @@ protected:
     ge::graphStatus SetHcclTiling(AlltoAllMatmulTilingData *tilingData);
     void PrintAlltoAllMatmulTilingData(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
 
-private:
+   private:
     bool x2Transpose = false;
     bool hasBias = false;
     uint32_t quantType = TILINGKEY_TPL_NOQUANT;
@@ -89,5 +87,5 @@ private:
     uint32_t numBlocks = 1U;
     size_t quantWorkspaceSize = 0;
 };
-} // namespace MC2Tiling
+}  // namespace MC2Tiling
 #endif

@@ -15,34 +15,26 @@
 #ifndef ALLTO_ALL_MATMUL_TILING_BASE_H
 #define ALLTO_ALL_MATMUL_TILING_BASE_H
 
-#include "tiling/tiling_api.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_formulaic_tiling.h"
+#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
-#include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
-#include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_formulaic_tiling.h"
+#include "tiling/tiling_api.h"
 
 namespace MC2Tiling {
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
-public:
-    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+   public:
+    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~AllToAllMatmulTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override
-    {
-        TilingBaseClass::Reset(context);
-    }
+    void Reset(gert::TilingContext *context) override { TilingBaseClass::Reset(context); }
 
-protected:
+   protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
-    ge::graphStatus CheckInput()
-    {
-        return ge::GRAPH_SUCCESS;
-    }
+    ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
     virtual CutResult GetCutResOfCommAndCompute();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();
@@ -60,11 +52,11 @@ protected:
     TilingContextInfo contextInfo_;
     TilingInferredInfo inferredInfo_;
 
-private:
+   private:
     // 功能后移，基类的GetShapeAttrsInfo在isCapable之前，当前将校验和参数获取放到子类的DoOptiling中
     ge::graphStatus GetShapeAttrsInfo() override;
     // 在框架中没有实际使用
     ge::graphStatus DoLibApiTiling() override;
 };
-} // namespace MC2Tiling
+}  // namespace MC2Tiling
 #endif
