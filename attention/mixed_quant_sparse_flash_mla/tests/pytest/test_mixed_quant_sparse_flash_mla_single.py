@@ -92,6 +92,7 @@ def qsmla(param_combinations):
         ops_mode = 'prefill' if params['S1'] > 4 else "decode"
         q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
         kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+        prefix_part = f"{param_combinations['tc_prefix']}_" if param_combinations.get('tc_prefix', '') else ""
         Testcase_Name = f"mixedQuantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
         params['Testcase_Name'] = Testcase_Name
 
