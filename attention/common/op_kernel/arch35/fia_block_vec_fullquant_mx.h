@@ -70,6 +70,7 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
+    static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
@@ -776,6 +777,11 @@ public:
         if constexpr (HAS_MASK) {
             int64_t s1FirstValidToken = Min(Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
             int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            if constexpr (USE_DN) {
+                if (constInfo.sparseMode == static_cast<uint32_t>(BAND) && runInfo.actS2Size > 0) {
+                    s1LastValidToken = runInfo.actS1Size;
+                }
+            }
             s1LastValidToken = Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
             bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
@@ -1034,6 +1040,10 @@ public:
         if (runInfo.actSingleLoopS2Size > 256) {
             s2RealSize = subLoop == 0 ? 256 : runInfo.actSingleLoopS2Size - 256;
         }
+        if (runInfo.isBandGlobalOnlyS2Loop) {
+            isSkipMask = true;
+            return;
+        }
 
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
@@ -1087,6 +1097,10 @@ public:
         if (runInfo.actSingleLoopS2Size > 256) {
             s2RealSize = subLoop == 0 ? 256 : runInfo.actSingleLoopS2Size - 256;
         }
+        if (runInfo.isBandGlobalOnlyS2Loop) {
+            isSkipMask = true;
+            return;
+        }
 
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
@@ -1132,6 +1146,11 @@ public:
                 maskInfo, true);
             MergeMaskDn(attenMaskUb, attenMaskUbPre, maskSize);
             this->stage1OutQue[runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
+        }
+        if (constInfo.sparseMode == static_cast<uint32_t>(BAND) && runInfo.s2Idx == 0U && subLoop == 0U &&
+            isSkipMaskForNext) {
+            uint32_t globalKeepSize = Min(BAND_GLOBAL_WINDOW_SIZE, maskInfo.s2dealNum) * (maskInfo.gs1dealNum >> 1);
+            Duplicate(attenMaskUb, static_cast<uint8_t>(1U), globalKeepSize);
         }
     }
 

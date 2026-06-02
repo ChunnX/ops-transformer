@@ -51,6 +51,7 @@ public:
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t BAND_GLOBAL_WINDOW_SIZE = 4U;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -105,6 +106,11 @@ public:
     uint64_t actSeqLensQ = 0;
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
+    uint32_t globalS2Start = 0;
+    uint32_t globalS2End = 0;
+    uint32_t localS2Start = 0;
+    uint32_t localS2End = 0;
+    uint32_t nextS2Start = 0;
     uint32_t prevBIdx = 0;
     uint32_t prevBN2Idx = 0;
     uint32_t prevGS1Idx = 0;
@@ -471,6 +477,7 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        nextS2Start = curS2Start;
         if (curS2Start >= curS2End) {
             return TASK_DEAL_MODE::SKIP;
         }
@@ -483,6 +490,11 @@ public:
             return TASK_DEAL_MODE::S2_END;
         }
 
+        if (IsBandGlobalLocalSparse() && !IsCurS2InSparseRange(s2Cur)) {
+            nextS2Start = GetNextSparseS2Start(s2Cur);
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
         if (s2Cur == curS2Start) {
             mloop++;
         }
@@ -492,6 +504,53 @@ public:
         }
 
         return TASK_DEAL_MODE::CREATE_TASK;
+    }
+
+    __aicore__ inline bool IsBandGlobalLocalSparse()
+    {
+        return USE_DN && HAS_MASK && constInfo.sparseMode == fa_base_vector::BAND;
+    }
+
+    __aicore__ inline bool IsValidS2Range(uint32_t s2Start, uint32_t s2End)
+    {
+        return s2Start < s2End;
+    }
+
+    __aicore__ inline void ResetSparseS2Ranges()
+    {
+        globalS2Start = 0U;
+        globalS2End = 0U;
+        localS2Start = 0U;
+        localS2End = 0U;
+        nextS2Start = 0U;
+    }
+
+    __aicore__ inline void ClipSparseS2Range(uint32_t &s2Start, uint32_t &s2End, uint32_t clipStart,
+                                             uint32_t clipEnd)
+    {
+        s2Start = Max(s2Start, clipStart);
+        s2End = Min(s2End, clipEnd);
+        if (s2Start >= s2End) {
+            s2Start = 0U;
+            s2End = 0U;
+        }
+    }
+
+    __aicore__ inline bool IsCurS2InSparseRange(uint32_t s2Cur)
+    {
+        return (IsValidS2Range(globalS2Start, globalS2End) && s2Cur >= globalS2Start && s2Cur < globalS2End) ||
+               (IsValidS2Range(localS2Start, localS2End) && s2Cur >= localS2Start && s2Cur < localS2End);
+    }
+
+    __aicore__ inline uint32_t GetNextSparseS2Start(uint32_t s2Cur)
+    {
+        uint32_t nextStart = curS2End;
+        if (IsValidS2Range(globalS2Start, globalS2End) && s2Cur < globalS2Start) {
+            nextStart = globalS2Start;
+        } else if (IsValidS2Range(localS2Start, localS2End) && s2Cur < localS2Start) {
+            nextStart = localS2Start;
+        }
+        return nextStart;
     }
 
     __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
@@ -515,6 +574,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        ResetSparseS2Ranges();
         curS2Start = 0U;
         curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
         if ((bN2Cur == constInfo.bN2Start) && (gS1Cur == constInfo.gS1OStart)) {
@@ -530,6 +590,7 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
+        ResetSparseS2Ranges();
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
         int64_t preTokenLeftUp = 0;
         int64_t nextTokenLeftUp = 0;
@@ -563,18 +624,71 @@ public:
         uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
-        // no valid token
-        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        bool localS2RangeValid = !(s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 ||
+                                   s2LastToken < s2FirstToken);
+        if (!localS2RangeValid && !IsBandGlobalLocalSparse()) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
         }
-        // get valid range
-        s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
-        s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
 
-        s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
-        s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
+        if (localS2RangeValid) {
+            s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+            s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+            s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
+            s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;
+        }
+
+        if (IsBandGlobalLocalSparse()) {
+            uint32_t s2LoopTimes = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1U) / s2BaseSize;
+            uint32_t clipStart = 0U;
+            uint32_t clipEnd = s2LoopTimes;
+            uint32_t firstValidS2Start = localS2RangeValid ? s2StartWithSparse : s2LoopTimes;
+            uint32_t lastValidS2End = localS2RangeValid ? s2EndWithSparse : 0U;
+
+            if (localS2RangeValid) {
+                localS2Start = s2StartWithSparse;
+                localS2End = s2EndWithSparse;
+            }
+            if (actSeqLensKv > 0U && BAND_GLOBAL_WINDOW_SIZE > 0U) {
+                uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(actSeqLensKv));
+                globalS2Start = 0U;
+                globalS2End = (globalTokenEnd + s2BaseSize - 1U) / s2BaseSize;
+                firstValidS2Start = Min(firstValidS2Start, globalS2Start);
+                lastValidS2End = Max(lastValidS2End, globalS2End);
+            }
+
+            if (bN2Cur == constInfo.bN2Start && gS1Cur == constInfo.gS1OStart) {
+                headS2Split = constInfo.s2OStart > firstValidS2Start ? true : false;
+                clipStart = constInfo.s2OStart;
+            }
+            if (bN2Cur == constInfo.bN2End && gS1Cur == constInfo.gS1OEnd) {
+                tailS2Split = constInfo.s2OEnd > 0U ? true : false;
+                clipEnd = constInfo.s2OEnd > 0U ? constInfo.s2OEnd : clipEnd;
+            }
+
+            ClipSparseS2Range(globalS2Start, globalS2End, clipStart, clipEnd);
+            ClipSparseS2Range(localS2Start, localS2End, clipStart, clipEnd);
+
+            if (!IsValidS2Range(globalS2Start, globalS2End) && !IsValidS2Range(localS2Start, localS2End)) {
+                curS2Start = 0U;
+                curS2End = 0U;
+                return;
+            }
+
+            curS2Start = s2LoopTimes;
+            curS2End = 0U;
+            if (IsValidS2Range(globalS2Start, globalS2End)) {
+                curS2Start = Min(curS2Start, globalS2Start);
+                curS2End = Max(curS2End, globalS2End);
+            }
+            if (IsValidS2Range(localS2Start, localS2End)) {
+                curS2Start = Min(curS2Start, localS2Start);
+                curS2End = Max(curS2End, localS2End);
+            }
+            nextS2Start = curS2Start;
+            return;
+        }
 
         // 4. Calc curS2Start, curS2End
         curS2Start = s2StartWithSparse;
@@ -687,6 +801,15 @@ public:
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
+        info.isBandGlobalOnlyS2Loop = IsBandGlobalLocalSparse() &&
+                                      IsValidS2Range(globalS2Start, globalS2End) &&
+                                      s2Cur >= globalS2Start && s2Cur < globalS2End &&
+                                      !(IsValidS2Range(localS2Start, localS2End) &&
+                                        s2Cur >= localS2Start && s2Cur < localS2End);
+        if (info.isBandGlobalOnlyS2Loop) {
+            uint32_t globalTokenEnd = Min(BAND_GLOBAL_WINDOW_SIZE, static_cast<uint32_t>(info.actS2Size));
+            info.actSingleLoopS2Size = globalTokenEnd - info.s2Idx;
+        }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
@@ -744,7 +867,7 @@ public:
                                           uint32_t &s2Cur)
     {
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
-            s2Cur = curS2Start;
+            s2Cur = nextS2Start;
             return;
         }
 

@@ -162,6 +162,7 @@ def _set_case(module, case):
     module.SPARSE_MODE = int(case.get("sparse_mode", module.SPARSE_MODE))
     module.PRE_TOKENS = int(case.get("pre_tokens", 2147483647))
     module.NEXT_TOKENS = int(case.get("next_tokens", 0))
+    module.GLOBAL_WINDOW_SIZE = int(case.get("global_window_size", module.GLOBAL_WINDOW_SIZE))
     module.INPUT_LAYOUT = case.get("input_layout", "TND")
     module.Q_SCALE_LAYOUT = case.get("q_scale_layout", "AUTO")
     module.KV_CACHE_LAYOUT = case.get("kv_cache_layout", "PA_NZ")

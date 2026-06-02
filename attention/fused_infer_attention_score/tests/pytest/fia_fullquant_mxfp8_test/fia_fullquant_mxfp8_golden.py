@@ -48,6 +48,7 @@ BLOCK_SIZE = 512
 SPARSE_MODE = 3
 PRE_TOKENS = 2147483647
 NEXT_TOKENS = 0
+GLOBAL_WINDOW_SIZE = 4
 FP8_DTYPE = torch.float8_e4m3fn
 QUANT_GROUP_SIZE = 32
 
@@ -583,6 +584,51 @@ def make_accum_seq(seq_lens):
     return result
 
 
+def build_attention_mask(actual_seq_q, actual_seq_kv, sq, skv,
+                         sparse_mode=None, pre_tokens=None, next_tokens=None,
+                         global_window_size=None, device=None, batch=None):
+    """Build CPU golden attention mask. True means masked out."""
+    sparse_mode = SPARSE_MODE if sparse_mode is None else int(sparse_mode)
+    pre_tokens = PRE_TOKENS if pre_tokens is None else int(pre_tokens)
+    next_tokens = NEXT_TOKENS if next_tokens is None else int(next_tokens)
+    global_window_size = GLOBAL_WINDOW_SIZE if global_window_size is None else int(global_window_size)
+    if global_window_size < 0:
+        raise ValueError(f"GLOBAL_WINDOW_SIZE must be non-negative, got {global_window_size}")
+
+    batch = len(actual_seq_q) if batch is None else int(batch)
+    if len(actual_seq_q) != batch or len(actual_seq_kv) != batch:
+        raise ValueError(
+            f"actual_seq length must match batch, got batch={batch}, "
+            f"len(actual_seq_q)={len(actual_seq_q)}, len(actual_seq_kv)={len(actual_seq_kv)}"
+        )
+    q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int64, device=device)
+    k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int64, device=device)
+    q_lens_acl = q_lens_t.view(batch, 1, 1, 1)
+    k_lens_acl = k_lens_t.view(batch, 1, 1, 1)
+
+    q_range = torch.arange(sq, dtype=torch.int64, device=device).view(1, 1, -1, 1)
+    k_range = torch.arange(skv, dtype=torch.int64, device=device).view(1, 1, 1, -1)
+    q_padding_mask = q_range >= q_lens_acl
+    k_padding_mask = k_range >= k_lens_acl
+
+    if sparse_mode == 3:
+        delta = k_lens_acl - q_lens_acl
+        causal_mask = k_range > (q_range + delta)
+        return causal_mask | q_padding_mask | k_padding_mask
+
+    if sparse_mode == 4:
+        delta = k_lens_acl - q_lens_acl
+        next_mask = k_range > (q_range + delta + next_tokens)
+        pre_mask = k_range < (q_range + delta - pre_tokens)
+        if global_window_size > 0:
+            # SWA global tokens stay visible even when they are outside the local left window.
+            global_keep = k_range < global_window_size
+            pre_mask = pre_mask & (~global_keep)
+        return next_mask | pre_mask | q_padding_mask | k_padding_mask
+
+    return q_padding_mask | k_padding_mask
+
+
 # ==============================================================================
 # 数据生成
 # ==============================================================================
@@ -690,27 +736,14 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     TILES_Q = (Sq + Q_BLOCK_SIZE - 1) // Q_BLOCK_SIZE
     TILES_KV = (Skv + K_BLOCK_SIZE - 1) // K_BLOCK_SIZE
 
-    q_lens_t = torch.tensor(actual_seq_q, dtype=torch.int32)
-    k_lens_t = torch.tensor(actual_seq_kv, dtype=torch.int32)
-    q_lens_acl = q_lens_t.view(b, 1, 1, 1)
-    k_lens_acl = k_lens_t.view(b, 1, 1, 1)
-
-    q_range = torch.arange(Sq).view(1, 1, -1, 1)
-    k_range = torch.arange(Skv).view(1, 1, 1, -1)
-    q_padding_mask = q_range >= q_lens_acl
-    k_padding_mask = k_range >= k_lens_acl
-
-    if SPARSE_MODE == 3:
-        delta = k_lens_acl - q_lens_acl
-        causal_mask = k_range > (q_range + delta)
-        mask_global = causal_mask | q_padding_mask | k_padding_mask
-    elif SPARSE_MODE == 4:
-        delta = k_lens_acl - q_lens_acl
-        next_mask = k_range > (q_range + delta + NEXT_TOKENS)
-        pre_mask = k_range < (q_range + delta - PRE_TOKENS)
-        mask_global = next_mask | pre_mask | q_padding_mask | k_padding_mask
-    else:
-        mask_global = q_padding_mask | k_padding_mask
+    mask_global = build_attention_mask(
+        actual_seq_q,
+        actual_seq_kv,
+        Sq,
+        Skv,
+        device=q_tensor.device,
+        batch=b,
+    )
 
     Q_BLOCKS = list(torch.split(q_tensor, Q_BLOCK_SIZE, dim=2))
     K_BLOCKS = list(torch.split(k_tensor, K_BLOCK_SIZE, dim=2))
@@ -1112,6 +1145,7 @@ if __name__ == '__main__':
     print(f"KV_CACHE_LAYOUT={KV_CACHE_LAYOUT}")
     print(f"B={B}, N_q={N_q}, N_kv={N_kv}, D={D}")
     print(f"ACTUAL_SEQ_Q={ACTUAL_SEQ_Q}, ACTUAL_SEQ_KV={ACTUAL_SEQ_KV}")
+    print(f"SPARSE_MODE={SPARSE_MODE}, PRE_TOKENS={PRE_TOKENS}, NEXT_TOKENS={NEXT_TOKENS}, GLOBAL_WINDOW_SIZE={GLOBAL_WINDOW_SIZE}")
 
     print("\n[Step 1] 数据生成")
     (q_fp8, k_fp8, v_fp8,
