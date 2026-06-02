@@ -393,18 +393,10 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
     uint32_t sOuterSize = sOuterFactor_ * CV_RATIO;
     int64_t totalSize = 0;
     for (uint32_t bIdx = 0; bIdx < fiaInfo_->bSize; bIdx++) {
-        int64_t actualSeqLengthsTmp = actualSeqLengthsQ_[bIdx];  // 用于存放减去行无效后，真实的actseqlen
-        int64_t preTokensLeftUp = 0;
-        int64_t nextTokensLeftUp = 0;
-        GetPreNextTokensLeftUp(actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
-                               preTokensLeftUp, nextTokensLeftUp);
-        FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
-                               preTokensLeftUp, nextTokensLeftUp);
-
-        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
+        int64_t outerBlockNums = (actualSeqLengthsQ_[bIdx] * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
                                  static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
-        if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
-            outerBlockNums = fiaInfo_->n2Size;
+        if (actualSeqLengthsQ_[bIdx] == 0) {
+            outerBlockNums = fiaInfo_->n2Size * fiaInfo_->gSize;
         }
         totalSize += outerBlockNums;
         OP_LOGD(fiaInfo_->opName,
