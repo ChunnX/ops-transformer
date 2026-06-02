@@ -24,11 +24,11 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_quant_lightning_indexer_v2(Tensor query, Tensor key, Tensor weights, Tensor query_dequant_scale, " \
-            "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, " \
-            "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? cmp_residual_k = None, " \
-            "Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, " \
-            "str layout_query=\"BSND\", str layout_key=\"BSND\", int mask_mode=0, " \
+        return "npu_quant_lightning_indexer_v2(Tensor query, Tensor key, Tensor weights, Tensor query_dequant_scale, "\
+            "Tensor key_dequant_scale, int topk, int quant_mode, *, Tensor? cu_seqlens_q=None, "\
+            "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? "\
+            "cmp_residual_k = None, Tensor? block_table=None, Tensor? output_idx_offset=None, Tensor? metadata=None, "\
+            "str layout_query=\"BSND\", str layout_key=\"BSND\", int max_seqlen_q=-1, int mask_mode=0, "\
             "int cmp_ratio=1, int return_value=0) -> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -39,9 +39,8 @@ class QuantLightningIndexerV2OpBuilder(OpBuilder):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_quant_lightning_indexer_v2_meta(query, key, weights, query_dequant_scale, key_dequant_scale, topk,
                                                 quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
-                                                seqused_q=None, seqused_k=None, cmp_residual_k=None,
                                                 block_table=None, output_idx_offset=None, metadata=None, 
-                                                layout_query="BSND", layout_key="BSND",
+                                                layout_query="BSND", layout_key="BSND", max_seqlen_q=-1,
                                                 mask_mode=0, cmp_ratio=1, return_value=0):
             keyHeadNum = key.shape[1] if layout_key == "TND" else key.shape[2]
 
@@ -68,13 +67,14 @@ def npu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key
                                    quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
                                    seqused_q=None, seqused_k=None, cmp_residual_k=None, 
                                    block_table=None, output_idx_offset=None, metadata=None, 
-                                   layout_query="BSND", layout_key="BSND", 
+                                   layout_query="BSND", layout_key="BSND", max_seqlen_q=-1,
                                    mask_mode=0, cmp_ratio=1, return_value=0):
     """
     dispatcher implementation for NPU.zhe
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     return op_module.npu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale, key_dequant_scale, 
-                                                    topk, quant_mode, cu_seqlens_q, cu_seqlens_k,
-                                                    seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset,
-                                                    metadata, layout_query, layout_key, mask_mode, cmp_ratio, return_value)
+                                                    topk, quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+                                                    cmp_residual_k, block_table, output_idx_offset, metadata,
+                                                    layout_query, layout_key, max_seqlen_q, mask_mode,
+                                                    cmp_ratio, return_value)

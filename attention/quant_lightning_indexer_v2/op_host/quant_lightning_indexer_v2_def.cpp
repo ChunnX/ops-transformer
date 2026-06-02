@@ -21,81 +21,82 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT4})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_HIFLOAT4})
+            .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("w")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k_descale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
         this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cu_seqlens_k")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("seqused_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("seqused_k")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("cmp_residual_k")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("output_idx_offset")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("sparse_indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("sparse_values")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 默认值，筛选前2048
         this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: 默认值，per-token-head
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
+        this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);  // -1: 默认值，表示任意可能长度
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);      // 3: 默认值，只计算下三角
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("return_value").AttrType(OPTIONAL).Int(0);               //  0: 默认值
