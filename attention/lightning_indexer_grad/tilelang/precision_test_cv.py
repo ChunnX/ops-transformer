@@ -42,20 +42,6 @@ def run_precision_test():
     dy = torch.randn(batch, seqlen_q, head_num_q, topk, dtype=torch.float16).npu()
     indices = torch.randint(0, seqlen_k, (batch, seqlen_q, topk), dtype=torch.int64).npu()
 
-    print("\n[2] 官方 Ascend C 算子计算...")
-    try:
-        d_query_off, d_key_off, d_weights_off = torch_npu.npu_lightning_indexer_grad(
-            query, key, dy, indices, weights,
-            layout="BSND",
-            sparse_mode=3,
-        )
-        torch.npu.synchronize()
-        print("  完成")
-        official_available = True
-    except Exception as e:
-        print(f"  失败: {e}")
-        official_available = False
-        
     print("\n[1] TileLang CV 分离架构计算...")
     try:
         d_query_tl, d_key_tl, d_weights_tl = lightning_indexer_grad(
@@ -70,6 +56,20 @@ def run_precision_test():
     except Exception as e:
         print(f"  失败: {e}")
         tl_available = False
+
+    print("\n[2] 官方 Ascend C 算子计算...")
+    try:
+        d_query_off, d_key_off, d_weights_off = torch_npu.npu_lightning_indexer_grad(
+            query, key, dy, indices, weights,
+            layout="BSND",
+            sparse_mode=3,
+        )
+        torch.npu.synchronize()
+        print("  完成")
+        official_available = True
+    except Exception as e:
+        print(f"  失败: {e}")
+        official_available = False
 
     if tl_available and official_available:
         print("\n[3] 精度对比...")
