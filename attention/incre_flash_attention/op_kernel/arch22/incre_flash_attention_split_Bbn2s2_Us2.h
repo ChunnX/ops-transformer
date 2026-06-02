@@ -1446,55 +1446,58 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenSplitBbn
 {
     if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND) {
         // B,1,N2,G,D
-        tensorACoreOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+        tensorACoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
         // B,S2,N2,D
         tensorBCoreOffset =
-            bIdx * kvSeqSize * kvHeadNum * headDim + n2Idx * headDim + kvPaddingBeginOffset * kvHeadNum * headDim;
+            static_cast<uint64_t>(bIdx) * kvSeqSize * kvHeadNum * headDim + static_cast<uint64_t>(n2Idx) * headDim +
+            static_cast<uint64_t>(kvPaddingBeginOffset) * kvHeadNum * headDim;
 
         if (!batchContinuous) {
-            tensorBCoreOffset = n2Idx * headDim;
+            tensorBCoreOffset = static_cast<uint64_t>(n2Idx) * headDim;
         }
 
         if (flashDecodeFlag) {
-            tensorBCoreOffset += s2Idx * sInnerLoopSize * kvHeadNum * headDim;
+            tensorBCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize * kvHeadNum * headDim;
         }
 
         if (kvSlidingFlag == 1) {
             // B,1,N2,G,D
-            tensorOutCoreOffset = bIdx * qHeadNum * headDimV + n2Idx * gSize * headDimV;
+            tensorOutCoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDimV + static_cast<uint64_t>(n2Idx) * gSize * headDimV;
             // B,S2,N2,D
             tensorBValueCoreOffset =
-                bIdx * kvSeqSize * kvHeadNum * headDimV + n2Idx * headDimV + kvPaddingBeginOffset * kvHeadNum * headDimV;
+                static_cast<uint64_t>(bIdx) * kvSeqSize * kvHeadNum * headDimV + static_cast<uint64_t>(n2Idx) * headDimV +
+                static_cast<uint64_t>(kvPaddingBeginOffset) * kvHeadNum * headDimV;
 
             if (!batchContinuous) {
-                tensorBValueCoreOffset = n2Idx * headDimV;
+                tensorBValueCoreOffset = static_cast<uint64_t>(n2Idx) * headDimV;
             }
 
             if (flashDecodeFlag) {
-                tensorBValueCoreOffset += s2Idx * sInnerLoopSize * kvHeadNum * headDimV;
+                tensorBValueCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize * kvHeadNum * headDimV;
             }
         }
     } else {
-        tensorACoreOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+        tensorACoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
         // B,N2,S2,D
         tensorBCoreOffset =
-            bIdx * kvHeadNum * kvSeqSize * headDim + n2Idx * kvSeqSize * headDim + kvPaddingBeginOffset * headDim;
+            static_cast<uint64_t>(bIdx) * kvHeadNum * kvSeqSize * headDim + static_cast<uint64_t>(n2Idx) * kvSeqSize * headDim +
+            static_cast<uint64_t>(kvPaddingBeginOffset) * headDim;
 
         if (!batchContinuous) {
             uint64_t seqSize = SeqLenFromTensorList(bIdx);
-            tensorBCoreOffset = n2Idx * seqSize * headDim;
+            tensorBCoreOffset = static_cast<uint64_t>(n2Idx) * seqSize * headDim;
         }
         if (flashDecodeFlag) {
-            tensorBCoreOffset += s2Idx * sInnerLoopSize * headDim;
+            tensorBCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize * headDim;
         }
     }
 }
 
 template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::CalcBN2Params()
 {
-    attenMaskCoreOffset = bIdx * attenMaskSize + kvPaddingBeginOffset;
+    attenMaskCoreOffset = static_cast<uint64_t>(bIdx) * attenMaskSize + kvPaddingBeginOffset;
     if (flashDecodeFlag) {
-        attenMaskCoreOffset += s2Idx * sInnerLoopSize;
+        attenMaskCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize;
     }
     // antiquant的offset和scale参数数据排列是先key后value
     if (antiquantPerTensorFlag == 1) {
@@ -1502,9 +1505,9 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenSplitBbn
     } else {
         antiqParamOffset = n2Idx * headDim;
     }
-    antiqKeyParamCoreOffsetPerToken = bIdx * antiqSeqSize + kvPaddingBeginOffset;
+    antiqKeyParamCoreOffsetPerToken = static_cast<uint64_t>(bIdx) * antiqSeqSize + kvPaddingBeginOffset;
     if (antiquantPerHeadFlag) {
-        antiqKeyParamCoreOffsetPerToken = bIdx * antiqSeqSize * kvHeadNum + kvPaddingBeginOffset +
+        antiqKeyParamCoreOffsetPerToken = static_cast<uint64_t>(bIdx) * antiqSeqSize * kvHeadNum + kvPaddingBeginOffset +
                                           n2Idx * antiqSeqSize;
     }
     if (flashDecodeFlag) {
@@ -1540,7 +1543,8 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenSplitBbn
     }
 
     if (pseShiftFlag) {
-        pseShiftCoreOffset = (pseShiftB == 1) ? (n2Idx * gSize * pseShiftS) : (bIdx * qHeadNum * pseShiftS + n2Idx * gSize * pseShiftS);
+        pseShiftCoreOffset = (pseShiftB == 1) ? (static_cast<uint64_t>(n2Idx) * gSize * pseShiftS) :
+            (static_cast<uint64_t>(bIdx) * qHeadNum * pseShiftS + static_cast<uint64_t>(n2Idx) * gSize * pseShiftS);
         if (flashDecodeFlag) {
             pseShiftCoreOffset += s2Idx * sInnerLoopSize;
         }
@@ -1609,14 +1613,14 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::UpdateOffse
     } else {
         antiqParamOffset = n2Idx * headDim;
     }
-    antiqKeyParamCoreOffsetPerToken = bIdx * antiqSeqSize + kvPaddingBeginOffset;
+    antiqKeyParamCoreOffsetPerToken = static_cast<uint64_t>(bIdx) * antiqSeqSize + kvPaddingBeginOffset;
     if (antiquantPerHeadFlag) {
         antiqParamOffset = n2Idx;
-        antiqKeyParamCoreOffsetPerToken = bIdx * kvHeadNum * antiqSeqSize + n2Idx * antiqSeqSize +
+        antiqKeyParamCoreOffsetPerToken = static_cast<uint64_t>(bIdx) * kvHeadNum * antiqSeqSize + static_cast<uint64_t>(n2Idx) * antiqSeqSize +
                                           kvPaddingBeginOffset;
     }
     if (flashDecodeFlag) {
-        antiqKeyParamCoreOffsetPerToken += s2Idx * sInnerLoopSize;
+        antiqKeyParamCoreOffsetPerToken += static_cast<uint64_t>(s2Idx) * sInnerLoopSize;
     }
     // out quant
     perChannelQuantOffset = n2Idx * headDim * gSize;
@@ -1625,7 +1629,7 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::UpdateOffse
         if (pseShiftB == 1) {
             pseShiftCoreOffset = n2Idx * gSize * pseShiftS;
         } else {
-            pseShiftCoreOffset = bIdx * qHeadNum * pseShiftS + n2Idx * gSize * pseShiftS;
+            pseShiftCoreOffset = static_cast<uint64_t>(bIdx) * qHeadNum * pseShiftS + static_cast<uint64_t>(n2Idx) * gSize * pseShiftS;
         }
         if (flashDecodeFlag) {
             pseShiftCoreOffset += s2Idx * sInnerLoopSize;
@@ -1633,11 +1637,11 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::UpdateOffse
     }
 
     uint64_t sInnerOffsetDataSize = sInnerLoopIdx * singleProcessSInnerSize;
-    attenOutOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+    attenOutOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
 
-    attenMaskCoreOffset = bIdx * attenMaskSize; // 前缀不用考虑左kvpadding
+    attenMaskCoreOffset = static_cast<uint64_t>(bIdx) * attenMaskSize; // 前缀不用考虑左kvpadding
     if (flashDecodeFlag) {
-        attenMaskCoreOffset += s2Idx * sInnerLoopSize;
+        attenMaskCoreOffset += static_cast<uint64_t>(s2Idx) * sInnerLoopSize;
     }
     attenMaskOffset = attenMaskCoreOffset + sInnerOffsetDataSize;
     antiqParamOffsetPerToken = antiqKeyParamCoreOffsetPerToken + sInnerOffsetDataSize;
@@ -1949,7 +1953,7 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::DealQueryPreProcessBaseBlock(
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    uint64_t qOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+    uint64_t qOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
     qOffset += startRow * actualColumnCount;
 
     LocalTensor<T> queryUb = tmpBuff1.Get<T>();
@@ -1991,7 +1995,7 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::DealQueryPr
 {
     uint32_t baseOffset = startRow * BLOCK_ELEMENT_NUM;
 
-    uint64_t qOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+    uint64_t qOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
     qOffset += startRow * actualColumnCount;
 
     LocalTensor<T> queryUb = tmpBuff1.Get<T>();
@@ -2077,9 +2081,9 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::SysPrefixQu
             dealSize = tailSplitSize;
         }
         // 这里不对齐的d
-        uint64_t qOffset = bIdx * qHeadNum * headDim + n2Idx * gSize * headDim;
+        uint64_t qOffset = static_cast<uint64_t>(bIdx) * qHeadNum * headDim + static_cast<uint64_t>(n2Idx) * gSize * headDim;
         qOffset += gSplitSize * i * headDim;
-        uint64_t qOutOffset = bIdx * gSize * headDimAlign + gSplitSize * i * headDimAlign;
+        uint64_t qOutOffset = static_cast<uint64_t>(bIdx) * gSize * headDimAlign + gSplitSize * i * headDimAlign;
         uint32_t calcSize = dealSize * headDimAlign;
 
         LocalTensor<Q_T> in = inputQue1.AllocTensor<Q_T>();
@@ -2169,7 +2173,7 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::CopyLseIn(u
 {
     LocalTensor<T> lseSum = inputQue2.AllocTensor<T>();
 
-    combineLseOffset = (bIdx * kvHeadNum * splitKVNum + n2Idx * splitKVNum) * gSize * FP32_ONE_BLOCK_SIZE +
+    combineLseOffset = (static_cast<uint64_t>(bIdx) * kvHeadNum * splitKVNum + static_cast<uint64_t>(n2Idx) * splitKVNum) * gSize * FP32_ONE_BLOCK_SIZE +
                        startRow * FP32_ONE_BLOCK_SIZE;
     LocalTensor<T> lseMax = inputQue1.AllocTensor<T>();
     for (uint32_t i = 0; i < actualCombineLoopSize; i++) {
@@ -2202,7 +2206,7 @@ __aicore__ inline void IncreFlashAttentionAttenSplitBbn2s2Us2<IFAT>::CopyAccumOu
     copyInPadParams.paddingValue = 0;
 
     combineAccumOutOffset =
-        (bIdx * kvHeadNum * splitKVNum + n2Idx * splitKVNum + splitKVIndex) * gSize * headDimV + startRow * headDimV;
+        (static_cast<uint64_t>(bIdx) * kvHeadNum * splitKVNum + static_cast<uint64_t>(n2Idx) * splitKVNum + splitKVIndex) * gSize * headDimV + startRow * headDimV;
     DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
     inputQue1.EnQue(accumOutLocal);
 }
@@ -2384,7 +2388,7 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenSplitBbn
 {
     bIdx = tmpBlockIdx / kvHeadNum;
     n2Idx = tmpBlockIdx % kvHeadNum;
-    attenOutOffset = bIdx * kvHeadNum * gSize * headDimV + n2Idx * gSize * headDimV;
+    attenOutOffset = static_cast<uint64_t>(bIdx) * kvHeadNum * gSize * headDimV + static_cast<uint64_t>(n2Idx) * gSize * headDimV;
     perChannelQuantOffset = n2Idx * headDim * gSize;
     if (tmpBlockIdx >= batchSize * kvHeadNum) {
         return;

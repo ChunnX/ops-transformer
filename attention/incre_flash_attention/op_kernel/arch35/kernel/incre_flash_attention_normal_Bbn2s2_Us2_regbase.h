@@ -789,25 +789,29 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CalcParams
 
     if (info.isFirstSInnerLoop) {
         if constexpr (LAYOUT_T == LAYOUT::BNSD) {
-            tensorACoreOffset = info.bIdx * qHeadNum * headDim + info.n2Idx * gSize * headDim;
-            tensorBCoreOffset = info.bIdx * kvHeadNum * kvSeqSize * headDim + info.n2Idx * kvSeqSize * headDim +
-                                kvPaddingBeginOffset * headDim;
+            tensorACoreOffset = static_cast<uint64_t>(info.bIdx) * qHeadNum * headDim +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDim;
+            tensorBCoreOffset = static_cast<uint64_t>(info.bIdx) * kvHeadNum * kvSeqSize * headDim +
+                static_cast<uint64_t>(info.n2Idx) * kvSeqSize * headDim +
+                static_cast<uint64_t>(kvPaddingBeginOffset) * headDim;
             if (!batchContinuous) {
                 uint64_t seqSize = SeqLenFromTensorList(info.bIdx);
-                tensorBCoreOffset = info.n2Idx * seqSize * headDim;
+                tensorBCoreOffset = static_cast<uint64_t>(info.n2Idx) * seqSize * headDim;
             }
             if constexpr (FLASH_DECODE) {
-                tensorBCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize * headDim;
+                tensorBCoreOffset += static_cast<uint64_t>(info.flashDecodeS2Idx) * sInnerLoopSize * headDim;
             }
         } else {
-            tensorACoreOffset = info.bIdx * qHeadNum * headDim + info.n2Idx * gSize * headDim;
-            tensorBCoreOffset = info.bIdx * kvSeqSize * kvHeadNum * headDim + info.n2Idx * headDim +
-                                kvPaddingBeginOffset * kvHeadNum * headDim;
+            tensorACoreOffset = static_cast<uint64_t>(info.bIdx) * qHeadNum * headDim +
+                static_cast<uint64_t>(info.n2Idx) * gSize * headDim;
+            tensorBCoreOffset = static_cast<uint64_t>(info.bIdx) * kvSeqSize * kvHeadNum * headDim +
+                static_cast<uint64_t>(info.n2Idx) * headDim +
+                static_cast<uint64_t>(kvPaddingBeginOffset) * kvHeadNum * headDim;
             if (!batchContinuous) {
-                tensorBCoreOffset = info.n2Idx * headDim;
+                tensorBCoreOffset = static_cast<uint64_t>(info.n2Idx) * headDim;
             }
             if constexpr (FLASH_DECODE) {
-                tensorBCoreOffset += info.flashDecodeS2Idx * sInnerLoopSize * kvHeadNum * headDim;
+                tensorBCoreOffset += static_cast<uint64_t>(info.flashDecodeS2Idx) * sInnerLoopSize * kvHeadNum * headDim;
             }
         }
     }
@@ -1172,7 +1176,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CombineSpl
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (bIdx * kvHeadNum + n2Idx) * gSize + i * gSplitSize;
+        lseOffset = (static_cast<uint64_t>(bIdx) * kvHeadNum + n2Idx) * gSize + i * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, gSplitSize, lseOffset);
 
         LocalTensor<T> tmp1 = lseMaxUb;
@@ -1190,7 +1194,7 @@ __aicore__ inline void IncreFlashAttentionNormalSplitBbn2s2Us2<IFAT>::CombineSpl
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = (bIdx * kvHeadNum + n2Idx) * gSize + (loopCount - 1) * gSplitSize;
+        lseOffset = (static_cast<uint64_t>(bIdx) * kvHeadNum + n2Idx) * gSize + (loopCount - 1) * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, tailSplitSize, lseOffset);
 
         LocalTensor<T> tmp1 = lseMaxUb;
