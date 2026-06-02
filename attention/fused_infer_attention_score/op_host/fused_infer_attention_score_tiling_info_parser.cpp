@@ -1229,7 +1229,7 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
             gert::Shape prefixShape{1};
             if (prefixShape != opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()) {
                 OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
-                        "System prefix is enabled but actualSharedPrefixLen shape is not {1}."),
+                        "System prefix is enabled but actualSharedPrefixLen shape is not {1}.");
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.actualSharedPrefixLen.tensor->GetData<int64_t>() != nullptr) {
