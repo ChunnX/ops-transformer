@@ -828,7 +828,7 @@ function(add_onnx_plugin_modules)
               $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
               json
               #protobuf_static_build host_protoc
-              host_protoc
+              #protobuf_static_build
               ascend_protobuf_static
       )
   endif()
