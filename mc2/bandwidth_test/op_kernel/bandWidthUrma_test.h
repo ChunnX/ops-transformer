@@ -354,7 +354,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
-        printf("START WRITR TOKEN");
+        //printf("START WRITR TOKEN");
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
     }
@@ -641,12 +641,12 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
         if (mode_ == 0) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
-            // WaitDispatch();      // 步骤3: 等待所有rank完成发送
-            // LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
+            WaitDispatch();      // 步骤3: 等待所有rank完成发送
+            LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
             SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();
-            // WaitDispatch();
+            WaitDispatch();
         }
     }
 }
