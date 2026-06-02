@@ -242,8 +242,8 @@ private:
     uint64_t selectNumIdxSize_ = 0;
     uint64_t selectIdxSize_ = 0;
     
-    BSAKvCacheLayout kvCacheLayout_ = BSAKvCacheLayout::TND;
-    BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND;
+    BSAQInputLayout qInputLayout_ = BSAQInputLayout::TND_Q;
+    BSAKvCacheLayout kvCacheLayout_ = BSAKvCacheLayout::TND_KV;
     
     uint32_t blockDim_ = 20;
     uint32_t aivNum_ = 0;

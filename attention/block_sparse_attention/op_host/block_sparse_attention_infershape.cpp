@@ -173,6 +173,11 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
             return ge::GRAPH_FAILED;
         }
 
+        if (valueShape->GetDim(BNSD_DIM_B) != kvB) {
+            OP_LOGE(context->GetNodeName(), "K and V batch dimension mismatch in BNSD format");
+            return ge::GRAPH_FAILED;
+        }
+
         if (valueShape->GetDim(BNSD_DIM_D) != kvD) {
             OP_LOGE(context->GetNodeName(), "K and V head dimension mismatch in BNSD format");
             return ge::GRAPH_FAILED;
@@ -190,6 +195,11 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
 
         if (*numKvHeadsPtr != 0 && kvN != *numKvHeadsPtr) {
             OP_LOGE(context->GetNodeName(), "KV heads mismatch in BSND format: %ld != %ld", kvN, *numKvHeadsPtr);
+            return ge::GRAPH_FAILED;
+        }
+
+        if (valueShape->GetDim(BSND_DIM_B) != kvB) {
+            OP_LOGE(context->GetNodeName(), "K and V batch dimension mismatch in BSND format");
             return ge::GRAPH_FAILED;
         }
 
