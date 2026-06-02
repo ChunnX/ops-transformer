@@ -775,7 +775,7 @@ function(protobuf_generate_external comp c_var h_var)
       COMMAND ${CMAKE_COMMAND} -E echo "generate proto cpp_out ${comp} by ${abs_file}"
       COMMAND ${PROTOBUF_HOST_PROTOC_DIR}/protoc -I${file_dir} ${extra_option} --cpp_out=${proto_output_path} ${abs_file}
       #DEPENDS ${abs_file} protobuf_static_build host_protoc
-      DEPENDS ${abs_file} 
+      DEPENDS ${abs_file} host_protoc
       COMMENT "Running C++ protocol buffer compiler on ${file}" VERBATIM)
 
   endforeach()
