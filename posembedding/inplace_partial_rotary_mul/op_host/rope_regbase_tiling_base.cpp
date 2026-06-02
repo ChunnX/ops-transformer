@@ -13,13 +13,10 @@
  * \brief
  */
 
-// #include "tiling_base/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-// #include "tiling_base/tiling_base.h"
 #include "platform/platform_info.h"
 #include "inplace_partial_rotary_mul_tiling.h"
 #include <graph/utils/type_utils.h>
-// #include "log/log.h"
 
 namespace {
 constexpr int64_t X_INDEX = 0;
@@ -192,12 +189,6 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
             "The shapes of input x and output should be the same");
         return ge::GRAPH_FAILED;
     }
-    // OP_CHECK_IF(
-    //     (cosShape.GetDim(DIM_3) != xShape.GetDim(DIM_3)),
-    //     OP_LOGE(context_,
-    //             "D of x, cos, sin and output should be same, actual x is %ld, cos is %ld, sin is %ld, output is %ld. ",
-    //             xShape.GetDim(DIM_3), cosShape.GetDim(DIM_3), sinShape.GetDim(DIM_3), yShape.GetDim(DIM_3)),
-    //     return ge::GRAPH_FAILED);
     if (CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

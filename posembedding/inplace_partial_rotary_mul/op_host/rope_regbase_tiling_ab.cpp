@@ -189,6 +189,4 @@ bool RopeRegBaseTilingClassAB::IsCapable()
     return layout_ == RopeLayout::SBND;
 }
 
-// REGISTER_OPS_TILING_TEMPLATE(InplacePartialRotaryMul, RopeRegBaseTilingClassAB, 25000);
-
 }  // namespace optiling
