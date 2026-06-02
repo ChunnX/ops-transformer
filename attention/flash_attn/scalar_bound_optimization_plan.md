@@ -549,3 +549,101 @@ cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
    - Task 数组（4 slots）：256B 热数据 vs 480B → 更少 cacheline
    - 94% 热路径访问集中在连续 64B 区域，提升 L1 命中率
 3. **删除未使用字段**：每个 RunInfoX 节省 24B，4 slots 共 96B
+
+---
+
+## 实施记录：第三批（P2）— 2026-06-02
+
+### 已完成的修改
+
+#### 1. tilingData 多级指针解引用消除 [P6]（优化项 7）
+
+**文件**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+
+**修改内容**：
+- `InitConstInfo()` 中将 4 个子结构体批量拷贝到局部变量：
+  ```cpp
+  FlashAttnBaseParams baseParams = this->tilingData->flashAttnBaseParams;
+  FlashAttnAttenMaskParams maskParams = this->tilingData->flashAttnAttenMaskParams;
+  FlashAttnWorkspaceParams wsParams = this->tilingData->flashAttnWorkspaceParams;
+  FlashAttnPageAttentionParams paParams = this->tilingData->flashAttnPageAttentionParams;
+  ```
+- 将所有 `this->tilingData->flashAttnBaseParams.xxx` 替换为 `baseParams.xxx`（19 处）
+- 将所有 `this->tilingData->flashAttnAttenMaskParams.xxx` 替换为 `maskParams.xxx`（7 处）
+- 将所有 `this->tilingData->flashAttnWorkspaceParams.xxx` 替换为 `wsParams.xxx`（2 处）
+- 将所有 `this->tilingData->flashAttnPageAttentionParams.xxx` 替换为 `paParams.xxx`（3 处）
+
+**消除的 Scalar 开销**：
+- GM Load 从 ~25 次降为 4 次批量拷贝
+- 每次 GM Load 延迟数百 cycle，总计节省数千 cycle（Init 阶段）
+
+#### 2. Event ID 数组拆为标量 [P1]（优化项 8）
+
+**文件**：`op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h`
+
+**修改内容**：
+- 将 `TEventID mte3ToVId[2]` 拆为 `mte3ToVId_0`、`mte3ToVId_1`
+- 将 `TEventID vToMte3Id[2]` 拆为 `vToMte3Id_0`、`vToMte3Id_1`
+- `AllocEventID()` / `FreeEventID()` 更新为使用标量变量
+- 所有 `mte3ToVId[0]` → `mte3ToVId_0`，`vToMte3Id[0]` → `vToMte3Id_0`
+- 动态索引 `vToMte3Id[runInfo.hot.loop & (DB - 1)]` → `((runInfo.hot.loop & (DB - 1)) ? vToMte3Id_1 : vToMte3Id_0)`
+- 共 26 处数组访问替换为标量引用
+
+**消除的 Scalar 开销**：
+- 消除数组动态下标对别名分析的污染
+- 编译器可对周围代码做更激进的常量传播
+
+#### 3. 热路径内对象构造消除 [P9]（优化项 9）
+
+**文件**：`op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h`
+
+**修改内容**：
+
+**ProcessVec2_C2GmUpdateUb**：
+- `DataCopyParams` 和 `DataCopyPadParams` 从循环内移到循环前
+- 循环不变字段（`dstStride`、`srcStride`、`blockLen`）在循环前设置一次
+- 循环内仅更新 `blockCount = subMRealsize`
+
+**ProcessVec2DSplit**：
+- 同样将 `DataCopyParams` 和 `DataCopyPadParams` 提到循环外
+- 循环不变字段在循环前设置，仅 `blockCount` 在循环内更新
+
+**消除的 Scalar 开销**：
+- 每轮循环消除 ~10+ 个初始化 Store 指令
+- 对于 `vec2LoopLimit` 次循环，总计节省 `vec2LoopLimit × 10+` 个 Store
+
+#### 4. CalcParams 热路径冗余计算（优化项 6）
+
+**状态**：已在第一批（P0）中完成主要优化：
+- bIdx 复用 prevBIdx（消除除法）
+- n2Idx 用乘法替代取模
+- GetPreNextTokenLeftUp 结果缓存
+- 局部变量提升（localN2Size、localGSize 等）
+
+剩余优化点（`actMSizeAlign32`、`actVecMSize`）已使用位运算和三元运算符，编译器可生成条件 move 指令，无需进一步修改。
+
+### 修改统计
+
+| 文件 | 修改类型 | 修改数量 |
+|------|---------|---------|
+| `flash_attn_kernel_base_gqa_template.h` | tilingData 解引用 | 31 处 GM Load → 4 次批量拷贝 |
+| `flash_attn_block_vec_noquant_gqa.h` | Event ID 拆标量 | 26 处数组访问 → 标量 |
+| `flash_attn_block_vec_noquant_gqa.h` | 对象构造外提 | 2 个函数，消除循环内构造 |
+| **合计** | — | **~60 处修改** |
+
+### 预期收益
+
+1. **tilingData 解引用**：Init 阶段 GM Load 从 ~25 次降为 4 次，节省数千 cycle
+2. **Event ID 拆标量**：消除别名分析污染，编译器可更激进优化
+3. **对象构造外提**：热循环每轮消除 ~10+ 个 Store 指令
+
+---
+
+## 三批优化总览
+
+| 批次 | 优化项 | 修改文件数 | 修改点 | 预期 Scalar cycle 降幅 |
+|------|--------|-----------|--------|----------------------|
+| **P0** | 冗余计算合并 + 局部变量 + 分支预测 | 3 | ~57 处 Load + 每轮 3 项冗余计算 | 25-35% |
+| **P1** | Buffer 位掩码 + RunInfoX 拆分 | 4 | ~130 处修改 | 15-20% |
+| **P2** | tilingData 解引用 + Event ID + 对象构造 | 2 | ~60 处修改 | 5-10% |
+| **合计** | 10 个优化项 | 5 个文件 | ~250 处修改 | **40-50%** |
