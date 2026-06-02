@@ -339,7 +339,6 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
     uint32_t batchMode = 1U;
     auto ret = context->SetScheduleMode(batchMode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
 
     const char *nodeName = context->GetNodeName();
     BandwidthTestTilingData *tilingData = context->GetTilingData<BandwidthTestTilingData>();
