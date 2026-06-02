@@ -389,7 +389,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
 
 ```cpp
 #include "acl/acl.h"
-#include "aclnnop/aclnn_moe_finalize_routing_v2.h"
+#include "aclnnop/aclnn_moe_finalize_routing_v3.h"
 #include <iostream>
 #include <vector>
 
