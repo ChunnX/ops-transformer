@@ -51,7 +51,7 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_sparse_flash_mla_atten_out_te
                     "When the layout of query is TND, the query dimension must be 3, but got ", q.dim());
         atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
-    at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(torch::kBfloat16));
+    at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(torch::kBFloat16));
     at::Tensor softmax_lse;
 
     if (return_softmax_lse) {
