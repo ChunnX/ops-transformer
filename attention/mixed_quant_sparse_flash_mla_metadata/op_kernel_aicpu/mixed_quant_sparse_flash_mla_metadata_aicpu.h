@@ -236,8 +236,6 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
-    bool ParamsCheck();
-    bool CheckTensorData();
     int32_t GetQueryBatchSize();
     void CalcOriMaskMode();
     void CalcCmpMaskMode();

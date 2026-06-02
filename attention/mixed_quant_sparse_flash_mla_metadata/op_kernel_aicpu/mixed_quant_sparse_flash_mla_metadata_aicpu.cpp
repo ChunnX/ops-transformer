@@ -80,47 +80,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
 
-    return (ParamsCheck() && ParamsInit());
-}
-
-bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck() 
-{
-    return CheckTensorData();
-}
-
-bool MixedQuantSparseFlashMlaMetadataCpuKernel::CheckTensorData()
-{
-    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr &&
-                                          t->GetTensorShape()->GetDimSize(0) != 0; };
-    if (isValid(cuSeqlensQ_) && cuSeqlensQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
-        return false;
-    }
-    if (isValid(cuSeqlensOriKv_) && cuSeqlensOriKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_ori_kv is nullptr!");
-        return false;
-    }
-    if (isValid(cuSeqlensCmpKv_) && cuSeqlensCmpKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cu_seqlens_cmp_kv is nullptr!");
-        return false;
-    }
-    if (isValid(sequsedQ_) && sequsedQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
-        return false;
-    }
-    if (isValid(sequsedOriKv_) && sequsedOriKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_ori_kv is nullptr!");
-        return false;
-    }
-    if (isValid(sequsedCmpKv_) && sequsedCmpKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_cmp_kv is nullptr!");
-        return false;
-    }
-    if (isValid(cmpResidualKv_) && cmpResidualKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of cmp_residual_kv is nullptr!");
-        return false;
-    }
-    return true;
+    return ParamsInit();
 }
 
 int32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()

@@ -23,6 +23,29 @@
 extern "C" {
 #endif
 
+inline bool IsTensorExistQsmla(const aclTensor *tensor)
+{
+    return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0);
+}
+
+int64_t GetDimNumQsmla(const aclTensor *tensor)
+{
+    if (tensor == nullptr) {
+        return -1;
+    }
+    return tensor->GetViewShape().GetDimNum();
+}
+
+aclDataType GetDataTypeQsmla(const aclTensor *tensor)
+{
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    if (tensor == nullptr) {
+        return dataType;
+    }
+    aclGetDataType(tensor, &dataType);
+    return dataType;
+}
+
 aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
                                          int64_t maxSeqlenCmpKv, int64_t numHeadsQ, int64_t numHeadsKv,
                                          int64_t quantMode, int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim,
@@ -76,6 +99,10 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         if (oriMaskMode != 0 && oriMaskMode != 3 && oriMaskMode != 4) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode should be 0, 3 or 4, but got %ld",
                 oriMaskMode);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (oriMaskMode == 4 && oriTopk != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When ori_mask_mode is 4, ori_topk should only be 0");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // ori_win_left >= -1
@@ -155,35 +182,42 @@ aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqlensQOptional, const aclTe
                                        int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
                                        const char *layoutKvOptional, const aclTensor *metadata)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
-        auto ret = aclGetViewShape(cuSeqlensQOptional, &viewDims, &viewDimsNum);
-        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+        if (!IsTensorExistQsmla(cuSeqlensQOptional)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, cu_seqlens_q must be provided!");
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (hasOriKv) {
         // cu_seqlens_ori_kv 存在性校验
         if (strcmp(layoutKvOptional, "TND") == 0) {
-            auto ret = aclGetViewShape(cuSeqlensOriKvOptional, &viewDims, &viewDimsNum);
-            if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            if (!IsTensorExistQsmla(cuSeqlensOriKvOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is TND, "
                     "cu_seqlens_ori_kv must be provided!");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // seqused_ori_kv 存在性校验
         if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
-            auto ret = aclGetViewShape(sequsedOriKvOptional, &viewDims, &viewDimsNum);
-            if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            if (!IsTensorExistQsmla(sequsedOriKvOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BNBD, "
                     "seqused_ori_kv must be provided!");
-                delete[] viewDims;
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+        // ori_topk_length 存在性校验
+        if (oriTopk != 0 && oriMaskMode == 0) {
+            if (!IsTensorExistQsmla(oriTopkLengthOptional)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk is not 0 and ori_mask_mode is 0, "
+                    "ori_topk_length must be provided!");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+        if (oriMaskMode == 4) {
+            if (IsTensorExistQsmla(oriTopkLengthOptional)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and ori_mask_mode is 4, "
+                    "ori_topk_length should not be provided");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -191,144 +225,96 @@ aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqlensQOptional, const aclTe
     if (hasCmpKv) {
         // cu_seqlens_cmp_kv 存在性校验
         if (strcmp(layoutKvOptional, "TND") == 0) {
-            auto ret = aclGetViewShape(cuSeqlensCmpKvOptional, &viewDims, &viewDimsNum);
-            if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            if (!IsTensorExistQsmla(cuSeqlensCmpKvOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is TND, "
                     "cu_seqlens_cmp_kv must be provided!");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // seqused_cmp_kv 存在性校验
         if (strcmp(layoutKvOptional, "PA_BNBD") == 0) {
-            auto ret = aclGetViewShape(sequsedCmpKvOptional, &viewDims, &viewDimsNum);
-            if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            if (!IsTensorExistQsmla(sequsedCmpKvOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BNBD, "
                     "seqused_cmp_kv must be provided!");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // cmp_residual_kv 存在性校验
         if (cmpRatio != 1 && cmpMaskMode == 3) {
-            auto ret = aclGetViewShape(cmpResidualKvOptional, &viewDims, &viewDimsNum);
-            if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            if (!IsTensorExistQsmla(cmpResidualKvOptional)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio is not 1 and mask_mode is 3, "
                     "cmp_residual_kv must be provided!");
-                delete[] viewDims;
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+        // cmp_topk_length 存在性校验
+        if (cmpTopk != 0 && cmpMaskMode == 0) {
+            if (!IsTensorExistQsmla(cmpTopkLengthOptional)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_topk is not 0 and cmp_mask_mode is 0, "
+                    "cmp_topk_length must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
-    // ori_topk_length 存在性校验
-    if (hasOriKv && oriTopk != 0 && oriMaskMode == 0) {
-        auto ret = aclGetViewShape(oriTopkLengthOptional, &viewDims, &viewDimsNum);
-        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk is not 0 and ori_mask_mode is 0, "
-                "ori_topk_length must be provided!");
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    // cmp_topk_length 存在性校验
-    if (hasCmpKv && cmpTopk != 0 && cmpMaskMode == 0) {
-        auto ret = aclGetViewShape(cmpTopkLengthOptional, &viewDims, &viewDimsNum);
-        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_topk is not 0 and cmp_mask_mode is 0, "
-                "cmp_topk_length must be provided!");
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
     // metadata 存在性校验
-    auto ret = aclGetViewShape(metadata, &viewDims, &viewDimsNum);
-    if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+    if (!IsTensorExistQsmla(metadata)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output metadata is nullptr!");
-        delete[] viewDims;
         return ACLNN_ERR_PARAM_INVALID;
     }
-    delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 
 int64_t GetQueryBatchSizeQsmla(const aclTensor *sequsedQOptional, const aclTensor *cuSeqlensQOptional,
                                       const char *layoutQOptional, int64_t batchSize)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
     // 1. 如果 sequsedQOptional 传了，使用 sequsedQOptional 获取 BatchSize
-    auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        int64_t dimSize = viewDims[0];
-        delete[] viewDims;
-        return dimSize;
+    if (IsTensorExistQsmla(sequsedQOptional)) {
+        return sequsedQOptional->GetViewShape().GetDim(0);
     }
     // 2. sequsedQOptional 没传，判断 Layout
     if (strcmp(layoutQOptional, "TND") == 0) {
         // 如果是 TND，尝试使用 cuSeqLensQOptional 获取 BatchSize
-        ret = aclGetViewShape(cuSeqlensQOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-            int64_t dimSize = viewDims[0];
-            delete[] viewDims;
-            return dimSize - 1;
+        if (IsTensorExistQsmla(cuSeqlensQOptional)) {
+            return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
     // 3. 如果不是 TND，或者 cuSeqLensQOptional 为空，使用 batchSize
-    delete[] viewDims;
     return batchSize;
 }
 
 int64_t GetOriKvBatchSizeQsmla(const aclTensor *sequsedOriKvOptional, const aclTensor *cuSeqlensOriKvOptional,
                                       const char *layoutKvOptional, int64_t batchSize)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
     // 1. 如果 sequsedOriKvOptional 传了，使用 sequsedOriKvOptional 获取 BatchSize
-    auto ret = aclGetViewShape(sequsedOriKvOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        int64_t dimSize = viewDims[0];
-        delete[] viewDims;
-        return dimSize;
+    if (IsTensorExistQsmla(sequsedOriKvOptional)) {
+        return sequsedOriKvOptional->GetViewShape().GetDim(0);
     }
     // 2. sequsedOriKvOptional 没传，判断 Layout
     if (strcmp(layoutKvOptional, "TND") == 0) {
         // 如果是 TND，尝试使用 cuSeqlensOriKvOptional 获取 BatchSize
-        ret = aclGetViewShape(cuSeqlensOriKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-            int64_t dimSize = viewDims[0];
-            delete[] viewDims;
-            return dimSize - 1;
+        if (IsTensorExistQsmla(cuSeqlensOriKvOptional)) {
+            return cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
     // 3. 如果不是 TND，或者 cuSeqlensOriKvOptional 为空，使用 batchSize
-    delete[] viewDims;
     return batchSize;
 }
 
 int64_t GetCmpKvBatchSizeQsmla(const aclTensor *sequsedCmpKvOptional, const aclTensor *cuSeqlensCmpKvOptional,
                                       const char *layoutKvOptional, int64_t batchSize)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
     // 1. 如果 sequsedCmpKvOptional 传了，使用 sequsedCmpKvOptional 获取 BatchSize
-    auto ret = aclGetViewShape(sequsedCmpKvOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-        int64_t dimSize = viewDims[0];
-        delete[] viewDims;
-        return dimSize;
+    if (IsTensorExistQsmla(sequsedCmpKvOptional)) {
+        return sequsedCmpKvOptional->GetViewShape().GetDim(0);
     }
     // 2. sequsedCmpKvOptional 没传，判断 Layout
     if (strcmp(layoutKvOptional, "TND") == 0) {
         // 如果是 TND，尝试使用 cuSeqlensCmpKvOptional 获取 BatchSize
-        ret = aclGetViewShape(cuSeqlensCmpKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
-            int64_t dimSize = viewDims[0];
-            delete[] viewDims;
-            return dimSize - 1;
+        if (IsTensorExistQsmla(cuSeqlensCmpKvOptional)) {
+            return cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
     // 3. 如果不是 TND，或者 cuSeqlensCmpKvOptional 为空，使用 batchSize
-    delete[] viewDims;
     return batchSize;
 }
 
@@ -340,103 +326,93 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
                                          const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
                                          bool hasCmpKv, const aclTensor *metadata)
 {
-    int64_t *viewDims = nullptr;
-    uint64_t viewDimsNum = 0;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    int64_t dimNum = -1;
     // 校验 cu_seqlens_q
-    auto ret = aclGetViewShape(cuSeqlensQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+    if (IsTensorExistQsmla(cuSeqlensQOptional)) {
         // 校验 cu_seqlens_q 维度
-        if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %lu", viewDimsNum);
-            delete[] viewDims;
+        dimNum = GetDimNumQsmla(cuSeqlensQOptional);
+        if (dimNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %lu", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 cu_seqlens_q 数据类型
-        ret = aclGetDataType(cuSeqlensQOptional, &dataType);
-        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        dataType = GetDataTypeQsmla(cuSeqlensQOptional);
+        if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_q must be int32");
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     // 校验 seqused_q
-    ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+    if (IsTensorExistQsmla(sequsedQOptional)) {
         // 校验 seqused_q 维度
-        if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %lu", viewDimsNum);
-            delete[] viewDims;
+        dimNum = GetDimNumQsmla(sequsedQOptional);
+        if (dimNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %lu", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 seqused_q 数据类型
-        ret = aclGetDataType(sequsedQOptional, &dataType);
-        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        dataType = GetDataTypeQsmla(sequsedQOptional);
+        if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_q must be int32");
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     // ori_kv部分
     if (hasOriKv) {
         // 校验 cu_seqlens_ori_kv
-        ret = aclGetViewShape(cuSeqlensOriKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(cuSeqlensOriKvOptional)) {
             // 校验 cu_seqlens_ori_kv 维度
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %lu", viewDimsNum);
-                delete[] viewDims;
+            dimNum = GetDimNumQsmla(cuSeqlensOriKvOptional);
+            if (dimNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %lu",
+                    dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 cu_seqlens_ori_kv 数据类型
-            ret = aclGetDataType(cuSeqlensOriKvOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(cuSeqlensOriKvOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_ori_kv must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 seqused_ori_kv
-        ret = aclGetViewShape(sequsedOriKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(sequsedOriKvOptional)) {
             // 校验 seqused_ori_kv 维度
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_ori_kv must be 1, but got %lu", viewDimsNum);
-                delete[] viewDims;
+            dimNum = GetDimNumQsmla(sequsedOriKvOptional);
+            if (dimNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_ori_kv must be 1, but got %lu",
+                    dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 seqused_ori_kv 数据类型
-            ret = aclGetDataType(sequsedOriKvOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(sequsedOriKvOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_ori_kv must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 ori_topk_length
-        ret = aclGetViewShape(oriTopkLengthOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(oriTopkLengthOptional)) {
             // 校验 ori_topk_length 维度
-            if ((strcmp(layoutQOptional, "TND") == 0)) { // TND 场景
-                if (viewDimsNum != 2) {
+            dimNum = GetDimNumQsmla(oriTopkLengthOptional);
+            if (strcmp(layoutQOptional, "TND") == 0) {
+                if (dimNum != 2) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of ori_topk_length must be 2, "
-                            "but got %ld", viewDimsNum);
-                    delete[] viewDims;
+                            "but got %ld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
-            } else { // BSND 场景
-                if (viewDimsNum != 3) {
+            } else if (strcmp(layoutQOptional, "BSND") == 0) {
+                if (dimNum != 3) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of ori_topk_length must be 3, "
-                            "but got %ld", viewDimsNum);
-                    delete[] viewDims;
+                            "but got %ld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
             // 校验 ori_topk_length 数据类型
-            ret = aclGetDataType(oriTopkLengthOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(oriTopkLengthOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of ori_topk_length must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
@@ -444,106 +420,96 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
     // cmp_kv部分
     if (hasCmpKv) {
         // 校验 cu_seqlens_cmp_kv
-        ret = aclGetViewShape(cuSeqlensCmpKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(cuSeqlensCmpKvOptional)) {
             // 校验 cu_seqlens_cmp_kv 维度
-            if (viewDimsNum != 1) {
+            dimNum = GetDimNumQsmla(cuSeqlensCmpKvOptional);
+            if (dimNum != 1) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_cmp_kv must be 1, but got %lu",
-                    viewDimsNum);
-                delete[] viewDims;
+                    dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 cu_seqlens_cmp_kv 数据类型
-            ret = aclGetDataType(cuSeqlensCmpKvOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(cuSeqlensCmpKvOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_cmp_kv must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 seqused_cmp_kv
-        ret = aclGetViewShape(sequsedCmpKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(sequsedCmpKvOptional)) {
             // 校验 seqused_cmp_kv 维度
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_cmp_kv must be 1, but got %lu", viewDimsNum);
-                delete[] viewDims;
+            dimNum = GetDimNumQsmla(sequsedCmpKvOptional);
+            if (dimNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_cmp_kv must be 1, but got %lu",
+                    dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 seqused_cmp_kv 数据类型
-            ret = aclGetDataType(sequsedCmpKvOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(sequsedCmpKvOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_cmp_kv must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 cmp_residual_kv
-        ret = aclGetViewShape(cmpResidualKvOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(cmpResidualKvOptional)) {
             // 校验 cmp_residual_kv 维度
-            if (viewDimsNum != 1) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_kv must be 1, but got %lu", viewDimsNum);
-                delete[] viewDims;
+            dimNum = GetDimNumQsmla(cmpResidualKvOptional);
+            if (dimNum != 1) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_kv must be 1, but got %lu",
+                    dimNum);
                 return ACLNN_ERR_PARAM_INVALID;
             }
             // 校验 cmp_residual_kv 数据类型
-            ret = aclGetDataType(cmpResidualKvOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(cmpResidualKvOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cmp_residual_kv must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 cmp_topk_length
-        ret = aclGetViewShape(cmpTopkLengthOptional, &viewDims, &viewDimsNum);
-        if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        if (IsTensorExistQsmla(cmpTopkLengthOptional)) {
             // 校验 cmp_topk_length 维度
-            if ((strcmp(layoutQOptional, "TND") == 0)) { // TND 场景
-                if (viewDimsNum != 2) {
+            dimNum = GetDimNumQsmla(cmpTopkLengthOptional);
+            if (strcmp(layoutQOptional, "TND") == 0) {
+                if (dimNum != 2) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is TND, the dim num of cmp_topk_length must be 2, "
-                            "but got %ld", viewDimsNum);
-                    delete[] viewDims;
+                            "but got %ld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
-            } else { // BSND 场景
-                if (viewDimsNum != 3) {
+            } else if (strcmp(layoutQOptional, "BSND") == 0) {
+                if (dimNum != 3) {
                     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_q is BSND, the dim num of cmp_topk_length must be 3, "
-                            "but got %ld", viewDimsNum);
-                    delete[] viewDims;
+                            "but got %ld", dimNum);
                     return ACLNN_ERR_PARAM_INVALID;
                 }
             }
             // 校验 cmp_topk_length 数据类型
-            ret = aclGetDataType(cmpTopkLengthOptional, &dataType);
-            if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            dataType = GetDataTypeQsmla(cmpTopkLengthOptional);
+            if (dataType != aclDataType::ACL_INT32) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cmp_topk_length must be int32");
-                delete[] viewDims;
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
     // 校验 metadata
-    ret = aclGetViewShape(metadata, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+    if (IsTensorExistQsmla(metadata)) {
         // 校验 metadata 维度
-        if (viewDimsNum != 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lu", viewDimsNum);
-            delete[] viewDims;
+        dimNum = GetDimNumQsmla(metadata);
+        if (dimNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lu", dimNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
-        if (viewDims[0] != optiling::QSMLA_METADATA_SIZE) {
+        if (metadata->GetViewShape().GetDim(0) != optiling::QSMLA_METADATA_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::QSMLA_METADATA_SIZE, viewDims[0]);
-            delete[] viewDims;
+                optiling::QSMLA_METADATA_SIZE, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 数据类型
-        ret = aclGetDataType(metadata, &dataType);
-        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        dataType = GetDataTypeQsmla(metadata);
+        if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of metadata must be int32");
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -551,35 +517,33 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
     int64_t queryBatchSize = GetQueryBatchSizeQsmla(sequsedQOptional, cuSeqlensQOptional, layoutQOptional, batchSize);
     if (hasOriKv) {
         int64_t oriKvBatchSize = GetOriKvBatchSizeQsmla(sequsedOriKvOptional, cuSeqlensOriKvOptional, layoutKvOptional,
-                                                        batchSize);
+                                                       batchSize);
         if (queryBatchSize != oriKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from ori_kv, but got %ld and %ld", queryBatchSize,
                     oriKvBatchSize);
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (hasCmpKv) {
         int64_t cmpKvBatchSize = GetCmpKvBatchSizeQsmla(sequsedCmpKvOptional, cuSeqlensCmpKvOptional, layoutKvOptional,
-                                                        batchSize);
+                                                       batchSize);
         if (queryBatchSize != cmpKvBatchSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, the batch_size obtained from q should be "
                     "the same as that obtained from cmp_kv, but got %ld and %ld", queryBatchSize,
                     cmpKvBatchSize);
-            delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 cmp_residual_kv 元素数
-        ret = aclGetViewShape(cmpResidualKvOptional, &viewDims, &viewDimsNum);
-        if (viewDims[0] != queryBatchSize) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size of cmp_residual_kv should match the valid batch size, "
-                "but got %ld and %ld", viewDims[0], queryBatchSize);
-            delete[] viewDims;
-            return ACLNN_ERR_PARAM_INVALID;
+        if (IsTensorExistQsmla(cmpResidualKvOptional)) {
+            // 校验 cmp_residual_kv 元素数
+            if (cmpResidualKvOptional->GetViewShape().GetDim(0) != queryBatchSize) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size of cmp_residual_kv should match the valid batch size, "
+                    "but got %ld and %ld", cmpResidualKvOptional->GetViewShape().GetDim(0), queryBatchSize);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
     }
-    delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 
