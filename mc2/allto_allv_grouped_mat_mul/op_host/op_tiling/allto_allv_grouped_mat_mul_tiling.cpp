@@ -763,7 +763,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     if (maxMSize != 0) {
         AlltoAllvGmmTilingHelper gmmHelper(*this);
         GE_ASSERT_GRAPH_SUCCESS(gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
-            gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
+            gmmXDataType_, gmmWeightDataType_, gmmXDataType_, expertNum_));
         GE_ASSERT_GRAPH_SUCCESS(gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
     }
@@ -771,7 +771,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     if (bs_ != 0) {
         AlltoAllvGmmTilingHelper mmHelper(*this);
         GE_ASSERT_GRAPH_SUCCESS(mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
-            mmXDataType_, mmWeightDataType_, mmXDataType_));
+            mmXDataType_, mmWeightDataType_, mmXDataType_, 1));
         GE_ASSERT_GRAPH_SUCCESS(mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
     }
@@ -780,7 +780,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
 }
 
 ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
+    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype, uint32_t expertNum)
 {
     GetPlatformInfo();
     inputParams_.opName = context_->GetNodeName();
@@ -794,13 +794,13 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
     inputParams_.transB = transB;
     inputParams_.hasBias = false;
     inputParams_.isSingleX = false;
-    inputParams_.isSingleW = false;
+    inputParams_.isSingleW = true;
     inputParams_.isSingleY = false;
 
     inputParams_.mSize = M;
     inputParams_.kSize = K;
     inputParams_.nSize = N;
-    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.groupNum = expertNum;
     inputParams_.aQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.bQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.groupType = Mc2GroupedMatmul::SPLIT_M;
@@ -822,7 +822,9 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
     OP_TILING_CHECK(N > static_cast<uint64_t>(INT32_MAX),
         OP_LOGE(A_INNER_DEBUG, "N value is %llu, expected less than 2147483647.", N),
         return ge::GRAPH_FAILED);
-    mList_[0] = static_cast<int32_t>(M);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        mList_[i] = static_cast<int32_t>(M);
+    }
     kList_[0] = static_cast<int32_t>(K);
     nList_[0] = static_cast<int32_t>(N);
     SetKernelType();
