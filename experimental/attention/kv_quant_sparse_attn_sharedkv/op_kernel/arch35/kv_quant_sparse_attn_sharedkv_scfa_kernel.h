@@ -399,16 +399,15 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                 if (notLastTwoLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                    if ASCEND_IS_AIC {
-                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
-                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
-                        isFirstLoop = false;
-                    } else {
+                }
+                if ASCEND_IS_AIV {
+                    // V0 (dequant, producer) runs first so the cube can overlap its
+                    // matmuls with this dequant instead of stalling on it.
+                    if (notLastTwoLoop) {
+                        RunInfo &runInfo1 = runInfo[taskId % 3];
                         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3), \
                             v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
-                    }
-                } else {
-                    if ASCEND_IS_AIV {
+                    } else {
                         if constexpr (IS_SPLIT_G) {
                             if (maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
@@ -417,27 +416,37 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                             }
                         }
                     }
-                }
-                if (taskId > 0 && notLast) {
-                    auto &runInfo2 = runInfo[(taskId + 2) % 3];
-                    if ASCEND_IS_AIV {
+                    if (taskId > 0 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 3];
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
                             this->constInfo);
-                    } else {
+                    }
+                    if (taskId > 1) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                    }
+                } else {
+                    // AIC: issue matmuls (Bmm1 N-1, Bmm2 N-2) first, then load the
+                    // current task's K (which blocks on V0 via v0ResGm.WaitCrossCore).
+                    // Doing the load last lets the matmuls overlap the AIV dequant.
+                    if (taskId > 0 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 3];
                         RunInfo &runInfoNext = runInfo[taskId % 3];
                         this->cubeBlock.IterateBmm1(
                             this->bmm1Buffers.Get(), this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                 v0ResGmBuffers.Get(runInfo2.taskIdMod3),
                             notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                     }
-                }
-                if (taskId > 1) {
-                    RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
-                    if ASCEND_IS_AIV {
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
-                    } else {
+                    if (taskId > 1) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                             this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
+                    }
+                    if (notLastTwoLoop) {
+                        RunInfo &runInfo1 = runInfo[taskId % 3];
+                        this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                            v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
+                        isFirstLoop = false;
                     }
                 }
                 ++taskId;
