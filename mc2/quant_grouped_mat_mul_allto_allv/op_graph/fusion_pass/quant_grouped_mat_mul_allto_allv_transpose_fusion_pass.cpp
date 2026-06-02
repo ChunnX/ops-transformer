@@ -246,7 +246,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(uint32_t inputIdx, con
         mmXQuantMode, mmWeightQuantMode, commQuantMode,
         groupSize, yDtype, mmDtype, commQuantDtype);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.y});
+    auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.mm_y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
@@ -320,7 +320,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
         mmXQuantMode, mmWeightQuantMode, commQuantMode,
         groupSize, yDtype, mmDtype, commQuantDtype);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.y});
+    auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.mm_y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     
     // 关键：需要捕获两个 tensor - MC2 输出和 TransposeD 输出
@@ -587,7 +587,7 @@ ge::fusion::GraphUniqPtr QuantGroupedMatMulAlltoAllvTransposeFusionPass::Replace
         mmXQuantMode, mmWeightQuantMode, commQuantMode,
         groupSize, yDtype, mmDtype, commQuantDtype);
 
-    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y});
+    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.mm_y});
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Build replace graph failed.");
         return nullptr;

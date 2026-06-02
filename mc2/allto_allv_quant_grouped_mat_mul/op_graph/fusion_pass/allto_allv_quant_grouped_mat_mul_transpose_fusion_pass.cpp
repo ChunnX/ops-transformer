@@ -229,7 +229,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeGmmWeight()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -259,7 +259,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeDGmmWeight()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     return pattern;
@@ -289,7 +289,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeGmmWeightScale()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -319,7 +319,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeDGmmWeightScale()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     return pattern;
@@ -350,7 +350,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeMmWeight()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -381,7 +381,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeDMmWeight()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     return pattern;
@@ -412,7 +412,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeMmWeightScale()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -443,7 +443,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeDMmWeightScale()
         group.c_str(), epWorldSize, sendCounts, recvCounts,
         gmmXQuantMode, gmmWeightQuantMode);
     
-    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     return pattern;
@@ -696,7 +696,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
         gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
 
-    return replaceGraphBuilder.BuildAndReset({mc2.gmm_y});
+    return replaceGraphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
