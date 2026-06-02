@@ -272,14 +272,14 @@ public:
 #ifdef SKIP_V1
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         return;
 #endif
 
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(bmm1CcId);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
             return;
         }
 
@@ -409,7 +409,9 @@ public:
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
+        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
+        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         //----------------------------------------------------------------
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
@@ -626,7 +628,9 @@ public:
 
         SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
 
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
+        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
+        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         // ======================================================
         if (!runInfo.isFirstS2Loop) {
             UpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.actVecMSize);
