@@ -133,7 +133,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
         </ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
-      <td>ND、NCL</td>
+      <td>ND</td>
       <td>1-3</td>
       <td>√</td>
     </tr>
@@ -158,7 +158,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
       <td>Device侧的aclTensor，对应公式中的输入输出y。</td>
       <td>当x1的M轴或者x2的N轴为0时，yRef为空tensor。</td>
       <td>FLOAT32</td>
-      <td>ND、NCL</td>
+      <td>ND</td>
       <td>3(g，M，N)</td>
       <td>√</td>
     </tr>
