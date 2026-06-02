@@ -95,6 +95,7 @@ constexpr uint64_t MX_QUANT_MODE = 6;
 
 class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
+    AlltoAllvQuantGmmTilingBase() = default;
     explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 

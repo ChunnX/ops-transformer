@@ -49,11 +49,13 @@ class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase
 {
     friend class AlltoAllvGmmTilingHelper;
 public:
+    AlltoAllvGmmTiling() = default;
     explicit AlltoAllvGmmTiling(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context) {}
 
     AlltoAllvGmmTilingData* tilingData;
 
     ge::graphStatus Init();
+    ge::graphStatus Init(gert::TilingContext* context);
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
     virtual std::vector<int64_t> GetEpWorldSizeOptional() const = 0;
     virtual bool NeedToCheckCounts() const = 0;
