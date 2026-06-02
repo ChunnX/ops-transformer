@@ -248,7 +248,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 relu_grad_row_ub = T.alloc_ub(block_n, calc_dtype)
                 relu_grad_half_ub = T.alloc_ub(block_n, input_dtype)
                 mask_ub = T.alloc_ub(block_n, calc_dtype)
-                dw_accum_ub = T.alloc_ub(vector_baseg, calc_dtype)
+
 
                 local_max_ub = T.alloc_ub(block_n, calc_dtype)
                 local_sum_ub = T.alloc_ub(block_n, calc_dtype)
@@ -348,13 +348,6 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 )
                                 T.barrier_all()
 
-                                # dW += dI * ReLU(bmm2Res) (accumulate along K axis)
-                                T.tile.select(dw_accum_ub[g_local:g_local + 1], mask_ub[0:1], di_row_ub[0:1], 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                                T.barrier_all()
-
-                            # After all g_local in this g_group, write dWeights_ws
-                            # (simplified: write per n_idx chunk, actual reduce across n_idx needed)
-                            # For now, write partial dW; final reduce in Python if needed
 
                 T.set_cross_flag("V", 2)
 
