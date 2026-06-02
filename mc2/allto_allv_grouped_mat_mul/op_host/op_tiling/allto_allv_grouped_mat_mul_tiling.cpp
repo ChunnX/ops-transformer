@@ -354,7 +354,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
     auto mmWeightStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_WEIGHT_INDEX);
     auto outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
-    
     // If mmY is present, mmX and mmWeight must also be present
     if (IsShapePresent(outputMmYStorageShape)) {
         if (!IsShapePresent(mmXStorageShape) || !IsShapePresent(mmWeightStorageShape)) {
