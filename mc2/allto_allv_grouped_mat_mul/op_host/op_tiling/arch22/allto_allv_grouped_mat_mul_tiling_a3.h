@@ -20,7 +20,6 @@
 namespace optiling {
 class AlltoAllvGmmTilingA3 : public AlltoAllvGmmTiling {
 public:
-    explicit AlltoAllvGmmTilingA3(gert::TilingContext* context) : AlltoAllvGmmTiling(context) {}
     std::vector<int64_t> GetEpWorldSizeOptional() const override;
     bool NeedToCheckCounts() const override;
 };
