@@ -109,6 +109,7 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     InitSocState();
+    AscendC::SyncAll();
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData);
