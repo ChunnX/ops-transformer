@@ -521,6 +521,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
     uint32_t waitCount = 0;
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
+        waitCount++;
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy(statusFp32Tensor_, 
                  windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
@@ -532,7 +533,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
-
+    PRINTF("WaitDispatch waitCount: %d\n", waitCount);
     // ============ 清零状态区，为下一次通信做准备 ============
     DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
     uint64_t duplicateMask[2] = { 0x101010101010101, 0 };
