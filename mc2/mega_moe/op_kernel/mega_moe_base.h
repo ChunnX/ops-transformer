@@ -70,15 +70,17 @@ struct PeermemInfoWave {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 bit-packed mask。
-        // 单份 mask 大小 = CeilAlign(compareCount/8, 32), 与 wave.h FirstBuffInit 的 maskAlignSize_ 一致。
+        // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
+        // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
+        // 与 wave.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
             (int64_t)sizeof(int32_t);
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
+        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
         offset += Ops::Base::CeilAlign(
-            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskAlignSize, (int64_t)ALIGN_512);
+            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
 
         quantTokenScalePtr = base + offset;
         uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
