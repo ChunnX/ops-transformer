@@ -24,17 +24,25 @@
 
 namespace MC2Tiling {
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
-   public:
-    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context) {}
+public:
+    explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
+    {
+    }
     ~AllToAllMatmulTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override { TilingBaseClass::Reset(context); }
+    void Reset(gert::TilingContext *context) override
+    {
+        TilingBaseClass::Reset(context);
+    }
 
-   protected:
+protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
-    ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
+    ge::graphStatus CheckInput()
+    {
+        return ge::GRAPH_SUCCESS;
+    }
     virtual CutResult GetCutResOfCommAndCompute();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();
@@ -52,11 +60,11 @@ class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseCl
     TilingContextInfo contextInfo_;
     TilingInferredInfo inferredInfo_;
 
-   private:
+private:
     // 功能后移，基类的GetShapeAttrsInfo在isCapable之前，当前将校验和参数获取放到子类的DoOptiling中
     ge::graphStatus GetShapeAttrsInfo() override;
     // 在框架中没有实际使用
     ge::graphStatus DoLibApiTiling() override;
 };
-}  // namespace MC2Tiling
+} // namespace MC2Tiling
 #endif

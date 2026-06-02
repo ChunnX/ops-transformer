@@ -35,7 +35,7 @@ constexpr uint32_t INPUT_X1_INDEX = 0;
 constexpr uint32_t INPUT_X2_INDEX = 1;
 constexpr uint32_t INPUT_BIAS_INDEX = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
-constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024;  // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
 constexpr uint32_t UB_OFFSET = 97440;
 constexpr uint32_t USED_UB_SIZE = 160 * 1024;
 constexpr uint32_t ELEMENT_SIZE = 2;
@@ -86,8 +86,8 @@ constexpr int32_t CONDITION_K_ST = 2;
 constexpr int32_t CONDITION_K_END = 3;
 constexpr int32_t CONDITION_N_ST = 4;
 constexpr int32_t CONDITION_N_END = 5;
-constexpr uint32_t COUNT_PARAMS_WITH_BIAS = 4;     // [x1, x2, bias, y]
-constexpr uint32_t COUNT_PARAMS_WITHOUT_BIAS = 3;  // [x1, x2, y]
+constexpr uint32_t COUNT_PARAMS_WITH_BIAS = 4;    // [x1, x2, bias, y]
+constexpr uint32_t COUNT_PARAMS_WITHOUT_BIAS = 3; // [x1, x2, y]
 const std::set<int> SUPPORT_RANK_SIZE_910{2, 4, 8};
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
     {ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16},
@@ -109,7 +109,7 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
     {ge::DT_BF16, ge::DT_INT8, ge::DT_BF16}, {ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT16},
     {ge::DT_INT4, ge::DT_INT4, ge::DT_BF16}, {ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16},
     {ge::DT_BF16, ge::DT_INT4, ge::DT_BF16}, {ge::DT_FLOAT16, ge::DT_INT4, ge::DT_FLOAT16}};
-}  // namespace
+} // namespace
 
 namespace MC2Tiling {
 
@@ -118,13 +118,25 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = SIZE / sizeof(T);
 
-    static __aicore__ inline size_t Count(size_t len) { return (len + size - 1) / size; }
+    static __aicore__ inline size_t Count(size_t len)
+{
+        return (len + size - 1) / size;
+    }
 
-    static __aicore__ inline bool IsAligned(size_t len) { return len % size == 0; }
+    static __aicore__ inline bool IsAligned(size_t len)
+{
+        return len % size == 0;
+    }
 
-    static __aicore__ inline size_t AlignUp(size_t len) { return (len + size - 1) & ~(size - 1); }
+    static __aicore__ inline size_t AlignUp(size_t len)
+{
+        return (len + size - 1) & ~(size - 1);
+    }
 
-    static __aicore__ inline size_t AlignDown(size_t len) { return len & ~(size - 1); }
+    static __aicore__ inline size_t AlignDown(size_t len)
+{
+        return len & ~(size - 1);
+    }
 };
 
 template <typename T>
@@ -136,7 +148,8 @@ using Block256B = BaseBlock<T, 256>;
 template <typename T>
 using Block512B = BaseBlock<T, 512>;
 
-int32_t RoundNum(int32_t num, int32_t rnd) {
+int32_t RoundNum(int32_t num, int32_t rnd)
+{
     if (rnd == 0) {
         return 0;
     }
@@ -144,7 +157,8 @@ int32_t RoundNum(int32_t num, int32_t rnd) {
 }
 
 template <typename T>
-T ClampValue(T value, T minVal, T maxVal) {
+T ClampValue(T value, T minVal, T maxVal)
+{
     return (value < minVal) ? minVal : (value > maxVal) ? maxVal : value;
 }
 
@@ -805,7 +819,8 @@ static std::map<int, std::vector<std::vector<int>>> g_alltoAllMatmulNPU910BEight
       {6144, 2147483647, 4235, 2147483647, 8704, 2147483647}}},
     {7651, {{4608, 2147483647, -1, 1536, -1, 1536}, {13312, 2147483647, -1, 320, 3584, 8704}}}};
 
-bool AlltoAllMatmulTiling910b::IsCapable() {
+bool AlltoAllMatmulTiling910b::IsCapable()
+{
     fe::PlatFormInfos *platformInfoPtr = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfoPtr == nullptr, OP_LOGE(opName_, "fail to get platform info"), return false);
     fe::PlatFormInfos &platformInfo = *platformInfoPtr;
@@ -836,7 +851,8 @@ enum class QuantModeType : int64_t {
  * @brief 校验attrs信息
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInfo &info) {
+ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInfo &info)
+{
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
@@ -882,7 +898,8 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckAndSetAttrsInfo(AlltoAllMatmulInf
  * @brief 非量化场景校验参数的DType
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo &info) {
+ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo &info)
+{
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context_->GetInputDesc(INPUT_X1_INDEX);
     OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName_, "The input tensor x1 is invalid."),
@@ -894,7 +911,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE(opName_, "Output tensor y is nullptr."), return ge::GRAPH_FAILED);
     auto alltoallOutDesc = context_->GetOutputDesc(ALLTO_ALL_OUT_INDEX);
     ;
-    if (info.isAlltoallOut) {  // 可选参数
+    if (info.isAlltoallOut) { // 可选参数
         OP_TILING_CHECK((alltoallOutDesc == nullptr), OP_LOGE(opName_, "Output tensor alltoallout is nullptr."),
                         return ge::GRAPH_FAILED);
     }
@@ -904,7 +921,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     ge::DataType yDtype = yDesc->GetDataType();
 
-    if (info.isAlltoallOut) {  // 校验alltoallout类型
+    if (info.isAlltoallOut) { // 校验alltoallout类型
         ge::DataType alltoallOutDtype = alltoallOutDesc->GetDataType();
         OP_TILING_CHECK(
             (alltoallOutDtype != x1Dtype),
@@ -942,7 +959,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         quantType = TILINGKEY_TPL_A16W8;
     }
 
-    if (x1Dtype == ge::DT_INT4 && x2Dtype == ge::DT_INT4) {  // A4W4检测
+    if (x1Dtype == ge::DT_INT4 && x2Dtype == ge::DT_INT4) { // A4W4检测
         OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE(opName_, "x1Scale should not be null in quant mode."),
                         return ge::GRAPH_FAILED);
         ge::DataType x1ScaleDtype = x1ScaleTensorDesc->GetDataType();
@@ -992,7 +1009,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, biasDtype, yDtype};
 
         if (quantType !=
-            TILINGKEY_TPL_NOQUANT) {  // 仅在quant时，才需要区分bias的类别；如果非quant模式，还设置该变量，那么非quant模式的tilingkey的数量会翻3倍
+            TILINGKEY_TPL_NOQUANT) { // 仅在quant时，才需要区分bias的类别；如果非quant模式，还设置该变量，那么非quant模式的tilingkey的数量会翻3倍
             if (biasDtype == ge::DT_FLOAT16) {
                 biasDtype_ = TILINGKEY_TPL_FP16;
             } else if (biasDtype == ge::DT_BF16) {
@@ -1031,7 +1048,8 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckTensorDataType(AlltoAllMatmulInfo
  * @brief 校验tiling输入的shape信息
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &info) {
+ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &info)
+{
     ge::graphStatus status;
 
     // 校验输入Input Shape是否为空
@@ -1085,11 +1103,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
                         return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(
-        (tokenSize > 35000),
-        OP_LOGE(opName_, "RankSize (%lu) times of the second dim of x1 should be in range[1, 35000], but it is %lu.",
-                info.rankSize, tokenSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((tokenSize > 35000),
+                    OP_LOGE(opName_,
+                            "RankSize (%lu) times of the second dim of x1 should be in range[1, 35000], but it is %lu.",
+                            info.rankSize, tokenSize),
+                    return ge::GRAPH_FAILED);
 
     // INT4计算时，需要额外验证维度为偶数
     if (quantType == TILINGKEY_TPL_A4W4) {
@@ -1168,7 +1186,8 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
  *
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::CheckOpInputInfo(AlltoAllMatmulInfo &info) {
+ge::graphStatus AlltoAllMatmulTiling910b::CheckOpInputInfo(AlltoAllMatmulInfo &info)
+{
     OP_TILING_CHECK(CheckAndSetAttrsInfo(info) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling check Attrs failed."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckTensorDataType(info) != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "Tiling check Dtype failed."),
@@ -1178,8 +1197,9 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckOpInputInfo(AlltoAllMatmulInfo &i
     return ge::GRAPH_SUCCESS;
 }
 
-int32_t AlltoAllMatmulTiling910b::GetValueFromMKNConditionMap(
-    int32_t m, int32_t k, int32_t n, int32_t defaultValue, std::map<int, std::vector<std::vector<int>>> conditionMap) {
+int32_t AlltoAllMatmulTiling910b::GetValueFromMKNConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
+                                                              std::map<int, std::vector<std::vector<int>>> conditionMap)
+{
     int32_t value = defaultValue;
     for (auto &item : conditionMap) {
         for (auto &condition : item.second) {
@@ -1196,7 +1216,8 @@ int32_t AlltoAllMatmulTiling910b::GetValueFromMKNConditionMap(
 
 void AlltoAllMatmulTiling910b::CalTilingParam(CoCTiling &cocTilingData,
                                               const std::map<int *, AlltoAllMatmulTilingValue> &TilingParamMap,
-                                              AlltoAllMatmulInfo &info) {
+                                              AlltoAllMatmulInfo &info)
+{
     int32_t m = info.M;
     int32_t k = info.K;
     int32_t n = info.N;
@@ -1217,7 +1238,8 @@ void AlltoAllMatmulTiling910b::CalTilingParam(CoCTiling &cocTilingData,
     }
 }
 
-void AlltoAllMatmulTiling910b::DecodeTilingData(int32_t code, CoCTiling &cocTilingData) {
+void AlltoAllMatmulTiling910b::DecodeTilingData(int32_t code, CoCTiling &cocTilingData)
+{
     cocTilingData.allToAllRecvCoreNum = (code & 31) + 1;
     code >>= 5;
     cocTilingData.allToAllSendCoreNum = (code & 31) + 1;
@@ -1227,7 +1249,8 @@ void AlltoAllMatmulTiling910b::DecodeTilingData(int32_t code, CoCTiling &cocTili
     cocTilingData.m0 = (code + 1) * 128;
 }
 
-void TilingParamDeal(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info, int32_t ubSize) {
+void TilingParamDeal(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info, int32_t ubSize)
+{
     uint32_t k = info.K;
     int32_t dataTypeSize = ELEMENT_SIZE;
     int32_t peerMemSize = (MAX_BUFF_BYTES - FLAG_BUFF_BYTES) / dataTypeSize;
@@ -1241,7 +1264,8 @@ void TilingParamDeal(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info, int32_t
     }
 }
 
-void AlltoAllMatmulTiling910b::DoTwoRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+void AlltoAllMatmulTiling910b::DoTwoRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_TWO_RANK_FP16_UBSIZE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
@@ -1258,11 +1282,12 @@ void AlltoAllMatmulTiling910b::DoTwoRankTiling(CoCTiling &cocTilingData, AlltoAl
     CalTilingParam(cocTilingData, TilingParamMap, info);
     TilingParamDeal(cocTilingData, info, ubSize);
     if (quantType == TILINGKEY_TPL_A4W4) {
-        cocTilingData.pValue = cocTilingData.pValue * 4;  // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
+        cocTilingData.pValue = cocTilingData.pValue * 4; // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
     }
 }
 
-void AlltoAllMatmulTiling910b::DoFourRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+void AlltoAllMatmulTiling910b::DoFourRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_FOUR_RANK_FP16_UBSIZE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
@@ -1279,11 +1304,12 @@ void AlltoAllMatmulTiling910b::DoFourRankTiling(CoCTiling &cocTilingData, AlltoA
     CalTilingParam(cocTilingData, TilingParamMap, info);
     TilingParamDeal(cocTilingData, info, ubSize);
     if (quantType == TILINGKEY_TPL_A4W4) {
-        cocTilingData.pValue = cocTilingData.pValue * 4;  // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
+        cocTilingData.pValue = cocTilingData.pValue * 4; // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
     }
 }
 
-void AlltoAllMatmulTiling910b::DoEightRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+void AlltoAllMatmulTiling910b::DoEightRankTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_EIGHT_RANK_FP16_UBSIZE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
@@ -1303,13 +1329,14 @@ void AlltoAllMatmulTiling910b::DoEightRankTiling(CoCTiling &cocTilingData, Allto
             cocTilingData.allToAllSendCoreNum = CORE_NUM_SIXTEEN;
             cocTilingData.allToAllRecvCoreNum = CORE_NUM_FOUR;
         }
-        cocTilingData.pValue = cocTilingData.pValue * 4;  // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
+        cocTilingData.pValue = cocTilingData.pValue * 4; // int4时，peermem相较于fp16/bf16可以容纳4倍的元素数量
     }
 }
 
 // A16W8 tiling
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BTwoRankA16W8Tiling(CoCTiling &cocTilingData,
-                                                                       AlltoAllMatmulInfo &info) {
+                                                                       AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_TWO_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_TWO_RANK_A16W8_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1323,7 +1350,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BTwoRankA16W8Tiling(CoCTiling
 }
 
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BFourRankA16W8Tiling(CoCTiling &cocTilingData,
-                                                                        AlltoAllMatmulInfo &info) {
+                                                                        AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_FOUR_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_FOUR_RANK_A16W8_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1337,7 +1365,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BFourRankA16W8Tiling(CoCTilin
 }
 
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BEightRankA16W8Tiling(CoCTiling &cocTilingData,
-                                                                         AlltoAllMatmulInfo &info) {
+                                                                         AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_EIGHT_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_EIGHT_RANK_A16W8_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1352,7 +1381,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BEightRankA16W8Tiling(CoCTili
 
 // A16W4 tiling
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BTwoRankA16W4Tiling(CoCTiling &cocTilingData,
-                                                                       AlltoAllMatmulInfo &info) {
+                                                                       AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_TWO_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_TWO_RANK_A16W4_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1366,7 +1396,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BTwoRankA16W4Tiling(CoCTiling
 }
 
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BFourRankA16W4Tiling(CoCTiling &cocTilingData,
-                                                                        AlltoAllMatmulInfo &info) {
+                                                                        AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_FOUR_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_FOUR_RANK_A16W4_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1380,7 +1411,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BFourRankA16W4Tiling(CoCTilin
 }
 
 void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BEightRankA16W4Tiling(CoCTiling &cocTilingData,
-                                                                         AlltoAllMatmulInfo &info) {
+                                                                         AlltoAllMatmulInfo &info)
+{
     int32_t ubSize = ALLTOALLMATMUL_EIGHT_RANK_FP16_UBSIZE_DEFAULT;
     int32_t code = ALLTOALL_MATMUL_NPU910B_EIGHT_RANK_A16W4_TILINGCODE_DEFAULT;
     std::map<int *, AlltoAllMatmulTilingValue> TilingParamMap = {
@@ -1393,7 +1425,8 @@ void AlltoAllMatmulTiling910b::AlltoAllMatmulNPU910BEightRankA16W4Tiling(CoCTili
     TilingParamDeal(cocTilingData, info, ubSize);
 }
 
-ge::graphStatus AlltoAllMatmulTiling910b::DoMmCommTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+ge::graphStatus AlltoAllMatmulTiling910b::DoMmCommTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     if (quantType == TILINGKEY_TPL_A16W8) {
         // A16W8 tiling策略
         if (info.rankSize == 2) {
@@ -1414,18 +1447,19 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoMmCommTiling(CoCTiling &cocTilingDat
         }
     } else {
         // basic、A4W4
-        if (info.rankSize == 2) {  // 若2卡
+        if (info.rankSize == 2) { // 若2卡
             DoTwoRankTiling(cocTilingData, info);
-        } else if (info.rankSize == 4) {  // 若4卡
+        } else if (info.rankSize == 4) { // 若4卡
             DoFourRankTiling(cocTilingData, info);
         } else if (info.rankSize == 8) {
-            DoEightRankTiling(cocTilingData, info);  // 若8卡
+            DoEightRankTiling(cocTilingData, info); // 若8卡
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling() {
+ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling()
+{
     // 涉及SyncAll，需要设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     auto ret = context_->SetScheduleMode(batch_mode);
@@ -1445,7 +1479,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling() {
     auto aicNum = ascendcPlatform.GetCoreNumAic();
     auto aivNum = ascendcPlatform.GetCoreNumAiv();
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    info.quantCoreNum = aivNum;  // quant阶段利用全部vector
+    info.quantCoreNum = aivNum; // quant阶段利用全部vector
     CalcQuantWorkspaceSize(tilingData->cocTiling, info);
 
     OPS_LOG_I(opName_, "Leave AllToAllMatmul tiling func.");
@@ -1457,7 +1491,8 @@ ge::graphStatus AlltoAllMatmulTiling910b::DoOpTiling() {
  *
  * @return uint64_t tilingKey结果
  */
-uint64_t AlltoAllMatmulTiling910b::GetTilingKey() const {
+uint64_t AlltoAllMatmulTiling910b::GetTilingKey() const
+{
     uint64_t tilingKey = GET_TPL_TILING_KEY(hasBias, x2Transpose, quantType, biasDtype_, SOC_ASCEND910B);
     OP_LOGD(opName_, "TilingKey is [%lu] in AllToAllMatmul.", tilingKey);
     return tilingKey;
@@ -1468,10 +1503,11 @@ uint64_t AlltoAllMatmulTiling910b::GetTilingKey() const {
  *
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::SetHcclTiling(AlltoAllMatmulTilingData *tilingData) {
+ge::graphStatus AlltoAllMatmulTiling910b::SetHcclTiling(AlltoAllMatmulTilingData *tilingData)
+{
     auto attrs = context_->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
-    uint32_t opType = 18;  // batch write=18,
+    uint32_t opType = 18; // batch write=18,
     std::string algConfig = "MultiPut=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
@@ -1479,18 +1515,19 @@ ge::graphStatus AlltoAllMatmulTiling910b::SetHcclTiling(AlltoAllMatmulTilingData
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     int32_t maxUBPingPongSize = cocTilingData.ubMoveNum / 2;
-    int32_t tokenSize = info.K * rankSize;  // 加上padding后，此处需要使用k_align
+    int32_t tokenSize = info.K * rankSize; // 加上padding后，此处需要使用k_align
     int32_t tokenPerCore =
-        (cocTilingData.m0 * cocTilingData.pValue) / (cocTilingData.allToAllSendCoreNum);     // 每个核需要处理的token数
-    int32_t quantScaleSize = Block32B<float>::AlignUp(tokenPerCore);                         // 用于存储quantScale
-    int32_t smoothScaleSize = info.isSmoothQuant ? Block32B<float>::AlignUp(tokenSize) : 0;  // 用于存储smoothScale
+        (cocTilingData.m0 * cocTilingData.pValue) / (cocTilingData.allToAllSendCoreNum);    // 每个核需要处理的token数
+    int32_t quantScaleSize = Block32B<float>::AlignUp(tokenPerCore);                        // 用于存储quantScale
+    int32_t smoothScaleSize = info.isSmoothQuant ? Block32B<float>::AlignUp(tokenSize) : 0; // 用于存储smoothScale
     int32_t absTensorSize = Block32B<float>::AlignUp(tokenSize);
-    int32_t reduceMaxSize = BLOCK_ALIGN_BYTES / sizeof(float);  // 用于存储reduceMax的结果，存放某个token的max的值
+    int32_t reduceMaxSize = BLOCK_ALIGN_BYTES / sizeof(float); // 用于存储reduceMax的结果，存放某个token的max的值
     int32_t doubleBufferSize = (USED_UB_SIZE / sizeof(float) - quantScaleSize - smoothScaleSize) /
-                               UB_PINGPONG_SIZE;  // 存放quantScale和smoothScale不使用doubleBuffer
-    int32_t ubLeftForCopyTensor = doubleBufferSize - reduceMaxSize - absTensorSize;  // 剩余用来存放copyTensor的空间
+                               UB_PINGPONG_SIZE; // 存放quantScale和smoothScale不使用doubleBuffer
+    int32_t ubLeftForCopyTensor = doubleBufferSize - reduceMaxSize - absTensorSize; // 剩余用来存放copyTensor的空间
     int32_t copyTokenNum = ubLeftForCopyTensor / Block32B<float>::AlignUp(tokenSize);
     int32_t copyTimes = 0;
     int32_t copyTensorSize = 0;
@@ -1498,14 +1535,14 @@ void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTiling
     if (info.isSegmentK) {
         // tokenSize过大，需要切分token，进入大Token量化流程
         quantScaleSize = Block32B<float>::AlignUp(tokenPerCore) * sizeof(float);
-        reduceMaxSize = BLOCK_ALIGN_BYTES;  // reduceMax只占用一个DataBlock即可
+        reduceMaxSize = BLOCK_ALIGN_BYTES; // reduceMax只占用一个DataBlock即可
         int32_t remainUbSize = (USED_UB_SIZE - quantScaleSize - reduceMaxSize) / sizeof(float);
         int32_t doubleBufferSize = remainUbSize / UB_PINGPONG_SIZE;
         // copyTensor、absTensor和smoothScale拷贝到UB的数据量一致。如果存在smoothQuant，
         // 则需要UB存储copyTensor、absTensor和smoothScale；否则只需要存储copyTensor、absTensor。
         int32_t copyTensorSizeTimes = info.isSmoothQuant ? 3 : 2;
         copyTensorSize =
-            Block32B<float>::AlignDown(doubleBufferSize / copyTensorSizeTimes);  // copyTensor和absTensor的Tensor大小
+            Block32B<float>::AlignDown(doubleBufferSize / copyTensorSizeTimes); // copyTensor和absTensor的Tensor大小
         copyTimes = tokenSize / copyTensorSize;
         if (tokenSize % copyTensorSize != 0) {
             copyTimes += 1;
@@ -1515,17 +1552,18 @@ void AlltoAllMatmulTiling910b::CalcQuantTokenNumPerUb(const CoCTiling &cocTiling
     info.copyTensorSize = copyTensorSize;
 }
 
-void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
-    info.dequantSize = orgM * orgN * sizeof(int32_t);  // 量化则需要空间存放中间结果
+void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
+    info.dequantSize = orgM * orgN * sizeof(int32_t); // 量化则需要空间存放中间结果
     if (quantType == TILINGKEY_TPL_A16W8 || quantType == TILINGKEY_TPL_A16W4) {
         CalcQuantTokenNumPerUb(cocTilingData, info);
         uint32_t numPerRankM = cocTilingData.m0 * cocTilingData.pValue;
         uint32_t midOutputKSize = orgK * rankSize;
         uint32_t quantSize = numPerRankM * midOutputKSize * MAX_BLOCK_COUNT;
-        info.quantSize = quantType == TILINGKEY_TPL_A16W8
-                             ? quantSize
-                             : (quantSize + 1) / 2;  // int8类型每个元素占用1个字节，int4类型每两个元素占用1个字节
-        info.quantScaleSize = Block32B<float>::AlignUp(orgM) * sizeof(float) / rankSize;  // A反量化参数所需要的空间大小
+        info.quantSize = quantType == TILINGKEY_TPL_A16W8 ?
+                             quantSize :
+                             (quantSize + 1) / 2; // int8类型每个元素占用1个字节，int4类型每两个元素占用1个字节
+        info.quantScaleSize = Block32B<float>::AlignUp(orgM) * sizeof(float) / rankSize; // A反量化参数所需要的空间大小
 
         quantWorkspaceSize = info.quantSize + info.quantScaleSize + info.dequantSize;
     }
@@ -1539,11 +1577,12 @@ void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTiling
  *
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::GetWorkspaceSize() {
+ge::graphStatus AlltoAllMatmulTiling910b::GetWorkspaceSize()
+{
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
     size_t wsSize = SYSTEM_NEED_WORKSPACE;
-    if (quantType != TILINGKEY_TPL_NOQUANT) {  // int4不必加这个
+    if (quantType != TILINGKEY_TPL_NOQUANT) { // int4不必加这个
         wsSize += quantWorkspaceSize;
     }
     workspaces[0] = wsSize;
@@ -1557,7 +1596,8 @@ ge::graphStatus AlltoAllMatmulTiling910b::GetWorkspaceSize() {
  * @param opName_
  * @param tilingInfo
  */
-void AlltoAllMatmulTiling910b::PrintAlltoAllMatmulTilingData(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info) {
+void AlltoAllMatmulTiling910b::PrintAlltoAllMatmulTilingData(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info)
+{
     OP_LOGD(opName_, "info.M: %u", info.M);
     OP_LOGD(opName_, "info.K: %u", info.K);
     OP_LOGD(opName_, "info.N: %u", info.N);
@@ -1577,7 +1617,8 @@ void AlltoAllMatmulTiling910b::PrintAlltoAllMatmulTilingData(CoCTiling &cocTilin
  *
  * @return ge::graphStatus
  */
-ge::graphStatus AlltoAllMatmulTiling910b::PostTiling() {
+ge::graphStatus AlltoAllMatmulTiling910b::PostTiling()
+{
     AlltoAllMatmulTilingData *outTilingData = context_->GetTilingData<AlltoAllMatmulTilingData>();
     context_->SetBlockDim(numBlocks);
 
@@ -1590,9 +1631,11 @@ ge::graphStatus AlltoAllMatmulTiling910b::PostTiling() {
  *
  * @param context
  */
-AlltoAllMatmulTiling910b::AlltoAllMatmulTiling910b(gert::TilingContext *context) : AllToAllMatmulTilingBase(context) {}
+AlltoAllMatmulTiling910b::AlltoAllMatmulTiling910b(gert::TilingContext *context) : AllToAllMatmulTilingBase(context)
+{
+}
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(AlltoAllMatmul, AlltoAllMatmulTiling910b,
                                          static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 0);
-}  // namespace MC2Tiling
+} // namespace MC2Tiling

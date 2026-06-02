@@ -37,12 +37,12 @@ struct AlltoAllMatmulTilingValue {
 };
 
 class AlltoAllMatmulTiling910b : public AllToAllMatmulTilingBase {
-   public:
+public:
     explicit AlltoAllMatmulTiling910b(gert::TilingContext *context);
     ~AlltoAllMatmulTiling910b() override = default;
 
-   protected:
-    bool IsCapable() override;  // 恒为true
+protected:
+    bool IsCapable() override; // 恒为true
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
@@ -75,7 +75,7 @@ class AlltoAllMatmulTiling910b : public AllToAllMatmulTilingBase {
     ge::graphStatus SetHcclTiling(AlltoAllMatmulTilingData *tilingData);
     void PrintAlltoAllMatmulTilingData(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
 
-   private:
+private:
     bool x2Transpose = false;
     bool hasBias = false;
     uint32_t quantType = TILINGKEY_TPL_NOQUANT;
@@ -87,5 +87,5 @@ class AlltoAllMatmulTiling910b : public AllToAllMatmulTilingBase {
     uint32_t numBlocks = 1U;
     size_t quantWorkspaceSize = 0;
 };
-}  // namespace MC2Tiling
+} // namespace MC2Tiling
 #endif

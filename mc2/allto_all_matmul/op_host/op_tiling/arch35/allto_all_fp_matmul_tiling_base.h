@@ -33,11 +33,11 @@ using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 
 class AllToAllFpMatmulTilingBase : public AllToAllMatmulTilingBase {
-   public:
+public:
     explicit AllToAllFpMatmulTilingBase(gert::TilingContext *context);
     ~AllToAllFpMatmulTilingBase() override = default;
 
-   protected:
+protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
@@ -51,7 +51,7 @@ class AllToAllFpMatmulTilingBase : public AllToAllMatmulTilingBase {
     ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
 
-   private:
+private:
     void PrintAlltoAllMatmulTilingData(AlltoAllMatmulTilingData &alltoAllMatmulTilingData);
     void PrintAlltoAllMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
@@ -62,5 +62,5 @@ class AllToAllFpMatmulTilingBase : public AllToAllMatmulTilingBase {
     QuantType matmulQuantType_ = QuantType::FP_QUANT;
 };
 
-}  // namespace MC2Tiling
+} // namespace MC2Tiling
 #endif

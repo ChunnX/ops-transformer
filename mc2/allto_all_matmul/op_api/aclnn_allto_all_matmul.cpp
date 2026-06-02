@@ -20,7 +20,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
                                                            const aclIntArray *alltoAllAxesOptional, const char *group,
                                                            bool transposeX1, bool transposeX2, const aclTensor *output,
                                                            const aclTensor *alltoAllOutOptional,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor) {
+                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     OP_LOGD("aclnnAlltoAllMatmulGetWorkspaceSize start");
 
     const char *commMode = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
@@ -31,7 +32,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
 }
 
 extern "C" aclnnStatus aclnnAlltoAllMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           aclrtStream stream) {
+                                           aclrtStream stream)
+{
     OP_LOGD("aclnnMatmulAlltoAll start");
     return aclnnAlltoAllMatmulBase(workspace, workspaceSize, executor, stream);
 }

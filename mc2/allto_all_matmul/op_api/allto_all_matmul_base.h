@@ -59,4 +59,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulBase(void 
 }
 #endif
 
-#endif  // OP_API_INC_ALL_TO_ALL_MATMUL_
+#endif // OP_API_INC_ALL_TO_ALL_MATMUL_

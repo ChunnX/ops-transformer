@@ -20,7 +20,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(
     const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
     int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
     int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor) {
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     OP_LOGD("aclnnAlltoAllQuantMatmulV2GetWorkspaceSize start");
     return aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
         x1, x2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group,
@@ -29,7 +30,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(
 }
 
 extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  aclrtStream stream) {
+                                                  aclrtStream stream)
+{
     OP_LOGD("aclnnAlltoAllQuantMatmulV2 start");
     return aclnnAlltoAllQuantMatmulBase(workspace, workspaceSize, executor, stream);
 }

@@ -36,7 +36,8 @@ using namespace l0op;
 using namespace matmul_allto_all_check;
 
 // 检查必要输入是否为空，必须非空
-static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *output) {
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *output)
+{
     if (x1 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x1 should not be null.");
         return false;
@@ -54,7 +55,8 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
 
 // 检查是否有空tensor
 // 非量化场景支持x1的m轴为0，即token提示词为空
-static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2) {
+static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2)
+{
     auto kVal1 = x1->GetViewShape().GetDim(1);
     auto kVal2 = transposeX2 ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
@@ -82,7 +84,8 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST = {op
 
 // 校验所有输入的参数类型是否正确
 static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                const aclTensor *output, const aclTensor *alltoAllOutOptional) {
+                                const aclTensor *output, const aclTensor *alltoAllOutOptional)
+{
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
@@ -105,7 +108,8 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
 
 // 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
 static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                        const aclTensor *output, const aclTensor *alltoAllOutOptional) {
+                        const aclTensor *output, const aclTensor *alltoAllOutOptional)
+{
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnAlltoAllMatmul, x1 format %s does not support private format.",
@@ -143,7 +147,8 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 
 // 兼容性处理，非ND格式转换为ND格式
 static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                          const aclTensor *output, const aclTensor *alltoAllOutOptional) {
+                          const aclTensor *output, const aclTensor *alltoAllOutOptional)
+{
     // 内部只处理ND格式，这里做reformat操作
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
@@ -181,7 +186,8 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclIntArray *alltoAllAxesOptional, const char *group,
                                         const char *commMode, bool transposeX1, bool transposeX2,
-                                        const aclTensor *output, const aclTensor *alltoAllOutOptional) {
+                                        const aclTensor *output, const aclTensor *alltoAllOutOptional)
+{
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
     // 2. 检查空tensor
@@ -210,7 +216,8 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor) {
+static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     OP_LOGD("AlltoAllMatmul, dealing with empty tensor.");
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -219,7 +226,7 @@ static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
-}  // namespace
+} // namespace
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -231,7 +238,8 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclIntArray *alltoAllAxesOptional,
     const char *group, bool transposeX1, bool transposeX2, const char *commMode, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor) {
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值，因此此处使用的枚举值为28
     const int64_t GE_UNDEFINED = 28;
     // 根据算子原型定义默认值
@@ -285,15 +293,16 @@ extern "C" aclnnStatus InnerAlltoAllMatmulGetWorkspaceSize(
 extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclIntArray *alltoAllAxesOptional,
     const char *group, const char *commMode, bool transposeX1, bool transposeX2, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor) {
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                   // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                                    // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {  // 只有当非连续时，才会涉及到转连续等情况
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                                   // 复制一个x2
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2);      // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
-        if (notContiguous && transposeX2) {  // 当非连续和转置同时生效时，判断为错误用法，直接报错
+            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+        if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -302,11 +311,10 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
             // 把非连续x2转成连续
             transX2 = TransX2Tensor(x2);
             CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            OP_LOGD(
-                "X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
-                "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
-                x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
-                transX2->GetViewShape().GetDim(1));
+            OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
+                    "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
+                    x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0),
+                    transX2->GetViewShape().GetDim(1));
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
@@ -334,13 +342,16 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
 }
 
 extern "C" aclnnStatus aclnnAlltoAllMatmulBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                               aclrtStream stream) {
+                                               aclrtStream stream)
+{
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93)
+{
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510)
+{
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
