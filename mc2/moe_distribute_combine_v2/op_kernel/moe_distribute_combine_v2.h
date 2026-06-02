@@ -792,7 +792,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AlltoAllCommB
     tpipe_->InitBuffer(moeCopySumQueue_, 2, moeQueueBytes);
 #else
     tpipe_->InitBuffer(moeSumQueue_, bufferNum_, moeQueueBytes);
-#endif   
+#endif
     if constexpr (HasAddRmsNorm) {
         tpipe_->InitBuffer(gammaBuf_, hExpandXAlign32Size_);
         tpipe_->InitBuffer(reduceFp32Buf_, NUM_PER_REP_FP32 * sizeof(float) * 2);
@@ -984,7 +984,6 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         }
         ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
     }
-
 }
 
 template <CombineMC2TypeClass>
