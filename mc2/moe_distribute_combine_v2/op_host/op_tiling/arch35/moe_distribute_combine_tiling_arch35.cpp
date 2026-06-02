@@ -828,7 +828,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFu
 }
 
 struct MoeDistributeCombineCompileInfo {};
-static ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForMoeDistributeCombineV2(const gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

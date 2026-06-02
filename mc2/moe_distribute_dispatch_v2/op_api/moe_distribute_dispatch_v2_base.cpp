@@ -113,7 +113,7 @@ static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, 
     }
 }
 
-static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
+static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, const aclOpExecutor **executor)
 {
 #if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
     defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
