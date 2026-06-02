@@ -10,6 +10,9 @@
 
 cmake_minimum_required(VERSION 3.16)
 include(cmake/fetch_cann_cmake.cmake)
+set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
+set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
+
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
