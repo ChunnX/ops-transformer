@@ -206,7 +206,8 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu", inputLayout, shapeInfo.dimNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout is not supported with the given dim_num");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
@@ -485,12 +486,15 @@ static inline bool CheckFormat(
                        softmaxSumOut->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
                        attentionOutOut->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ;
     if (!formatValid) {
-        OP_LOGE(
-            ACLNN_ERR_PARAM_INVALID,
-            "Input and output format do not support [NZ]. Actual: query:[%s], key:[%s], value:[%s], softmaxMaxOut:[%s], softmaxSumOut:[%s], attentionOutOut:[%s].",
-            op::ToString(query->GetStorageFormat()).GetString(), op::ToString(key->GetStorageFormat()).GetString(),
-            op::ToString(value->GetStorageFormat()).GetString(), op::ToString(softmaxMaxOut->GetStorageFormat()).GetString(), 
-            op::ToString(softmaxSumOut->GetStorageFormat()).GetString(), op::ToString(attentionOutOut->GetStorageFormat()).GetString());
+        std::string formatMsg = op::ToString(query->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(key->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(value->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(softmaxMaxOut->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(softmaxSumOut->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(attentionOutOut->GetStorageFormat()).GetString();
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("FlashAttentionScore",
+            "query, key, value, softmax_max, softmax_sum and attention_out",
+            formatMsg.c_str(), "The format of input and output should not be NZ");
         return false;
     }
     if (queryRope != nullptr) {
@@ -515,11 +519,16 @@ static inline bool CheckFormat(
         formatValid = (formatValid && sinkOptional->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ);
     }
     if (!formatValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,"Optional input format do not support [NZ]. Actual: queryRope:[%s], keyRope:[%s], realShiftOptional:[%s], "
-            "dropMaskOptional:[%s], paddingMaskOptional:[%s], attenMaskOptional:[%s], sinkOptional:[%s].",op::ToString(queryRope->GetStorageFormat()).GetString(),
-            op::ToString(keyRope->GetStorageFormat()).GetString(),op::ToString(realShiftOptional->GetStorageFormat()).GetString(),
-            op::ToString(dropMaskOptional->GetStorageFormat()).GetString(),op::ToString(paddingMaskOptional->GetStorageFormat()).GetString(),
-            op::ToString(attenMaskOptional->GetStorageFormat()).GetString(),op::ToString(sinkOptional->GetStorageFormat()).GetString());
+        std::string formatMsg = op::ToString(queryRope->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(keyRope->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(realShiftOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(dropMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(paddingMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(attenMaskOptional->GetStorageFormat()).GetString() + std::string(", ") +
+            op::ToString(sinkOptional->GetStorageFormat()).GetString();
+        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON("FlashAttentionScore",
+            "query_rope, key_rope, real_shift, drop_mask, padding_mask, atten_mask and sink",
+            formatMsg.c_str(), "The format of optional inputs should not be NZ");
         return false;
     }
     return formatValid;
@@ -1000,7 +1009,9 @@ static aclnnStatus isSupportMultiInput(const aclTensor *query, const aclTensor *
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (faShape.inputLayout != InputLayout::TND) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, only support query_rope and key_rope as input for layout TND.");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout",
+                std::to_string(static_cast<int64_t>(faShape.inputLayout)).c_str(),
+                "The query_rope and key_rope are only supported when input_layout is TND");
             return ACLNN_ERR_PARAM_INVALID;
         }
 
@@ -1144,7 +1155,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreGetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout should be TND for this function");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1652,7 +1664,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2GetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout should be TND for this function");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1760,7 +1773,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV3GetWorkspaceSize(
     }
 
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout should be TND for this function");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1867,7 +1881,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout should be TND for this function");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;
@@ -1969,7 +1984,8 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     }
 
     if (strcmp(inputLayout, "TND") != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScore", "input_layout", inputLayout,
+            "The input_layout should be TND for this function");
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_ERR_PARAM_INVALID;

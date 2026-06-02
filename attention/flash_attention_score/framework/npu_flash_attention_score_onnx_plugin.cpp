@@ -42,7 +42,7 @@ static Status GetAttrFromPre4(
     return FAILED;
   }
   if (op.GetAttr("input_layout", input_layout) != SUCCESS) {
-    OP_LOGE(GetOpName(op).c_str(), "get input_layout from op failed");
+    OP_LOGE_WITH_INVALID_INPUT(GetOpName(op).c_str(), "input_layout");
     return FAILED;
   }
   if (op.GetAttr("scale", scale) != SUCCESS) {
