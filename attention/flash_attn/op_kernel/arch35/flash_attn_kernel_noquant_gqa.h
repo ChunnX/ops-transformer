@@ -815,6 +815,8 @@ public:
             if ASCEND_IS_AIV {
                 WaitFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
                 SetFlag<AscendC::HardEvent::MTE3_V>(VecFaBlockType::FA_MTE3_TO_V_0);
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                AscendC::PipeBarrier<PIPE_V>();
             }
         }
         SyncAll();
