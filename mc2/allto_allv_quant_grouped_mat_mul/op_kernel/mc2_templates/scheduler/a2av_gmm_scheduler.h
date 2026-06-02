@@ -45,10 +45,6 @@ public:
         // routing expert
         uint32_t expertNum = taskTilingInfo_->expertNum;
         uint32_t e = taskTilingInfo_->e;
-        // hccl perpare limit
-        uint32_t a2avLaunchNum = CeilDiv(e, expertNum);
-        constexpr int32_t a2avLimit = MX_QUANT_MODE ? 31 : 63;
-        expertNum = a2avLaunchNum > a2avLimit ? CeilDiv(e, a2avLimit) : expertNum;
         bool isNeedPermute = expertNum > 1;
         for (uint32_t startExpertIdx = 0; startExpertIdx < e; startExpertIdx += expertNum) {
             uint32_t actualExpertNum = (startExpertIdx + expertNum > e) ? (e - startExpertIdx) : expertNum;
