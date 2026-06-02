@@ -127,16 +127,16 @@ constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 
 // Attributes Index
 constexpr uint32_t ATTR_QKV_QUANT_MODE_INDEX = 0;
-constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 2;
-constexpr uint32_t ATTR_CMP_RATIO_INDEX = 3;
-constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 4;
-constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 5;
-constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 6;
-constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 7;
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 8;
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
-constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
-constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1;
+constexpr uint32_t ATTR_CMP_RATIO_INDEX = 2;
+constexpr uint32_t ATTR_ORI_MASK_MODE_INDEX = 3;
+constexpr uint32_t ATTR_CMP_MASK_MODE_INDEX = 4;
+constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 5;
+constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 6;
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
+constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 9;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 10;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
