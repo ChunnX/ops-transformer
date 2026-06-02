@@ -279,7 +279,7 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context)
 }
 
 struct DistributeBarrierCompileInfo {};
-ge::graphStatus TilingParseForDistributeBarrier(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForDistributeBarrier(const gert::TilingParseContext *context)
 {
     const gert::TilingParseContext *const_context = context;
     // 避免未使用变量警告
