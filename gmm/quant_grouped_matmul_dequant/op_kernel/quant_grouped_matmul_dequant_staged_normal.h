@@ -12,15 +12,16 @@
  * \file quant_grouped_matmul_dequant_normal.h
  * \brief
  */
-#ifndef _ASCENDC_QUANT_GROUPED_MATMUL_DEQUANT_NORMAL_H_
-#define _ASCENDC_QUANT_GROUPED_MATMUL_DEQUANT_NORMAL_H_
+#ifndef _ASCENDC_QUANT_GROUPED_MATMUL_DEQUANT_NORMAL_STAGED_H_
+#define _ASCENDC_QUANT_GROUPED_MATMUL_DEQUANT_NORMAL_STAGED_H_
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "quant_grouped_matmul_dequant_gemv.h"
+#include "quant_grouped_matmul_dequant_staged_gemv.h"
 using namespace AscendC;
 
 namespace AscendC {
+namespace qgmmd_staged {
 class QuantMatmulDequantNormal : public QuantMatmulDequantGemv {
  public:
   __aicore__ inline QuantMatmulDequantNormal() {}
@@ -38,10 +39,8 @@ class QuantMatmulDequantNormal : public QuantMatmulDequantGemv {
     PipeBarrier<PIPE_ALL>();
   }
 
-__aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR bias,
-                            GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale, GM_ADDR y,
-                            GM_ADDR usrWorkspace, const QuantMatmulDequantTilingData* __restrict qmmTiling)
-{
+  __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale, GM_ADDR y,
+                              GM_ADDR usrWorkspace, const QuantGroupedMatmulDequantTilingData* __restrict qmmTiling) {
     // block_id                                              
     block_id = GetBlockIdx();
     tilingData = qmmTiling;
@@ -58,7 +57,7 @@ __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_
     InitSyncWs();
 
     InitTransLocalLists();
-}
+  }
  protected:
   __aicore__ inline void InitGlobalTensors(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR bias, 
                                            GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale, GM_ADDR y, GM_ADDR usrWorkspace) {
@@ -662,5 +661,6 @@ __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_
   LocalTensor<int8_t> l0aX_DB[NUMBER_2];
   LocalTensor<int8_t> l0bW_DB[NUMBER_2];
 };
+}  // namespace qgmmd_staged
 }  // namespace AscendC
 #endif

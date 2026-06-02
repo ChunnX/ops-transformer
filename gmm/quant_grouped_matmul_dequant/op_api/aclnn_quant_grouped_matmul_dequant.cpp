@@ -10,7 +10,9 @@
 
 /*!
  * \file aclnn_quant_grouped_matmul_dequant.cpp
- * \brief
+ * \brief aclnn entry points for qgmmd. ConvertWeightNdToNz dispatches on N:
+ *        N <= 65280 emits 5-D standard ZN; N > 65280 emits 6-D blocked ZN
+ *        ([E, num_blocks, K/32, blockN1=4080, 16, 32]).
  */
 
 #include "aclnn_quant_grouped_matmul_dequant.h"
@@ -35,9 +37,12 @@ extern "C" {
 
 namespace {
 static constexpr uint64_t ND_DIMNUM = 3;
-static constexpr uint64_t NZ_DIMNUM = 5;
+static constexpr uint64_t NZ_DIMNUM_STANDARD = 5;
+static constexpr uint64_t NZ_DIMNUM_BLOCKED  = 6;
 static constexpr uint64_t FRACTAL_K_INT8 = 32;
 static constexpr uint64_t FRACTAL_N_INT8 = 16;
+static constexpr uint64_t BLOCKED_ZN_NG   = 4080;                             // fractals per block
+static constexpr uint64_t BLOCKED_ZN_N_ELEMS = BLOCKED_ZN_NG * FRACTAL_N_INT8; // 65280
 static constexpr uint64_t N_IDX = 1;
 static constexpr uint64_t K_IDX = 2;
 static constexpr uint64_t X_IDX = 0;
@@ -46,10 +51,14 @@ static constexpr uint64_t WEIGHT_SCALE_IDX = 2;
 static constexpr uint64_t GROUPLIST_IDX = 5;
 static constexpr uint64_t X_SCALE_IDX = 3;
 static constexpr uint64_t SMOOTH_SCALE_IDX = 4;
-static constexpr int64_t PAD_VEC_QGMMDQ[6] = {0, 0, 0, 0, 0, 16};
+// K-tail pad: {0, 0} on E, {0, 0} on N, {0, 16} on K — pads K % 32 == 16 to 32.
+static constexpr int64_t PAD_K_TAIL[6]  = {0, 0, 0, 0, 0, 16};
+// N-tail pad placeholder (amount filled at runtime); {0, nPad} on N.
 static constexpr uint64_t PAD_VEC_SIZE_QGMMDQ = 6;
-static constexpr int64_t PERM_VEC_QGMMDQ[5] = {0, 3, 1, 2, 4};
-static constexpr uint64_t PERM_VEC_SIZE_QGMMDQ = 5;
+// Perm for 5-D standard ZN: [E, n1, 16, k1, 32] -> [E, k1, n1, 16, 32]
+static constexpr int64_t PERM_STANDARD[5] = {0, 3, 1, 2, 4};
+// Perm for 6-D blocked ZN: [E, num_blocks, blockN1, 16, k1, 32] -> [E, num_blocks, k1, blockN1, 16, 32]
+static constexpr int64_t PERM_BLOCKED[6]  = {0, 1, 4, 2, 3, 5};
 static const std::string PAD_MODE_QGMMDQ = "constant";
 
 static const inline std::vector<std::vector<DataType>>& GetSupportDtypeList(SocVersion socVersion)
@@ -101,7 +110,6 @@ static aclnnStatus CheckParamsDateType(const aclTensor* x, const aclTensor* weig
     }
 
     for (int i = 0; i < DTYPE_SUPPORT_LIST_CURRENT.size(); i++) {
-        // 检查输入的数据类型是否在支持列表内
         OP_CHECK_DTYPE_NOT_MATCH(x, DTYPE_SUPPORT_LIST_CURRENT[i][X_IDX], continue);
         OP_CHECK_DTYPE_NOT_MATCH(weight, DTYPE_SUPPORT_LIST_CURRENT[i][WEIGTH_IDX], continue);
         OP_CHECK_DTYPE_NOT_MATCH(weightScale, DTYPE_SUPPORT_LIST_CURRENT[i][WEIGHT_SCALE_IDX], continue);
@@ -120,24 +128,112 @@ static aclnnStatus CheckParamsDateType(const aclTensor* x, const aclTensor* weig
     return ACLNN_ERR_PARAM_INVALID;
 }
 
-static op::Shape GetWeightNzShape(const aclTensor *weight)
+// Pad the K-tail to 32-byte alignment if needed. Works on the ND view.
+static aclnnStatus PadKTailIfNeeded(const aclTensor *&weight, aclOpExecutor *exec)
+{
+    if (weight->GetViewShape().GetDim(K_IDX) % FRACTAL_K_INT8 == 0) {
+        return ACLNN_SUCCESS;
+    }
+    auto padArray = exec->AllocIntArray(PAD_K_TAIL, PAD_VEC_SIZE_QGMMDQ);
+    auto padTensor = exec->ConvertToTensor(padArray, DataType::DT_INT64);
+    auto valueTensor = exec->ConvertToTensor(exec->AllocScalar(0), DataType::DT_INT8);
+    auto weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
+    weight_->SetStorageShape(weight->GetViewShape());
+    weight = l0op::PadV3(weight_, padTensor, valueTensor, PAD_MODE_QGMMDQ, true, exec);
+    return weight != nullptr ? ACLNN_SUCCESS : ACLNN_ERR_INNER_INFERSHAPE_ERROR;
+}
+
+static op::Shape GetWeightStandardZNShape(const aclTensor *weight)
 {
     uint64_t n = weight->GetViewShape().GetDim(N_IDX);
     uint64_t k = weight->GetViewShape().GetDim(K_IDX);
-
     uint64_t k1 = Ops::Base::CeilDiv(k, FRACTAL_K_INT8);
     uint64_t n1 = Ops::Base::CeilDiv(n, FRACTAL_N_INT8);
 
-    op::Shape weightNzShape;
-    weightNzShape.AppendDim(weight->GetViewShape().GetDim(0));
-    weightNzShape.AppendDim(n1);
-    weightNzShape.AppendDim(FRACTAL_N_INT8);
-    weightNzShape.AppendDim(k1);
-    weightNzShape.AppendDim(FRACTAL_K_INT8);
-    return weightNzShape;
-}
+    op::Shape shape;
+    shape.AppendDim(weight->GetViewShape().GetDim(0));   // E
+    shape.AppendDim(n1);                                 // N/16
+    shape.AppendDim(FRACTAL_N_INT8);                     // 16
+    shape.AppendDim(k1);                                 // K/32
+    shape.AppendDim(FRACTAL_K_INT8);                     // 32
+    return shape;
 }
 
+static op::Shape GetWeightBlockedZNShape(const aclTensor *weight, uint64_t numBlocks)
+{
+    uint64_t k = weight->GetViewShape().GetDim(K_IDX);
+    uint64_t k1 = Ops::Base::CeilDiv(k, FRACTAL_K_INT8);
+
+    op::Shape shape;
+    shape.AppendDim(weight->GetViewShape().GetDim(0));   // E
+    shape.AppendDim(static_cast<int64_t>(numBlocks));    // num_blocks
+    shape.AppendDim(static_cast<int64_t>(BLOCKED_ZN_NG));// blockN1 = 4080
+    shape.AppendDim(FRACTAL_N_INT8);                     // 16
+    shape.AppendDim(k1);                                 // K/32
+    shape.AppendDim(FRACTAL_K_INT8);                     // 32
+    return shape;
+}
+
+// Standard ZN path: N <= 65280. Result shape [E, K/32, N/16, 16, 32].
+static aclnnStatus ConvertWeightToStandardZN(const aclTensor *&weight, aclOpExecutor *exec)
+{
+    auto ret = PadKTailIfNeeded(weight, exec);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    op::Shape znShape = GetWeightStandardZNShape(weight);
+    auto weight_ = exec->CreateView(weight, znShape, weight->GetViewOffset());
+    auto perm = exec->AllocIntArray(PERM_STANDARD, 5);
+    weight = l0op::Transpose(weight_, perm, exec);
+    weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
+    weight_->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    weight = weight_;
+    return ACLNN_SUCCESS;
+}
+
+// Blocked ZN path: N > 65280. Pads N to multiple of blockN1*16 = 65280,
+// then reshapes to 6-D and transposes into the ZN inner-block layout.
+// Result shape [E, num_blocks, K/32, blockN1=4080, 16, 32].
+static aclnnStatus ConvertWeightToBlockedZN(const aclTensor *&weight, aclOpExecutor *exec)
+{
+    // 1. Pad K tail (same as standard path).
+    auto ret = PadKTailIfNeeded(weight, exec);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    // 2. Pad N up to multiple of BLOCKED_ZN_N_ELEMS (65280) so every block
+    //    has exactly blockN1 = 4080 fractals. The last block's real-data
+    //    region is computed at kernel runtime (actualBlockNG).
+    uint64_t nCur = weight->GetViewShape().GetDim(N_IDX);
+    uint64_t nAligned = Ops::Base::CeilDiv(nCur, BLOCKED_ZN_N_ELEMS) * BLOCKED_ZN_N_ELEMS;
+    if (nCur < nAligned) {
+        int64_t nPadVec[6] = {0, 0, 0, static_cast<int64_t>(nAligned - nCur), 0, 0};
+        auto padArray = exec->AllocIntArray(nPadVec, PAD_VEC_SIZE_QGMMDQ);
+        auto padTensor = exec->ConvertToTensor(padArray, DataType::DT_INT64);
+        auto valueTensor = exec->ConvertToTensor(exec->AllocScalar(0), DataType::DT_INT8);
+        auto weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
+        weight_->SetStorageShape(weight->GetViewShape());
+        weight = l0op::PadV3(weight_, padTensor, valueTensor, PAD_MODE_QGMMDQ, true, exec);
+        CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_INFERSHAPE_ERROR);
+    }
+
+    uint64_t numBlocks = nAligned / BLOCKED_ZN_N_ELEMS;
+
+    // 3. View as 6-D: [E, num_blocks, blockN1, 16, k1, 32].
+    op::Shape bnzShape = GetWeightBlockedZNShape(weight, numBlocks);
+    auto weight_ = exec->CreateView(weight, bnzShape, weight->GetViewOffset());
+
+    // 4. Transpose with PERM_BLOCKED = {0, 1, 4, 2, 3, 5}
+    //    -> [E, num_blocks, k1, blockN1, 16, 32].
+    auto perm = exec->AllocIntArray(PERM_BLOCKED, 6);
+    weight = l0op::Transpose(weight_, perm, exec);
+    CHECK_RET(weight != nullptr, ACLNN_ERR_INNER_INFERSHAPE_ERROR);
+
+    weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
+    weight_->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    weight = weight_;
+    return ACLNN_SUCCESS;
+}
+
+// Entry: dispatches ND weight to standard or blocked ZN based on N.
 static aclnnStatus ConvertWeightNdToNz(const aclTensor *&weight, aclOpExecutor *exec)
 {
     if (weight->GetViewShape().GetDim(N_IDX) % FRACTAL_N_INT8 != 0 ||
@@ -145,22 +241,11 @@ static aclnnStatus ConvertWeightNdToNz(const aclTensor *&weight, aclOpExecutor *
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "weight shape (N, K) must both align to 16, please check");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (weight->GetViewShape().GetDim(K_IDX) % FRACTAL_K_INT8 != 0) {
-        auto padArray = exec->AllocIntArray(PAD_VEC_QGMMDQ, PAD_VEC_SIZE_QGMMDQ);
-        auto padTensor = exec->ConvertToTensor(padArray, DataType::DT_INT64);
-        auto valueTensor = exec->ConvertToTensor(exec->AllocScalar(0), DataType::DT_INT8);
-        auto weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
-        weight_->SetStorageShape(weight->GetViewShape());
-        weight = l0op::PadV3(weight_, padTensor, valueTensor, PAD_MODE_QGMMDQ, true, exec);
+    uint64_t nCur = weight->GetViewShape().GetDim(N_IDX);
+    if (nCur <= BLOCKED_ZN_N_ELEMS) {
+        return ConvertWeightToStandardZN(weight, exec);
     }
-    op::Shape weightNzShape = GetWeightNzShape(weight);
-    auto weight_ = exec->CreateView(weight, weightNzShape, weight->GetViewOffset());
-    auto perm = exec->AllocIntArray(PERM_VEC_QGMMDQ, PERM_VEC_SIZE_QGMMDQ);
-    weight = l0op::Transpose(weight_, perm, exec);
-    weight_ = exec->CreateView(weight, weight->GetViewShape(), weight->GetViewOffset());
-    weight_->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-    weight = weight_;
-    return ACLNN_SUCCESS;
+    return ConvertWeightToBlockedZN(weight, exec);
 }
 
 static aclnnStatus PrepareWeightFormat(const aclTensor *&weight, aclOpExecutor *exec)
@@ -169,15 +254,23 @@ static aclnnStatus PrepareWeightFormat(const aclTensor *&weight, aclOpExecutor *
     uint64_t weightStorageDimNum = weight->GetStorageShape().GetDimNum();
     if (weightDimNum == ND_DIMNUM &&
         (weight->GetStorageFormat() == op::Format::FORMAT_ND ||
-        weight->GetStorageFormat() == op::Format::FORMAT_NCL)) {
+         weight->GetStorageFormat() == op::Format::FORMAT_NCL)) {
         return ConvertWeightNdToNz(weight, exec);
-    } else if (weightStorageDimNum != NZ_DIMNUM || weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+    }
+    // Pre-converted 5-D (standard ZN) or 6-D (blocked ZN) on input: accept as-is.
+    const bool validNz = (weightStorageDimNum == NZ_DIMNUM_STANDARD ||
+                          weightStorageDimNum == NZ_DIMNUM_BLOCKED) &&
+                         weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+    if (!validNz) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "weight is not in 5-dim (G, K//32, N//16, 16, 32), please check");
+                "weight must be 3-D ND, or 5-D/6-D FRACTAL_NZ (storage rank=%lu)",
+                weightStorageDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
+
+} // namespace
 
 static aclnnStatus aclnnQuantGroupedMatmulDequantGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *weight, const aclTensor *weightScale, const aclTensor *groupList,
@@ -267,12 +360,15 @@ aclnnStatus aclnnQuantGroupedMatmulDequantWeightNZGetWorkspaceSize(
     auto storageShape = weight->GetStorageShape();
     auto viewShape = weight->GetViewShape();
     aclTensor *weightNZ = const_cast<aclTensor *>(weight);
-    CHECK_COND((storageShape.GetDimNum() == NZ_DIMNUM), ACLNN_ERR_PARAM_INVALID,
-        "aclnnQuantGroupedMatmulDequantWeightNZ, The dimnum of storageShape for second input (weight)"
-        "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
-        op::ToString(storageShape).GetString(), storageShape.GetDimNum());
+    const uint64_t rank = storageShape.GetDimNum();
+    CHECK_COND((rank == NZ_DIMNUM_STANDARD || rank == NZ_DIMNUM_BLOCKED),
+        ACLNN_ERR_PARAM_INVALID,
+        "aclnnQuantGroupedMatmulDequantWeightNZ: weight storage rank must be 5 (standard ZN) "
+        "or 6 (blocked ZN). Got shape %s (rank %lu).",
+        op::ToString(storageShape).GetString(), rank);
     weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
-    if (viewShape.GetDimNum() == NZ_DIMNUM) {
+    if (viewShape.GetDimNum() == NZ_DIMNUM_STANDARD ||
+        viewShape.GetDimNum() == NZ_DIMNUM_BLOCKED) {
         weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
     } else if (viewShape.GetDimNum() == ND_DIMNUM) {
         weightNZ->SetViewFormat(op::Format::FORMAT_ND);
