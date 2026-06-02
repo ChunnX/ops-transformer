@@ -741,8 +741,7 @@ bool MoeInitRountingV3TilingBase::IsFullLoad() {
 void MoeInitRountingV3TilingBase::ComputeCountingSortTiling()
 {
     int64_t actualExpertNum = expertEnd_ - expertStart_;
-    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N || ep_ != 1 || quantMode_ != UN_QUANT ||
-        dropPadMode_ != DROP_LESS || expertTokensNumType_ != COUNT ||
+    if (n_ < COUNTING_SORT_MIN_N || n_ > COUNTING_SORT_MAX_N || ep_ != 1 || 
         actualExpertNum > COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM || actualExpertNum <= 0 || k_ != PERFORMANCE_MODE_TOP_K) {
         return;
     }

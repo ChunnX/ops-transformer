@@ -25,8 +25,9 @@ class MoeV3CutOriginT {
 public:
     __aicore__ inline MoeV3CutOriginT(){};
     __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
-        GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe);
+        GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+        GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
+        TPipe* pipe);
     __aicore__ inline void Process();
 
 private:
@@ -49,9 +50,11 @@ private:
     GlobalTensor<T> xGm_;
     GlobalTensor<float> scaleGm_;
     GlobalTensor<T> expandedXGm_;
+    GlobalTensor<int8_t> expandedXInt8Gm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int64_t> expertTokensGm_;
     GlobalTensor<float> expandedScaleGm_;
+    GlobalTensor<float> offsetGm_;
     GlobalTensor<int32_t> pairsWorkspaceGm_;
     GlobalTensor<int32_t> expertCountWorkspaceGm_;
 
@@ -66,10 +69,13 @@ private:
     int64_t actualExpertNum_;
     int64_t rowIdxType_;
     int64_t isInputScale_;
+    int64_t quantMode_;
     int64_t filterNeedCoreNum_;
     int64_t coreNum_;
     int64_t expertTokensNumFlag_;
+    int64_t expertTokensNumType_;
     int64_t filterChunkSize_;
+    int64_t dropPadMode_;
     int64_t activeNum_;
 
     // Per-core distribution
@@ -113,14 +119,19 @@ private:
     int64_t prefixSumLocalOffset_;
     int64_t expertTokensLocalOffset_;
 
+    // Static quant params
+    float staticQuantScale_;
+    float staticQuantOffset_;
+
     int64_t totalBufSize_;
 };
 
 // ========================== Init ==========================
 template <typename T>
 __aicore__ inline void MoeV3CutOriginT<T>::Init(
-    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR expertTokens,
-    GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling, TPipe* pipe)
+    GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
+    GM_ADDR expertTokens, GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tiling,
+    TPipe* pipe)
 {
     pipe_ = pipe;
     blockIdx_ = GetBlockIdx();
@@ -135,10 +146,16 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     actualExpertNum_ = tiling->actualExpertNum;
     rowIdxType_ = tiling->rowIdxType;
     isInputScale_ = tiling->isInputScale;
+    quantMode_ = tiling->quantMode;
     filterNeedCoreNum_ = tiling->gatherOutComputeParamsOp.needCoreNum;
     coreNum_ = tiling->coreNum;
     expertTokensNumFlag_ = tiling->expertTokensNumFlag;
+    expertTokensNumType_ = tiling->expertTokensNumType;
     activeNum_ = tiling->activeNum;
+    dropPadMode_ = tiling->dropPadMode;
+    if (dropPadMode_ == DROP_PAD_MODE) {
+        activeNum_ = totalLength_;
+    }
 
     filterChunkSize_ = FILTER_CHUNK_SIZE;
 
@@ -180,13 +197,28 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     // Setup GlobalTensors
     xGm_.SetGlobalBuffer((__gm__ T*)x);
     expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
-    expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
+    if (quantMode_ == -1) {
+        expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
+    } else {
+        expandedXInt8Gm_.SetGlobalBuffer((__gm__ int8_t*)expandedX);
+    }
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
     if (expertTokensNumFlag_ != EXERPT_TOKENS_NONE) {
         expertTokensGm_.SetGlobalBuffer((__gm__ int64_t*)expertTokens);
     }
     if (isInputScale_) {
         scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
+        expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
+    }
+    staticQuantScale_ = 0.0f;
+    staticQuantOffset_ = 0.0f;
+    if (quantMode_ == 0) {
+        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
+        offsetGm_.SetGlobalBuffer((__gm__ float*)offset);
+        staticQuantScale_ = scaleGm_.GetValue(0);
+        staticQuantOffset_ = offsetGm_.GetValue(0);
+    }
+    if (quantMode_ == 1) {
         expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
     }
 
@@ -216,17 +248,17 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     shortPath_ = (maxChunks_ == 1);
 
     // Persistent region
-    int64_t offset = 0;
-    expertCountLocalOffset_ = offset;
-    offset += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+    int64_t ubOff = 0;
+    expertCountLocalOffset_ = ubOff;
+    ubOff += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     if (shortPath_) {
         // Gathered data survives from Phase A to Phase C
-        gatheredIdxLocalOffset_ = offset;
-        offset += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
-        gatheredExpertLocalOffset_ = offset;
-        offset += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+        gatheredIdxLocalOffset_ = ubOff;
+        ubOff += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
+        gatheredExpertLocalOffset_ = ubOff;
+        ubOff += OpsBaseCeilAlign(chunkAligned_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     }
-    persistentSize_ = offset;
+    persistentSize_ = ubOff;
 
     // Phase A shared size (from persistentSize_)
     int64_t phaseASize = 0;
@@ -253,6 +285,10 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     phaseBSize += OpsBaseCeilAlign(expertCountStride_ * static_cast<int64_t>(sizeof(int32_t)), BLOCK_BYTES);
     expertTokensLocalOffset_ = persistentSize_ + phaseBSize;
     phaseBSize += OpsBaseCeilAlign(actualExpertNum_ * static_cast<int64_t>(sizeof(int64_t)), BLOCK_BYTES);
+    int64_t expertTokensElements = (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE)
+                                   ? (actualExpertNum_ + 1) * 2
+                                   : actualExpertNum_;
+    phaseBSize += OpsBaseCeilAlign(expertTokensElements * static_cast<int64_t>(sizeof(int64_t)), BLOCK_BYTES);
 
     // Phase C shared size (from persistentSize_)
     // use double buffer: 2x xBuf + 2x scaleBuf
@@ -262,6 +298,14 @@ __aicore__ inline void MoeV3CutOriginT<T>::Init(
     phaseCSize += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) * 2;
     if (isInputScale_) {
         phaseCSize += OpsBaseCeilAlign(scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES) * 2;
+    }
+    // Quantization buffers for Phase C
+    if (quantMode_ == 0 || quantMode_ == 1) {
+        phaseCSize += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
+        phaseCSize += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
+    }
+    if (quantMode_ == 1) {
+        phaseCSize += OpsBaseCeilAlign(scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
     }
 
     totalBufSize_ = persistentSize_ + Max(phaseASize, Max(phaseBSize, phaseCSize));
@@ -513,13 +557,43 @@ __aicore__ inline void MoeV3CutOriginT<T>::WriteExpertTokens()
         LocalTensor<int32_t> totalCountLocal = buf_.Get<int32_t>()[totalCountLocalOffset_ / sizeof(int32_t)];
         LocalTensor<int64_t> expertTokensLocal = buf_.Get<int64_t>()[expertTokensLocalOffset_ / sizeof(int64_t)];
 
-        Cast(expertTokensLocal, totalCountLocal, RoundMode::CAST_NONE, static_cast<int32_t>(actualExpertNum_));
-        PipeBarrier<PIPE_V>();
-        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+         if (expertTokensNumType_ == EXERPT_TOKENS_COUNT) {
+            Cast(expertTokensLocal, totalCountLocal, RoundMode::CAST_NONE, static_cast<int32_t>(actualExpertNum_));
+            PipeBarrier<PIPE_V>();
+            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+            DataCopyExtParams copyParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
 
-        DataCopyExtParams copyParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
-        DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+        } else if (expertTokensNumType_ == EXERPT_TOKENS_CUMSUM) {
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+            int64_t cumsum = 0;
+            for (int64_t e = 0; e < actualExpertNum_; e++) {
+                cumsum += static_cast<int64_t>(totalCountLocal.GetValue(e));
+                expertTokensLocal.SetValue(e, cumsum);
+            }
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyExtParams copyParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(actualExpertNum_ * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+
+        } else if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {
+            SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+            int64_t kvOffset = 0;
+            for (int64_t e = 0; e < actualExpertNum_; e++) {
+                int32_t count = totalCountLocal.GetValue(e);
+                if (count != 0) {
+                    expertTokensLocal.SetValue(kvOffset * 2, static_cast<int64_t>(e + expertStart_));
+                    expertTokensLocal.SetValue(kvOffset * 2 + 1, static_cast<int64_t>(count));
+                    kvOffset++;
+                }
+            }
+            int64_t kvTotalElements = (actualExpertNum_ + 1) * 2;
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            DataCopyExtParams copyParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(kvTotalElements * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensGm_, expertTokensLocal, copyParams);
+        }
     }
 }
 
@@ -554,6 +628,22 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
     int64_t scaleBufSlotSize = OpsBaseCeilAlign(scaleSlotSize_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
     int64_t scaleBufOff0 = off;
     int64_t scaleBufOff1 = off + scaleBufSlotSize;
+    // Quantization buffers (single set, reused across pairs since quant is done serially per pair)
+    int64_t quantFloatOff = 0;
+    int64_t quantInt8Off = 0;
+    int64_t quantScaleOutOff = 0;
+    if (quantMode_ == 0 || quantMode_ == 1) {
+        if (isInputScale_) {
+            off += scaleBufSlotSize * 2;
+        }
+        quantFloatOff = off;
+        off += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(float)), BLOCK_BYTES);
+        quantInt8Off = off;
+        off += OpsBaseCeilAlign(perLoopColsAligned_ * static_cast<int64_t>(sizeof(int8_t)), BLOCK_BYTES);
+    }
+    if (quantMode_ == 1) {
+        quantScaleOutOff = off;
+    }
 
     // Persistent buffer
     LocalTensor<int32_t> expertCountLocal = buf_.Get<int32_t>()[expertCountLocalOffset_ / sizeof(int32_t)];
@@ -568,6 +658,21 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
     if (isInputScale_) {
         scaleCopyInParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
         scaleCopyOutParams = {static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    }
+
+    // Quantization local tensors
+    LocalTensor<float> quantFloatLocal;
+    LocalTensor<int8_t> quantInt8Local;
+    LocalTensor<float> quantScaleOutLocal;
+    int64_t colsAlignedInt8 = colsAligned_;
+    DataCopyExtParams int8CopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(cols_ * sizeof(int8_t)), 0, 0, 0};
+    DataCopyExtParams quantScaleCopyOutParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+    if (quantMode_ == 0 || quantMode_ == 1) {
+        quantFloatLocal = buf_.Get<float>()[quantFloatOff / sizeof(float)];
+        quantInt8Local = buf_.Get<int8_t>()[quantInt8Off];
+    }
+    if (quantMode_ == 1) {
+        quantScaleOutLocal = buf_.Get<float>()[quantScaleOutOff / sizeof(float)];
     }
 
     // Persistent event IDs for double buffer pipeline
@@ -631,7 +736,7 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             scBuf1 = buf_.Get<float>()[scaleBufOff1 / sizeof(float)];
         }
 
-        if (colsLoops_ == 1) {
+        if (colsLoops_ == 1 && quantMode_ == -1) {
             // === Double buffer path: MTE2/MTE3 overlap across pairs ===
             DataCopyExtParams xCp{static_cast<uint16_t>(1), static_cast<uint32_t>(lastLoopCols_ * sizeof(T)), 0, 0, 0};
 
@@ -702,6 +807,119 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
             if (batchSize >= 2) {
                 WaitFlag<HardEvent::MTE3_MTE2>(evMte3[1 - ((batchSize - 1) & 1)]);
             }
+        } else if (colsLoops_ == 1 && quantMode_ != -1) {
+            // === Serial quant path for colsLoops_==1: MTE2 → VEC → MTE3 per pair ===
+            DataCopyExtParams xCp{static_cast<uint16_t>(1), static_cast<uint32_t>(lastLoopCols_ * sizeof(T)), 0, 0, 0};    
+            for (int64_t i = 0; i < batchSize; i++) {
+                int32_t newPos = newPosArr[i];
+                int32_t srcRow = srcRowArr[i];
+                int32_t origFlatIdx = origFlatIdxArr[i];
+
+                // Write rowIdx
+                idxBuf.SetValue(0, (rowIdxType_ == GATHER) ? newPos : origFlatIdx);
+                SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                if (rowIdxType_ == GATHER) {
+                    DataCopyPad(expandedRowIdxGm_[origFlatIdx], idxBuf, idxCopyParams);
+                } else {
+                    DataCopyPad(expandedRowIdxGm_[newPos], idxBuf, idxCopyParams);
+                }
+
+                if (newPos >= activeNum_) {
+                    continue;
+                }
+
+                // Read x row from GM
+                SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_], xCp, xPadParams);
+                SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+                if (quantMode_ == 0) {
+                    // Static quantization: x → float → *scale → +offset → int8
+                    if constexpr (IsSameType<T, float>::value) {
+                        DataCopy(quantFloatLocal, xBuf0, colsAlignedInt8);
+                    } else if constexpr (!IsSameType<T, int8_t>::value) {
+                        Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(colsAlignedInt8));
+                        PipeBarrier<PIPE_V>();
+                    }
+                    Muls(quantFloatLocal, quantFloatLocal, staticQuantScale_, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    Adds(quantFloatLocal, quantFloatLocal, staticQuantOffset_, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
+                    Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    SetDeqScale((half)1.000000e+00f);
+                    LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
+                    Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                    DataCopyPad(
+                        expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], quantInt8Local, int8CopyParams);
+
+                } else {
+                    // Dynamic quantization: x → float → (smooth) → abs → max → /scale → int8
+                    if constexpr (IsSameType<T, float>::value) {
+                        DataCopy(quantFloatLocal, xBuf0, colsAlignedInt8);
+                    } else if constexpr (!IsSameType<T, int8_t>::value) {
+                        Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(colsAlignedInt8));
+                        PipeBarrier<PIPE_V>();
+                    }
+                    if (isInputScale_) {
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                        Mul(quantFloatLocal, quantFloatLocal, scBuf0, cols_);
+                        PipeBarrier<PIPE_V>();
+                    }
+                    LocalTensor<float> tempLocal = quantScaleOutLocal;
+                    Abs(quantFloatLocal, quantFloatLocal, cols_);
+                    PipeBarrier<PIPE_V>();
+                    ReduceMax(tempLocal, quantFloatLocal, quantFloatLocal, cols_);
+                    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+                    float scaleValue = tempLocal.GetValue(0) / MAX_INT8;
+
+                    // Re-read original data
+                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                    DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_], xCp, xPadParams);
+                    SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                    if constexpr (IsSameType<T, float>::value) {
+                        DataCopy(quantFloatLocal, xBuf0, colsAlignedInt8);
+                    } else if constexpr (!IsSameType<T, int8_t>::value) {
+                        Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(colsAlignedInt8));
+                        PipeBarrier<PIPE_V>();
+                    }
+                    if (isInputScale_) {
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                        Mul(quantFloatLocal, quantFloatLocal, scBuf0, cols_);
+                        PipeBarrier<PIPE_V>();
+                    }
+                    if (scaleValue > 0.0f) {
+                        Muls(quantFloatLocal, quantFloatLocal, 1.0f / scaleValue, cols_);
+                    } else {
+                        Duplicate(quantFloatLocal, static_cast<float>(0), cols_);
+                    }
+                    PipeBarrier<PIPE_V>();
+                    LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
+                    Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    SetDeqScale((half)1.000000e+00f);
+                    LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
+                    Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, colsAlignedInt8);
+                    PipeBarrier<PIPE_V>();
+                    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                    DataCopyPad(
+                        expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_], quantInt8Local, int8CopyParams);
+                    quantScaleOutLocal.SetValue(0, scaleValue);
+                    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                    DataCopyPad(expandedScaleGm_[newPos], quantScaleOutLocal, quantScaleCopyOutParams);
+                }
+            }
         } else {
             // === Serial fallback for colsLoops_ > 1 ===
             for (int64_t i = 0; i < batchSize; i++) {
@@ -721,28 +939,173 @@ __aicore__ inline void MoeV3CutOriginT<T>::GatherAndWriteChunked()
                 if (newPos >= activeNum_) {
                     continue;
                 }
-                if (isInputScale_) {
-                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                    DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
-                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-                    DataCopyPad(expandedScaleGm_[newPos], scBuf0, scaleCopyOutParams);
-                }
 
-                int64_t curLoopCols = perLoopCols_;
-                for (int64_t cl = 0; cl < colsLoops_; cl++) {
-                    if (cl == colsLoops_ - 1) {
-                        curLoopCols = lastLoopCols_;
+                if (quantMode_ == -1) {
+                    // Unquantized: direct copy per cols loop
+                    if (isInputScale_) {
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
+                        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                        DataCopyPad(expandedScaleGm_[newPos], scBuf0, scaleCopyOutParams);
                     }
-                    int64_t colsOff = cl * perLoopCols_;
-                    DataCopyExtParams xIn{
-                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-                    DataCopyExtParams xOut{
-                        static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                    int64_t curLoopCols = perLoopCols_;
+                    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                        if (cl == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        int64_t colsOff = cl * perLoopCols_;
+                        DataCopyExtParams xIn{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                        DataCopyExtParams xOut{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_ + colsOff], xIn, xPadParams);
+                        SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+                        DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_ + colsOff], xBuf0, xOut);
+                    }
 
-                    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-                    DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_ + colsOff], xIn, xPadParams);
-                    SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
-                    DataCopyPad(expandedXGm_[static_cast<int64_t>(newPos) * cols_ + colsOff], xBuf0, xOut);
+                } else if (quantMode_ == 0) {
+                    // Static quant: per cols loop independently
+                    int64_t curLoopCols = perLoopCols_;
+                    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                        if (cl == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        int64_t curLoopAligned = Align(curLoopCols, static_cast<int64_t>(sizeof(int8_t)));
+                        int64_t colsOff = cl * perLoopCols_;
+                        DataCopyExtParams xIn{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                        DataCopyExtParams int8Out{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_ + colsOff], xIn, xPadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+                        if constexpr (IsSameType<T, float>::value) {
+                            DataCopy(quantFloatLocal, xBuf0, curLoopAligned);
+                        } else if constexpr (!IsSameType<T, int8_t>::value) {
+                            Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(curLoopAligned));
+                            PipeBarrier<PIPE_V>();
+                        }
+                        Muls(quantFloatLocal, quantFloatLocal, staticQuantScale_, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        Adds(quantFloatLocal, quantFloatLocal, staticQuantOffset_, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
+                        Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        SetDeqScale((half)1.000000e+00f);
+                        LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
+                        Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                        DataCopyPad(
+                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff], quantInt8Local, int8Out);
+                    }
+
+                } else {
+                    // Dynamic quant with colsLoops_ > 1: two-pass approach
+                    // Pass 1: compute max(|x|) across all cols
+                    float globalMaxAbs = 0.0f;
+                    int64_t curLoopCols = perLoopCols_;
+                    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                        if (cl == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        int64_t curLoopAligned = OpsBaseCeilAlign(
+                            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                            static_cast<int64_t>(sizeof(T));
+                        int64_t colsOff = cl * perLoopCols_;
+                        DataCopyExtParams xIn{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_ + colsOff], xIn, xPadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+                        if constexpr (IsSameType<T, float>::value) {
+                            DataCopy(quantFloatLocal, xBuf0, curLoopAligned);
+                        } else if constexpr (!IsSameType<T, int8_t>::value) {
+                            Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(curLoopAligned));
+                            PipeBarrier<PIPE_V>();
+                        }
+                        if (isInputScale_) {
+                            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                            DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
+                            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                            Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+                            PipeBarrier<PIPE_V>();
+                        }
+                        Abs(quantFloatLocal, quantFloatLocal, curLoopCols);
+                        PipeBarrier<PIPE_V>();
+                        LocalTensor<float> tempLocal = quantScaleOutLocal;
+                        ReduceMax(tempLocal, quantFloatLocal, quantFloatLocal, curLoopCols);
+                        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
+                        float chunkMax = tempLocal.GetValue(0);
+                        if (chunkMax > globalMaxAbs) {
+                            globalMaxAbs = chunkMax;
+                        }
+                    }
+                    float scaleValue = globalMaxAbs / MAX_INT8;
+
+                    // Pass 2: quantize and write
+                    curLoopCols = perLoopCols_;
+                    for (int64_t cl = 0; cl < colsLoops_; cl++) {
+                        if (cl == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        int64_t curLoopAligned = OpsBaseCeilAlign(
+                            curLoopCols * static_cast<int64_t>(sizeof(T)), BLOCK_BYTES) /
+                            static_cast<int64_t>(sizeof(T));
+                        int64_t colsOff = cl * perLoopCols_;
+                        DataCopyExtParams xIn{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                        DataCopyExtParams int8Out{
+                            static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(int8_t)), 0, 0, 0};
+
+                        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                        DataCopyPad(xBuf0, xGm_[static_cast<int64_t>(srcRow) * cols_ + colsOff], xIn, xPadParams);
+                        SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+
+                        if constexpr (IsSameType<T, float>::value) {
+                            DataCopy(quantFloatLocal, xBuf0, curLoopAligned);
+                        } else if constexpr (!IsSameType<T, int8_t>::value) {
+                            Cast(quantFloatLocal, xBuf0, RoundMode::CAST_NONE, static_cast<int32_t>(curLoopAligned));
+                            PipeBarrier<PIPE_V>();
+                        }
+                        if (isInputScale_) {
+                            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+                            DataCopyPad(scBuf0, scaleGm_[srcRow], scaleCopyInParams, scalePadParams);
+                            SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
+                            Mul(quantFloatLocal, quantFloatLocal, scBuf0, curLoopCols);
+                            PipeBarrier<PIPE_V>();
+                        }
+                        if (scaleValue > 0.0f) {
+                            Muls(quantFloatLocal, quantFloatLocal, 1.0f / scaleValue, curLoopCols);
+                        } else {
+                            Duplicate(quantFloatLocal, static_cast<float>(0), curLoopCols);
+                        }
+                        PipeBarrier<PIPE_V>();
+                        LocalTensor<int32_t> intLocal = quantFloatLocal.ReinterpretCast<int32_t>();
+                        Cast(intLocal, quantFloatLocal, RoundMode::CAST_RINT, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        SetDeqScale((half)1.000000e+00f);
+                        LocalTensor<half> halfLocal = intLocal.ReinterpretCast<half>();
+                        Cast(halfLocal, intLocal, RoundMode::CAST_ROUND, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        Cast(quantInt8Local, halfLocal, RoundMode::CAST_TRUNC, curLoopAligned);
+                        PipeBarrier<PIPE_V>();
+                        SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                        DataCopyPad(
+                            expandedXInt8Gm_[static_cast<int64_t>(newPos) * cols_ + colsOff], quantInt8Local, int8Out);
+                    }
+                    // Write per-row scale
+                    quantScaleOutLocal.SetValue(0, scaleValue);
+                    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+                    DataCopyPad(expandedScaleGm_[newPos], quantScaleOutLocal, quantScaleCopyOutParams);
                 }
             }
         }
