@@ -994,7 +994,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
     roundNum = 1;
 #endif
 
-    bool needRoundSync = (roundNum == 2U) && (axisBS_ > 32) && 
+    bool needRoundSync = (roundNum == 2U) && (axisBS_ > 32) &&
         !(server_num % 2 != 0 && localServerId == (server_num - 1) / 2);
     if (sendCntNum_ != 0U) {
         LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
