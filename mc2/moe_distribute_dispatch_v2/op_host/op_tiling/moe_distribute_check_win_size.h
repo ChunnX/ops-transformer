@@ -109,8 +109,8 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
                 " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu, tokenNeedSizeCombine = %lu,"
                 " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * localMoeExpertNum) +"
                 " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) + epWorldSize * 8192 = %luMB,"
-                " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
-                tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
+                " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum,
+                sharedExpertNum, tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
                 hcclBufferSizeEp / (MB_SIZE * 2), hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
@@ -118,8 +118,8 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
                 " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu, tokenNeedSizeCombine = %lu,"
                 " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * localMoeExpertNum) +"
                 " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) + epWorldSize * 8192 = %luMB,"
-                " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
-                tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
+                " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum,
+                sharedExpertNum, tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
                 hcclBufferSizeEp / MB_SIZE, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
         }
     }
