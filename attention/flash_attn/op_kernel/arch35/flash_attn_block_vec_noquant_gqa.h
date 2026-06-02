@@ -123,6 +123,9 @@ public:
     static constexpr uint32_t FA_V_TO_MTE2_ID    = 2U;
     static constexpr uint32_t FA_MTE3_TO_MTE2_ID = 2U;
     static constexpr uint32_t FA_MTE2_TO_V_SINK  = 4U;
+    // stage1 双缓冲的 MTE3→V 反向同步（确保 UB→L1 DataCopy 完成后才能复用 buffer）
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_0 = 3U;
+    static constexpr uint32_t FA_STAGE1_MTE3_TO_V_1 = 5U;
 
     // ===== 核间同步常量（避开 6、7，Set/Wait 对称）=====
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
@@ -176,8 +179,9 @@ public:
     LocalTensor<INPUT_T> stage1OutBuf[2];
     LocalTensor<uint8_t> attenMaskBuf[2];
     LocalTensor<T> stage2OutBuf;
-    uint32_t mte3ToVId[2]; // 静态分配: {0,1}
-    uint32_t vToMte3Id[2]; // 静态分配: {0,1}
+    uint32_t mte3ToVId[2]; // 静态分配: {0,1} — Vec2 stage2OutBuf 的 MTE3→V
+    uint32_t vToMte3Id[2]; // 静态分配: {0,1} — Vec1 stage1 的 V→MTE3 正向
+    uint32_t stage1MTE3toV[2]; // stage1 双缓冲的 MTE3→V 反向同步
     LocalTensor<float> softmaxMaxBuf[PRELOAD_N + 1];
     LocalTensor<float> softmaxSumBuf[PRELOAD_N + 1];
     LocalTensor<T> softmaxExpBuf[PRELOAD_N + 1];
@@ -364,6 +368,8 @@ public:
         auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)][0];
         int64_t stage1Offset = runInfo.loop & (DB - 1);
 
+        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+
         float descaleQK = 1.0;
 
         LocalTensor<T> mmRes = bmm1UbTensor;
@@ -402,6 +408,7 @@ public:
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
         //----------------------------------------------------------------
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -528,6 +535,8 @@ public:
         int64_t stage1Offset = 0;
         stage1Offset = runInfo.loop & (DB - 1);
 
+        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
+
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 
@@ -613,6 +622,8 @@ public:
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
+
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
 
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(l1PCcId);
         // ======================================================
@@ -1158,14 +1169,20 @@ public:
         mte3ToVId[1] = FA_MTE3_TO_V_1;
         vToMte3Id[0] = FA_V_TO_MTE3_0;
         vToMte3Id[1] = FA_V_TO_MTE3_1;
+        stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
+        stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
+        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
