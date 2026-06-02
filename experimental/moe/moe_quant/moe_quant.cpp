@@ -38,9 +38,9 @@ constexpr int32_t BUFFER_NUM = 1;
 constexpr int32_t BLOCK_DIM = 40;
 constexpr int32_t BF16_32B_ALIGN = 16;
 
-class MoeQuantKernel {
+class MoeQuant {
 public:
-    __aicore__ inline MoeQuantKernel() {}
+    __aicore__ inline MoeQuant() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR localRows, GM_ADDR quantScale, GM_ADDR out, int32_t tokenRows,
                                 int32_t expertNum, int32_t hidden, int32_t localRowsCount, int32_t blockCount)
@@ -181,7 +181,7 @@ extern "C" __global__ __aicore__ void moe_quant_kernel(GM_ADDR x, GM_ADDR localR
                                                        int32_t localRowsCount, int32_t blockCount)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    MoeQuantKernel op;
+    MoeQuant op;
     op.Init(x, localRows, quantScale, out, tokenRows, expertNum, hidden, localRowsCount, blockCount);
     op.Process();
 }

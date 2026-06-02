@@ -10,12 +10,16 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
+import logging
+
 import pytest
 import torch
 import torch_npu
 
 import npu_ops_transformer_ext
 
+
+LOGGER = logging.getLogger(__name__)
 
 TEST_CASES = [
     {"counts": [1], "hidden": 64},
@@ -64,7 +68,7 @@ def _run_case(counts, hidden):
     diff = (result.to(torch.int16) - expected.to(torch.int16)).abs()
     max_abs = diff.max().item() if diff.numel() else 0
     mismatch_count = torch.count_nonzero(result != expected).item()
-    print(
+    LOGGER.info(
         "[precision] token_rows={} hidden={} expert_num={} max_abs={} mismatches={}".format(
             x_cpu.shape[0], hidden, len(counts), max_abs, mismatch_count
         )
@@ -76,7 +80,7 @@ def _run_case(counts, hidden):
 
 
 def test_moe_quant_interface_exist():
-    print(torch.ops.npu_ops_transformer_ext.moe_quant)
+    LOGGER.info(torch.ops.npu_ops_transformer_ext.moe_quant)
     assert hasattr(torch.ops.npu_ops_transformer_ext, "moe_quant")
 
 
