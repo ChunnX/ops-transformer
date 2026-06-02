@@ -73,8 +73,7 @@ bool FiaTilingNonQuantArch35::IsCapable()
         (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
          fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
         (fiaInfo_->qkHeadDim != 128 &&
-         fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
-        CheckS1OutSplit()                                    // 使能S1外切场景
+         fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) // 非D=128 GQA，且非Prefill MLA
     ) {
         return false;
     }
@@ -391,20 +390,6 @@ int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
-    if (fiaInfo_->isOutQuantEnable) {
-        return false;
-    }
-
-    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag || dnFlag_ ||
-        fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
-        return false;
-    }
-
-    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
-        return false;
-    }
-
     if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
         return false;
     }
