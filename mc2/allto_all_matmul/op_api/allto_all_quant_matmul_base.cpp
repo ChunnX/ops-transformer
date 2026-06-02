@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -78,8 +78,7 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
         return false;
     }
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510)
-{
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
             	    "The current scenario is not pertoken dynamic quantization,
@@ -175,16 +174,14 @@ static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclT
 {
     bool scaleShapeValid = true;
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
-        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT)
-{
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         OP_API_CHECK(!transposeX2, {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In the mx quantization scenario, x2 must be transposed.");
             return false;
         });
         scaleShapeValid = Check3DScaleShape(x2, x1Scale, x2Scale, transposeX2);
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
-               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT)
-{
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         scaleShapeValid = Check1DScaleShape(x2, x2Scale, transposeX2);
     }
     return scaleShapeValid;
@@ -212,8 +209,7 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_SUPPORT_LIST, return false);
     if (x1QuantMode == static_cast<int64_t>(QuantModeType::DYN_PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SAME(x1ScaleOptional, x1, return false);
-    } else if (x1QuantMode == static_cast<int64_t>(QuantModeType::PERTOKEN_QUANT) && x1ScaleOptional != nullptr)
-{
+    } else if (x1QuantMode == static_cast<int64_t>(QuantModeType::PERTOKEN_QUANT) && x1ScaleOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_SUPPORT_LIST, return false);
     }
     OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST, return false);
@@ -279,8 +275,7 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (x1->GetDataType() != x2->GetDataType() &&
-        (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1))
-{
+        (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "In mxquant scenario, x1 and x2 must have same dtype when one is fp4_e2m1, but found x1: %s, x2: %s.",
                 op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
@@ -307,13 +302,11 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const acl
     bool isAllDtypesValid = false;
     // 根据量化场景进入不同分支判断
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::DYN_PERTOKEN_QUANT &&
-        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT)
-{
+        static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         isAllDtypesValid = CheckKCDynQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantDtype,
                                                         output, alltoAllOutOptional);
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
-               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT)
-{
+               static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         isAllDtypesValid =
             CheckMXQuantDtypesValidA5(x1, x2, biasOptional, x1ScaleOptional, x2Scale, output, alltoAllOutOptional);
     } else {
@@ -454,8 +447,7 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
         CHECK_RET(CheckAllDtypesValid(x1, x2, biasOptional, x1QuantMode, x1ScaleOptional, x2Scale, output,
                                       alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510)
-{
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         CHECK_RET(CheckDtypesValid(x1, x2, biasOptional, x1ScaleOptional, x2Scale, x1QuantMode, x2QuantMode,
                                    x1QuantDtype, output, alltoAllOutOptional),
                   ACLNN_ERR_PARAM_INVALID);
@@ -607,8 +599,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulBase(void *workspace, uint64_t wo
             } else {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             }
-        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B)
-{
+        } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
         }
     }

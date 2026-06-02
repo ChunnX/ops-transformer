@@ -204,8 +204,7 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
     uint64_t maxLongNum;
     uint64_t minFactor;
     for (uint64_t tempAllNumOfLongTile = alignNum - 1; (tempAllNumOfLongTile + tempAllNumOfLongTile) > alignNum;
-         tempAllNumOfLongTile--)
-{
+         tempAllNumOfLongTile--) {
         minFactor = primeMinFactor(tempAllNumOfLongTile);
         alignRemainder += ALIGN_M;
         maxLongNum = (CalcLongTileLen(alignRemainder) + ALIGN_M - 1) / ALIGN_M;
@@ -237,8 +236,7 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
     // 最小的需要切分的耗时
     const uint64_t minCutTime = 100;
     if (mmInfo_.mValue < (tilingM_.cutRes.shortTileLen + tilingM_.cutRes.shortTileLen) ||
-        (totalMatmulTime_ + totalTpTime_) < minCutTime)
-{
+        (totalMatmulTime_ + totalTpTime_) < minCutTime) {
         // 总长度小于两倍短块或者总时间少于100us，不切
         tilingM_.cutRes.longTileLen = mmInfo_.mValue;
         tilingM_.cutRes.shortTileLen = 0U;
