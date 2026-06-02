@@ -90,13 +90,16 @@ def run_precision_test():
 
     print("\n[2] 官方 Ascend C 算子计算 (TND layout)...")
     try:
+        # actual_seq_lengths: API签名要求 SymInt[]? (list[int]), 不是 tensor
+        actual_seq_qlen = [t1]
+        actual_seq_klen = [t2]
         d_qi_off, d_ki_off, dw_off, loss_off = torch_npu.npu_sparse_lightning_indexer_grad_kl_loss(
             query, key, query_index, key_index, weights, sparse_indices,
             softmax_max_input, softmax_sum_input, scale_value,
+            actual_seq_qlen=actual_seq_qlen,
+            actual_seq_klen=actual_seq_klen,
             layout="TND",
             sparse_mode=3,
-            pre_tokens=2147483647,
-            next_tokens=2147483647,
         )
         torch.npu.synchronize()
         print("  完成")

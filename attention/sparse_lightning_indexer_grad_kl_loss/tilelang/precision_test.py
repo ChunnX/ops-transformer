@@ -92,8 +92,7 @@ def run_precision_test():
             softmax_max_input, softmax_sum_input, scale_value,
             layout="BSND",
             sparse_mode=3,
-            pre_tokens=2147483647,
-            next_tokens=2147483647,
+
         )
         torch.npu.synchronize()
         print("  完成")
