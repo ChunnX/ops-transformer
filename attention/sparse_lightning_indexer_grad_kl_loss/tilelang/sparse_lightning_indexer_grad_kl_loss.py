@@ -250,8 +250,8 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 relu_grad_half_ub = T.alloc_ub(block_n, input_dtype)
                 mask_ub = T.alloc_ub(block_n, calc_dtype)
 
-                local_max_ub = T.alloc_ub(block_n, calc_dtype)
-                local_sum_ub = T.alloc_ub(block_n, calc_dtype)
+                local_max_ub = T.alloc_ub(1, calc_dtype)
+                local_sum_ub = T.alloc_ub(1, calc_dtype)
                 shifted_ub = T.alloc_ub(block_n, calc_dtype)
                 exp_ub = T.alloc_ub(block_n, calc_dtype)
 
@@ -331,13 +331,13 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.barrier_all()
 
                                 # Online softmax on bmm2_scaled
-                                T.tile.max(local_max_ub, bmm2_scaled_ub, 0.0)
+                                T.reduce_max(bmm2_scaled_ub, local_max_ub, dim=-1)
                                 T.barrier_all()
                                 T.tile.sub(shifted_ub, bmm2_scaled_ub, local_max_ub[0])
                                 T.barrier_all()
                                 T.tile.exp(exp_ub, shifted_ub)
                                 T.barrier_all()
-                                T.tile.add(local_sum_ub, exp_ub, 0.0)
+                                T.reduce_sum(exp_ub, local_sum_ub, dim=-1)
                                 T.barrier_all()
                                 T.tile.div(softmax_i_row_ub, exp_ub, local_sum_ub[0])
                                 T.barrier_all()
@@ -385,7 +385,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.barrier_all()
 
                             # --- After K loop: reduce_sum for dWeights ---
-                            T.tile.add(dw_out_ub, dw_row_accum_ub, 0.0)
+                            T.reduce_sum(dw_row_accum_ub, dw_out_ub, dim=-1)
                             T.barrier_all()
                             T.tile.cast(dw_half_out_ub, dw_out_ub, "CAST_ROUND", 1)
                             T.barrier_all()
@@ -396,7 +396,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             T.barrier_all()
 
                             # --- After K loop: reduce_sum for KL Loss ---
-                            T.tile.add(loss_out_ub, kl_row_accum_ub, 0.0)
+                            T.reduce_sum(kl_row_accum_ub, loss_out_ub, dim=-1)
                             T.barrier_all()
                             T.tile.atomic_add(Loss[0:1], loss_out_ub)
                             T.barrier_all()
