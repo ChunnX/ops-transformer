@@ -286,9 +286,9 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             g_idx = gidx_idx
 
                             # Initialize accumulators for this (s1_row, gidx_idx)
-                            T.tile.dup(dw_row_accum_ub, 0.0, block_n)
+                            T.tile.fill(dw_row_accum_ub, 0.0)
                             T.barrier_all()
-                            T.tile.dup(kl_row_accum_ub, 0.0, block_n)
+                            T.tile.fill(kl_row_accum_ub, 0.0)
                             T.barrier_all()
 
                             # Load softmaxMax/Sum once per (s1_row, g_idx)
