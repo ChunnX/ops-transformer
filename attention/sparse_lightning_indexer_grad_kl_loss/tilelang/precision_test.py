@@ -47,14 +47,16 @@ def run_precision_test():
     sparse_indices = torch.randint(0, seqlen_k, (batch, seqlen_q, head_num_k, topk), dtype=torch.int32).npu()
 
     # Compute softmaxMax/softmaxSum from query @ key^T
-    # query: (B, S1, N1, DQuery) = (B, S1, N2*G, DQuery)
-    # key: (B, S2, N2, DQuery)
-    # For each n2, scores[b,s1,g,s2] = sum_d query[b,s1,n2*G+g,d] * key[b,s2,n2,d]
+    # For each n2: scores[b,s1,g,s2] = sum_d query[b,s1,n2*G+g,d] * key[b,s2,n2,d]
     scale_value = 1.0 / math.sqrt(d_query)
     query_group = query.reshape(batch, seqlen_q, head_num_k, G, d_query)  # (B, S1, N2, G, D)
-    key_expanded = key.unsqueeze(2)  # (B, S2, 1, N2, DQuery) -> need (B, 1, N2, 1, S2, D)
-    # scores: (B, S1, N2, G, S2) = query_group @ key^T
-    scores = torch.matmul(query_group.float(), key.unsqueeze(2).float().transpose(-1, -2))  # (B, S1, N2, G, S2)
+    scores_list = []
+    for n2 in range(head_num_k):
+        q_n2 = query_group[:, :, n2, :, :].float()  # (B, S1, G, D)
+        k_n2 = key[:, :, n2, :].float()  # (B, S2, D)
+        scores_n2 = torch.matmul(q_n2, k_n2.transpose(-1, -2))  # (B, S1, G, S2)
+        scores_list.append(scores_n2)
+    scores = torch.stack(scores_list, dim=2)  # (B, S1, N2, G, S2)
     scores_scaled = scores * scale_value
     softmax_max = scores_scaled.max(dim=-1).values  # (B, S1, N2, G)
     softmax_sum = torch.exp(scores_scaled - softmax_max.unsqueeze(-1).float()).sum(dim=-1)  # (B, S1, N2, G)
