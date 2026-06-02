@@ -60,20 +60,14 @@ static constexpr uint32_t FIA_QUERY_ROPE_INDEX = 24;
 static constexpr uint32_t FIA_OUT_DTYPE_INDEX = 15;
 
 static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP = {
-    {5,  ge::DT_FLOAT16}, 
-    {15, ge::DT_BF16},
-    {24, ge::DT_FLOAT8_E4M3FN},
-    {290, ge::DT_HIFLOAT8}
-};
+    {5, ge::DT_FLOAT16}, {15, ge::DT_BF16}, {24, ge::DT_FLOAT8_E4M3FN}, {290, ge::DT_HIFLOAT8}};
 
 static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
-    {23,  "DT_FLOAT8_E5M2"}, 
+    {23, "DT_FLOAT8_E5M2"},
 };
 
-static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
-                                            std::string& attentionOutLayout,
-                                            const gert::Shape *queryShape,
-                                            const char *inputLayoutPtr)
+static ge::graphStatus GetQueryAndOutLayout(std::string &queryLayout, std::string &attentionOutLayout,
+                                            const gert::Shape *queryShape, const char *inputLayoutPtr)
 {
     struct parserLayout {
         std::string qLayout;
@@ -82,21 +76,13 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
     };
 
     const std::map<std::string, parserLayout> LAYOUT_MAP = {
-        {"BSH",              {"BSH", "BSH", LAYOUT_BSH_DIM_NUMS}},
-        {"BSND",             {"BSND", "BSND", LAYOUT_BSND_DIM_NUMS}},
-        {"BNSD",             {"BNSD", "BNSD", LAYOUT_BNSD_DIM_NUMS}},
-        {"TND",              {"TND", "TND", LAYOUT_TND_DIM_NUMS}},
-        {"NTD",              {"NTD", "NTD", LAYOUT_NTD_DIM_NUMS}},
-        {"BNSD_BSND",        {"BNSD", "BSND", LAYOUT_BNSD_DIM_NUMS}},
-        {"BSH_BNSD",         {"BSH", "BNSD", LAYOUT_BSH_DIM_NUMS}},
-        {"BSND_BNSD",        {"BSND", "BNSD", LAYOUT_BSND_DIM_NUMS}},
-        {"NTD_TND",          {"NTD", "TND", LAYOUT_NTD_DIM_NUMS}},
-        {"BSH_NBSD",         {"BSH", "NBSD", LAYOUT_BSH_DIM_NUMS}},
-        {"BSND_NBSD",        {"BSND", "NBSD", LAYOUT_BSND_DIM_NUMS}},
-        {"BNSD_NBSD",        {"BNSD", "NBSD", LAYOUT_BNSD_DIM_NUMS}},
-        {"TND_NTD",          {"TND", "NTD", LAYOUT_TND_DIM_NUMS}},
-        {"NSD",              {"NSD", "NSD", LAYOUT_NSD_DIM_NUMS}}
-    };
+        {"BSH", {"BSH", "BSH", LAYOUT_BSH_DIM_NUMS}},          {"BSND", {"BSND", "BSND", LAYOUT_BSND_DIM_NUMS}},
+        {"BNSD", {"BNSD", "BNSD", LAYOUT_BNSD_DIM_NUMS}},      {"TND", {"TND", "TND", LAYOUT_TND_DIM_NUMS}},
+        {"NTD", {"NTD", "NTD", LAYOUT_NTD_DIM_NUMS}},          {"BNSD_BSND", {"BNSD", "BSND", LAYOUT_BNSD_DIM_NUMS}},
+        {"BSH_BNSD", {"BSH", "BNSD", LAYOUT_BSH_DIM_NUMS}},    {"BSND_BNSD", {"BSND", "BNSD", LAYOUT_BSND_DIM_NUMS}},
+        {"NTD_TND", {"NTD", "TND", LAYOUT_NTD_DIM_NUMS}},      {"BSH_NBSD", {"BSH", "NBSD", LAYOUT_BSH_DIM_NUMS}},
+        {"BSND_NBSD", {"BSND", "NBSD", LAYOUT_BSND_DIM_NUMS}}, {"BNSD_NBSD", {"BNSD", "NBSD", LAYOUT_BNSD_DIM_NUMS}},
+        {"TND_NTD", {"TND", "NTD", LAYOUT_TND_DIM_NUMS}},      {"NSD", {"NSD", "NSD", LAYOUT_NSD_DIM_NUMS}}};
 
     int32_t queryDim = 0;
     auto it = LAYOUT_MAP.find(std::string(inputLayoutPtr));
@@ -106,22 +92,25 @@ static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
         queryDim = it->second.qDim;
 
         if (queryShape->GetDimNum() != queryDim) {
-            OP_LOGE("FusedInferAttentionScore", "Layout %s, query's dim(%zu) must be %zu!",
-                queryLayout.c_str(), queryShape->GetDimNum(), queryDim);
+            OP_LOGE("FusedInferAttentionScore",
+                    "In op [FusedInferAttentionScore], the tensor shapes of [query] are mismatched, "
+                    "the reason is: [Layout %s, query's dim(%zu) must be %zu!]",
+                    queryLayout.c_str(), queryShape->GetDimNum(), queryDim);
             return ge::GRAPH_FAILED;
         }
     } else {
-        OP_LOGE("FusedInferAttentionScore", "Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, "
-                "BSND_BNSD, NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, but got %s.", *inputLayoutPtr);
+        OP_LOGE("FusedInferAttentionScore",
+                "In op [FusedInferAttentionScore], the shape of [input] is not supported, got [%s]. "
+                "Constraint: [Only support layout BSH, BSND, BNSD, TND, NTD, BNSD_BSND, BSH_BNSD, BSND_BNSD, "
+                "NTD_TND, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD]",
+                *inputLayoutPtr);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
-                                   const std::string queryLayout,
-                                   const int64_t *numHeadsPtr,
-                                   int64_t& b, int64_t& s1, int64_t& n1, int64_t& d1)
+static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape, const std::string queryLayout,
+                                    const int64_t *numHeadsPtr, int64_t &b, int64_t &s1, int64_t &n1, int64_t &d1)
 {
     if (queryLayout == "BSH") {
         b = (*queryShape)[FIA_LAYOUT_DIM0];
@@ -148,15 +137,16 @@ static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
         n1 = (*queryShape)[FIA_LAYOUT_DIM0];
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
-        OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryBSND function!", queryLayout.c_str());
+        OP_LOGE("FusedInferAttentionScore",
+                "In op [FusedInferAttentionScore], layout %s is not supported in GetQueryBSND function!",
+                queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
-                                  const std::string queryLayout,
-                                  int64_t& t, int64_t& n1, int64_t& d1)
+static ge::graphStatus GetQueryTND(const gert::Shape *queryShape, const std::string queryLayout, int64_t &t,
+                                   int64_t &n1, int64_t &d1)
 {
     if (queryLayout == "TND") {
         t = (*queryShape)[FIA_LAYOUT_DIM0];
@@ -167,17 +157,16 @@ static ge::graphStatus GetQueryTND(const gert::Shape *queryShape,
         n1 = (*queryShape)[FIA_LAYOUT_DIM0];
         d1 = (*queryShape)[FIA_LAYOUT_DIM2];
     } else {
-        OP_LOGE("FusedInferAttentionScore", "Layout %s is not supported in GetQueryTND function!", queryLayout.c_str());
+        OP_LOGE("FusedInferAttentionScore",
+                "In op [FusedInferAttentionScore], layout %s is not supported in GetQueryTND function!",
+                queryLayout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
-                                 const gert::Shape *valueShape,
-                                 const gert::Shape *queryShape,
-                                 const std::string queryLayout,
-                                 int64_t numKeyValueHeads)
+static ge::graphStatus GetValueD(bool isPageAttention, int64_t &valueD, const gert::Shape *valueShape,
+                                 const gert::Shape *queryShape, const std::string queryLayout, int64_t numKeyValueHeads)
 {
     if (isPageAttention) { // PA场景
         if (valueShape->GetDimNum() == LAYOUT_PA_BBH_DIM_NUMS) {
@@ -187,14 +176,18 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
         } else if (valueShape->GetDimNum() == LAYOUT_PA_NZ_DIM_NUMS) {
             valueD = (*valueShape)[FIA_LAYOUT_DIM2] * (*valueShape)[FIA_LAYOUT_DIM4];
         } else {
-            OP_LOGE("FusedInferAttentionScore", "when Page Attention enabled, value's dim should be 3/4/5, but got %zu.",
-                valueShape->GetDimNum());
+            OP_LOGE("FusedInferAttentionScore",
+                    "In op [FusedInferAttentionScore], when Page Attention enabled, "
+                    "value's dim should be 3/4/5, but got %zu.",
+                    valueShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
     } else { // 非PA场景
         if (valueShape->GetDimNum() != queryShape->GetDimNum()) {
-            OP_LOGE("FusedInferAttentionScore", "when Page Attention not enabled, value'dim(%zu) should equal to query's dim(%zu)!",
-                valueShape->GetDimNum(), queryShape->GetDimNum());
+            OP_LOGE("FusedInferAttentionScore",
+                    "In op [FusedInferAttentionScore], when Page Attention not enabled, "
+                    "value'dim(%zu) should equal to query's dim(%zu)!",
+                    valueShape->GetDimNum(), queryShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
         if (queryLayout == "BSH") {
@@ -208,12 +201,9 @@ static ge::graphStatus GetValueD(bool isPageAttention, int64_t& valueD,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout,
-                                              gert::Shape *attentionOutShape,
-                                              const gert::Shape *queryShape,
-                                              const gert::Shape *valueShape,
-                                              const std::string queryLayout,
-                                              const int64_t *numHeadsPtr, int64_t valueD)
+static ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout, gert::Shape *attentionOutShape,
+                                              const gert::Shape *queryShape, const gert::Shape *valueShape,
+                                              const std::string queryLayout, const int64_t *numHeadsPtr, int64_t valueD)
 {
     int64_t b = 0;
     int64_t s1 = 0;
@@ -263,15 +253,13 @@ static ge::graphStatus InferAttentionOutShape(std::string attentionOutLayout,
         GetQueryBSND(queryShape, queryLayout, numHeadsPtr, b, s1, n1, d1);
         int64_t outD = valueD;
         outD = (outD == 0 || d1 == 0) ? d1 : outD;
-        *attentionOutShape = {n1, s1, outD};   
+        *attentionOutShape = {n1, s1, outD};
     }
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferLseOutShape(const char *inputLayoutPtr,
-                                        gert::Shape *softmaxLseShape,
-                                        const gert::Shape *queryShape,
-                                        const std::string queryLayout,
+static ge::graphStatus InferLseOutShape(const char *inputLayoutPtr, gert::Shape *softmaxLseShape,
+                                        const gert::Shape *queryShape, const std::string queryLayout,
                                         const int64_t *numHeadsPtr)
 {
     int64_t b = 0;
@@ -295,7 +283,7 @@ static ge::graphStatus InferLseOutShape(const char *inputLayoutPtr,
 static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "context is nullptr!");
+        OP_LOGE("FusedInferAttentionScore", "In op [FusedInferAttentionScore], context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Enter FusedInferAttentionScore InferShape impl.");
@@ -330,7 +318,8 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
     if (*numHeadsPtr == 0) {
-        OP_LOGE(context->GetNodeName(), "numHeads can not be 0!");
+        OP_LOGE(context->GetNodeName(), "The op [FusedInferAttentionScore] received bad params, the reason is: "
+                                        "[numHeads can not be 0!]");
         return ge::GRAPH_FAILED;
     }
     int64_t numKeyValueHeads = (*numKeyValueHeadsPtr == 0) ? *numHeadsPtr : *numKeyValueHeadsPtr;
@@ -339,8 +328,10 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     *attentionOutShape = *queryShape;
 
     // UNKNOWN DIM
-    if (((queryShape->GetDimNum() == FIA_LAYOUT_DIM_NUMS_1) && (queryShape->GetDim(FIA_LAYOUT_DIM0) == FIA_UNKNOWN_DIMS))||
-        ((valueShape->GetDimNum() == FIA_LAYOUT_DIM_NUMS_1) && (valueShape->GetDim(FIA_LAYOUT_DIM0) == FIA_UNKNOWN_DIMS))) {
+    if (((queryShape->GetDimNum() == FIA_LAYOUT_DIM_NUMS_1) &&
+         (queryShape->GetDim(FIA_LAYOUT_DIM0) == FIA_UNKNOWN_DIMS)) ||
+        ((valueShape->GetDimNum() == FIA_LAYOUT_DIM_NUMS_1) &&
+         (valueShape->GetDim(FIA_LAYOUT_DIM0) == FIA_UNKNOWN_DIMS))) {
         attentionOutShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
         (*attentionOutShape)[FIA_LAYOUT_DIM0] = FIA_UNKNOWN_DIMS;
         softmaxLseShape->SetDimNum(FIA_LAYOUT_DIM_NUMS_1);
@@ -355,7 +346,8 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     int64_t valueD = 0;
     GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads);
 
-    InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr, valueD);
+    InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr,
+                           valueD);
 
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
@@ -373,7 +365,7 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
 static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "context is nullptr!");
+        OP_LOGE("FusedInferAttentionScore", "In op [FusedInferAttentionScore], context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Enter FusedInferAttentionScore InferDataType impl.");
@@ -382,14 +374,17 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
     // 10 is quant_scale2's index, if not instantiated or illegal return ge::DT_UNDEFINED
     if (context->GetOptionalInputDataType(FIA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) {
         outputType = ge::DT_INT8;
-        
+
         auto attrs = context->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
-                OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
+            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()) {
+                OP_LOGE("FusedInferAttentionScore",
+                        "In op [FusedInferAttentionScore], "
+                        "Fia graph mode does not support post quant output data type: %s.",
+                        it->second.c_str());
                 return ge::GRAPH_FAILED;
             }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
@@ -398,8 +393,8 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
             }
         }
     } else if (context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_INT8 ||
-        context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_FLOAT8_E4M3FN ||
-        context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_HIFLOAT8) {
+               context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_FLOAT8_E4M3FN ||
+               context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_HIFLOAT8) {
         // 1. MLA: if the dtype of input query is int8, the dtype of output is same as the dtype of input query_rope.
         // 2. GQA: the int8 dtype of input query is not supported.
         outputType = context->GetOptionalInputDataType(FIA_QUERY_ROPE_INDEX);

@@ -31,7 +31,8 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "In op [FusedInferAttentionScore], interface aclnnFusedInferAttentionScore "
+                                         "versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -48,10 +49,10 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1, deqScale2,
         quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        numHeads, scaleValue, preTokens, nextTokens,
-        inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, 0, 0, 0, 0, 0,
-        attentionOut, placeHolder, workspaceSize, executor);
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
+        innerPrecise, blockSize, antiquantMode, softmaxLseFlag, 0, 0, 0, 0, 0, attentionOut, placeHolder, workspaceSize,
+        executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }
@@ -62,14 +63,16 @@ aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSiz
                                           const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "In op [FusedInferAttentionScore], interface aclnnFusedInferAttentionScore "
+                                         "versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
     if (isFirstCall) {
-        OP_LOGW("aclnnFusedInferAttentionScore is scheduled to be deprecated in December 2026, "
-                "and will be replaced by the aclnnFusedInferAttentionScoreV5. "
-                "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ");
+        OP_LOGW(
+            "aclnnFusedInferAttentionScore is scheduled to be deprecated in December 2026, "
+            "and will be replaced by the aclnnFusedInferAttentionScoreV5. "
+            "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ");
         isFirstCall = false;
     }
     return aclnnInnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);
