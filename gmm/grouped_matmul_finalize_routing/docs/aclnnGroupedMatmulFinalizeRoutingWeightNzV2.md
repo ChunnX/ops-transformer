@@ -313,7 +313,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
     - x1仅支持INT8。维度m的取值范围为[1,16\*1024\*8]，k支持2048。
-    - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。该产品场景下只支持转置属性为false。
+    - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。只支持转置属性为false。
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和weight的e、n一致。
     - scale支持INT64、FLOAT、BF16。
     - rowIndex支持INT64、INT32。
@@ -415,7 +415,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - 公共约束
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x1维度m的取值范围为 $[1, 16*1024*8]$，k支持2048。
-    - x2的e取值范围$[1, 256]$，k支持2048，n支持7168。该产品场景下只支持转置属性为false。
+    - x2的e取值范围$[1, 256]$，k支持2048，n支持7168。只支持转置属性为false。
     - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致。
 
   - 输入和输出支持以下数据类型组合
@@ -446,7 +446,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT/null | INT64 | BFLOAT16 | FLOAT | INT64 | FLOAT | null |
     | HIFLOAT8 | HIFLOAT8 | FLOAT/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT/null | INT64 | BFLOAT16 | FLOAT | INT64 | FLOAT | null |
 
-    - Ascend 950PR/Ascend 950DT全量化场景下，x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
+    - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
     - scale的shape为(e, 1, n)，e、n和x2的e、n一致。
     - pertokenScaleOptional的shape为(m)，m和x1的m一致。
 
