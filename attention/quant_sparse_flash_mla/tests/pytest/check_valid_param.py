@@ -18,8 +18,8 @@ logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
 def check_valid_param(params):
-    if params.get('q_type') not in [torch.bfloat16]:
-        raise ValueError("q_type should be: bfloat16")
+    if params.get('q_type') not in [torch.uint8]:
+        raise ValueError("q_type should be: uint8")
 
     if params.get('layout_q') not in ["BSND", "TND"]:
         raise ValueError(f"不支持的Q shape: {params.get('layout_q')}")

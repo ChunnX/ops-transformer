@@ -329,6 +329,8 @@ def fill_none_params(params_dict):
     # 7. 计算T1
     T1 = cu_seqlens_q[-1] if layout_q == "TND" else None
 
+    qkv_quant_mode = params_dict.get('qkv_quant_mode')
+
     # 构建完整参数字典
     filled_params = {
         'Testcase_Name': params_dict.get('Testcase_Name'),
@@ -362,9 +364,8 @@ def fill_none_params(params_dict):
         'cmp_mask_mode': cmp_mask_mode,
         'ori_win_left': params_dict['ori_win_left'],
         'ori_win_right': params_dict['ori_win_right'],
-        'kv_quant_mode': params_dict['kv_quant_mode'],
+        'qkv_quant_mode': qkv_quant_mode,
         'tile_size': params_dict['tile_size'],
-        'rope_head_dim': params_dict['rope_head_dim'],
         'template_run_mode': template_run_mode,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
@@ -399,8 +400,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         required_columns = [
             "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
             "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size",
-            "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
+            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "qkv_quant_mode", "tile_size",
+            "template_run_mode", "actlen_mode", "S1EQS2",
             "topk_value_mode", "return_softmax_lse",
         ]
         optional_columns = [
@@ -466,9 +467,8 @@ def save_result(params, result, fulfill_percent, result_path):
         "cmp_mask_mode": params.get('cmp_mask_mode'),
         "ori_win_left": params.get('ori_win_left'),
         "ori_win_right": params.get('ori_win_right'),
-        "kv_quant_mode": params.get('kv_quant_mode'),
+        "qkv_quant_mode": params.get('qkv_quant_mode'),
         "tile_size": params.get('tile_size'),
-        "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),
         "return_softmax_lse": params.get('return_softmax_lse'),
         "result": result,
