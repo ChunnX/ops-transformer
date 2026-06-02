@@ -203,7 +203,7 @@ static int32_t GetHcclCommResource(const HcclComm &commHandle, const CommEngine 
             hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
         }
 
-        if (hcclRet != HCCL_SUCCESS) {
+        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
             ASCEND_LOGE("Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
             return -1;
         }
@@ -246,7 +246,7 @@ static int32_t CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layer
     ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+        ASCEND_LOGI("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
             ASCEND_LOGE("Get rank IDs by layer failed");
@@ -269,8 +269,8 @@ static int32_t CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layer
                 return -1;
             }
             if (CheckLinks(netLinkNum, linksList) != 0) {
-                ASCEND_LOGE("No HCCL links support UB_MEM srcRankID %d, dstRankID %d layer is %d",
-                            srcRankId, dstRankId, layerList[layerIndex]);
+                ASCEND_LOGE("No HCCL links support UB_MEM srcRankID %u, dstRankID %u, layer is %u",
+                            srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return -1;
             }
             layerMap[rankIdLists[rankId]] = layerList[layerIndex];
@@ -295,7 +295,7 @@ static int32_t GetCommProtocol(const HcclComm &commHandle, CommProtocol &protoco
         return 0;
     }
 
-    ASCEND_LOGI("start CheckProtocolSupport, layerNum is %d", layerNum);
+    ASCEND_LOGI("start CheckProtocolSupport, layerNum is %u", layerNum);
     auto aclnnRet = CheckProtocolSupport(commHandle, layerList, layerNum);
     if (aclnnRet != 0) {
         return aclnnRet;
@@ -390,33 +390,22 @@ bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_si
     CommProtocol protocol;
 
     std::string mc2ContextTag = std::string(group_ep) + "moe_dispatch_ffn_combine";
-    if (mc2ContextTag.size() > 255) {
-        ASCEND_LOGE("Mc2ContextTag is too long, max size is 255");
-        return false;
-    }
+    TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, but current size is ",
+                mc2ContextTag.size());
 
     HcclComm hcclHandle;
     auto aclnnRet = HcomGetCommHandleByGroupFunc(group_ep.c_str(), &hcclHandle);
-    if (aclnnRet != HCCL_SUCCESS) {
-        ASCEND_LOGE("Get HCCL handle failed, groupEp: %s", group_ep.c_str());
-        return false;
-    }
+    TORCH_CHECK(aclnnRet == HCCL_SUCCESS, "Get HCCL handle failed, groupEp: ", group_ep, ", ret: ", aclnnRet);
     ASCEND_LOGI("Get HCCL communication handle success hcclHandle is: %p", hcclHandle);
 
     CommEngine engine = CommEngine::COMM_ENGINE_AIV;
     auto ret = GetCommProtocol(hcclHandle, protocol);
-    if (ret != 0) {
-        ASCEND_LOGE("GetCommProtocol failed");
-        return false;
-    }
+    TORCH_CHECK(ret == 0, "GetCommProtocol failed, ret: ", ret);
 
     Mc2MoeContext mc2ContextStruct;
     ret = GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, cclBufferSize,
                                 mc2ContextStruct, epWorldSize);
-    if (ret != 0) {
-        ASCEND_LOGE("GetOrCreateMc2Context failed");
-        return false;
-    }
+    TORCH_CHECK(ret == 0, "GetOrCreateMc2Context failed, ret: ", ret);
 
     ep_world_size.attr("value") = epWorldSize;
     ccl_buffer_size.attr("value") = cclBufferSize;
