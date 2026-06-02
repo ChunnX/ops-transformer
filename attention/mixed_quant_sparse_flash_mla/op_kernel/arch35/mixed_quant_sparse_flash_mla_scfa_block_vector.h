@@ -350,21 +350,21 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float* ubDstAddr, __ubuf__ int8_t* ubSrc
 {
     MicroAPI::RegTensor<fp8_e8m0_t> vScale0;
     MicroAPI::RegTensor<fp8_e8m0_t> vScale1;
-    MicroAPI::RegTensor<bfloat16_t> vScalebf16Res0;
-    MicroAPI::RegTensor<bfloat16_t> vScalebf16Res1;
+    MicroAPI::RegTensor<Q_T> vScalebf16Res0;
+    MicroAPI::RegTensor<Q_T> vScalebf16Res1;
     MicroAPI::RegTensor<float> vScalefp32Res0;
     MicroAPI::RegTensor<float> vScalefp32Res1;
     __ubuf__ int8_t* ubScaleSrcAddrTemp = ubSrcAddr;
     __ubuf__ float* ubDstAddrTmp = ubDstAddr;
-    MicroAPI::MaskReg bf16TypeMaskAll = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg bf16TypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg fp32MaskAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
         // load scale
         MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
             (MicroAPI::RegTensor<int8_t>&)vScale0, ubScaleSrcAddrTemp, 640);
 
-        MicroAPI::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
-        MicroAPI::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
+        MicroAPI::Cast<Q_T, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
+        MicroAPI::Cast<float, Q_T, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
 
         MicroAPI::StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ubDstAddrTmp, vScalefp32Res0, 64, bf16TypeMaskAll);
@@ -383,7 +383,7 @@ __aicore__ inline void CastScale(LocalTensor<float>& outputUb,  LocalTensor<KV_T
 
 template <typename Q_T, typename KV_T>
 __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ int8_t* ubSrcAddr,
-    __ubuf__ Q_T* ubDstAddr, __ubuf__ bfloat16_t* ubScaleSrcAddr, __ubuf__ int8_t* ubKRopeAddr,
+    __ubuf__ Q_T* ubDstAddr, __ubuf__ Q_T* ubScaleSrcAddr, __ubuf__ int8_t* ubKRopeAddr,
     uint32_t dealRowCount)
 {
     uint32_t combineDim = 640; // 128对齐
@@ -420,7 +420,7 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
     // tilesize is 64, deal 128 b8 kv, deal 2 fp32 scale
     for (uint16_t j = 0; j < (nopeDim / kvNumPerLoop); j++) {
         __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + j * kvNumPerLoop;
-        __ubuf__ bfloat16_t* ubScaleSrcAddrTemp = ubScaleSrcAddr + j * scaleNumPerLoop;
+        __ubuf__ Q_T* ubScaleSrcAddrTemp = ubScaleSrcAddr + j * scaleNumPerLoop;
         __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + j * kvNumPerLoop * blockStride;
         for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
             // load scale
@@ -477,13 +477,13 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
 
 template <typename Q_T, typename KV_T>
 __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& kRopeUbNz, LocalTensor<Q_T>& outputUb,
-    LocalTensor<KV_T>& inputUb, LocalTensor<bfloat16_t>& scaleUb, LocalTensor<int8_t>& kRopeUb,
+    LocalTensor<KV_T>& inputUb, LocalTensor<Q_T>& scaleUb, LocalTensor<int8_t>& kRopeUb,
     uint32_t dealRowCount)
 {
     __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
     printf(" constInfo.dSizeNope == %u", constInfo.dSizeNope);
     printf(" constInfo.dSizeRope == %u", constInfo.dSizeRope);
-    __ubuf__ bfloat16_t* ubScaleAddr =  (__ubuf__ bfloat16_t*)(scaleUb[constInfo.dSizeRope 
+    __ubuf__ Q_T* ubScaleAddr =  (__ubuf__ Q_T*)(scaleUb[constInfo.dSizeRope 
                                         + constInfo.dSizeNope / 2].GetPhyAddr()); // sizeof(bf16) / sizeof(fp8) = 2
     __ubuf__ int8_t* ubKRopeAddr = (__ubuf__ int8_t*)(kRopeUb.GetPhyAddr());
     __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
@@ -499,7 +499,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
     // srcTensor是rope(448) + nope(64) + scale + pad, dstTensor是nope(448) + rope(64)
     LocalTensor<int8_t> kRopeUb = srcTensor.template ReinterpretCast<int8_t>();
     LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)]; // V0单次处理16行数据
-    LocalTensor<bfloat16_t> scaleUb = srcTensor.template ReinterpretCast<bfloat16_t>();
+    LocalTensor<Q_T> scaleUb = srcTensor.template ReinterpretCast<bfloat16_t>();
     AntiquantVFFp8D448<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, scaleUb, kRopeUb, dealRow);
 }
 
