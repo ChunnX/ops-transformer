@@ -571,7 +571,6 @@ public:
 protected:
     bool IsCapable() override
     {
-        std::cout<<"arc 32 is capable"<<std::endl;
         return true;
     }
 

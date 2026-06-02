@@ -356,7 +356,6 @@ protected:
             default_key += 0b100;
         }
 
-        printf("default_key is %lu\n", default_key);
         return default_key;
     }
 };

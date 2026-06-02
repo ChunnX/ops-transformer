@@ -548,7 +548,6 @@ private:
                     {false, 0, 0, 0});
     }
 
-
     __aicore__ inline void SubBrcb(const LocalTensor<float> &dstTensor, const LocalTensor<float> &src0Tensor,
                                    const LocalTensor<float> &src1Tensor, const uint64_t row, const uint64_t col)
     {
@@ -584,7 +583,6 @@ private:
             DataCopy(dstTensor[dst_offset], srcTensor[src_offset], repeatParams);
         }
     }
-
 
     __aicore__ inline void ComputeEvenCoreInfo(EvenCoreInfo &info, const uint32_t data_size,
                                                const uint32_t max_process_size)
