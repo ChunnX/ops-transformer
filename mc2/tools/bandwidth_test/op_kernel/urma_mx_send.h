@@ -53,6 +53,7 @@
 
 namespace BandwidthTestImpl {
 #define HCOMM_INIT_SIZE 512UL
+#define ONE_MB 1024 * 1024 * 1024UL
 
 using namespace AscendC;
 using namespace Mc2Kernel;
@@ -119,6 +120,7 @@ private:
     GlobalTensor<YType> yGMTensor_;              // 输出数据 y
     GlobalTensor<int32_t> receiveCntGMTensor_;   // 接收到的token计数
     GlobalTensor<float> windowInStatusFp32Tensor_; // 窗口状态区(用于同步)
+    GlobalTensor<int32_t> sendFlagHandleTensor_; // 发送状态句柄
     LocalTensor<XType> xTmpTensor_;              // 临时存储token数据
     LocalTensor<YType> yTmpTensor_;              // 临时存储输出数据
     LocalTensor<int32_t> expertIdsTensor_;       // 本地缓存的expert_id数组
@@ -127,7 +129,7 @@ private:
     LocalTensor<int32_t> dstExpIdTensor_;
     LocalTensor<int32_t> subExpIdTensor_;
     LocalTensor<float> workLocalTensor_;
-     LocalTensor<uint8_t> hcommTensor_;
+    LocalTensor<uint8_t> hcommTensor_;
     TBuf<> expertIdsBuf_;      // expert_id 缓冲区
     TBuf<> statusBuf_;         // 状态缓冲区
     TBuf<> waitStatusBuf_;     // 等待状态缓冲区
@@ -183,6 +185,8 @@ private:
     uint64_t tokenMaxSizePerRank_{0}; // 每个rank最大token大小
     uint64_t statusSize_{0};        // 状态大小 (32字节)
     float sumTarget_;              // 状态同步目标值 (1.0)
+    uint32_t aivNumUsedComm_{0}; // 通信AIV核数量
+    uint32_t aivNumUsedCompute_{0}; // 计算AIV核数量
 };
 
 template <TemplateBandwidthTestTypeClass>
@@ -212,8 +216,8 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Init(
     aivNum_ = tilingData->aiv_num;
     mode_ = tilingData->mode;
     sendHandleWorkspace_ = workspaceGM;
-    localUrmaWorkspace_ = sendHandleWorkspace_ + axisBS_ * epWorldSize_ * sizeof(uint32_t);
-
+    localUrmaWorkspace_ = sendHandleWorkspace_ + axisBS_ * epWorldSize_ * sizeof(uint32_t) + ONE_MB;
+    
 
     for (uint32_t i = 0; i < epWorldSize_ -1; i++) {
         urmaCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity*>(context_->hcommHandle_[i]);
