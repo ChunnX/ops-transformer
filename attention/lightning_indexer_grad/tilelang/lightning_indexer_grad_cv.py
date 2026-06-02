@@ -170,7 +170,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 K_L1,
                             )
                             T.barrier_all()
-                        T.gemm_v0(Q_L1, K_L1, C_L0C, transpose_B=True, init=(n_idx == 0))
+                        T.gemm_v0(Q_L1, K_L1, C_L0C, transpose_B=True, init=True)
                         T.barrier_all()
                         T.copy(
                             C_L0C,
@@ -187,9 +187,6 @@ def tilelang_lightning_indexer_grad_bsnd(
             with T.Scope("V"):
                 T.wait_cross_flag(0)
 
-                relu_in_ub = T.alloc_ub((block_m, block_n), calc_dtype)
-                dy_ub = T.alloc_ub((block_m, block_n), input_dtype)
-                dy_fp32_ub = T.alloc_ub((block_m, block_n), calc_dtype)
 
                 # weight: 按 vector_baseg 分组加载 (对标 BSND3)
                 # 1D (vector_baseg,) 用于 T.tile.mul 标量索引, 与 BSND3 一致
@@ -203,9 +200,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                 relu_grad_row_ub = T.alloc_ub(block_n, calc_dtype)
                 relu_grad_row_half_ub = T.alloc_ub(block_n, input_dtype)
                 mask_row_ub = T.alloc_ub(block_n, calc_dtype)
-                zero_row_ub = T.alloc_ub(block_n, calc_dtype)
 
-                T.tile.fill(zero_row_ub, 0.0)
 
                 for g_group in T.serial(g_group_num):
                     for n_idx in T.serial(n_num):
@@ -249,7 +244,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 T.barrier_all()
 
                                 # ReLU反向
-                                T.tile.compare(mask_row_ub, relu_in_row_ub, zero_row_ub, "GT")
+                                T.tile.compare(mask_row_ub, relu_in_row_ub, 0.0, "GT")
                                 T.barrier_all()
                                 T.tile.select(relu_grad_row_ub, mask_row_ub, dy_row_fp32_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
                                 T.barrier_all()
@@ -263,7 +258,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 )
                                 T.barrier_all()
 
-                T.set_cross_flag("FIX", 1)
+                T.set_cross_flag("V", 1)
 
             # ========== Cube3: reluGradOut @ K -> dQuery_ws ==========
             with T.Scope("C"):
@@ -287,6 +282,7 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 Key[bz, k_idx * block_n:(k_idx + 1) * block_n, n2_id, d_idx * block_d:(d_idx + 1) * block_d],
                                 KG_L1,
                             )
+                            T.barrier_all()
                             T.barrier_all()
                             T.gemm_v0(RG_L1, KG_L1, DQ_L0C, init=(k_idx == 0))
                             T.barrier_all()
