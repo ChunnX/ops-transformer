@@ -137,7 +137,17 @@ void SparseFlashMlaMetadataCpuKernel::CalcCmpMaskMode()
         cmpAttentionMode_ = 1;
     }
 }
-    
+
+ValidSocVersion SparseFlashMlaMetadataCpuKernel::ProcessSocVersion()
+{
+    const std::string ascend950 = "Ascend950";
+    if (socVersion_.find(ascend950) != std::string::npos) {
+        return ValidSocVersion::ASCEND950;
+    } else {
+        return ValidSocVersion::ASCEND910;
+    }
+}
+
 bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
@@ -159,7 +169,14 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         aicCoreNum_ /= 2;
         aivCoreNum_ /= 2;
     } else {
-        mBaseSize_ = 64U;
+        ValidSocVersion validSocVersion = ProcessSocVersion();
+        if (validSocVersion == ValidSocVersion::ASCEND910) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 512U;
+        } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 128U;
+        }
     }
     return true;
 }

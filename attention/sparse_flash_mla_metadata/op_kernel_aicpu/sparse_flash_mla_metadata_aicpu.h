@@ -239,6 +239,7 @@ private:
     int32_t GetQueryBatchSize();
     void CalcOriMaskMode();
     void CalcCmpMaskMode();
+    ValidSocVersion ProcessSocVersion();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);

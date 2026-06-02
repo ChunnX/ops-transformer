@@ -232,7 +232,7 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
         // cmp_residual_kv 存在性校验
         if (cmpRatio != 1 && cmpMaskMode == 3) {
             if (!IsTensorExistSmla(cmpResidualKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio is not 1 and mask_mode is 3, "
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_ratio is not 1 and cmp_mask_mode is 3, "
                     "cmp_residual_kv must be provided!");
                 return ACLNN_ERR_PARAM_INVALID;
             }
