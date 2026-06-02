@@ -46,6 +46,11 @@ constexpr size_t SINGLE_TENSOR_SIZE = 1;
 constexpr int64_t MAX_GROUP_LIST_SIZE = 1024L;
 constexpr int64_t QUNAT_MODE_MX = 2;
 constexpr int64_t QUNAT_MODE_PERTOKEN = 0;
+constexpr int64_t MXA8W4_K_ALIGN = 32LL;
+constexpr int64_t MXA8W4_K_MIN = 32LL;
+constexpr int64_t MXA8W4_N_ALIGN = 128LL;
+constexpr int64_t MXA8W4_N_MIN = 128LL;
+constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
 
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
 const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
@@ -69,6 +74,8 @@ const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
+const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
+const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
 
 inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmulSwigluQuantParamsBase &params)
 {
@@ -173,6 +180,7 @@ protected:
             const aclTensor *inputTensor = (*tensorList)[idx];
             op::Shape viewShape = inputTensor->GetViewShape();
             uint32_t viewShapeDimsNum = viewShape.GetDimNum();
+            auto storageShape = inputTensor->GetStorageShape();
             shape.SetScalar();
             // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain unchanged.
             for (uint32_t i = 0; i < viewShapeDimsNum - 2; ++i) {
@@ -185,6 +193,7 @@ protected:
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
+            tensor->SetStorageShape(storageShape);
             newTensorList.emplace_back(tensor);
         }
     }
@@ -255,17 +264,31 @@ protected:
                     opName_.c_str(), "dequantDtype", gmmDsqParams_.dequantDtype);
             return false;
         }
+
+        if (gmmDsqParams_.isMxA8W4 && gmmDsqParams_.dequantMode != QUNAT_MODE_MX) {
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "In MxA8W4, dequantMode must be 2, but actual value is %lu.",
+                     gmmDsqParams_.dequantMode);
+             return false;
+        }
         return true;
     }
 
     bool CheckMXTranspose()
     {
-        // 判断weight和weightScale是否转置，是则对两者进行转置动作
         bool transposeWeightScale = IsTransposeForMxShape((*gmmDsqParams_.weightScale)[0]);
         bool transposeWeight = IsTransposeLastTwoDims((*gmmDsqParams_.weight)[0]);
         bool transposeX = IsTransposeLastTwoDims(gmmDsqParams_.x);
         bool transposeXScale = IsTransposeForMxShape(gmmDsqParams_.xScale);
         const char *scenario = GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_);
+
+        if (gmmDsqParams_.isMxA8W4) {
+            if (!transposeWeight) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MxA8W4: transposeWeight must be true.");
+                return false;
+            }
+            gmmDsqParams_.transposeWeight = true;
+        }
 
         if (transposeWeightScale != transposeWeight) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -489,6 +512,32 @@ protected:
         return true;
     }
 
+    bool CheckMxA8W4DtypeValid(const aclTensor *x, const aclTensor *xScale, const aclTensor *groupList,
+                               const aclTensor *output, const aclTensor *outputScale)
+    {
+        OP_CHECK_DTYPE_NOT_SUPPORT(x, X_DTYPE_SUPPORT_LIST_MXA8W4, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(xScale, X_SCALE_DTYPE_SUPPORT_LIST, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(groupList, GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
+
+        size_t weightLength = gmmDsqParams_.weight->Size();
+        for (size_t i = 0; i < weightLength; i++) {
+            const aclTensor *weight = (*gmmDsqParams_.weight)[i];
+            const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
+            OP_CHECK_DTYPE_NOT_SUPPORT(weight, WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4, return false);
+            OP_CHECK_DTYPE_NOT_SUPPORT(weightScale, WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
+        }
+
+        DataType outputDtype = output->GetDataType();
+        if (outputDtype != DataType::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "MxA8W4: output dtype must be FLOAT8_E4M3FN, but got %s.",
+                    op::ToString(outputDtype).GetString());
+            return false;
+        }
+        OP_CHECK_DTYPE_NOT_SUPPORT(outputScale, QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
+        return true;
+    }
+
     bool CheckPertokenDtypeValid(const aclTensor *x, const aclTensor *xScale, const aclTensor *groupList,
                                  const aclTensor *output, const aclTensor *outputScale)
     {
@@ -563,6 +612,29 @@ protected:
             }
         }
 
+        return true;
+    }
+
+    bool CheckMxA8W4InputShape()
+    {
+        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
+        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
+        int64_t n = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
+        int64_t e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
+
+        if (k % MXA8W4_K_ALIGN != 0 || k < MXA8W4_K_MIN) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "MxA8W4: K(%ld) must align to %ld and >= %ld.", k, MXA8W4_K_ALIGN, MXA8W4_K_MIN);
+            return false;
+        }
+        if (n % MXA8W4_N_ALIGN != 0 || n < MXA8W4_N_MIN) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "MxA8W4: N(%ld) must align to %ld and >= %ld.", n, MXA8W4_N_ALIGN, MXA8W4_N_MIN);
+            return false;
+        }
+
+        op::Shape groupListExpectShape = {e};
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.groupList, groupListExpectShape, return false);
         return true;
     }
 
@@ -825,6 +897,11 @@ protected:
         if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
             return checkMxfp4InputShape();
         }
+
+        if (gmmDsqParams_.isMxA8W4) {
+            return CheckMxA8W4InputShape();
+        }
+        
         return true;
     }
 
@@ -888,6 +965,8 @@ protected:
                    (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2)
                    && (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
             return CheckFp4DtypeValid(x, xScale, groupList, output, outputScale);
+        } else if (gmmDsqParams_.quantMode == QUNAT_MODE_MX && gmmDsqParams_.isMxA8W4) {
+            return CheckMxA8W4DtypeValid(x, xScale, groupList, output, outputScale);
         } else if (gmmDsqParams_.quantMode == QUNAT_MODE_PERTOKEN &&
                    std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) !=
                        XW_DTYPE_SUPPORT_LIST_PERTOKEN.end() &&
@@ -912,6 +991,14 @@ protected:
         for (size_t i = 0; i < wLength; i++) {
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
+            if (gmmDsqParams_.isMxA8W4) {
+                if (weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
+                    weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MxA8W4: weight format must be NZ or NZ_C0_32, but got %s.",
+                            op::ToString(weight->GetStorageFormat()).GetString());
+                    return false;
+                }
+            }
             if (op::IsPrivateFormat(weightScale->GetStorageFormat())) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weightScale should be ND, current format is format is %s.",
                         op::ToString(weightScale->GetStorageFormat()).GetString());
