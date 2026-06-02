@@ -13,7 +13,7 @@
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/sparse_flash_mla_metadata.h"
+#include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
 
 using namespace ge;
 
@@ -23,7 +23,7 @@ static ge::graphStatus InferShapeSparseFlashMlaMetadata(gert::InferShapeContext*
     gert::Shape* oShape = context->GetOutputShape(0);
     // output shape (SMLA_METADATA_T, )
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SMLA_METADATA_SIZE);
+    oShape->SetDim(0, optiling::SMLA_METADATA_TOTAL_SIZE);
     return GRAPH_SUCCESS;
 }
 

@@ -13,7 +13,7 @@
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/mixed_quant_sparse_flash_mla_metadata.h"
+#include "../../mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla_metadata.h"
 
 using namespace ge;
 
@@ -23,7 +23,7 @@ static ge::graphStatus InferShapeMixedQuantSparseFlashMlaMetadata(gert::InferSha
     gert::Shape* oShape = context->GetOutputShape(0);
     // output shape (QSMLA_METADATA_T, )
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::QSMLA_METADATA_SIZE);
+    oShape->SetDim(0, optiling::QSMLA_METADATA_TOTAL_SIZE);
     return GRAPH_SUCCESS;
 }
 

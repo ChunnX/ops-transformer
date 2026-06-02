@@ -30,8 +30,8 @@
     } while (0)
 
 // 参考 mixed_quant_sparse_flash_mla_metadata.h
-constexpr uint32_t AIC_CORE_NUM = 36;
-constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t AIC_CORE_MAX_NUM = 36;
+constexpr uint32_t AIV_CORE_MAX_NUM = 72;
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
 
@@ -56,8 +56,8 @@ constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
 struct QsmlaMetadata {
-    uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
+    uint32_t faMetadata[AIC_CORE_MAX_NUM][FA_METADATA_SIZE];
+    uint32_t fdMetadata[AIV_CORE_MAX_NUM][FD_METADATA_SIZE];
 };
 
 struct ScopeGuard
@@ -340,7 +340,7 @@ int main() {
     ret = aclrtMemcpy(&result, sizeof(result), context.metadata.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
 
-    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIC_CORE_MAX_NUM; ++i) {
         printf("AIC Core%u\n", i);
         printf("    Core Enable : %u\n", result.faMetadata[i][FA_CORE_ENABLE_INDEX]);
         printf("    Start BN2   : %u\n", result.faMetadata[i][FA_BN2_START_INDEX]);
@@ -352,7 +352,7 @@ int main() {
         printf("    First Worksapce Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
         printf("    Max S2 Block Num : %u\n", result.faMetadata[i][FA_S2_MAX_NUM]);
     }
-    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+    for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {
         printf("AIV Core%u\n", i);
         printf("    Core Enable             : %u\n", result.fdMetadata[i][FD_CORE_ENABLE_INDEX]);
         printf("    FD Task BN2 Idx         : %u\n", result.fdMetadata[i][FD_BN2_IDX_INDEX]);

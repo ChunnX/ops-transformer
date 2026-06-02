@@ -17,7 +17,7 @@
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "../op_kernel_aicpu/mixed_quant_sparse_flash_mla_metadata.h"
+#include "../../mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla_metadata.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -501,9 +501,9 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor *cuSeqlensQOptional, const acl
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
-        if (metadata->GetViewShape().GetDim(0) != optiling::QSMLA_METADATA_SIZE) {
+        if (metadata->GetViewShape().GetDim(0) != optiling::QSMLA_METADATA_TOTAL_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::QSMLA_METADATA_SIZE, metadata->GetViewShape().GetDim(0));
+                optiling::QSMLA_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 数据类型
