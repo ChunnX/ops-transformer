@@ -1120,15 +1120,9 @@ public:
         constexpr uint32_t mm2Sz = bmm2Write2Ub ?
             (mBaseSize / CV_RATIO * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
 
-        // mm2InBuf：仅 !bmm2Write2Ub 时存在，固定偏移在 bmm1/2 结果区末尾
-        if constexpr (!bmm2Write2Ub) {
-            mm2InBuf = LocalTensor<uint8_t>(TPosition::VECIN, mm1Sz * 2U + mm2Sz * 2U,
-                           32768U).template ReinterpretCast<T>();
-        }
-
-        // FA/FD 共享区起始偏移（跳过 bmm1/bmm2/mm2In 区域）
-        constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
-        constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
+        // UB slot（bmm1）已在 kernel 层通过 InitMMResBuf 分配，FA/FD 共享区从 bmm1 slot 起始偏移开始。
+        // 注意：FA/FD 共享区仅覆盖 UB VECIN 区域，不涉及 GM-only 的 mm2InBuf（仅 !BMM2_TOUB 时存在）。
+        constexpr uint32_t BASE = mm1Sz * 2U;
 
         // attenMask ping/pong（各 8192 bytes）
         attenMaskBuf[0] = LocalTensor<uint8_t>(TPosition::VECIN, BASE,          8192U);

@@ -199,19 +199,14 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
-            // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
-            // 无需 LocalMemAllocator 线性分配器。
+            // bmm1 slot 大小（与 kernel 侧 InitMMResBuf 中的 mm1SlotSize 完全一致）
             constexpr uint32_t mm1Sz = s1BaseSize / 2U * (uint32_t)s2TemplateType * sizeof(T);
-            constexpr uint32_t mm2Sz = bmm2Write2Ub ?
-                (s1BaseSize / 2U * (uint32_t)dVTemplateType * sizeof(T)) : 0U;
-            // mm2InBuf 区域：仅 !bmm2Write2Ub 时存在（32768 bytes）
-            constexpr uint32_t mm2InBufSz = bmm2Write2Ub ? 0U : 32768U;
+            // 与 FA block 共享 UB 布局：bmm1 slot（2×mm1Sz）在前，FA/FD 共享区紧随其后。
+            // 注意：mm2InBuf（仅 !bmm2Write2Ub 时存在，GM-only）不属于 VECIN UB 区域，
+            // 因此 FA/FD 共享区的起始偏移就是 bmm1 slot 的起点：mm1Sz * 2U。
+            constexpr uint32_t BASE = mm1Sz * 2U;
 
-            // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U + mm2InBufSz;
-
-            // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
+            // 各共享区块的绝对字节偏移（与 kernel 侧 InitMMResBuf 完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
             constexpr uint32_t OFF_BUF2A = BASE;
             // Skip attenMaskBuf[1]：8192 bytes
