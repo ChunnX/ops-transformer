@@ -71,7 +71,8 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
 
     size_t xDims = xShape->GetDimNum();
     OP_CHECK_IF((xDims != TNN_DIMS) && (xDims != BSNN_DIMS),
-                OP_LOGE(context->GetNodeName(), "The dim of x should be 3 or 4, but got %lu", xDims),
+                OP_LOGE_FOR_INVALID_SHAPEDIM(
+                    context->GetNodeName(), "x", std::to_string(xDims).c_str(), "3 or 4"),
                 return ge::GRAPH_FAILED);
 
     auto numIters = *numItersPtr;
@@ -88,9 +89,12 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
         n1 = xShape->GetDim(DIM_THREE);
     }
 
-    OP_CHECK_IF((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1),
-            OP_LOGE(context->GetNodeName(), "input n0 is %ld, must be equal to n1 which is %ld.", n0, n1),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((n0 != UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE) && (n0 != n1), {
+            std::string incorrectShapes = "n0=" + std::to_string(n0) + ", n1=" + std::to_string(n1);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context->GetNodeName(), "n0, n1", incorrectShapes.c_str(),
+                "n0 must equal n1");
+        }, return ge::GRAPH_FAILED);
 
     int64_t n = n0;
     if ((n == UNKNOWN_DIM_VALUE) && (n1 != UNKNOWN_DIM_VALUE)) {
