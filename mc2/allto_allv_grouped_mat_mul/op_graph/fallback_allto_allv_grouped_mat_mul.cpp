@@ -150,10 +150,9 @@ static ge::graphStatus AlltoAllvGroupedMatMulExecuteFunc(gert::OpExecuteContext*
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-    const auto apiRet = EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2,
-                                        gmmX, gmmWeight, sendCountsTensor, recvCountsTensor, mmX, mmWeight,
-                                        group, commMode, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
-                                        *transGmmWeight, *transMmWeight, *permuteOutFlag, gmmY, mmY, permuteOut);
+    const auto apiRet = EXEC_OPAPI_CMD(aclnnAlltoAllvGroupedMatMulV2, gmmX, gmmWeight, sendCountsTensor,
+        recvCountsTensor, mmX, mmWeight, group, commMode, *epWorldSize, actSendCountsSeqArray, actRecvCountsSeqArray,
+        *transGmmWeight, *transMmWeight, *permuteOutFlag, gmmY, mmY, permuteOut);
     OPS_ERR_IF(apiRet != ge::GRAPH_SUCCESS,
                 OP_LOGE("AlltoAllvGroupedMatMulFallback", "Aclnn api error code %u", apiRet), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
