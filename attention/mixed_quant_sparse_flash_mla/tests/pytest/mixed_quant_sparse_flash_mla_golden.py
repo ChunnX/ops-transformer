@@ -714,7 +714,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     else:
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
-    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(1, 20,
+    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
         (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
