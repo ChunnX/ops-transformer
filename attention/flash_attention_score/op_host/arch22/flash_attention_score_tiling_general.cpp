@@ -917,7 +917,6 @@ bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
             static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&
            (bsndOk || sbhOk);
 }
-}
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
 {
