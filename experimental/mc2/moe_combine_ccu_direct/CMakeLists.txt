@@ -2,18 +2,13 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # CANN Open Software License Agreement Version 2.0.
 # -----------------------------------------------------------------------------------------------------------
-# A6 CCU MoeDistributeCombine 算子工程（v16 ★ 目录整理：物理上无 dispatch 文件复制）
+# A6 CCU MoeDistributeCombineCcuSetup 独立验证工程（v21：纯 setup 0.5RTT 通信验证）
 #
-# 工程定位：
-#   - 本目录只放 combine 自己的代码 + 完整链路 driver
-#   - dispatch 源 / headers 通过相对路径引用 ../moe_dispatch_ccu_direct/（不物理复制）
-#   - host driver test_moe_distribute_combine_ccu 跑完整 dispatch+combine 链路 + 数据闭环校验
-#
-# 编译路径分裂：
-#   - *_setup.cpp 是 hcomm CCU kernel，用 host g++ 编进静态库
-#   - *_teardown.cpp 是 ascendc kernel（__global__ __aicore__），需 ascendc 工具链单独编译
-#   - test_*.cpp 含 `<<<>>>` 直调语法，也需 ascendc 工具链
-#   - A5 纯 host gcc 环境不能整体编译——目标 A6 ascendc 仿真/真机
+#   - 与 dispatch 用例完全解耦：只编 combine_setup（CCU CcuKernel 子类）+ host driver，
+#     不再跨目录引用 ../moe_dispatch_ccu_direct（combine_setup 输入由 driver host 自行 mock）。
+#   - 无 AIV teardown、无 <<<>>>，故【纯 host g++ 即可编译】（不需要 ascendc 工具链）。
+#   - 链接 / 运行需 A6：0.5RTT 上层 API 由 A6 hcomm 提供；A5 上链接会缺这些符号。
+#   - 多进程用 mpirun（见 run.sh）。
 # -----------------------------------------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.16)
 project(moe_distribute_combine_ccu)
@@ -31,27 +26,25 @@ if(CMAKE_INSTALL_PREFIX STREQUAL /usr/local)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_LIST_DIR}/out" FORCE)
 endif()
 
-# v16 ★ 跨目录引用 dispatch 源（避免文件复制）
-set(DISPATCH_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../moe_dispatch_ccu_direct)
-
-# setup 静态库：dispatch_setup 从 dispatch 目录读 .cpp，combine_setup 在本目录
-#   dispatch_setup + combine_setup 都是 CcuKernel 子类，用 host g++ 编进静态库
-add_library(moe_distribute_ccu_setups STATIC
-    ${DISPATCH_DIR}/moe_distribute_dispatch_ccu_setup.cpp
+# setup 静态库：combine_setup 是 hcomm CcuKernel 子类，普通 g++ 编进静态库。
+add_library(moe_combine_ccu STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/moe_distribute_combine_ccu_setup.cpp
 )
-target_compile_options(moe_distribute_ccu_setups PRIVATE
+target_compile_options(moe_combine_ccu PRIVATE
     -O2 -Wall -D_GLIBCXX_USE_CXX11_ABI=0
 )
-target_include_directories(moe_distribute_ccu_setups PRIVATE
+target_include_directories(moe_combine_ccu PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${DISPATCH_DIR}
-    ${ASCEND_CANN_PACKAGE_PATH}/include
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/asc/include/adv_api/hccl/internal/hcomm
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include/hccl
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc/hcomm/ccu
 )
 
-# host driver：跑完整 dispatch+combine 链路 + 数据闭环校验
+# A6 调用范式（对齐 hcomm-test/ccu_kernel_test + oam-tools/hccl_test）：MPI 多进程 + RankGraph channel + WithStream。
+find_package(MPI REQUIRED)
+
+# host driver：MPI 多进程 → 注册并 Launch combine_setup（CCU 0.5RTT）→ host 校验 commWindow。
 add_executable(test_moe_distribute_combine_ccu
     ${CMAKE_CURRENT_SOURCE_DIR}/test_moe_distribute_combine_ccu.cpp
 )
@@ -60,17 +53,19 @@ target_compile_options(test_moe_distribute_combine_ccu PRIVATE
 )
 target_include_directories(test_moe_distribute_combine_ccu PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${DISPATCH_DIR}
-    ${ASCEND_CANN_PACKAGE_PATH}/include
-    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/asc/include/adv_api/hccl/internal/hcomm
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include/hccl
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc
+    ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc/hcomm/ccu
+    ${MPI_CXX_INCLUDE_DIRS}
 )
 target_link_libraries(test_moe_distribute_combine_ccu PRIVATE
-    moe_distribute_ccu_setups
+    moe_combine_ccu
     hcomm
     hccl
     ascendcl
     pthread
+    MPI::MPI_CXX
 )
 
 install(TARGETS test_moe_distribute_combine_ccu

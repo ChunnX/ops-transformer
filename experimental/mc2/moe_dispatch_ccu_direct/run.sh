@@ -28,17 +28,8 @@ cmake --install "${CURRENT_DIR}/build"
 set +e
 
 export LD_LIBRARY_PATH="${CURRENT_DIR}/out/lib:${ASCEND_HOME_PATH}/lib64:${LD_LIBRARY_PATH}"
-rm -f /tmp/ccu_a6_rootinfo*
-echo "========== 运行 A6 CCU MoeDispatch：${RANK_SIZE}p =========="
-pids=()
-for ((rank_id = 0; rank_id < RANK_SIZE; rank_id++)); do
-    "${CURRENT_DIR}/out/bin/test_moe_distribute_dispatch_ccu" \
-        --rank_id ${rank_id} --rank_size ${RANK_SIZE} &
-    pids+=($!)
-done
-FAIL=0
-for ((i = 0; i < RANK_SIZE; i++)); do
-    if wait "${pids[$i]}"; then echo "[rank $i] exit 0"; else echo "[rank $i] exit non-zero"; FAIL=1; fi
-done
-[ ${FAIL} -eq 0 ] && echo "全部 ${RANK_SIZE}p 通过" || echo "存在失败 rank"
-exit ${FAIL}
+echo "========== 运行 A6 CCU dispatch_setup 0.5RTT 通信验证：${RANK_SIZE}p (MPI) =========="
+# v20.8 ★ A6 范式：MPI 多进程拉起（rank/rankSize 由 MPI 给、rootinfo 由 MPI_Bcast 交换），
+#   替代旧的手工 fork + --rank_id + 文件 rootinfo。mpirun 需在 PATH（CANN/MPI 环境已含）。
+mpirun --allow-run-as-root -n ${RANK_SIZE} "${CURRENT_DIR}/out/bin/test_moe_distribute_dispatch_ccu"
+exit $?
