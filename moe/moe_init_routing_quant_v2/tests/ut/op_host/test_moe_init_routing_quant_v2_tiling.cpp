@@ -597,6 +597,101 @@ TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_17) {
   ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", {});
 }
 
+// Large totalLength + large cols: triggers SrcToDst else, VMSMiddle else,
+// VBS lastCoreElement>alineCeil, CapacityCompute else (cols >= MAX_COLS_ONE_LOOP)
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_19) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/3000, /*H=*/130000, /*K=*/50,
+    /*activeNum=*/0, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/0, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/0, /*dqFlag=*/0,
+    /*optionalDt=*/ge::DT_FLOAT, /*optionalDtypePosi=*/0
+  );
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
+// Large totalLength + moderate cols: triggers CapacityCompute else (cols < MAX_COLS_ONE_LOOP path)
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_20) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/40000, /*H=*/10000, /*K=*/50,
+    /*activeNum=*/0, /*C=*/0, /*E=*/8,
+    /*dropPadMode=*/0, /*countFlag=*/1, /*tokenFlag=*/false,
+    /*quantMode=*/0, /*dqFlag=*/0,
+    /*optionalDt=*/ge::DT_FLOAT, /*optionalDtypePosi=*/0
+  );
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
+// regBase SOC (NpuArch 3510) path in GetPlatformInfo
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_21_regbase) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/8, /*H=*/30, /*K=*/6,
+    /*activeNum=*/0, /*C=*/6, /*E=*/8,
+    /*dropPadMode=*/1, /*countFlag=*/0, /*tokenFlag=*/true,
+    /*quantMode=*/0, /*dqFlag=*/0,
+    /*optionalDt=*/ge::DT_FLOAT, /*optionalDtypePosi=*/0
+  );
+  // Use Ascend950 so UT platform JSON parses CORE_NUM; NpuArch still maps to 3510 (regbase).
+  tilingContextPara.socVersion_ = "Ascend950";
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
+// Large params, quantMode=1, dropPadMode=1: triggers SrcToDstCapacityCompute else (cols<6144)
+// and GatherDynamicQuant else (cols<6144)
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_22_dynquant_large) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/20000, /*H=*/5000, /*K=*/40,
+    /*activeNum=*/0, /*C=*/6, /*E=*/8,
+    /*dropPadMode=*/1, /*countFlag=*/0, /*tokenFlag=*/true,
+    /*quantMode=*/1, /*dqFlag=*/0,
+    /*optionalDt=*/ge::DT_FLOAT, /*optionalDtypePosi=*/0
+  );
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
+// Large params, quantMode=0, dropPadMode=1: triggers GatherQuant else (cols<MAX_COLS_ONE_LOOP)
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_23_quant_large) {
+  auto tilingContextPara = RunNormalCase(
+    /*N=*/20000, /*H=*/4000, /*K=*/40,
+    /*activeNum=*/0, /*C=*/6, /*E=*/8,
+    /*dropPadMode=*/1, /*countFlag=*/0, /*tokenFlag=*/true,
+    /*quantMode=*/0, /*dqFlag=*/0,
+    /*optionalDt=*/ge::DT_FLOAT, /*optionalDtypePosi=*/0
+  );
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
+// quantMode=1 with no scale input: triggers smoothType=SMOOTH_NONE path
+TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_24_no_scale) {
+  int64_t N = 8, H = 30, K = 6, C = 6, E = 8;
+  std::vector<gert::TilingContextPara::TensorDescription> inputs;
+  inputs.emplace_back(gert::StorageShape({N, H}, {N, H}), ge::DT_FLOAT16, ge::FORMAT_ND);
+  inputs.emplace_back(gert::StorageShape({N, K}, {N, K}), ge::DT_INT32, ge::FORMAT_ND);
+  // No scale/offset inputs - use empty shapes to make GetOptionalInputShape return null
+  inputs.emplace_back(gert::StorageShape({}, {}), ge::DT_FLOAT, ge::FORMAT_ND);
+  inputs.emplace_back(gert::StorageShape({}, {}), ge::DT_FLOAT, ge::FORMAT_ND);
+
+  std::vector<gert::TilingContextPara::TensorDescription> outputs;
+  outputs.emplace_back(gert::StorageShape({E, C, H}, {E, C, H}), ge::DT_INT8, ge::FORMAT_ND);
+  outputs.emplace_back(gert::StorageShape({N * K}, {N * K}), ge::DT_INT32, ge::FORMAT_ND);
+  outputs.emplace_back(gert::StorageShape({E}, {E}), ge::DT_INT32, ge::FORMAT_ND);
+  outputs.emplace_back(gert::StorageShape({E}, {E}), ge::DT_INT32, ge::FORMAT_ND);
+  outputs.emplace_back(gert::StorageShape({E * C}, {E * C}), ge::DT_FLOAT, ge::FORMAT_ND);
+
+  MoeInitRoutingQuantV2CompileInfo compileInfo;
+  std::vector<gert::TilingContextPara::OpAttr> attrs = {
+    {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+    {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(C)},
+    {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(E)},
+    {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+    {"expert_tokens_count_or_cumsum_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+    {"expert_tokens_before_capacity_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}};
+
+  auto tilingContextPara = gert::TilingContextPara("MoeInitRoutingQuantV2", inputs, outputs, attrs, &compileInfo);
+  ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, (uint64_t)-1, "", {});
+}
+
 // dynamic quant scale dtype = int32
 TEST_F(MoeInitRoutingQuantV2Tiling, moe_init_routing_quant_v2_tiling_18) {
   auto tilingContextPara = RunNormalCase(
