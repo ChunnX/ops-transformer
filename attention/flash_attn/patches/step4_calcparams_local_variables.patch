@@ -1,0 +1,81 @@
+diff --git a/attention/flash_attn/op_kernel/arch35/flash_attn_kernel_base_gqa_template.h b/attention/flash_attn/op_kernel/arch35/flash_attn_kernel_base_gqa_template.h
+index 26143663f..ba6fb2a3e 100644
+--- a/attention/flash_attn/op_kernel/arch35/flash_attn_kernel_base_gqa_template.h
++++ b/attention/flash_attn/op_kernel/arch35/flash_attn_kernel_base_gqa_template.h
+@@ -543,6 +543,8 @@ public:
+ 
+     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+     {
++        const uint32_t localGSize = constInfo.gSize;
++
+         // 1. Calc preTokenLeftUp, nextTokenLeftUp
+         int64_t preTokenLeftUp = 0;
+         int64_t nextTokenLeftUp = 0;
+@@ -551,13 +553,13 @@ public:
+         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
+         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
+         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
++                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(localGSize)) -
+                                1;
+         int64_t s1FirstToken = 0;
+         int64_t s1LastToken = 0;
+         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
+-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
+-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
++            s1FirstToken = static_cast<int64_t>(s1GFirstToken / localGSize);
++            s1LastToken = static_cast<int64_t>(s1GLastToken / localGSize);
+         } else {
+             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
+                 // start and end locate in one G
+@@ -664,15 +666,20 @@ public:
+ 
+     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+     {
++        const uint32_t localN2Size = constInfo.n2Size;
++        const uint32_t localGSize = constInfo.gSize;
++        const bool localIsKvContinuous = constInfo.isKvContinuous;
++        const uint8_t localSubBlockIdx = constInfo.subBlockIdx;
++
+         info.loop = loop;
+         info.mloop = mloop;
+-        info.bIdx = bN2Cur / constInfo.n2Size;
+-        info.n2Idx = bN2Cur % constInfo.n2Size;
++        info.bIdx = bN2Cur / localN2Size;
++        info.n2Idx = bN2Cur % localN2Size;
+         info.gS1Idx = gS1Cur * mBaseSize;
+         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
+                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+             // S1G layout
+-            info.s1Idx = info.gS1Idx / constInfo.gSize;
++            info.s1Idx = info.gS1Idx / localGSize;
+         } else {
+             // GS1 layout
+             info.s1Idx = info.gS1Idx % actSeqLensQ;
+@@ -682,7 +689,7 @@ public:
+         info.actS2Size = actSeqLensKv;
+ 
+         info.actMSize = mBaseSize;
+-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
++        uint64_t gS1Size = info.actS1Size * localGSize;
+         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
+             info.actMSize = gS1Size - gS1Cur * mBaseSize;
+         }
+@@ -692,7 +699,7 @@ public:
+         }
+         info.actSingleLoopS2SizeAlign =
+             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+-        if (constInfo.isKvContinuous) {
++        if (localIsKvContinuous) {
+             info.isChangeBatch = false;
+         } else {
+             // for tensor-list
+@@ -721,7 +728,7 @@ public:
+             info.actVecMSize = (info.actMSize + 1) >> 1;
+         }
+         info.vecMbaseIdx = 0;
+-        if (constInfo.subBlockIdx == 1) {
++        if (localSubBlockIdx == 1) {
+             info.vecMbaseIdx = info.actVecMSize;
+             info.actVecMSize = info.actMSize - info.actVecMSize;
+         }
