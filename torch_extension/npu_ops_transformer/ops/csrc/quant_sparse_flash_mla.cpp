@@ -143,9 +143,9 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_sparse_flash_mla(
         at::Tensor null_tensor;
         auto ori_kv_value = ori_kv.has_value() ? ori_kv.value() : null_tensor;
         auto cmp_kv_value = cmp_kv.has_value() ? cmp_kv.value() : null_tensor;
-        TensorWrapper q_wrapper = make_wrapper(q, ACL_HIFLOAT8);
-        TensorWrapper ori_kv_wrapper = make_wrapper(ori_kv_value, ACL_HIFLOAT8);
-        TensorWrapper cmp_kv_wrapper = make_wrapper(cmp_kv_value, ACL_HIFLOAT8);
+        TensorWrapper q_wrapper = qsmla_make_wrapper(q, ACL_HIFLOAT8);
+        TensorWrapper ori_kv_wrapper = qsmla_make_wrapper(ori_kv_value, ACL_HIFLOAT8);
+        TensorWrapper cmp_kv_wrapper = qsmla_make_wrapper(cmp_kv_value, ACL_HIFLOAT8);
 
         ACLNN_CMD(aclnnQuantSparseFlashMla, q_wrapper,
             ori_kv_wrapper, cmp_kv_wrapper,
@@ -158,13 +158,12 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_sparse_flash_mla(
             cmp_residual_kv,
             ori_topk_length, cmp_topk_length,
             sinks, metadata,
-            quant_mode, softmax_scale, cmp_ratio,
+            qkv_quant_mode, softmax_scale, cmp_ratio,
             ori_mask_mode, cmp_mask_mode,
             ori_win_left, ori_win_right,
             layout_q_ptr, layout_kv_ptr,
             topk_value_mode, return_softmax_lse,
             atten_out, softmax_lse);
-            printf("ACLNN_CMD end =========== \n");
     }
 
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
