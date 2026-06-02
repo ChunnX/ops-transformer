@@ -23,7 +23,6 @@
 #include "rope.h"
 #include "soft_max.h"
 
-
 using namespace AscendC;
 
 namespace Compressor {
@@ -227,7 +226,6 @@ private:
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
 };
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::InitParams(const ConstInfo &constInfo,
@@ -609,7 +607,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::AddApeToScore(const 
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, const GlobalTensor<T> &srcGm,
@@ -735,7 +732,6 @@ CompressorBlockVectorFullLoad<COMP>::ReadFromCacheState(const LocalTensor<T> &ou
     }
 }
 
-
 template <typename COMP>
 template <bool IS_SCORE>
 __aicore__ inline void
@@ -773,7 +769,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::SaveState(
     WriteToCacheState(stateGm[dStartIdx], blockTableGm, srcLocal[srcBaseOffset], sliceInfo.bIdx, startSeqIdx, endSeqIdx,
                       dDealSize, dBaseSize, stateIdx);
 }
-
 
 template <typename COMP>
 template <bool IS_SCORE>
@@ -823,7 +818,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ReadState(
         }
     }
 }
-
 
 template <typename COMP>
 template <bool IS_SCORE>
@@ -910,7 +904,6 @@ CompressorBlockVectorFullLoad<COMP>::LoadFromWorkSpace(const LocalTensor<T> &dst
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
     const LocalTensor<T> &scoreLocal, const LocalTensor<T> &kvLocal, const LoopInfo &loopInfo,
@@ -993,7 +986,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CopyOutVec1Res(const
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
     CompressorVec1SliceIterator<COMP> &sliceIterator, const LoopInfo &loopInfo, uint32_t dStartIdx,
@@ -1023,7 +1015,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::DealVec1BaseBlock(
     }
     compressedCnt_ += statisticInfo.compressorScCnt;
 }
-
 
 template <typename COMP>
 __aicore__ inline void
@@ -1058,7 +1049,6 @@ CompressorBlockVectorFullLoad<COMP>::SingleCalRope(const LocalTensor<X_T> &outpu
     PipeBarrier<PIPE_V>();
 }
 
-
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::CalRope(const LocalTensor<X_T> &outputUb, const LocalTensor<T> &normResUb,
@@ -1091,7 +1081,6 @@ CompressorBlockVectorFullLoad<COMP>::CalRope(const LocalTensor<X_T> &outputUb, c
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void
 CompressorBlockVectorFullLoad<COMP>::CopyFinalResultOut(const LocalTensor<X_T> &cmpKvOutUb,
@@ -1108,7 +1097,6 @@ CompressorBlockVectorFullLoad<COMP>::CopyFinalResultOut(const LocalTensor<X_T> &
         sliceIterator.IteratorSlice();
     }
 }
-
 
 template <typename COMP>
 __aicore__ inline void
@@ -1229,7 +1217,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTilingStrategy(V
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline Vec1SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV1()
 {
@@ -1253,7 +1240,6 @@ __aicore__ inline Vec1SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV1
 
     return splitInfo;
 }
-
 
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::PrepareForComputeVec()
@@ -1292,7 +1278,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
     // 切块循环
     uint64_t baseOffset = loopInfo_.coreColIdx * vec1SplitInfo_.dBaseSize;
-
 
     uint32_t cnt = constInfo_.sSize * vec1SplitInfo_.dBaseSize * coff_;
     uint32_t singleLoopBatchNum = BUFFER_SIZE_BYTE_16K / (cnt * sizeof(T));
@@ -1364,7 +1349,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
         inputQueApe.FreeTensor(apeUb);
     }
 }
-
 
 template <typename COMP>
 __aicore__ inline Vec2SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV2()
@@ -1441,7 +1425,6 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec()
     PipeBarrier<PIPE_V>();
     ComputeVec2();
 }
-
 
 } // namespace Compressor
 #endif // COMPRESSOR_BLOCK_VECTOR_PREF_H

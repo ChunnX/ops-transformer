@@ -292,18 +292,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeMm1(const RunInfo 
     CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG);
 }
 
-// template <typename COMP>
-// __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec1() {
-//     blockVec_.PrepareForComputeVec();
-//     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
-//     blockVec_.ComputeVec1();
-// }
-
-// template <typename COMP>
-// __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec2() {
-// }
-
-
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec()
 {
@@ -318,7 +306,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::ComputeVec()
     }
 }
 
-
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::AllocEventID()
 {
@@ -326,10 +313,6 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::AllocEventID()
         blockCube_.AllocEventID(pipe_);
     } else {
         blockVec_.AllocEventID();
-        // for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-        //     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_V1_C1_FLAG + i);
-        // }
-        // CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_V1_FLAG2);
     }
 }
 
@@ -337,12 +320,8 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::FreeEventID()
 {
     if ASCEND_IS_AIC {
-        // for (int i = 0; i < constInfo.dbWorkspaceRatio; ++i) {
-        //     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + i);
-        // }
         blockCube_.FreeEventID(pipe_);
     } else {
-        // CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + loopTimes % constInfo.dbWorkspaceRatio);
         blockVec_.FreeEventID();
     }
 }
