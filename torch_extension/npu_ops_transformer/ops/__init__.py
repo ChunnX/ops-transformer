@@ -36,3 +36,5 @@ from .lightning_indexer_v2 import npu_lightning_indexer_v2
 from .quant_lightning_indexer_v2 import npu_quant_lightning_indexer_v2
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .causal_conv1d_fn import npu_causal_conv1d_fn, causal_conv1d_fn
+from .causal_conv1d_update import npu_causal_conv1d_update, causal_conv1d_update
