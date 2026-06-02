@@ -78,9 +78,9 @@ int32_t get_acl_dtype(const at::ScalarType dtype)
 }
 
 template <typename T>
-class MoeGateSiluKernel {
+class MoeGateSilu {
 public:
-    __aicore__ inline MoeGateSiluKernel() {}
+    __aicore__ inline MoeGateSilu() {}
 
     __aicore__ inline void InitTotal(int32_t perTotalCount, GM_ADDR totalRows, int32_t blockCount)
     {
@@ -268,7 +268,7 @@ extern "C" __global__ __aicore__ void moe_gate_silu_kernel(GM_ADDR x, GM_ADDR to
                                                            int32_t blockCount, int32_t dtype)
 {
     MOE_GATE_SILU_TYPE_SWITCH(dtype, T, {
-        MoeGateSiluKernel<T> op;
+        MoeGateSilu<T> op;
         op.InitTotal(perTotalCount, totalRows, blockCount);
         op.ProcessTotal();
         op.Init(rows, perCount, x, z, blockCount);

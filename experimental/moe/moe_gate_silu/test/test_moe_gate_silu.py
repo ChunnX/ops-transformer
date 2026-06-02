@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
+import logging
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -17,6 +19,8 @@ import torch_npu
 
 import npu_ops_transformer_ext
 
+
+LOGGER = logging.getLogger(__name__)
 
 DTYPES = [torch.float16, torch.bfloat16]
 SHAPE_CASES = [
@@ -65,7 +69,7 @@ def _run_precision_case(rows, hidden, dtype, active_rows):
     actual = result[:active_rows]
     rtol, atol = TOLERANCES[dtype]
     max_abs, max_rel = _max_error(actual, expected)
-    print(
+    LOGGER.info(
         "[precision] rows={} hidden={} active_rows={} dtype={} max_abs={:.6g} "
         "max_rel={:.6g} rtol={} atol={}".format(
             rows, hidden, active_rows, dtype, max_abs, max_rel, rtol, atol
@@ -77,7 +81,7 @@ def _run_precision_case(rows, hidden, dtype, active_rows):
 
 
 def test_moe_gate_silu_interface_exist():
-    print(torch.ops.npu_ops_transformer_ext.moe_gate_silu)
+    LOGGER.info(torch.ops.npu_ops_transformer_ext.moe_gate_silu)
     assert hasattr(torch.ops.npu_ops_transformer_ext, "moe_gate_silu")
 
 
