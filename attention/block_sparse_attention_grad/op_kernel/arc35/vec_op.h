@@ -78,7 +78,6 @@ private:
     constexpr static uint32_t POST_TILE_LEN = 20 * 1024; // POST一次处理元素的个数
     GM_ADDR act_seq_q_len;
 
-
 public:
     __aicore__ inline VecOp(){};
 

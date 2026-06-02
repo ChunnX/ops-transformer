@@ -158,7 +158,6 @@ public:
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
-
 private:
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
                                        const LocalTensor<INPUT_TYPE> &l1_a_tensor,

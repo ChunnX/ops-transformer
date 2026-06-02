@@ -103,7 +103,6 @@ public:
         ds_l1_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(base_m * base_n, l1_offset_);
         l1_offset_ += base_m * base_n * sizeof(INPUT_TYPE);
 
-
         if ASCEND_IS_AIC {
             // printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,

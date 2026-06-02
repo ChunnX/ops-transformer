@@ -64,25 +64,6 @@ public:
     {
     }
 
-private:
-    const char *layout_;
-    ge::DataType dataType_;
-    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
-    BlockSparseAttentionGradTilingDataArch35 tilingData_;
-    static constexpr const char *BSND_STR = "BSND";
-    static constexpr const char *BNSD_STR = "BNSD";
-    static constexpr const char *TND_STR = "TND";
-    int32_t batch_num_ = 0;
-    int32_t q_seq_len_ = 0;
-    int32_t kv_seq_len_ = 0;
-    int32_t q_head_num_ = 0;
-    int32_t q_group_ = 0;
-    int32_t kv_head_num_ = 0;
-    int32_t head_dim_ = 0;
-    int32_t blockShapeX_ = 0;
-    int32_t blockShapeY_ = 0;
-    int32_t max_q_seq_len_ = 0;
-    int32_t max_kv_seq_len_ = 0;
 
 protected:
     bool IsCapable() override
@@ -358,6 +339,26 @@ protected:
 
         return default_key;
     }
+
+private:
+    const char *layout_;
+    ge::DataType dataType_;
+    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
+    BlockSparseAttentionGradTilingDataArch35 tilingData_;
+    static constexpr const char *BSND_STR = "BSND";
+    static constexpr const char *BNSD_STR = "BNSD";
+    static constexpr const char *TND_STR = "TND";
+    int32_t batch_num_ = 0;
+    int32_t q_seq_len_ = 0;
+    int32_t kv_seq_len_ = 0;
+    int32_t q_head_num_ = 0;
+    int32_t q_group_ = 0;
+    int32_t kv_head_num_ = 0;
+    int32_t head_dim_ = 0;
+    int32_t blockShapeX_ = 0;
+    int32_t blockShapeY_ = 0;
+    int32_t max_q_seq_len_ = 0;
+    int32_t max_kv_seq_len_ = 0;
 };
 
 
