@@ -43,6 +43,7 @@ struct TempLoopInfo {
     uint32_t actS1Size = 1U;  // 当前Batch循环处理的S1轴的实际大小
     uint32_t actS2Size = 0U;
     uint32_t actS2SizeOrig = 0U; // 压缩前s2
+    uint32_t effectiveS2Size = 0U; // 减掉 window_block 后的 s2 长度
     bool curActSeqLenIsZero = false;
     bool needDealActS1LessThanS1 = false;  // S1的实际长度小于shape的S1长度时，是否需要清理输出
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
@@ -247,7 +248,7 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig));
     validS2Len = Max(validS2Len, 1);
     tempLoopInfo.validS2Len = validS2Len;
-    return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+    return ((uint32_t)validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
 
 template <typename QLIT> 
@@ -459,13 +460,29 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
         tempLoopInfo.actMBaseSize = tempLoopInfo.mBasicSizeTail;
     }
 
+    const uint32_t INIT_BLOCKS = 4;
+    const uint32_t WINDOW_BLOCKS = 4;
+
     bool isEnd = (bN2LoopIdx == splitCoreInfo.bN2End) && (gS1LoopIdx == splitCoreInfo.gS1End);
     uint32_t s2BlockNum;
     if (constInfo.attenMaskFlag) {
+        // Causal 场景：GetS2BaseBlockNumOnMask 内部计算 effectiveS2Size
         s2BlockNum = GetS2BaseBlockNumOnMask(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
     } else {
+        // 非 causal 场景：在这里计算 effectiveS2Size
         tempLoopInfo.validS2Len = tempLoopInfo.actS2Size;
-        s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
+        
+        int32_t remainingAfterInit = (int32_t)tempLoopInfo.actS2Size - (int32_t)INIT_BLOCKS;
+        uint32_t effectiveS2Size;
+        
+        if (remainingAfterInit > 0) {
+            effectiveS2Size = tempLoopInfo.actS2Size - WINDOW_BLOCKS;
+        } else {
+            effectiveS2Size = tempLoopInfo.actS2Size;
+        }
+        
+        tempLoopInfo.effectiveS2Size = effectiveS2Size;
+        s2BlockNum = (effectiveS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
     tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : s2BlockNum - 1;
 }
@@ -518,6 +535,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.actS1Size = tempLoopInfo.actS1Size;
     runInfo.actS2Size = tempLoopInfo.actS2Size;
     runInfo.actS2SizeOrig = tempLoopInfo.actS2SizeOrig;
+    runInfo.effectiveS2Size = tempLoopInfo.effectiveS2Size;
     // 计算实际基本块size
     runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
     runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;
@@ -663,9 +681,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_
         matmulService.ComputeMm1(runInfo);
     } else {
         vectorService.ProcessVec1(runInfo);
-        if (runInfo.isLastS2InnerLoop) {   //本核s2last
-            vectorService.ProcessTopK(runInfo);   
-        }
+        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
 
