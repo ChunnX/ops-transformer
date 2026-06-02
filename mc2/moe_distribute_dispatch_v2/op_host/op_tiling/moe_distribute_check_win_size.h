@@ -89,7 +89,7 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     uint64_t actualSize = winSizeData.isLayered ? (static_cast<uint64_t>(winSizeData.moeExpertNum) * maxBs * (h *
         MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) * sizeof(uint32_t) + 64) + 404 * MB_SIZE) : ((maxBs *
         tokenNeedSizeDispatch * epWorldSize * static_cast<uint64_t>(winSizeData.localMoeExpertNum)) + (maxBs *
-        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER + epWorldSize * EP_RANK_OFFSET_STEP;
+        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER;
 
     if (winSizeData.isLayered) {
         // 校验可变bs
@@ -99,17 +99,18 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu,"
                 "NEEDED_HCCL_BUFFSIZE_HIERARCHY((moeExpertNum * maxBs * (h * MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) *"
-                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, 
-                actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
+                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB , actual CCL_BUFFSIZE=%luMB.",
+                maxBs, h, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE / 2UL , hcclBufferSizeEp / MB_SIZE),
+                return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
         OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
             " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu, tokenNeedSizeCombine = %lu,"
             " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * localMoeExpertNum) +"
-            " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2 + epWorldSize * 8192) = %luMB,"
-            " HCCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
+            " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) = %luMB,"
+            " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
             tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
-            hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
+            hcclBufferSizeEp / MB_SIZE / 2UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
