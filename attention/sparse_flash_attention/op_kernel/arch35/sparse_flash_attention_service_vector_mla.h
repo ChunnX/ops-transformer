@@ -193,24 +193,24 @@ SFAVectorService<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &token0Idx, int64_t &to
 {
     int64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
+        uint64_t sfaActualSeqQPrefixSum = runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1);
+        topkBS1Idx += (sfaActualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
     } else {
         topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.sparseBlockCount +
             runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
     }
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
-    int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
+    int64_t sfaCmpS2LoopCnt = runInfo.s2LoopCount;
+    int64_t sfaTopkKIdx = s2IdxInBase + sfaCmpS2LoopCnt * constInfo.s2BaseSize;
+    if (unlikely(sfaTopkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
-        token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token0Idx = sparseIndicesGm.GetValue(topkBS1Idx + sfaTopkKIdx) + runInfo.s2StartIdx;
     }
-    topkKIdx += 1;
-    if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
+    sfaTopkKIdx += 1;
+    if (unlikely((sfaTopkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
-        token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token1Idx = sparseIndicesGm.GetValue(topkBS1Idx + sfaTopkKIdx) + runInfo.s2StartIdx;
     }
 }
 
@@ -246,28 +246,28 @@ SFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_
     if (keyOffset < 0) {
         return;
     }
-    DataCopyExtParams intriParams;
+    DataCopyExtParams sfaIntriParams;
     
-    intriParams.blockCount = 1;
-    intriParams.dstStride = 0;
-    intriParams.srcStride = 0;
-    DataCopyPadExtParams<KV_T> padParams;
+    sfaIntriParams.blockCount = 1;
+    sfaIntriParams.dstStride = 0;
+    sfaIntriParams.srcStride = 0;
+    DataCopyPadExtParams<KV_T> sfaPadParams;
     // 当前仅支持COMBINE模式
     uint32_t combineBytes = 512 * sizeof(KV_T);
-    intriParams.blockLen = combineBytes;
+    sfaIntriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-    padParams.isPad = true;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = combineDimAlign - combineDim;
-    padParams.paddingValue = 0;
+    sfaPadParams.isPad = true;
+    sfaPadParams.leftPadding = 0;
+    sfaPadParams.rightPadding = combineDimAlign - combineDim;
+    sfaPadParams.paddingValue = 0;
     // 512: Key特征维度; 576: 局部Buffer行跨度
-    DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * 512], intriParams, padParams);
+    DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * 512], sfaIntriParams, sfaPadParams);
 
-    intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope *sizeof(KV_T);
-    intriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B;  // 512: 模型特征维度(dSize)
+    sfaIntriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope *sizeof(KV_T);
+    sfaIntriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B;  // 512: 模型特征维度(dSize)
     // 576: 局部Buffer行跨度（Leading Dimension）; 512: Key特征维度（dSize）; 64 :  RoPE索引数据每Token/块的行跨度（Stride）
-    DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams, padParams); // combineDimAlign
+    DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], sfaIntriParams, sfaPadParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
@@ -292,26 +292,26 @@ uint32_t SFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
         CopyInSingleKv(kvInUb, startRow, keyOffset0, constInfo);
         CopyInSingleKv(kvInUb, startRow + 1, keyOffset1, constInfo);
     } else {
-        DataCopyExtParams intriParams;
-        intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeNope *sizeof(KV_T);
-        intriParams.dstStride = constInfo.dSizeRope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
-        intriParams.srcStride = keySrcStride;
-        DataCopyPadExtParams<KV_T> padParams;
+        DataCopyExtParams sfaIntriParams;
+        sfaIntriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
+        sfaIntriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeNope *sizeof(KV_T);
+        sfaIntriParams.dstStride = constInfo.dSizeRope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
+        sfaIntriParams.srcStride = keySrcStride;
+        DataCopyPadExtParams<KV_T> sfaPadParams;
 
         int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
         if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
             keyOffset = keyOffset1;
         }
         DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * constInfo.dSizeNope], // 576: 局部Buffer行跨度
-                    intriParams, padParams); // combineDimAlign
+                    sfaIntriParams, sfaPadParams); // combineDimAlign
 
-        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope *sizeof(KV_T);
-        intriParams.dstStride = constInfo.dSizeNope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
-        intriParams.srcStride = keyRopeSrcStride;
+        sfaIntriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope *sizeof(KV_T);
+        sfaIntriParams.dstStride = constInfo.dSizeNope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
+        sfaIntriParams.srcStride = keyRopeSrcStride;
         // 512: Key特征维度; 576: 局部Buffer行跨度
         DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * constInfo.dSizeRope],
-                    intriParams, padParams); // combineDimAlign
+                    sfaIntriParams, sfaPadParams); // combineDimAlign
     }
     return (keyOffset0 > -1) + (keyOffset1 > -1);
 }
@@ -685,13 +685,13 @@ void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 {
-    constexpr uint32_t softmaxBufSize = 256; // VF单次操作256Byte
-    tPipe->InitBuffer(softmaxSumBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxSumBuf[1], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[1], softmaxBufSize);
-    tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
+    constexpr uint32_t sfaSoftmaxBufSize = 256; // VF单次操作256Byte
+    tPipe->InitBuffer(softmaxSumBuf[0], sfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxSumBuf[1], sfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxMaxBuf[0], sfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxMaxBuf[1], sfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxExpBuf[0], sfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxExpBuf[1], sfaSoftmaxBufSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
@@ -735,8 +735,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     dataCopyParams.blockLen = maxN * sizeof(T);
     dataCopyParams.srcStride = 0U;
     dataCopyParams.dstStride = 0U;
-    DataCopyPadExtParams<T> padParams;
-    DataCopyPad(sinksUb, this->sinksGm, dataCopyParams, padParams);
+    DataCopyPadExtParams<T> sfaPadParams;
+    DataCopyPad(sinksUb, this->sinksGm, dataCopyParams, sfaPadParams);
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
 }

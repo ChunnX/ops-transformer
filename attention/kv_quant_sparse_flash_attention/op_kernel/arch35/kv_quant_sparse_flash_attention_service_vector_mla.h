@@ -178,24 +178,24 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 {
     int64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
+        uint64_t qsfaActualSeqQPrefixSum = runInfo.boIdx == 0 ? 0 : cuSeqlensQGm.GetValue(runInfo.boIdx - 1);
+        topkBS1Idx += (qsfaActualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
     } else {
         topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.sparseBlockCount +
             runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
     }
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount;
-    int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
+    int64_t qsfaCmpS2LoopCnt = runInfo.s2LoopCount;
+    int64_t qsfaTopkKIdx = s2IdxInBase + qsfaCmpS2LoopCnt * constInfo.s2BaseSize;
+    if (unlikely(qsfaTopkKIdx >= constInfo.sparseBlockCount)) {
         token0Idx = -1;
     } else {
-        token0Idx = SparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token0Idx = SparseIndicesGm.GetValue(topkBS1Idx + qsfaTopkKIdx) + runInfo.s2StartIdx;
     }
-    topkKIdx += 1;
-    if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
+    qsfaTopkKIdx += 1;
+    if (unlikely((qsfaTopkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
-        token1Idx = SparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+        token1Idx = SparseIndicesGm.GetValue(topkBS1Idx + qsfaTopkKIdx) + runInfo.s2StartIdx;
     }
 }
 
@@ -228,22 +228,22 @@ QSFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64
     if (keyOffset < 0) {
         return;
     }
-    DataCopyExtParams intriParams;
+    DataCopyExtParams qsfaIntriParams;
     
-    intriParams.blockCount = 1;
-    intriParams.dstStride = 0;
-    intriParams.srcStride = 0;
-    DataCopyPadExtParams<KV_T> padParams;
+    qsfaIntriParams.blockCount = 1;
+    qsfaIntriParams.dstStride = 0;
+    qsfaIntriParams.srcStride = 0;
+    DataCopyPadExtParams<KV_T> qsfaPadParams;
     // 当前仅支持COMBINE模式
     uint32_t combineBytes = 672;
-    intriParams.blockLen = combineBytes;
+    qsfaIntriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-    padParams.isPad = true;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = combineDimAlign - combineDim;
-    padParams.paddingValue = 0;
-    DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], intriParams, padParams);
+    qsfaPadParams.isPad = true;
+    qsfaPadParams.leftPadding = 0;
+    qsfaPadParams.rightPadding = combineDimAlign - combineDim;
+    qsfaPadParams.paddingValue = 0;
+    DataCopyPad(kvInUb[startRow * combineDimAlign], keyGm[keyOffset], qsfaIntriParams, qsfaPadParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow,
@@ -262,12 +262,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
         CopyInSingleKv(kvInUb, startRow, keyOffset0);
         CopyInSingleKv(kvInUb, startRow + 1, keyOffset1);
     } else {
-        DataCopyExtParams intriParams;
-        intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        intriParams.blockLen = combineBytes;
-        intriParams.dstStride = 0;
-        intriParams.srcStride = keySrcStride;
-        DataCopyPadExtParams<KV_T> padParams;
+        DataCopyExtParams qsfaIntriParams;
+        qsfaIntriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
+        qsfaIntriParams.blockLen = combineBytes;
+        qsfaIntriParams.dstStride = 0;
+        qsfaIntriParams.srcStride = keySrcStride;
+        DataCopyPadExtParams<KV_T> qsfaPadParams;
 
         int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
         if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
@@ -277,11 +277,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t QSFAVectorService<TEMPLATE_A
         // 当前仅支持COMBINE模式
         uint32_t combineDim = combineBytes / sizeof(KV_T);
         uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-        padParams.isPad = true;
-        padParams.leftPadding = 0;
-        padParams.rightPadding = combineDimAlign - combineDim;
-        padParams.paddingValue = 0;
-        DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], intriParams, padParams);
+        qsfaPadParams.isPad = true;
+        qsfaPadParams.leftPadding = 0;
+        qsfaPadParams.rightPadding = combineDimAlign - combineDim;
+        qsfaPadParams.paddingValue = 0;
+        DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], qsfaIntriParams, qsfaPadParams);
     }
     return (keyOffset0 > -1) + (keyOffset1 > -1);
 }
@@ -753,13 +753,13 @@ __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 {
-    constexpr uint32_t softmaxBufSize = 256; // VF单次操作256Byte
-    tPipe->InitBuffer(softmaxSumBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxSumBuf[1], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxMaxBuf[1], softmaxBufSize);
-    tPipe->InitBuffer(softmaxExpBuf[0], softmaxBufSize);
-    tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
+    constexpr uint32_t qsfaSoftmaxBufSize = 256; // VF单次操作256Byte
+    tPipe->InitBuffer(softmaxSumBuf[0], qsfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxSumBuf[1], qsfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxMaxBuf[0], qsfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxMaxBuf[1], qsfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxExpBuf[0], qsfaSoftmaxBufSize);
+    tPipe->InitBuffer(softmaxExpBuf[1], qsfaSoftmaxBufSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

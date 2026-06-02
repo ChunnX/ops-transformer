@@ -121,19 +121,19 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo &constInfo,
     uint32_t sOuterLoopIdx)
 {
-    int64_t cubeSOuterOffset = sOuterLoopIdx * runParam.qSNumInOneBlock;
+    int64_t qsfaCubeSOuterOffset = sOuterLoopIdx * runParam.qSNumInOneBlock;
     if (runParam.actualS1Size == 0) {
         runParam.s1RealSize = 0;
         runParam.mRealSize = 0;
     } else {
-        runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
+        runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - qsfaCubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
         if constexpr (IS_SPLIT_G) {
             runParam.mRealSize = runParam.mRealSize >> 1;
         }
     }
 
-    runParam.cubeMOuterOffset = cubeSOuterOffset * constInfo.gSize;
+    runParam.cubeMOuterOffset = qsfaCubeSOuterOffset * constInfo.gSize;
     runParam.halfMRealSize = (runParam.mRealSize + 1) >> 1;
     runParam.firstHalfMRealSize = runParam.halfMRealSize;
     if (constInfo.subBlockIdx == 1) {
@@ -147,11 +147,11 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
-        runParam.sOuterOffset = cubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
+        runParam.sOuterOffset = qsfaCubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
     } else {
-        runParam.sOuterOffset = cubeSOuterOffset;
+        runParam.sOuterOffset = qsfaCubeSOuterOffset;
     }
-    runParam.cubeSOuterOffset = cubeSOuterOffset;
+    runParam.qsfaCubeSOuterOffset = qsfaCubeSOuterOffset;
 }
 
 TEMPLATE_INTF
@@ -224,20 +224,22 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
         runParam.s2LoopEndIdx = 0;
         return true;
     }
-    uint32_t s2BaseSize = constInfo.s2BaseSize;
+    uint32_t qsfaS2BaseSize = constInfo.qsfaS2BaseSize;
 
     if (constInfo.sparseMode == sparseModeZero) {
         runParam.s2LineStartIdx = 0;
         runParam.s2LineEndIdx = Min(runParam.actualS2Size, constInfo.sparseBlockCount); 
     } else if (constInfo.sparseMode == sparseModeThree) {
-        runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
+        runParam.s2LineStartIdx =
+            ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.qsfaCubeSOuterOffset - runParam.preTokensPerBatch,
             0, runParam.actualS2Size);
-        runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
+        runParam.s2LineEndIdx =
+            ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.qsfaCubeSOuterOffset + runParam.nextTokensPerBatch +
             runParam.s1RealSize, 0, runParam.actualS2Size);
         runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, constInfo.sparseBlockCount); // 当前LI输出的block size只可能是1
     }
 
-    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
+    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + qsfaS2BaseSize - 1) / qsfaS2BaseSize;
     runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
     return false;
 }
