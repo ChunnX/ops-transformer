@@ -97,6 +97,9 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::GetShapeAttrsInfo()
 
     OP_CHECK_IF(AnalyzeFormat() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid Format."),
                 return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(GetStrides() != ge::GRAPH_SUCCESS, OP_LOGE(inputParams_.opName, "Invalid strides."),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -154,11 +157,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::CheckOptionalInputContext(const s
 {
     OP_CHECK_IF(context_->GetOptionalInputDesc(optionalIndex) == nullptr && context_->GetOptionalInputTensor(optionalIndex) != nullptr,
         OP_LOGE(context_->GetNodeName(), "The desc of %s is nullptr, but the tensor of %s is not nullptr. They must be either both null or both non-null.",
-            optionalName, optionalName),
+            optionalName.c_str(), optionalName.c_str()),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetOptionalInputDesc(optionalIndex) != nullptr && context_->GetOptionalInputTensor(optionalIndex) == nullptr,
         OP_LOGE(context_->GetNodeName(), "The tensor of %s is nullptr, but the desc of %s is not nullptr. They must be either both null or both non-null.",
-            optionalName, optionalName),
+            optionalName.c_str(), optionalName.c_str()),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -259,7 +262,6 @@ bool RecurrentGatedDeltaRuleTiling::CheckDim(const gert::Shape shape, const size
 ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
 {
     const auto &queryShape = context_->GetInputShape(QUERY_INDEX)->GetStorageShape();
-    const auto &keyShape = context_->GetInputShape(KEY_INDEX)->GetStorageShape();
     const auto &valueShape = context_->GetInputShape(VALUE_INDEX)->GetStorageShape();
     const auto &stateShape = context_->GetInputShape(STATE_INDEX)->GetStorageShape();
     const auto &actSeqlensShape = context_->GetInputShape(ACTUAL_SEQ_LENGTHS_INDEX)->GetStorageShape();
@@ -274,41 +276,41 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
 
     // T>0
     OP_CHECK_IF(tilingData_.t <=0,
-        OP_LOGE(inputParams_.opName, "T should greater than 0, but T is %ld.", tilingData_.t),
+        OP_LOGE(inputParams_.opName, "T should greater than 0, but T is %u.", tilingData_.t),
             return ge::GRAPH_FAILED);
     // // B>=0
     OP_CHECK_IF((tilingData_.b <= 0),
-        OP_LOGE(inputParams_.opName, "B should greater than 0, but B is %ld.", tilingData_.b),
+        OP_LOGE(inputParams_.opName, "B should greater than 0, but B is %u.", tilingData_.b),
             return ge::GRAPH_FAILED);
     // nk>0 nk<=256
     OP_CHECK_IF(tilingData_.nk <= 0 || tilingData_.nk > 256,
         OP_LOGE(inputParams_.opName,
-            "Nk should be greater than 0 and less than or equal to 256, but Nk is %ld.", tilingData_.nk),
+            "Nk should be greater than 0 and less than or equal to 256, but Nk is %u.", tilingData_.nk),
             return ge::GRAPH_FAILED);
     // nv>0 nv<=256
     OP_CHECK_IF(tilingData_.nv <= 0 || tilingData_.nv > 256,
         OP_LOGE(inputParams_.opName,
-            "Nv should be greater than 0 and less than or equal to 256, but Nv is %ld.", tilingData_.nv),
+            "Nv should be greater than 0 and less than or equal to 256, but Nv is %u.", tilingData_.nv),
             return ge::GRAPH_FAILED);
     // dk>0 dk<=512
     OP_CHECK_IF(tilingData_.dk <= 0 || tilingData_.dk > 512,
         OP_LOGE(inputParams_.opName,
-            "Dk should be greater than 0 and less than or equal to 512, but Dk is %ld.", tilingData_.dk),
+            "Dk should be greater than 0 and less than or equal to 512, but Dk is %u.", tilingData_.dk),
             return ge::GRAPH_FAILED);
     // dv>0 dv<=512
     OP_CHECK_IF(tilingData_.dv <= 0 || tilingData_.dv > 512,
         OP_LOGE(inputParams_.opName,
-            "Dv should be greater than 0 and less than or equal to 512, but Dv is %ld.", tilingData_.dv),
+            "Dv should be greater than 0 and less than or equal to 512, but Dv is %u.", tilingData_.dv),
             return ge::GRAPH_FAILED);
     // nv>=nk
     OP_CHECK_IF(tilingData_.nv % tilingData_.nk != 0,
-        OP_LOGE(inputParams_.opName, "Nv should be an integer multiple of Nk, but Nv is %ld, Nk is %ld.",
+        OP_LOGE(inputParams_.opName, "Nv should be an integer multiple of Nk, but Nv is %u, Nk is %u.",
                 tilingData_.nv, tilingData_.nk),
             return ge::GRAPH_FAILED);
     // blockNum >= T
     OP_CHECK_IF(tilingData_.sBlockNum < tilingData_.t,
         OP_LOGE(inputParams_.opName,
-            "BlockNum should be greater than or equal to T, Current values: BlockNum=%ld, T=%ld.",
+            "BlockNum should be greater than or equal to T, Current values: BlockNum=%u, T=%u.",
             tilingData_.sBlockNum, tilingData_.t),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -555,6 +557,19 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::GetOptionalInput()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus RecurrentGatedDeltaRuleTiling::GetStrides()
+{
+    auto strideState = context_->GetInputStride(STATE_INDEX);
+    if (strideState != nullptr && strideState->GetDimNum() == STATE_DIM_NUM) {
+        tilingData_.stateStride0 = strideState->GetStride(0);
+        tilingData_.stateStride1 = strideState->GetStride(1);
+    } else {
+        tilingData_.stateStride1 = static_cast<uint64_t>(tilingData_.dk) * static_cast<uint64_t>(tilingData_.dv);
+        tilingData_.stateStride0 = static_cast<uint64_t>(tilingData_.nv) * tilingData_.stateStride1;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 void RecurrentGatedDeltaRuleTiling::PrintTilingData()
 {
     OP_LOGD(context_->GetNodeName(), "vectorCoreNum: [%u]", tilingData_.vectorCoreNum);
@@ -572,6 +587,8 @@ void RecurrentGatedDeltaRuleTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "hasGama: [%u]", tilingData_.hasGama);
     OP_LOGD(context_->GetNodeName(), "hasGamaK: [%u]", tilingData_.hasGamaK);
     OP_LOGD(context_->GetNodeName(), "hasAcceptedTokens: [%u]", tilingData_.hasAcceptedTokens);
+    OP_LOGD(context_->GetNodeName(), "stateStride0: [%lu]", tilingData_.stateStride0);
+    OP_LOGD(context_->GetNodeName(), "stateStride1: [%lu]", tilingData_.stateStride1);
 }
 
 ge::graphStatus RecurrentGatedDeltaRuleTiling::CalUbSize()
