@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-/* *
+/**
  * 算子功能：实现AlltoAllv + GroupedMatMul 融合计算
  * @brief 计算AlltoAllv + GroupedMatMul 融合计算所需的workspace大小。
  *
@@ -110,4 +110,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
 }
 #endif
 
-#endif // OP_API_INC_QUANT_ALL_TO_ALLV_GROUPED_MATMUL_
+#endif // OP_API_INC_QUANT_ALL_TO_ALLV_GROUPED_MATMUL_V2_

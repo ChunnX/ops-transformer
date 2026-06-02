@@ -570,10 +570,10 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext *c
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;

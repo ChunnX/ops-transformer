@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 #include <algorithm>
 #include <cstdlib>
 
@@ -412,8 +412,8 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
-        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional, permuteOutOptional,
-        workspaceSize, executor);
+        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, str_commMode, gmmY, mmYOptional,
+        permuteOutOptional, workspaceSize, executor);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(Mc2Comm::COMM_MODE_CCU));
         NnopbaseSetUserHandle(*executor, args);

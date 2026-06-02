@@ -127,11 +127,13 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, str_commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize,
-        executor);
+        recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, str_commMode, gmmY, mmYOptional,
+        permuteOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllvGroupedMatmul, aclnnInnerAlltoAllvGroupedMatMulGetWorkspaceSize ret %d.", ret);
     if (*executor != nullptr) {
-        uint8_t commModeType = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? Mc2Comm::COMM_MODE_CCU : Mc2Comm::COMM_MODE_AICPU;
+        uint8_t commModeType = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ?
+            Mc2Comm::COMM_MODE_CCU :
+            Mc2Comm::COMM_MODE_AICPU;
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeType));
         NnopbaseSetUserHandle(*executor, args);
     }

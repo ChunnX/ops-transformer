@@ -252,16 +252,17 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const
+ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context,
+    uint8_t &commMode) const
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
     const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commModeStr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
     int64_t rankDim = *epWorldSizePtr;
     if (std::strcmp(commModeStr, "ai_cpu") == 0) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
@@ -273,7 +274,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(context->GetNodeName(), "commMode is "", and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
+        OP_LOGI(context->GetNodeName(),
+            "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'ai_cpu', 'ccu'.");
         return ge::GRAPH_FAILED;

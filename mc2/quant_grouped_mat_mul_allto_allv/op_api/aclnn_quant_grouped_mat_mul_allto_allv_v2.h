@@ -21,7 +21,7 @@ extern "C" {
 
 /**
  * 算子功能：实现quant grouped matmul + alltoallv 融合计算
- * @brief aclnnGroupedMatMulAlltoAllv的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnGroupedMatMulAlltoAllvV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] gmmX: 计算输入，Tensor。该输入进行AllToAll通信，仅支持二维,
  * 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵    // GroupedMatMul计算的左矩阵输入
@@ -99,16 +99,16 @@ ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnQuantGroupedMatMulAlltoAllv的第二段接口，用于执行计算。
+ * @brief aclnnQuantGroupedMatMulAlltoAllvV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
  * @param [in] workspace_size: 在npu
- * device侧申请的workspace大小，由第一段接口aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize获取。
+ * device侧申请的workspace大小，由第一段接口aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                       aclrtStream stream);
+                                                         aclrtStream stream);
 
 #ifdef __cplusplus
 }
