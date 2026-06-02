@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file rotate_interleaved_split_s.h
+ * \file inplace_rotate_interleaved_split_s.h
  * \brief
  */
 #ifndef ROTATE_INTERLEAVED_SPLIT_S_H
 #define ROTATE_INTERLEAVED_SPLIT_S_H
-#include "rotate_interleaved_common.h"
+#include "inplace_rotate_interleaved_common.h"
 
 namespace RotateInterleavedN {
 using namespace AscendC;

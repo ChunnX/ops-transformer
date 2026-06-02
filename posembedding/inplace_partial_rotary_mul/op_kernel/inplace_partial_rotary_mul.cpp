@@ -15,12 +15,12 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "inplace_partial_rotary_mul.h"
-#include "rotate_interleaved_split_s.h"
-#include "rotate_interleaved_split_bs.h"
-#include "rotate_interleaved_split_bsn.h"
-#include "rotate_interleaved_split_s_pad.h"
-#include "rotate_interleaved_split_bs_pad.h"
-#include "rotate_interleaved_split_bsn_pad.h"
+#include "inplace_rotate_interleaved_split_s.h"
+#include "inplace_rotate_interleaved_split_bs.h"
+#include "inplace_rotate_interleaved_split_bsn.h"
+#include "inplace_rotate_interleaved_split_s_pad.h"
+#include "inplace_rotate_interleaved_split_bs_pad.h"
+#include "inplace_rotate_interleaved_split_bsn_pad.h"
 
 #define TILING_KEY1 1
 #define TILING_KEY2 2

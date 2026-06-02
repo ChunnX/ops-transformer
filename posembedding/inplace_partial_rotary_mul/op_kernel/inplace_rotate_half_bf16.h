@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file rotate_half_bf16.h
+ * \file inplace_rotate_half_bf16.h
  * \brief
  */
 #ifndef ROTATE_HALF_BF16_H
 #define ROTATE_HALF_BF16_H
 
-#include "rotate_half_base.h"
+#include "inplace_rotate_half_base.h"
 
 namespace RotateHalfN {
 using namespace AscendC;
