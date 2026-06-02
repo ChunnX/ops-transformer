@@ -239,5 +239,4 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-// REGISTER_OPS_TILING_TEMPLATE(InplacePartialRotaryMul, RopeRegBaseTilingClassAAndB, ROPE_A_AND_B_TILING_PRIORITY);
 }  // namespace optiling

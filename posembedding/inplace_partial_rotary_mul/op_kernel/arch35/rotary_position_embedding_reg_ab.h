@@ -15,9 +15,6 @@
 #ifndef ROTARY_POSITION_EMBEDDING_REG_AB_H
 #define ROTARY_POSITION_EMBEDDING_REG_AB_H
 
-// #include "op_kernel/math_util.h"
-// #include "op_kernel/platform_util.h"
-// #include "op_kernel/load_store_utils.h"
 #include "apply_rotary_pos_emb_common.h"
 
 namespace InplacePartialRotaryMul {

@@ -14,9 +14,7 @@
  */
 #include "inplace_partial_rotary_mul_tiling.h"
 #include "register/op_def_registry.h"
-// #include "log/log.h"
 #include "tiling/tiling_api.h"
-// #include "tiling_base/tiling_templates_registry.h"
 #include <vector>
 namespace optiling {
 constexpr uint32_t MODE_ATTR_IDX = 0;
