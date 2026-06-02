@@ -32,9 +32,11 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
     mmParam.singleK = selectedBlockSize * blockOffset;
     mmParam.isRightTranspose = true;
     mmParam.dstStride = dimDTotal;
+    int64_t dsL1Offset = 0;
+    int64_t dsL1CachedSize = 0;
 
     LocalTensor<T1> current_l1_ds_tensor, l1_key_tensor; 
-    // l1_ds_tensor已经在mm4搬完，mm3不需要再搬
+    // l1_ds_tensor已经在mm4搬完，mm3不需要再搬（当dSL1TotalSize可全载时）
     // 切N
     for (int32_t dIdx = 0; dIdx < dLoopTimes; dIdx++) {
         LocalTensor<float> l0cTensor = cL0TensorPingPong[ping_pong_flag_l0c_ & 1];
@@ -43,6 +45,7 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
             mmParam.singleN = tailLoopDSize;
         }
         int64_t currentOutGmOffset = outGmOffset + dIdx * perLoopDSize;
+        dsL1CachedSize = 0;
         // selectedBlockSize较小时，nIdx需要+2或者更多
         for (int32_t nIdx = blkCntOffset; nIdx < blkCntOffset + selectedCntOffset; nIdx+=blockOffset) {
             int32_t l1Offset = (nIdx - blkCntOffset) * selectedBlockSize * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
@@ -55,7 +58,18 @@ CubeOp<T1>::cube3Process(const int64_t keyGmOffset,
             }
             mmParam.singleK = min(selectedBlockSize * blockOffset, totalSel - (nIdx - blkCntOffset) * selectedBlockSize);
 
-            current_l1_ds_tensor = l1_ds_tensor[l1Offset];
+            if (dSL1TotalSize <= 128 * 512) {
+                current_l1_ds_tensor = l1_ds_tensor[l1Offset];
+            } else {
+                if (l1Offset >= dsL1CachedSize) {
+                    SetFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
+                    WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DS_EVENT);
+                    CopyGmToL1(l1_ds_tensor, dsWorkspaceGm[runInfo.mm345GmOffset + (nIdx - blkCntOffset)], mmParam.singleM, 512, singleN);
+                    dsL1CachedSize += 512 * AlignTo<int64_t>(mmParam.singleM, SIZE_16);
+                    dsL1Offset = l1Offset;
+                }
+                current_l1_ds_tensor = l1_ds_tensor[l1Offset - dsL1Offset];
+            }
             l1_key_tensor = l1_common_tensors[ping_pong_flag_l1_common_];
             int64_t currentKeyOffset = keyGmOffset + (nIdx - blkCntOffset) * selectedBlockSize * dimDTotal + dIdx * perLoopDSize;
             

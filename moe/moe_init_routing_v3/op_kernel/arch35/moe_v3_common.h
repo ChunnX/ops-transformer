@@ -53,6 +53,9 @@ constexpr int64_t SCATTER = 1;
 
 constexpr float DYNAMIC_QUANT_INT4_SYM_SCALE = 7.0f;
 constexpr uint32_t MAX_VALUE_NUM = 8;
+constexpr int64_t DROPLESS_MODE = 0LL;
+constexpr int64_t DROP_PAD_MODE = 1LL;
+constexpr int64_t EXPERT_ID_VALUE_NUM = 2LL;
 
 constexpr uint16_t FLOAT_REG_TENSOR_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
 constexpr float HIFLOAT8_MAX_VALUE = 32768.0f;

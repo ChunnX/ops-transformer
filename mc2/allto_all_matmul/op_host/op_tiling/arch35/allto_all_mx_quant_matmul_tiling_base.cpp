@@ -394,11 +394,12 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetMxDataTypeInfo(const gert::T
  *
  * @return ge::graphStatus
  */
-ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters() {
-    GE_ASSERT_GRAPH_SUCCESS(
+ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
+{
+    MC2_CHECK_LOG_RET(opName_, 
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(SetMxDataTypeInfo(context_, opName_, contextInfo_));
-    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
+    MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
+    MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -422,15 +423,15 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute() {
  */
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling() {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
-    GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
+    MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
-    GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
+    MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
-    GE_ASSERT_GRAPH_SUCCESS(DoMxQuantMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     // hccl的tiling参数赋值处理
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -443,13 +444,13 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling() {
     // 在切m时已经考虑除了rankDim
     mmMvalueLen_ = inferredInfo_.tileM;
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (inferredInfo_.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
     mmMvalueLen_ = inferredInfo_.tailM;
     AlltoAllMxQuantMatmulHelper mmTail(*this, localTilingData_.mc2QuantMmTailTilingData, mmMvalueLen_);
-    GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -562,7 +563,7 @@ ge::graphStatus AlltoAllMxQuantMatmulHelper::GetShapeAttrsInfo() {
     inputParams_.groupSizeM = MX_SCALE_BLOCK_M;
     inputParams_.groupSizeN = MX_SCALE_BLOCK_N;
     inputParams_.groupSizeK = MX_SCALE_BLOCK_K;
-    GE_ASSERT_TRUE(AnalyzeInputs());
+    MC2_CHECK_TRUE_RET(tilingProcesser_.opName_, AnalyzeInputs());
     PrintTilingInputParam(inputParams_);
     return ge::GRAPH_SUCCESS;
 }
@@ -578,8 +579,9 @@ void AlltoAllMxQuantMatmulHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo 
             quantMatmulInfo.outDtype, static_cast<int32_t>(quantMatmulInfo.scaleDtype));
 }
 
-ge::graphStatus AlltoAllMxQuantMatmulHelper::DoLibApiTiling() {
-    GE_ASSERT_GRAPH_SUCCESS(Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
+ge::graphStatus AlltoAllMxQuantMatmulHelper::DoLibApiTiling()
+{
+    MC2_CHECK_LOG_RET(tilingProcesser_.opName_, Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
 }
 
