@@ -595,3 +595,57 @@ def sparse_lightning_indexer_grad_kl_loss(
         return d_query_index, d_key_index, d_weights, loss
 
     raise ValueError(f"Unsupported layout_query={layout_query} with sparse_mode={sparse_mode}")
+
+
+def sparse_lightning_indexer_grad_kl_loss_tnd(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    query_index: torch.Tensor,
+    key_index: torch.Tensor,
+    weights: torch.Tensor,
+    sparse_indices: torch.Tensor,
+    softmax_max: torch.Tensor,
+    softmax_sum: torch.Tensor,
+    scale_value: float,
+    *,
+    actual_seq_lengths_query: Optional[torch.Tensor] = None,
+    actual_seq_lengths_key: Optional[torch.Tensor] = None,
+    sparse_mode: int = 3,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    TND layout entry: reshape TND -> BSND (B=1, S=T), call BSND kernel, reshape back.
+    TND shapes: query(T1,N1,D), key(T2,N2,D), queryIndex(T1,Nidx1,Didx), keyIndex(T2,Nidx2,Didx)
+    BSND shapes: query(1,T1,N1,D), key(1,T2,N2,D), ...
+    """
+    # TND -> BSND: insert B=1 dim at position 0
+    query_b = query.unsqueeze(0)
+    key_b = key.unsqueeze(0)
+    query_index_b = query_index.unsqueeze(0)
+    key_index_b = key_index.unsqueeze(0)
+    weights_b = weights.unsqueeze(0)
+    sparse_indices_b = sparse_indices.unsqueeze(0)
+    # softmaxMax/Sum: TND (N2,T1,G) -> BSND (B,N2,T1,G) = (1,N2,T1,G)
+    softmax_max_b = softmax_max.unsqueeze(0)
+    softmax_sum_b = softmax_sum.unsqueeze(0)
+
+    if actual_seq_lengths_query is not None:
+        actual_q_len = actual_seq_lengths_query.to(torch.int32)
+    else:
+        actual_q_len = torch.tensor([query.shape[0]], dtype=torch.int32)
+
+    if actual_seq_lengths_key is not None:
+        actual_k_len = actual_seq_lengths_key.to(torch.int32)
+    else:
+        actual_k_len = torch.tensor([key.shape[0]], dtype=torch.int32)
+
+    d_qi, d_ki, dw, loss = sparse_lightning_indexer_grad_kl_loss(
+        query_b, key_b, query_index_b, key_index_b, weights_b, sparse_indices_b,
+        softmax_max_b, softmax_sum_b, scale_value,
+        actual_seq_lengths_query=actual_q_len,
+        actual_seq_lengths_key=actual_k_len,
+        layout_query="BSND",
+        sparse_mode=sparse_mode,
+    )
+
+    # BSND -> TND: remove B=1 dim
+    return d_qi.squeeze(0), d_ki.squeeze(0), dw.squeeze(0), loss
