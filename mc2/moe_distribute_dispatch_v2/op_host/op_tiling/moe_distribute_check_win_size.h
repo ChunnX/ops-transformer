@@ -99,9 +99,8 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
         OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu,"
                 "NEEDED_HCCL_BUFFSIZE_HIERARCHY((moeExpertNum * maxBs * (h * MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) *"
-                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.",
-                maxBs, h, actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE , hcclBufferSizeEp / MB_SIZE),
-                return ge::GRAPH_FAILED);
+                "sizeof(uint32_t) + 64) + 404 * 1024 * 1024)) = %luMB, HCCL_BUFFSIZE=%luMB.", maxBs, h, 
+                actualSize / MB_SIZE + 1UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
     } else {
         const char* socName = aclrtGetSocName();
         if (std::strstr(socName, "Ascend950")) {
@@ -112,7 +111,7 @@ inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
                 " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) + epWorldSize * 8192 = %luMB,"
                 " HCCL_BUFFSIZE=%luMB, actual CCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
                 tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
-                hcclBufferSizeEp / MB_SIZE / 2UL, hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
+                hcclBufferSizeEp / (MB_SIZE * 2), hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK((actualSize > maxWindowSizeEp),
             OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
