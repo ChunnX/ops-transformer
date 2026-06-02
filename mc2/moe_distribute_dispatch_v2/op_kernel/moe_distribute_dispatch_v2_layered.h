@@ -682,7 +682,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     uint32_t maxCleanSize =
         tokenEndFlagCleanSize > writeEndFlagCleanSize ? tokenEndFlagCleanSize : writeEndFlagCleanSize;
     LocalTensor<int32_t> cleanTempLt_ = tBuf_.GetWithOffset<int32_t>(maxCleanSize / sizeof(int32_t), TBUF_TEMP_OFFSET);
-    Duplicate<int32_t>(cleanTempLt_, 0, maxCleanSize / sizeof(int32_t));
+    Duplicate<int32_t>(cleanTempLt_, 66, maxCleanSize / sizeof(int32_t));
     PipeBarrier<PIPE_ALL>();
     if (aivId_ == serverNum_ -1) {
         GlobalTensor<int32_t> readStatusTensorU32;
