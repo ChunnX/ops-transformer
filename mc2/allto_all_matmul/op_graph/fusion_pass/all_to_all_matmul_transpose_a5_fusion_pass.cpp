@@ -92,9 +92,9 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     // 有输入的data节点传入默认, 无输入的可选节点传入nullptr, 若后续场景扩充, 需仿照bias 扩充子pattern
     auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
-    auto graph = graphBuilder.BuildAndReset({mc2});
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    pattern->CaptureTensor({*mc2.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
 }
 
@@ -111,9 +111,9 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(bool hasBias)
     int64_t worldSize = 0;
     auto mc2 = ge::es::AlltoAllMatmul(x1, transposeD, hasBias ? bias : nullptr, x1Scale, x2Scale, nullptr, nullptr,
                                        nullptr, group.c_str(), worldSize);
-    auto graph = graphBuilder.BuildAndReset({mc2});
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    pattern->CaptureTensor({*mc2.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transposeD.GetProducer(), 0});
     return pattern;
 }
 
@@ -389,7 +389,7 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
                                x2QuantMode, commQuantMode, x1QuantDType, commQuantDType, transposeX1, transposeX2,
                                groupSize, alltoallOutFlag);
 
-    return replaceGraphBuilder.BuildAndReset({mc2});
+    return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
 
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
