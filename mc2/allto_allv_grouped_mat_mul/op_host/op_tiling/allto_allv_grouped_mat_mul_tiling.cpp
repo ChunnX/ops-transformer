@@ -844,13 +844,8 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
             mmXDataType_, mmWeightDataType_, mmXDataType_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype)
+    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype, uint32_t expertNum)
 {
     GetPlatformInfo();
     inputParams_.opName = context_->GetNodeName();
@@ -864,13 +859,13 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
     inputParams_.transB = transB;
     inputParams_.hasBias = false;
     inputParams_.isSingleX = false;
-    inputParams_.isSingleW = false;
+    inputParams_.isSingleW = true;
     inputParams_.isSingleY = false;
 
     inputParams_.mSize = M;
     inputParams_.kSize = K;
     inputParams_.nSize = N;
-    inputParams_.groupNum = SINGLE_GROUP_NUM;
+    inputParams_.groupNum = expertNum;
     inputParams_.aQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.bQuantMode = Mc2GroupedMatmulTiling::QuantMode::DEFAULT;
     inputParams_.groupType = Mc2GroupedMatmul::SPLIT_M;
@@ -895,7 +890,9 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "N",
             std::to_string(N).c_str(), "should be less than 2147483647"),
         return ge::GRAPH_FAILED);
-    mList_[0] = static_cast<int32_t>(M);
+    for (uint32_t i = 0; i < expertNum; i++) {
+        mList_[i] = static_cast<int32_t>(M);
+    }
     kList_[0] = static_cast<int32_t>(K);
     nList_[0] = static_cast<int32_t>(N);
     SetKernelType();
