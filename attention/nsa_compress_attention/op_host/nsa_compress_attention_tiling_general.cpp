@@ -949,11 +949,26 @@ protected:
     ge::graphStatus GetWorkspaceSize() override
     {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
+        // 修复溢出风险：使用uint64_t进行中间计算，避免size_t溢出
         int64_t mm1BaseCount = NSA_BASE_S1G_SIZE * alignedS2;
-        size_t pWorkspaceSize = static_cast<size_t>(mm1BaseCount * sizeof(float) * NSA_DOUBLE_BUFFER * aicNum); //alignedS2是S2最大值
-        size_t stage1ResWorkspaceSize = static_cast<size_t>(mm1BaseCount * sizeof(inputDtype) * aicNum);
-        size_t impScoreWorkspaceSize = static_cast<size_t>((NSA_BASE_S1G_SIZE / gSize) * CeilDiv(static_cast<uint64_t>(alignedS2), tilingData.importanceScoreParams.get_isM()) * sizeof(float) * NSA_DOUBLE_BUFFER * aicNum);
-        workspaces[0] = pWorkspaceSize + impScoreWorkspaceSize + stage1ResWorkspaceSize + WORK_SPACE_RESERVE_SIZE;
+
+        // 使用uint64_t进行中间计算，确保乘法不溢出
+        uint64_t pWorkspaceSize64 = static_cast<uint64_t>(mm1BaseCount) * sizeof(float) * NSA_DOUBLE_BUFFER * static_cast<uint64_t>(aicNum);
+        uint64_t stage1ResWorkspaceSize64 = static_cast<uint64_t>(mm1BaseCount) * sizeof(inputDtype) * static_cast<uint64_t>(aicNum);
+        uint64_t baseS1G = static_cast<uint64_t>(NSA_BASE_S1G_SIZE) / static_cast<uint64_t>(gSize);
+        uint64_t alignedS2Div = CeilDiv(static_cast<uint64_t>(alignedS2), tilingData.importanceScoreParams.get_isM());
+        uint64_t impScoreWorkspaceSize64 = baseS1G * alignedS2Div * sizeof(float) * NSA_DOUBLE_BUFFER * static_cast<uint64_t>(aicNum);
+
+        // 检查总workspace大小是否溢出
+        const uint64_t MAX_WORKSPACE_SIZE = 64ULL * 1024 * 1024 * 1024; // 64GB上限
+        uint64_t totalWorkspace64 = pWorkspaceSize64 + impScoreWorkspaceSize64 + stage1ResWorkspaceSize64 + WORK_SPACE_RESERVE_SIZE;
+
+        OP_CHECK_IF(totalWorkspace64 > MAX_WORKSPACE_SIZE,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "Workspace size %lu exceeds maximum limit %lu.",
+                totalWorkspace64, MAX_WORKSPACE_SIZE),
+            return ge::GRAPH_FAILED);
+
+        workspaces[0] = static_cast<size_t>(totalWorkspace64);
         return ge::GRAPH_SUCCESS;
     }
 
