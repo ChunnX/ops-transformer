@@ -109,7 +109,7 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
         return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.qkvQuantMode == 1) {
-        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
+        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() != ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
             OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got %s.",
             QSMLADataTypeToSerialString(opParamInfo_.oriKv.desc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
