@@ -215,7 +215,7 @@ TEST_P(AlltoAllvGroupedMatMulArch35TilingTest, ShapeSize)
     auto mmYShape = CreateTensorShape({{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
                                          ge::DT_FLOAT16, ge::FORMAT_ND);
 
-    if (!(has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.isNeedMM == false)) {
+    if (!has_any_target_key(testParam.tilingParamsStrPair, targets) && tilingParams.isNeedMM == false) {
         mmXShape->shape_ = {};
         mmWeightShape->shape_ = {};
         mmYShape->shape_ = {};
