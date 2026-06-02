@@ -334,19 +334,6 @@ int64_t FiaTilingFullQuantMxArch35::CalcRequiredL2Size()
 bool FiaTilingFullQuantMxArch35::CheckS1OutSplit()
 {
     return false;
-    if (fiaInfo_->isOutQuantEnable) {
-        return false;
-    }
-
-    if (fiaInfo_->sysPrefixFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag ||
-        fiaInfo_->learnableSinkFlag || fiaInfo_->enableAlibiPse) {
-        return false;
-    }
-
-    if (fiaInfo_->sparseMode == SPARSE_MODE_BAND ||
-        (fiaInfo_->sparseMode == SPARSE_MODE_NO_MASK && fiaInfo_->attenMaskFlag)) {
-        return false;
-    }
 
     if (fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) {
         return false;
