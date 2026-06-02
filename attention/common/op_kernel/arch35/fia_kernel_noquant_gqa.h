@@ -311,7 +311,7 @@ public:
             constInfo.coreFirstTmpOutWsPos = 0;
             constInfo.totalSize = fiaS1OuterSplitCoreParams.totalSize;
         } else {
-            // 任务起始位置
+            constInfo.enableS1OutSplit = false;
             constInfo.bN2Start = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_START_INDEX));
             constInfo.gS1OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_M_START_INDEX));
             constInfo.s2OStart = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_S2_START_INDEX));
