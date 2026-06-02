@@ -199,6 +199,10 @@ template <typename LIGT>
 __aicore__ inline void LIGMatmul<LIGT>::Cube1(GlobalTensor<dataType> leftMatrixGmTensor, GlobalTensor<dataType> rightMatrixGmTensor, 
                                                 GlobalTensor<float> outputMatrixGmTensor, ConstInfo constInfo, RunInfo runInfo)
 {
+    // Reject degenerate inputs to prevent invalid hardware instructions (DataCopy/Mmad with zero dimensions).
+    if (constInfo.groupNum == 0 || constInfo.headDim == 0 || runInfo.realTopk == 0) {
+        return;
+    }
     uint32_t singleM = constInfo.groupNum;
     uint32_t singleK = constInfo.headDim;
     uint32_t singleN = runInfo.realTopk;
@@ -328,6 +332,10 @@ template <typename LIGT>
 __aicore__ inline void LIGMatmul<LIGT>::Cube2(GlobalTensor<dataType> leftMatrixGmTensor, GlobalTensor<dataType> rightMatrixGmTensor, 
                                               GlobalTensor<dataType> outputMatrixGmTensor, ConstInfo constInfo, RunInfo runInfo)
 {
+    // Reject degenerate inputs to prevent invalid hardware instructions (DataCopy/Mmad with zero dimensions).
+    if (constInfo.groupNum == 0 || runInfo.realTopk == 0) {
+        return;
+    }
     uint32_t singleM = constInfo.groupNum;
     uint32_t singleK = 1;
     uint32_t singleN = runInfo.realTopk;
@@ -470,6 +478,10 @@ template <typename LIGT>
 __aicore__ inline void LIGMatmul<LIGT>::Cube3(GlobalTensor<dataType> leftMatrixGmTensor, GlobalTensor<dataType> rightMatrixGmTensor, 
                                               GlobalTensor<dataType> outputMatrixGmTensor, ConstInfo constInfo, RunInfo runInfo)
 {
+    // Reject degenerate inputs to prevent invalid hardware instructions (DataCopy/Mmad with zero dimensions).
+    if (constInfo.groupNum == 0 || constInfo.headDim == 0 || runInfo.realTopk == 0) {
+        return;
+    }
     uint32_t singleM = constInfo.groupNum;
     uint32_t singleK = runInfo.realTopk;
     uint32_t singleN = constInfo.headDim;
@@ -604,6 +616,10 @@ template <typename LIGT>
 __aicore__ inline void LIGMatmul<LIGT>::Cube4(GlobalTensor<dataType> leftMatrixGmTensor, GlobalTensor<dataType> rightMatrixGmTensor, 
                                               GlobalTensor<float> outputMatrixGmTensor, ConstInfo constInfo, RunInfo runInfo)
 {
+    // Reject degenerate inputs to prevent invalid hardware instructions (DataCopy/Mmad with zero dimensions).
+    if (constInfo.groupNum == 0 || constInfo.headDim == 0 || runInfo.realTopk == 0) {
+        return;
+    }
     uint32_t singleM = runInfo.realTopk;
     uint32_t singleK = constInfo.groupNum;
     uint32_t singleN = constInfo.headDim;

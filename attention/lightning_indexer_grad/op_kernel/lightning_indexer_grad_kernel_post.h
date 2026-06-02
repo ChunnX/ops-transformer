@@ -27,7 +27,7 @@ using namespace AscendC;
 template <typename LIGT>
 class LIGVectorPost {
 public:
-    __aicore__ inline LIGVectorPost(){};
+    __aicore__ inline LIGVectorPost() : tilingData(nullptr), pipe(nullptr) {};
     __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict ordTilingData);
     __aicore__ inline void Process();
 
@@ -58,6 +58,13 @@ public:
 template <typename LIGT> 
 __aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict ordTilingData)
 {
+    tilingData = nullptr;
+    pipe = nullptr;
+
+    if (ordTilingData == nullptr || pipe_in == nullptr || dk == nullptr || workspace == nullptr) {
+        return;
+    }
+
     cBlockIdx = GetBlockIdx();
 
     tilingData = ordTilingData;
@@ -94,6 +101,9 @@ __aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t 
 template <typename LIGT>
 __aicore__ inline void LIGVectorPost<LIGT>::Process()
 {
+    if (tilingData == nullptr || pipe == nullptr) {
+        return;
+    }
     // init k
     if (g_coreType == AIV) {
         uint64_t kvBegin = cBlockIdx * kPostBlockFactor * kPostBaseNum;
