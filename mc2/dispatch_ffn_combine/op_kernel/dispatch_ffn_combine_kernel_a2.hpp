@@ -315,13 +315,6 @@ private:
         return shmem.Rank();
     }
 
-    CATLASS_DEVICE
-    int32_t RuntimeRankSize(Params const &params) const
-    {
-        (void)params;
-        return shmem.RankSize();
-    }
-
     CATLASS_DEVICE void initBuffer(Params const &params)
     {
         auto tmpContext = reinterpret_cast<__gm__ CommContext *>(params.contextGM);
@@ -354,7 +347,8 @@ private:
         tokenPerExpert.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert));
 
-        tokenPerExpertLayout = Layout3D(AlignUp(RuntimeRankSize(params) * params.expertPerRank, ALIGN_128), params.expertPerRank);
+        paddedExpertNumAligned = AlignUp(params.EP * params.expertPerRank + 1, ALIGN_128);
+        tokenPerExpertLayout = Layout3D(paddedExpertNumAligned, params.expertPerRank);
         preSumBeforeRank.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceInfo.ptrSumBeforeRank));
         gmXActiveMask.SetGlobalBuffer(reinterpret_cast<__gm__ bool*>(params.ptrXActiveMask));
     }
@@ -596,7 +590,7 @@ private:
 
         AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert[rankId * expertPerRank],
                              {U16(EP), U16(expertPerRank * sizeof(int32_t)),
-                              U16((AlignUp(EP * expertPerRank, 128) - expertPerRank) * sizeof(int32_t)), 0},
+                              U16((paddedExpertNumAligned - expertPerRank) * sizeof(int32_t)), 0},
                              {});
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -910,7 +904,7 @@ private:
     void CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(Params const &params,
                                                                         int64_t localTokenPerExpertOffset)
     {
-        uint32_t numPerCore = AlignUp(params.EP * params.expertPerRank, 128);
+        uint32_t numPerCore = paddedExpertNumAligned;
         AscendC::LocalTensor<int32_t> tmpBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
 
@@ -947,7 +941,7 @@ private:
         for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             if (dstEpIdx != RuntimeRank(params)) {
                 int32_t intPer512 = CACHE_LINE / sizeof(int);
-                for (int32_t checkIdx = 0; checkIdx < AlignUp(params.EP * params.expertPerRank, 128);
+                for (int32_t checkIdx = 0; checkIdx < paddedExpertNumAligned;
                      checkIdx += intPer512) {
                     __gm__ int32_t *sync_check =
                         reinterpret_cast<__gm__ int32_t *>(shmem() + peermemInfo.offsetPeerTokenPerExpert) +
@@ -1601,7 +1595,8 @@ private:
             static_cast<int32_t>(n2),
             static_cast<int32_t>(L1TileShape::N),
             shmem,
-            static_cast<int32_t>(peermemInfo.offsetD)};
+            static_cast<int32_t>(peermemInfo.offsetD),
+            tokenPerExpertLayout};
 
         uint32_t n = params.problemShape.n();
         BlockEpilogue2 blockEpilogue2(resource, epilogueParams);
@@ -1623,10 +1618,10 @@ private:
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                     gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
-                                    params.epilogueCoreNum, params.swigluLimit);
+                                    resource, params.epilogueCoreNum, params.swigluLimit);
                 } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD],
-                                    params.epilogueCoreNum, params.swigluLimit);
+                                    resource, params.epilogueCoreNum, params.swigluLimit);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1646,10 +1641,10 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                         gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore],
-                                        coreNum, params.swigluLimit);
+                                        resource, coreNum, params.swigluLimit);
                     } else if constexpr (!std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD],
-                                        coreNum, params.swigluLimit);
+                                        resource, coreNum, params.swigluLimit);
                     }
                 }
                 AscendC::SyncAll<true>();
@@ -1666,7 +1661,7 @@ private:
 
         CombineV2(params, blockEpilogue2);
         AscendC::SyncAll<true>();
-        ResetTokenPerExpert(params.EP * AlignUp(params.EP * params.expertPerRank, 128));
+        ResetTokenPerExpert(params.EP * paddedExpertNumAligned);
         shmem.InitStatusTargetSum();
         if (get_subblockid() == 0) {
             AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
@@ -1828,8 +1823,6 @@ private:
             ptrcumsumMM = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
-
-            workspaceOffset += (params.EP * params.EP * params.expertPerRank) * sizeof(int32_t);
             ptrPerTokenScale = params.ptrWorkspace + workspaceOffset;
 
             workspaceOffset += params.maxOutputSize * sizeof(ElementPerTokenScale);
@@ -1931,6 +1924,7 @@ private:
     AscendC::GlobalTensor<int32_t> cumsumMM;
     AscendC::GlobalTensor<int32_t> preSumBeforeRank;
     Layout3D tokenPerExpertLayout;
+    int32_t paddedExpertNumAligned;
     HcclShmem<true> shmem;
 
     // A2 state.

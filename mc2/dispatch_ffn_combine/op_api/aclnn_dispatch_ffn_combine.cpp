@@ -19,11 +19,10 @@
 #include "opdev/platform.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
-#include "common/op_host/op_api/matmul_util.h"
+#include "common/utils/matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnnInner_dispatch_ffn_combine.h"
 
-using namespace Ops::Transformer;
 using namespace op;
 static constexpr int64_t INT4_NUMS_IN_INT32 = 8; // 一个int32包含8个int4
 

@@ -280,7 +280,8 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
         Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant<ubStages>,
         Epilogue::EpilogueAtlasA2PerTokenDequantSwigluQuant<ubStages>
     >;
-    using EpilogueDispatchPolicy2 = std::conditional_t<
+    using EpilogueDispatchPolicy2 = Epilogue::EpilogueAtlasA2PerTokenDequant<ubStages>;
+    using EpilogueDispatchPolicy3 = std::conditional_t<
         isW4A8,
         Epilogue::EpilogueAtlasA2W4A8PostPerTokenDequantV2<ubStages>,
         Epilogue::EpilogueAtlasA2PerTokenDequantV2<ubStages>
@@ -297,10 +298,12 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
 
     using TileCopy2 = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, D2Type>;
     using IS_A2 = Epilogue::Block::IS_A2_T<IS_A2_>;
-    using BlockEpilogue2 = std::conditional_t<
+    using BlockEpilogue2 = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType,
+        D2Type, TileCopy2>;
+    using BlockEpilogue3 = std::conditional_t<
         isW4A8,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
-        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy2, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>,
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy3, CType, PerTokenScaleType, D2Type, TileCopy2, IS_A2>
     >;
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
@@ -312,9 +315,9 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
     using MatmulKernel = std::conditional_t<
         IS_A2_,
         Gemm::Kernel::DispatchFFNCombineKernelA2<BlockMmad, BlockScheduler, ElementGroupList,
-                                                  BlockEpilogue1, BlockEpilogue2>,
+                                                  BlockEpilogue1, BlockEpilogue3>,
         Gemm::Kernel::DispatchFFNCombineKernel<BlockMmad, BlockScheduler, ElementGroupList,
-                                                BlockEpilogue1, BlockEpilogue2>
+                                                BlockEpilogue1, BlockEpilogue2, BlockEpilogue3>
     >;
 
     LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
@@ -337,10 +340,10 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = 0U;
     } else if constexpr (isInt8) {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum) / 2U;
-        epilogueGranularity = (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) : 0U;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueGranularity = (expertPerRank > 4) ? static_cast<uint32_t>(expertPerRank - 3) :
+                              (expertPerRank > 0) ? static_cast<uint32_t>(expertPerRank - 1) : 0U;
      } else {
-        // BF16 / FP16 path
         epilogueCoreNum = static_cast<uint32_t>(aivNum);
         epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
      }

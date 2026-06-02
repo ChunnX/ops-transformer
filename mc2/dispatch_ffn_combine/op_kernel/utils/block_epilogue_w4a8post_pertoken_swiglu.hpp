@@ -123,30 +123,24 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
 #endif
 
-        ubD = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
-        ubOffset += blockN * sizeof(ElementD);
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += blockN * sizeof(float) * 2;
-        ubCFp32ChunkN = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += ChunkTileLen * sizeof(float);
         ubCFp32ChunkNAbs = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += ChunkTileLen * sizeof(float);
-        ubCFp32ChunkNMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += HalfChunkTileLen * sizeof(float);
         ubQuantS32 = ubCFp32ChunkNAbs.template ReinterpretCast<int32_t>();
         ubQuantF16 = ubCFp32ChunkNAbs.template ReinterpretCast<half>();
+        ubCFp32ChunkNMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset + ChunkTileLen * sizeof(float));
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + blockN * sizeof(float));
+        ubOffset += blockN * sizeof(float) * 2;
 
+        ubCFp32ChunkN = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+        ubD = resource.ubBuf.template GetBufferByByte<ElementD>(ubOffset);
         xLowHalfTensor = resource.ubBuf.template GetBufferByByte<half>(ubOffset);
-        ubOffset += ChunkTileLen * sizeof(half);
-        xLowHalfTensor2 = resource.ubBuf.template GetBufferByByte<half>(ubOffset);
-        ubOffset += ChunkTileLen * sizeof(half);
+        xLowHalfTensor2 = resource.ubBuf.template GetBufferByByte<half>(ubOffset + ChunkTileLen * sizeof(half));
+        ubOffset += ChunkTileLen * sizeof(float);
+
         xLowI16Tensor = resource.ubBuf.template GetBufferByByte<int16_t>(ubOffset);
         ubOffset += 128 * sizeof(int16_t);
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        // ubOffset += blockN * sizeof(float);
-        ubOffset += 32;
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset);
     }
     CATLASS_DEVICE
     void Finalize()
@@ -178,9 +172,8 @@ public:
                     AscendC::GlobalTensor<int32_t> const &cumsumMM, uint32_t MOffset,
                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t expertPerRank,
                     uint32_t EP, AscendC::GlobalTensor<float> const &gmGMM1, int32_t rank, int32_t listLen,
-                    uint32_t epilogueCoreNum = 40,
-                    float swigluLimit = 0.0f,
-                    Callback &&callback = Callback{})
+                    Arch::Resource<ArchTag> const &resource,
+                    uint32_t epilogueCoreNum = 40, float swigluLimit = 0.0f, Callback &&callback = Callback{})
     {
         callback();
         uint32_t blockM = shapeC.row();
@@ -255,13 +248,10 @@ public:
                 DataCopyExtParams copyParams{1, static_cast<uint32_t>(blockN * sizeof(float)), 0, 0, 0};
                 DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
                 AscendC::GlobalTensor<float> weightAux;
-                if (listLen == 1) { // Large tensor
-                    weightAux.SetGlobalBuffer(gmWeightAux);
-                    DataCopyPad(ubweighAux, weightAux[curGroupIdx[ubListId] * blockN], copyParams, padParams);
-                } else {
-                    weightAux.SetGlobalBuffer(GetTensorAddr<float>(curGroupIdx[ubListId], reinterpret_cast<GM_ADDR>(gmWeightAux)));
-                    DataCopyPad(ubweighAux, weightAux, copyParams, padParams); // groupid = curGroupIdx[ubListId]
-                }
+                int32_t arrayGroupIdx = listLen == 1 ? 0 : curGroupIdx[ubListId];
+                weightAux.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(GetTensorAddr<float>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(gmWeightAux))));
+                int64_t gmOffsetwA = listLen == 1 ? curGroupIdx[ubListId] * blockN : 0;
+                DataCopyPad(ubweighAux, weightAux[gmOffsetwA], copyParams, padParams);
             } else {  // May need to update auxiliary matrix in subsequent iterations
                 uint32_t lastGroupIdx = curGroupIdx[ubListId];
                 for (; globalOffset >= curSum[ubListId] && curGroupIdx[ubListId] < expertPerRank;
@@ -273,13 +263,10 @@ public:
                     DataCopyExtParams copyParams{1, static_cast<uint32_t>(blockN * sizeof(float)), 0, 0, 0};
                     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
                     AscendC::GlobalTensor<float> weightAux;
-                    if (listLen == 1) { // Large tensor
-                        weightAux.SetGlobalBuffer(gmWeightAux);
-                        DataCopyPad(ubweighAux, weightAux[curGroupIdx[ubListId] * blockN], copyParams, padParams);
-                    } else {
-                        weightAux.SetGlobalBuffer(GetTensorAddr<float>(curGroupIdx[ubListId], reinterpret_cast<GM_ADDR>(gmWeightAux)));
-                        DataCopyPad(ubweighAux, weightAux, copyParams, padParams);
-                    }
+                    int32_t arrayGroupIdx = listLen == 1 ? 0 : curGroupIdx[ubListId];
+                    weightAux.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(GetTensorAddr<float>(arrayGroupIdx, reinterpret_cast<GM_ADDR>(gmWeightAux))));
+                    int64_t gmOffsetwA = listLen == 1 ? curGroupIdx[ubListId] * blockN : 0;
+                    DataCopyPad(ubweighAux, weightAux[gmOffsetwA], copyParams, padParams);
                 }
             }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[ubListId]);
@@ -310,14 +297,12 @@ public:
             // Multiply FP32 C with per-token scale value
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Muls(ubCFp32, ubCFp32, perTokenScale, blockN);
-            AscendC::PipeBarrier<PIPE_V>();
 
-            // swiglu limit clamp
             if (swigluLimit > 0.0f) {
+                AscendC::PipeBarrier<PIPE_V>();
                 AscendC::ClampMax(ubCFp32, ubCFp32, sharedTmpBuffer, swigluLimit, blockN);
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::ClampMin(ubCFp32[ChunkTileLen], ubCFp32[ChunkTileLen], sharedTmpBuffer, -1.0f * swigluLimit, ChunkTileLen);
-                AscendC::PipeBarrier<PIPE_V>();
             }
 
 #ifdef W4A8_DEBUG
@@ -420,10 +405,10 @@ private:
     Params params;
 
     AscendC::LocalTensor<ElementC> ubCList[UB_STAGES];
-    AscendC::LocalTensor<ElementD> ubD;
     AscendC::LocalTensor<float> ubweighAuxList[UB_STAGES];
     AscendC::LocalTensor<int4b_t> xHighI4TensorList[UB_STAGES];
     AscendC::LocalTensor<int4b_t> xLowI4TensorList[UB_STAGES];
+    AscendC::LocalTensor<ElementD> ubD;
     AscendC::LocalTensor<half> xHighHalfTensor;
     AscendC::LocalTensor<half> xLowHalfTensor;
     AscendC::LocalTensor<half> xLowHalfTensor2;

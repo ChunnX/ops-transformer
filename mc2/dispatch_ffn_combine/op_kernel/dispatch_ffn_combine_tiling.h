@@ -63,6 +63,7 @@ struct DispatchFFNCombineInfoCommon {
     uint32_t hasScales;
 
     uint32_t isQuantRouting;
+    uint32_t isW4A8;
 
     int32_t  activation_out_dtype;
     uint32_t weight1Interleave;

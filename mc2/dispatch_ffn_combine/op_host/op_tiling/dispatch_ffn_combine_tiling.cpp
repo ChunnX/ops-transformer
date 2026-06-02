@@ -216,6 +216,7 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     // other weight dtype (INT4, INT8, INT32-packed INT4) requires the input X
     // to be quantized to INT8 during routing.
     info.isQuantRouting = (wDataType == ge::DT_FLOAT16 || wDataType == ge::DT_BF16) ? 0U : 1U;
+    info.isW4A8 = (wDataType == ge::DT_INT32 || wDataType == ge::DT_INT4) ? 1U : 0U;
     info.dispatchQuantMode = info.isQuantRouting ? DISPATCH_FFN_COMBINE_QUANT_MODE_PER_TENSOR
                                                   : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
     if (info.isQuantRouting) {
@@ -256,6 +257,19 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     auto scalesDesc      = context->GetOptionalInputDesc(config.scalesIndex);
     info.hasXActiveMask = (xActiveMaskDesc != nullptr) ? 1U : 0U;
     info.hasScales      = (scalesDesc      != nullptr) ? 1U : 0U;
+
+    if (info.hasXActiveMask) {
+        const gert::StorageShape* xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
+        if (xActiveMaskStorageShape != nullptr) {
+            OP_TILING_CHECK(xActiveMaskStorageShape->GetStorageShape().GetDimNum() != 1,
+                OP_LOGE(nodeName, "xActiveMask shape dims must be 1, but current dim num is %lu.",
+                    xActiveMaskStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+            const int64_t xActiveMaskDim0 = xActiveMaskStorageShape->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK(xActiveMaskDim0 != static_cast<int64_t>(info.M),
+                OP_LOGE(nodeName, "xActiveMask Dim0 must be M(%u), but current dim is %lu.", info.M, xActiveMaskDim0),
+                return ge::GRAPH_FAILED);
+        }
+    }
 
     auto bias1Desc = context->GetOptionalInputDesc(config.biasOneIndex);
     auto bias2Desc = context->GetOptionalInputDesc(config.biasTwoIndex);
@@ -361,7 +375,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     int64_t scaleDim0 = 0;
     int64_t ubSize = 196352;
     int64_t expertCapacity = 0;
-    int64_t expertNum = infoCommon.expertPerRank * infoCommon.worldSize;
+    int64_t expertNum = infoCommon.expertPerRank * infoCommon.worldSize + 1;
     int64_t activeNum = infoCommon.M * infoCommon.topK;
     int64_t dropPadMode = 0;
     int64_t expertTokensCountOrCumsumFlag = 2;
@@ -422,7 +436,7 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     uint32_t k2 = infoCommon.N / 2;
 
     uint64_t cocWorkspace = (infoCommon.M + 256 - 1) / 256 * 256 * infoCommon.topK * sizeof(int32_t) +
-                            infoCommon.worldSize * infoCommon.worldSize * infoCommon.expertPerRank * sizeof(int32_t) * 3 +
+                            infoCommon.worldSize * infoCommon.worldSize * infoCommon.expertPerRank * sizeof(int32_t) * (infoCommon.isW4A8 ? 3 : 2) +
                             infoCommon.maxRecvTokenNum * sizeof(float) * 2 +
                             infoCommon.maxRecvTokenNum * infoCommon.N * sizeof(int16_t) * 2 +
                             infoCommon.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 +
