@@ -138,21 +138,23 @@ public:
         betaUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * paraNum_), buffOffset);
         buffOffset += halfChunkSize_ * sizeof(float) * paraNum_;
 
-        gBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * maxLen_ * paraNum_),
-                                                       buffOffset);
-        gammaUbFloat_ = gBroadUbFloat_;
-        valueUbFloat_ = gBroadUbFloat_;
-        qUbFloat_ = gBroadUbFloat_;
-        buffOffset += chunkSize_ * maxLen_ * sizeof(float) * paraNum_;
-        
-        gTransBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * maxLen_), buffOffset);
-        attnUbFloat_ = gTransBroadUbFloat_;
-        gCumExpBroadUbFloat_ = gTransBroadUbFloat_;
-        buffOffset += chunkSize_ * maxLen_ * sizeof(float);
+        uint64_t tmpBufferLen = chunkSize_ * maxLen_ * paraNum_;
+        gBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        gammaUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        valueUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        qUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        buffOffset += tmpBufferLen * sizeof(float);
 
-        qUbFloatCon_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
-        kUbFloatCon_ = qUbFloatCon_;
-        buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
+        tmpBufferLen = chunkSize_ * maxLen_;
+        gTransBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        attnUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        gCumExpBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        buffOffset += tmpBufferLen * sizeof(float);
+
+        tmpBufferLen = halfChunkSize_ * dkAligned_;
+        qUbFloatCon_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        kUbFloatCon_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        buffOffset += tmpBufferLen * sizeof(float);
 
         inputGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
         buffOffset += chunkSize_ * sizeof(uint32_t);
@@ -163,14 +165,14 @@ public:
         gCumExpUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float) * paraNum_;
 
-        inverseBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * halfChunkSize_ *
-                                                       INVERSE_COUNT), buffOffset);
-        qPrimeUbFloat_ = inverseBuffer_;
-        vBetaUbFloat_ = inverseBuffer_;
-        gBKUbFloat_ = inverseBuffer_;
-        kgUbFloat_ = inverseBuffer_;
-        kkLocal_ = inverseBuffer_;
-        buffOffset += halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT * sizeof(float);
+        tmpBufferLen = halfChunkSize_ * halfChunkSize_ * INVERSE_COUNT;
+        inverseBuffer_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
+        qPrimeUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);;
+        vBetaUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);;
+        gBKUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);;
+        kgUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);;
+        kkLocal_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);;
+        buffOffset += tmpBufferLen * sizeof(float);
         
         inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
         buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
