@@ -140,9 +140,9 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
-        GatherKey: T.Tensor((B, N2, S1, G, K), input_dtype),
+        GatherKey: T.Tensor((B, N2, S1, G, K, DQuery), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        GatherKeyIndex: T.Tensor((B, N2, S1, Nidx1, K), input_dtype),
+        GatherKeyIndex: T.Tensor((B, N2, S1, Nidx1, K, DQueryIndex), input_dtype),
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         bmm1Res_ws: T.Tensor((B, N2, S1, G, K), calc_dtype),
         bmm2Res_ws: T.Tensor((B, N2, S1, Nidx1, K), calc_dtype),
@@ -188,7 +188,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKey[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                GatherKey[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
                                 GK_L1,
                             )
                             T.barrier_all()
@@ -215,7 +215,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKeyIndex[bz, n2_id, s1_start:s1_end, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                GatherKeyIndex[bz, n2_id, s1_start:s1_end, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
                                 GKI_L1,
                             )
                             T.barrier_all()
@@ -405,7 +405,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKeyIndex[bz, n2_id, s1_start:s1_end, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                GatherKeyIndex[bz, n2_id, s1_start:s1_end, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
                                 GKI2_L1,
                             )
                             T.barrier_all()
@@ -492,29 +492,26 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, G, 
 
     # Gather key: (B, S2, N2, DQuery) -> gatherKey: (B, N2, S1, G, K, DQuery)
     # sparse_indices: (B, S1, Nidx2, K), Nidx2=1, N2=1
-    # For each (b, s1, n2, k_idx), gather key[b, sparse_indices[b,s1,n2,k_idx], n2, :]
     sparse_idx_3d = sparse_indices[:, :, 0, :]  # (B, S1, K)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
-    n2_idx = torch.arange(N2, device=device).view(1, 1, 1)
 
-    # key: (B, S2, N2, DQuery) -> gather per (b, s1, k) -> (B, S1, K, N2, DQuery)
-    gather_key = key[batch_idx, sparse_idx_3d.unsqueeze(2), n2_idx, :]  # (B, S1, K, N2, DQuery)
+    # key: (B, S2, N2, DQuery) -> gather along S2 dim
+    # For each (b, s1, k), gather key[b, sparse_indices[b,s1,k], :, :] -> (B, S1, K, N2, DQuery)
+    gather_key = key[batch_idx, sparse_idx_3d, :, :]  # (B, S1, K, N2, DQuery)
     gather_key = gather_key.permute(0, 3, 1, 2, 4)  # (B, N2, S1, K, DQuery)
 
-    # Expand G dimension: repeat G times for each group head
-    # gatherKey: (B, N2, S1, G, K) with DQuery dimension
-    # Actually the kernel expects (B, N2, S1, G, K) where each g_idx has the same gathered key
-    # Since N2=1 and G=N1/N2, gatherKey for all G groups is the same
+    # Expand G dimension: all G groups share the same gathered key (MQA)
     gather_key_expanded = gather_key.unsqueeze(3).expand(B, N2, S1, G, K, DQuery)  # (B, N2, S1, G, K, DQuery)
 
     # Gather keyIndex: (B, S2, Nidx2, DQueryIndex) -> gatherKeyIndex: (B, N2, S1, Nidx1, K, DQueryIndex)
-    # sparse_indices for keyIndex: same sparse_indices
-    # keyIndex: (B, S2, Nidx2, DQueryIndex), Nidx2=1
-    gather_key_index = key_index[batch_idx, sparse_idx_3d.unsqueeze(2), n2_idx, :]  # (B, S1, K, Nidx2, DQueryIndex)
+    gather_key_index = key_index[batch_idx, sparse_idx_3d, :, :]  # (B, S1, K, Nidx2, DQueryIndex)
     gather_key_index = gather_key_index.permute(0, 3, 1, 2, 4)  # (B, Nidx2, S1, K, DQueryIndex)
 
-    # Expand Nidx1 dimension: each Nidx1 head uses the same gathered keyIndex
-    gather_key_index_expanded = gather_key_index.unsqueeze(2).expand(B, N2, S1, Nidx1, K, DQueryIndex)  # (B, N2, S1, Nidx1, K, DQueryIndex)
+    # Expand N2 and Nidx1 dimensions
+    # Nidx2=1, N2=1: each Nidx1 head uses the same gathered keyIndex
+    gather_key_index = gather_key_index.permute(0, 3, 1, 2, 4)  # (B, Nidx2, S1, K, DQueryIndex) -> already
+    # Need (B, N2, S1, Nidx1, K, DQueryIndex): insert N2 dim and expand Nidx1
+    gather_key_index_expanded = gather_key_index.unsqueeze(1).expand(B, N2, S1, Nidx1, K, DQueryIndex)  # (B, N2, S1, Nidx1, K, DQueryIndex)
 
     return gather_key_expanded, gather_key_index_expanded
 
