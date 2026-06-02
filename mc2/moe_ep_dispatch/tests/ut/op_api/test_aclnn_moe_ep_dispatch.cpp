@@ -31,10 +31,12 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchBasic) {
     int64_t epRankId = 0;
     int64_t numExperts = 64;
     int64_t numMaxTokensPerRank = 2048;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
     int64_t expertAlignment = 1;
     int64_t numLocalExperts = numExperts / epWorldSize;
     int64_t upperA = epWorldSize * numMaxTokensPerRank;
 
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xDesc = TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc topkIdxDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc topkWeightsDesc = TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND);
@@ -44,10 +46,10 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchBasic) {
     TensorDesc recvSrcMetaInternalDesc = TensorDesc({upperA, 3}, ACL_INT32, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
-        INPUT(xDesc, topkIdxDesc, topkWeightsDesc,
-              TensorDesc(), TensorDesc(), TensorDesc()),
-        ATTR("group_ep", epWorldSize, epRankId, numExperts,
-             numMaxTokensPerRank, expertAlignment, true),
+        INPUT(contextDesc, xDesc, topkIdxDesc, topkWeightsDesc,
+              TensorDesc()),
+        ATTR(epWorldSize, epRankId, numExperts,
+             numMaxTokensPerRank, cclBufferSize, expertAlignment, true),
         OUTPUT(numRecvPerRankHpDesc, numRecvPerExpertHpDesc,
                dstSlotIdxDesc, recvSrcMetaInternalDesc));
 
@@ -63,15 +65,17 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchNullTopk) {
     int64_t epWorldSize = 8;
     int64_t numExperts = 64;
     int64_t numMaxTokensPerRank = 2048;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
     int64_t numLocalExperts = numExperts / epWorldSize;
 
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xDesc = TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc nullDesc;
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
-        INPUT(xDesc, nullDesc, nullDesc, nullDesc, nullDesc, nullDesc),
-        ATTR("group_ep", epWorldSize, 0, numExperts,
-             numMaxTokensPerRank, 1, true),
+        INPUT(contextDesc, xDesc, nullDesc, nullDesc, nullDesc),
+        ATTR(epWorldSize, 0, numExperts,
+             numMaxTokensPerRank, cclBufferSize, 1, true),
         OUTPUT(TensorDesc({epWorldSize}, ACL_INT32, ACL_FORMAT_ND),
                TensorDesc({numLocalExperts}, ACL_INT64, ACL_FORMAT_ND),
                TensorDesc({numTokens, 8}, ACL_INT32, ACL_FORMAT_ND),
@@ -87,14 +91,16 @@ TEST_F(L2AclnnMoeEpDispatchTest, TestMoeEpDispatchInvalidEpWorldSize) {
     int64_t numTokens = 2048;
     int64_t hidden = 7168;
     int64_t topK = 8;
+    int64_t cclBufferSize = 200 * 1024 * 1024;
 
+    TensorDesc contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc xDesc = TensorDesc({numTokens, hidden}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc topkIdxDesc = TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnMoeEpDispatch,
-        INPUT(xDesc, topkIdxDesc, TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND),
-              TensorDesc(), TensorDesc(), TensorDesc()),
-        ATTR("group_ep", 1, 0, 8, 2048, 1, true),
+        INPUT(contextDesc, xDesc, topkIdxDesc, TensorDesc({numTokens, topK}, ACL_FLOAT, ACL_FORMAT_ND),
+              TensorDesc()),
+        ATTR(1, 0, 8, 2048, cclBufferSize, 1, true),
         OUTPUT(TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND),
                TensorDesc({8}, ACL_INT64, ACL_FORMAT_ND),
                TensorDesc({numTokens, topK}, ACL_INT32, ACL_FORMAT_ND),

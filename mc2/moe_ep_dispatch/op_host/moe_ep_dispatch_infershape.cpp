@@ -3,23 +3,22 @@
 
 namespace ops {
 
-static constexpr size_t DISPATCH_INPUT_X_INDEX = 0;
-static constexpr size_t DISPATCH_INPUT_TOPK_IDX_INDEX = 1;
-static constexpr size_t DISPATCH_INPUT_TOPK_WEIGHTS_INDEX = 2;
-static constexpr size_t DISPATCH_INPUT_CACHED_NUM_PER_EXPERT_INDEX = 3;
+static constexpr size_t DISPATCH_INPUT_CONTEXT_INDEX = 0;
+static constexpr size_t DISPATCH_INPUT_X_INDEX = 1;
+static constexpr size_t DISPATCH_INPUT_TOPK_IDX_INDEX = 2;
+static constexpr size_t DISPATCH_INPUT_TOPK_WEIGHTS_INDEX = 3;
 static constexpr size_t DISPATCH_INPUT_CACHED_SLOT_IDX_INDEX = 4;
-static constexpr size_t DISPATCH_INPUT_CACHED_SRC_META_INDEX = 5;
 
 static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_RANK_HP_INDEX = 0;
 static constexpr size_t DISPATCH_OUTPUT_NUM_RECV_PER_EXPERT_HP_INDEX = 1;
 static constexpr size_t DISPATCH_OUTPUT_DST_SLOT_IDX_INDEX = 2;
 static constexpr size_t DISPATCH_OUTPUT_RECV_SRC_META_INTERNAL_INDEX = 3;
 
-static constexpr size_t DISPATCH_ATTR_GROUP_EP_INDEX = 0;
-static constexpr size_t DISPATCH_ATTR_EP_WORLD_SIZE_INDEX = 1;
-static constexpr size_t DISPATCH_ATTR_EP_RANK_ID_INDEX = 2;
-static constexpr size_t DISPATCH_ATTR_NUM_EXPERTS_INDEX = 3;
-static constexpr size_t DISPATCH_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 4;
+static constexpr size_t DISPATCH_ATTR_EP_WORLD_SIZE_INDEX = 0;
+static constexpr size_t DISPATCH_ATTR_EP_RANK_ID_INDEX = 1;
+static constexpr size_t DISPATCH_ATTR_NUM_EXPERTS_INDEX = 2;
+static constexpr size_t DISPATCH_ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 3;
+static constexpr size_t DISPATCH_ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 static constexpr size_t DISPATCH_ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 static constexpr size_t DISPATCH_ATTR_DO_CPU_SYNC_INDEX = 6;
 
