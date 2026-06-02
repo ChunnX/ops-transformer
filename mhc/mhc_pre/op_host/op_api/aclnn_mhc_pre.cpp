@@ -44,11 +44,11 @@ constexpr int64_t D_ALIGNMENT = 16;
 constexpr int64_t ALPHA_DIM_SIZE = 3;
 constexpr int64_t PHI_DIM_OFFSET = 2;
 
-bool CheckAlphaShape(const aclTensor *alphaTensor);
-bool ValidateNDParams(int64_t n, int64_t d);
-bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD);
-bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n);
-bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d);
+static bool CheckAlphaShape(const aclTensor *alphaTensor);
+static bool ValidateNDParams(int64_t n, int64_t d);
+static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD);
+static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n);
+static bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d);
 
 struct MhcParamsBase {
     const aclTensor *x = nullptr;
@@ -126,7 +126,7 @@ private:
     MhcParamsBase obj_;
 };
 
-bool CheckNotNull(const MhcParamsBase &params)
+static bool CheckNotNull(const MhcParamsBase &params)
 {
     if (params.x == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "X tensor is nullptr");
@@ -159,7 +159,7 @@ bool CheckNotNull(const MhcParamsBase &params)
     return true;
 }
 
-bool CheckEmptyTensor(const MhcParamsBase &params)
+static bool CheckEmptyTensor(const MhcParamsBase &params)
 {
     if (params.x->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor is empty");
@@ -180,7 +180,7 @@ bool CheckEmptyTensor(const MhcParamsBase &params)
     return true;
 }
 
-bool CheckInputOutDims(const MhcParamsBase &params)
+static bool CheckInputOutDims(const MhcParamsBase &params)
 {
     auto xDimNum = params.x->GetViewShape().GetDimNum();
     if (xDimNum != DIM_NUM_3 && xDimNum != DIM_NUM_4) {
@@ -217,7 +217,7 @@ bool CheckInputOutDims(const MhcParamsBase &params)
     return true;
 }
 
-bool CheckInputOutShape(const MhcParamsBase &params)
+static bool CheckInputOutShape(const MhcParamsBase &params)
 {
     auto xShape = params.x->GetViewShape();
 
@@ -260,7 +260,7 @@ bool CheckInputOutShape(const MhcParamsBase &params)
     return true;
 }
 
-bool CheckAlphaShape(const aclTensor *alphaTensor)
+static bool CheckAlphaShape(const aclTensor *alphaTensor)
 {
     auto alphaShape = alphaTensor->GetViewShape();
     if (alphaShape.GetDim(0) != ALPHA_DIM_SIZE) {
@@ -270,7 +270,7 @@ bool CheckAlphaShape(const aclTensor *alphaTensor)
     return true;
 }
 
-bool ValidateNDParams(int64_t n, int64_t d)
+static bool ValidateNDParams(int64_t n, int64_t d)
 {
     if (n <= 0 || d <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid X tensor shape: n=%ld, d=%ld", n, d);
@@ -297,7 +297,7 @@ bool ValidateNDParams(int64_t n, int64_t d)
     return true;
 }
 
-bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD)
+static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD)
 {
     auto phiShape = phiTensor->GetViewShape();
     if (phiShape.GetDim(0) != n2Plus2n) {
@@ -312,7 +312,7 @@ bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD)
     return true;
 }
 
-bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
+static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
 {
     auto biasShape = biasTensor->GetViewShape();
     if (biasShape.GetDim(0) != n2Plus2n) {
@@ -323,7 +323,7 @@ bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
     return true;
 }
 
-bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d)
+static bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d)
 {
     if (gammaOptional != nullptr) {
         auto gammaShape = gammaOptional->GetViewShape();
@@ -341,7 +341,7 @@ bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d)
     return true;
 }
 
-bool CheckDtypeValid(const MhcParamsBase &params)
+static bool CheckDtypeValid(const MhcParamsBase &params)
 {
     const std::initializer_list<DataType> X_SUPPORT_DTYPE_LIST = {DataType::DT_BF16, DataType::DT_FLOAT16};
 
@@ -390,7 +390,7 @@ static bool IsPrivateFormat(ge::Format format)
     return false;
 }
 
-bool CheckFormat(const MhcParamsBase &params)
+static bool CheckFormat(const MhcParamsBase &params)
 {
     if (IsPrivateFormat(params.x->GetViewFormat())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor format must be ND");
@@ -422,7 +422,7 @@ bool CheckFormat(const MhcParamsBase &params)
     return true;
 }
 
-aclnnStatus CheckParams(const MhcParamsBase &params)
+static aclnnStatus CheckParams(const MhcParamsBase &params)
 {
     // 1. 检查参数是否为空指针、空tensor
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
@@ -443,7 +443,7 @@ aclnnStatus CheckParams(const MhcParamsBase &params)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *executor)
+static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *executor)
 {
     // 将输入tensor转换为连续格式
     params.xContiguous = l0op::Contiguous(params.x, executor);
