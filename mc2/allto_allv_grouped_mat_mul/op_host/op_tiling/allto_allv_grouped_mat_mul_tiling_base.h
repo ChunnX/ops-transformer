@@ -53,7 +53,6 @@ struct MMTilingParams {
 class AlltoAllvGmmTilingBase : public AlltoAllvQuantGmmTilingBase
 {
 public:
-    AlltoAllvGmmTilingBase() = default;
     explicit AlltoAllvGmmTilingBase(gert::TilingContext* context) : AlltoAllvQuantGmmTilingBase(context){};
 
 protected:

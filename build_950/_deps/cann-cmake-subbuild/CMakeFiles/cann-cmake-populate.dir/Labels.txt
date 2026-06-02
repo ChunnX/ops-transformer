@@ -1,0 +1,14 @@
+# Target labels
+ cann-cmake-populate
+# Source files and their labels
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/CMakeFiles/cann-cmake-populate
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/CMakeFiles/cann-cmake-populate.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/CMakeFiles/cann-cmake-populate-complete.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-build.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-configure.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-download.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-install.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-mkdir.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-patch.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-test.rule
+/mnt/workspace/code/20260520_alltoallvgmm_use_quant_template/ops-transformer/build_950/_deps/cann-cmake-subbuild/cann-cmake-populate-prefix/src/cann-cmake-populate-stamp/cann-cmake-populate-update.rule

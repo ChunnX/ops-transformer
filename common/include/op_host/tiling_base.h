@@ -87,7 +87,6 @@ struct FACompileInfoCommon {
 
 class TilingBaseClass {
 public:
-    TilingBaseClass() = default;
     explicit TilingBaseClass(gert::TilingContext* context) : context_(context)
     {}
 
