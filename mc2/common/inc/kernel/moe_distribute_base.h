@@ -416,8 +416,10 @@ __aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t le
     AscendC::GlobalTensor<uint8_t> global;
     global.SetGlobalBuffer(start);
     for (uint32_t i = 0; i <= end - start; i += AscendC::CACHE_LINE_SIZE) {
+        __asm__ __volatile__("");
         AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(global[i]);
+        __asm__ __volatile__("");
     }
 }
 __aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0) {
