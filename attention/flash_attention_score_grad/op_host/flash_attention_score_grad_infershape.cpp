@@ -51,7 +51,7 @@ ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *cont
     }
     if (inputLayoutStr != "BSH" && inputLayoutStr != "SBH" && inputLayoutStr != "BSND" && inputLayoutStr != "BNSD" &&
         inputLayoutStr != "TND") {
-        OP_LOGE(context, "The inputLayout should be BSH/SBH/BSND/BNSD/TND(case-insensitive), but got %s.",
+        OP_LOGE(context, "In op [FlashAttentionScoreGrad], the format of [inputLayout] is not supported, got [%s], expected BSH/SBH/BSND/BNSD/TND",
                   inputLayoutStr.c_str());
         return GRAPH_FAILED;
     }
@@ -173,7 +173,7 @@ ge::graphStatus InferDataType4FlashAttentionScoreGrad(gert::InferDataTypeContext
             // dsink, outidx:6
             context->SetOutputDataType(INDEX_OUT_6, ge::DT_FLOAT);
         } else {
-            OP_LOGE(context, "Context outDtype:%ld is invalid.", outDtype);
+            OP_LOGE(context, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [outDtype %ld is invalid]", outDtype);
             return GRAPH_FAILED;
         }
         return GRAPH_SUCCESS;
