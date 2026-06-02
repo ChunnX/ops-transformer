@@ -471,7 +471,8 @@ public:
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                         constInfo, qActSeqLens);
         }
-
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     }
 
     __aicore__ inline void Vec1SinkCompute(RunInfoX &runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
@@ -943,12 +944,16 @@ public:
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         DataCopy(softmaxFDSumGm[gmOffset], this->sumBrdcstBuf, calculateSize);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 
         // Copy max to gm
         FaVectorApi::BroadcastMaxSum(this->maxBrdcstBuf, maxUb, runInfo.actVecMSize);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         DataCopy(softmaxFDMaxGm[gmOffset], this->maxBrdcstBuf, calculateSize);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     }
 
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfoX &runInfo, LocalTensor<float> &sumUb,

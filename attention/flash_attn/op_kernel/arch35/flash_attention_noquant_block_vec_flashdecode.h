@@ -56,8 +56,8 @@ private:
     static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 9;
     static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
     static constexpr uint64_t SYNC_MM2RES_BUF2_FLAG = 11;
-    static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 6;
-    static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 7;
+    static constexpr uint64_t SYNC_FDOUTPUT_BUF_FLAG = 2;
+    static constexpr uint64_t SYNC_LSEOUTPUT_BUF_FLAG = 4;
     static constexpr uint64_t SYNC_SINK_BUF1_FLAG = 12;
     static constexpr uint64_t SYNC_SINK_BUF2_FLAG = 13;
 
