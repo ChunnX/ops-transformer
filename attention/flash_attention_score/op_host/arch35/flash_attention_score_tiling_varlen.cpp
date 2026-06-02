@@ -301,8 +301,8 @@ protected:
         if (preTokens < lastS2 || nextTokens > 0) {
             std::string paramMsg = "pre_tockens and next_tockens";
             std::string valMsg = std::to_string(preTokens) + " and " + std::to_string(nextTokens);
-            std::string reasonMsg = "In RightDownCausal_Band mode, pre_tockens should not be smaller than last valid s2(" +
-                std::to_string(lastS2) + ") and next_tockens should not be larger than 0";
+            std::string reasonMsg = "In RightDownCausal_Band mode, pre_tockens must not be smaller than last valid s2(" +
+                std::to_string(lastS2) + ") and next_tockens must not be larger than 0";
             OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName, paramMsg.c_str(),
                 valMsg.c_str(), reasonMsg.c_str());
             return false;
@@ -313,8 +313,8 @@ protected:
             }
             if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                 std::string shapeMsg = std::to_string(actualSeqLenData[i]) + " and " + std::to_string(actualSeqLenKvData[i]);
-                std::string reasonMsg = "The actual_seq_qlen of batch " + std::to_string(i) +
-                    " should not be larger than actual_seq_kvlen";
+                std::string reasonMsg = "The value of actual_seq_qlen of batch " + std::to_string(i) +
+                    " must not be larger than actual_seq_kvlen";
                 OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "actual_seq_qlen and actual_seq_kvlen",
                     shapeMsg.c_str(), reasonMsg.c_str());
                 return false;
@@ -349,8 +349,8 @@ protected:
             for (int64_t i = 0L; i < bSize; ++i) {
                 if (actualSeqLenData[i] > actualSeqLenKvData[i]) {
                     std::string shapeMsg = std::to_string(actualSeqLenData[i]) + " and " + std::to_string(actualSeqLenKvData[i]);
-                    std::string reasonMsg = "The actual_seq_qlen of batch " + std::to_string(i) +
-                        " should not be larger than actual_seq_kvlen";
+                    std::string reasonMsg = "The value of actual_seq_qlen of batch " + std::to_string(i) +
+                        " must not be larger than actual_seq_kvlen";
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName, "actual_seq_qlen and actual_seq_kvlen",
                         shapeMsg.c_str(), reasonMsg.c_str());
                     return false;
@@ -441,12 +441,12 @@ protected:
         if (prefixShape.GetDimNum() != 1) {
             std::string dimStr = std::to_string(prefixShape.GetDimNum()) + "D";
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "prefix",
-                dimStr.c_str(), "The shape dim of input prefix should be 1D");
+                dimStr.c_str(), "The shape dim of input prefix must be 1D");
             return false;
         }
         if (prefixShape.GetDim(0) != bSize) {
             std::string sizeStr = std::to_string(prefixShape.GetDim(0));
-            std::string reasonMsg = "The shape size of input prefix should be the same as batch size (" +
+            std::string reasonMsg = "The shape size of input prefix should be equal to batch size (" +
                 std::to_string(bSize) + ")";
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, "prefix",
                 sizeStr.c_str(), reasonMsg.c_str());
@@ -605,7 +605,7 @@ protected:
         (void)bIdx;
         OP_CHECK_IF(sparseValidArray.size() == 0,
                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "sparseValidArray", "0",
-                       "The size of sparseValidArray should be larger than 0"),
+                       "The value of size of sparseValidArray should be larger than 0"),
                    return false);
 
         // 特殊系数, 代表s2Size=[128, 256, 384, 512, 640, 768, 896, 1024] 对应的真实耗时膨胀值
