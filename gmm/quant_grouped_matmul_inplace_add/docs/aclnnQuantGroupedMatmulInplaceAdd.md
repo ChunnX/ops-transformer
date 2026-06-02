@@ -92,8 +92,8 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
     <tr>
       <td>x1</td>
       <td>输入</td>
-      <td>Device侧的aclTensor，公式中的输入x1。当前接口要求x1按最后两维转置后的视图参与计算，原始存储shape为(K，M)，计算视图shape为(M，K)。</td>
-      <td>仅支持最后两维转置，transposeX必须为true。</td>
+      <td>Device侧的aclTensor，公式中的输入x1。</td>
+      <td>-</td>
       <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
       <td>ND</td>
       <td>2(K，M)</td>
