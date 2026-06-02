@@ -291,16 +291,16 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, dstrank_id, group, world_size, max_bs, mode, comm_alg, aiv_num):
+    def forward(self, x, dstrank_id, group, p_world_size, p_max_bs, p_mode, p_comm_alg, p_aiv_num):
         output = npu_ops_transformer.ops.npu_bandwidth_test(
             x=x,
             dstrank_id=dstrank_id,
             group=group,
-            world_size=world_size,
-            max_bs=max_bs,
-            mode=mode,
-            comm_alg=comm_alg,
-            aiv_num=aiv_num
+            world_size=p_world_size,
+            max_bs=p_max_bs,
+            mode=p_mode,
+            comm_alg=p_comm_alg,
+            aiv_num=p_aiv_num
         )
         return output
 
