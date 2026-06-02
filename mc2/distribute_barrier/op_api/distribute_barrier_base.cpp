@@ -14,6 +14,7 @@
  */
 #include <algorithm>
 
+#include "acl/acl.h"
 #include "aclnn_distribute_barrier_v2.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "common/utils/op_mc2_def.h"
@@ -71,6 +72,21 @@ aclnnStatus BarrierCheckParams(const aclTensor* xRef, const char* group)
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus BarrierCheckOptionalTensorFormat(const aclTensor* tensor, const char* tensorName)
+{
+    if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclGetFormat(tensor, &format);
+    if (format != aclFormat::ACL_FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "DistributeBarrier %s format is invalid, only supports ND, but got %d.",
+                tensorName, static_cast<int>(format));
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, const aclTensor* timeOut,
                                                        const aclTensor* elasticInfo, const char* group,
                                                        int64_t worldSize, uint64_t* workspaceSize,
@@ -79,6 +95,10 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    auto retFormat = BarrierCheckOptionalTensorFormat(timeOut, "timeOut");
+    CHECK_RET(retFormat == ACLNN_SUCCESS, retFormat);
+    retFormat = BarrierCheckOptionalTensorFormat(elasticInfo, "elasticInfo");
+    CHECK_RET(retFormat == ACLNN_SUCCESS, retFormat);
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     aclnnStatus ret = ACLNN_ERR_INNER;

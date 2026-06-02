@@ -69,11 +69,11 @@ static bool CheckTimeOut(const gert::TilingContext *context, const DistributeBar
     OP_TILING_CHECK(timeOutDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "timeOut",
             Ops::Base::ToString(timeOutDesc->GetDataType()).c_str(), "INT32"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(timeOutDesc->GetStorageFormat())) ==
-                    ge::FORMAT_FRACTAL_NZ,
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(timeOutDesc->GetStorageFormat())) !=
+                    ge::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "timeOut",
             Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(timeOutDesc->GetStorageFormat()))).c_str(),
-            "non-FRACTAL_NZ"), return false);
+            "ND"), return false);
     const int64_t timeOutDim0 = timeOutStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(timeOutDim0 != 1,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "timeOut",
@@ -94,11 +94,11 @@ static bool CheckElasticInfo(const gert::TilingContext *context, const uint32_t 
     OP_TILING_CHECK(elasticInfoDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE_FOR_INVALID_DTYPE(nodeName, "elasticInfo",
             Ops::Base::ToString(elasticInfoDesc->GetDataType()).c_str(), "INT32"), return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat())) ==
-                    ge::FORMAT_FRACTAL_NZ,
+    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(elasticInfoDesc->GetStorageFormat())) !=
+                    ge::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "elasticInfo",
             Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(
-                elasticInfoDesc->GetStorageFormat()))).c_str(), "non-FRACTAL_NZ"), return false);
+                elasticInfoDesc->GetStorageFormat()))).c_str(), "ND"), return false);
     const int64_t elasticInfoDim0 = elasticInfoStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(elasticInfoDim0 != (ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * worldsize),
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "elasticInfo",

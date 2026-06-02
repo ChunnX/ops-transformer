@@ -10,6 +10,7 @@
 
 #include "aclnn_moe_update_expert.h"
 #include <algorithm>
+#include "acl/acl.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
@@ -20,6 +21,24 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static aclnnStatus MoeUpdateExpertCheckFormat(const aclTensor* tensor, const char* tensorName, bool isOptional)
+{
+    if (tensor == nullptr) {
+        if (isOptional) {
+            return ACLNN_SUCCESS;
+        }
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    aclFormat format = aclFormat::ACL_FORMAT_UNDEFINED;
+    aclGetFormat(tensor, &format);
+    if (format != aclFormat::ACL_FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MoeUpdateExpert %s format is invalid, only supports ND, but got %d.",
+                tensorName, static_cast<int>(format));
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
 
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
     const aclTensor* expertIds, const aclTensor* eplbTable, const aclTensor* expertScalesOptional,
@@ -33,7 +52,23 @@ aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
     OP_CHECK_NULL(balancedExpertIds, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(balancedActiveMask, return ACLNN_ERR_PARAM_NULLPTR);
 
-    aclnnStatus ret = aclnnInnerMoeUpdateExpertGetWorkspaceSize(
+    aclnnStatus ret;
+    ret = MoeUpdateExpertCheckFormat(expertIds, "expertIds", false);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(eplbTable, "eplbTable", false);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(expertScalesOptional, "expertScalesOptional", true);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(pruningThresholdOptional, "pruningThresholdOptional", true);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(activeMaskOptional, "activeMaskOptional", true);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(balancedExpertIds, "balancedExpertIds", false);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    ret = MoeUpdateExpertCheckFormat(balancedActiveMask, "balancedActiveMask", false);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    ret = aclnnInnerMoeUpdateExpertGetWorkspaceSize(
         expertIds, eplbTable, expertScalesOptional, pruningThresholdOptional, activeMaskOptional, localRankId,
         worldSize, balanceMode, balancedExpertIds, balancedActiveMask, workspaceSize, executor);
     return ret;
