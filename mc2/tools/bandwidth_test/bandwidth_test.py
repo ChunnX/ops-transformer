@@ -62,7 +62,8 @@ server_ranks = slice(server_index * rank_per_dev, server_index * rank_per_dev + 
 ranks_list = list(range(world_size))
 # endregion
 
-def cal_hccl_buffsize(bs, h, ep_world_size):
+
+def cal_hccl_buffsize(test_bs, h, ep_world_size):
     MAX_OUT_DTYPE_SIZE = 2
     WIN_ADDR_ALIGN = 512
     UB_ALIGN = 32
@@ -71,7 +72,7 @@ def cal_hccl_buffsize(bs, h, ep_world_size):
 
     token_actual_len = ((h * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) // UB_ALIGN) * UB_ALIGN + SCALE_EXPAND_IDX_BUFFER
     token_need_size_dispatch = ((token_actual_len + WIN_ADDR_ALIGN - 1) // WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN
-    actual_size = (bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
+    actual_size = (test_bs * token_need_size_dispatch * ep_world_size) * DOUBLE_DATA_BUFFER
 
     hccl_buffsize = ceil(actual_size / 1024 / 1024) + 5 # 留出 5MB 空间余量
     return str(hccl_buffsize)
@@ -128,10 +129,12 @@ is_check_setting = True
 
 # region 工具函数
 
+
 def save_tensor_to_bin(tensor, bin_name):
     if not os.path.exists("data"):
         os.makedirs("data")
     tensor.cpu().numpy().tofile(f"data/{bin_name}.bin")
+
 
 def print_setting():
     logger.info(f"{server_num=}")
@@ -144,6 +147,7 @@ def print_setting():
     logger.info(f"{is_precision_test=}")
     logger.info(f"{is_bandwidth_test=}")
     logger.info(f"{test_configs=}")
+
 
 def check_setting():
     def error_log_and_exit(log_info, exit_code=1):
@@ -171,6 +175,7 @@ def check_setting():
 
 # region 性能采集函数
 
+
 def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
     active = num_loop // num_repeat - num_warmup
 
@@ -196,9 +201,11 @@ def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
     )
     return prof
 
+
 def clean_previous_profiling_result():
     profiling_result = './Profiling_Result_'
     os.system(f'rm -rf {profiling_result}*')
+
 
 def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_world_size: int, test_bs: int):
     """从 profiling 结果中提取性能数据并计算带宽"""
@@ -265,6 +272,7 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
 
 # region 图模式相关
 
+
 def compile_model(model):
     if graph_type == 0:
         raise RuntimeError('单算子模式下不应调用compile_model函数')
@@ -308,6 +316,7 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 
 # region 通信初始化
 
+
 def set_device(rank):
     torch_npu.npu.set_device(rank % rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
@@ -345,6 +354,7 @@ def init_hccl_comm(rank, world_size_local):
 # endregion
 
 # region 输入生成
+
 
 def generate_inputs(test_bs: int, test_data_size: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     """生成测试输入数据"""
@@ -396,6 +406,7 @@ def gen_golden_data(
 # endregion
 
 # region 精度对比
+
 
 def compare_result(
     npu_output, golden_output, name: str, rtol: float = 1e-3, atol: float = 1e-3,
@@ -470,6 +481,7 @@ def compare_result(
 # endregion
 
 # region NPU 执行
+
 
 def run_bandwidth_test_npu(
     queue, rank, x, dstrank_id, hcomm_info, test_max_bs=None, test_mode=None,
@@ -559,12 +571,14 @@ def run_bandwidth_test_npu(
         ]
     ])
 
+
 def run_bandwidth_test_npu_bandwidth(queue, rank, x, dstrank_id, test_max_bs, test_mode, test_world_size):
     """专门用于带宽测试的执行函数"""
     run_bandwidth_test_npu(
         queue, rank, x, dstrank_id, None, test_max_bs, test_mode, test_world_size,
         is_perf_mode=True, destroy_comm=True
     )
+
 
 def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     """多配置带宽测试，共享通信域
@@ -656,6 +670,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
 # endregion
 
 # region 主测试函数
+
 
 def run_precision_test(
     x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
@@ -752,7 +767,7 @@ def run_bandwidth_test(
             logger.error(f"[ERROR] Rank {rank} 带宽测试执行失败")
             return None
     
-    data_size_bytes = test_data_size * 2
+    data_size_bytes = test_data_size
     perf_result = get_bandwidth_performance(profiling_path, data_size_bytes, world_size, len(x_per_rank[0]))
     
     return perf_result
@@ -866,6 +881,7 @@ def print_summary_table(results: List[Dict[str, Any]]):
 # endregion
 
 # region Main
+
 
 def main():
     print_setting()
