@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file rotate_half_base.h
+ * \file inplace_rotate_half_base.h
  * \brief
  */
 

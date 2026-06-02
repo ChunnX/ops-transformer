@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file rotate_interleaved_common.h
+ * \file inplace_rotate_interleaved_common.h
  * \brief
  */
 #ifndef ROTATE_INTERLEAVED_COMMON_H

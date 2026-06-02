@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file rope_regbase_tiling_bab.cc
+ * \file inplace_rope_regbase_tiling_bab.cc
  * \brief
  */
 

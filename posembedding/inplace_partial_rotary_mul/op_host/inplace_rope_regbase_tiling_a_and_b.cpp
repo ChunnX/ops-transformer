@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file rope_regbase_tiling_a_and_b.cc
+ * \file inplace_rope_regbase_tiling_a_and_b.cc
  * \brief
  */
 #include "inplace_partial_rotary_mul_tiling.h"
