@@ -120,6 +120,7 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     GET_TILING_DATA(tilingData, tilingGM);
     const QuantGmmA2avTilingData *tilingData_ = &tilingData;
     GmmA2avKernelBody<TILINGKEY_COMPUTE_MATMUL, TILINGKEY_GMM_WEIGHT_TRANS, TILINGKEY_SHARED_MM_WEIGHT_TRANS,
-        TILINGKEY_COMM_MODE>(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM,
-        mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, tilingGM, userWorkspace, tilingData_, &pipe);
+        TILINGKEY_COMM_MODE>(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
+        recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM,
+        workspaceGM, tilingGM, userWorkspace, tilingData_, &pipe);
 }
