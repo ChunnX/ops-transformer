@@ -358,8 +358,6 @@ public:
         auto expUb = this->softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)][0];
         int64_t stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
         float descaleQK = 1.0;
 
         LocalTensor<T> mmRes = bmm1UbTensor;
@@ -398,9 +396,7 @@ public:
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.actSingleLoopS2SizeAlign),
                       static_cast<uint16_t>(vec1S2CopyLenDn - runInfo.actSingleLoopS2SizeAlign + 1), 0});
         }
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
-        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        // 与动态版本一致：DataCopy 完成后用 CrossCoreSetFlag 通知 AIC L1P 数据已就绪
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         //----------------------------------------------------------------
         if (unlikely(runInfo.isLastS2Loop)) {
@@ -528,8 +524,6 @@ public:
         int64_t stage1Offset = 0;
         stage1Offset = runInfo.loop & (DB - 1);
 
-        WaitFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 
@@ -616,10 +610,7 @@ public:
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
         }
 
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[stage1Offset]);
-
-        // L1 P 矩阵由 UB→L1 的 DataCopy(MTE3 流水) 产出，必须用 PIPE_MTE3 通知 AIC，
-        // 否则 AIC 会在 MTE3 搬运完成前读取 L1，读到脏数据（首次运行尤为明显）。
+        // 与动态版本一致：DataCopy 完成后用 CrossCoreSetFlag 通知 AIC L1P 数据已就绪
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(l1PCcId);
         // ======================================================
         if (!runInfo.isFirstS2Loop) {
@@ -1164,24 +1155,21 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
+        // 静态分配 event ID（跳过 6/7 通道）
         mte3ToVId[0] = FA_MTE3_TO_V_0;
         mte3ToVId[1] = FA_MTE3_TO_V_1;
         vToMte3Id[0] = FA_V_TO_MTE3_0;
         vToMte3Id[1] = FA_V_TO_MTE3_1;
-        stage1MTE3toV[0] = FA_STAGE1_MTE3_TO_V_0;
-        stage1MTE3toV[1] = FA_STAGE1_MTE3_TO_V_1;
+        // 与动态版本一致：AllocEventID 中仅 SetFlag mte3ToVId（与 ComputeVec2 配对）
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[0]);
-        SetFlag<HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void FreeEventID()
     {
+        // 与动态版本一致：仅等待 mte3ToVId（stage1MTE3toV 在动态版本中不存在）
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
         WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(stage1MTE3toV[1]);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
