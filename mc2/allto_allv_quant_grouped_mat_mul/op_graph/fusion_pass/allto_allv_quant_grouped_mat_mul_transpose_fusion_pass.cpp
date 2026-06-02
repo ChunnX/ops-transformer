@@ -502,12 +502,18 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
         auto matchNodes = subGraphInput.GetAllInputs();
         if (matchNodes.empty()) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: matchNodes is empty.");
+            inputShapes.emplace_back();
+            inputDTypes.emplace_back(ge::DT_UNDEFINED);
+            inputFormats.emplace_back(ge::FORMAT_UNDEFINED);
             continue;
         }
         auto matchNode = matchNodes.at(0);
         ge::TensorDesc tmpDesc;
         if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
+            inputShapes.emplace_back();
+            inputDTypes.emplace_back(ge::DT_UNDEFINED);
+            inputFormats.emplace_back(ge::FORMAT_UNDEFINED);
             continue;
         }
         inputShapes.emplace_back(tmpDesc.GetShape());
@@ -540,17 +546,18 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
     std::vector<ge::Shape> inputShapes;
-    size_t idx = 0;
-    for (const auto &subgraphInput : subgraphInputs) {
-        auto matchNodes = subgraphInput.GetAllInputs();
+    for (size_t idx = 0; idx < subgraphInputs.size(); ++idx) {
+        auto matchNodes = subgraphInputs[idx].GetAllInputs();
         if (matchNodes.empty()) {
-            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty.");
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty at idx %zu.", idx);
+            inputShapes.emplace_back();
             continue;
         }
         auto matchNode = matchNodes.at(0);
         ge::TensorDesc tmpDesc;
         if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed at idx %zu.", idx);
+            inputShapes.emplace_back();
             continue;
         }
         auto dims = tmpDesc.GetShape().GetDims();
@@ -568,7 +575,6 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
             dims = ReverseTransposeDims(dims, transposeParentIdx);
         }
         inputShapes.emplace_back(ge::Shape(dims));
-        ++idx;
     }
     return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
 }
