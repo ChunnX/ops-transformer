@@ -832,22 +832,22 @@ static void TestQuantV2OneParamCase(const AlltoAllQuantMatmulV2AclnnTestParam& p
 }
 
 // 测试KC动态量化场景下的UT用例
-TEST_F(test_aclnn_allto_all_quant_matmul, KCDynQuant_v2_cases_params)
+TEST_F(test_aclnn_allto_all_quant_matmul_v2, KCDynQuant_v2_cases_params)
 {
     if (std::size(KCDynQuant_v2_cases_params) != 0) {
         uint64_t numCases = sizeof(KCDynQuant_v2_cases_params) / sizeof(KCDynQuant_v2_cases_params[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {
-            TestOneParamCase(KCDynQuant_v2_cases_params[idx]);
+            TestQuantV2OneParamCase(KCDynQuant_v2_cases_params[idx]);
         }
     }
 }
 // 测试MX量化场景下的UT用例
-TEST_F(test_aclnn_allto_all_quant_matmul, MXQuant_v2_cases_params)
+TEST_F(test_aclnn_allto_all_quant_matmul_v2, MXQuant_v2_cases_params)
 {
     if (std::size(MXQuant_v2_cases_params) != 0) {
         uint64_t numCases = sizeof(MXQuant_v2_cases_params) / sizeof(MXQuant_v2_cases_params[0]);
         for (size_t idx = 0; idx < numCases; idx += 1) {
-            TestOneParamCase(MXQuant_v2_cases_params[idx]);
+            TestQuantV2OneParamCase(MXQuant_v2_cases_params[idx]);
         }
     }
 }
