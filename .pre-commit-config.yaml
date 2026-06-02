@@ -1,13 +1,6 @@
 repos:
-  # C++/C code formatting with clang-format
-  - repo: local
-    hooks:
-      - id: clang-format
-        name: clang-format
-        entry: clang-format -i
-        language: system
-        types_or: [c++, c]
-        stages: [commit]
+  # clang-format disabled: avoid mass reformat on commit.
+  # Use editor format-on-save + .clang-format (ColumnLimit 120) instead.
 
   # OAT compliance check (Open Source Audit Tool)
   - repo: local
@@ -18,5 +11,5 @@ repos:
         language: system
         pass_filenames: true
         types: [file]
-        stages: [commit]
+        stages: [pre-commit]
         verbose: true
