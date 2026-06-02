@@ -256,7 +256,7 @@ static AlltoAllMatmulV2AclnnTestParam casesParamsV2[] = {
     {"error-AclnnAlltoAllMatmulV2-group_empty-15", 2, {256, 64}, {128, 256}, {256}, {128, 256}, {},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-2, -1}, "", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-2, -1}, "", "ai_cpu", false, false, ACLNN_ERR_PARAM_INVALID},
     // 9.2 group长度超过128(group自带'\0'，所以超过127就算异常)
     {"error-AclnnAlltoAllMatmulV2-group_extralong-16", 2, {256, 64}, {128, 256}, {256}, {128, 256}, {},
         ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED,
@@ -303,7 +303,7 @@ static AlltoAllMatmulV2AclnnTestParam casesParamsV2[] = {
     {"error-AclnnAlltoAllMatmulV2-wrong-commMode-24", 2, {256, 64}, {128, 256}, {256}, {128, 256}, {128, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-2, -1}, "ut_test_allto_all_matmul", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID},
+        {-2, -1}, "ut_test_allto_all_matmul", "aicpu", false, false, ACLNN_ERR_PARAM_INVALID}
 };
 
 static void TestV2OneParamCase(const AlltoAllMatmulV2AclnnTestParam& param)
