@@ -425,7 +425,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
     sendSumTensor_ = sendSumBuf_.Get<int32_t>();
     sendCntTensor_ = sendCntBuf_.Get<int32_t>();
     for (uint32_t i = startExpert; i < endExpert; ++i) {
-        uint32_t curExpertCnt = 0;
+        int32_t curExpertCnt = 0;
         CalTokenSendExpertCnt(i, axisBS_, curExpertCnt);
         sendCntTensor_(i - startExpert) = curExpertCnt;
     }
