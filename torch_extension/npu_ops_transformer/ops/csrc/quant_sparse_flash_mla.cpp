@@ -34,7 +34,6 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_sparse_flash_mla_atten_out_te
     const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
     bool return_softmax_lse)
 {
-    printf("start to construct quant_sparse_flash_mla_atten_out_tensor \n");
     TORCH_CHECK(layout_q_str == "BSND" || layout_q_str == "TND",
                 "The layout of query only support BSND and TND, but got ", layout_q_str);
     for (auto i = 0; i < q.sizes().size(); i++) {
@@ -54,12 +53,6 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_sparse_flash_mla_atten_out_te
     }
     at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(torch::kBfloat16));
     at::Tensor softmax_lse;
-
-    if (!atten_out.defined()) {
-        printf("[aclnnQuantSparseFlashMla] atten_out construct failed!\n");
-    } else {
-        printf("[aclnnQuantSparseFlashMla] atten_out construct success\n");
-    }
 
     if (return_softmax_lse) {
         if (layout_q_str == "BSND") {
@@ -83,11 +76,6 @@ std::tuple<at::Tensor, at::Tensor> construct_quant_sparse_flash_mla_atten_out_te
         softmax_lse_size = {};
     }
     softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
-    if (!softmax_lse.defined()) {
-        printf("[aclnnQuantSparseFlashMla] softmax_lse construct failed!\n");
-    } else {
-        printf("[aclnnQuantSparseFlashMla] softmax_lse construct success!\n");
-    }
 
     return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
 }
@@ -127,17 +115,6 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_sparse_flash_mla(
             q, ori_kv_val, layout_q_str, return_softmax_lse);
     at::Tensor atten_out = std::get<0>(quant_sparse_flash_mla_atten_out);
     at::Tensor softmax_lse = std::get<1>(quant_sparse_flash_mla_atten_out);
-
-    if (!atten_out.defined()) {
-        printf("[aclnnQuantSparseFlashMla] atten_out is nullptr!!!\n");
-    } else {
-        printf("[aclnnQuantSparseFlashMla] atten_out is not nullptr\n");
-    }
-    if (!softmax_lse.defined()) {
-        printf("[aclnnQuantSparseFlashMla] softmax_lse is nullptr!!!\n");
-    } else {
-        printf("[aclnnQuantSparseFlashMla] softmax_lse is not nullptr\n");
-    }
 
     if (qkv_quant_mode == 1) { // HIFLOAT8 FULL QUANT
         at::Tensor null_tensor;

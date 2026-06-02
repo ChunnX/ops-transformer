@@ -130,7 +130,7 @@ struct RunInfo {
     uint32_t s2BaseSize; \
     int64_t dSize; /* query d 512 */ \
     int64_t dSizeV; /* key d 512 */ \
-    int64_t dSizeVInput; /* key inpue d 640 = rope + nope + scale + pad */ \
+    int64_t dSizeVInput; /* key inpue d 512 */ \
     int64_t sparseMode = 3; \
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \

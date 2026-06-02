@@ -29,9 +29,9 @@ static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME,                     {ge::DT_BF16}},
-    {ORI_KV_NAME,                    {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
-    {CMP_KV_NAME,                    {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {QUERY_NAME,                     {ge::DT_HIFLOAT8}},
+    {ORI_KV_NAME,                    {ge::DT_HIFLOAT8}},
+    {CMP_KV_NAME,                    {ge::DT_HIFLOAT8}},
     {ATTEN_OUT_NAME,                 {ge::DT_FLOAT16, ge::DT_BF16}},
     {CMP_SPARSE_INDICES_NAME,        {ge::DT_INT32}},
     {ORI_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
@@ -208,8 +208,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             oriBlockSize_), return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(dSizeOriKvInput_ != 640,
-        OP_LOGE(opName_, "Dimension of OriKv only support 640, but got %u", dSizeOriKvInput_),
+    OP_CHECK_IF(dSizeOriKvInput_ != 512,
+        OP_LOGE(opName_, "Dimension of OriKv only support 512, but got %u", dSizeOriKvInput_),
         return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
@@ -226,8 +226,8 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
             return ge::GRAPH_FAILED;
         }
 
-        OP_CHECK_IF(dSizeCmpKvInput_ != 640,
-            OP_LOGE(opName_, "Dimension of CmpKv only support 640, but got %u", dSizeCmpKvInput_),
+        OP_CHECK_IF(dSizeCmpKvInput_ != 512,
+            OP_LOGE(opName_, "Dimension of CmpKv only support 512, but got %u", dSizeCmpKvInput_),
             return ge::GRAPH_FAILED);
 
         uint32_t cmpKvN2Size_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::N, kvLayout_);

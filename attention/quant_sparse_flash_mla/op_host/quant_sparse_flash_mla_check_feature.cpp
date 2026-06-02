@@ -70,8 +70,8 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantShape() const
         OP_LOGE(opName_, "dSizeV only support 512, but got %u", dSizeV_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dSizeVInput_ != 640, // 640:当前不泛化
-        OP_LOGE(opName_, "dSizeVInput only support 640, but got %u", dSizeVInput_),
+    OP_CHECK_IF(dSizeVInput_ != 512, // 512:当前不泛化
+        OP_LOGE(opName_, "dSizeVInput only support 512, but got %u", dSizeVInput_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -92,9 +92,9 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantLayout() const
 
 ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
-    OP_CHECK_IF(qType_ != ge::DT_BF16,
-        OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            QSMLADataTypeToSerialString(ge::DT_BF16).c_str(), QSMLADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
+    OP_CHECK_IF(qType_ != ge::DT_HIFLOAT8,
+        OP_LOGE(opName_, "query dtype only support %s, but got %s",
+            QSMLADataTypeToSerialString(ge::DT_HIFLOAT8).c_str(),
             QSMLADataTypeToSerialString(qType_).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -110,11 +110,8 @@ ge::graphStatus QSMLATilingCheck::CheckFeatureAntiquantAttr() const
 
     if (*opParamInfo_.qkvQuantMode == 1) {
         OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_HIFLOAT8, // 前面已校验dtype在fp8 e4m3和hif8之间
-            OP_LOGE(opName_, "oriKv dtype only support DT_FLOAT8_E4M3FN, but got DT_HIFLOAT8"),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(opParamInfo_.oriKv.desc->GetDataType() == ge::DT_FLOAT8_E4M3FN, // 前面已校验dtype在fp8 e4m3和hif8之间
-            OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got DT_FLOAT8_E4M3FN"),
+            OP_LOGE(opName_, "oriKv dtype only support DT_HIFLOAT8, but got %s.",
+            QSMLADataTypeToSerialString(opParamInfo_.oriKv.desc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
     }
 
