@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -81,8 +81,7 @@ static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTens
         GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-            	    "The current scenario is not pertoken dynamic quantization,
-                    input x1ScaleOptional should not be null.");
+            	"The current scenario is not pertoken dynamic quantization, input x1ScaleOptional should not be null.");
             return false;
         }
     }
