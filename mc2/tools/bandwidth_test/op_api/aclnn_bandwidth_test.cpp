@@ -39,19 +39,9 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-// extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
-//     const aclTensor* context, const aclTensor* x, const aclTensor* dstRankId,
-//     const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, 
-//     int64_t cclBufferSize, const char *commAlg, int64_t aivNum,
-//     aclTensor* y, aclTensor* receiveCnt,
-//     uint64_t* workspaceSize, aclOpExecutor** executor);
-
-// extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
-//                                            aclOpExecutor* executor, aclrtStream stream);
-
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static bool CheckNotNull(const aclTensor* x, const aclTensor* dstRankId, const char* group,
+static bool CheckNotNull(const aclTensor* x, const aclTensor* dstRankId, char* group,
                          aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckNotNull start");
@@ -68,7 +58,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* dstRankId, const c
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, const char* group,
+static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, char* group,
                                int64_t worldSize, int64_t maxBs, int64_t mode,
                                aclTensor* y, aclTensor* receiveCnt)
 {
@@ -101,8 +91,8 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstRankId, c
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* dstRankId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    const char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
+    char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
+    char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
