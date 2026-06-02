@@ -186,18 +186,16 @@ def tilelang_lightning_indexer_grad_bsnd(
                 dy_ub = T.alloc_ub((block_m, block_n), input_dtype)
                 dy_fp32_ub = T.alloc_ub((block_m, block_n), calc_dtype)
 
-                # FIX: 使用 2D weight 缓冲区避免标量广播导致的 UB 未对齐访问
-                # 原实现 weight_fp32_ub 为 1D (block_m,)，T.tile.mul 逐行广播标量
-                # weight_fp32_ub[i] 偏移为 i*4 字节，非 32 字节对齐，触发 Illegal instruction
-                weight_1d_ub = T.alloc_ub((block_m,), input_dtype)
-                weight_fp32_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                # weight: 逐行标量-向量乘法模式 (对标 BSND3 参考实现)
+                # T.tile.mul(dst_vec, src_vec, scalar) 支持标量操作数，
+                # 避免了 1D->2D 广播导致的 UB 未对齐访问
+                weight_half_ub = T.alloc_ub((block_m,), input_dtype)
+                weight_fp32_ub = T.alloc_ub((block_m,), calc_dtype)
 
                 relu_grad_ub = T.alloc_ub((block_m, block_n), calc_dtype)
                 relu_grad_half_ub = T.alloc_ub((block_m, block_n), input_dtype)
                 mask_ub = T.alloc_ub((block_m, block_n), calc_dtype)
 
-                # FIX: zero_ub 从 (1,) 改为 (block_m, block_n)
-                # 原 1 元素 FP32 缓冲区仅 4 字节，Vector 比较指令按 32 字节块读取导致越界
                 zero_ub = T.alloc_ub((block_m, block_n), calc_dtype)
 
                 T.tile.fill(zero_ub, 0.0)
@@ -205,16 +203,6 @@ def tilelang_lightning_indexer_grad_bsnd(
                 for g_idx in T.serial(G):
                     n1_idx = n2_id * G + g_idx
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
-
-                        # 加载 weight (1D)，然后广播+转 FP32 到 2D 缓冲区
-                        T.copy(
-                            Weights[bz, s1_start:s1_end, n1_idx],
-                            weight_1d_ub,
-                        )
-                        T.barrier_all()
-                        for i, j in T.Parallel(block_m, block_n):
-                            weight_fp32_ub[i, j] = T.cast(weight_1d_ub[i], calc_dtype)
                         T.barrier_all()
 
                         T.copy(
@@ -230,8 +218,19 @@ def tilelang_lightning_indexer_grad_bsnd(
                         )
                         T.barrier_all()
 
-                        # FIX: 2D 逐元素乘法，所有操作数均为 2D 对齐缓冲区
-                        T.tile.mul(dy_fp32_ub, dy_fp32_ub, weight_fp32_ub)
+                        # 加载 weight (FP16), 转为 FP32
+                        T.copy(
+                            Weights[bz, s1_start:s1_end, n1_idx],
+                            weight_half_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", block_m)
+                        T.barrier_all()
+
+                        # 逐行标量-向量乘法: dy_fp32_ub[i,:] *= weight_fp32_ub[i]
+                        # T.tile.mul(dst_vec, src_vec, scalar) 标量操作数无需 2D 广播
+                        for i in range(block_m):
+                            T.tile.mul(dy_fp32_ub[i, :], dy_fp32_ub[i, :], weight_fp32_ub[i])
                         T.barrier_all()
 
                         # ReLU反向: reluGradOut = (reluIn > 0) ? reluGradIn : 0
