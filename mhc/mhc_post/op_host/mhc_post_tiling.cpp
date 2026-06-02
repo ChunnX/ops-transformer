@@ -146,14 +146,14 @@ ge::graphStatus MhcPostTilingBase::CheckNullptr()
     // Check all input desc and shape
     for (int64_t i = X_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
         auto desc = context_->GetInputDesc(i);
-        OP_CHECK_IF(desc == nullptr, OP_LOGE(context_, "input %ld desc is nullptr", i), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(desc == nullptr, OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), (std::string("input_") + std::to_string(i)).c_str(), "null", "input desc cannot be null"), return ge::GRAPH_FAILED);
         auto shape = context_->GetInputShape(i);
         OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), std::string("input_") + std::to_string(i).c_str(), "null", "input shape cannot be null"), return ge::GRAPH_FAILED);
     }
 
     // Check output desc and shape
     auto desc = context_->GetOutputDesc(OUTPUT_INDEX);
-    OP_CHECK_IF(desc == nullptr, OP_LOGE(context_, "output desc is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(desc == nullptr, OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "output", "null", "output desc cannot be null"), return ge::GRAPH_FAILED);
     auto shape = context_->GetOutputShape(OUTPUT_INDEX);
     OP_CHECK_IF(shape == nullptr, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "output", "null", "output shape cannot be null"), return ge::GRAPH_FAILED);
 
