@@ -967,13 +967,17 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
         OP_LOGE(context_->GetNodeName(), "Workspace is null, expected non-null."), return ge::GRAPH_FAILED);
     // set expertNum
     expertNum_ = 1;
+    // check
+    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > NON_QUANT_HCCL_HANDLE_MAX ?
+        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(NON_QUANT_HCCL_HANDLE_MAX)) : expertNum_;
     const uint64_t tensorListSize = 512;
     uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     uint64_t groupListSize = sizeof(int64_t) * e_ + tensorListSize;
     auto tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
-    tilingData->workspaceInfo.commXOutSize = Ops::Base::CeilAlign(gmmXSize, tensorListSize);
-    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
-        Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.commXOutSize = (permuteOutFlag_ && expertNum_ == 1)  ?
+        0 : Ops::Base::CeilAlign(gmmXSize, tensorListSize);
+    tilingData->workspaceInfo.permuteXOutSize = (expertNum_ > 1 && !permuteOutFlag_) ?
+        Ops::Base::CeilAlign(gmmXSize, tensorListSize) : 0;
     tilingData->workspaceInfo.gmmComputeSize = Ops::Base::CeilAlign(groupListSize, tensorListSize);
     workspaces[0] = libApiWorkSpaceSize_ + tilingData->workspaceInfo.commXOutSize +
                     tilingData->workspaceInfo.permuteXOutSize +

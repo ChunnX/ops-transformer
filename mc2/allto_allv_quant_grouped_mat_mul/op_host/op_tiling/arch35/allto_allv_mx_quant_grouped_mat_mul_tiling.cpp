@@ -476,7 +476,10 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 }
 
 void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
-{
+{   
+    // check expertNum
+    expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
+        Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
     // aixs
     uint64_t gmmXSize = a_ * h1_ * GetSizeByDataType(gmmXDataType_);
     if (gmmXDataType_ == ge::DT_FLOAT4_E2M1) {
@@ -485,13 +488,13 @@ void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
     uint64_t gmmXScaleSize = a_ * Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) *
         GetSizeByDataType(gmmWeightDataType_) * 2;
     // comm
-    tilingData->workspaceInfo.commXOutSize = permuteOutFlag_ ? 0 :
-        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.commXOutSize = (permuteOutFlag_ && expertNum_ == 1) ?
+        0 : Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     tilingData->workspaceInfo.commXScaleSize = Ops::Base::CeilAlign(gmmXScaleSize,
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
     // permute gmmX
-    tilingData->workspaceInfo.permuteXOutSize = expertNum_ == 1 ? 0 :
-        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    tilingData->workspaceInfo.permuteXOutSize = (expertNum_ > 1 && !permuteOutFlag_) ?
+        Ops::Base::CeilAlign(gmmXSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512)) : 0;
     // permutscaleout size
     tilingData->workspaceInfo.permuteScaleOutSize = expertNum_ == 1 ? 0 :
         Ops::Base::CeilAlign(gmmXScaleSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));

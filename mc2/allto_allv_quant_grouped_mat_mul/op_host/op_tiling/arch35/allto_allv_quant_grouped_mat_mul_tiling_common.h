@@ -41,6 +41,7 @@ constexpr uint64_t DB_SIZE = 2UL;
 constexpr uint64_t MTE2_MIN_LOAD_SIZE = 64 * 1024UL;
 // pertensor
 constexpr uint32_t PERTENSOR_MODE = 1;
+constexpr uint32_t PERTENSOR_HCCL_HANDLE_MAX = 63;
 // pergroup
 constexpr uint32_t MX_MODE = 6;
 constexpr uint64_t MX_BASIC_FACTOR = 64;
@@ -52,6 +53,7 @@ constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 constexpr uint64_t MXFP4_PACK_FACTOR = 2;
 constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
+constexpr uint32_t MX_HCCL_HANDLE_MAX = 31;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
