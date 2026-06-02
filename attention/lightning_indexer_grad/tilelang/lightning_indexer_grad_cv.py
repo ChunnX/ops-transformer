@@ -116,11 +116,13 @@ def tilelang_lightning_indexer_grad_bsnd(
     block_m = BLOCK_M
     block_n = BLOCK_N
     block_d = BLOCK_D
+    vector_baseg = VECTOR_BASEG
     s1_tile_num = ceil_div(S1, block_m)
     block_num = B * N2 * s1_tile_num
 
     n_num = sparse_count // block_n
     d_num = D // block_d
+    g_group_num = G // vector_baseg
 
     @T.prim_func
     def main(
@@ -179,6 +181,9 @@ def tilelang_lightning_indexer_grad_bsnd(
                 T.set_cross_flag("FIX", 0)
 
             # ========== Vec2: weights * dy + ReLU反向 ==========
+            # 循环结构: g_group(n_idx(g_local(s1_row)))
+            # 与 BSND3 的 g_group(s1_row(g_local)) 不同, 此处 s1_row 在最内层
+            # 因为 S1 按 block_m 分核并行, 需逐行加载 weight 保 GM 地址对齐
             with T.Scope("V"):
                 T.wait_cross_flag(0)
 
@@ -186,66 +191,78 @@ def tilelang_lightning_indexer_grad_bsnd(
                 dy_ub = T.alloc_ub((block_m, block_n), input_dtype)
                 dy_fp32_ub = T.alloc_ub((block_m, block_n), calc_dtype)
 
-                # weight: 逐行标量-向量乘法模式 (对标 BSND3 参考实现)
-                # T.tile.mul(dst_vec, src_vec, scalar) 支持标量操作数，
-                # 避免了 1D->2D 广播导致的 UB 未对齐访问
-                weight_half_ub = T.alloc_ub((block_m,), input_dtype)
-                weight_fp32_ub = T.alloc_ub((block_m,), calc_dtype)
+                # weight: 按 vector_baseg 分组加载 (对标 BSND3)
+                # 1D (vector_baseg,) 用于 T.tile.mul 标量索引, 与 BSND3 一致
+                weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
+                weight_fp32_ub = T.alloc_ub(vector_baseg, calc_dtype)
 
-                relu_grad_ub = T.alloc_ub((block_m, block_n), calc_dtype)
-                relu_grad_half_ub = T.alloc_ub((block_m, block_n), input_dtype)
-                mask_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                # 单行 dy 缓冲区, 用于逐行 weight 乘法
+                dy_row_ub = T.alloc_ub(block_n, input_dtype)
+                dy_row_fp32_ub = T.alloc_ub(block_n, calc_dtype)
+                relu_in_row_ub = T.alloc_ub(block_n, calc_dtype)
+                relu_grad_row_ub = T.alloc_ub(block_n, calc_dtype)
+                relu_grad_row_half_ub = T.alloc_ub(block_n, input_dtype)
+                mask_row_ub = T.alloc_ub(block_n, calc_dtype)
+                zero_row_ub = T.alloc_ub(block_n, calc_dtype)
 
-                zero_ub = T.alloc_ub((block_m, block_n), calc_dtype)
+                T.tile.fill(zero_row_ub, 0.0)
 
-                T.tile.fill(zero_ub, 0.0)
-
-                for g_idx in T.serial(G):
-                    n1_idx = n2_id * G + g_idx
+                for g_group in T.serial(g_group_num):
                     for n_idx in T.serial(n_num):
-                        T.barrier_all()
+                        for g_local in range(vector_baseg):
+                            g_idx = g_group * vector_baseg + g_local
+                            n1_idx = n2_id * G + g_idx
 
-                        T.copy(
-                            Dy[bz, s1_start:s1_end, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            dy_ub,
-                        )
-                        T.barrier_all()
-                        T.tile.cast(dy_fp32_ub, dy_ub, "CAST_NONE", block_m * block_n)
-                        T.barrier_all()
-                        T.copy(
-                            reluIn_ws[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            relu_in_ub,
-                        )
-                        T.barrier_all()
+                            # 逐行处理 S1, 每行独立加载 weight 标量
+                            for s1_row in range(block_m):
+                                T.barrier_all()
 
-                        # 加载 weight (FP16), 转为 FP32
-                        T.copy(
-                            Weights[bz, s1_start:s1_end, n1_idx],
-                            weight_half_ub,
-                        )
-                        T.barrier_all()
-                        T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", block_m)
-                        T.barrier_all()
+                                # 加载 weight 标量: 单个 FP16 元素
+                                # Weights[bz, s1_start+s1_row, n1_idx]
+                                # 偏移 = n1_idx * 2 字节 -- 单个元素无法保证 32B 对齐
+                                # 改用整行 slice 加载后用 T.tile.mul 标量
+                                T.copy(
+                                    Weights[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_idx : n1_idx + 1],
+                                    weight_half_ub[0:1],
+                                )
+                                T.barrier_all()
 
-                        # 逐行标量-向量乘法: dy_fp32_ub[i,:] *= weight_fp32_ub[i]
-                        # T.tile.mul(dst_vec, src_vec, scalar) 标量操作数无需 2D 广播
-                        for i in range(block_m):
-                            T.tile.mul(dy_fp32_ub[i, :], dy_fp32_ub[i, :], weight_fp32_ub[i])
-                        T.barrier_all()
+                                # 加载 dy 单行
+                                T.copy(
+                                    Dy[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                    dy_row_ub,
+                                )
+                                T.barrier_all()
+                                T.tile.cast(dy_row_fp32_ub, dy_row_ub, "CAST_NONE", block_n)
+                                T.barrier_all()
 
-                        # ReLU反向: reluGradOut = (reluIn > 0) ? reluGradIn : 0
-                        T.tile.compare(mask_ub, relu_in_ub, zero_ub, "GT")
-                        T.barrier_all()
-                        T.tile.select(relu_grad_ub, mask_ub, dy_fp32_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                        T.barrier_all()
-                        T.tile.cast(relu_grad_half_ub, relu_grad_ub, "CAST_ROUND", block_m * block_n)
-                        T.barrier_all()
+                                # 加载 reluIn 单行
+                                T.copy(
+                                    reluIn_ws[bz, n2_id, s1_start + s1_row : s1_start + s1_row + 1, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                    relu_in_row_ub,
+                                )
+                                T.barrier_all()
 
-                        T.copy(
-                            relu_grad_half_ub,
-                            reluGrad_ws[bz, n2_id, s1_start:s1_end, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                        )
-                        T.barrier_all()
+                                # 标量-向量乘法: dy_row *= weight
+                                T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", 1)
+                                T.barrier_all()
+                                T.tile.mul(dy_row_fp32_ub, dy_row_fp32_ub, weight_fp32_ub[0])
+                                T.barrier_all()
+
+                                # ReLU反向
+                                T.tile.compare(mask_row_ub, relu_in_row_ub, zero_row_ub, "GT")
+                                T.barrier_all()
+                                T.tile.select(relu_grad_row_ub, mask_row_ub, dy_row_fp32_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                                T.barrier_all()
+                                T.tile.cast(relu_grad_row_half_ub, relu_grad_row_ub, "CAST_ROUND", block_n)
+                                T.barrier_all()
+
+                                # 写回单行
+                                T.copy(
+                                    relu_grad_row_half_ub,
+                                    reluGrad_ws[bz, n2_id, s1_start + s1_row : s1_start + s1_row + 1, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                )
+                                T.barrier_all()
 
                 T.set_cross_flag("FIX", 1)
 
