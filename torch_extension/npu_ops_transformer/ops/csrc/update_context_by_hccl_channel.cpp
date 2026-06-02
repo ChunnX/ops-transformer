@@ -134,7 +134,6 @@ static int32_t InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uin
         }
         channelDesc[channelId].channelProtocol = protocol;
         channelDesc[channelId].remoteRank = dstRank;
-        channelDesc[channelId].notifyNum = channelNum;
         channelDesc[channelId].localEndpoint = links->srcEndpointDesc;   // srcEndpointDesc offset
         channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;   // dstEndpointDesc offset
     }
