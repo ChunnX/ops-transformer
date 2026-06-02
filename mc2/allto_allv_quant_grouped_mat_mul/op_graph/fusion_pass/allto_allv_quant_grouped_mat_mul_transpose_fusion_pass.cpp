@@ -517,11 +517,30 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Finish GetInputsInfo for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
 }
 
+static std::vector<int64_t> ReverseTransposeDims(const std::vector<int64_t> &dims, uint32_t transposeParentIdx)
+{
+    std::vector<int64_t> reversed = dims;
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ||
+        transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+        if (reversed.size() >= DIM_THREE) {
+            std::swap(reversed[DIM_ONE], reversed[DIM_TWO]);
+        }
+    } else if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ||
+               transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+        if (reversed.size() >= DIM_TWO) {
+            std::swap(reversed[DIM_ZERO], reversed[DIM_ONE]);
+        }
+    }
+    return reversed;
+}
+
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
-                                   const std::vector<ge::fusion::SubgraphInput> &subgraphInputs)
+                                   const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
+                                   uint32_t transposeParentIdx)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
     std::vector<ge::Shape> inputShapes;
+    size_t idx = 0;
     for (const auto &subgraphInput : subgraphInputs) {
         auto matchNodes = subgraphInput.GetAllInputs();
         if (matchNodes.empty()) {
@@ -534,14 +553,30 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
             continue;
         }
-        inputShapes.emplace_back(tmpDesc.GetShape());
+        auto dims = tmpDesc.GetShape().GetDims();
+        if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT) &&
+            transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        }
+        inputShapes.emplace_back(ge::Shape(dims));
+        ++idx;
     }
     return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
 }
 
 static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder &replaceGraphBuilder,
                                      const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
-                                     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+                                     const std::unique_ptr<ge::fusion::MatchResult> &matchResult,
+                                     uint32_t transposeParentIdx)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to create inputs in Replacement.");
     std::vector<ge::Shape> inputShapes;
@@ -558,33 +593,49 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
     inputs.rGmmX = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                     inputShapes[inputIdx].GetDims());
     ++inputIdx;
-    
+
+    auto gmmWeightDims = inputShapes[inputIdx].GetDims();
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
+        gmmWeightDims = ReverseTransposeDims(gmmWeightDims, transposeParentIdx);
+    }
     inputs.rGmmWeight = replaceGraphBuilder.CreateInput(inputIdx, "gmm_weight", inputDTypes[inputIdx], inputFormats[inputIdx],
-                                                         inputShapes[inputIdx].GetDims());
+                                                         gmmWeightDims);
     ++inputIdx;
     
     inputs.rGmmXScale = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x_scale", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                          inputShapes[inputIdx].GetDims());
     ++inputIdx;
-    
+
+    auto gmmWeightScaleDims = inputShapes[inputIdx].GetDims();
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+        gmmWeightScaleDims = ReverseTransposeDims(gmmWeightScaleDims, transposeParentIdx);
+    }
     inputs.rGmmWeightScale = replaceGraphBuilder.CreateInput(inputIdx, "gmm_weight_scale", inputDTypes[inputIdx],
-                                                              inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+                                                              inputFormats[inputIdx], gmmWeightScaleDims);
     ++inputIdx;
     
     inputs.rMmX = replaceGraphBuilder.CreateInput(inputIdx, "mm_x", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                    inputShapes[inputIdx].GetDims());
     ++inputIdx;
-    
+
+    auto mmWeightDims = inputShapes[inputIdx].GetDims();
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
+        mmWeightDims = ReverseTransposeDims(mmWeightDims, transposeParentIdx);
+    }
     inputs.rMmWeight = replaceGraphBuilder.CreateInput(inputIdx, "mm_weight", inputDTypes[inputIdx], inputFormats[inputIdx],
-                                                        inputShapes[inputIdx].GetDims());
+                                                        mmWeightDims);
     ++inputIdx;
     
     inputs.rMmXScale = replaceGraphBuilder.CreateInput(inputIdx, "mm_x_scale", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                         inputShapes[inputIdx].GetDims());
     ++inputIdx;
-    
+
+    auto mmWeightScaleDims = inputShapes[inputIdx].GetDims();
+    if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+        mmWeightScaleDims = ReverseTransposeDims(mmWeightScaleDims, transposeParentIdx);
+    }
     inputs.rMmWeightScale = replaceGraphBuilder.CreateInput(inputIdx, "mm_weight_scale", inputDTypes[inputIdx],
-                                                             inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+                                                             inputFormats[inputIdx], mmWeightScaleDims);
     
     return true;
 }
@@ -595,12 +646,6 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
-    ReplaceGraphInputs inputTensors;
-    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
-        return nullptr;
-    }
-
     ge::fusion::NodeIo mc2NodeIo;
     OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Capture AlltoAllvQuantGroupedMatMul node failed.");
@@ -610,6 +655,12 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     OP_LOGE_IF(matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Capture Transpose node failed.");
     uint32_t transposeParentIdx = transposeNodeIo.index;
+
+    ReplaceGraphInputs inputTensors;
+    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult, transposeParentIdx)) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
+        return nullptr;
+    }
 
     ge::AscendString group = "";
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
@@ -697,6 +748,12 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
     size_t subgraphInputSize = subgraphInputs.size();
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu.", subgraphInputSize);
 
+    ge::fusion::NodeIo transposeNodeIoForInfer;
+    uint32_t transposeParentIdxForInfer = 0;
+    if (matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIoForInfer) == ge::SUCCESS) {
+        transposeParentIdxForInfer = transposeNodeIoForInfer.index;
+    }
+
     // build replace graph with transpose attr reversed
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
     if (replaceGraph == nullptr) {
@@ -704,7 +761,7 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
         return nullptr;
     }
     // infershape
-    if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
+    if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs, transposeParentIdxForInfer)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
