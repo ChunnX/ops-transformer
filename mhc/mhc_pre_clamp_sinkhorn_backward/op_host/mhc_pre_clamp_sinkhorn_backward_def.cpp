@@ -117,7 +117,7 @@ public:
 
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
         this->Attr("min").AttrType(OPTIONAL).Float(0.0f);
-        this->Attr("max").AttrType(OPTIONAL).Float(1.0f);
+        this->Attr("max").AttrType(OPTIONAL).Float(0.0f);
     }
 };
 

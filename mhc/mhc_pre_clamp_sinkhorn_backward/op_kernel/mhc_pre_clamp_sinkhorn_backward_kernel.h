@@ -107,17 +107,20 @@ protected:
 
     TQue<QuePosition::VECIN, 1> inputXInQueue;
     TQue<QuePosition::VECIN, 1> inputGradQueue;
+    TQue<QuePosition::VECIN, 1> inputClampQueue;
 
     TQue<QuePosition::VECIN, 1> SKInQueue;
 
     TQue<QuePosition::VECOUT, 1> OutQueue;
 
     TBuf<TPosition::VECCALC> fusedGradHPre2AndGradHPost2Buf_, gradRsqrtBuf_, gradBiasBuf_, onesBuf_, ScaleBuf_,
-        hcBaseBuf_, tempBuf_;
+        hcBaseBuf_, tempBuf_, clampMixBuf_, clampMinBuf_, clampMaxBuf_, clampMaskBuf_, clampMaskFloatBuf_, clampMinScalarBuf_, clampMaxScalarBuf_;
 
     LocalTensor<T> dBiasLocal_, gradRsqrtLocal_, dPrePostTempLocal_;
     LocalTensor<T> xCastLocal_, gradYCastLocal_, gradXCastLocal_;
     LocalTensor<T> scaleLocal_, dScaleLocal_, dBiasLocalTemp_, dScaleLocalTemp_;
+    LocalTensor<T> clampMixLocal_;
+    LocalTensor<T> clampMinLocal_, clampMaxLocal_, clampMaskLocal_, clampMaskFloatLocal_, clampMinScalarLocal_, clampMaxScalarLocal_;
     LocalTensor<T> dBiasLocalList_[2], dpreLocalList_[2];
     int32_t scalePos_ = 0, biasPos_ = 0;
     int32_t onceTask_ = 0;
@@ -260,6 +263,13 @@ private:
     {
         if ASCEND_IS_AIV {
             pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
+            pipe_->InitBuffer(clampMixBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMinBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMaxBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMaskBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMaskFloatBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMinScalarBuf_, tileCoreBS_ * n_ * sizeof(float));
+            pipe_->InitBuffer(clampMaxScalarBuf_, tileCoreBS_ * n_ * sizeof(float));
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 2);
             pipe_->InitBuffer(gradBiasBuf_, 2 * 2 * tileCoreBS_ * ((n_ * n_ + 2 * n_)) * sizeof(float));
             pipe_->InitBuffer(onesBuf_, tileCoreBS_ * n_ * 2 * sizeof(float)); // pre: tileCoreBS_ * n
@@ -267,6 +277,7 @@ private:
             pipe_->InitBuffer(ScaleBuf_, BYTE_SIZE_PER_BLOCK * 2); // pre: tileCoreBS_ * n
             pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             pipe_->InitBuffer(inputGradQueue, 1, tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
+            pipe_->InitBuffer(inputClampQueue, 1, tileCoreBS_ * n_ * sizeof(float));
             pipe_->InitBuffer(SKInQueue, 2,
                               tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK * 2) *
                                   sizeof(float));
@@ -280,6 +291,13 @@ private:
 
             eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
             dPrePostTempLocal_ = fusedGradHPre2AndGradHPost2Buf_.Get<T>();
+            clampMixLocal_ = clampMixBuf_.Get<T>();
+            clampMinLocal_ = clampMinBuf_.Get<T>();
+            clampMaxLocal_ = clampMaxBuf_.Get<T>();
+            clampMaskLocal_ = clampMaskBuf_.Get<T>();
+            clampMaskFloatLocal_ = clampMaskFloatBuf_.Get<T>();
+            clampMinScalarLocal_ = clampMinScalarBuf_.Get<T>();
+            clampMaxScalarLocal_ = clampMaxScalarBuf_.Get<T>();
             hcBaseLocal_ = hcBaseBuf_.Get<T>();
             onesLocal_ = onesBuf_.Get<T>();
             scaleLocal_ = ScaleBuf_.Get<T>();
@@ -546,21 +564,23 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     PipeBarrier<PIPE_V>();
     Mul(gradHResLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
-
+    //* Start CLAMP BWD
     // clamp backward: mask = (reduceOut >= min) && (reduceOut <= max)
-    auto reduceOutLocal = inputGradQueue.AllocTensor<T>();
+    printf("[backward]minVal_: %f, maxVal_: %f\n", minVal_, maxVal_);
+    // auto reduceOutLocal = inputGradQueue.AllocTensor<T>();
+    auto reduceOutLocal = inputClampQueue.AllocTensor<T>();
     DataCopyPad(reduceOutLocal, reduceOutGlobal_[taskOffset * n_ * n_],
                 {static_cast<uint16_t>(tileTaskCount * n_), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0},
                 {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
-    inputGradQueue.EnQue(reduceOutLocal);
-    inputGradQueue.DeQue();
+    inputClampQueue.EnQue(reduceOutLocal);
+    inputClampQueue.DeQue();
 
-    auto maskMinLocal = inputGradQueue.AllocTensor<int16_t>();
-    auto maskMaxLocal = inputGradQueue.AllocTensor<int16_t>();
-    auto clampMaskLocal = inputGradQueue.AllocTensor<int16_t>();
-    auto clampMaskFloatLocal = inputGradQueue.AllocTensor<float>();
-    auto minScalarLocal = inputGradQueue.AllocTensor<T>();
-    auto maxScalarLocal = inputGradQueue.AllocTensor<T>();
+    printf("tileCoreBS_: %d, n_: %d\n", tileCoreBS_, n_);
+    // Keep mask tensors in int16_t view for Compare/And.
+    auto clampMinInt16Local = clampMinLocal_.template ReinterpretCast<int16_t>();
+    auto clampMaxInt16Local = clampMaxLocal_.template ReinterpretCast<int16_t>();
+    auto clampMaskInt16Local = clampMaskLocal_.template ReinterpretCast<int16_t>();
+    auto clampMaskFloatLocal = clampMaskFloatLocal_.template ReinterpretCast<float>();
 
     const uint32_t compareRepeatTimes = CeilDiv(tileTaskCount * n_, ELEMENTS_SIZE_PER_REPEAT / sizeof(T));
     const uint64_t compareMask = static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT / sizeof(int16_t));
@@ -572,31 +592,26 @@ __aicore__ inline void MhcPreClampSinkhornBackwardKernel<TYPE_X, T, DETERMINISTI
     compareParams.src0RepStride = 1;
     compareParams.src1RepStride = 1;
 
-    Duplicate(minScalarLocal, static_cast<T>(minVal_), 1);
-    Duplicate(maxScalarLocal, static_cast<T>(maxVal_), 1);
-
+    Duplicate(clampMinScalarLocal_, static_cast<T>(minVal_), 1);
+    Duplicate(clampMaxScalarLocal_, static_cast<T>(maxVal_), 1);
     PipeBarrier<PIPE_V>();
-    AscendC::Compare(maskMinLocal, reduceOutLocal, minScalarLocal, CMPMODE::GE, compareMask,
+    AscendC::Compare(clampMinInt16Local, reduceOutLocal, clampMinScalarLocal_, CMPMODE::GE, compareMask,
                      compareRepeatTimes, compareParams);
     PipeBarrier<PIPE_V>();
-    AscendC::Compare(maskMaxLocal, reduceOutLocal, maxScalarLocal, CMPMODE::LE, compareMask,
+    AscendC::Compare(clampMaxInt16Local, reduceOutLocal, clampMaxScalarLocal_, CMPMODE::LE, compareMask,
                      compareRepeatTimes, compareParams);
     PipeBarrier<PIPE_V>();
-    AscendC::And(clampMaskLocal, maskMinLocal, maskMaxLocal, compareMask, compareRepeatTimes, compareParams);
+    AscendC::And(clampMaskInt16Local, clampMinInt16Local, clampMaxInt16Local, compareMask, compareRepeatTimes,
+                 compareParams);
     PipeBarrier<PIPE_V>();
-    Cast(clampMaskFloatLocal, clampMaskLocal, RoundMode::CAST_NONE,
+    Cast(clampMaskFloatLocal, clampMaskInt16Local, RoundMode::CAST_NONE,
          tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
     Mul(gradHResLocal_, gradHResLocal_, clampMaskFloatLocal, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
 
-    inputGradQueue.FreeTensor(reduceOutLocal);
-    inputGradQueue.FreeTensor(maskMinLocal);
-    inputGradQueue.FreeTensor(maskMaxLocal);
-    inputGradQueue.FreeTensor(clampMaskLocal);
-    inputGradQueue.FreeTensor(clampMaskFloatLocal);
-    inputGradQueue.FreeTensor(minScalarLocal);
-    inputGradQueue.FreeTensor(maxScalarLocal);
+    inputClampQueue.FreeTensor(reduceOutLocal);
+    //* End CLAMP BWD
 
     // 4v 4o 4v 40 -> 4v 4v
     Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(),
