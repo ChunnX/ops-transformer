@@ -73,8 +73,8 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
 ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(fiaInfo.opParamInfo.blockSize == nullptr,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockSize should not be null."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "blockSize", "empty",
+            "When page attention enable, blockSize  cannot be null"),
             return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(fiaInfo.blockSize <= 0,
@@ -88,8 +88,8 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaIn
 ge::graphStatus PagedAttentionChecker::CheckBlockTableExistence(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(fiaInfo.opParamInfo.blockTable.tensor == nullptr,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, block table should not be null."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_table", "empty",
+            "When page attention enable, block_table cannot be null"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -122,9 +122,9 @@ ge::graphStatus PagedAttentionChecker::CheckSeqLengthKVExistence(const FiaTiling
     }
     OP_CHECK_IF(fiaInfo.opParamInfo.actualSeqLengths.tensor == nullptr ||
         fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() == nullptr ||
-            fiaInfo.opParamInfo.actualSeqLengths.tensor->GetShapeSize() == 0,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, actualSeqLengths of KV should not be null."),
+        fiaInfo.opParamInfo.actualSeqLengths.tensor->GetShapeSize() == 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "actual_seq_lengths_kv", "empty",
+            "When page attention enable, actual_seq_lengths_kv cannot be empty"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

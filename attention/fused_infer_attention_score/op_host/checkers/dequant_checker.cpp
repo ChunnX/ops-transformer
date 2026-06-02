@@ -318,7 +318,8 @@ ge::graphStatus DequantChecker::CheckTensorExistFullquant(const FiaTilingInfo &f
 {
     OP_CHECK_IF(
         tensor == nullptr,
-        OP_LOGE(fiaInfo.opName, "In %s scenario, %s should not be null.", quantModeName.c_str(), inputName.c_str()),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, inputName.c_str(), "empty",
+            ("In " + quantModeName + " scenario, " + inputName.c_str() + " cannot be empty").c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -328,7 +329,8 @@ ge::graphStatus DequantChecker::CheckTensorNotExistFullquant(const FiaTilingInfo
                                                              const std::string &inputName)
 {
     OP_CHECK_IF(tensor != nullptr,
-                OP_LOGE(fiaInfo.opName, "In %s scenario, %s should be null.", quantModeName.c_str(), inputName.c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, inputName.c_str(), "not empty",
+                ("In " + quantModeName + " scenario, " + inputName.c_str() + " must be empty").c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

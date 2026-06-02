@@ -301,21 +301,21 @@ ge::graphStatus RopeChecker::CheckRopeExistence(const FiaTilingInfo &fiaInfo)
     
     // 一个空 一个非空
     OP_CHECK_IF((queryRopeTensor == nullptr && keyRopeTensor != nullptr),
-        OP_LOGE(fiaInfo.opName, "queryRope is null, but keyRope is not null, "
-            "they should be consistent."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
+            "When query_rope is not empty, key_rope cannot be empty"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((keyRopeTensor == nullptr && queryRopeTensor != nullptr),
-    OP_LOGE(fiaInfo.opName, "keyRope is null, but queryRope is not null, "
-        "they should be consistent."),
-    return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "key_rope", "not empty",
+            "When query_rope is empty, key_rope must be empty"),
+        return ge::GRAPH_FAILED);
 
     // rope split时 rope必须都存在
     if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
         OP_LOGI(fiaInfo.opName, "Rope mode is ROPE_SPLIT.");
         OP_CHECK_IF((queryRopeTensor == nullptr || keyRopeTensor == nullptr),
-            OP_LOGE(fiaInfo.opName,
-            "When rope exists, queryRope or keyRope should not be null."),
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "query_rope and key_rope", "empty",
+                "When rope exists, queryRope or keyRope cannot be null"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

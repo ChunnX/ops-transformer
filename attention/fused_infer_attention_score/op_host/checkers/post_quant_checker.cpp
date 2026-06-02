@@ -56,11 +56,13 @@ ge::graphStatus PostQuantChecker::CheckExistenceQuantScale2(const FiaTilingInfo 
     // Post-quantization scenarios must include quantScale2.
     if (fiaInfo.isOutQuantEnable) {
         OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.tensor == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Quant_scale2 is nullptr in post quant scenario!"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "quant_scale2", "empty",
+                "In post quant scenario, quant_scale2 cannot be empty"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(fiaInfo.opParamInfo.quantScale2.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of quant_scale2 is nullptr in post quant scenario!"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "quant_scale2", "empty",
+                "In post quant scenario, the TensorDesc of quant_scale2 cannot be empty"),
+            return ge::GRAPH_FAILED);
         int64_t quantScale2ShapeSize = fiaInfo.opParamInfo.quantScale2.tensor->GetShapeSize();
         OP_CHECK_IF(quantScale2ShapeSize <= 0,
                     OP_LOGE(fiaInfo.opName, "Shape size of quant_scale2 is nonpositive in post quant scenario!"),
