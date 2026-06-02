@@ -31,21 +31,37 @@ namespace optiling {
 
 ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Shape of tensor query is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE(opName_, "Desc of tensor query is nullptr"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Desc of tensor query is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE(opName_, "Shape of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Shape of tensor key is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE(opName_, "Desc of tensor key is nullptr"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Desc of tensor key is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE(opName_, "Shape of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Shape of tensor value is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Desc of tensor value is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Shape of tensor output is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [Desc of tensor output is nullptr]"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -53,29 +69,54 @@ ge::graphStatus FiaInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.numHeads == nullptr, OP_LOGE(opName_, "attr numHeads is nullptr"),
+    OP_CHECK_IF(opParamInfo_.numHeads == nullptr, 
+                OP_LOGE(opName_,"The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr numHeads is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE(opName_, "attr scaleValue is nullptr"),
+    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr,
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr scaleValue is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.kvHeadNums == nullptr, OP_LOGE(opName_, "attr kvHeadNums is nullptr"),
+    OP_CHECK_IF(opParamInfo_.kvHeadNums == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr kvHeadNums is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE(opName_, "attr layout is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.blockSize == nullptr, OP_LOGE(opName_, "attr blockSize is nullptr"),
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr layout is nullptr]"), 
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.antiquantMode == nullptr, OP_LOGE(opName_, "attr antiquantMode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.blockSize == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr blockSize is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxLseFlag == nullptr, OP_LOGE(opName_, "attr softmaxLseFlag is nullptr"),
+    OP_CHECK_IF(opParamInfo_.antiquantMode == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr antiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.keyAntiquantMode == nullptr, OP_LOGE(opName_, "attr keyAntiquantMode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.softmaxLseFlag == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr softmaxLseFlag is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.valueAntiquantMode == nullptr, OP_LOGE(opName_, "attr valueAntiquantMode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.keyAntiquantMode == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr keyAntiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.innerPrecise == nullptr, OP_LOGE(opName_, "attr innerPrecise is nullptr"),
+    OP_CHECK_IF(opParamInfo_.valueAntiquantMode == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr valueAntiquantMode is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, OP_LOGE(opName_, "attr queryQuantMode is nullptr"),
+    OP_CHECK_IF(opParamInfo_.innerPrecise == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr innerPrecise is nullptr]"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"), return ge::GRAPH_FAILED);
-
+    OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                       "the reason is: [attr queryQuantMode is nullptr]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.pseType == nullptr, 
+                OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                        "the reason is: [attr pseType is nullptr]"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -94,7 +135,7 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
          opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() != 0) ||
         (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() != 0 &&
          opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-        OP_LOGE(opName_,
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
                 "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while "
                 "the other is not",
                 opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
@@ -109,7 +150,8 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
     if (*opParamInfo_.softmaxLseFlag) {
         if ((opParamInfo_.lseOut.shape == nullptr) ||
             (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(opName_, "lse Flag is %u, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag);
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                    "lse Flag is %u, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag);
             return ge::GRAPH_FAILED;
         }
     }
@@ -161,14 +203,16 @@ ge::graphStatus FiaInfoParser::GetLegacyIfaFlag()
 ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-        OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
                 LayoutToSerialString(qLayout_).c_str(), ACTUAL_SEQ_Q_LEN_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 0.", ACTUAL_SEQ_Q_LEN_NAME.c_str(),
-                shapeSize);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                "%s's shape size is %ld, it should be greater than 0.", 
+                ACTUAL_SEQ_Q_LEN_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -178,7 +222,8 @@ ge::graphStatus FiaInfoParser::GetActualSeqLenQSize(uint32_t &size)
 ge::graphStatus FiaInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE("FusedInferAttentionScore", "opName got from TilingContext is nullptr");
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -620,7 +665,9 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
         kvLayout_ = qLayout_;
     } else {
         OP_CHECK_IF(kCache_.empty() || kCache_[0] == nullptr,
-                    OP_LOGE(opName_, "kCache is empty or kCache[0] is nullptr"), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                            "kCache is empty or kCache[0] is nullptr"),
+                    return ge::GRAPH_FAILED);
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
         if (keyDimNum == 3U) {
             kvLayout_ = FiaLayout::BnBsH;
@@ -629,7 +676,7 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
         } else if (keyDimNum == 5U) {
             kvLayout_ = FiaLayout::NZ;
         } else {
-            OP_LOGE(opName_,
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
                     "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.",
                     KEY_NAME.c_str(), keyDimNum);
             return ge::GRAPH_FAILED;
@@ -716,7 +763,8 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
     if (antiQuantFlag_) {
         uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
         if (dimNum != 2U) {
-            OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                    "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
             return ge::GRAPH_FAILED;
         }
         maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -748,12 +796,13 @@ ge::graphStatus FiaInfoParser::GetMaxBlockNumPerBatch()
 ge::graphStatus FiaInfoParser::GetBlockSize()
 {
     if (opParamInfo_.blockSize == nullptr) {
-        OP_LOGE(opName_, "Attr %s not exist", BLOCK_SIZE_NAME.c_str());
+        OP_LOGE(opName_, "The op [FusedInferAttentionScore] received bad params, "
+                "the reason is: [attr blockSize is nullptr]");
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);
     if (blockSize_ <= 0) {
-        OP_LOGE(opName_, "blockSize is %d, it should be > 0.", blockSize_);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], blockSize is %d, it should be greater than 0.", blockSize_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -763,7 +812,8 @@ ge::graphStatus FiaInfoParser::GetBlockTableDim2()
 {
     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
     if (dimNum != 2U) {
-        OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
         return ge::GRAPH_FAILED;
     }
     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
@@ -827,12 +877,14 @@ ge::graphStatus FiaInfoParser::GetRopeMode()
         return ge::GRAPH_SUCCESS;
     }
     if (qkHeadDim_ < vHeadDim_) {
-        OP_LOGE(opName_, "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)",
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], " 
+                "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)",
                 qkHeadDim_, vHeadDim_);
         return ge::GRAPH_FAILED;
     } else if (qkHeadDim_ > vHeadDim_) {
         if (existSplitRopeTensor) {
-            OP_LOGE(opName_, "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ",
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                    "when %s exist, the query's head dim(%u) should be equal to the value's head dim(%u). ",
                     QUERY_ROPE_NAME.c_str(), qkHeadDim_, vHeadDim_);
             return ge::GRAPH_FAILED;
         } else {
@@ -916,7 +968,7 @@ ge::graphStatus FiaInfoParser::GetQueryAndOutLayout()
         qLayout_ = it->second.first;
         outLayout_ = it->second.second;
     } else {
-        OP_LOGE(opName_, "input layout is %s, it is unsupported.", layout.c_str());
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], input layout is %s, it is unsupported.", layout.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -927,7 +979,8 @@ ge::graphStatus FiaInfoParser::GetN1Size()
     // 获取N1基准值
     int32_t numHeads = *(opParamInfo_.numHeads);
     if (numHeads <= 0) {
-        OP_LOGE(opName_, "%s is %d, it should be greater than 0.", QUERY_HEADS_NUM_NAME.c_str(), numHeads);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], %s is %d, it should be greater than 0.",
+                QUERY_HEADS_NUM_NAME.c_str(), numHeads);
         return ge::GRAPH_FAILED;
     }
     n1Size_ = static_cast<uint32_t>(numHeads);
@@ -939,7 +992,8 @@ ge::graphStatus FiaInfoParser::GetN2Size()
     // 获取N2基准值
     int32_t kvHeadNums = *(opParamInfo_.kvHeadNums);
     if (kvHeadNums < 0) {
-        OP_LOGE(opName_, "%s is %d, it should be greater than or equal to 0.", KV_HEADS_NUM_NAME.c_str(), kvHeadNums);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], %s is %d, it should be greater than or equal to 0.",
+                KV_HEADS_NUM_NAME.c_str(), kvHeadNums);
         return ge::GRAPH_FAILED;
     }
     n2Size_ = (kvHeadNums == 0) ? n1Size_ : static_cast<uint32_t>(kvHeadNums);
@@ -959,8 +1013,8 @@ ge::graphStatus FiaInfoParser::GetGSize()
 {
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "%s(%u) should be a multiple of %s(%u).", QUERY_HEADS_NUM_NAME.c_str(), n1Size_,
-                KV_HEADS_NUM_NAME.c_str(), n2Size_);
+        OP_LOGE(opName_, "In op [FusedInferAttentionScore], %s(%u) should be a multiple of %s(%u).",
+                QUERY_HEADS_NUM_NAME.c_str(), n1Size_, KV_HEADS_NUM_NAME.c_str(), n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -979,8 +1033,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
             attenMaskBatchStride_ = 1;
             attenMaskStride_ = 1;
         } else {
-            OP_LOGE(opName_, "When layout is TND/NTD, Tree mask(%u) matrix dim only support 1.",
-                    *opParamInfo_.sparseMode);
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], %s is %d, it should be 1.",
+                    INNER_PRECISE_NAME.c_str(), *opParamInfo_.innerPrecise);
         }
     } else {
         if (maskDimNum == 3U) {
@@ -988,8 +1042,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
                                     maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
-            OP_LOGE(opName_, "When layout is not TND/NTD, Tree mask(%u) matrix dim only support 3.",
-                    *opParamInfo_.sparseMode);
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], when layout is not TND/NTD, "
+                    "Tree mask(%u) matrix dim only support 3.", *opParamInfo_.sparseMode);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1024,21 +1078,22 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
     if (tmpAntiquantMode == 6) {
         if (systemPrefixFlag_) {
             if (tmpAntiquant.GetDimNum() != 5) {
-                OP_LOGE(opName_,
-                        "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.",
-                        tmpAntiquant.GetDimNum());
+                OP_LOGE(opName_, "In op [FusedInferAttentionScore], pseType is %d, it should be 2 or 3.",
+                        pseType_);
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
     } else if (tmpAntiquantMode == 1) {
         if (tmpAntiquant.GetDimNum() != 2 && tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.",
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                    "the dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.",
                     tmpAntiquant.GetDimNum());
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
         if (tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.",
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                    "the dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.",
                     tmpAntiquant.GetDimNum());
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
@@ -1051,7 +1106,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
     // only bss & b1ss & bs need to calc attenMaskSize_ , attenMaskSize_ is uesed to calc batch offset
     if (attenMaskFlag_) {
         if (*opParamInfo_.sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
-            OP_LOGE(opName_, "NpuArch[%d] currently does not support sparse9.", static_cast<int32_t>(npuArch_));
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], NpuArch[%d] currently does not support sparse9.",
+                    static_cast<int32_t>(npuArch_));
             return ge::GRAPH_FAILED;
         }
         if (*opParamInfo_.sparseMode == 9U) {
@@ -1073,7 +1129,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
                 attenMaskBatchStride_ = 0;
             }
         } else {
-            OP_LOGE(opName_, "mask matrix dim only support 2/3/4.");
+            OP_LOGE(opName_, "In op [FusedInferAttentionScore], mask matrix dim only support 2/3/4.",
+                    *opParamInfo_.sparseMode);
         }
         if (*opParamInfo_.sparseMode == 0U || *opParamInfo_.sparseMode == 1U) {
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
@@ -1127,7 +1184,8 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
         OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)),
-                    OP_LOGE(opName_, "PseType(%ld) is not supported, pseType must be 0.", pseType_),
+                    OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                            "PseType(%ld) is not supported, it should be 0.", pseType_),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
@@ -1168,7 +1226,8 @@ ge::graphStatus FiaInfoParser::GetSystemPrefix()
             opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape().GetShapeSize() != 0) {
             gert::Shape prefixShape{1};
             if (prefixShape != opParamInfo_.actualSharedPrefixLen.tensor->GetStorageShape()) {
-                OP_LOGE(opName_, "System prefix is enabled but actualSharedPrefixLen shape is not {1}");
+                OP_LOGE(opName_, "In op [FusedInferAttentionScore], "
+                        "System prefix is enabled but actualSharedPrefixLen shape is not {1}."),
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.actualSharedPrefixLen.tensor->GetData<int64_t>() != nullptr) {
@@ -1446,7 +1505,7 @@ void FiaInfoParser::GenerateDtypeInfo(FiaTilingInfo &fiaInfo)
 ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE(fiaInfo.opName, "tiling context is nullptr!");
+        OP_LOGE(fiaInfo.opName, "In op [FusedInferAttentionScore], tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
