@@ -626,7 +626,7 @@ public:
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         bool localS2RangeValid = !(s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 ||
                                    s2LastToken < s2FirstToken);
-        if (!localS2RangeValid && !IsBandGlobalLocalSparse()) {
+        if (!localS2RangeValid) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
