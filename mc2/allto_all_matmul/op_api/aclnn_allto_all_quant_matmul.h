@@ -85,4 +85,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllQuantMatmul(void
 }
 #endif
 
-#endif  // OP_API_INC_ALL_TO_ALL_QUANT_MATMUL_
+#endif // OP_API_INC_ALL_TO_ALL_QUANT_MATMUL_

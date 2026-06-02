@@ -16,8 +16,9 @@
 
 namespace ops {
 class AlltoAllMatmul : public OpDef {
-   public:
-    explicit AlltoAllMatmul(const char *name) : OpDef(name) {
+public:
+    explicit AlltoAllMatmul(const char *name) : OpDef(name)
+{
         this->Input("x1")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
@@ -134,7 +135,7 @@ class AlltoAllMatmul : public OpDef {
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape，复用二进制，后续图支持后修改
+            .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape，复用二进制，后续图支持后修改
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_all_matmul_apt");
@@ -212,7 +213,7 @@ class AlltoAllMatmul : public OpDef {
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape，复用二进制，后续图支持后修改
+            .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape，复用二进制，后续图支持后修改
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_all_matmul");
@@ -296,4 +297,4 @@ class AlltoAllMatmul : public OpDef {
 
 OP_ADD(AlltoAllMatmul);
 
-}  // namespace ops
+} // namespace ops

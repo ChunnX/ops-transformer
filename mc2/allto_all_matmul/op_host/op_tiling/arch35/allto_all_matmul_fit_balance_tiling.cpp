@@ -43,7 +43,8 @@ const static std::map<uint32_t, double> permuteBMap = {{4, 9.85}, {8, 9.85}};
 const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 88.6523}, {8, 81.9156}};
 const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.6494}, {8, 9.9191}};
 constexpr uint64_t ALIGN_M = 256;
-void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime() {
+void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
+{
     totalMatmulTime_ = CalcMatmulTime(mmInfo_.mValue);
     totalTpTime_ = commPerf_.CommTime(mmInfo_.mValue);
     ratioCalcComm_ = (std::max(totalTpTime_, totalMatmulTime_) / std::min(totalTpTime_, totalMatmulTime_));
@@ -55,7 +56,8 @@ void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime() {
     }
 }
 
-void AlltoAllMatmulFitBalanceTiling::SetShortTileLen() {
+void AlltoAllMatmulFitBalanceTiling::SetShortTileLen()
+{
     bool isCalcCommBalance = ratioCalcComm_ < CALC_COMM_RATIO;
     // M保持256对齐
     uint64_t cutLen = ALIGN_M;
@@ -82,7 +84,8 @@ void AlltoAllMatmulFitBalanceTiling::SetShortTileLen() {
 }
 
 // 根据短块时间计算长块大小
-uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen) {
+uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen)
+{
     uint64_t longTileLen;
     if (tilingM_.cutRes.shortTileAtBack) {
         double targetTime = commPerf_.CommTime(shortTileLen);
@@ -94,12 +97,12 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen) 
             double singleRankPermuteTime = CalcPermuteTime(shortTileLen);
             uint32_t rank = GetRank();
             longTileLen =
-                mmInfo_.kValue == 0
-                    ? 0U
-                    : (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
-                          ONE_MBYTE /
-                          ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
-                           all2allDtypeSizeMap.at(matmulQuantType_));
+                mmInfo_.kValue == 0 ?
+                    0U :
+                    (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
+                        ONE_MBYTE /
+                        ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
+                         all2allDtypeSizeMap.at(matmulQuantType_));
         } else {
             longTileLen = commPerf_.InverseCommTime(singleRankMatmulTime);
         }
@@ -108,11 +111,13 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen) 
     return longTileLen / ALIGN_M * ALIGN_M;
 }
 
-void AlltoAllMatmulFitBalanceTiling::SetLongTileLen() {
+void AlltoAllMatmulFitBalanceTiling::SetLongTileLen()
+{
     tilingM_.cutRes.longTileLen = CalcLongTileLen(tilingM_.cutRes.shortTileLen);
 }
 
-void AlltoAllMatmulFitBalanceTiling::AdjustLongShortTileLen() {
+void AlltoAllMatmulFitBalanceTiling::AdjustLongShortTileLen()
+{
     FitTileLengthDiscrete();
     if (tilingM_.cutRes.shortTileLen > tilingM_.cutRes.longTileLen) {
         tilingM_.cutRes.shortTileLen = tilingM_.cutRes.shortTileLen - tilingM_.cutRes.longTileLen;
@@ -127,7 +132,8 @@ void AlltoAllMatmulFitBalanceTiling::AdjustLongShortTileLen() {
 }
 
 // 基于拟合公式计算matmul时间
-double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcMatmulTime(uint64_t tileM) {
+double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcMatmulTime(uint64_t tileM)
+{
     double totalTime = 0.0;
     if (matmulQuantType_ == QuantType::KC_QUANT) {
         totalTime += dynamicPertokenKMap.at(GetRank()) * static_cast<double>(tileM) *
@@ -141,13 +147,15 @@ double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcMatmulTime(uint64_t tileM)
 }
 
 // 基于拟合公式计算permute时间
-double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcPermuteTime(uint64_t tileM) {
+double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcPermuteTime(uint64_t tileM)
+{
     return permuteKMap.at(GetRank()) * static_cast<double>(tileM) * static_cast<double>(mmInfo_.kValue) *
                all2allDtypeSizeMap.at(matmulQuantType_) / (coreNum_ * TWO * ONE_MBYTE) +
            permuteBMap.at(GetRank());
 }
 
-uint64_t AlltoAllMatmulFitBalanceTiling::CalcMByTime(double time) {
+uint64_t AlltoAllMatmulFitBalanceTiling::CalcMByTime(double time)
+{
     if (mmInfo_.kValue == 0 || mmInfo_.nValue == 0) {
         return static_cast<uint64_t>(0);
     }
@@ -158,7 +166,8 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMByTime(double time) {
     return mValue > 0 ? static_cast<uint64_t>(mValue) : static_cast<uint64_t>(0);
 }
 
-uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2() {
+uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2()
+{
     double matmulK = matmulKMap.at(matmulQuantType_);
     double matmulB = matmulBMap.at(matmulQuantType_);
     double all2allK = all2allKMap.at(GetRank());
@@ -173,7 +182,8 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2() {
     return mValue > 0 ? static_cast<uint64_t>(mValue) : static_cast<uint64_t>(0);
 }
 
-uint64_t AlltoAllMatmulFitBalanceTiling::primeMinFactor(uint64_t num) {
+uint64_t AlltoAllMatmulFitBalanceTiling::primeMinFactor(uint64_t num)
+{
     const uint64_t FACTOR_TWO = 2;
     const uint64_t FACTOR_THREE = 3;
     if (num % FACTOR_TWO == 0) {
@@ -187,13 +197,15 @@ uint64_t AlltoAllMatmulFitBalanceTiling::primeMinFactor(uint64_t num) {
     return num;
 }
 
-void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor() {
+void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
+{
     uint64_t alignNum = mmInfo_.mValue / ALIGN_M;
     uint64_t alignRemainder = mmInfo_.mValue % ALIGN_M;
     uint64_t maxLongNum;
     uint64_t minFactor;
     for (uint64_t tempAllNumOfLongTile = alignNum - 1; (tempAllNumOfLongTile + tempAllNumOfLongTile) > alignNum;
-         tempAllNumOfLongTile--) {
+         tempAllNumOfLongTile--)
+{
         minFactor = primeMinFactor(tempAllNumOfLongTile);
         alignRemainder += ALIGN_M;
         maxLongNum = (CalcLongTileLen(alignRemainder) + ALIGN_M - 1) / ALIGN_M;
@@ -220,11 +232,13 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor() {
     tilingM_.FitTileLengthDiscrete(isAlignUp, true, false);
 }
 
-void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete() {
+void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
+{
     // 最小的需要切分的耗时
     const uint64_t minCutTime = 100;
     if (mmInfo_.mValue < (tilingM_.cutRes.shortTileLen + tilingM_.cutRes.shortTileLen) ||
-        (totalMatmulTime_ + totalTpTime_) < minCutTime) {
+        (totalMatmulTime_ + totalTpTime_) < minCutTime)
+{
         // 总长度小于两倍短块或者总时间少于100us，不切
         tilingM_.cutRes.longTileLen = mmInfo_.mValue;
         tilingM_.cutRes.shortTileLen = 0U;
@@ -255,9 +269,10 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete() {
     }
 }
 
-uint32_t AlltoAllMatmulFitBalanceTiling::GetRank() {
+uint32_t AlltoAllMatmulFitBalanceTiling::GetRank()
+{
     const uint32_t STANDARD_CARD = 4;
     const uint32_t EIGHT_P = 8;
     return ((rankDim_ == STANDARD_CARD) || (rankDim_ == EIGHT_P)) ? static_cast<uint32_t>(rankDim_) : STANDARD_CARD;
 }
-}  // namespace MC2Tiling
+} // namespace MC2Tiling
