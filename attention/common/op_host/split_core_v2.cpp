@@ -730,12 +730,15 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
         // S1>S2时前若干行可能无效（s2Range为空），S1<=S2时全部有效
         BatchCache bCache;
         CalcBatchCache(0U, splitContext, bCache);
-        uint32_t validStart = 0U;
-        for (uint32_t s1GIdx = 0; s1GIdx < s1GBaseNum; s1GIdx++) {
-            auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
-            if (s2Range.second > s2Range.first) {
-                validStart = s1GIdx;
-                break;
+        uint32_t validStart = (bCache.s2Size == 0U) ? s1GBaseNum : 0U;
+        // Global-local BAND keeps the first KV tokens visible, so non-empty KV makes every row valid.
+        if (bCache.s2Size == 0U) {
+            for (uint32_t s1GIdx = 0; s1GIdx < s1GBaseNum; s1GIdx++) {
+                auto s2Range = CalcS2Range(s1GIdx, baseInfo, param, bCache);
+                if (s2Range.second > s2Range.first) {
+                    validStart = s1GIdx;
+                    break;
+                }
             }
         }
         uint32_t validPerBN2 = s1GBaseNum - validStart;
