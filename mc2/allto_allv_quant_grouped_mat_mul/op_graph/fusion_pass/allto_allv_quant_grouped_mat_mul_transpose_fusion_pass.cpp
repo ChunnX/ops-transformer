@@ -34,6 +34,8 @@ const size_t PERM_SIZE_THREE = 3;
 const size_t PERM_SIZE_FOUR = 4;
 const size_t PERM_SIZE_ONE = 1;
 const size_t INPUT_NUM_TOTAL = 8;
+const size_t DIM_ONE = 1;
+const size_t DIM_TWO = 2;
 
 enum MC2InputIdx {
     K_GMM_X = 0,
@@ -502,18 +504,12 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
         auto matchNodes = subGraphInput.GetAllInputs();
         if (matchNodes.empty()) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: matchNodes is empty.");
-            inputShapes.emplace_back();
-            inputDTypes.emplace_back(ge::DT_UNDEFINED);
-            inputFormats.emplace_back(ge::FORMAT_UNDEFINED);
             continue;
         }
         auto matchNode = matchNodes.at(0);
         ge::TensorDesc tmpDesc;
         if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
             OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
-            inputShapes.emplace_back();
-            inputDTypes.emplace_back(ge::DT_UNDEFINED);
-            inputFormats.emplace_back(ge::FORMAT_UNDEFINED);
             continue;
         }
         inputShapes.emplace_back(tmpDesc.GetShape());
@@ -528,55 +524,16 @@ static std::vector<int64_t> ReverseTransposeDims(const std::vector<int64_t> &dim
     std::vector<int64_t> reversed = dims;
     if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ||
         transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
-        if (reversed.size() >= DIM_THREE) {
+        if (reversed.size() >= DIM_TWO + 1) {
             std::swap(reversed[DIM_ONE], reversed[DIM_TWO]);
         }
     } else if (transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT) ||
                transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
         if (reversed.size() >= DIM_TWO) {
-            std::swap(reversed[DIM_ZERO], reversed[DIM_ONE]);
+            std::swap(reversed[0], reversed[DIM_ONE]);
         }
     }
     return reversed;
-}
-
-static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
-                                   const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
-                                   uint32_t transposeParentIdx)
-{
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
-    std::vector<ge::Shape> inputShapes;
-    for (size_t idx = 0; idx < subgraphInputs.size(); ++idx) {
-        auto matchNodes = subgraphInputs[idx].GetAllInputs();
-        if (matchNodes.empty()) {
-            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty at idx %zu.", idx);
-            inputShapes.emplace_back();
-            continue;
-        }
-        auto matchNode = matchNodes.at(0);
-        ge::TensorDesc tmpDesc;
-        if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed at idx %zu.", idx);
-            inputShapes.emplace_back();
-            continue;
-        }
-        auto dims = tmpDesc.GetShape().GetDims();
-        if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT) &&
-            transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
-            dims = ReverseTransposeDims(dims, transposeParentIdx);
-        } else if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) &&
-                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
-            dims = ReverseTransposeDims(dims, transposeParentIdx);
-        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT) &&
-                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
-            dims = ReverseTransposeDims(dims, transposeParentIdx);
-        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) &&
-                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
-            dims = ReverseTransposeDims(dims, transposeParentIdx);
-        }
-        inputShapes.emplace_back(ge::Shape(dims));
-    }
-    return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
 }
 
 static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder &replaceGraphBuilder,
@@ -742,6 +699,45 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     return replaceGraphBuilder.BuildAndReset({mc2.gmm_y});
 }
 
+static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
+                                   const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
+                                   uint32_t transposeParentIdx)
+{
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
+    std::vector<ge::Shape> inputShapes;
+    size_t idx = 0;
+    for (const auto &subgraphInput : subgraphInputs) {
+        auto matchNodes = subgraphInput.GetAllInputs();
+        if (matchNodes.empty()) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty.");
+            continue;
+        }
+        auto matchNode = matchNodes.at(0);
+        ge::TensorDesc tmpDesc;
+        if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
+            continue;
+        }
+        auto dims = tmpDesc.GetShape().GetDims();
+        if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT) &&
+            transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        } else if (idx == static_cast<size_t>(MC2InputIdx::K_MM_WEIGHT_SCALE) &&
+                   transposeParentIdx == static_cast<uint32_t>(MC2InputIdx::K_MM_WEIGHT_SCALE)) {
+            dims = ReverseTransposeDims(dims, transposeParentIdx);
+        }
+        inputShapes.emplace_back(ge::Shape(dims));
+        ++idx;
+    }
+    return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
+}
+
 ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replacement(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
@@ -754,11 +750,10 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
     size_t subgraphInputSize = subgraphInputs.size();
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu.", subgraphInputSize);
 
-    ge::fusion::NodeIo transposeNodeIoForInfer;
-    uint32_t transposeParentIdxForInfer = 0;
-    if (matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIoForInfer) == ge::SUCCESS) {
-        transposeParentIdxForInfer = transposeNodeIoForInfer.index;
-    }
+    ge::fusion::NodeIo transposeNodeIo;
+    OP_LOGE_IF(matchResult->GetCapturedTensor(TRANSPOSE_CAPTURE_IDX, transposeNodeIo) != ge::SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Capture Transpose node failed.");
+    uint32_t transposeParentIdx = transposeNodeIo.index;
 
     // build replace graph with transpose attr reversed
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
@@ -767,7 +762,7 @@ ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replace
         return nullptr;
     }
     // infershape
-    if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs, transposeParentIdxForInfer)) {
+    if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs, transposeParentIdx)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
