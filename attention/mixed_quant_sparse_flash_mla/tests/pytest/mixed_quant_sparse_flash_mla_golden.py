@@ -974,7 +974,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
-    d_aligned_128 = 640
+    d_aligned_128 =  (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim + 57) // 
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_128={d_aligned_128}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
     pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
