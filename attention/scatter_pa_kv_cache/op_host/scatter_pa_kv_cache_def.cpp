@@ -282,8 +282,7 @@ public:
             .ParamType(REQUIRED)
             .DataType(keyDataType)
             .Format(DataFormat)
-            .UnknownShapeFormat(DataFormat)
-            .IgnoreContiguous();
+            .UnknownShapeFormat(DataFormat);
         this->Input("slot_mapping")
             .ParamType(REQUIRED)
             .DataType(indexDataType)
@@ -298,8 +297,7 @@ public:
             .ParamType(REQUIRED)
             .DataType(valueDataType)
             .Format(DataFormat)
-            .UnknownShapeFormat(DataFormat)
-            .IgnoreContiguous();
+            .UnknownShapeFormat(DataFormat);
         this->Input("compress_lens")
             .ParamType(OPTIONAL)
             .DataType(indexDataType)
