@@ -165,7 +165,7 @@ ge::graphStatus BSATiling::GetNpuInfo(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ValidateTNDSeqlenSum(gert::TilingContext *bsaContext)
 {
     // 只在TND格式时进行校验
-    if (qInputLayout_ != BSAQInputLayout::TND || kvCacheLayout_ != BSAKvCacheLayout::TND) {
+    if (qInputLayout_ != BSAQInputLayout::TND_Q || kvCacheLayout_ != BSAKvCacheLayout::TND_KV) {
         return ge::GRAPH_SUCCESS;
     }
     
@@ -218,14 +218,14 @@ ge::graphStatus BSATiling::GetInputLayout(gert::TilingContext *bsaContext)
         OP_LOGE(bsaContext->GetNodeName(), "QInputLayout and kvInputLayout must be the same.");
         return ge::GRAPH_FAILED;
     } else if (it->first == "TND") {
-        qInputLayout_ = BSAQInputLayout::TND;
-        kvCacheLayout_ = BSAKvCacheLayout::TND;
+        qInputLayout_ = BSAQInputLayout::TND_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::TND_KV;
     } else if (it->first == "BNSD") {
-        qInputLayout_ = BSAQInputLayout::BNSD;
-        kvCacheLayout_ = BSAKvCacheLayout::BNSD;
+        qInputLayout_ = BSAQInputLayout::BNSD_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::BNSD_KV;
     } else if (it->first == "BSND") {
-        qInputLayout_ = BSAQInputLayout::BSND;
-        kvCacheLayout_ = BSAKvCacheLayout::BSND;
+        qInputLayout_ = BSAQInputLayout::BSND_Q;
+        kvCacheLayout_ = BSAKvCacheLayout::BSND_KV;
         if (socVer_ != SOC_VER_950_CODE) {
             OP_LOGE(bsaContext->GetNodeName(), "Only the chip 950 supports BSND inputLayout.");
             return ge::GRAPH_FAILED;
@@ -420,11 +420,11 @@ ge::graphStatus BSATiling::ParseRequiredTensors(gert::TilingContext *bsaContext)
     }
     ge::graphStatus ret = ge::GRAPH_SUCCESS;
 
-    if (qInputLayout_ == BSAQInputLayout::TND) {
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         ret = ParseQKVInTND(bsaContext);
-    } else if (qInputLayout_ == BSAQInputLayout::BNSD) {
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q) {
         ret = ParseQKVInBNSD(bsaContext);
-    } else if (qInputLayout_ == BSAQInputLayout::BSND) {
+    } else if (qInputLayout_ == BSAQInputLayout::BSND_Q) {
         ret = ParseQKVInBSND(bsaContext);
     }
 
@@ -484,14 +484,14 @@ ge::graphStatus BSATiling::ParseSeqlensInNonTND(gert::TilingContext *bsaContext)
             if (qSeqLenList_[i] > maxQSeqlen_) {
                 OP_LOGE(
                     bsaContext->GetNodeName(),
-                    "The actualSeqLengths of each batch must be less than the maxSeqLength. The maxSeqLength is %u, "
-                    "but the value at index %u of the actualSeqLengths is %u",
+                    "The actualSeqLength of each batch must be less than the maxSeqLength. The maxSeqLength is %u, "
+                    "but the value at index %u of the actualSeqLengths is %ld",
                     maxQSeqlen_, i, qSeqLenList_[i]);
             }
             if (kvSeqLenList_[i] > maxKvSeqlen_) {
                 OP_LOGE(bsaContext->GetNodeName(),
                         "The actualSeqLengthKv of each batch must be less than the maxSeqLengthKv. The maxSeqLengthKv "
-                        "is %u, but the value at index %u of the actualSeqLengthsKv is %u",
+                        "is %u, but the value at index %u of the actualSeqLengthsKv is %ld",
                         maxQSeqlen_, i, qSeqLenList_[i]);
             }
         }
@@ -511,9 +511,9 @@ ge::graphStatus BSATiling::ParseSeqlensInNonTND(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseSeqlens(gert::TilingContext *bsaContext)
 {
     ge::graphStatus ret = ge::GRAPH_SUCCESS;
-    if (qInputLayout_ == BSAQInputLayout::TND) {
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         ret = ParseSeqlensInTND(bsaContext);
-    } else if (qInputLayout_ == BSAQInputLayout::BNSD || qInputLayout_ == BSAQInputLayout::BSND) {
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q || qInputLayout_ == BSAQInputLayout::BSND_Q) {
         ret = ParseSeqlensInNonTND(bsaContext);
     }
     return ret;
@@ -1095,11 +1095,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     }
 
     // [位11-13] KV Layout（十亿位）
-    if (kvCacheLayout_ == BSAKvCacheLayout::TND) {
+    if (kvCacheLayout_ == BSAKvCacheLayout::TND_KV) {
         tilingKey += 30000000ULL; // 30 for TND
-    } else if (kvCacheLayout_ == BSAKvCacheLayout::BNSD) {
+    } else if (kvCacheLayout_ == BSAKvCacheLayout::BNSD_KV) {
         tilingKey += 50000000ULL; // 50 for BNSD
-    } else if (kvCacheLayout_ == BSAKvCacheLayout::BSND) {
+    } else if (kvCacheLayout_ == BSAKvCacheLayout::BSND_KV) {
         tilingKey += 60000000ULL; // 60 for BSND
     }
 
@@ -1124,11 +1124,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     // maskType_ == 0: 0 for NoMask（默认值）
     
     // [位0-1] Q Layout（个位）
-    if (qInputLayout_ == BSAQInputLayout::TND) {
+    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
         tilingKey += 2; // 2 for TND
-    } else if (qInputLayout_ == BSAQInputLayout::BNSD) {
+    } else if (qInputLayout_ == BSAQInputLayout::BNSD_Q) {
         tilingKey += 3; // 3 for BNSD
-    } else if (qInputLayout_ == BSAQInputLayout::BSND) {
+    } else if (qInputLayout_ == BSAQInputLayout::BSND_Q) {
         tilingKey += 4; // 4 for BSND
     }
 

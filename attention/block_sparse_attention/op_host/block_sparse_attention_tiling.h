@@ -132,18 +132,18 @@ struct OptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-// KVCache Layout枚举
-enum BSAKvCacheLayout : uint32_t {
-    TND = 0,   // [T, N, D] format
-    BNSD = 1,  // [B, N, S, D] format
-    BSND = 2   // [B, S, N, D] format
-};
-
 // Q Input Layout枚举
 enum BSAQInputLayout : uint32_t {
-    TND = 0,   // [T, N, D] format
-    BNSD = 1,  // [B, N, S, D] format
-    BSND = 2   // [B, S, N, D] format
+    TND_Q = 0,   // [T, N, D] format
+    BNSD_Q = 1,  // [B, N, S, D] format
+    BSND_Q = 2   // [B, S, N, D] format
+};
+
+// KVCache Layout枚举
+enum BSAKvCacheLayout : uint32_t {
+    TND_KV = 0,   // [T, N, D] format
+    BNSD_KV = 1,  // [B, N, S, D] format
+    BSND_KV = 2   // [B, S, N, D] format
 };
 
 // inner prec 枚举
