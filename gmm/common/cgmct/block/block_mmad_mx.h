@@ -689,7 +689,7 @@ public:
             }
             for (uint64_t kInner = kOuter; kInner < Min(kOuter + kBL1_, k_); kInner += kAL1_) {
                 uint64_t aL1BufId = aL1LoopCnt_ & (l1BufNum_ - 1);
-git                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + aL1BufId);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + aL1BufId);
                 UpdateKAL1(tileL1L0Param, kInner);
                 CopyAInL1(aGlobal, tileL1L0Param, aL1BufId, kInner);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(aL1BufId);
