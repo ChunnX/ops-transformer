@@ -81,9 +81,11 @@ public:
 
 private:
     static constexpr uint32_t INTRA_EVENT_ID_MAX = 5U;
-    static constexpr uint32_t QK_PREPROCESS_BF16_ND_BYTES = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / 2U;
-    static constexpr uint32_t QK_PREPROCESS_BF16_ND_ELEMENTS =
-        QK_PREPROCESS_BF16_ND_BYTES / sizeof(bfloat16_t);
+    static constexpr uint32_t QK_PREPROCESS_BF16_NZ_BYTES = QKV_RRC_OUTPUT_ONE_BUFFER_BYTES / 2U;
+    static constexpr uint32_t QK_PREPROCESS_BF16_NZ_ELEMENTS =
+        QK_PREPROCESS_BF16_NZ_BYTES / sizeof(bfloat16_t);
+    static constexpr uint32_t QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS =
+        QKV_RRC_HEAD_DIM_D128 + QKV_RRC_HEAD_DIM_D128 / 2U;
     static constexpr float QKV_RRC_HEAD_DIM_D128_RECIP = 1.0F / static_cast<float>(QKV_RRC_HEAD_DIM_D128);
 
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE = 0U;
@@ -93,8 +95,10 @@ private:
     static constexpr uint32_t EVT_PIPE_V_TO_MTE3_A_L1_READY = 4U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_A_L1_DONE = 4U;
 
-    static_assert(QK_PREPROCESS_BF16_ND_ELEMENTS >= QKV_RRC_HEAD_DIM_D128 * QKV_RRC_HEAD_DIM_D128,
-        "QkvRmsNormRopeCacheWithKScale Q/K BF16 ND staging buffer is too small.");
+    static_assert(QK_PREPROCESS_BF16_NZ_ELEMENTS >= QKV_RRC_HEAD_DIM_D128 * QKV_RRC_HEAD_DIM_D128,
+        "QkvRmsNormRopeCacheWithKScale Q/K BF16 NZ staging buffer is too small.");
+    static_assert(QKV_RRC_QK_SCALE_UB_BYTES >= QK_NZ_SCATTER_INDEX_LOAD_ELEMENTS * sizeof(uint16_t),
+        "QkvRmsNormRopeCacheWithKScale Q/K NZ scatter index load buffer is too small.");
     static_assert(EVT_MTE2_TO_PIPE_V_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIV MTE2->V input UB events exceed event id range.");
     static_assert(EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE + QKV_RRC_DOUBLE_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
@@ -256,9 +260,9 @@ private:
         CopyPreprocessInputs(slice);
         SetMte2ToVInputReady(activeBufferId_);
         WaitMte2ToVInputReady(activeBufferId_);
-        BuildRopeBf16Nd(tile, slice);
+        BuildRopeBf16NzUb(tile, slice);
         SetAndWaitVToMte3Al1StageReady();
-        WriteRopeBf16NdToL1Nz(tile, slice);
+        CopyRopeBf16NzUbToL1Nz(tile, slice);
         SetAndWaitMte3ToVAl1StageDone();
     }
 
@@ -313,43 +317,52 @@ private:
         }
     }
 
-    __aicore__ inline void BuildRopeBf16Nd(const TileParam &tile, const AivSlice &slice)
+    __aicore__ inline void BuildRopeBf16NzUb(const TileParam &tile, const AivSlice &slice)
     {
         const LocalTensor<bfloat16_t> input =
             inputDbPoolUb_[activeBufferId_ * QKV_RRC_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> gamma = gammaUb_;
         const LocalTensor<float> cosSin =
             cosSinDbPoolUb_[activeBufferId_ * QKV_RRC_COS_SIN_ONE_BUFFER_ELEMENTS];
-        const LocalTensor<bfloat16_t> qkRope = outputDbPoolUb_[
+        const LocalTensor<bfloat16_t> qkRopeNz = outputDbPoolUb_[
             activeBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS].template ReinterpretCast<bfloat16_t>();
-        AscendC::VF_CALL<QkRmsNormRopeD128Vf>(
+        const LocalTensor<uint16_t> nzScatterIndex = qkScaleStagingUb_.template ReinterpretCast<uint16_t>();
+        BuildRopeNzScatterIndex(nzScatterIndex, AlignUp(slice.rowSize, QKV_RRC_NZ_C0));
+        AscendC::VF_CALL<QkRmsNormRopeD128NzVf>(
             (__ubuf__ bfloat16_t *)input.GetPhyAddr(),
             (__ubuf__ float *)gamma.GetPhyAddr(),
             (__ubuf__ float *)cosSin.GetPhyAddr(),
-            (__ubuf__ bfloat16_t *)qkRope.GetPhyAddr(),
+            (__ubuf__ bfloat16_t *)qkRopeNz.GetPhyAddr(),
+            (__ubuf__ uint16_t *)nzScatterIndex.GetPhyAddr(),
             slice.tokenSize, tile.qkHeadOffset, tile.qkHeadSize, tilingData_->qkvStrideT,
             tilingData_->numQHeads, QKV_RRC_HEAD_DIM_D128_RECIP, tilingData_->epsilon);
     }
 
-    __aicore__ inline void WriteRopeBf16NdToL1Nz(const TileParam &tile, const AivSlice &slice)
+    __aicore__ inline void BuildRopeNzScatterIndex(const LocalTensor<uint16_t> &nzScatterIndex,
+        uint32_t rowSizeAligned)
+    {
+        for (uint32_t dim = 0U; dim < QKV_RRC_HEAD_DIM_D128; ++dim) {
+            const uint32_t dBlock = dim / QKV_RRC_NZ_C0;
+            const uint32_t dInner = dim % QKV_RRC_NZ_C0;
+            nzScatterIndex.SetValue(dim, static_cast<uint16_t>(dBlock * rowSizeAligned * QKV_RRC_NZ_C0 + dInner));
+        }
+    }
+
+    __aicore__ inline void CopyRopeBf16NzUbToL1Nz(const TileParam &tile, const AivSlice &slice)
     {
         if (slice.rowSize == 0U) {
             return;
         }
         const LocalTensor<bfloat16_t> aRotL1 =
             aRotL1Pool_[activeBufferId_ * QKV_RRC_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS];
-        const LocalTensor<bfloat16_t> qkRope = outputDbPoolUb_[
+        const LocalTensor<bfloat16_t> qkRopeNz = outputDbPoolUb_[
             activeBufferId_ * QKV_RRC_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS].template ReinterpretCast<bfloat16_t>();
-        Nd2NzParams nd2nzParams;
-        nd2nzParams.ndNum = 1U;
-        nd2nzParams.nValue = slice.rowSize;
-        nd2nzParams.dValue = tilingData_->headDim;
-        nd2nzParams.srcNdMatrixStride = 0U;
-        nd2nzParams.srcDValue = tilingData_->headDim;
-        nd2nzParams.dstNzC0Stride = AlignUp(tile.rowSize, QKV_RRC_NZ_C0);
-        nd2nzParams.dstNzNStride = 1U;
-        nd2nzParams.dstNzMatrixStride = 0U;
-        DataCopy(aRotL1[slice.rowOffset * QKV_RRC_NZ_C0], qkRope, nd2nzParams);
+        DataCopyParams copyParams;
+        copyParams.blockCount = QKV_RRC_HEAD_DIM_D128 / QKV_RRC_NZ_C0;
+        copyParams.blockLen = slice.rowSize;
+        copyParams.srcStride = AlignUp(slice.rowSize, QKV_RRC_NZ_C0) - slice.rowSize;
+        copyParams.dstStride = AlignUp(tile.rowSize, QKV_RRC_NZ_C0) - slice.rowSize;
+        DataCopy(aRotL1[slice.rowOffset * QKV_RRC_NZ_C0], qkRopeNz, copyParams);
     }
 
     __aicore__ inline void QuantAndScatterV(const TileParam &tile, const AivSlice &slice)
