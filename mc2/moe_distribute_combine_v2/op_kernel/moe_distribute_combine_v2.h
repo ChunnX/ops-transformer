@@ -52,6 +52,7 @@ constexpr uint32_t SPLIT_BLOCK_SIZE = 512U;
 constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_FLAG_SIZE = 32U;
 constexpr uint32_t SPLIT_BLOCK_FLAG_COUNT = SPLIT_BLOCK_FLAG_SIZE / sizeof(float);
+constexpr uint32_t RANKS_PER_SERVER = 8;
 
 using namespace AscendC;
 template <CombineMC2TypeClass>
@@ -111,6 +112,7 @@ private:
     __aicore__ inline void WritePackedTokenToWindow(
         GM_ADDR rankGM, LocalTensor<int32_t> srcTensor, LocalTensor<int32_t> packedTensor, uint32_t dataBytes);
     __aicore__ inline bool CheckPackedTokenArrive(GM_ADDR rankGM);
+    __aicore__ inline bool ShouldSendToRankInRound(int32_t logicalRankId, uint32_t roundId) const;
     __aicore__ inline void AddRmsNormAddCompute(uint32_t tokenIndex, uint32_t tokenOffset, uint32_t numCol,
                                                 LocalTensor<float>& x1TmpFloatLocal,
                                                 LocalTensor<float>& x2TmpFloatLocal,
@@ -259,6 +261,8 @@ private:
     uint32_t tokenNumPerCoreAlign_{0};
     float armAvgFactor_{0.0};
     float epsilon_{0.0};
+    int32_t localSendGroupStart_{0};
+    int32_t localSendGroupNum_{0};
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> moeQueue_;
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
@@ -958,31 +962,74 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::SetWaitTpStat
 }
 
 template <CombineMC2TypeClass>
+__aicore__ inline bool MoeDistributeCombineV2<CombineMC2TypeFunc>::ShouldSendToRankInRound(
+    int32_t logicalRankId, uint32_t roundId) const
+{
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    bool inLocalGroup = (logicalRankId >= localSendGroupStart_) &&
+                        (logicalRankId < localSendGroupStart_ + localSendGroupNum_);
+    return (roundId == 0U) ? inLocalGroup : (!inLocalGroup);
+#else
+    return true;
+#endif
+}
+
+template <CombineMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAllDispatchCopyAdd()
 {
-    if (sendCntNum_ == 0U) { // 空闲核，直接返回
-        return;
-    }
-    LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
-    const DataCopyExtParams bskParams{
-        1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
-        0U, 0U, 0U};
-    const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
+    uint32_t server_num = epWorldSize_ / RANKS_PER_SERVER;
+    uint32_t localServerId = epRankId_ / RANKS_PER_SERVER;
 
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
-        uint32_t tkIndex = startTokenId_ + ((loop + epRankId_) % sendCntNum_);
-        uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
-        uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
-        uint32_t toRankId = rankIdExpandIdx;
-        uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
-        uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));
-        if (isScalingDownFlag_) {
-            toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
-                epWorldSizeOriginal_ + rankIdExpandIdx);
+    localSendGroupNum_ = epWorldSize_ / 2;
+    if (epRankId_ < epWorldSize_ / 2) {
+        localSendGroupStart_ = 0;
+    } else {
+        localSendGroupStart_ = epWorldSize_ / 2;
+    }
+    uint32_t roundNum;
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    roundNum = (server_num > 5 && epWorldSize_ % RANKS_PER_SERVER == 0)? 2U: 1U;
+#else
+    roundNum = 1;
+#endif
+
+    bool needRoundSync = (roundNum == 2U) && (axisBS_ > 32) && 
+        !(server_num % 2 != 0 && localServerId == (server_num - 1) / 2);
+    if (sendCntNum_ != 0U) {
+        LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
+        const DataCopyExtParams bskParams{
+            1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)),
+            0U, 0U, 0U};
+        const DataCopyPadExtParams<ExpandIdxType> copyPadParams{false, 0U, 0U, 0U};
+        DataCopyPad(expandIdxLocal, expandIdxGM_[startTokenId_ * EXPAND_IDX_INFO], bskParams, copyPadParams);
+
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        for (uint32_t roundId = 0; roundId < roundNum; ++roundId) {
+            for (uint32_t loop = 0; loop < sendCntNum_; loop++) {
+                uint32_t tkIndex = startTokenId_ + ((loop + epRankId_) % sendCntNum_);
+                uint32_t baseOffset = (tkIndex - startTokenId_) * EXPAND_IDX_INFO;
+                uint32_t rankIdExpandIdx = static_cast<uint32_t>(expandIdxLocal(baseOffset));
+                uint32_t toRankId = rankIdExpandIdx;
+                if (roundNum == 2U && !ShouldSendToRankInRound(toRankId, roundId)) {
+                    continue;
+                }
+                uint32_t tokenId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 1));
+                uint32_t topkId = static_cast<uint32_t>(expandIdxLocal(baseOffset + 2));
+                if (isScalingDownFlag_) {
+                    toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET +
+                        epWorldSizeOriginal_ + rankIdExpandIdx);
+                }
+                ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+            }
+            if (needRoundSync && roundId == 0U) {
+                PipeBarrier<PIPE_ALL>();
+                AscendC::SyncAll<true>();
+            }
         }
-        ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
+    } else if (needRoundSync) {
+        PipeBarrier<PIPE_ALL>();
+        AscendC::SyncAll<true>();
     }
 }
 
