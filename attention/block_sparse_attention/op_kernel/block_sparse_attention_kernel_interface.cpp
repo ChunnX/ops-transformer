@@ -29,8 +29,8 @@ template <
     typename InputDtype = half,
     typename SoftmaxDtype = float,
     Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-    uint32_t QueryLayout = 0,      // 0=TND, 1=BNSD
-    uint32_t KvCacheLayout = 0>    // 0=TND, 1=BNSD
+    uint32_t QueryLayout = 0,      // 0=TND, 1=BNSD, 2=BSND
+    uint32_t KvCacheLayout = 0>    // 0=TND, 1=BNSD, 2=BSND
 __global__ __aicore__ void BlockSparseAttentionInfer(
     GM_ADDR q,
     GM_ADDR k,
