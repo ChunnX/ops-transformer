@@ -690,7 +690,8 @@ aclnnStatus Mc2Context::CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Co
  * @brief GetMc2ContextTensor for QuantReduceScatter
  */
 aclnnStatus Mc2Context::GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
-                                                  aclTensor *&mc2Context)
+                                                  aclTensor *&mc2Context,
+                                                  Mc2QuantReduceScatterContext *mc2ContextStruct)
 {
     OP_LOGD("Start to get Mc2Context Tensor for QuantReduceScatter");
 
@@ -724,9 +725,8 @@ aclnnStatus Mc2Context::GetMc2ContextTensorForQrs(const char *group, const char 
     aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    Mc2QuantReduceScatterContext mc2ContextStruct;
     aclnnRet = instance.CreatMc2ContextForQrs(hcclHandle, mc2ContextTag, engine, protocol,
-                                              &mc2ContextStruct, ctx, hcclBuffSize);
+                                              mc2ContextStruct, ctx, hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CreatMc2ContextTensorForQrs(ctx, mc2Context);
