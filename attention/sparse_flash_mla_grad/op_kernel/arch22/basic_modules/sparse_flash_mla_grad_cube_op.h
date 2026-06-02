@@ -61,7 +61,7 @@ private:
                                                                        const int32_t mmPingPongIdx,
                                                                        const int64_t lastBlockSize,
                                                                        const bool isLastBasicBlock,
-                 const RunInfo &runInfo);
+                                                                       const RunInfo &runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube4Process(const int64_t dsGmOffset,
                                                                        const int64_t queryGmOffset,
@@ -209,6 +209,7 @@ private:
     uint32_t singleN;
     int64_t s1BasicSize;
     int64_t dOriKvSize;
+    int64_t dSL1TotalSize{0};                                                  
 };
 
 template <typename SMLAGT>
