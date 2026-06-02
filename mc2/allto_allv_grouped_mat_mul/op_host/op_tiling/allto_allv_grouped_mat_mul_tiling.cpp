@@ -671,6 +671,12 @@ ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
+{
+    context_ = context;
+    return Init();
+}
+
 ge::graphStatus AlltoAllvGmmTiling::Init()
 {
     tilingData = context_->GetTilingData<AlltoAllvGmmTilingData>();
