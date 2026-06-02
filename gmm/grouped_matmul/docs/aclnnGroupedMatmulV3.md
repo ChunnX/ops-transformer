@@ -187,7 +187,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensor*）</td>
+      <td>groupListOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。</td>

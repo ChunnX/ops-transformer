@@ -200,7 +200,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListOptional（aclIntArray*）</td>
+        <td>groupListOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>

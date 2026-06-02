@@ -177,7 +177,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclIntArray*）</td>
+      <td>groupListOptional（aclTensorList）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>
