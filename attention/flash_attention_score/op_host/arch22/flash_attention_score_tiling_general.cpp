@@ -903,7 +903,7 @@ bool FlashAttentionScoreTilingBase::IsB41L2CacheOptimizable() const
            dSize == 128 &&
            (static_cast<uint64_t>(origDataPerCore) >= perCoreL2 ||
             static_cast<uint64_t>(totalAttnData) >= perCoreL2) &&
-           (s2Size > 1024 || s2Size <= 384 || s1Size <= 512) &&
+           (s2Size > 1024 || s2Size <= 384) &&
            (s2Size <= 1024 || layoutType != LAYOUT_BNSD);
 }
 
