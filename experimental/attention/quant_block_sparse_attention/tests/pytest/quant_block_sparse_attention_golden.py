@@ -135,7 +135,7 @@ def _allowed_blocks(mask_mode, qb_idx, q_block_size, kv_block_size, q_len, kv_le
 
     max_token = (qb_idx + 1) * q_block_size - 1
     if mask_mode == 2:
-        max_token += q_len - kv_len
+        max_token += kv_len - q_len  # RIGHT_DOWN: col<=row+(kv_len-q_len), 对齐 CUDA softmax.h:162 / kernel deltaN=S2-S1
     if max_token < 0:
         return []
     max_block = min(block_num - 1, max_token // kv_block_size)
@@ -269,7 +269,7 @@ def _mask_positions(case, q_idx, positions, q_len, kv_len):
     if case["mask_mode"] == 1:
         limit = q_idx
     else:
-        limit = q_idx + q_len - kv_len
+        limit = q_idx + kv_len - q_len  # RIGHT_DOWN: col<=row+(kv_len-q_len), 对齐 CUDA softmax.h:162 / kernel deltaN=S2-S1
     return torch.tensor([pos <= limit for pos in positions], dtype=torch.bool)
 
 
