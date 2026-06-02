@@ -266,19 +266,20 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     constexpr bool transB = true; // 后续要改为从模板参数获取转置属性
 
     constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
+    constexpr uint32_t c0SizeB = 32U;
     constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
     constexpr uint32_t c0SizeScale = 2U;
 
     using DispatchPolicy = Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
     using BlockPrologue = Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>;
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::ZNLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
     using LayoutScaleB = AscendC::Te::ScaleBDNLayoutPtn;
 
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = AscendC::Te::Weight4BitLayout<ElementB>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
     using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<c0SizeScale>>;
     using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<c0SizeScale>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
@@ -631,19 +632,20 @@ __aicore__ inline void GroupMatmul2A8W4(
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
     constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
-    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
+    constexpr uint32_t c0SizeB = 32U;
     constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
     constexpr uint32_t c0SizeScale = 2U;
 
     using DispatchPolicy = Blaze::Gemm::MatmulMxFp8Fp4DynamicKL1TailResplit;
     using BlockPrologue = Blaze::Gemm::Prologue::BlockPrologue<DispatchPolicy, ElementA, ElementB>;
     using LayoutA = AscendC::Te::NDExtLayoutPtn;
+    using LayoutB = AscendC::Te::ZNLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using LayoutScaleA = AscendC::Te::ScaleANDLayoutPtn;
     using LayoutScaleB = AscendC::Te::ScaleBDNLayoutPtn;
 
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
-    using MakeLayoutB = AscendC::Te::Weight4BitLayout<ElementB>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
     using MakeLayoutScaleA = Te::FrameLayoutFormat<LayoutScaleA, Std::Int<c0SizeScale>>;
     using MakeLayoutScaleB = Te::FrameLayoutFormat<LayoutScaleB, Std::Int<c0SizeScale>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
