@@ -870,6 +870,4 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetWorkspaceSize()
     }
     return ge::GRAPH_SUCCESS;
 }
-
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950, 2);
 } // namespace optiling

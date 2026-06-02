@@ -24,6 +24,8 @@
 #include "op_host/tiling_templates_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "platform/platform_infos_def.h"
 
 using namespace ge;
@@ -32,9 +34,21 @@ using namespace optiling::GroupedMatmulSwigluQuantV2Tiling;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
+constexpr int64_t GMMSQ_FUSING_TILING_TEMPLATE = 0;
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling,
+    GMMSQ_FUSING_TILING_TEMPLATE);
 
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling, 0);
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling, 1);
+constexpr int64_t GMMSQ_BASE_TILING_TEMPLATE = 1;
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling,
+    GMMSQ_BASE_TILING_TEMPLATE);
+
+constexpr int64_t GMMSQ_950_TILING_TEMPLATE = 2;
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950,
+    GMMSQ_950_TILING_TEMPLATE);
+
+constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
+    GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
@@ -43,11 +57,24 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
             return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     if (compileInfoPtr->supportL12BtBf16) {
-        std::vector<int32_t> registerList = {2};
-        OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
+        std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
+        auto xDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::X_INDEX);
+        auto wDesc = context->GetInputDesc(GroupedMatmulSwigluQuantV2Tiling::WEIGHT_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+        OP_CHECK_NULL_WITH_CONTEXT(context, wDesc);
+        ge::DataType xDtype = xDesc->GetDataType();
+        ge::DataType wDtype = wDesc->GetDataType();
+        if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
+            // 伪量化场景 MxA8W4: x=FP8_E4M3FN, w=FP4_E2M1
+            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
+            registerList[0] = GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE;
+        } else {
+            // 全量化场景
+            OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
+        }
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
     }else {
-        std::vector<int32_t> registerList = {0,1};
+        std::vector<int32_t> registerList = {GMMSQ_FUSING_TILING_TEMPLATE, GMMSQ_BASE_TILING_TEMPLATE};
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the int8");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
     }
