@@ -537,7 +537,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::WaitDis
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PipeBarrier<PIPE_ALL>();
 
     SyncAll<true>();  // 等待所有核完成
 }
