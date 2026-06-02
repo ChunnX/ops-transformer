@@ -16,6 +16,7 @@
 #ifndef QUANT_REDUCE_SCATTER_TILING_DATA_H
 #define QUANT_REDUCE_SCATTER_TILING_DATA_H
 
+#include <cstdint>
 #include <kernel_tiling/kernel_tiling.h>
 
 struct QuantReduceScatterTilingInfo {
@@ -26,6 +27,7 @@ struct QuantReduceScatterTilingInfo {
     uint64_t totalWinSize;   // Win区总大小，即HCCL_BUFFER_SIZE
     uint32_t xPerBlock;       // host 侧基于 TARGET_ITER 公式推荐的每块元素数
     uint32_t alignBlock;      // xPerBlock 对齐粒度（元素数，host/kernel共享）
+    bool isMc2Context;
 };
 
 struct QuantReduceScatterTilingData {

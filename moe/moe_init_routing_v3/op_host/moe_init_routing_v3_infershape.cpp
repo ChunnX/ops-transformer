@@ -797,8 +797,23 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         }
     }
 
-    if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
+    if (QuantMode::STATIC_QUANT == quantMode) {
         expandedXDtype = ge::DT_INT8;
+    } else if (QuantMode::DYNAMIC_QUANT == quantMode) {
+        // 允许调用方显式指定 expanded_x 为 DT_INT4，否则默认 DT_INT8
+        auto desiredExpandedXDtype = context->GetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X);
+        if (desiredExpandedXDtype == ge::DT_INT4) {
+            if (xDtype != ge::DT_FLOAT && xDtype != ge::DT_BF16) {
+                OP_LOGE(context,
+                        "When quant_mode=%ld and expanded_x=DT_INT4, xDtype should be DT_FLOAT or DT_BF16. "
+                        "Current got unexpected dtype id of %d.",
+                        quantMode, xDtype);
+                return ge::GRAPH_FAILED;
+            }
+            expandedXDtype = ge::DT_INT4;
+        } else {
+            expandedXDtype = ge::DT_INT8;
+        }
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode) {
         expandedXDtype = (QuantMode::MXQUANT_FP8_E5M2 == quantMode) ? ge::DT_FLOAT8_E5M2 : ge::DT_FLOAT8_E4M3FN;
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;

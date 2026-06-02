@@ -83,8 +83,6 @@ public:
         AscendC::SetMaskNorm();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-
         int64_t vectorsubBlockID = AscendC::GetSubBlockIdx();
         int64_t subBlockNum = AscendC::GetBlockNum() * 2;
         int64_t subBlockID = AscendC::GetBlockIdx();
@@ -126,6 +124,9 @@ public:
 
             uint32_t splitNumAlign = (splitNum + 7) / 8 * 8;  // 32b align
             uint32_t lseBlock = vectorsubBlockID == 0 ? sum_former : sum - sum_former;
+            if (lseBlock == 0) {
+                continue;
+            }
             uint32_t lseBlockAlign = (lseBlock + 7) / 8 * 8;  // 32b align
             int32_t count = splitNum * lseBlockAlign;
             int32_t lnCount = 1 * lseBlockAlign;
@@ -141,7 +142,6 @@ public:
             AscendC::Duplicate(tlUbTensor, 0.0f, calcLen);
 
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
 
             // Copy LSE from GM to UB
@@ -199,6 +199,7 @@ public:
             if (q_len > 1 && tokenTile >= n_len && n_len % 8 == 0) {
                 tokenTile = (tokenTile / n_len) * n_len;
             }
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 
             for (uint32_t tileStart = 0; tileStart < lseBlock; tileStart += tokenTile) {
                 uint32_t curTile = (tileStart + tokenTile <= lseBlock) ?
@@ -215,6 +216,7 @@ public:
                 uint32_t blockLenWriteAligned = (blockLenWrite + 31) / 32 * 32;
                 uint32_t srcStrideWrite = (headSizeVPad * sizeof(ElementOutput) - blockLenWriteAligned) / 32;                
 
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
                 for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
 
@@ -291,12 +293,9 @@ public:
                     }
                 }
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                if (tileStart + tokenTile < lseBlock) {
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                }
             }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
 
 private:

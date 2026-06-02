@@ -58,16 +58,16 @@ public:
     {
     }
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
-                                GM_ADDR weightAssistanceMatrix, GM_ADDR groupList, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
-                                GM_ADDR workspace);
+                                GM_ADDR weightAssistanceMatrix, GM_ADDR groupList, GM_ADDR smoothScale, GM_ADDR y,
+                                GM_ADDR yScale, GM_ADDR workspace);
     __aicore__ inline void Process();
 };
 
 template <class mmType>
 __aicore__ inline void GMMSwigluQuantPipelineSchedule<mmType>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
                                                                     GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
-                                                                    GM_ADDR groupList, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
-                                                                    GM_ADDR workspace)
+                                                                    GM_ADDR groupList, GM_ADDR smoothScale, GM_ADDR y,
+                                                                    GM_ADDR yScale, GM_ADDR workspace)
 {
     gmAddrParams.xGM = x;
     gmAddrParams.weightGM = weight;

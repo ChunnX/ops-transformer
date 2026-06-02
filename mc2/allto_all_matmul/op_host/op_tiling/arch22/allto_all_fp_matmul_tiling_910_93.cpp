@@ -161,10 +161,10 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckOpInputInfo()
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::InitTilingContextParameters()
 {
-    GE_ASSERT_GRAPH_SUCCESS(
+    MC2_CHECK_LOG_RET(opName_, 
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
-    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
+    MC2_CHECK_LOG_RET(opName_, MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
+    MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -176,15 +176,15 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::InitTilingContextParameters()
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
-    GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo());
+    MC2_CHECK_LOG_RET(opName_, CheckOpInputInfo());
     // 参数校验通过后赋值给全局上下文变量
-    GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
+    MC2_CHECK_LOG_RET(opName_, InitTilingContextParameters());
     // 进行通算切分
-    GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
+    MC2_CHECK_LOG_RET(opName_, TileCommAndCompute());
     // 调用非量化Matmul的tiling方法进行切分
-    GE_ASSERT_GRAPH_SUCCESS(DoMMTiling());
+    MC2_CHECK_LOG_RET(opName_, DoMMTiling());
     // hccl的tiling参数赋值处理
-    GE_ASSERT_GRAPH_SUCCESS(SetHcclTiling());
+    MC2_CHECK_LOG_RET(opName_, SetHcclTiling());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -197,7 +197,7 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::DoMMTiling()
 {
     contextInfo_.args_.mValue = inferredInfo_.tileM;
     AllToAllFpMatmulHelper mmTile(*this, localTilingData_.mc2MmV3TileTilingData);
-    GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+    MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
     if (inferredInfo_.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }

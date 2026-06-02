@@ -88,7 +88,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
         }
         maxMSize = std::max(mSize, maxMSize);
     }
-    GE_ASSERT_GRAPH_SUCCESS(DoGmmTiling(maxMSize, static_cast<uint32_t>(e_)));
+    MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize, static_cast<uint32_t>(e_)));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -99,8 +99,6 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
-    // set expertNum
-    expertNum_ = 1;
     // set workspace
     SetWorkspaceInfo();
     // tensorListSize为kernel侧tensorlist开辟的空间
@@ -121,13 +119,13 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::CheckInputNotNull() const
     OP_LOGD(context_->GetNodeName(), "start CheckInputNotNull.");
     // gmmX gmmWeight
     OP_TILING_CHECK((context_->GetInputDesc(GMM_X_INDEX) == nullptr),
-        OP_LOGE(context_->GetNodeName(), "input gmmX can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmX"), return ge::GRAPH_FAILED);
     // gmmWeight
     OP_TILING_CHECK(context_->GetInputDesc(GMM_WEIGHT_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "input gmmWeight can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmWeight"), return ge::GRAPH_FAILED);
     // gmmY
     OP_TILING_CHECK(context_->GetOutputDesc(OUTPUT_GMM_Y_INDEX) == nullptr,
-        OP_LOGE(context_->GetNodeName(), "output gmmy can not be null."), return ge::GRAPH_FAILED);
+        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmY"), return ge::GRAPH_FAILED);
     // permuteOut
     if (permuteOutFlag_) {
         tilingData->isPermuteOut = true;

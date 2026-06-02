@@ -107,6 +107,9 @@ public:
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
+    static constexpr bool IS_FP4 = AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> ||
+                                   AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>;
+    static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, yscale
@@ -126,11 +129,15 @@ public:
     BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0};
     BlockOffset blockOffset_{0, 0, 0, 0, 0, 0, 0};
     uint64_t preOffset_ = 0;
+    int64_t perGroupBOffset_ = 0;
+    int64_t bRightOffsetStep_ = 0;
+    int64_t x2ScaleRightOffsetStep_ = 0;
     BlockMmadOp mmadOp_;
     BlockEpilogue epilogueOp_;
     AscendC::LocalTensor<CType> l0cOutUbFirst_;
     AscendC::LocalTensor<CType> l0cOutUbSecond_;
     bool isVecSetSyncCom_ = false;
+    bool initSingleGroup_ = true;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -230,6 +237,7 @@ public:
             preOffset_ = offset;
         } else {
             splitValue = static_cast<uint64_t>(groupListGm_.GetValue(groupIdx));
+            preOffset_ += splitValue;
         }
         return splitValue;
     }
@@ -259,45 +267,30 @@ public:
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
         
-        if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
-            Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
+        if constexpr (IS_FP4) {
+            Get<IDX_A_OFFSET>(baseOffset_) = ((preOffset_ - m) * k) >> 1;
+            Get<IDX_B_OFFSET>(baseOffset_) = (perGroupBOffset_ * static_cast<int64_t>(groupIdx)) >> 1;
         } else {
-            Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-        }
-
-        if constexpr (formatB == CubeFormat::NZ) {
-            int64_t nAlign = (n + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            int64_t kAlign = (k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-            if constexpr (transB) {
-                nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
-                kAlign = (k + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
-            }
-            Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
-        } else {
-            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
-                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
-            } else {
-                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
-            }
+            Get<IDX_A_OFFSET>(baseOffset_) = (preOffset_ - m) * k;
+            Get<IDX_B_OFFSET>(baseOffset_) = perGroupBOffset_ * static_cast<int64_t>(groupIdx);
         }
 
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         // scaleAAxisBaseOffset (m, ceil(k,64), 2)
-        Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
+        Get<IDX_X1SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * scaleK;
         // scaleBAxisBaseOffset (g, n, ceil(k,64), 2) or (g, ceil(k,64), n, 2)
-        Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
+        Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
         if (AscendC::IsSameTypeV<DataTypeOut, fp4x2_e2m1_t> || AscendC::IsSameTypeV<DataTypeOut, fp4x2_e1m2_t>) {
-            Get<IDX_C_OFFSET>(baseOffset_) += (m * n / SWIGLU_N_HALF) >> 1;
+            Get<IDX_C_OFFSET>(baseOffset_) = ((preOffset_ - m) * (n / SWIGLU_N_HALF)) >> 1;
         } else {
-            Get<IDX_C_OFFSET>(baseOffset_) += m * n / SWIGLU_N_HALF;
+            Get<IDX_C_OFFSET>(baseOffset_) = (preOffset_ - m) * (n / SWIGLU_N_HALF);
         }
-        Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
-            m * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) =
+            (preOffset_ - m) * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     }
 
     __aicore__ inline bool UpdateGroupParams(const Params& params, uint32_t groupIdx)
     {
-        UpdateOffset(groupIdx);
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
         Get<M_VALUE>(problemShape_) = splitValue;
         // split_m，when m=0, skip
@@ -311,31 +304,41 @@ public:
     {
         Get<N_VALUE>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<K_VALUE>(problemShape_) = params.gmmParams.matmulTiling->Ka;
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                perGroupBOffset_ = Align16(Get<N_VALUE>(problemShape_))
+                                * (IS_FP4 ? Align64(Get<K_VALUE>(problemShape_))
+                                        : Align32(Get<K_VALUE>(problemShape_)));
+            } else {
+                perGroupBOffset_ = (IS_FP4 ? Align64(Get<N_VALUE>(problemShape_))
+                                        : Align32(Get<N_VALUE>(problemShape_)))
+                                * Align16(Get<K_VALUE>(problemShape_));
+            }
+        } else {
+            perGroupBOffset_ = Get<N_VALUE>(problemShape_) * Get<K_VALUE>(problemShape_);
+        }
         groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(params.mmadParams.groupListGmAddr));
-    }
-
-    __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
-    {
-        int64_t resN = n / 2; // SwiGLU: N -> N/2
+        int64_t resN = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF; // SwiGLU: N -> N/2
 
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
-                bRightOffset += resN * MATMUL_MNK_ALIGN_INT8;
+                bRightOffsetStep_ = resN * c0Size;
             } else {
-                bRightOffset += resN * CeilDiv(k, MATMUL_MNK_ALIGN) * MATMUL_MNK_ALIGN;
+                bRightOffsetStep_ = resN * Align16(Get<K_VALUE>(problemShape_));
             }
         } else {
             if constexpr (transB) {
-                bRightOffset += resN * k;
+                bRightOffsetStep_ = resN * Get<K_VALUE>(problemShape_);
             } else {
-                bRightOffset += resN;
+                bRightOffsetStep_ = resN;
             }
         }
 
         if constexpr (transB) {
-            x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+            x2ScaleRightOffsetStep_ =
+                resN * CeilDiv(Get<K_VALUE>(problemShape_), MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
-            x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+            x2ScaleRightOffsetStep_ = resN * MXFP_MULTI_BASE_SIZE;
         }
     }
 
@@ -344,19 +347,21 @@ public:
         int64_t m = Get<M_VALUE>(problemShape_);
         int64_t n = Get<N_VALUE>(problemShape_);
         int64_t k = Get<K_VALUE>(problemShape_);
-        TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
-                                   Get<K_VALUE>(problemShape_)};
-        bs.UpdateNextProblem(resProblemShape);
-        epilogueOp_.UpdateNextProblem(resProblemShape);
-        UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         while (bs.GetTileIdx(tileIdx)) {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
+            if (initSingleGroup_) {
+                UpdateOffset(groupIdx);
+                UpdateGlobalBuffer(params);
+                SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
+                                          static_cast<int64_t>(params.gmmParams.baseN));
+                initSingleGroup_ = false;
+            }
             // isMx = true
             blockOffset_ = coord.template GetQuantIOOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE>(
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
-                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape), c0Size);
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
@@ -369,9 +374,8 @@ public:
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUbFirst_, mmSingleShape, transA,
                         transB);
                 // right block
-                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_);
-                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_);
-                ComputeOffset(bRightOffset, x2ScaleRightOffset, n, k);
+                int64_t bRightOffset = Get<IDX_B_OFFSET>(blockOffset_) + bRightOffsetStep_;
+                int64_t x2ScaleRightOffset = Get<IDX_X2SCALE_OFFSET>(blockOffset_) + x2ScaleRightOffsetStep_;
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[bRightOffset],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[x2ScaleRightOffset],
                         l0cOutUbSecond_, mmSingleShape, transA, transB);
@@ -401,14 +405,24 @@ public:
         epilogueOp_.Init(params.epilogueParams);
         uint32_t groupNum = params.gmmParams.groupNum;
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (!transA) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+            } else {
+                bs.SetTailAlign(1, c0Size);
+            }
+        }
         l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
         l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM),
-                                      static_cast<int64_t>(params.gmmParams.baseN));
+            TupleShape resProblemShape{Get<M_VALUE>(problemShape_), Get<N_VALUE>(problemShape_) >> 1,
+                                       Get<K_VALUE>(problemShape_)};
+            bs.UpdateNextProblem(resProblemShape);
+            epilogueOp_.UpdateNextProblem(resProblemShape);
+            initSingleGroup_ = true;
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();

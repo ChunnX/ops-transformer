@@ -22,7 +22,7 @@ public:
     aclnnStatus CheckGroupedMatmulGroupSizeNoQuantDAV3510();
 
 private:
-    aclnnStatus CheckTensorListLength(const aclTensorList *tensorList) const;
+    aclnnStatus CheckTensorListLength(const aclTensorList *tensorList, const char *paramName) const;
 private:
     GroupedMatmulParams gmmParams_;
 };

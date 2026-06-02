@@ -107,7 +107,7 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    TPipe *tPipe;
+    TPipe *tPipe = nullptr;
 
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;

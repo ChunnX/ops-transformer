@@ -236,6 +236,32 @@ static const aclTensor* CopyTensor(const aclTensor* x2)
         x2->GetTensor()->GetAddr());
 }
 
+static aclnnStatus PrepareTransposedX2(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2,
+    const aclTensor*& transX2, const aclTensor*& transX2Scale)
+{
+    auto tempX2 = x2;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
+        if (x2->GetTensor() == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        tempX2 = CopyTensor(x2);
+    }
+    transX2 = tempX2;
+    transX2Scale = x2Scale;
+    if (transposeX2) {
+        if (tempX2->GetTensor() == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor is null.");
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
+        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
+        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
+            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x3Optional,
     const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, const aclTensor* commQuantScale1Optional,
@@ -259,34 +285,15 @@ aclnnStatus aclnnQuantMatmulAllReduceV4GetWorkspaceSize(
         dequant->SetDataType(op::DataType::DT_UINT64);
     }
 
-    // 目前不支持x1进行transpose
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-
     aclTensor* scale = nullptr;
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
-    auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
-        if (x2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        tempX2 = CopyTensor(x2);
-    }
-    auto transX2 = tempX2;
-    auto transX2Scale = x2Scale;
-    if (transposeX2) {
-        if (tempX2->GetTensor() == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor is null.");
-            return ACLNN_ERR_INNER_NULLPTR;
-        }
-        transX2 = QuantMatmulAllReduceTransTensor(tempX2);
-        // mxfp是3维scale，转置的是前两维，需要特殊判断，perblock场景复用判断转置接口
-        if (MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-            transX2Scale = QuantMatmulAllReduceTransTensor(x2Scale);
-        }
-    }
+    const aclTensor* transX2 = nullptr;
+    const aclTensor* transX2Scale = nullptr;
+    auto transRet = PrepareTransposedX2(x2, x2Scale, transposeX2, transX2, transX2Scale);
+    CHECK_RET(transRet == ACLNN_SUCCESS, transRet);
 
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(

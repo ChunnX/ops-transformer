@@ -55,18 +55,43 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
 
 
 #else
-#define INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND)                               \
+#define INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND, IS_DETERMINISTIC)              \
     do {                                                                                                                \
         __gm__ uint8_t *user = GetUserWorkspace(workspace);                                                             \
         GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, tiling_data_in, tiling_data);              \
         const SparseFlashAttentionGradBasicTilingData *__restrict tilingData = &tiling_data_in;                         \
         SFAG_BASIC::SelectedAttentionGradBasic<                                                                         \
-            SFAG_BASIC::SFAG_TYPE<SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, IS_BSND>>   \
+            SFAG_BASIC::SFAG_TYPE<SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE,      \
+                                  IS_BSND, IS_DETERMINISTIC>>                                                           \
             op;                                                                                                         \
         op.Process(query, key, value, out, d_out, softmax_max, softmax_sum, sparse_indices,                             \
                    actual_seq_qlen, actual_seq_kvlen, query_rope, key_rope,                                             \
                    dq, dk, dv, dq_rope, dk_rope, user, tilingData);                                                     \
     } while (0)
+
+#define SFAG_DISPATCH_KEY(KEY, INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND, IS_DETERMINISTIC)                           \
+    if (TILING_KEY_IS(KEY)) {                                                                                           \
+        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE, IS_BSND, IS_DETERMINISTIC);            \
+        return;                                                                                                         \
+    }
+
+#define SFAG_DISPATCH_ALL(INPUT_TYPE)                                                                                   \
+    SFAG_DISPATCH_KEY(10000, INPUT_TYPE, false, false, false, false)                                                    \
+    SFAG_DISPATCH_KEY(10001, INPUT_TYPE, false, false, false, true)                                                     \
+    SFAG_DISPATCH_KEY(10010, INPUT_TYPE, false, false, true,  false)                                                    \
+    SFAG_DISPATCH_KEY(10011, INPUT_TYPE, false, false, true,  true)                                                     \
+    SFAG_DISPATCH_KEY(10100, INPUT_TYPE, false, true,  false, false)                                                    \
+    SFAG_DISPATCH_KEY(10101, INPUT_TYPE, false, true,  false, true)                                                     \
+    SFAG_DISPATCH_KEY(10110, INPUT_TYPE, false, true,  true,  false)                                                    \
+    SFAG_DISPATCH_KEY(10111, INPUT_TYPE, false, true,  true,  true)                                                     \
+    SFAG_DISPATCH_KEY(11000, INPUT_TYPE, true,  false, false, false)                                                    \
+    SFAG_DISPATCH_KEY(11001, INPUT_TYPE, true,  false, false, true)                                                     \
+    SFAG_DISPATCH_KEY(11010, INPUT_TYPE, true,  false, true,  false)                                                    \
+    SFAG_DISPATCH_KEY(11011, INPUT_TYPE, true,  false, true,  true)                                                     \
+    SFAG_DISPATCH_KEY(11100, INPUT_TYPE, true,  true,  false, false)                                                    \
+    SFAG_DISPATCH_KEY(11101, INPUT_TYPE, true,  true,  false, true)                                                     \
+    SFAG_DISPATCH_KEY(11110, INPUT_TYPE, true,  true,  true,  false)                                                    \
+    SFAG_DISPATCH_KEY(11111, INPUT_TYPE, true,  true,  true,  true)
 
 
 extern "C" __global__ __aicore__ void
@@ -81,60 +106,11 @@ sparse_flash_attention_grad(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
-    if (TILING_KEY_IS(1000)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, false, false);
-        return;
-    } else if (TILING_KEY_IS(1100)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, false, false);
-        return;
-    } else if (TILING_KEY_IS(1010)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, true, false);
-        return;
-    } else if (TILING_KEY_IS(1110)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, true, false);
-        return;
-    } else if (TILING_KEY_IS(1001)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, false, true);
-        return;
-    } else if (TILING_KEY_IS(1101)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, false, true);
-        return;
-    } else if (TILING_KEY_IS(1011)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, false, true, true);
-        return;
-    } else if (TILING_KEY_IS(1111)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(half, true, true, true);
-        return;
-    }
+    SFAG_DISPATCH_ALL(half)
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16)
-    if (TILING_KEY_IS(1000)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, false, false);
-        return;
-    } else if (TILING_KEY_IS(1100)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, false, false);
-        return;
-    } else if (TILING_KEY_IS(1010)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, true, false);
-        return;
-    } else if (TILING_KEY_IS(1110)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, true, false);
-        return;
-    } else if (TILING_KEY_IS(1001)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, false, true);
-        return;
-    } else if (TILING_KEY_IS(1101)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, false, true);
-        return;
-    } else if (TILING_KEY_IS(1011)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, false, true, true);
-        return;
-    } else if (TILING_KEY_IS(1111)) {
-        INVOKE_SELECTED_ATTENTION_BASIC_IMPL(bfloat16_t, true, true, true);
-        return;
-    }
+    SFAG_DISPATCH_ALL(bfloat16_t)
 #endif
-
 }
 #endif

@@ -202,13 +202,13 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::St
                                                                const gert::StorageShape *weightShape)
 {
     OP_TILING_CHECK(inputParams_.aFormat != ge::Format::FORMAT_ND && inputParams_.aFormat != ge::Format::FORMAT_NCHW,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Input x format should be ND , actual format is %s",
-                                          ge::TypeUtils::FormatToSerialString(inputParams_.aFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "x",
+                        Ops::Base::ToString(inputParams_.aFormat).c_str(), "ND, NCHW"),
                     return false);
 
     OP_TILING_CHECK(inputParams_.bFormat != ge::Format::FORMAT_ND && inputParams_.bFormat != ge::Format::FORMAT_NCHW,
-                    CUBE_INNER_ERR_REPORT(inputParams_.opName, "Input weight format should be ND , actual format is %s",
-                                          ge::TypeUtils::FormatToSerialString(inputParams_.bFormat).c_str()),
+                    OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "weight",
+                        Ops::Base::ToString(inputParams_.bFormat).c_str(), "ND, NCHW"),
                     return false);
 
     size_t xOriDimNum = xShape->GetOriginShape().GetDimNum();
