@@ -84,7 +84,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
 
     ubLocalHeadTensor.SetValue(0, (uint32_t)curHead);
     AscendC::GlobalTensor<uint32_t> HeadGlobalTensor;
-    HeadGlobalTensor.SetGlobalBuffer(curHardwareHead);
+    HeadGlobalTensor.SetGlobalBuffer((__gm__ uint32_t*)curHardwareHead);
     AscendC::DataCopyExtParams copyParamsHead{1, 1 * sizeof(uint32_t), 0, 0, 0};
     PipeBarrier<PIPE_ALL>();
     AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHeadTensor, copyParamsHead);
