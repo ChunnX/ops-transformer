@@ -14,6 +14,7 @@
  */
 #include "grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/non_quant/grouped_matmul_tiling_key.h"
+#include "gmm/common/op_host/log_format_util.h"
 
 enum class GmmTrans {
     NoTrans = 0,
@@ -202,8 +203,13 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
     gert::Shape wShape = wTensor->GetOriginShape();
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
 
-    OP_CHECK_IF(wDimNum < MIN_DIM || xDimNum_ < MIN_DIM,
-                OP_LOGE(context->GetNodeName(), "The dimension of x or weight should be at least 2"), return false);
+    OP_CHECK_IF(
+        wDimNum < MIN_DIM || xDimNum_ < MIN_DIM,
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context->GetNodeName(), "x, weight",
+            Ops::Transformer::Gmm::FormatString("%u, %u", xDimNum_, wDimNum).c_str(),
+            Ops::Transformer::Gmm::FormatString("The shape dims of %s must be at least %d", "x, weight", 2).c_str()),
+        return false);
     xKDim_ = transposeX_ ? 0U : xDimNum_ - 1U;
     weightNDim_ = transposeWeight_ ? wDimNum - DIM_TWO : wDimNum - DIM_ONE;
 
@@ -237,9 +243,9 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
         }
         return SeparatedXSeparatedWeight(context);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+        context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
+        Ops::Transformer::Gmm::FormatString("The value of %s cannot be %s", "groupType", "this value").c_str());
     return false;
 }
 
@@ -254,8 +260,12 @@ bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *c
         size_t kValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 1 : 2));
         size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
         OP_CHECK_IF((kValue % numInOneBlk != 0 || nValue % numInOneBlk != 0),
-                    OP_LOGE(context->GetNodeName(),
-                    "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        context->GetNodeName(), "weight", Ops::Base::ToString(wShape).c_str(),
+                        Ops::Transformer::Gmm::FormatString(
+                            "When the format of %s is %s, %s of %s must be exactly divisible by %s", "weight",
+                            "FRACTAL_NZ", "n-axis and k-axis", "weight", "32B")
+                            .c_str()),
                     return false);
     }
     return true;
@@ -298,9 +308,12 @@ bool GroupedNoQuantMatmulTiling::CheckNoQuantGroupListType(const gert::TilingCon
     // common API check does not need extra quant-state parameters just to distinguish
     // no-quant from weight-quant cases.
     OP_CHECK_IF(groupListType_ == GroupedMatmul::GROUPLIST_TYPE_SPARSE_M,
-                OP_LOGE(context->GetNodeName(),
-                        "In no quant case, groupListType does not support value %u(sparse), but actual is %u.",
-                        GroupedMatmul::GROUPLIST_TYPE_SPARSE_M, groupListType_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    context->GetNodeName(), "groupListType",
+                    Ops::Transformer::Gmm::FormatString("%u", groupListType_).c_str(),
+                    Ops::Transformer::Gmm::FormatString("In %s case, the value of %s cannot be %s", "no-quant",
+                                                        "groupListType", "2")
+                        .c_str()),
                 return false);
     return true;
 }
@@ -309,11 +322,19 @@ bool GroupedNoQuantMatmulTiling::CalMatMulTiling(const gert::TilingContext *cont
                                                  const GMMCompileInfo *compileInfoPtr)
 {
     if (groupNum_ < 1U || groupNum_ > MAX_TENSOR) {
-        OP_LOGE(context->GetNodeName(), "GMM no quant group num cannot less than 1 or larger than 1024.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupNum", Ops::Transformer::Gmm::FormatString("%u", groupNum_).c_str(),
+            Ops::Transformer::Gmm::FormatString("The value of %s must be within the range [%d, %d]", "groupNum", 1,
+                                                1024)
+                .c_str());
         return false;
     }
-    OP_CHECK_IF(kZero, OP_LOGE(context->GetNodeName(), "GMM no quant case does not support input K is 0."),
-                return false);
+    OP_CHECK_IF(
+        kZero,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "K-axis of x", Ops::Transformer::Gmm::FormatString("%s", "0").c_str(),
+            Ops::Transformer::Gmm::FormatString("The value of %s must be a positive number", "K-axis of x").c_str()),
+        return false);
     OP_CHECK_IF(!CalBaseMMTiling(context, compileInfoPtr),
                 OP_LOGE(context->GetNodeName(), "Unable to calculate BaseMMTiling."), return false);
     if (groupNum_ == 1U) {
@@ -421,9 +442,19 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // split M, s-s-s
         return SplitMSingleXSingleWeightSingleY(xShape, wShape);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+    OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+        context->GetNodeName(), "x, weight, out",
+        Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
+                                            isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str(),
+        Ops::Transformer::Gmm::FormatString(
+            "Under SPLIT_M scene, x, weight, out only support 7 combinations: "
+            "multi-multi-multi, single-single-single, multi-multi-single, single-multi-multi, "
+            "single-multi-single, multi-single-multi, multi-single-single, "
+            "but current x is %s tensor, weight is %s tensor, out is %s tensor, "
+            "this combination is not supported",
+            isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str());
     return false;
 }
 
@@ -439,9 +470,18 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);
     }
-    OP_LOGE(context->GetNodeName(),
-            "GMM_tiling: not support groupType_=%d, isSingleWeight_=%d, isSingleX_=%d, isSingleY_=%d", groupType_,
-            isSingleWeight_, isSingleX_, isSingleY_);
+    OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(
+        context->GetNodeName(), "x, weight, out",
+        Ops::Transformer::Gmm::FormatString("%s, %s, %s", isSingleX_ ? "single" : "multi",
+                                            isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str(),
+        Ops::Transformer::Gmm::FormatString(
+            "Under SPLIT_K scene, x, weight, out only support 4 combinations: "
+            "single-multi-multi, multi-single-multi, multi-single-single, single-single-single, "
+            "but current x is %s tensor, weight is %s tensor, out is %s tensor, "
+            "this combination is not supported",
+            isSingleX_ ? "single" : "multi", isSingleWeight_ ? "single" : "multi", isSingleY_ ? "single" : "multi")
+            .c_str());
     return false;
 }
 
