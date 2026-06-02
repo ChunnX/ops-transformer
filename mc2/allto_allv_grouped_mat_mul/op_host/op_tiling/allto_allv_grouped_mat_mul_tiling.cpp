@@ -873,7 +873,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     if (maxMSize != 0) {
         AlltoAllvGmmTilingHelper gmmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(maxMSize, n1_, h1_, transGmmWeight_,
-            gmmXDataType_, gmmWeightDataType_, gmmXDataType_));
+            gmmXDataType_, gmmWeightDataType_, gmmXDataType_, expertNum_));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
     }
@@ -881,11 +881,14 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     if (bs_ != 0) {
         AlltoAllvGmmTilingHelper mmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_,
-            mmXDataType_, mmWeightDataType_, mmXDataType_));
+            mmXDataType_, mmWeightDataType_, mmXDataType_, 1));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
+    }
+}
+
 ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB,
-    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype, uint32_t expertNum)
+    ge::DataType aDtype, ge::DataType bDtype, ge::DataType cDtype, uint64_t expertNum)
 {
     GetPlatformInfo();
     inputParams_.opName = context_->GetNodeName();

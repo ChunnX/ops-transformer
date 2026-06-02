@@ -50,7 +50,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const Q
 }
 
 ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameters(
-    const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX, uint32_t expertNum)
+    const QuantGmmAlltoAllvParamsInfo& params, uint64_t gmmX, uint64_t expertNum)
 {
     inputParams_.mSize = gmmX;
     inputParams_.kSize = params.H1;
@@ -71,7 +71,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameter
     inputParams_.perTokenScaleDtype = params.gmmXScaleDtype;
 
     inputParams_.transB = params.isGmmWeightTrans;
-    for (uint32_t i = 0; i < expertNum; i++) {
+    for (uint64_t i = 0; i < expertNum; i++) {
         mList_[i] = static_cast<int32_t>(gmmX);
     }
     kList_[0] = static_cast<int32_t>(params.H1);
