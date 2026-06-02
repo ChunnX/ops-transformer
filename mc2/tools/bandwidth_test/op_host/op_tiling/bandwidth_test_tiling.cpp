@@ -306,7 +306,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + dataSize;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + dataSize + 1UL * 1024UL * 1024UL * 1024UL;
     
     return ge::GRAPH_SUCCESS;
 }
