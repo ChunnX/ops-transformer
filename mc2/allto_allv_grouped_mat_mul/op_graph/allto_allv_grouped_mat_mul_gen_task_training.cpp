@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,9 +6,9 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
+/* !
  * \file allto_allv_grouped_mat_mul_gen_task_training.cpp
  * \brief
  */
@@ -27,7 +27,8 @@ static const size_t ATTR_COMM_MODE_INDEX = 7;
 static const size_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 
 static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, int64_t &rankSize,
-                                            std::string &commMode) {
+                                            std::string &commMode)
+{
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
@@ -39,7 +40,7 @@ static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext 
         return ge::GRAPH_FAILED;
     }
     rankSize = *epWorldSizePtr;
-    const char* commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
+    const char *commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
     if (commModePtr == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
         return ge::GRAPH_FAILED;
@@ -57,13 +58,13 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    const char* serverType = nullptr;
-    const char* streamType = nullptr;
+    const char *serverType = nullptr;
+    const char *streamType = nullptr;
     if ((isArch35 && commMode == "ccu") || (isArch35 && rankSize <= 8 && commMode == "")) {
         serverType = "ccu server";
         streamType = "ccu_stream";
         OPS_LOG_D(context->GetNodeName(), "use CCU GenTask");
-    } else if ((isArch35 &&  commMode == "ai_cpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "")) {
+    } else if ((isArch35 && commMode == "ai_cpu") || (!isArch35) || (isArch35 && rankSize > 8 && commMode == "")) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "use AICPU GenTask");
@@ -72,7 +73,7 @@ ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *co
 }
 
 ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                             std::vector<std::vector<uint8_t>> &tasks)
 {
     int64_t rankSize = 0;
     std::string commMode;
@@ -95,4 +96,3 @@ IMPL_OP(AlltoAllvGroupedMatMul)
     .CalcOpParam(AlltoAllvGroupedMatMulCalcParamFunc)
     .GenerateTask(AlltoAllvGroupedMatMulGenTaskFunc);
 } // namespace ops
-
