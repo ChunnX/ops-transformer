@@ -474,12 +474,8 @@ static ge::graphStatus CheckInputOffsetShape(gert::InferShapeContext *context, c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const gert::Shape *xShape,
-                                       const gert::Shape *expertIdxShape, const gert::Shape *scaleShape,
-                                       const gert::Shape *offsetShape, const int64_t expertStart,
-                                       const int64_t expertEnd, const int64_t quantMode)
+static ge::graphStatus CheckXShape(gert::InferShapeContext *context, const gert::Shape *xShape, int64_t &x_n, int64_t &cols)
 {
-    // Check the shape of input_x
     if (xShape->GetDimNum() == DIM_ONE) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "x", Ops::Base::ToString(*xShape), "-2");
@@ -491,15 +487,19 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
         return ge::GRAPH_FAILED;
     }
 
-    int64_t x_n = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(0);
-    int64_t cols = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
+    x_n = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(0);
+    cols = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
     if (x_n < NEG_ONE || cols < NEG_ONE) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", Ops::Base::ToString(*xShape),
                                               "invalid x shape");
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
 
-    // Check the shape of expert_idx
+static ge::graphStatus CheckExpertIdxShape(gert::InferShapeContext *context, const gert::Shape *expertIdxShape,
+                                           int64_t &expert_idx_n, int64_t &expert_idx_k)
+{
     if (expertIdxShape->GetDimNum() == DIM_ONE) {
         if (expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE_FOR_INVALID_SHAPE(context->GetNodeName(), "expert_idx", Ops::Base::ToString(*expertIdxShape),
@@ -512,12 +512,31 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
         return ge::GRAPH_FAILED;
     }
 
-    int64_t expert_idx_n = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(0);
-    int64_t expert_idx_k = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(1);
+    expert_idx_n = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(0);
+    expert_idx_k = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(1);
     if (expert_idx_n < NEG_ONE || expert_idx_k < NEG_ONE) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "expert_idx",
                                               Ops::Base::ToString(*expertIdxShape),
                                               "invalid expert_idx shape");
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const gert::Shape *xShape,
+                                       const gert::Shape *expertIdxShape, const gert::Shape *scaleShape,
+                                       const gert::Shape *offsetShape, const int64_t expertStart,
+                                       const int64_t expertEnd, const int64_t quantMode)
+{
+    int64_t x_n = 0;
+    int64_t cols = 0;
+    if (CheckXShape(context, xShape, x_n, cols) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    int64_t expert_idx_n = 0;
+    int64_t expert_idx_k = 0;
+    if (CheckExpertIdxShape(context, expertIdxShape, expert_idx_n, expert_idx_k) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -528,12 +547,11 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
                                                "the first dim of x and expert_idx should be same");
         return ge::GRAPH_FAILED;
     }
-    // Check the shape of scale
+
     if (CheckInputScaleShape(context, xShape, scaleShape, expertStart, expertEnd, quantMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    // Check the shape of offset
     if (CheckInputOffsetShape(context, offsetShape, expertStart, expertEnd, quantMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
