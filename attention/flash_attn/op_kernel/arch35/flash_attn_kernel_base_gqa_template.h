@@ -115,6 +115,10 @@ public:
     // schduler params
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    uint64_t cachedS2LoopTimes = 0;
+    uint64_t cachedGS1LoopTimes = 0;
+    int64_t cachedPreTokensLeftUp = 0;
+    int64_t cachedNextTokensLeftUp = 0;
     int32_t s1SizeCurrBatch = 0;
     uint32_t curS2Start;
     uint32_t curS2End = 0;
@@ -411,19 +415,17 @@ public:
         prevGS1Idx = gS1Cur;
 
         bool shouldDispatchTask = true;
-        uint32_t validTaskCount = 0; // 未执行(有效)的任务数
+        uint32_t validTaskCount = 0;
         while (shouldDispatchTask || validTaskCount) {
-            // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            if (shouldDispatchTask) {
+            if (likely(shouldDispatchTask)) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
-                    // 创建任务
+                if (likely(taskDealMode == TASK_DEAL_MODE::CREATE_TASK)) {
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                } else if (unlikely(taskDealMode == TASK_DEAL_MODE::DEAL_ZERO)) {
                     if ASCEND_IS_AIV {
                         vecFaBlock.DealZeroActSeqLen(bN2Cur);
                     }
@@ -434,7 +436,6 @@ public:
                     continue;
                 }
             }
-            // 执行任务
             if (validTaskCount) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
@@ -470,11 +471,12 @@ public:
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
+            cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+            cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+            GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, cachedPreTokensLeftUp, cachedNextTokensLeftUp);
         }
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (cachedS2LoopTimes == 0 || cachedGS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -543,21 +545,19 @@ public:
 
     __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
     {
-        // 1. Calc preTokenLeftUp, nextTokenLeftUp
-        int64_t preTokenLeftUp = 0;
-        int64_t nextTokenLeftUp = 0;
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp);
+        int64_t preTokenLeftUp = cachedPreTokensLeftUp;
+        int64_t nextTokenLeftUp = cachedNextTokensLeftUp;
+        const uint32_t localGSize = constInfo.gSize;
 
-        // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(localGSize)) -
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+            s1FirstToken = static_cast<int64_t>(s1GFirstToken / localGSize);
+            s1LastToken = static_cast<int64_t>(s1GLastToken / localGSize);
         } else {
             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
                 // start and end locate in one G
@@ -664,17 +664,20 @@ public:
 
     __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
     {
+        const uint32_t localN2Size = constInfo.n2Size;
+        const uint32_t localGSize = constInfo.gSize;
+        const bool localIsKvContinuous = constInfo.isKvContinuous;
+        const uint8_t localSubBlockIdx = constInfo.subBlockIdx;
+
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = prevBIdx;
+        info.n2Idx = bN2Cur - prevBIdx * localN2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
+            info.s1Idx = info.gS1Idx / localGSize;
         } else {
-            // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
         }
         info.s2Idx = s2Cur * s2BaseSize;
@@ -682,7 +685,7 @@ public:
         info.actS2Size = actSeqLensKv;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        uint64_t gS1Size = info.actS1Size * localGSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
@@ -692,23 +695,19 @@ public:
         }
         info.actSingleLoopS2SizeAlign =
             Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
-        if (constInfo.isKvContinuous) {
+        if (localIsKvContinuous) {
             info.isChangeBatch = false;
         } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
+            if (loop == 0) {
                 info.isChangeBatch = true;
             } else {
                 info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
             }
         }
 
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+        info.preTokensLeftUp = cachedPreTokensLeftUp;
+        info.nextTokensLeftUp = cachedNextTokensLeftUp;
 
-        // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
-        // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
@@ -721,7 +720,7 @@ public:
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
+        if (localSubBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
@@ -744,12 +743,8 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
         // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
+        if (s2Cur + 1 < cachedS2LoopTimes) {
             s2Cur++;
             return;
         }
@@ -761,7 +756,7 @@ public:
 
         // 当前BN2未处理完
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
+        if (gS1Cur + 1 < cachedGS1LoopTimes) {
             gS1Cur++;
             return;
         }

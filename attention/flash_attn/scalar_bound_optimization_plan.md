@@ -387,4 +387,91 @@ cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 | P8 | 用 constexpr / 模板参数承载编译期常量 | const 成员对编译器仍是 runtime Load；进入常量折叠才能链式带动 P1 类优化 |
 | P9 | Hot Loop 内不构造对象、不取地址 | 构造/析构展开后是大量初始化 Store；取地址会让编译器假设变量可被外部修改、强制 Spill |
 
+---
+
+## 实施记录：第一批（P0）— 2026-06-02
+
+### 已完成的修改
+
+#### 1. 冗余计算合并 [P4/P5]（优化项 10）
+
+**文件**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+
+**修改内容**：
+- 新增成员变量 `cachedS2LoopTimes`、`cachedGS1LoopTimes`、`cachedPreTokensLeftUp`、`cachedNextTokensLeftUp`
+- `GetTaskDealMode`：将 `s2LoopTimes`、`gS1LoopTimes`、`GetPreNextTokenLeftUp` 的计算移入 batch 切换分支（`isFirstTask || prevBIdx != bIdx`），仅在换 batch 时计算一次
+- `UpdateAxisInfo`：直接使用 `cachedS2LoopTimes` 和 `cachedGS1LoopTimes`，消除每轮迭代的 64-bit 除法
+- `CalcCurS2StartEndWithSparse`：直接使用 `cachedPreTokensLeftUp` 和 `cachedNextTokensLeftUp`
+- `CalcParams`：直接使用缓存的 token 值，消除每轮 `GetPreNextTokenLeftUp` 调用
+
+**消除的冗余计算**：
+- 每轮迭代 2 次 64-bit 除法（`/s2BaseSize`、`/mBaseSize`）→ 仅 batch 切换时计算
+- 每轮迭代 1 次 `GetPreNextTokenLeftUp` 函数调用 → 仅 batch 切换时计算
+
+#### 2. CalcParams bIdx/n2Idx 优化 [P5]（优化项 6 部分）
+
+**文件**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+
+**修改内容**：
+- `info.bIdx = bN2Cur / constInfo.n2Size` → `info.bIdx = prevBIdx`（复用 GetTaskDealMode 已计算的值）
+- `info.n2Idx = bN2Cur % constInfo.n2Size` → `info.n2Idx = bN2Cur - prevBIdx * constInfo.n2Size`（用乘法替代取模）
+
+#### 3. 主循环分支预测优化 [P2]（优化项 5 部分）
+
+**文件**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+
+**修改内容**：
+- `FlashAttention` 主循环中添加 `likely()` / `unlikely()` 分支预测提示
+- `CREATE_TASK` 路径标记为 `likely`（热路径）
+- `DEAL_ZERO` 路径标记为 `unlikely`（冷路径）
+
+#### 4. CalcParams 局部变量提升 [P4]（优化项 2）
+
+**文件**：`op_kernel/arch35/flash_attn_kernel_base_gqa_template.h`
+
+**修改内容**：
+- `CalcParams` 入口添加 4 个局部变量：`localN2Size`、`localGSize`、`localIsKvContinuous`、`localSubBlockIdx`
+- `CalcCurS2StartEndWithSparse` 入口添加 `localGSize` 局部变量
+- 函数内所有对应 `constInfo.xxx` 访问替换为局部变量
+
+#### 5. Vec Block 热路径局部变量 [P4]（优化项 2）
+
+**文件**：`op_kernel/arch35/flash_attn_block_vec_noquant_gqa.h`
+
+**修改内容**：
+- `ProcessVec1Dn`：添加 `localScaleValue`、`localSubBlockIdx`，替换 2+3=5 处 constInfo 访问
+- `ProcessVec1Nd`：添加 `localScaleValue`、`localSubBlockIdx`，替换 8+1=9 处 constInfo 访问
+- `ProcessVec2DSplit`：添加 `localDSizeV`、`localSubBlockIdx`、`localDBasicBlock`，替换 4+4+8=16 处 constInfo 访问
+- `ProcessVec2_C2GmUpdateUb`：添加 `localDSizeV`、`localSubBlockIdx`，替换 6+2=8 处 constInfo 访问
+
+#### 6. Cube Block 热路径局部变量 [P4]（优化项 2）
+
+**文件**：`op_kernel/arch35/flash_attn_block_cube_noquant_gqa.h`
+
+**修改内容**：
+- `IterateBmm1NdL0Split`：添加 `localDSize`，替换所有 `constInfo.dSize`
+- `IterateBmm1NdL1SplitK`：添加 `localDSize`，替换所有 `constInfo.dSize`
+- `IterateBmm1DnSplitK`：添加 `localDSize`，替换所有 `constInfo.dSize`
+- `IterateBmm1Dn`：添加 `localDSize`，替换所有 `constInfo.dSize`
+- `IterateBmm2L1SplitN`：添加 `localDSizeV`，替换所有 `constInfo.dSizeV`
+- `IterateBmm2l0Split`：添加 `localDSizeV`，替换所有 `constInfo.dSizeV`
+
+### 关于优化项 1（ConstInfo_t 结构体拆分）的决策
+
+经评估，决定**不执行结构体拆分**，改用局部变量提升（优化项 2）替代：
+
+1. **ConstInfo_t 已是扁平结构**（非嵌套指针），字段直接内联在对象中
+2. **局部变量已覆盖主要收益**：热路径函数入口拷贝热字段到寄存器，效果等同于结构体拆分
+3. **结构体拆分风险高**：涉及 4+ 文件、10+ 函数的签名变更，引入回归风险
+4. **字段使用频率分析**（子 agent 扫描结果）确认热字段集中在 ~15 个字段，局部变量方案精准覆盖
+
+### 修改统计
+
+| 文件 | 修改函数数 | 消除的 constInfo Load | 消除的冗余计算 |
+|------|-----------|---------------------|--------------|
+| `flash_attn_kernel_base_gqa_template.h` | 5 | 4 处 | 2 次除法/轮 + 1 次函数调用/轮 |
+| `flash_attn_block_vec_noquant_gqa.h` | 4 | 38 处 | — |
+| `flash_attn_block_cube_noquant_gqa.h` | 6 | ~15 处 | — |
+| **合计** | **15** | **~57 处** | **每轮 3 项冗余计算** |
+
 > 来源：`/mnt/workspace/skill/cann-skills-zyh/ops/ascendc-performance-best-practices/reference/scalar/`
