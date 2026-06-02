@@ -33,10 +33,10 @@ public:
     __aicore__ inline A2avGmmScheduler(CommOpType &commOp, ComputeOpType &computeOp, LocalComputeOpType &localComputeOp,
                                         const TaskTilingInfo *taskTilingInfo, bool isNeedMM)
         : commOp_(commOp), computeOp_(computeOp), localComputeOp_(localComputeOp),
-            taskTilingInfo_(taskTilingInfo), isNeedMM_(isNeedMM){};
+          taskTilingInfo_(taskTilingInfo), isNeedMM_(isNeedMM){};
     __aicore__ inline void Init();
 
-    __aicore__ inline void Process() 
+    __aicore__ inline void Process()
     {
         // shared expert
         if (isNeedMM_) {
@@ -72,7 +72,7 @@ public:
     }
 
 protected:
-    __aicore__ inline void End() 
+    __aicore__ inline void End()
     {
         commOp_.End();
         computeOp_.End();

@@ -95,7 +95,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     LocalComputeOpType localComputeOp;
     localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, gmmXComputeGM,
                     tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe, true);
-    //scheduler
+    // scheduler
     A2avGmmSchedulerType a2avGmmScheduler(commOp, computeOp, localComputeOp, &tilingData_->taskTilingInfo,
                                         tilingData_->isNeedMM);
     a2avGmmScheduler.Process();
