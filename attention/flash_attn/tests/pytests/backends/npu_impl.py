@@ -167,14 +167,26 @@ def flash_attn_metadata_only(**kwargs):
             return v.to(dtype=torch.int32, device=device).contiguous()
         return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
 
-    max_seqlen_q  = sq  if sq  is not None else 0
-    max_seqlen_kv = skv if skv is not None else 0
+    cu_q_u32       = _to_u32_tensor(cu_q)
+    cu_kv_u32      = _to_u32_tensor(cu_kv)
+    seqused_q_u32  = _to_u32_tensor(seqused_q)
+    seqused_kv_u32 = _to_u32_tensor(seqused_kv)
+
+    if layout_q == "TND":
+        max_seqlen_q = max((cu_q_u32[i + 1] - cu_q_u32[i]).item() for i in range(cu_q_u32.numel() - 1)) if cu_q_u32 is not None else 0
+        max_seqlen_kv = max((cu_kv_u32[i + 1] - cu_kv_u32[i]).item() for i in range(cu_kv_u32.numel() - 1)) if cu_kv_u32 is not None else 0
+    else:
+        max_seqlen_q  = sq  if sq  is not None else 0
+        max_seqlen_kv = skv if skv is not None else 0
+
+    if layout_q == "TND":
+        batch_size = cu_q_u32.numel() - 1 if cu_q_u32 is not None else batch_size
 
     _print_args("Call npu_flash_attn_metadata (metadata_only)", {
-        "cu_seqlens_q": cu_q,
-        "cu_seqlens_kv": cu_kv,
-        "seqused_q": seqused_q,
-        "seqused_kv": seqused_kv,
+        "cu_seqlens_q": cu_q_u32,
+        "cu_seqlens_kv": cu_kv_u32,
+        "seqused_q": seqused_q_u32,
+        "seqused_kv": seqused_kv_u32,
         "num_heads_q": num_heads_q,
         "num_heads_kv": num_heads_kv,
         "head_dim": head_dim,
@@ -266,20 +278,19 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
 
     torch.npu.manual_seed(seed)
 
-    # cuSeqlensQ/Kv: for TND, normalize_case puts the full (B+1,) list; for others, None
-    # The C++ operator signature is Optional[Tensor]; Python list cannot be auto-cast, convert explicitly.
-    # kernel (fia_block_vec_noquant_gqa.h) reads seqlen arrays as (__gm__ uint64_t *), MUST be int64.
-    def _to_u32_tensor(v):
+    # cuSeqlensQ/Kv: for TND, normalize_case puts the full (B+1,) list; for others, None.
+    # Use int64 to match the native operator expectation for seqlen arrays.
+    def _to_seqlen_tensor(v):
         if v is None:
             return None
         if torch.is_tensor(v):
-            return v.to(dtype=torch.int32, device=device).contiguous()
-        return torch.tensor(v, dtype=torch.int32, device=device).contiguous()
+            return v.to(dtype=torch.int64, device=device).contiguous()
+        return torch.tensor(v, dtype=torch.int64, device=device).contiguous()
 
-    cu_q_meta       = _to_u32_tensor(cu_q)
-    cu_kv_meta      = _to_u32_tensor(cu_kv)
-    seqused_q_meta  = _to_u32_tensor(seqused_q)
-    seqused_kv_meta = _to_u32_tensor(seqused_kv)
+    cu_q_meta       = _to_seqlen_tensor(cu_q)
+    cu_kv_meta      = _to_seqlen_tensor(cu_kv)
+    seqused_q_meta  = _to_seqlen_tensor(seqused_q)
+    seqused_kv_meta = _to_seqlen_tensor(seqused_kv)
 
     # 从实际张量形状推导 npu_flash_attn_metadata 所需参数
     if layout_q == "BNSD":
@@ -297,18 +308,24 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         num_heads_kv  = k1.shape[2]
         max_seqlen_kv = k1.shape[1]
     elif layout_q == "TND":
-        # B in kwargs = 1 (for tensor generation); derive actual request count from cu_seqlens/seqused
         if cu_q_meta is not None and hasattr(cu_q_meta, 'shape'):
             batch_size = cu_q_meta.shape[0] - 1
+            max_seqlen_q = int((cu_q_meta[1:] - cu_q_meta[:-1]).max().item()) if cu_q_meta.numel() > 1 else 0
         elif seqused_q_meta is not None and hasattr(seqused_q_meta, 'shape'):
             batch_size = seqused_q_meta.shape[0]
+            max_seqlen_q = int(seqused_q_meta.max().item()) if seqused_q_meta.numel() > 0 else 0
         else:
             batch_size = b
+            max_seqlen_q = q1.shape[0]
         num_heads_q   = q1.shape[1]
         head_dim      = q1.shape[2]
         num_heads_kv  = k1.shape[1]
-        max_seqlen_q  = sq  if sq  is not None else q1.shape[0]
-        max_seqlen_kv = skv if skv is not None else k1.shape[0]
+        if cu_kv_meta is not None and hasattr(cu_kv_meta, 'shape'):
+            max_seqlen_kv = int((cu_kv_meta[1:] - cu_kv_meta[:-1]).max().item()) if cu_kv_meta.numel() > 1 else 0
+        elif seqused_kv_meta is not None and hasattr(seqused_kv_meta, 'shape'):
+            max_seqlen_kv = int(seqused_kv_meta.max().item()) if seqused_kv_meta.numel() > 0 else 0
+        else:
+            max_seqlen_kv = k1.shape[0]
     else:  # BSH
         batch_size    = q1.shape[0]
         num_heads_q   = n1
@@ -316,14 +333,14 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, **kwargs):
         head_dim      = d
         max_seqlen_q  = q1.shape[1]
         max_seqlen_kv = k1.shape[1]
-    
+
     block_table_ = None
     # PA
     if layout_kv in ["PA_BBND", "PA_BNBD", "PA_NZ"]:
         block_table_  = block_table.to(device)
         num_heads_kv  = kwargs.get("N2")
         head_dim      = d
-        max_seqlen_kv = max(seqused_kv)
+        max_seqlen_kv = max(int(x) for x in seqused_kv_meta.tolist()) if seqused_kv_meta is not None else max_seqlen_kv
 
     _print_args("Call npu_flash_attn_metadata", {
         "cu_seqlens_q": cu_q_meta,
