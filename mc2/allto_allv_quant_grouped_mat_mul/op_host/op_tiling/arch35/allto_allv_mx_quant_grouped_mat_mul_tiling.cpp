@@ -122,7 +122,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
         MC2_CHECK_LOG_RET(context_->GetNodeName(),
-            gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_,transGmmWeight_, expertNum));
+            gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_, expertNum));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->gmmQuantTilingData);
