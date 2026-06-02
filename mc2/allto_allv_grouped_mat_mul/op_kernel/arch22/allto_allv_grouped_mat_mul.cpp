@@ -71,10 +71,14 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     constexpr CubeFormat W_FORMAT = CubeFormat::ND;
     // workspace
     uint64_t workspaceOffset = 0;
+    bool isNeedPermute = tilingData_->taskTilingInfo.expertNum > 1;
     GM_ADDR commXOutGm = workspaceGM + workspaceOffset;
-    commXOutGm = tilingData_->isPermuteOut ? permuteOutOptionalGM : commXOutGm;
+    commXOutGm = (!isNeedPermute && tilingData_->isPermuteOut) ?
+        permuteOutOptionalGM : commXOutGm;
     workspaceOffset += tilingData_->workspaceInfo.commXOutSize;
     GM_ADDR gmmXPermuteGM = workspaceGM + workspaceOffset;
+    gmmXPermuteGM = (!tilingData_->isPermuteOut && isNeedPermute) ?
+        gmmXPermuteGM : permuteOutOptionalGM;
     workspaceOffset += tilingData_->workspaceInfo.permuteXOutSize;
     GM_ADDR gmmXComputeGM = workspaceGM + workspaceOffset;
     GM_ADDR computeGmmXGM = commXOutGm;
@@ -91,7 +95,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         //comm
         HcclOpType commOp;
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
-        computeGmmXGM = (tilingData_->taskTilingInfo.expertNum > 1) ? gmmXPermuteGM : commXOutGm;
+        computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
         //compute
         GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
             gmmArray, gmmArrayAddr_, tilingGM);
@@ -121,7 +125,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     //comm
     HcclOpType commOp;
     commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
-    computeGmmXGM = (tilingData_->taskTilingInfo.expertNum > 1) ? gmmXPermuteGM : commXOutGm;
+    computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
     //compute
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
         gmmArray, gmmArrayAddr_, tilingGM);
