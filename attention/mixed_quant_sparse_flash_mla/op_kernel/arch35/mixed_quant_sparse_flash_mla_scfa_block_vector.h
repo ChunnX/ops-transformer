@@ -430,9 +430,9 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ in
                 (MicroAPI::RegTensor<int8_t>&)vKvData1, ubSrcTemp, combineDim - tileSize);
 
             MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_BRC_B16>(
-                (MicroAPI::RegTensor<bfloat16_t>&)vScale0Bf16, ubScaleSrcAddrTemp + i * 320);
+                (MicroAPI::RegTensor<bfloat16_t>&)vScale0Bf16, ubScaleSrcAddrTemp + i * (combineDim / 2));
             MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_BRC_B16>(
-                (MicroAPI::RegTensor<bfloat16_t>&)vScale1Bf16, ubScaleSrcAddrTemp + 1 + i * 320);
+                (MicroAPI::RegTensor<bfloat16_t>&)vScale1Bf16, ubScaleSrcAddrTemp + 1 + i * (combineDim / 2));
 
             MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
             MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
@@ -481,7 +481,10 @@ __aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& kRopeUbNz, LocalTens
     uint32_t dealRowCount)
 {
     __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
-    __ubuf__ bfloat16_t* ubScaleAddr =  (__ubuf__ bfloat16_t*)(scaleUb[64 + 448 / 2].GetPhyAddr());
+    printf(" constInfo.dSizeNope == %u", constInfo.dSizeNope);
+    printf(" constInfo.dSizeRope == %u", constInfo.dSizeRope);
+    __ubuf__ bfloat16_t* ubScaleAddr =  (__ubuf__ bfloat16_t*)(scaleUb[constInfo.dSizeRope 
+                                        + constInfo.dSizeNope / 2].GetPhyAddr()); // sizeof(bf16) / sizeof(fp8) = 2
     __ubuf__ int8_t* ubKRopeAddr = (__ubuf__ int8_t*)(kRopeUb.GetPhyAddr());
     __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
     __ubuf__ Q_T* ubKRopeNzAddr = (__ubuf__ Q_T*)(kRopeUbNz.GetPhyAddr());
@@ -1089,7 +1092,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetExtremeValue(
     T &negativeScalar)
 {
-    uint32_t tmp1 = NEGATIVE_MIN_VAULE_FP32;
+    uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
     negativeScalar = *((float *)&tmp1);
 }
 
