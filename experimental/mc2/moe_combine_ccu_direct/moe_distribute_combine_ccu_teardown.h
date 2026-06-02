@@ -31,6 +31,7 @@
  *   - combine_setup CCU 立即返回（异步），通过 0.5RTT (tag = MOE_COMBINE_CCU_TAG) 反向发数据
  *   - combine_teardown AIV 内部 WaitForAllSrcRanks 轮询 commCmdInfo ready 区 [0,R) 等齐
  *   - 等齐后以 K 为 stride 取 commWindow[i*K]（j=0 副本）→ xOut[i]；identity 下 commWindow[i*K]==x[i]
+ *   - v20.6 ★ combine commWindow 为【干净槽】(tokenMsgLen，无 metadata)，stride 改 tokenMsgLen
  *
  * 简化范围（demo）：
  *   - dtype 写死 bfloat16_t
@@ -54,7 +55,7 @@ struct MoeDistributeCombineCcuTeardownTilingData {
     uint32_t topK;
     uint32_t hiddenSize;         // Process copyElemsPerToken 用（dataBytesPerToken）
     uint32_t commQuantMode;      // 0=BF16（2*H 字节）/ 1=MXFP8（H+H/32 字节）：切 copyLen
-    uint64_t tokenWithMetaLen;   // = tokenMsgLen + 32（commWindow 每槽 stride）
+    uint64_t tokenMsgLen;        // v20.6 ★ combine commWindow 每槽 stride（干净，无 metadata）= Align256(H)*2 / Align32(H+H/32)
 };
 
 #endif // MOE_DISTRIBUTE_COMBINE_CCU_TEARDOWN_H

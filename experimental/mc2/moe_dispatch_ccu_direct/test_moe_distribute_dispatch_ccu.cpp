@@ -187,16 +187,16 @@ int main(int argc, char *argv[])
 
     // ---- buffer 字节数（只留 device 实际读写的）----
     const size_t xBytes               = static_cast<size_t>(bs) * hiddenSize * sizeof(uint16_t);  // hostX 用（构造 xWithMeta）
-    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);        // (Bs,K) INT32
+    const size_t expertIdsBytes       = static_cast<size_t>(bs) * topK * sizeof(int64_t);         // ★ int64：CCU LoadVariable 读 8 字节
     const size_t commWindowBytes      = static_cast<size_t>(rankSize) * bs * topK * tokenWithMetaLenBytes;
     const size_t xWithMetaBytes       = static_cast<size_t>(bs) * topK * tokenWithMetaLenBytes;
-    const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(uint32_t);
+    const size_t expandIdxBytes       = static_cast<size_t>(bs) * topK * sizeof(int64_t);         // op 输出占位（v20.6 CCU 不再写，host 不读，置零即可）
     const size_t commCmdInfoBytes     = (static_cast<size_t>(bs) * topK
                                          + static_cast<size_t>(rankSize) * localExpertNum)
-                                        * 16 * sizeof(int32_t);
-    const size_t expandXBytes         = A * tokenWithMetaLenBytes;   // op_def 标准 A 公式
-    const size_t assistInfoBytes      = A * 128 * sizeof(int32_t);
-    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(uint32_t);  // 内部 scratch
+                                        * 16 * sizeof(int32_t);   // 远大于 v20.6 布局所需（ready+sendBytes+negCnt），无害
+    const size_t expandXBytes         = A * tokenMsgSizeBytes;       // v20.6 ★ 干净（无 metadata），A 个 tokenMsgLen
+    const size_t assistInfoBytes      = A * 1 * sizeof(int64_t);     // v20.7 ★ 每 token 单字段 dstByteOff（owner 由 combine 分段隐含）
+    const size_t routingTableBytes    = static_cast<size_t>(bs) * topK * sizeof(int64_t);   // 内部 scratch ★ int64：CCU LoadVariable 读 8 字节
 
     void *expertIdsDev       = devAlloc(expertIdsBytes);
     void *commWindowDev      = devAlloc(commWindowBytes);        // 接收 window（含 metadata）
@@ -235,8 +235,8 @@ int main(int argc, char *argv[])
     // ---- 测试数据 ----
     std::vector<uint8_t> hostX(xBytes, 0x01);   // 仅用于构造 xWithMeta（dispatch_setup 读 xWithMeta）
 
-    std::vector<uint32_t> hostExpertIds(bs * topK);
-    std::vector<uint32_t> hostRoutingTable(bs * topK);
+    std::vector<int64_t> hostExpertIds(bs * topK);      // ★ int64：device 端 LoadVariable 读 8 字节
+    std::vector<int64_t> hostRoutingTable(bs * topK);   // ★ int64：同上
     for (uint32_t i = 0; i < bs; ++i) {
         for (uint32_t j = 0; j < topK; ++j) {
             uint32_t idx = i * topK + j;
@@ -275,11 +275,13 @@ int main(int argc, char *argv[])
                 }
             }
 
-            int32_t* meta = reinterpret_cast<int32_t*>(rowBase + tokenMsgSizeBytes);
-            meta[0] = rankId;
-            meta[1] = static_cast<int32_t>(i);
-            meta[2] = static_cast<int32_t>(j);
-            meta[3] = static_cast<int32_t>(idx * tokenWithMetaLenBytes);    // v16 dstByteOff
+            // ★ metadata 按 int64 排布（每字段 8 字节）：CCU LoadVariable/XN 槽固定 8 字节，
+            //   字段必须 8 字节隔开，否则相邻字段被读进高 32 位污染比较（CCU_RESOURCE_XN_PER_SIZE=8）。
+            int64_t* meta = reinterpret_cast<int64_t*>(rowBase + tokenMsgSizeBytes);
+            meta[0] = static_cast<int64_t>(rankId);                          // srcRank @字段0
+            meta[1] = static_cast<int64_t>(i);                               // srcSlot @字段1
+            meta[2] = static_cast<int64_t>(j);                               // dstK    @字段2
+            meta[3] = static_cast<int64_t>(idx * tokenMsgSizeBytes);         // v20.6 ★ dstByteOff @字段3=(i*K+j)*tokenMsgLen（combine 干净槽偏移）
         }
     }
     ACL_CHECK(aclrtMemcpy(xWithMetaDev, xWithMetaBytes, hostXWithMeta.data(),
@@ -296,17 +298,17 @@ int main(int argc, char *argv[])
         printf("\n");
     }
 
-    // ---- v19 ★ 计算 3 个本地 buffer 的 token（hcomm GetTokenInfo(addr, size)）----
+    // ---- v19 ★ 计算 4 个本地 buffer 的 token（hcomm GetTokenInfo(addr, size)）----
     //   token 范式（亲核实 hccl mesh1d + ccu_alg_template_base.cc GetToken）：每块本地 buffer
     //   按 (虚拟地址, 字节数) 调 GetTokenInfo 算 token，传给 device 作访存鉴权凭证。
     //   device 端 LocalAddr/RemoteAddr 的 .token 必须设（见 setup.cpp）。
     const uint64_t xWithMetaToken  = hcomm::CcuRep::GetTokenInfo(
         reinterpret_cast<uint64_t>(xWithMetaDev),  static_cast<uint64_t>(xWithMetaBytes));
-    // expandIdx 写本卡 HBM 用 StoreVariable Variable 地址版（无 token），无需 expandIdx token
     const uint64_t commWindowToken = hcomm::CcuRep::GetTokenInfo(
         reinterpret_cast<uint64_t>(commWindowDev), static_cast<uint64_t>(commWindowBytes));
     const uint64_t commCmdInfoToken = hcomm::CcuRep::GetTokenInfo(
         reinterpret_cast<uint64_t>(commCmdInfoDev), static_cast<uint64_t>(commCmdInfoBytes));
+    // v20.6 ★ expandIdx 不再由 CCU 写（StoreVariableAt 依赖铲除），故不再算其 token。
     // 收口 ★ oneBuf 独立 token（token 跟随 buffer，单独 GetTokenInfo）
     const uint64_t oneBufToken = hcomm::CcuRep::GetTokenInfo(
         reinterpret_cast<uint64_t>(oneBufDev), static_cast<uint64_t>(oneBufBytes));
@@ -314,7 +316,6 @@ int main(int argc, char *argv[])
     // ---- TaskArg + Launch ----
     auto setupTask = std::make_unique<hcomm::CcuTaskArgMoeDistributeDispatchCcuSetup>(
         reinterpret_cast<uint64_t>(expertIdsDev),
-        reinterpret_cast<uint64_t>(expandIdxDev),
         reinterpret_cast<uint64_t>(commCmdInfoDev),
         reinterpret_cast<uint64_t>(commWindowDev),
         reinterpret_cast<uint64_t>(routingTableDev),
@@ -335,7 +336,7 @@ int main(int argc, char *argv[])
 
     // ==================== Launch ====================
     // (1) setup: CCU 路径（hcomm）。
-    //     v10 setup CCU 段 9 内部已做 WaitAllPeersArriveNotify + ClearAllPeersArriveNotify，
+    //     v10 setup CCU 段 9 内部已做 WaitallpeersarriveNotify + clearallpeersarriveNotify，
     //     return 时所有对端 0.5RTT 数据已就位（不再异步）。
     HCCL_CHECK(HcclCcuKernelLaunch(hcclComm, threadHandle, setupKernel,
                                     static_cast<void *>(setupTask.get())));

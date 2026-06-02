@@ -40,6 +40,12 @@
  *     仅因 CCU Variable 不支持 Var/const 除法、必须 host 端预算 LUT 而存在）。
  *
  * 简化范围：仅 BF16 非量化，sharedExpertRankNum=0，scales/xActiveMask 输入字段保留位置传 0。
+ *
+ * ★ 数据宽度分歧（CCU 实现 vs 库上 op_def）：上方契约标注的 expert_ids / expand_idx 库上为 INT32，
+ *   但本 CCU 实现里它们被 device 端 LoadVariable / StoreVariable 读写——CCU Variable 即 8 字节 XN 寄存器
+ *   （CCU_RESOURCE_XN_PER_SIZE=8），Load/Store 一次必搬 8 字节，故这些 GM 标量（含 routingTable 与每行
+ *   metadata 4 字段）一律按 INT64 排布、按 8 步进，否则 8 字节读会把相邻字段卷入高 32 位污染比较。
+ *   driver 据此用 int64 buffer；真接库上 op（INT32）时需 host 侧做一次 int32→int64 转置。
  */
 
 #ifndef MOE_DISTRIBUTE_DISPATCH_CCU_SETUP_H
@@ -86,16 +92,17 @@ struct CcuKernelArgMoeDistributeDispatchCcuSetup : public CcuKernelArg {
 //     （GeneArgs 从未传）/ yAddr（v13 后纯占位 alloc）。
 struct CcuTaskArgMoeDistributeDispatchCcuSetup : public CcuTaskArg {
     // ----- INPUT -----
-    uint64_t expertIdsAddr;          // [Bs, topK] INT32：段 7 阶段 A 读 expertId
+    uint64_t expertIdsAddr;          // [Bs, topK] INT64：op 输入（v20.6 后 CCU 不消费——routing 改读 host 预算的 routingTable）
     // ----- OUTPUT -----
-    uint64_t expandIdxAddr;          // [Bs*topK] INT32：段 7 阶段 A 写
-    uint64_t commCmdInfoAddr;        // INT32：段 8 写（前 epWorldSize 槽正式 + 后段 scratch）
+    //   ★ v20.6：expandIdx 不再由本 CCU 写——它对 xOut==x 闭环不参与（仅服务 expert 分组），
+    //     是 expertIds 的确定性函数，改由 host driver 预算填充（见 driver）。故 TaskArg 不再携带其地址/token。
+    uint64_t commCmdInfoAddr;        // INT32：本卡命令区（ready[0..R) + v20.6 新增 per-rank 计数区，见 .cpp 段 10/teardown）
     // ----- INTERNAL（工程内部 scratch，库上 op_def 无）-----
     uint64_t commWindowAddr;         // 对端接收 window (rankSize*bs*topK, tokenWithMetaLen)：
-                                      //   每槽 = tokenMsgLen data + 32B metadata 三元组
-    uint64_t routingTableAddr;       // [Bs*topK] INT32：host 预算 = expertId / moeExpertPerRankNum
+                                      //   每槽 = tokenMsgLen data + 32B metadata（4×int64: srcRank/srcSlot/dstK/dstByteOff）
+    uint64_t routingTableAddr;       // [Bs*topK] INT64（★ LoadVariable 读 8 字节）：host 预算 = expertId / moeExpertPerRankNum
     uint64_t xWithMetaAddr;          // host 预拼装 (Bs*K, tokenWithMetaLen)：
-                                      //   每行 = x[i] data + (selfRank,i,j,dstByteOff) metadata + pad
+                                      //   每行 = x[i] data + (selfRank,i,j,dstByteOff) 4×int64 metadata（32B，无 pad）
     // ----- TOKEN（需求2 ★：host GetTokenInfo(addr,size) 算，device 读写 GM 的寻址凭证）-----
     //   token 范式（亲核实 hccl all_to_all_v / all_reduce / reduce_scatter_v mesh1d）：
     //     - hcomm 所有访存指令底层 = (地址寄存器, token 寄存器) 对（见 ccu_microcode_v1.h
@@ -104,10 +111,9 @@ struct CcuTaskArgMoeDistributeDispatchCcuSetup : public CcuTaskArg {
     //     - token 跟随"buffer 所属卡"：本地 buffer 用本地 token（host GetTokenInfo(addr,size) → Load
     //       进 device Variable）；对端 buffer 用对端 token（CreateVariable(ch,TOKEN_XN,&v) + PreSync
     //       NotifyRecord 交换）。每块独立 buffer 一个独立 token（GetTokenInfo(addr,size) 各算各的）。
-    //   据此本算子需要 3 个本地 token + 1 类对端 token：
+    //   据此本算子需要 3 个本地 token + 1 类对端 token（v20.6：删除 expandIdx 那路，CCU 不再写任何标量 GM）：
     //     本地：xWithMeta（段 7 数据源）、commWindow（段 7 自发自落地）、commCmdInfo（段 10 本地置 ready）
     //     对端：commWindow（段 7 跨卡写数据）——PreSync 交换（commCmdInfo 纯本地不交换）
-    //   注：expand_idx 写本卡 HBM 用 StoreVariable Variable 地址版（无 token），故无需 expandIdx token。
     uint64_t xWithMetaToken;         // ★ 本卡 xWithMeta（数据源）的 token（段 7 localSrc）
     uint64_t commWindowToken;        // 本卡 commWindow 的 token（段 7 自发自 localDst + 本地落地）
     uint64_t commCmdInfoToken;       // 本卡 commCmdInfo 的 token（段 10 ready 写 LocalCopyNb 的 dst token）
@@ -118,7 +124,7 @@ struct CcuTaskArgMoeDistributeDispatchCcuSetup : public CcuTaskArg {
     uint64_t oneBufToken;            // 收口 ★ oneBuf token
 
     CcuTaskArgMoeDistributeDispatchCcuSetup(
-        uint64_t expertIdsAddr_, uint64_t expandIdxAddr_, uint64_t commCmdInfoAddr_,
+        uint64_t expertIdsAddr_, uint64_t commCmdInfoAddr_,
         uint64_t commWindowAddr_, uint64_t routingTableAddr_, uint64_t xWithMetaAddr_,
         uint64_t xWithMetaToken_,
         uint64_t commWindowToken_, uint64_t commCmdInfoToken_,
@@ -137,14 +143,12 @@ protected:
 private:
     uint32_t epWorldSize_;
     uint32_t epRankId_;
-    uint32_t moeExpertNum_;            // v8 ★ DoMainLoop 阶段 A 按 expertId 展开 CCU_IF（per-expert expand_idx 计数）
     uint32_t bs_;
     uint32_t topK_;
     uint64_t tokenMsgLen_;
 
-    CcuRep::Variable expertIdsAddrVar_;          // v8 ★ DoMainLoop 阶段 A 读 expertId
+    // v20.7 ★ 删 expertIdsAddrVar_：device 用 routingTable 定 dst 卡、不读 expertId（expertIdsAddr 仅留 TaskArg 作 op 输入占位）
     CcuRep::Variable commWindowAddrVar_;         // v13 ★ 替代 v12 之前的 yAddrVar_（op_def yAddr 不再用作接收 window）
-    CcuRep::Variable expandIdxAddrVar_;
     CcuRep::Variable commCmdInfoAddrVar_;
     CcuRep::Variable routingTableAddrVar_;
     CcuRep::Variable xWithMetaAddrVar_;          // v15 ★ host 预拼装的 (Bs*K, tokenWithMetaLen) buffer 起址
@@ -159,7 +163,6 @@ private:
     CcuRep::Variable oneBufTokenVar_;            // 收口 ★ oneBuf token（段 10 ready 写 LocalCopyNb src.token）
     std::vector<CcuRep::Variable> remoteCommWindowAddrs_;   // v13 ★ PreSync 后各对端 commWindow 起址
     std::vector<CcuRep::Variable> remoteCommWindowTokens_;  // PreSync 后各对端 commWindow token（段 7 remoteDst.token）
-    std::vector<CcuRep::Variable> expertOccCnts_; // v8 ★ per-expert 累计计数（对齐库上 expand_idx "给同一专家发送的 token 个数"语义）
     std::vector<CcuRep::Variable> peerOccBytes_;
     CcuRep::LocalAddr localSrc_;
     CcuRep::LocalAddr localDst_;

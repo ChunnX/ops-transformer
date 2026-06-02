@@ -18,7 +18,7 @@
  *   需求2 token：所有 LocalAddr/RemoteAddr 的 .token 必设——本地 buffer 用本地 token（Load 自 SQE），
  *                 对端 buffer 用对端 token（CreateVariable(ch,XN,&v) + PreSync 交换）。
  *   需求3 异步时序：段 7 自发自 LocalCopyNb 逐条 SetMask(1)+WaitEvent 串行落地（event mask 是 per-DMA
- *                 位图，对齐 all_gather_nhr1d:269-272）；段 9 WaitAllPeersArriveNotify(R-1) 等本卡收齐；
+ *                 位图，对齐 all_gather_nhr1d:269-272）；段 9 WaitallpeersarriveNotify(R-1) 等本卡收齐；
  *                 段 10 一次 LocalCopyNb 置 ready[0..R)=1。teardown AIV 轮询 ready 区全 1。
  *
  * 地址范式（hcomm 不支持 Variable+立即数，实测 operator+ error；Address=Variable+Variable 亦非法）：
@@ -32,9 +32,11 @@
  *   1 InitResource → 2 LoadArgs（顺序严格=GeneArgs，含 4 token+oneBuf）→ 2.5 Clear →
  *   3 PreSync（2 XN 槽：commWin 地址+token；commCmdInfo 纯本地不交换）→ 4 BuildSlotBase →
  *   5 PreCount（算 sendBytes 供 wishCnt）→ 6 RecordExpectCount →
- *   7 DoMainLoop（A=写 expand_idx，B=按 rank 发 token+meta：自发自 LocalCopyNb / 跨卡 WriteNbWithArriveNotify）→
- *   9 WaitAllPeersArriveNotify(R-1) → 10 LocalCopyNb 置 ready=1。
- *   ★ SE 依赖：段 7A 用 StoreVariable(Variable 地址版) 写 expand_idx —— legacy CcuContext 已有、mc2 在用，待 SE 补进 pkg_inc CcuKernel。
+ *   7 DoMainLoop（按 rank 发 token+meta：自发自 LocalCopyNb / 跨卡 WriteNbWithArriveNotify）→
+ *   9 WaitallpeersarriveNotify(R-1) → 10 LocalCopyNb 置 ready=1。
+ *   ★ v20.6：本 CCU 0 处标量写 GM——删除原段 7A（写 expand_idx）。expand_idx 对 xOut==x 闭环不参与
+ *     （仅服务 expert 分组），是 expertIds 的确定性函数，改由 host driver 预算填充。由此整条
+ *     StoreVariableAt/StoreXToMem 自造微码 SE 依赖被铲除：dispatch_setup 仅"读 routing + 搬 token"。
  */
 
 #include "moe_distribute_dispatch_ccu_setup.h"
@@ -52,7 +54,7 @@ constexpr uint32_t COMMWIN_TOKEN_XN  = 1;   // 对端 commWindow token
 //   不再跨卡，故无需 PreSync 交换对端 cmdInfo 地址/token——只留 commWindow 2 个槽（省一半 PreSync）。
 constexpr uint32_t PRE_SLOT_BITS     = (1U << COMMWIN_ADDR_XN) | (1U << COMMWIN_TOKEN_XN); // = 0x3
 constexpr uint32_t CKE_PRE  = 0;   // 同步轮次：前同步
-constexpr uint32_t METADATA_BYTES = 32;     // 每 token metadata 三元组+pad 对齐
+constexpr uint32_t METADATA_BYTES = 32;     // 每 token metadata = 4 字段 int64（srcRank/srcSlot/dstK/dstByteOff）
 }
 
 // --------------------------- CcuKernelArg ----------------------------
@@ -89,13 +91,13 @@ CcuKernelSignature CcuKernelArgMoeDistributeDispatchCcuSetup::GetKernelSignature
 // --------------------------- CcuTaskArg ----------------------------
 
 CcuTaskArgMoeDistributeDispatchCcuSetup::CcuTaskArgMoeDistributeDispatchCcuSetup(
-    uint64_t expertIdsAddr_, uint64_t expandIdxAddr_, uint64_t commCmdInfoAddr_,
+    uint64_t expertIdsAddr_, uint64_t commCmdInfoAddr_,
     uint64_t commWindowAddr_, uint64_t routingTableAddr_,
     uint64_t xWithMetaAddr_,
     uint64_t xWithMetaToken_,
     uint64_t commWindowToken_, uint64_t commCmdInfoToken_,
     uint64_t oneBufAddr_, uint64_t oneBufToken_)
-    : expertIdsAddr(expertIdsAddr_), expandIdxAddr(expandIdxAddr_), commCmdInfoAddr(commCmdInfoAddr_),
+    : expertIdsAddr(expertIdsAddr_), commCmdInfoAddr(commCmdInfoAddr_),
       commWindowAddr(commWindowAddr_), routingTableAddr(routingTableAddr_),
       xWithMetaAddr(xWithMetaAddr_),
       xWithMetaToken(xWithMetaToken_),
@@ -111,7 +113,6 @@ CcuKernelMoeDistributeDispatchCcuSetup::CcuKernelMoeDistributeDispatchCcuSetup(c
     const auto &myArg = static_cast<const CcuKernelArgMoeDistributeDispatchCcuSetup &>(arg);
     epWorldSize_         = myArg.epWorldSize;
     epRankId_            = myArg.epRankId;
-    moeExpertNum_        = myArg.moeExpertNum;
     bs_                  = myArg.bs;
     topK_                = myArg.topK;
     tokenMsgLen_         = myArg.tokenMsgLen;
@@ -123,9 +124,8 @@ std::vector<uint64_t> CcuKernelMoeDistributeDispatchCcuSetup::GeneArgs(const Ccu
     // GeneArgs 顺序 = device 端 LoadArgs 顺序（务必一致，否则 device 读错地址/token）。
     //   v19 ★ 末尾追加 3 个本地 token（host GetTokenInfo(addr,size) 算）。
     return {
-        myArg.expertIdsAddr,
+        // v20.7 ★ 不传 expertIdsAddr：device 用 host 预算的 routingTable 定 dst 卡，不读 expertId（省 1 SQE+XN 槽）
         myArg.commWindowAddr,
-        myArg.expandIdxAddr,
         myArg.commCmdInfoAddr,
         myArg.routingTableAddr,
         myArg.xWithMetaAddr,
@@ -141,9 +141,7 @@ std::vector<uint64_t> CcuKernelMoeDistributeDispatchCcuSetup::GeneArgs(const Ccu
 HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
 {
     // ============ 1. InitResource ============
-    expertIdsAddrVar_    = CreateVariable();
     commWindowAddrVar_   = CreateVariable();
-    expandIdxAddrVar_    = CreateVariable();
     commCmdInfoAddrVar_  = CreateVariable();
     routingTableAddrVar_ = CreateVariable();
     xWithMetaAddrVar_    = CreateVariable();
@@ -158,24 +156,16 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     localDst_            = CreateLocalAddr();
     remoteDst_           = CreateRemoteAddr();
     event_               = CreateCompletedEvent();
-    // ★ A6 最新 LocalCopyNb(dst,src,len,bufs,bufCount,event) 要求显式传 UB 暂存 buf（GM→UB→GM 融合成一条）。
-    //   单槽串行复用：每条 LocalCopyNb 后紧跟 WaitEvent 落地，buf 用完即释放、无并发，故 1 槽即正确
-    //   （与 hccl canonical reduce/all_reduce 每次 copy 实际只用 bufs[0] 一致）。bufCount=UB 流水深度，
-    //   本 demo 取 1（最简正确、最省 CCU MS 槽）；profiling 需更高吞吐可增槽（SE 可调）。
-    localCopyBuf_        = CreateCcuBuf();
+    // ★ A6 LocalCopyNb(dst,src,len,bufs,bufCount,event) 的 UB 暂存 buf 必须来自 moRes 式块分配
+    //   （SE 对齐：不能用单个 CreateCcuBuf()，须 CreateBlockCcuBuf——moRes.ccuBuf 即此块分配的元素）。
+    //   单槽串行复用：每条 LocalCopyNb 后紧跟 WaitEvent 落地，buf 用完即释放、无并发，故 1 槽即正确。
+    CHK_RET(CreateBlockCcuBuf(1U, &localCopyBuf_));
 
     remoteCommWindowAddrs_.reserve(epWorldSize_);
     remoteCommWindowTokens_.reserve(epWorldSize_);
     std::vector<CcuRep::Variable> sendBytesPerPeer(epWorldSize_);
     peerOccBytes_.reserve(epWorldSize_);
-
-    // v8 ★ per-expert 计数器（对齐库上 expand_idx "给同一专家发送的 token 个数"语义）
-    expertOccCnts_.reserve(moeExpertNum_);
-    for (uint32_t e = 0; e < moeExpertNum_; ++e) {
-        CcuRep::Variable cnt = CreateVariable();
-        cnt = 0;
-        expertOccCnts_.push_back(cnt);
-    }
+    // ★ v20.6：删除 per-expert 计数器 expertOccCnts_——段 7A（写 expand_idx）已移除，无消费者。
 
     // v19 ★ 对端资源用 channel 的 XN 寄存器（CreateVariable(ch, XN_ID, &v)）；本地用普通 Variable。
     //   严格对齐 hccl mesh1d：每对端 commWindow 地址+token 各占一个 XN 槽（commCmdInfo 纯本地不交换）。
@@ -192,13 +182,12 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
             remoteCommWindowTokens_.push_back(vWinTok);
         }
         CcuRep::Variable ob = CreateVariable(); ob = 0; peerOccBytes_.push_back(ob);
-        CcuRep::Variable sb = CreateVariable(); sb = 0; sendBytesPerPeer[r]  = sb;
+        // ★ vector<Variable>(n) 的元素是默认构造（空 context），赋值前必须先 CreateVariable() 绑真实 XN 槽（SE 对齐）
+        sendBytesPerPeer[r] = CreateVariable(); sendBytesPerPeer[r] = 0;
     }
 
     // ============ 2. LoadArgs ============（顺序严格 = GeneArgs）
-    Load(expertIdsAddrVar_);
     Load(commWindowAddrVar_);
-    Load(expandIdxAddrVar_);
     Load(commCmdInfoAddrVar_);
     Load(routingTableAddrVar_);
     Load(xWithMetaAddrVar_);
@@ -217,12 +206,13 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     metaBytesVar = static_cast<uint64_t>(METADATA_BYTES);
     tokenWithMetaLenVar_ = tokenMsgLenVar_ + metaBytesVar;
 
-    // 常用立即数 Variable（替代非法的 Variable+立即数）
-    CcuRep::Variable oneVar = CreateVariable();   oneVar = 1U;
-    CcuRep::Variable elem4Var = CreateVariable(); elem4Var = static_cast<uint64_t>(sizeof(uint32_t)); // =4
+    // ★ 步进 = 8 字节：CCU Variable/XN 寄存器固定 8 字节（CCU_RESOURCE_XN_PER_SIZE=8），LoadVariable 一次
+    //   必搬 8 字节，故被它读的 GM 标量数组（routingTable）必须按 int64 排布、按 8 步进（hccl "每个Xn占8个byte"）。
+    //   （oneVar 已删：段 7A expand_idx 计数移除后无 +1 需求。）
+    CcuRep::Variable elem8Var = CreateVariable(); elem8Var = static_cast<uint64_t>(sizeof(uint64_t)); // =8
 
     // ============ 2.5. Clear 上次 dispatch 的 0.5RTT 状态（起头清零）============
-    CHK_RET(ClearAllPeersArriveNotify(MOE_DISPATCH_CCU_TAG));
+    CHK_RET(clearallpeersarriveNotify(MOE_DISPATCH_CCU_TAG));
 
     // ============ 3. PreSync（需求1 ★ 槽位 mask）============
     //   每对端 channel：用 2 个 NotifyRecord 把本卡 commWindow 地址+token 写到对端对应 XN 槽
@@ -256,6 +246,7 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
         CcuRep::Variable v = CreateVariable();
         v = remoteCommWindowAddrs_[r] + myBaseOffVar;
+        remoteSlotBaseVar[r] = CreateVariable();   // ★ 默认构造元素先绑真实 XN 槽再赋值（SE 对齐）
         remoteSlotBaseVar[r] = v;
     }
 
@@ -267,7 +258,7 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     for (uint32_t i = 0; i < bs_; ++i) {
         for (uint32_t j = 0; j < topK_; ++j) {
             LoadVariable(routingAddrA, rankVarA);         // 读 routingTable[idx]
-            routingAddrA += elem4Var;                     // 递进 4 字节
+            routingAddrA += elem8Var;                     // 递进 8 字节（int64 元素）
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
                 CCU_IF(rankVarA == r) {
                     sendBytesPerPeer[r] = sendBytesPerPeer[r] + tokenWithMetaLenVar_;
@@ -281,52 +272,39 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     //   段 8 已无对端 cmdInfo 写，sendBytes 回归"纯数据字节"（段 5 累加的 tokenWithMetaLen×token 数），
     //   不再 +4 cmdInfo overhead。0.5RTT wishCnt 与 WriteNbWithArriveNotify 的数据字节精确对账。
 
-    // ============ 6. RecordExpectCount ============
+    // ============ 6. RecordExpectCount（SE 对齐：新增 sem+mask 完成事件）============
+    //   写对端 wishCnt 是异步 issue，经 event_ 的 bit0 标记本地完成；逐条 SetMask(1)+WaitEvent 串行落地
+    //   （event_ 串行复用，bit0 用完即清，与段 7 自发自 LocalCopyNb 同范式）。
     for (uint32_t r = 0; r < epWorldSize_; ++r) {
         if (r == epRankId_) continue;
         uint32_t channelIdx = (r < epRankId_) ? r : r - 1;
-        CHK_RET(RecordExpectCount(channels_[channelIdx], sendBytesPerPeer[r], MOE_DISPATCH_CCU_TAG));
+        event_.SetMask(1U);
+        CHK_RET(RecordExpectCount(channels_[channelIdx], sendBytesPerPeer[r], MOE_DISPATCH_CCU_TAG, event_, 1U));
+        CHK_RET(WaitEvent(event_));
     }
 
-    // ============ 7. DoMainLoop（token + 地址递进 ★）============
-    //   维护 4 个递进地址 Variable：expertIdAddr / routingAddrB / xMetaAddr / expandIdxAddr。
+    // ============ 7. DoMainLoop（按 rank 发 token+metadata；纯路由，无标量写 GM）============
+    //   维护递进地址：routingAddrB（读 dst rank）/ xMetaAddr（数据源行首）。
     //   localSrc_.addr = xMetaAddr（递进），localSrc_.token = 本地 xWithMeta token。
-    //   阶段 A：按 expertId 写 expand_idx（StoreVariable Variable 地址版，写本卡 HBM 无 token）。
-    //   阶段 B：按 rank 发——自发自 LocalCopyNb(localDst.token=本地 commWindow token)，
+    //   按 rank 发——自发自 LocalCopyNb(localDst.token=本地 commWindow token)，
     //          跨卡 WriteNbWithArriveNotify(remoteDst.token=对端 commWindow token)。
-    CcuRep::Variable expertIdVar = CreateVariable();
+    //   ★ v20.6 重构：删除原"阶段 A 写 expand_idx"——expand_idx 对 xOut==x 不参与（仅服务 expert 分组），
+    //     且写 GM 动态地址需 SE 微码 StoreVariableAt（SE 对齐确认标准 StoreVariable(Var,Var) 不支持）。
+    //     expand_idx 是 expertIds 的确定性函数，改由 host driver 预算（见 driver），CCU 不再写任何标量 GM。
+    //     → 整条 StoreVariableAt/StoreXToMem/expandIdxToken SE 依赖铲除，dispatch_setup 0 处标量写 GM。
     CcuRep::Variable rankVarB    = CreateVariable();
-    CcuRep::Variable curOccVar   = CreateVariable();
-    CcuRep::Variable expertIdAddr   = CreateVariable(); expertIdAddr   = expertIdsAddrVar_;
     CcuRep::Variable routingAddrB   = CreateVariable(); routingAddrB   = routingTableAddrVar_;
     CcuRep::Variable xMetaAddr      = CreateVariable(); xMetaAddr      = xWithMetaAddrVar_;
-    CcuRep::Variable expandIdxAddr  = CreateVariable(); expandIdxAddr  = expandIdxAddrVar_;
     // localSrc_.token 固定为本地 xWithMeta token（数据源始终本地）
     localSrc_.token = xWithMetaTokenVar_;
     for (uint32_t i = 0; i < bs_; ++i) {
         for (uint32_t j = 0; j < topK_; ++j) {
-            LoadVariable(expertIdAddr, expertIdVar);      // 读 expertId[idx]
-            expertIdAddr += elem4Var;
             LoadVariable(routingAddrB, rankVarB);         // 读 routingTable[idx]
-            routingAddrB += elem4Var;
+            routingAddrB += elem8Var;
             // localSrc_.addr = xMetaAddr（当前 token 行起址）
             localSrc_.addr = xMetaAddr;                   // Address = Variable（合法）
 
-            // ---- 阶段 A：按 expertId 维度写 expand_idx ----
-            for (uint32_t e = 0; e < moeExpertNum_; ++e) {
-                CCU_IF(expertIdVar == e) {
-                    curOccVar = expertOccCnts_[e];
-                    // expand_idx 写本卡 HBM 输出 buffer：用 hcomm 标准 StoreVariable 的 Variable 地址版
-                    //   （legacy CcuContext::StoreVariable(Variable,Variable) 已实现、mc2_context 在用，
-                    //    写本卡 HBM 无需 token）。pkg_inc CcuKernel 暂漏暴露该重载，已在 api.h 占位，
-                    //    待 SE 补进 CcuKernel 后即用基类版（见 OPEN_QUESTIONS SE-2）。
-                    StoreVariable(curOccVar, expandIdxAddr);
-                    expertOccCnts_[e] = curOccVar + oneVar;
-                }
-            }
-            expandIdxAddr += elem4Var;                    // 递进 expand_idx 写指针
-
-            // ---- 阶段 B：按 rank 维度发送 token+metadata 整体（一次 RDMA tokenWithMetaLen 字节）----
+            // ---- 按 rank 维度发送 token+metadata 整体（一次 RDMA tokenWithMetaLen 字节）----
             for (uint32_t r = 0; r < epWorldSize_; ++r) {
                 CCU_IF(rankVarB == r) {
                     if (r == epRankId_) {
@@ -368,16 +346,16 @@ HcclResult CcuKernelMoeDistributeDispatchCcuSetup::Algorithm()
     //   自数（遍历本卡 commWindow 段 r 的 slot，按 metadata.srcRank==r 计有效 token 数）。
     //   scratch 区随之取消，commCmdInfo 简化为只剩 ready 区。
 
-    // ============ 9. WaitAllPeersArriveNotify（需求3 ★）============
+    // ============ 9. WaitallpeersarriveNotify（需求3 ★）============
     //   段 7 自发自 LocalCopyNb 已在 CCU_IF 内逐条 WaitEvent 落地，此处无需再等 event。
     //   只需等本卡作为接收方收齐：totalCntXn 达 R-1（其余对端都 WriteNbWithArriveNotify 写到位）。
-    //   ★ SE 依赖：WaitAllPeersArriveNotify 的 target 语义需 SE 确认。当前按"对端到达计数=R-1"；
+    //   ★ SE 依赖：WaitallpeersarriveNotify 的 target 语义需 SE 确认。当前按"对端到达计数=R-1"；
     //     若某对端给本卡发 0 token（routing 不均），其 arrive-notify 是否仍计入需 SE 明确——
     //     若按字节 wishCnt 匹配（0 字节自动满足）则无碍；若按对端个数计数则需把 target 改为
     //     "实际会给本卡发≥1 token 的对端数"（host 按列预算）。见 OPEN_QUESTIONS。
     CcuRep::Variable arriveTargetVar = CreateVariable();
     arriveTargetVar = static_cast<uint64_t>(epWorldSize_ - 1U);
-    CHK_RET(WaitAllPeersArriveNotify(arriveTargetVar, MOE_DISPATCH_CCU_TAG));
+    CHK_RET(WaitallpeersarriveNotify(arriveTargetVar, MOE_DISPATCH_CCU_TAG));
 
     // ============ 10. 设 ready[0..R)=1（本卡收齐后本地置位）============
     //   收口（方案 A）：原本 R 次自造 StoreVariableAt(oneVar, readyAddr) 逐槽写 1，

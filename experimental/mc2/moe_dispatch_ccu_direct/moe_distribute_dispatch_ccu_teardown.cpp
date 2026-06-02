@@ -14,20 +14,23 @@
  *
  * v9→v10 关键差别：
  *   v9：teardown 继承 hcomm::CcuKernel，用 CCU DSL（CcuRep::Variable / LocalCopyNb /
- *       WaitAllPeersArriveNotify 等），跑在 CCU 引擎；通过 HcclCcuKernelRegister/Launch。
+ *       WaitallpeersarriveNotify 等），跑在 CCU 引擎；通过 HcclCcuKernelRegister/Launch。
  *   v10：teardown 是标准 ascendc kernel（`__global__ __aicore__` 函数），跑在 AIV；
  *        用 GlobalTensor / LocalTensor / DataCopy 等标准 ascendc API；通过 `<<<>>>` 直调。
  *
  * 等齐机制：
- *   v9 teardown 内部用 WaitAllPeersArriveNotify 等 0.5RTT 通信完成。
+ *   v9 teardown 内部用 WaitallpeersarriveNotify 等 0.5RTT 通信完成。
  *   v10 等齐工作上移到 setup CCU 末尾（segment 9），setup CCU return 时所有对端数据
  *   已就位；stream 顺序保证 v10 teardown launch 时 y / commCmdInfo 内容稳定。
  *
- * Algorithm 三段式（纯 vector 计算，无任何通信）：
- *   1. 轮询 commCmdInfo ready 区 [0, R) 全 1 等齐（收口 ★ ready 区移到偏移 0）
- *   2. 收口 ★【自数】遍历 commWindow 段 r 的 slot 按 metadata.srcRank==r 计有效 token，
- *      紧密 DataCopy commWindow[有效 slot] → expand_x[紧密区]（不再读对端写的 tokenCount）
- *   3. 同 slot metadata 三元组写 assist_info，dstTokenIdx 推进即每段有效 token 数累计
+ * Algorithm（v20.6 ★，纯 vector 计算，无任何通信）：
+ *   1. 轮询 commCmdInfo ready 区 [0, R) 全 1 等齐（ready 区在偏移 0）
+ *   2.【按发送方分段自数·Req3】最外层按来源卡 r 循环，遍历段 r 的 bs*topK 个 slot，按 metadata.srcRank==r
+ *      计有效 token（空 slot 0xFF→-1 跳过）；命中即把【干净 data(tokenMsgLen)】紧密 DataCopy 到 expandX
+ *      （剥离 metadata·Req1），expandX/assistInfo 天然按 ownerRank 分段连续。
+ *   3. 同 slot metadata 写 assistInfo[t]=dstByteOff（单字段 int64，combine 反向回送用；owner 由分段隐含）。
+ *   4. 段 r 末写 commCmdInfo.sendBytes[r]=cnt[r]*tokenMsgLen（combine wishCnt）+ negCnt[r]=-cnt[r]
+ *      （combine 按 owner 分段·每段 CCU_WHILE 用 negCnt[r] 自增到 0 跑 cnt[r] 次，规避 CCU 无减/乘）。
  *
  * 简化范围：
  *   - dtype 写死 bfloat16_t（生产可按 tilingData 字段切模板）
@@ -69,13 +72,18 @@ public:
 
         // v13 ★ commWindowGM_ 绑定到对端接收 window（v13 工程内部 scratch，库上 op_def 无此字段）
         commWindowGM_.SetGlobalBuffer((__gm__ YType*)commWindow);
-        // v16+ ★ commWindow 的 INT32 视图：用于 Process 读 token 末尾 metadata 三元组
-        //   规避用 commWindowGM_.GetPhyAddr() （非 ascendc 标准 API），改在 Init 阶段
-        //   用同一 GM_ADDR 创建独立 int32 GlobalTensor，Process 直接 GetValue 即可
-        commWindowMetaGM_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(commWindow));
+        // v20.6 ★ commWindow 的 INT64 视图：metadata 按 int64 排布（srcRank@字段0 / dstByteOff@字段3），
+        //   直接 GetValue 读全 64 位（规避 int32 低半读 dstByteOff 截断），与 CCU LoadVariable 8 字节同口径。
+        commWindowMetaI64GM_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(commWindow));
         expandXGM_.SetGlobalBuffer((__gm__ YType*)expandX);
         commCmdInfoGM_.SetGlobalBuffer((__gm__ int32_t*)commCmdInfo);
-        assistInfoGM_.SetGlobalBuffer((__gm__ int32_t*)assistInfoForCombine);
+        // v20.7 ★ commCmdInfo 的 INT64 视图：写 sendBytes[0..R)（段6 wishCnt）+ negCnt[0..R)（=-cnt[r]，
+        //   combine 按 owner 分段倒计数）。combine_setup CCU 用 LoadVariable 读（必 int64）。ready 区仍走
+        //   int32 视图 commCmdInfoGM_（与 setup LocalCopyNb 写的 int32 一致）。
+        commCmdInfoI64GM_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(commCmdInfo));
+        // v20.7 ★ assistInfo 降为【单字段 dstByteOff】(1×int64/token)：combine 按 owner 分段消费，owner=外层
+        //   循环常量已知，无需存 ownerRank——只需回送目的卡 commWindow 内字节偏移 dstByteOff。combine LoadVariable 读。
+        assistInfoI64GM_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(assistInfoForCombine));
         pipe_ = pipe;
 
         // UB chunk buffer：用作 GM→UB→GM 搬运的中转
@@ -88,7 +96,7 @@ public:
      *
      * 双流并行架构：setup CCU 立即返回（异步），teardown AIV 内部等齐。
      *
-     * 等齐信号 = "专用 ready 区全 1"。setup CCU 段 9 内部 WaitAllPeersArriveNotify(R-1) 确认本卡作为
+     * 等齐信号 = "专用 ready 区全 1"。setup CCU 段 9 内部 WaitallpeersarriveNotify(R-1) 确认本卡作为
      *   接收方已收齐 *所有* 对端数据，段 10 用【1 次 LocalCopyNb】把 oneBuf（host 填 R 个 int32=1）
      *   整块写到 ready 区，置 ready[0..R) 全 1。所以 ready 区全 1 ⟺ 本卡数据彻底落地。
      *
@@ -118,16 +126,17 @@ public:
     }
 
     /**
-     * Process: 等齐 + 自数有效 token + 紧密拷贝 + 写三元组（收口 ★ 改为自数）。
+     * Process（v20.7）: 等齐 + 按发送方分段自数 + 紧密拷【干净 data】 + 写 assistInfo/commCmdInfo。
      *
      * 关键算法：
-     *   1. 不再读 commCmdInfo.tokenCount（收口删除了对端跨卡写 tokenCount）——改为遍历 commWindow
-     *      段 r 全部 slot，按 metadata.srcRank==r 自数有效 token 数（空 slot 0xFF→srcRank=-1 跳过）
-     *   2. expandX 输出紧密排列：rank 0 的有效 token 在前，rank 1 的接着，依此类推
-     *   3. 每个 token 仍含 tokenWithMetaLen 字节（data + 32B metadata）
-     *   4. 同时从每个有效 token 末尾的 metadata 提取三元组 (srcRank, srcSlot, dstK) 写到 assistInfoForCombine
-     *      assistInfoForCombine layout: [(r0t0_meta), (r0t1_meta), ..., (r1t0_meta), ...]
-     *      连续 dstTokenIdx*3 个 INT32，与 expandX 紧密区每 token 一一对应
+     *   1. 等齐后遍历 commWindow 段 r（来自卡 r）全部 slot，按 metadata.srcRank==r 自数有效 token 数
+     *      （空 slot 0xFF→srcRank=-1 跳过）。
+     *   2. expandX 输出紧密排列且按 ownerRank 分段连续：卡0 的 token 在前、卡1 接着…（combine 按段消费的前提）。
+     *      每个 token 只拷【干净 data】(tokenMsgLen，剥离 metadata，Req1)。
+     *   3. assistInfoForCombine 写【单字段 dstByteOff】(int64)：combine 按 owner 分段、owner 已知，只需回送偏移。
+     *      layout：连续 dstTokenIdx 个 INT64，与 expandX 紧密区每 token 一一对应。
+     *   4. 段 r 末写 commCmdInfo.sendBytes[r]=cnt[r]*tokenMsgLen（combine 段6 wishCnt）+ negCnt[r]=-cnt[r]
+     *      （combine 段7 该段 CCU_WHILE 倒计数初值）。
      */
     __aicore__ inline void Process()
     {
@@ -139,72 +148,81 @@ public:
         WaitForAllSrcRanks();
 
         LocalTensor<YType> ubLocal = ubBuf_.Get<YType>();
-        // v15 ★ token 在 commWindow 段中的 stride = tokenWithMetaLen / sizeof(YType) 元素
-        const uint64_t tokenWithMetaElems = tokenWithMetaLen_ / sizeof(YType);
-        // segment 在 commWindow 中的 stride（按元素数）
-        const uint64_t segElemsCapacity = static_cast<uint64_t>(bs_) * topK_ * tokenWithMetaElems;
-        // metadata 在每 token 内的起始元素偏移（按 YType 元素数；3 INT32 + padding 占 32B = 16 BF16 元素）
-        const uint64_t metaOffsetElems = tokenMsgLen_ / sizeof(YType);
-
-        // expandX 紧密拷贝目的偏移（按元素数累加）
-        uint64_t dstTokenIdx = 0;   // expandX 中的紧密 token 索引（0..N-1）
-
-        // 收口 ★ tokenCount 不再由对端 CCU 跨卡写——本卡每段有效 token 数改为本 teardown【自数】：
-        //   遍历 commWindow 段 r 的全部 bs*topK 个 slot，读每 slot 末尾 metadata.srcRank，
-        //   仅 srcRank == r 的 slot 才是"对端 rank r 真实发来的有效 token"（空 slot 由 host 预初始化为
-        //   0xFF sentinel → srcRank = -1，不命中任何 r）。命中即紧密拷贝 + 写 assistInfo + 计数。
-        //   纯标量循环（GetValue / DataCopy / SetValue），不新增任何 AscendC API。
-        //
-        //   为何能区分有效/空 slot：dispatch driver 已把 commWindow 整块初始化为 0xFF（详见 driver 注释），
-        //   空 slot 的 metadata.srcRank = -1。这是"接收方自数"相对"对端写 tokenCount"的必要配套
-        //   （否则 rank 0 的有效 token srcRank=0 与 memset-0 空 slot 的 0 无法区分）。
+        // commWindow 槽 stride（含 metadata，按字节）：每槽 = tokenMsgLen data + 32B metadata
+        const uint64_t tokenWithMetaBytes = tokenWithMetaLen_;
+        // v20.6 ★ expandX 干净 stride（按 YType 元素数）：只搬 data 段，不含 metadata
+        const uint64_t tokenMsgElems = tokenMsgLen_ / sizeof(YType);
+        // 段 r 在 commWindow 中的 stride（按字节）
+        const uint64_t segByteCapacity = static_cast<uint64_t>(bs_) * topK_ * tokenWithMetaBytes;
         const uint32_t segSlotCapacity = bs_ * topK_;   // 段 r 的 slot 容量
+
+        // v20.7 ★ commCmdInfo 布局（与 combine_setup CCU / driver 三处严格一致）：
+        //   ready[0..R) int32（byte [0,4R)）│ 8 字节对齐 │ sendBytes[0..R) int64 │ negCnt[0..R) int64
+        //   cinfoI64Base = 8 对齐后的 int64 基下标；sendBytes[r] @ +r；negCnt[r] @ +R+r。
+        const uint64_t cinfoByteOff = ((static_cast<uint64_t>(epWorldSize_) * sizeof(int32_t) + 7U) / 8U) * 8U;
+        const uint64_t cinfoI64Base = cinfoByteOff / sizeof(int64_t);
+
+        // expandX 紧密区推进下标（= 全卡有效 token 总数累加器）
+        uint64_t dstTokenIdx = 0;
+
+        // v20.6 ★【按发送方分段自数】（Req3）：最外层按"来源卡 r"循环，遍历段 r 的全部 bs*topK 个 slot，
+        //   读 metadata.srcRank（int64 全宽，空 slot 0xFF→-1）。仅 srcRank==r 的才是 r 真实发来的有效 token。
+        //   命中即：① 干净 data（tokenMsgLen）紧密拷到 expandX（剥离 metadata，Req1）；
+        //          ② 写 assistInfo[dstTokenIdx]=dstByteOff（单字段，combine 路由用，int64）；
+        //          ③ dstTokenIdx++。段 r 结束记 cnt[r]，写 sendBytes[r]=cnt[r]*tokenMsgLen + negCnt[r]=-cnt[r]。
+        //   ★ 关键不变式：因按 r 顺序紧密堆放，expandX/assistInfo 天然【按 ownerRank 严格分段连续】
+        //     （来自卡0 的 cnt[0] 个、卡1 的 cnt[1] 个…依次紧密）。这正是 combine 按 owner 分段消费的前提。
+        //   0xFF sentinel 由 driver 预初始化（区分 rank0 真 token 与空槽）。
         for (uint32_t r = 0; r < epWorldSize_; ++r) {
+            const uint64_t cntBefore = dstTokenIdx;
             for (uint32_t k = 0; k < segSlotCapacity; ++k) {
-                const uint64_t srcOff = static_cast<uint64_t>(r) * segElemsCapacity
-                                       + static_cast<uint64_t>(k) * tokenWithMetaElems;
-                // 先读该 slot 的 metadata.srcRank 判定有效性（int32 视图下标）
-                const uint64_t metaSrcByteOff = (srcOff + metaOffsetElems) * sizeof(YType);
-                const uint64_t metaSrcIntIdx  = metaSrcByteOff / sizeof(int32_t);
-                int32_t srcRank = commWindowMetaGM_.GetValue(metaSrcIntIdx + 0);
-                if (srcRank != static_cast<int32_t>(r)) {
+                const uint64_t tokenStartByte = static_cast<uint64_t>(r) * segByteCapacity
+                                              + static_cast<uint64_t>(k) * tokenWithMetaBytes;
+                // metadata 起始 int64 下标（metadata 紧跟 data 段：byte = tokenStart + tokenMsgLen，8 对齐）
+                const uint64_t metaI64Idx = (tokenStartByte + tokenMsgLen_) / sizeof(int64_t);
+                const int64_t srcRank = commWindowMetaI64GM_.GetValue(metaI64Idx + 0);   // 字段0
+                if (srcRank != static_cast<int64_t>(r)) {
                     continue;   // 空 slot（srcRank=-1）或非本段数据，跳过，不占紧密区
                 }
+                const int64_t dstByteOff = commWindowMetaI64GM_.GetValue(metaI64Idx + 3); // 字段3（=24/8）
 
-                // ====== 紧密拷贝有效 token：commWindow[r 段, slot k] → expandX[紧密区 dstTokenIdx] ======
-                const uint64_t dstOff = dstTokenIdx * tokenWithMetaElems;
-                for (uint64_t off = 0; off < tokenWithMetaElems; off += kChunkElems) {
+                // ① 紧密拷贝【干净 data】：commWindow[段r,槽k] data 段(tokenMsgLen) → expandX[紧密区]
+                const uint64_t srcElem = tokenStartByte / sizeof(YType);   // 槽起始（YType 元素）
+                const uint64_t dstElem = dstTokenIdx * tokenMsgElems;      // expandX 干净 stride
+                for (uint64_t off = 0; off < tokenMsgElems; off += kChunkElems) {
                     uint32_t copyLen = static_cast<uint32_t>(
-                        (tokenWithMetaElems - off >= kChunkElems) ? kChunkElems : (tokenWithMetaElems - off));
-                    DataCopy(ubLocal, commWindowGM_[srcOff + off], copyLen);
+                        (tokenMsgElems - off >= kChunkElems) ? kChunkElems : (tokenMsgElems - off));
+                    DataCopy(ubLocal, commWindowGM_[srcElem + off], copyLen);
                     PipeBarrier<PIPE_ALL>();
-                    DataCopy(expandXGM_[dstOff + off], ubLocal, copyLen);
+                    DataCopy(expandXGM_[dstElem + off], ubLocal, copyLen);
                     PipeBarrier<PIPE_ALL>();
                 }
 
-                // ====== 同 slot metadata 三元组 (srcRank, srcSlot, dstK) 写 assistInfoForCombine ======
-                int32_t srcSlot = commWindowMetaGM_.GetValue(metaSrcIntIdx + 1);
-                int32_t dstK    = commWindowMetaGM_.GetValue(metaSrcIntIdx + 2);
-                const uint64_t assistIdx = dstTokenIdx * 3;
-                assistInfoGM_.SetValue(assistIdx + 0, srcRank);
-                assistInfoGM_.SetValue(assistIdx + 1, srcSlot);
-                assistInfoGM_.SetValue(assistIdx + 2, dstK);
+                // ② 写 assistInfo（单字段 dstByteOff）：combine 按 owner 分段消费、owner 已知，只需回送偏移
+                assistInfoI64GM_.SetValue(dstTokenIdx, dstByteOff);
 
-                ++dstTokenIdx;   // 收口 ★ 自数：有效 token 计数 = 紧密区推进 = 每段有效 token 数累计
+                ++dstTokenIdx;   // ③ 自数推进
             }
+            // v20.7 ★ 段 r 结束：cnt[r] = 本段有效 token 数。写两份供 combine：
+            //   sendBytes[r] = cnt[r]*tokenMsgLen（段6 RecordExpectCount wishCnt，combine 干净字节）；
+            //   negCnt[r]    = (uint64_t)(0 - cnt[r])（段7 该段 CCU_WHILE 倒计数初值，自增到 0 跑 cnt[r] 次）。
+            //   倒计数在 AIV 侧用普通 C++ 算（CCU Variable 无减/乘）；cnt[r]==0 → negCnt[r]=0 → 该段 0 次，自然正确。
+            const uint64_t cntR = dstTokenIdx - cntBefore;
+            commCmdInfoI64GM_.SetValue(cinfoI64Base + r,
+                                       static_cast<int64_t>(cntR * tokenMsgLen_));
+            commCmdInfoI64GM_.SetValue(cinfoI64Base + epWorldSize_ + r,
+                                       static_cast<int64_t>(static_cast<uint64_t>(0) - cntR));
         }
-
-        // expandX 紧密区后面是 host 端预初始化的 sentinel (0xFF → metadata.srcRank = -1)
-        //   combine_setup 段 5/7 host unroll bs*K 次时，padding token 的 srcRank=-1 不命中任何 r ∈ [0, rankSize)，
-        //   自动被 CCU_IF 过滤掉，无需额外清理逻辑。
+        // v20.7 ★ 不再写全局 negTotal：combine 改按 owner 分段（每段用 negCnt[r] 倒计数），无需全局 total。
     }
 
 private:
     GlobalTensor<YType> commWindowGM_;
-    GlobalTensor<int32_t> commWindowMetaGM_;   // v16+ ★ commWindow 的 INT32 视图（读 metadata 用）
+    GlobalTensor<int64_t> commWindowMetaI64GM_; // v20.6 ★ commWindow 的 INT64 视图（读 metadata 全宽）
     GlobalTensor<YType> expandXGM_;
-    GlobalTensor<int32_t> commCmdInfoGM_;
-    GlobalTensor<int32_t> assistInfoGM_;
+    GlobalTensor<int32_t> commCmdInfoGM_;       // ready 区 int32 轮询
+    GlobalTensor<int64_t> commCmdInfoI64GM_;    // v20.7 ★ 写 sendBytes[0..R) + negCnt[0..R)（combine 读，int64）
+    GlobalTensor<int64_t> assistInfoI64GM_;     // v20.7 ★ 单字段 dstByteOff（1×int64/token，owner 由分段隐含）
     TBuf<TPosition::VECCALC> ubBuf_;
     TPipe* pipe_;
 

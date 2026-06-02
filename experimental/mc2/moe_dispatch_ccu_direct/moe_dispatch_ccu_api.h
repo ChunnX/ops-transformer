@@ -21,10 +21,10 @@
  * setup/teardown 的 CcuKernel 子类直接调用；链接期由 SE 在 hcomm 仓补全实现。
  *
  * 4 个接口语义（按 A6_CCU_0.5RTT 方案文档）：
- *   RecordExpectCount        发送方把"我会发多少字节"写入对端 channel 的 wishCntXn
- *   WriteNbWithArriveNotify  发送方写数据 + 把本次长度 atomic add 到对端 wtCount
- *   WaitAllPeersArriveNotify 接收方等本端 totalCntXn 达到 target
- *   ClearAllPeersArriveNotify 清零本端 totalCntXn 与所有 wishCntXn
+ *   RecordExpectCount         发送方把"我会发多少字节"写入对端 channel 的 wishCntXn（SE 对齐：+sem+mask）
+ *   WriteNbWithArriveNotify   发送方写数据 + 把本次长度 atomic add 到对端 wtCount
+ *   WaitallpeersarriveNotify  接收方等本端 totalCntXn 达到 target（SE 官方名，注意大小写）
+ *   clearallpeersarriveNotify 清零本端 totalCntXn 与所有 wishCntXn（SE 官方名，小写 c）
  *
  * 配套 ChannelDesc.channelGroupTag 字段（方案文档增量定义、仓里待补）：
  *   channel 通过 tag 关联到 CCU 上一组 wishCntXn/totalCntXn 资源（CCU 最多 4 组），
@@ -60,41 +60,31 @@ public:
 
 protected:
     // 将 var 中的值写到 channel 中以 tag 标记的对端 countXn 作为 wishCount。
-    HcclResult RecordExpectCount(const ChannelHandle channel,
-                                  const CcuRep::Variable &var, std::string tag);
+    //   ★ SE 对齐：新增 sem + mask 完成事件（写 wishCnt 是异步 issue，经 sem 的 mask 位标记本地完成）。
+    HcclResult RecordExpectCount(const ChannelHandle channel, const CcuRep::Variable &var,
+                                  const std::string &tag, CcuRep::CompletedEvent sem, uint16_t mask);
 
     // 从 loc 写长为 len 的数据到 rem，并把本次写的数据量
-    // 累加到 channel 对端 tag 标记的 countXn 的 wtCount。
+    // 累加到 channel 对端 tag 标记的 countXn 的 wtCount。（SE 对齐：tag 取 const 引用）
     HcclResult WriteNbWithArriveNotify(const ChannelHandle channel,
                                        const CcuRep::RemoteAddr &rem,
                                        const CcuRep::LocalAddr &loc,
-                                       const CcuRep::Variable &len, std::string tag);
+                                       const CcuRep::Variable &len, const std::string &tag);
 
     // 等本端以 tag 标记的 totalCntXn 达到 target 时解除等待。
-    HcclResult WaitAllPeersArriveNotify(const CcuRep::Variable &target, std::string tag);
+    //   ★ SE 官方名 Waitallpeersarrive（注意大小写：首字母大写 W、中段全小写、尾 Notify）；tag const 引用。
+    HcclResult WaitallpeersarriveNotify(const CcuRep::Variable &target, const std::string &tag);
 
     // 清除本端 tag 标记的 totalCntXn 与所有 wishCntXn。
-    HcclResult ClearAllPeersArriveNotify(std::string tag);
+    //   ★ SE 官方名 clearallpeersarrive（注意：首字母小写 c、中段全小写、尾 Notify）；tag const 引用。
+    HcclResult clearallpeersarriveNotify(const std::string &tag);
 
-    // ============ 标量写 GM（Variable 动态地址版）============
-    //
-    // 【为何需要】CCU 算法要把 device 标量（Variable，如 expand_idx 计数）写回 GM 的"运行期动态地址"
-    //   （base 来自 Load，非 host 编译期立即数）。
-    //
-    // 【真相：hcomm 早有此能力，只是 pkg_inc CcuKernel 漏暴露】
-    //   legacy CcuContext 有两个 StoreVariable 重载（ccu_ctx.h:148/150，实现 ccu_context.cpp:285/295）：
-    //       void StoreVariable(const Variable &var, uint64_t addr);        // 立即数地址
-    //       void StoreVariable(const Variable &var, const Variable &src);  // ★ Variable 动态地址（无 token）
-    //   mc2 通算融合的 mc2_context.cpp 正用第二个写本卡 HBM 信号（StoreVariable(sig, hbmSigAddr)，
-    //   hbmSigAddr 是 Variable、无 token）——证明"写本卡 HBM 标量"不需要调用方传 token。
-    //   而 pkg_inc 新体系 CcuKernel（我们继承的）只暴露了立即数版（ccu_kernel.h:172），Variable 地址版
-    //   漏暴露（对比 Load 有 Variable 地址版 :169，Store 没有——不对称遗漏）。
-    //
-    // 【本工程处理】占位声明 Variable 地址版（语义=legacy CcuContext::StoreVariable(Variable,Variable)），
-    //   用标准名表达正确意图、-fsyntax-only 通过；待 SE 把该重载补进 pkg_inc CcuKernel（照搬 legacy 实现、
-    //   非新造）后即用基类版、删本占位。expand_idx 写本卡 HBM 输出 buffer，无需 token。
-    using CcuKernel::StoreVariable;   // 引入基类立即数版，避免 name hiding
-    void StoreVariable(const CcuRep::Variable &val, const CcuRep::Variable &src);
+    // ============ 标量写 GM 动态地址：v20.6 已彻底取消（无 StoreVariableAt 依赖）============
+    //   历史：曾用自造 StoreVariableAt(val, addrVar, token) 把 device 标量（expand_idx）写回 GM 动态地址。
+    //   SE 对齐确认 hcomm 标准 StoreVariable(Variable val, Variable addr)（2 参无 token，动态地址）不支持。
+    //   v20.6 决策（Req5 最优解）：dispatch_setup 不再写任何标量 GM——expand_idx 改由 host driver 预算，
+    //   per-rank 计数/total 改由 teardown AIV（普通 GlobalTensor.SetValue，非 CCU 微码）产出。
+    //   故本 CCU 接口层【不再需要】任何"写动态 GM 地址"的自造微码，SE 依赖清零。
 };
 
 } // namespace hcomm
