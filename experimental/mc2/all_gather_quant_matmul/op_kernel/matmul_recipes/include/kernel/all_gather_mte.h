@@ -571,6 +571,12 @@ template <AllGatherTemplateTypeClass>
 __aicore__ inline void AllGatherMte<AllGatherTemplateType>::ExecuteAllGather(
     GM_ADDR allGatherDataAddr, GM_ADDR allGatherScalesAddr)
 {
+    // ── 安全守卫：当 sendCoreNumPerRank 不能被 kDim_*mDim_ 整除时，
+    //     多余的核会得到无效的 kBlockIdx_/mBlockIdx_，跳过来防止数据踩踏
+    if (kBlockIdx_ >= kDim_ || mBlockIdx_ >= mDim_) {
+        return;
+    }
+
     // ── 绑定远端和本端 win 区 GM Tensor ──
 
     // 远端 win 区数据地址：remoteRankId_ 对应的数据 slot

@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file add_rms_norm_dynamic_quant_all_gather_qbmm_tiling.cpp
+ * \file all_gather_quant_matmul_tiling.cpp
  * \brief host侧tiling实现
  */
 
@@ -85,19 +85,19 @@ constexpr float EPSILON = 1e-6;
 
 
 /**
- * @brief add_rms_norm_dynamic_quant_all_gather_qbmm算子的tiling函数
+ * @brief all_gather_quant_matmul算子的tiling函数
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
  */
-static ge::graphStatus AddRmsNormDynamicQuantAllGatherQbmmTilingFunc(gert::TilingContext *context)
+static ge::graphStatus AllGatherQuantMatmulTilingFunc(gert::TilingContext *context)
 {
-    OP_LOGD("AddRmsNormDynamicQuantAllGatherQbmm", "Tiling start");
+    OP_LOGD("AllGatherQuantMatmul", "Tiling start");
     OP_TILING_CHECK(context == nullptr,
-        OP_LOGE("add_rms_norm_dynamic_quant_all_gather_qbmm", "failed to get tiling context."),
+        OP_LOGE("all_gather_quant_matmul", "failed to get tiling context."),
         return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     OP_TILING_CHECK(nodeName == nullptr,
-        OP_LOGE("add_rms_norm_dynamic_quant_all_gather_qbmm", "failed to get nodeName."),
+        OP_LOGE("all_gather_quant_matmul", "failed to get nodeName."),
         return ge::GRAPH_FAILED);
 
     allGatherMatmulTilingData *tilingData = context->GetTilingData<allGatherMatmulTilingData>();
@@ -127,6 +127,7 @@ static ge::graphStatus AddRmsNormDynamicQuantAllGatherQbmmTilingFunc(gert::Tilin
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint64_t aicNum = ascendcPlatform.GetCoreNumAic();
     uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aicNum, aicNum, aicNum);
+    printf("aicNum=%lu, numBlocks(dim)=%u\n", aicNum, numBlocks);
     context->SetBlockDim(numBlocks);
     context->SetScheduleMode(1); // batch mode
 
@@ -156,17 +157,20 @@ static ge::graphStatus AddRmsNormDynamicQuantAllGatherQbmmTilingFunc(gert::Tilin
         tilingData->qbmmTilingData.baseK, tilingData->qbmmTilingData.stepK);
 
     // 5. AllGather tiling
+    bool isNonTileK = (m >= TILE_K_M);
+    uint32_t mteKSplitNum = isNonTileK ? 1UL : MTE_K_SPLIT_NUM;
+
     tilingData->allGatherTiling.M = m;
     tilingData->allGatherTiling.Ka = k;
     tilingData->allGatherTiling.N = n;
     tilingData->allGatherTiling.rankSize = rankNum;
-    tilingData->allGatherTiling.aivNum = aicNum;  // CV 1:1 (36)
+    tilingData->allGatherTiling.aivNum = aicNum;
     tilingData->allGatherTiling.aicNum = aicNum;
     tilingData->allGatherTiling.sendCoreNumPerRank = aicNum / rankNum;
     tilingData->allGatherTiling.mteTileK = k / 512;
-    tilingData->allGatherTiling.mteKSplitNum = MTE_K_SPLIT_NUM;
-    tilingData->allGatherTiling.mteMSplitNum = tilingData->allGatherTiling.sendCoreNumPerRank / MTE_K_SPLIT_NUM;
-    tilingData->allGatherTiling.mteKSplitSize = k / MTE_K_SPLIT_NUM;
+    tilingData->allGatherTiling.mteKSplitNum = mteKSplitNum;
+    tilingData->allGatherTiling.mteMSplitNum = tilingData->allGatherTiling.sendCoreNumPerRank / mteKSplitNum;
+    tilingData->allGatherTiling.mteKSplitSize = k / mteKSplitNum;
     tilingData->allGatherTiling.mteMSplitSize = m / tilingData->allGatherTiling.mteMSplitNum;
     tilingData->allGatherTiling.mteMSplitLargeBlockNum = m % tilingData->allGatherTiling.mteMSplitNum;
     tilingData->allGatherTiling.xNums = m * k;
@@ -174,12 +178,22 @@ static ge::graphStatus AddRmsNormDynamicQuantAllGatherQbmmTilingFunc(gert::Tilin
     tilingData->allGatherTiling.scaleSize = m * CeilDiv<uint64_t>(k, (uint64_t)64) * 2;
     tilingData->allGatherTiling.singleCoreM = tilingData->qbmmTilingData.baseM;
 
-    OP_LOGD(nodeName, "AllGather tiling: sendCorePerRank=%u mteMSplitNum=%u mteKSplitNum=%u",
+    OP_LOGD(nodeName, "AllGather tiling: sendCorePerRank=%u mteMSplitNum=%u mteKSplitNum=%u isNonTileK=%d",
         tilingData->allGatherTiling.sendCoreNumPerRank,
         tilingData->allGatherTiling.mteMSplitNum,
-        tilingData->allGatherTiling.mteKSplitNum);
+        tilingData->allGatherTiling.mteKSplitNum,
+        isNonTileK);
 
-    context->SetTilingKey(0);
+    printf("AG tiling: m=%lu k=%lu sendCorePerRank=%u mteMSplitNum=%u mteKSplitNum=%u mteMSplitSize=%u mteMSplitLarge=%u isNonTileK=%d\n",
+        m, k,
+        tilingData->allGatherTiling.sendCoreNumPerRank,
+        tilingData->allGatherTiling.mteMSplitNum,
+        tilingData->allGatherTiling.mteKSplitNum,
+        tilingData->allGatherTiling.mteMSplitSize,
+        tilingData->allGatherTiling.mteMSplitLargeBlockNum,
+        isNonTileK);
+
+    context->SetTilingKey(isNonTileK ? 1 : 0);
 
     // 7. Workspace
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
@@ -188,16 +202,16 @@ static ge::graphStatus AddRmsNormDynamicQuantAllGatherQbmmTilingFunc(gert::Tilin
     return ge::GRAPH_SUCCESS;
 }
 
-struct AddRmsNormDynamicQuantAllGatherQbmmCompileInfo {};
+struct AllGatherQuantMatmulCompileInfo {};
 
-ge::graphStatus TilingParseForAddRmsNormDynamicQuantAllGatherQbmm(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForAllGatherQuantMatmul(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
  
-IMPL_OP_OPTILING(AddRmsNormDynamicQuantAllGatherQbmm)
-    .Tiling(AddRmsNormDynamicQuantAllGatherQbmmTilingFunc)
-    .TilingParse<AddRmsNormDynamicQuantAllGatherQbmmCompileInfo>(TilingParseForAddRmsNormDynamicQuantAllGatherQbmm);
+IMPL_OP_OPTILING(AllGatherQuantMatmul)
+    .Tiling(AllGatherQuantMatmulTilingFunc)
+    .TilingParse<AllGatherQuantMatmulCompileInfo>(TilingParseForAllGatherQuantMatmul);
 
 } // namespace MC2Tiling

@@ -10,21 +10,21 @@
 
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
-        add_rms_norm_dynamic_quant_all_gather_qbmm_def.cpp
+        all_gather_quant_matmul_def.cpp
     )
     add_modules_sources(
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
-        OPTYPE add_rms_norm_dynamic_quant_all_gather_qbmm add_rms_norm_dynamic_quant_all_gather_qbmm ACLNNTYPE aclnn aclnn_inner)
+        OPTYPE all_gather_quant_matmul all_gather_quant_matmul ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(add_rms_norm_dynamic_quant_all_gather_qbmm_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(all_gather_quant_matmul_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
-            OP_NAME AddRmsNormDynamicQuantAllGatherQbmm
+            OP_NAME AllGatherQuantMatmul
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -mllvm
@@ -46,6 +46,6 @@ if (BUILD_OPEN_PROJECT)  # custom
     )
     endif()
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE add_rms_norm_dynamic_quant_all_gather_qbmm add_rms_norm_dynamic_quant_all_gather_qbmm ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(OPTYPE all_gather_quant_matmul all_gather_quant_matmul ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
 endif()

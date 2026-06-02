@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file add_rms_norm_dynamic_quant_all_gather_qbmm_tiling_data.h
+ * \file all_gather_quant_matmul_tiling_data.h
  * \brief 定义TilingData
  */
 
-#ifndef ADD_RMS_NORM_DYNAMIC_QUANT_ALL_GATHER_QBMM_TILING_DATA_H_
-#define ADD_RMS_NORM_DYNAMIC_QUANT_ALL_GATHER_QBMM_TILING_DATA_H_
+#ifndef ALL_GATHER_QUANT_MATMUL_TILING_DATA_H_
+#define ALL_GATHER_QUANT_MATMUL_TILING_DATA_H_
 
 #include "kernel_tiling/kernel_tiling.h"
 // #include "quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
@@ -56,7 +56,7 @@ struct QbmmParams {
     uint32_t needUbBuffer;
 };
 
-struct AddRmsNormDynamicQuantAllGatherQbmmInfo {
+struct AllGatherQuantMatmulInfo {
     AddRmsNormDynamicQuantAllGatherTilingData addRmsNormDynamicQuantAllGatherTilingData;
     QbmmParams qbmmParams;
     //DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams matmulTiling; // todo
@@ -64,10 +64,10 @@ struct AddRmsNormDynamicQuantAllGatherQbmmInfo {
 };
 
 // tiling struct待完善
-struct AddRmsNormDynamicQuantAllGatherQbmmTilingData {
+struct AllGatherQuantMatmulTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
-    AddRmsNormDynamicQuantAllGatherQbmmInfo tilingInfo;
+    AllGatherQuantMatmulInfo tilingInfo;
 };
 
-#endif // ADD_RMS_NORM_DYNAMIC_QUANT_ALL_GATHER_QBMM_H
+#endif // ALL_GATHER_QUANT_MATMUL_H

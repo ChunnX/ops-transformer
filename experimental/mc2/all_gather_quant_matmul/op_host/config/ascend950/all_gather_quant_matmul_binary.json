@@ -1,8 +1,8 @@
 {
-  "op_type": "AddRmsNormDynamicQuantAllGatherQbmm",
+  "op_type": "AllGatherQuantMatmul",
   "op_list": [
     {
-      "bin_filename": "AddRmsNormDynamicQuantAllGatherQbmm_ND_ND_FP8E4M3_FP8E4M3_BF16",
+      "bin_filename": "AllGatherQuantMatmul_ND_ND_FP8E4M3_FP8E4M3_BF16",
       "inputs": [
         {
           "name": "x1",
@@ -184,7 +184,7 @@
       ]
     },
     {
-      "bin_filename": "AddRmsNormDynamicQuantAllGatherQbmm_ND_NZ_BF16_FP8E4M3_BF16",
+      "bin_filename": "AllGatherQuantMatmul_ND_NZ_BF16_FP8E4M3_BF16",
       "inputs": [
         {
           "name": "x1",

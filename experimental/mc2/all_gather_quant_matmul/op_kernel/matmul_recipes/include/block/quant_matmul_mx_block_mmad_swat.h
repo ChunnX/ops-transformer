@@ -92,6 +92,8 @@ public:
     static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
     static constexpr uint64_t SCALE_BUFFER_NUM = 2;
     static constexpr uint64_t AG_SYNC_INTERVAL = 1024UL;
+    static constexpr uint32_t NO_TILE_K = 1U;
+    static constexpr uint16_t CROSS_CORE_FLAG_NUM_NINE = 9;
     uint64_t m_{0UL};
     uint64_t n_{0UL};
     uint64_t k_{0UL};
@@ -106,7 +108,8 @@ public:
     uint64_t l0PingPong_{0UL};
     uint64_t l0cPingPong_{0UL};
     bool enableL0cPingPong_{false};
-    bool firstRound{true};   // 是否启用 L0C Ping-Pong
+    bool firstRound{true};
+    uint32_t kSyncMode_{0UL}; // 同步模式: 0=切K硬同步, 1(NO_TILE_K)=不切K
 
     using MakeLayoutAL1 = AscendC::Te::FrameLayoutFormat<
         AscendC::Std::conditional_t<transA, AscendC::Te::ZNLayoutPtn, AscendC::Te::NZLayoutPtn>,
@@ -126,6 +129,10 @@ public:
     struct L1Params {
         uint64_t kL1;
         uint64_t scaleKL1;
+    };
+
+    struct SyncParams {
+        uint32_t kSyncMode{0UL};
     };
 
     __aicore__ inline BlockMmad()
@@ -156,10 +163,12 @@ public:
 
 public:
     __aicore__ inline void Init(
-        const TupleShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool enableL0cPingPong)
+        const TupleShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool enableL0cPingPong,
+        const SyncParams& syncParams)
     {
         // Pre-compute all persistent buffer sizes and L1 offsets once per block
         // so the hot path only needs to switch between ping-pong slots.
+        kSyncMode_ = syncParams.kSyncMode;
         m_ = AscendC::Te::Get<IDX_M_IDX>(problemShape);
         n_ = AscendC::Te::Get<IDX_N_IDX>(problemShape);
         k_ = AscendC::Te::Get<IDX_K_IDX>(problemShape);
@@ -210,10 +219,15 @@ public:
         auto tensorL0C =
             AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, float>(l0cOffset), layoutL0C);
         uint64_t scaleWindowIter = 0;
+        if (kSyncMode_ == NO_TILE_K && firstRound) {
+            // 不切K: producer 每核只 SetFlag(9) 一次, consumer 也只在本核第一个 tile 等一次。
+            // 无此守卫时拥有 >1 tile 的核(m>128 → baseM=128 → mCnt>1) 会 wait 多次而 set 只一次, 死等。
+            CrossCoreWaitFlag(CROSS_CORE_FLAG_NUM_NINE);
+        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
-            if (firstRound && (iter0 % CeilDiv(AG_SYNC_INTERVAL, kL1_) == 0)) {
-                CrossCoreWaitFlag(9);
-            }
+            if (kSyncMode_ < NO_TILE_K && firstRound && (iter0 % CeilDiv(AG_SYNC_INTERVAL, kL1_) == 0)) {
+                CrossCoreWaitFlag(CROSS_CORE_FLAG_NUM_NINE);
+            } // 切K硬同步策略
             uint64_t l1BufId = abL1LoopCnt_ & L1_BUFFER_MASK;
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
             uint64_t kL1Offset = iter0 * kL1_;

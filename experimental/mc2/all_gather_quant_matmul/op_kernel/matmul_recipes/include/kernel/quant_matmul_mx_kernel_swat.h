@@ -72,6 +72,7 @@ public:
     using MakeLayoutB = typename BlockMmad::LayoutB;
     using MakeLayoutScaleA = typename BlockMmad::LayoutScaleA;
     using MakeLayoutScaleB = typename BlockMmad::LayoutScaleB;
+    using SyncParams = typename BlockMmad::SyncParams;
 
     struct QBMMTiling {
         // Base tile shape and L0C buffering mode selected by host tiling.
@@ -90,6 +91,7 @@ public:
         L1Params l1Params;
         BlockSchedulerParams schParams;
         QBMMTiling qbmmParams;
+        SyncParams syncParams;
     };
 
 public:
@@ -141,7 +143,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     // heavy data movement and MMAD sequence lives in `BlockMmad`.
     BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
     bool enableL0cPingPong = (params.qbmmParams.dbL0C > 1);
-    mmadOp_.Init(problemShape_, l0TileShape, params.l1Params, enableL0cPingPong);
+    mmadOp_.Init(problemShape_, l0TileShape, params.l1Params, enableL0cPingPong, params.syncParams);
     Process(params, bs);
 }
 
