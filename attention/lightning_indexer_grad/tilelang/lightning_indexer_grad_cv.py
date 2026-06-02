@@ -209,23 +209,24 @@ def tilelang_lightning_indexer_grad_bsnd(
 
                 for g_group in T.serial(g_group_num):
                     for n_idx in T.serial(n_num):
-                        for g_local in range(vector_baseg):
-                            g_idx = g_group * vector_baseg + g_local
-                            n1_idx = n2_id * G + g_idx
+                        # 逐行处理 S1, 每行批量加载 vector_baseg 个 weight (32B 对齐)
+                        # 循环顺序: s1_row -> g_local (与 BSND3 的 g_group(s1_row(g_local)) 对齐)
+                        for s1_row in range(block_m):
+                            T.barrier_all()
 
-                            # 逐行处理 S1, 每行独立加载 weight 标量
-                            for s1_row in range(block_m):
-                                T.barrier_all()
+                            # 批量加载 weight: vector_baseg 个 FP16 = 32 字节, 满足 UB 对齐
+                            n1_group_start = n2_id * G + g_group * vector_baseg
+                            T.copy(
+                                Weights[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_group_start : n1_group_start + vector_baseg],
+                                weight_half_ub,
+                            )
+                            T.barrier_all()
+                            T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", vector_baseg)
+                            T.barrier_all()
 
-                                # 加载 weight 标量: 单个 FP16 元素
-                                # Weights[bz, s1_start+s1_row, n1_idx]
-                                # 偏移 = n1_idx * 2 字节 -- 单个元素无法保证 32B 对齐
-                                # 改用整行 slice 加载后用 T.tile.mul 标量
-                                T.copy(
-                                    Weights[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_idx : n1_idx + 1],
-                                    weight_half_ub[0:1],
-                                )
-                                T.barrier_all()
+                            for g_local in range(vector_baseg):
+                                g_idx = g_group * vector_baseg + g_local
+                                n1_idx = n2_id * G + g_idx
 
                                 # 加载 dy 单行
                                 T.copy(
@@ -243,10 +244,8 @@ def tilelang_lightning_indexer_grad_bsnd(
                                 )
                                 T.barrier_all()
 
-                                # 标量-向量乘法: dy_row *= weight
-                                T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", 1)
-                                T.barrier_all()
-                                T.tile.mul(dy_row_fp32_ub, dy_row_fp32_ub, weight_fp32_ub[0])
+                                # 标量-向量乘法: dy_row *= weight[g_local]
+                                T.tile.mul(dy_row_fp32_ub, dy_row_fp32_ub, weight_fp32_ub[g_local])
                                 T.barrier_all()
 
                                 # ReLU反向
