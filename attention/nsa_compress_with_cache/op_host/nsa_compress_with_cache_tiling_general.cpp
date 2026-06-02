@@ -160,8 +160,14 @@ protected:
         auto inputShape = context_->GetInputShape(INPUT_INDEX_INPUT);
         auto weightShape = context_->GetInputShape(INPUT_INDEX_WEIGHT);
         auto outputCacheShape = context_->GetInputShape(INPUT_INDEX_OUTPUT_CACHE);
-        headNum = inputShape->GetStorageShape().GetDim(DIM_NUM_2);
-        headDim = inputShape->GetStorageShape().GetDim(DIM_NUM_3);
+        headNum = static_cast<uint32_t>(inputShape->GetStorageShape().GetDim(DIM_NUM_2));
+        headDim = static_cast<uint32_t>(inputShape->GetStorageShape().GetDim(DIM_NUM_3));
+        OP_CHECK_IF(inputShape->GetStorageShape().GetDim(DIM_NUM_2) <= 0 ||
+            inputShape->GetStorageShape().GetDim(DIM_NUM_2) > static_cast<int64_t>(UINT32_MAX) ||
+            inputShape->GetStorageShape().GetDim(DIM_NUM_3) <= 0 ||
+            inputShape->GetStorageShape().GetDim(DIM_NUM_3) > static_cast<int64_t>(UINT32_MAX),
+            OPS_REPORT_VECTOR_INNER_ERR("NsaCompressWithCache", "headNum or headDim exceeds valid range."),
+            return false);
         outTokenNum = outputCacheShape->GetStorageShape().GetDim(DIM_NUM_0);
         OP_CHECK_IF(headNum != weightShape->GetStorageShape().GetDim(DIM_NUM_1),
                    OPS_REPORT_VECTOR_INNER_ERR(
@@ -374,7 +380,11 @@ protected:
         tilingData.set_weightSizePerCore(TOKEN_NUM_PER_TILE * headsNumPerCore * headDim);
         tilingData.set_compressKvCacheSize(static_cast<uint64_t>(outTokenNum) * headNum * headDim);
         tilingData.set_compressKvCacheSizePerCore(headsNumPerCore * headDim);
-        tilingData.set_blockTableSize(batchSize * pageNumPerBatch);
+        uint64_t blockTableSize = static_cast<uint64_t>(batchSize) * pageNumPerBatch;
+        OP_CHECK_IF(blockTableSize > UINT32_MAX,
+            OPS_REPORT_VECTOR_INNER_ERR("NsaCompressWithCache", "blockTableSize overflow."),
+            return);
+        tilingData.set_blockTableSize(static_cast<uint32_t>(blockTableSize));
         tilingData.set_headNum(headNum);
         tilingData.set_headDim(headDim);
         tilingData.set_batchSize(batchSize);

@@ -269,6 +269,11 @@ ge::graphStatus RFATiling::ProcessQueryShape(gert::TilingContext *rfaContext)
         totalTokensT_ = queryShape->GetStorageShape().GetDim(TND_DIM_T);
         numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
         embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
+        OP_CHECK_IF(queryShape->GetStorageShape().GetDim(TND_DIM_N) <= 0 ||
+            queryShape->GetStorageShape().GetDim(TND_DIM_N) > static_cast<int64_t>(UINT32_MAX) ||
+            queryShape->GetStorageShape().GetDim(TND_DIM_D) <= 0 ||
+            queryShape->GetStorageShape().GetDim(TND_DIM_D) > static_cast<int64_t>(UINT32_MAX),
+            OP_LOGE(rfaContext->GetNodeName(), "query shape dim overflow"), return ge::GRAPH_FAILED);
     } else if (qInputLayout_ == RFAQInputLayout::BNSD_Q) {
         if (queryShape->GetStorageShape().GetDimNum() != BNSD_DIM_NUM) {
             OP_LOGE(rfaContext->GetNodeName(), "BNSD format must have 4 dimensions");
@@ -279,6 +284,15 @@ ge::graphStatus RFATiling::ProcessQueryShape(gert::TilingContext *rfaContext)
         numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_N));
         embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_D));
         maxQSeqlen_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(BNSD_DIM_S));
+        OP_CHECK_IF(queryShape->GetStorageShape().GetDim(BNSD_DIM_B) <= 0 ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_B) > static_cast<int64_t>(UINT32_MAX) ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_N) <= 0 ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_N) > static_cast<int64_t>(UINT32_MAX) ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_D) <= 0 ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_D) > static_cast<int64_t>(UINT32_MAX) ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_S) <= 0 ||
+            queryShape->GetStorageShape().GetDim(BNSD_DIM_S) > static_cast<int64_t>(UINT32_MAX),
+            OP_LOGE(rfaContext->GetNodeName(), "query BNSD shape dim overflow"), return ge::GRAPH_FAILED);
     }
     
     if (numHeads_ == 0) {
@@ -298,7 +312,10 @@ ge::graphStatus RFATiling::ProcessSelectIdx(gert::TilingContext *rfaContext)
     }
     
     maxKvBlockNum_ = static_cast<uint32_t>(selectIdxShape->GetStorageShape().GetDim(MAX_BLOCK_NUM_INDEX));
-    maxNumBlocksPerBatch_ = maxKvBlockNum_ * numHeads_;
+    uint64_t maxNumBlocks = static_cast<uint64_t>(maxKvBlockNum_) * numHeads_;
+    OP_CHECK_IF(maxNumBlocks > UINT32_MAX,
+        OP_LOGE(rfaContext->GetNodeName(), "maxNumBlocksPerBatch overflow"), return ge::GRAPH_FAILED);
+    maxNumBlocksPerBatch_ = static_cast<uint32_t>(maxNumBlocks);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -785,7 +802,7 @@ ge::graphStatus RFATiling::CalculateTaskSplit(gert::TilingContext *rfaContext)
         totalTaskNum_ += curTaskNum;
         totalQBlocks_ += curQBlockNum;
     }
-    blockDim_ = std::min(aicNum_, totalTaskNum_);
+    blockDim_ = std::min(aicNum_, static_cast<uint32_t>(totalTaskNum_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -820,7 +837,9 @@ ge::graphStatus RFATiling::FillTilingData(gert::TilingContext *rfaContext)
     tilingData_->set_batch(batch_);
     tilingData_->set_maxNumBlocksPerBatch(maxNumBlocksPerBatch_);
     tilingData_->set_firstBatchTaskNum(firstBatchTaskNum_);
-    tilingData_->set_totalTaskNum(totalTaskNum_);
+    OP_CHECK_IF(totalTaskNum_ > UINT32_MAX,
+        OP_LOGE(rfaContext->GetNodeName(), "totalTaskNum overflow"), return ge::GRAPH_FAILED);
+    tilingData_->set_totalTaskNum(static_cast<uint32_t>(totalTaskNum_));
     tilingData_->set_maskType(maskType_);
     
     tilingData_->set_blockShapeX(blockShapeX_);
