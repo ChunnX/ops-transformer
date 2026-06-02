@@ -244,7 +244,7 @@ static int32_t CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layer
         ASCEND_LOGE("CheckProtocolSupport Get rank ID failed");
         return -1;
     }
-    ASCEND_LOGE("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+    ASCEND_LOGI("CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
         ASCEND_LOGI("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
@@ -265,7 +265,8 @@ static int32_t CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layer
                 return -1;
             }
             if (netLinkNum == 0) {
-                ASCEND_LOGE("No available HCCL links found");
+                ASCEND_LOGE("No available HCCL links found, srcRankID %u, dstRankID %u, layer is %u",
+                    srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return -1;
             }
             if (CheckLinks(netLinkNum, linksList) != 0) {
