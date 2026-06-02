@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_MX_P_L1_H_
-#define FIA_KERNEL_FULLQUANT_MX_P_L1_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_MASK_H_
+#define FIA_KERNEL_FULLQUANT_MX_MASK_H_
 
 #include "fia_block_cube_fullquant_mx.h"
 #include "fia_block_vec_fullquant_mx.h"
@@ -49,6 +49,7 @@ public:
     __gm__ uint8_t *deScaleKGm;
     __gm__ uint8_t *deScaleVGm;
     __gm__ int32_t *blockTableGm;
+    __gm__ uint8_t* attenMaskGmInt;
     __gm__ uint32_t *fiaMetaDataGm;
     __cbuf__ void *q1[2], *kv1[4], *p1[3], *pscale[1];
     __ubuf__ void *pv[2];
@@ -67,6 +68,7 @@ public:
     int mm1_id{-1};
 
     __ubuf__ void *stage1OutQue[2];
+    __ubuf__ void *attenMaskUB[2];
 
     uint64_t inner_loop_limit;
     uint64_t outer_loop_limit;
@@ -110,6 +112,9 @@ public:
     {
         stage1OutQue[0] = (__ubuf__ void *)get_imm(0);
         stage1OutQue[1] = (__ubuf__ void *)get_imm(16640);
+
+        attenMaskUB[0] = (__ubuf__ void *)get_imm(16640 * 2);//16384
+        attenMaskUB[1] = (__ubuf__ void *)get_imm(16640 * 2 + 16384);//16384
     }
 
     __aicore__ inline void InitConstInfo()
@@ -185,6 +190,7 @@ public:
         queryGm = query;
         keyPtr = key;
         valuePtr = value;
+        attenMaskGmInt = attenMask;
         deScaleQGm = dequantScaleQuery;
         deScaleKGm = dequantScaleKey;
         deScaleVGm = dequantScaleValue;
@@ -264,7 +270,6 @@ public:
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
-        set_mark(0x63739280);
         if ASCEND_IS_AIC {
             wait_intra_block(PIPE_FIX, 9);
             wait_intra_block(PIPE_FIX, 9 + 16);
@@ -732,8 +737,8 @@ public:
     __aicore__ inline void mm2(int ipuse, uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx)
     {
         // mm2A.WaitCrossCore();
-        set_intra_block(PIPE_MTE1, ipuse);
-        set_intra_block(PIPE_MTE1, ipuse + 16);
+        wait_intra_block(PIPE_MTE1, ipuse);
+        wait_intra_block(PIPE_MTE1, ipuse + 16);
 
         l0c_id ++ ;
         int l0c_iduse = l0c_id % 2;
@@ -774,6 +779,7 @@ public:
         // outputBuf.SetCrossCore();
         
     }
+
     __aicore__ inline void ub_l1_vec1(uint32_t subLoop, int ipuse, int vec1_idused)
     {
         // block_count = 256 / 32;
@@ -786,13 +792,164 @@ public:
         copy_ubuf_to_cbuf((__cbuf__ void*)((__cbuf__ float8_e4m3_t *)p1[ipuse] + dstOffset), 
                           (__ubuf__ void*)((__ubuf__ float8_e4m3_t *)stage1OutQue[vec1_idused]), 
                            0, 8, (uint16_t)16, (uint16_t)49, (uint16_t)112);
+
     }
-    __aicore__ inline void vec1(int ipuse, int vec1_idused, uint64_t inner, uint64_t outer, uint64_t bIdx, uint64_t n2Idx, uint32_t subLoop)
+
+    __aicore__ inline bool IsSkipAttentionmask(uint32_t gs1StartIdx, uint32_t s2StartIdx)
+    {
+        int32_t s1StartIdx = gs1StartIdx / 8;
+        // int64_t nextToken = 
+        //         static_cast<int64_t>(10240) - static_cast<int64_t>(4); // 统一以左上角为原点计算Token
+        
+        if (static_cast<int64_t>(s2StartIdx + 256) <= static_cast<int64_t>(s1StartIdx) + 10236) {
+            return true;
+        }
+        return false;
+    }
+
+    __aicore__ inline uint64_t ComputeAttenMaskOffset(uint32_t s1StartIdx, uint32_t s2StartIdx)
+    {
+        int64_t nextToken = 0; // sparse2 本身原点就是左上角
+        // nextToken =
+        //     static_cast<int64_t>(10240) - static_cast<int64_t>(4); // 统一以左上角为原点计算token
+         
+        uint64_t offset = 0;
+        int64_t delta = 10236 + s1StartIdx - s2StartIdx;
+        uint32_t attenMaskSizeAlign = 256;
+
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) *
+                    2048; // min(delta, s2inner)
+        
+        return offset;
+    }
+
+    __simd_vf__ void MaskUbCopyS1G(__ubuf__ uint8_t * maskUb, uint16_t tailGLoop, uint16_t midS1Count)
+    {
+        constexpr uint32_t repeatStride = 8;//256 >> 5
+
+        RegTensor<uint8_t> vreg_g_head;
+        RegTensor<uint8_t> vreg_g_mid;
+        RegTensor<uint8_t> vreg_g_tail;
+
+        MaskReg preg_all;
+        preg_all = CreateMask<bool, MaskPattern::ALL>();
+
+        // for (uint16_t x = 0; x > 0; x = 0) {     // if (headGLoop > 0) {}
+        //     LoadAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        //         vreg_g_head, maskUb, 1, repeatStride, preg_all);
+        //     for (uint16_t i = 1; i < 0; ++i) {
+        //         StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+        //             maskUb, vreg_g_head, 1, repeatStride, preg_all);
+        //     }
+        // }
+
+        for (uint16_t x = 8; x > 0; x = 0) {     // if (midGLoop > 0) {}
+            for (uint16_t i = 0; i < midS1Count; ++i) {
+                LoadAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    vreg_g_mid, maskUb, 1, repeatStride, preg_all);
+                for (uint16_t j = 1; j < 8; ++j) {
+                    StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                        maskUb, vreg_g_mid, 1, repeatStride, preg_all);
+                }
+                LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+            }
+        }
+
+        for (uint16_t x = tailGLoop; x > 1; x = 0) {     // if (tailGLoop > 1) {}
+            LoadAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                vreg_g_tail, maskUb, 1, repeatStride, preg_all);
+            for (uint16_t i = 1; i < tailGLoop; ++i) {
+                StoreAlign<uint8_t, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    maskUb, vreg_g_tail, 1, repeatStride, preg_all);
+            }
+        }
+    }
+
+
+    __aicore__ inline void AttentionmaskCopyInForSgLayout(uint32_t gs1StartIdx, uint32_t s2StartIdx)
+    {
+
+        uint32_t s1StartIdx = gs1StartIdx / 8;
+        uint32_t s1EndIdx = (gs1StartIdx + 16 - 1) / 8;
+        uint32_t s1Count = s1EndIdx - s1StartIdx + 1;
+        uint32_t headGSize = 16;
+        if (s1Count > 1) {
+            headGSize = (gs1StartIdx % 8 == 0) ? 0 : (8 - gs1StartIdx % 8);
+        }
+        uint32_t remainRowCount = 16 - headGSize;
+        uint32_t midS1Count = remainRowCount / 8;
+        uint32_t tailGSize = remainRowCount % 8;
+        uint32_t attenMaskSizeAlign = 256;
+        uint32_t attenMaskS2Stride = attenMaskSizeAlign;
+
+        // // ub-head
+        // if (headGSize > 0) {
+        //     printf("headGSize > 0 = %d\n",headGSize);
+        //     AttentionmaskDataCopy(attenMaskUB, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
+        //     s1StartIdx++;
+        // }
+
+        // // ub-remain
+        if (remainRowCount > 0) {
+            uint64_t maskOffset = ComputeAttenMaskOffset(s1StartIdx, s2StartIdx);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 2;
+            dataCopyParams.blockLen = 256;
+            dataCopyParams.srcStride = 1792;
+            dataCopyParams.dstStride = 56;
+            // blockLen + padParams.len + dstStride = gSize * s2Size
+            DataCopyPadExtParams<uint8_t> padParams{true, 0, 0, 1U};//isPad,leftPadding,rightPadding,paddingValue
+            set_mov_pad_val(GetScalarBitcodeValue(1U));
+            // DataCopyPad(attenMaskUB[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
+            copy_gm_to_ubuf_align_v2((__ubuf__ uint8_t*)attenMaskUB[0] + headGSize * attenMaskS2Stride, (__gm__ uint8_t*)attenMaskGmInt + maskOffset, 0, 2, 256,
+                                     0, 0, true, 0, 1792 + 256 , 2048);
+        }
+        set_flag(PIPE_MTE2, PIPE_V, event_t(0));
+        wait_flag(PIPE_MTE2, PIPE_V, event_t(0));
+        MaskUbCopyS1G((__ubuf__ uint8_t*)attenMaskUB[0], tailGSize, midS1Count);
+    }
+
+    template <typename T, typename RegType>
+    __simd_vf__ inline void DuplicateFromScalarImpl(__ubuf__ T * dstLocal, const T scalarValue, const int32_t calCount)
+    {
+        RegType dstReg;
+        uint32_t sreg = static_cast<uint32_t>(calCount);
+        Reg::MaskReg mask;
+        constexpr uint32_t repeatStride = static_cast<uint32_t>(GetVecLen() * RegType::trait.REG_NUM);
+        uint16_t repeatTime = static_cast<uint16_t>(CeilDivision(calCount, repeatStride));
+        Reg::MaskReg maskFull = Reg::CreateMask<T, Reg::MaskPattern::ALL, RegType::trait>();
+        Reg::Duplicate(dstReg, scalarValue, maskFull);
+        for (uint16_t i = 0; i < repeatTime; ++i) {
+            mask = Reg::UpdateMask<T, RegType::trait>(sreg);
+            Reg::StoreAlign(dstLocal + i * repeatStride, dstReg, mask);
+        }
+    }
+
+    __aicore__ inline void AttenMaskCopyIn(uint64_t inner, uint32_t subLoop)
+    {
+        uint64_t gs1StartIdx = 0;
+        if (constInfo.subBlockIdx == 1) {
+            gs1StartIdx = 16;
+        }
+        uint64_t s2StartIdx = (subLoop == 0) ? inner * 512 : (inner * 512 + 256);
+        bool IsSkipMask = IsSkipAttentionmask(gs1StartIdx, s2StartIdx);
+        if (IsSkipMask) {
+            // Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
+            DuplicateFromScalarImpl<uint8_t, Reg::RegTensor<uint8_t, Reg::RegTraitNumOne>>(
+                (__ubuf__ uint8_t*)attenMaskUB[0], static_cast<uint8_t>(0U), 16 * 256);
+            return;
+        } else {
+            AttentionmaskCopyInForSgLayout(gs1StartIdx, s2StartIdx);
+        }
+    }
+
+    __aicore__ inline void vec1(int ipuse, int vec1_idused, uint64_t inner, uint64_t outer, uint32_t subLoop)
     {
         // bmm1ResBuf.WaitCrossCore();
         bmm1_id ++;
         int bmm1_idused = 6 + (bmm1_id % 2) * 2;
         wait_intra_block(PIPE_V, 0 + bmm1_idused + 0);
+        AttenMaskCopyIn(inner, subLoop);
 
         // bmm1ResBuf.SetCrossCore();
         set_intra_block(PIPE_V, 0 + bmm1_idused + 1);
@@ -804,12 +961,6 @@ public:
         }
         
     }
-
-    // __aicore__ inline void vec2()
-    // {
-    //     bmm2ResBuf.WaitCrossCore();
-    //     bmm2ResBuf.SetCrossCore();
-    // }
 
     __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
@@ -843,6 +994,7 @@ public:
         }
         return false;
     }
+
     __aicore__ inline void Process()
     {
         CrossCoreBufferInit();
@@ -887,9 +1039,9 @@ public:
                             mm1(inner, outer, bIdx, n2Idx, subLoop);
                         } else {
                             if (subLoop % 2 == 0) {
-                                vec1(ipuse, 0, inner, outer, bIdx, n2Idx, subLoop);
+                                vec1(ipuse, 0, inner, outer, subLoop);
                             } else {
-                                vec1(ipuse, 1, inner, outer, bIdx, n2Idx, subLoop);
+                                vec1(ipuse, 1, inner, outer, subLoop);
                             }
                         }
                     }
