@@ -1,11 +1,9 @@
-#ifndef MOE_EP_DISPATCH_EPILOGUE_TILING_DATA_H
-#define MOE_EP_DISPATCH_EPILOGUE_TILING_DATA_H
+#ifndef MOE_EP_DISPATCH_EPILOGUE_TILING_H
+#define MOE_EP_DISPATCH_EPILOGUE_TILING_H
 
 #include "mc2_common_def.h"
 #include "mc2_moe_context.h"
-#include "mc2_init_tiling.h"
-#include "mc2_cc_tiling.h"
-#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling_data.h"
+#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
 
 struct MoeEpDispatchEpilogueInfo {
     MoeEpCommonTilingData cfg;
@@ -19,11 +17,9 @@ struct MoeEpDispatchEpilogueInfo {
 };
 
 struct MoeEpDispatchEpilogueTilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling;
     MoeEpDispatchEpilogueInfo moeEpDispatchEpilogueInfo;
 };
 
 
 
-#endif  // MOE_EP_DISPATCH_EPILOGUE_TILING_DATA_H
+#endif  // MOE_EP_DISPATCH_EPILOGUE_TILING_H

@@ -11,33 +11,24 @@ using namespace op;
 
 extern "C" {
 
-static aclnnStatus CheckNotNull(const aclTensor* x,
+static aclnnStatus CheckNotNull(const aclTensor* context,
+                                 const aclTensor* x,
                                  const aclTensor* topkIdx,
                                  const aclTensor* topkWeights,
-                                 const aclTensor* cachedHandleNumRecvTokensPerExpert,
                                  const aclTensor* cachedHandleDstBufferSlotIdx,
-                                 const aclTensor* cachedHandleRecvSrcMetadata,
-                                 const char* groupEp,
                                  aclTensor* numRecvTokensPerRankHostPinned,
                                  aclTensor* numRecvTokensPerExpertHostPinned,
                                  aclTensor* dstBufferSlotIdx,
                                  aclTensor* recvSrcMetadataInternal) {
+    CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(x != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(groupEp != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerRankHostPinned != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(numRecvTokensPerExpertHostPinned != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(dstBufferSlotIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(recvSrcMetadataInternal != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    bool anyCached = (cachedHandleNumRecvTokensPerExpert != nullptr) ||
-                     (cachedHandleDstBufferSlotIdx != nullptr) ||
-                     (cachedHandleRecvSrcMetadata != nullptr);
-    bool allCached = (cachedHandleNumRecvTokensPerExpert != nullptr) &&
-                     (cachedHandleDstBufferSlotIdx != nullptr) &&
-                     (cachedHandleRecvSrcMetadata != nullptr);
-    CHECK_RET(anyCached == allCached, ACLNN_ERR_PARAM_INVALID);
-
-    if (!allCached) {
+    bool cachedMode = (cachedHandleDstBufferSlotIdx != nullptr);
+    if (!cachedMode) {
         CHECK_RET(topkIdx != nullptr, ACLNN_ERR_PARAM_NULLPTR);
         CHECK_RET(topkWeights != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
@@ -46,83 +37,71 @@ static aclnnStatus CheckNotNull(const aclTensor* x,
 
 static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId,
                                 int64_t numExperts, int64_t numMaxTokensPerRank,
+                                int64_t cclBufferSize,
                                 int64_t expertAlignment, bool doCpuSync,
-                                const aclTensor* cachedHandleNumRecvTokensPerExpert,
-                                const aclTensor* cachedHandleDstBufferSlotIdx,
-                                const aclTensor* cachedHandleRecvSrcMetadata) {
+                                const aclTensor* cachedHandleDstBufferSlotIdx) {
     CHECK_RET(epWorldSize > 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(epRankId >= 0 && epRankId < epWorldSize, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numExperts % epWorldSize == 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(numMaxTokensPerRank > 0, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(cclBufferSize > 0, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(expertAlignment > 0, ACLNN_ERR_PARAM_INVALID);
 
-    bool allCached = (cachedHandleNumRecvTokensPerExpert != nullptr) &&
-                     (cachedHandleDstBufferSlotIdx != nullptr) &&
-                     (cachedHandleRecvSrcMetadata != nullptr);
-    CHECK_RET(!(allCached && doCpuSync), ACLNN_ERR_PARAM_INVALID);
+    bool cachedMode = (cachedHandleDstBufferSlotIdx != nullptr);
+    CHECK_RET(!(cachedMode && doCpuSync), ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
 }
 
 aclnnStatus MoeEpDispatchGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* topkIdx, const aclTensor* topkWeights,
-    const aclTensor* cachedHandleNumRecvTokensPerExpert,
+    const aclTensor* context, const aclTensor* x,
+    const aclTensor* topkIdx, const aclTensor* topkWeights,
     const aclTensor* cachedHandleDstBufferSlotIdx,
-    const aclTensor* cachedHandleRecvSrcMetadata,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
-    bool doCpuSync,
+    int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+    int64_t expertAlignment, bool doCpuSync,
     aclTensor* numRecvTokensPerRankHostPinned,
     aclTensor* numRecvTokensPerExpertHostPinned,
     aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal,
     uint64_t* workspaceSize, aclOpExecutor** executor) {
     OP_LOGD("MoeEpDispatch", "Begin to do MoeEpDispatchGetWorkspaceSize");
-    CHECK_RET(CheckNotNull(x, topkIdx, topkWeights,
-                            cachedHandleNumRecvTokensPerExpert,
+    CHECK_RET(CheckNotNull(context, x, topkIdx, topkWeights,
                             cachedHandleDstBufferSlotIdx,
-                            cachedHandleRecvSrcMetadata,
-                            groupEp, numRecvTokensPerRankHostPinned,
+                            numRecvTokensPerRankHostPinned,
                             numRecvTokensPerExpertHostPinned,
                             dstBufferSlotIdx, recvSrcMetadataInternal),
               ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank,
-                          expertAlignment, doCpuSync,
-                          cachedHandleNumRecvTokensPerExpert,
-                          cachedHandleDstBufferSlotIdx,
-                          cachedHandleRecvSrcMetadata),
+                          cclBufferSize, expertAlignment, doCpuSync,
+                          cachedHandleDstBufferSlotIdx),
               ACLNN_ERR_PARAM_INVALID);
 
     return aclnnInnerMoeEpDispatchGetWorkspaceSize(
-        x, topkIdx, topkWeights,
-        cachedHandleNumRecvTokensPerExpert,
+        context, x, topkIdx, topkWeights,
         cachedHandleDstBufferSlotIdx,
-        cachedHandleRecvSrcMetadata,
-        const_cast<char*>(groupEp), epWorldSize, epRankId,
-        numExperts, numMaxTokensPerRank, expertAlignment, doCpuSync,
+        epWorldSize, epRankId,
+        numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync,
         numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
         dstBufferSlotIdx, recvSrcMetadataInternal,
         workspaceSize, executor);
 }
 
 aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* topkIdx, const aclTensor* topkWeights,
-    const aclTensor* cachedHandleNumRecvTokensPerExpert,
+    const aclTensor* context, const aclTensor* x,
+    const aclTensor* topkIdx, const aclTensor* topkWeights,
     const aclTensor* cachedHandleDstBufferSlotIdx,
-    const aclTensor* cachedHandleRecvSrcMetadata,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
-    bool doCpuSync,
+    int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+    int64_t expertAlignment, bool doCpuSync,
     aclTensor* numRecvTokensPerRankHostPinned,
     aclTensor* numRecvTokensPerExpertHostPinned,
     aclTensor* dstBufferSlotIdx, aclTensor* recvSrcMetadataInternal,
     uint64_t* workspaceSize, aclOpExecutor** executor) {
     return MoeEpDispatchGetWorkspaceSize(
-        x, topkIdx, topkWeights,
-        cachedHandleNumRecvTokensPerExpert,
+        context, x, topkIdx, topkWeights,
         cachedHandleDstBufferSlotIdx,
-        cachedHandleRecvSrcMetadata,
-        groupEp, epWorldSize, epRankId,
-        numExperts, numMaxTokensPerRank, expertAlignment, doCpuSync,
+        epWorldSize, epRankId,
+        numExperts, numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync,
         numRecvTokensPerRankHostPinned, numRecvTokensPerExpertHostPinned,
         dstBufferSlotIdx, recvSrcMetadataInternal,
         workspaceSize, executor);
