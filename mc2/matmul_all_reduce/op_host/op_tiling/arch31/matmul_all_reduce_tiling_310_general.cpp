@@ -27,11 +27,11 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     OP_LOGI(opName_, "In 310p, isA16W8_[%d], isA16W4_[%d]", isA16W8_ ? 1 : 0, isA16W4_ ? 1 : 0);
     if (isA16W8_ || isA16W4_) {
         // ND场景的伪量化校验
-        GE_ASSERT_GRAPH_SUCCESS(CheckA16W8());
+        MC2_CHECK_LOG_RET(opName_, CheckA16W8());
     } else {
         // 非量化校验
         OP_LOGI(opName_, "In 310p, check not quant scenario.");
-        GE_ASSERT_GRAPH_SUCCESS(CheckA16W16());
+        MC2_CHECK_LOG_RET(opName_, CheckA16W16());
     }
     DoRCSTiling();
     DoSplitMTiling();
