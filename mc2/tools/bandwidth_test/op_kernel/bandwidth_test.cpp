@@ -33,9 +33,7 @@ __global__ __aicore__ void bandwidth_test(
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", BandwidthTestTilingData);
-
     TPipe pipe;
-
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         if constexpr (CommMode == TILINGKEY_TPL_MTE) {
@@ -44,8 +42,8 @@ __global__ __aicore__ void bandwidth_test(
             op.Process(); 
         } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
             BandwidthUrmaTest<DTYPE_X, DTYPE_Y> op;
-            op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            op.Process(); 
+            // op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            // op.Process(); 
         }
     }
 }
