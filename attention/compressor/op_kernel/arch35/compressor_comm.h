@@ -31,7 +31,7 @@ __aicore__ inline T CeilDivT(T num1, T num2)
     if (num2 == 0) {
         return static_cast<T>(0);
     }
-    return (num1 + num2 - 1) / num2;
+    return num1 / num2 + ((num1 % num2 != 0) ? 1 : 0);
 }
 
 template <typename T>

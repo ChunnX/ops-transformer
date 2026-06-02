@@ -652,7 +652,7 @@ CompressorBlockVector<COMP>::FromWokrSpaceToUb(const LocalTensor<T> &dstLocal, c
     uint32_t copyColCount = dDealSize;
     uint32_t srcSingleRowCount = srcSingleRowElemNum;
     uint32_t dstSingleRowCount = dDealSize;
-    uint64_t srcGmOffset = sliceInfo.dealedSeqCnt * srcSingleRowElemNum * coff_ + dStartIdx;
+    uint64_t srcGmOffset = (uint64_t)sliceInfo.dealedSeqCnt * srcSingleRowElemNum * coff_ + dStartIdx;
     if (constInfo_.kBaseNum == 1) {
         DataCopyAlignGmToUb(dstLocal, srcGm[srcGmOffset], copyRowCount, copyColCount, srcSingleRowCount,
                             dstSingleRowCount);
@@ -952,7 +952,7 @@ CompressorBlockVector<COMP>::CopyOutVec1Res(const GlobalTensor<T> &resGm, const 
                                             const LocalTensor<T> &comperssoredUb, uint32_t compressTcSize,
                                             uint32_t dStartIdx, uint32_t dDealSize)
 {
-    uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
+    uint64_t outGmOffset = (uint64_t)compressedCnt_ * constInfo_.headDim + dStartIdx;
     DataCopyAlignUbToGm(resGm[outGmOffset], comperssoredUb, compressTcSize, dDealSize, dDealSize, constInfo_.headDim);
 }
 

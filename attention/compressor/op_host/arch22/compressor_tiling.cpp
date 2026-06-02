@@ -90,13 +90,13 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
                return ge::GRAPH_FAILED);
-    compressorContext.ropeHeadDim = attrs->GetAttrPointer<int>(ROPE_HEAD_DIM_ATTR_INDEX);
-    compressorContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
-    compressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
+    compressorContext.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    compressorContext.coff = attrs->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
+    compressorContext.cmpRatio = attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     compressorContext.normEps = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_INDEX);
-    compressorContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
-    compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
-    compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    compressorContext.rotaryMode = attrs->GetAttrPointer<int64_t>(ROTARY_MODE_ATTR_INDEX);
+    compressorContext.cacheMode = attrs->GetAttrPointer<int64_t>(CACHE_MODE_ATTR_INDEX);
+    compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int64_t>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
     
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
@@ -663,7 +663,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaRopeHeadDim()const
 {
-    if (CheckAttrValueSupport(context_->ropeHeadDim, ROPE_HEAD_DIM, ROPE_HEAD_DIM_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->ropeHeadDim, ROPE_HEAD_DIM, ROPE_HEAD_DIM_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -671,7 +671,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaRopeHeadDim()const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio()const
 {
-    if (CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -679,7 +679,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio()const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCoff()const
 {
-    if (CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -25,7 +25,7 @@ import custom_ops as ops
 def test_compressor_process(filepath, device_id=0):
     # 加载测试数据
     # test_data = torch.load(filepath, map_location="cpu")
-    test_data = torch.load(filepath, map_location="cpu",weights_only=False)
+    test_data = torch.load(filepath, map_location="cpu",weights_only=True)
 
     params = test_data['params']
     cpu_result = test_data['cpu_result']

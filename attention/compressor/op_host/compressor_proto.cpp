@@ -124,9 +124,9 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);                 // query: (B, S, N, Hckv) | (T, N, Hckv)
     OPS_LOG_E_IF_NULL(context, cmpKvShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
-    const uint32_t *cmpRatioPtr = attr->GetAttrPointer<uint32_t>(CMP_RATIO_ATTR_INDEX);
+    const uint32_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     uint32_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
-    const uint32_t *coffPtr = attr->GetAttrPointer<uint32_t>(COFF_ATTR_INDEX);
+    const uint32_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
     uint32_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     // Set output shape
     if (!shapeParam.isBsMerge) {
