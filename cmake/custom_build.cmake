@@ -987,6 +987,12 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${OPS_ADV_DIR}/gmm/common/cgmct
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
+    install(DIRECTORY ${BLAZE}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
+    install(DIRECTORY ${TENSOR_API}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common/op_kernel).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/op_kernel
