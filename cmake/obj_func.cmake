@@ -829,7 +829,7 @@ function(add_onnx_plugin_modules)
               json
               #protobuf_static_build host_protoc
               #protobuf_static_build
-              ascend_protobuf_static
+              #ascend_protobuf_static
       )
   endif()
 
