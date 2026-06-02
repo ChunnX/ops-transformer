@@ -50,7 +50,8 @@ aclTensor* ConvertTensorToInt4(const aclTensor* input, aclOpExecutor* executor)
 }
 
 // 对x1和x2进行int32到int4的转换预处理
-void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&alltoallout, aclOpExecutor *executor)
+void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2,
+                         const aclTensor *&alltoallout, aclOpExecutor *executor)
 {
     if (x2 != nullptr && x2->GetDataType() == DataType::DT_INT32) {
         x2 = ConvertTensorToInt4(x2, executor);
@@ -75,11 +76,13 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Input x2 should not be null.");
         return false;
     }
-    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (x1ScaleOptional == nullptr) {
         	OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-            	"The current scenario is not pertoken dynamic quantization, input x1ScaleOptional should not be null.");
-        	return false;
+            	    "The current scenario is not pertoken dynamic quantization,
+                    input x1ScaleOptional should not be null.");
+            return false;
         }
     }
     if (x2Scale == nullptr) {
@@ -129,7 +132,8 @@ static bool Check1DScaleShape(const aclTensor* x2, const aclTensor* x2Scale, boo
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "The n-axis of x2 and x2ScaleDim should be same, but x2's n-axis is: %ld and x2ScaleDim is: %ld.", nVal, x2ScaleDim);
+        "The n-axis of x2 and x2ScaleDim should be same, but x2's n-axis is: %ld and x2ScaleDim is: %ld.",
+        nVal, x2ScaleDim);
         return false;
     }
     return true;
@@ -406,11 +410,11 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
         CHECK_RET(output != nullptr, false);
     }
     if (alltoAllOutOptional != nullptr) {
-    	if (alltoAllOutOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
-        	OP_LOGW("alltoallout origin format is %s.", op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
-        	alltoAllOutOptional = l0op::ReFormat(alltoAllOutOptional, op::Format::FORMAT_ND);
-        	CHECK_RET(alltoAllOutOptional != nullptr, false);
-    	}
+        if (alltoAllOutOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
+            OP_LOGW("alltoallout origin format is %s.", op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString());
+            alltoAllOutOptional = l0op::ReFormat(alltoAllOutOptional, op::Format::FORMAT_ND);
+            CHECK_RET(alltoAllOutOptional != nullptr, false);
+        }
     }
     return true;
 }
@@ -497,7 +501,7 @@ extern "C" aclnnStatus InnerAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     OP_LOGD("AlltoAllQuantMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
  	    OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore, aclnnQuantMatmulAlltoAllGetWorkspaceSize interface call failed.");
- 	}
+    }
 
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
