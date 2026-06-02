@@ -42,8 +42,8 @@ __global__ __aicore__ void bandwidth_test(
             op.Process(); 
         } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
             BandwidthUrmaTest<DTYPE_X, DTYPE_Y> op;
-            // op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
-            // op.Process(); 
+            op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+            op.Process(); 
         }
     }
 }
