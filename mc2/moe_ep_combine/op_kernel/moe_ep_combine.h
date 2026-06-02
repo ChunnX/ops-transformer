@@ -17,11 +17,21 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "moe_ep_combine_tiling_data.h"
+#include "mc2_moe_context.h"
+#include "moe_ep_combine_tiling.h"
 
 namespace MoeEpCombineImpl {
 
 using namespace AscendC;
+using Mc2Aclnn::Mc2MoeContext;
+using Mc2Aclnn::HCCL_MAX_RANK_SIZE;
+
+inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
+
+__aicore__ inline GM_ADDR GetBaseWinAddrByRankId(uint32_t rankId)
+{
+    return (GM_ADDR)(winRankAddr_[rankId] + Mc2Kernel::A5_MTE_STATE_WIN_SIZE);
+}
 
 static constexpr uint32_t MAX_TOPK = 8;
 static constexpr uint32_t WIN_ADDR_ALIGN = 512;
@@ -31,8 +41,8 @@ class KernelMoeEpCombine {
 public:
     __aicore__ inline KernelMoeEpCombine() {};
 
-    __aicore__ inline void Init(
-        GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
+__aicore__ inline void Init(
+        GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
         GM_ADDR numRecvPerRank, GM_ADDR topkWeights,
         GM_ADDR bias0, GM_ADDR bias1,
         GM_ADDR combinedX, GM_ADDR combinedTopkWeightsOptional,
@@ -44,25 +54,29 @@ public:
         aivId_ = GetBlockIdx();
         workspace_ = workspace;
 
+        mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+        rankId_ = mc2Context_->epRankId;
+        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
+            winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer_[i];
+        }
+
         uint32_t A = td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank;
 
         xGm_.SetGlobalBuffer((__gm__ bfloat16_t*)x, A * td_->cfg.hidden);
         dstSlotIdxGm_.SetGlobalBuffer((__gm__ int32_t*)dstBufferSlotIdx,
-                                       td_->cfg.numTokens * td_->cfg.topK);
+                                        td_->cfg.numTokens * td_->cfg.topK);
         recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t*)recvSrcMetadata, A * 3);
         numRecvPerRankGm_.SetGlobalBuffer((__gm__ int32_t*)numRecvPerRank,
-                                           td_->cfg.epWorldSize);
+                                            td_->cfg.epWorldSize);
         combinedXGm_.SetGlobalBuffer((__gm__ bfloat16_t*)combinedX,
-                                     td_->cfg.numTokens * td_->cfg.hidden);
+                                      td_->cfg.numTokens * td_->cfg.hidden);
 
         if constexpr (HAS_TOPK_WEIGHTS == 1) {
             topkWeightsGm_.SetGlobalBuffer((__gm__ float*)topkWeights,
-                                            td_->cfg.numTokens * td_->cfg.topK);
+                                             td_->cfg.numTokens * td_->cfg.topK);
             combinedTopkWeightsGm_.SetGlobalBuffer((__gm__ float*)combinedTopkWeightsOptional,
-                                                    td_->cfg.numTokens * td_->cfg.topK);
+                                                     td_->cfg.numTokens * td_->cfg.topK);
         }
-
-        winContext_ = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(workspace);
 
         uint32_t ubXBytes      = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), 32);
         uint32_t ubAccBytes    = td_->cfg.hidden * sizeof(float);
@@ -99,7 +113,6 @@ public:
 private:
     __aicore__ inline void SendPhaseExpertToToken()
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
         uint32_t A = td_->cfg.epWorldSize * td_->cfg.numMaxTokensPerRank;
 
         uint32_t aStart = aivId_ * A / td_->aivNum;
@@ -112,10 +125,9 @@ private:
 
             if (src_rank < 0) continue;
 
-            GM_ADDR dstWinBase = Mc2Kernel::GetBaseWindAddrByRankId(
-                winContext_, src_rank, my_rank);
+            GM_ADDR dstWinBase = GetBaseWinAddrByRankId(src_rank);
             GM_ADDR slotAddr = dstWinBase
-                + (my_rank * td_->cfg.numMaxTokensPerRank + src_slot)
+                + (rankId_ * td_->cfg.numMaxTokensPerRank + src_slot)
                 * td_->cfg.perSlotBytes;
 
             DataCopyPad(ubX_[0], xGm_[a * td_->cfg.hidden], {td_->cfg.hidden, 0, 0, 0, false});
@@ -138,13 +150,11 @@ private:
 
     __aicore__ inline void RecvPhaseStashing()
     {
-        uint32_t my_rank = Mc2Kernel::GetRankId(winContext_);
-
         uint32_t tStart = aivId_ * td_->cfg.numTokens / td_->aivNum;
         uint32_t tEnd   = (aivId_ + 1) * td_->cfg.numTokens / td_->aivNum;
 
-        GM_ADDR localWinBase = Mc2Kernel::GetBaseWindAddrByRankId(winContext_, my_rank, my_rank);
-        GM_ADDR stashBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR localWinBase = GetBaseWinAddrByRankId(rankId_);
+        GM_ADDR stashBase = workspace_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
             for (uint32_t k = 0; k < td_->cfg.topK; ++k) {
@@ -188,7 +198,7 @@ private:
         uint32_t tStart = aivId_ * td_->cfg.numTokens / td_->aivNum;
         uint32_t tEnd   = (aivId_ + 1) * td_->cfg.numTokens / td_->aivNum;
 
-        GM_ADDR stashBase = workspace_ + sizeof(__gm__ Mc2Kernel::HcclOpParam);
+        GM_ADDR stashBase = workspace_;
 
         for (uint32_t t = tStart; t < tEnd; ++t) {
             Init(ubAccFp32_, (float)0, td_->cfg.hidden);
@@ -223,7 +233,8 @@ private:
 
     TPipe* tpipe_{nullptr};
     const MoeEpCombineInfo* td_{nullptr};
-    __gm__ Mc2Kernel::HcclOpParam* winContext_{nullptr};
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    uint32_t rankId_{0};
 
     GlobalTensor<bfloat16_t> xGm_;
     GlobalTensor<int32_t> dstSlotIdxGm_;

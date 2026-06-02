@@ -5,42 +5,41 @@ namespace ops {
 class MoeEpCombine : public OpDef {
 public:
     explicit MoeEpCombine(const char* name) : OpDef(name) {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("recv_src_metadata")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("topk_weights_optional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("bias_optional_0")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-
         this->Input("bias_optional_1")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_BF16})
@@ -51,29 +50,16 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND});
-
         this->Output("combined_topk_weights_optional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND});
 
-        this->Attr("group_ep").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
         this->Attr("num_experts").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
-
-        OpAICoreConfig aicore_config_A2;
-        aicore_config_A2.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("prebuildPattern.value", "Opaque")
-            .ExtendCfgInfo("jitCompile.flag", "static_false")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -87,11 +73,8 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_true")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
-        this->AICore().AddConfig("ascend910b", aicore_config_A2);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
-
-        this->MC2().HcclGroup({"group_ep"});
     }
 };
 

@@ -8,13 +8,13 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
 tensor_list npu_moe_ep_dispatch(
+    const at::Tensor &context,
     const at::Tensor &x,
     const c10::optional<at::Tensor> &topk_idx,
     const c10::optional<at::Tensor> &topk_weights,
     const c10::optional<at::Tensor> &cached_handle_dst_buffer_slot_idx,
-    const std::string &group_ep,
     int64_t ep_world_size, int64_t ep_rank_id,
-    int64_t num_experts, int64_t num_max_tokens_per_rank,
+    int64_t num_experts, int64_t num_max_tokens_per_rank, int64_t ccl_buffer_size,
     int64_t expert_alignment, bool do_cpu_sync)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
@@ -57,13 +57,11 @@ tensor_list npu_moe_ep_dispatch(
     at::Tensor topk_weights_tensor = topk_weights.has_value() ? *topk_weights : at::Tensor();
     at::Tensor cached_slot_tensor = cached_handle_dst_buffer_slot_idx.has_value() ? *cached_handle_dst_buffer_slot_idx : at::Tensor();
 
-    char *group_ep_ptr = const_cast<char *>(group_ep.c_str());
-
     ACLNN_CMD(aclnnMoeEpDispatch,
-        x, topk_idx_tensor, topk_weights_tensor,
-        at::Tensor(), at::Tensor(), cached_slot_tensor,
-        group_ep_ptr, ep_world_size, ep_rank_id,
-        num_experts, num_max_tokens_per_rank, expert_alignment, do_cpu_sync,
+        context, x, topk_idx_tensor, topk_weights_tensor,
+        cached_slot_tensor,
+        ep_world_size, ep_rank_id,
+        num_experts, num_max_tokens_per_rank, ccl_buffer_size, expert_alignment, do_cpu_sync,
         num_recv_per_rank_hp, num_recv_per_expert_hp,
         dst_slot, recv_src_meta_internal);
 
