@@ -139,7 +139,7 @@ public:
             strideQOB = qHeads_ * qSeqlenAligned_ * embed_; // batch_ stride
             strideQON = qSeqlenAligned_ * embed_;           // head stride
             strideQOS = embed_;                             // seq stride
-        } else if constexpr (qFormat == Format::BSND){
+        } else if constexpr (qFormat == Format::BSND) {
             strideQOB = qSeqlenAligned_ * qHeads_ * embed_; // batch_ stride
             strideQOS = qHeads_ * embed_;                   // seq stride
             strideQON = embed_;                             // head stride
