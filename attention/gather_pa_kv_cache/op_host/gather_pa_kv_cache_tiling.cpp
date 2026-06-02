@@ -45,6 +45,8 @@ void PrintTilingDate(gert::TilingContext *context, GatherPaKvCacheTilingData *ti
     OP_LOGD(context, "typeByte is %u", tilingDataPtr->get_typeByte());
     OP_LOGD(context, "hasSeqStarts is %u", tilingDataPtr->get_hasSeqStarts());
     OP_LOGD(context, "isSeqLensCumsum is %u", tilingDataPtr->get_isSeqLensCumsum());
+    OP_LOGD(context, "kCacheBlockStride is %ld", tilingDataPtr->get_kCacheBlockStride());
+    OP_LOGD(context, "vCacheBlockStride is %ld", tilingDataPtr->get_vCacheBlockStride());
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "End GatherPaKvCacheTilingData priting");
@@ -132,6 +134,25 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     seqStartsTensor == nullptr ? hasSeqStarts = 0 : hasSeqStarts = 1;
 
     auto isSeqLensCumsum = attrs->GetAttrPointer<bool>(IS_SEQ_LENS_CUNSUM_INDEX);
+    int64_t kCacheBlockStride = 0;
+    int64_t vCacheBlockStride = 0;
+    bool isViewKCache = context->InputIsView(DIM_0);
+    bool isViewVCache = context->InputIsView(DIM_1);
+    if (isViewKCache) {
+        auto *kCacheStride = context->GetInputStride(DIM_0);
+        if (kCacheStride != nullptr) {
+            kCacheBlockStride = kCacheStride->GetStride(DIM_0);
+        }
+    }
+    if (isViewVCache) {
+        auto *VCacheStride = context->GetInputStride(DIM_1);
+        if (VCacheStride != nullptr) {
+            vCacheBlockStride = VCacheStride->GetStride(DIM_0);
+        }
+    }
+
+    tilingData.set_kCacheBlockStride(kCacheBlockStride);
+    tilingData.set_vCacheBlockStride(vCacheBlockStride);
     tilingData.set_blockSize(blockSize);
     tilingData.set_numTokens(numTokens);
     tilingData.set_numblkTabCol(numblkTabCol);
