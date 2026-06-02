@@ -633,6 +633,11 @@ mc2_infer@ops-transformer:
                 - ops/ops-transformer/mc2/quant_all_reduce/op_kernel/
                 - ops/ops-transformer/mc2/quant_all_reduce/CMakeLists.txt
                 - ops/ops-transformer/mc2/quant_all_reduce/README.md
+                - ops/ops-transformer/mc2/quant_all_reduce_v2/op_host/
+                - ops/ops-transformer/mc2/quant_all_reduce_v2/op_api/
+                - ops/ops-transformer/mc2/quant_all_reduce_v2/op_graph/
+                - ops/ops-transformer/mc2/quant_all_reduce_v2/op_kernel/
+                - ops/ops-transformer/mc2/quant_all_reduce_v2/CMakeLists.txt
                 - ops/ops-transformer/mc2/quant_reduce_scatter/op_host/
                 - ops/ops-transformer/mc2/quant_reduce_scatter/op_api/
                 - ops/ops-transformer/mc2/quant_reduce_scatter/op_graph/

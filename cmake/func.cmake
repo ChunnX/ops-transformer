@@ -451,6 +451,7 @@ function(add_ops_src_copy)
         "matmul_all_reduce_add_rms_norm;"
         "inplace_matmul_all_reduce_add_rms_norm;"
         "quant_all_reduce;"
+        "quant_all_reduce_v2;"
         "quant_reduce_scatter;"
         "allto_all_matmul;"
         "matmul_allto_all;"
