@@ -16,9 +16,7 @@ using namespace MoeEpCombineImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-extern "C" {
-
-template<uint32_t HAS_TOPK_WEIGHTS>
+template<uint32_t HAS_TOPK_WEIGHTS, uint32_t ARCH_TAG>
 __global__ __aicore__ void moe_ep_combine(
     GM_ADDR context, GM_ADDR x, GM_ADDR dstBufferSlotIdx, GM_ADDR recvSrcMetadata,
     GM_ADDR numRecvPerRank, GM_ADDR topkWeights, GM_ADDR bias0, GM_ADDR bias1,
@@ -37,5 +35,3 @@ __global__ __aicore__ void moe_ep_combine(
             workspace, tilingGM, &pipe, &tilingData.moeEpCombineInfo);
     op.Process();
 }
-
-}  // extern "C"

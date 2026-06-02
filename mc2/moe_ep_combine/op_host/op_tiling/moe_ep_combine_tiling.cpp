@@ -16,6 +16,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 namespace optiling {
 

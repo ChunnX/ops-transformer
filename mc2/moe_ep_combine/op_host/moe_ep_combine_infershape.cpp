@@ -61,8 +61,8 @@ static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context) 
 static ge::graphStatus InferDataTypeMoeEpCombine(gert::InferDataTypeContext *context) {
     if (context == nullptr) { return ge::GRAPH_FAILED; }
     context->SetOutputDataType(COMBINE_OUTPUT_COMBINED_X_INDEX, ge::DT_BF16);
-    const gert::Shape *topkWeightsShape = context->GetOptionalInputShape(COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX);
-    if (topkWeightsShape != nullptr) {
+    ge::DataType topkWeightsDtype = context->GetOptionalInputDataType(COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX);
+    if (topkWeightsDtype != ge::DT_UNDEFINED) {
         context->SetOutputDataType(COMBINE_OUTPUT_COMBINED_TOPK_WEIGHTS_OPTIONAL_INDEX, ge::DT_FLOAT);
     }
     return ge::GRAPH_SUCCESS;
