@@ -239,6 +239,15 @@ public:
             workspace = workspace + constInfo.coreNum * 3 * vec2ResultSize * sizeof(T);
         }
 
+        if constexpr (!bmm2Write2Ub) {
+            int64_t bmm2ResBlock = constInfo.dSizeV;
+            if constexpr (splitD) {
+                bmm2ResBlock = (int64_t)dVTemplateType;
+            }
+            int64_t mm2ResultSize = (mBaseSize) * bmm2ResBlock;  // 使用cube计算的总大小, Gm上的数据按照实际的dSize存储
+            bmm2SubBlockOffset = constInfo.subBlockIdx * mm2ResultSize >> 1;  // mBaseSize一定可以被2整除
+        }
+
         if (learnableSink != nullptr) {
             sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
@@ -1020,12 +1029,12 @@ public:
 
             int64_t vec2CalcSize = subMRealsize * dTemplateAlign64;
             // Gm地址偏移是按照实际DSize实现的，虽然我们设置了KC=192
-            int64_t mm2ResInnerOffset = (runInfo.vecMbaseIdx + mIdx) * constInfo.dSizeV;
+            int64_t mm2ResInnerOffset = mIdx * constInfo.dSizeV;
             SetFlag<HardEvent::V_MTE2>(vToMte2);
             WaitFlag<HardEvent::V_MTE2>(vToMte2);
             if (constInfo.dSizeV == dTemplateAlign64) {
                 if constexpr (useDn) {
-                    DataCopy(bmm2Ub, mmRes[mm2ResInnerOffset], vec2CalcSize);
+                    DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
                 } else {
                     DataCopy(bmm2Ub,
                              mmRes[constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize) * constInfo.dSizeV +
@@ -1118,7 +1127,7 @@ public:
         }
         tPipe->InitBuffer(SharedBuffer2[0], 1, 8192);
         tPipe->InitBuffer(SharedBuffer2[1], 1, 8192);
-        tPipe->InitBuffer(SharedBuffer3, 32768);
+        tPipe->InitBuffer(SharedBuffer3, 65536);
         tPipe->InitBuffer(SharedBuffer1[0], 1, 33024);
         tPipe->InitBuffer(SharedBuffer1[1], 1, 33024);
         if constexpr (s2BaseSize == 256) {    // mBaseSize = 128
