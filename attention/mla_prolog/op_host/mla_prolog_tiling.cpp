@@ -325,7 +325,7 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS>=8K
         scenarioInfo_.splitMFlag_ = 1U;
     }
     return ge::GRAPH_SUCCESS;
@@ -507,11 +507,6 @@ ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
 
 ge::graphStatus MlaPrologTiling::FillTiling()
 {
-    baseParams_->batchSize = baseShapeInfo_.bSize;
-    baseParams_->stepBatchSize = stepBatchSize_;
-    baseParams_->stepNumHeadDequant = stepNumHeadDequant_;
-    baseParams_->mSubSize = mSubSize_;
-    baseParams_->mSubCoreNum = mSubCoreNum_;
     baseParams_->tokenSize = baseShapeInfo_.tSize;
     baseParams_->seq1Size = baseShapeInfo_.s1Size;
     baseParams_->seq2Size = baseShapeInfo_.s2Size;
@@ -528,15 +523,6 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     baseParams_->dimHeadRope = baseShapeInfo_.drSize;
     baseParams_->blockNum = baseShapeInfo_.blockNum;
     baseParams_->blockSize = baseShapeInfo_.blockSize;
-    baseParams_->mm1BlockNum = mm1BlockNum_;
-    baseParams_->mm2BlockNum = mm2BlockNum_;
-    baseParams_->mm3BlockNum = mm3BlockNum_;
-    baseParams_->mm4BlockNum = mm4BlockNum_;
-    baseParams_->mm1SingleCoreN = singlecoreHeadSizeCq_;
-    baseParams_->mm2SingleCoreN = singlecoreHeadSizeCkvKr_;
-    baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
-    baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
-    baseParams_->vectorBlockNum = vectorBlockNum_;
     baseParams_->reciprocalCq = reciprocalCq_;
     baseParams_->epsilonCq = epsilonCq_;
     baseParams_->reciprocalCkv = reciprocalCkv_;
@@ -562,6 +548,26 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isQcQrScaleEnable = 0U;
         baseParams_->isKcScaleEnable = 0U;
     }
+    FillTilingCoreParams(); // 分核相关baseParams
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MlaPrologTiling::FillTilingCoreParams()
+{
+    baseParams_->batchSize = baseShapeInfo_.bSize;
+    baseParams_->stepBatchSize = stepBatchSize_;
+    baseParams_->stepNumHeadDequant = stepNumHeadDequant_;
+    baseParams_->mSubSize = mSubSize_;
+    baseParams_->mSubCoreNum = mSubCoreNum_;
+    baseParams_->mm1BlockNum = mm1BlockNum_;
+    baseParams_->mm2BlockNum = mm2BlockNum_;
+    baseParams_->mm3BlockNum = mm3BlockNum_;
+    baseParams_->mm4BlockNum = mm4BlockNum_;
+    baseParams_->mm1SingleCoreN = singlecoreHeadSizeCq_;
+    baseParams_->mm2SingleCoreN = singlecoreHeadSizeCkvKr_;
+    baseParams_->mm3SingleCoreN = singlecoreHeadSizeQcQr_;
+    baseParams_->mm4SingleCoreBatch = singlecoreNumHeadSize_;
+    baseParams_->vectorBlockNum = vectorBlockNum_;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -653,30 +659,14 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = GET_TPL_TILING_KEY(
-            0,
-            0,
-            0,
-            false,
-            false,
-            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
-            0,
-            0,
-            cvMode
-        );
+        context_->tilingKey = GET_TPL_TILING_KEY(0, 0, 0, false, false,
+            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
     } else {
         uint8_t cacheMode = scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
-        context_->tilingKey = GET_TPL_TILING_KEY(
-            static_cast<uint8_t>(cacheMode),
-            typeValue, 
-            quantType,
-            enableDequantOpt_,
-            enableGroupComputeOpt_,
-            static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
+        context_->tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(cacheMode), typeValue, quantType,
+            enableDequantOpt_, enableGroupComputeOpt_, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_),
             static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_),
-            cvMode
-        );
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
         OP_LOGI(context_->opName, "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
             "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
@@ -703,6 +693,7 @@ ge::graphStatus MlaPrologTiling::RunBigKernelTiling(MlaPrologContext &context, M
         std::bind(&MlaPrologTiling::SetShapeInfo, this),
         std::bind(&MlaPrologTiling::SetScenarioInfo, this),
         std::bind(&MlaPrologTilingCheck::CheckScenarParam, &tilingCheck_),
+        std::bind(&MlaPrologTilingCheck::CheckQuantMode, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckDims, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckSpecialScenarioParamShape, &tilingCheck_),
         std::bind(&MlaPrologTilingCheck::CheckParamByScenario, &tilingCheck_),

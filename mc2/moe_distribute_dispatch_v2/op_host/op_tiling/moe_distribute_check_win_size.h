@@ -51,7 +51,7 @@ struct CheckWinSizeData {
     bool isMc2Context;
 };
 
-static ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const char *nodeName,
+inline ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const char *nodeName,
     uint64_t tokenNeedSizeDispatch, uint64_t tokenNeedSizeCombine, CheckWinSizeData &winSizeData)
 {
     auto attrs = context->GetAttrs();
@@ -75,7 +75,7 @@ static ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSizeData winSizeData,
+inline ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSizeData winSizeData,
     const uint64_t maxWindowSizeEp, const uint64_t hcclBufferSizeEp, const uint64_t tokenNeedSizeDispatch,
     const uint64_t tokenNeedSizeCombine)
 {
@@ -115,7 +115,8 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName, CheckWinSizeData &winSizeData)
+inline ge::graphStatus CheckWinSize(const gert::TilingContext *context, const char *nodeName,
+                                    CheckWinSizeData &winSizeData)
 {
     auto attrs = context->GetAttrs();
     uint64_t hcclBufferSizeEp = 0;

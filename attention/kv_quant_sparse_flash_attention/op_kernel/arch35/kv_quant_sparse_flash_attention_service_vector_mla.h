@@ -449,19 +449,20 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const 
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2); // 2: Vector split size for first core (first half)
                 sparseS2Start = 0;
             } else {
+                // 2: Vector split size for first core (second half)
                 sparseCalSize = v0S2SizeFirstCore - CeilDiv(v0S2SizeFirstCore, 2);
-                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2);
+                sparseS2Start = CeilDiv(v0S2SizeFirstCore, 2); // 2: Start offset for second half of first core
             }
         } else {
             if (GetSubBlockIdx() == 0) {
-                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
                 sparseS2Start = v0S2SizeFirstCore;
             } else {
-                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2);
-                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2);
+                sparseCalSize = v0S2SizeSecondCore - CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
+                sparseS2Start = v0S2SizeFirstCore + CeilDiv(v0S2SizeSecondCore, 2); // 2: Same as above
             }
         }
         sparseS2End = sparseS2Start + sparseCalSize;
@@ -489,8 +490,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
 
     if constexpr (IS_SPLIT_G) {
-        CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
-        CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+        CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
+        CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
 
     outputL1.SetCrossCore(); // 核间同步
@@ -769,6 +770,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(stage0InQue, 2, dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
+    // 576: 模型特征维度(dSize)
     tPipe->InitBuffer(stage0OutQue, 2, 576 * (16 + 1) * sizeof(Q_T)); // kv输入D轴640, V0阶段每次处理16个seq, 开2 buffer
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -796,9 +798,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
     sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
-    sharedParams.dSizeRope = 64;
+    sharedParams.dSizeRope = 64; // 64: 编码维度
     sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
-    sharedParams.dSize = 576;
+    sharedParams.dSize = 576; // 576: 模型特征维度(dSize)
     sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
     sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
     if constexpr (isPa) {

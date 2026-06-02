@@ -103,6 +103,7 @@ protected:
     ge::graphStatus CheckCommonPlatformInfo();
     ge::graphStatus GetCommonShapeAttrsInfo();
     ge::graphStatus CheckCommonShapeAttrsInfo();
+    ge::graphStatus GetShapeInfo();
 
     // platform info
     platform_ascendc::SocVersion socVersion_;
@@ -155,7 +156,6 @@ protected:
 private:
     // get
     ge::graphStatus GetAttrsInfo();
-    ge::graphStatus GetShapeInfo();
     ge::graphStatus GetGmmXShapeInfo();
     ge::graphStatus GetGmmWeightShapeInfo();
     ge::graphStatus GetCountsTensorShapeInfo();

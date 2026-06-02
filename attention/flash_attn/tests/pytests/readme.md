@@ -4,14 +4,27 @@
 
 ```
 pytests/
-├── test_flash_attn.py          # 主入口：命令行参数解析、流程编排、三方精度对比
-├── test_case.py                # 测试用例定义（BASE、BNSD、TND、PA 等）
-├── test_case_fia_STC.py        # FIA STC 测试用例集（实际推理场景）
-├── cpu_impl.py                 # CPU 参考实现（纯 PyTorch，golden reference）
-├── gpu_impl.py                 # GPU 实现（基于 flash_attn 库）
-├── npu_impl.py                 # NPU 算子封装（npu_flash_attn + metadata）
-├── test_utils.py               # 工具函数：Q/K/V 生成、mask、layout 转换、三方对比统计
-├── precision_visual.py         # 精度可视化工具（热力图 PNG）
+├── backends/                  # 后端实现
+│   ├── cpu_impl.py            # CPU 参考实现（纯 PyTorch，golden reference）
+│   ├── gpu_impl.py            # GPU 实现（基于 flash_attn 库）
+│   └── npu_impl.py            # NPU 算子封装（npu_flash_attn + metadata）
+├── test_cases/                # 测试用例定义
+│   ├── base.py                    # 基础测试用例（BASE、BNSD、TND、PA 等）
+│   ├── fia_stc.py                 # FIA STC 测试用例集（实际推理场景）
+│   ├── functional_stc.py          # 单功能测试用例
+│   ├── functional_redline_train.py      # flash_attn 训练红线用例
+│   ├── functional_redline_train_tnd.py  # flash_attn varlen 训练红线TND用例
+│   ├── functional_redline_infer.py      # FIA 推理红线用例
+│   └── performance_redline_infer.py     # 性能红线推理用例
+├── tools/                      # 开发工具
+│   └── xlsx_to_testcase.py     # Excel → test case 转换器
+├── test_flash_attn.py           # 主入口：命令行参数解析、流程编排、三方精度对比
+├── utils/                      # 工具函数包
+│   ├── data.py                  # 测试数据生成、mask 生成、layout 转换
+│   ├── compare.py               # 精度对比、结果检查、失败分布分析
+│   ├── io.py                    # Tensor 文件读写
+│   └── precision_visual.py     # 精度可视化工具（热力图 PNG）
+├── test_npu_metadata.py        # NPU metadata 算子独立测试
 └── readme.md                   # 本文档
 ```
 
@@ -179,7 +192,7 @@ python test_flash_attn.py --case_id case69 --fail_analysis --dump_tensors
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  失败元素分布分析: test_case_fia_STC/case69
+   失败元素分布分析: fia_stc/case69
   Shape: (16, 180, 253, 128)  FailElems: 6358919/93265920 (6.8181%)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -212,8 +225,8 @@ python test_flash_attn.py --case_id case69 --fail_analysis --dump_tensors
 
 | 测试集 | 文件 | 说明 |
 |---|---|---|---|
-| `TestCases` | `test_case.py` | 基础功能测试（BNSD/BSND/TND/PA）|
-| `TestCasesFIA` | `test_case_fia_STC.py` | FIA STC 场景（实际推理 case）|
+| `TestCases` | `base.py` | 基础功能测试（BNSD/BSND/TND/PA）|
+| `TestCasesFIA` | `fia_stc.py` | FIA STC 场景（实际推理 case）|
 
 ### 5.2 用例字段说明
 
@@ -234,9 +247,9 @@ TestCases = {
         "DV":        128,       # value head dim，默认 = D
         "layout_kv": "BNSD",    # KV layout，默认 = layout_q
         "layout_out":"BNSD",    # 输出 layout，默认 = layout_q
-        "mask_mode": 1,         # sparse 模式，见第六节
-        "pre_tokens":  2147483647,
-        "next_tokens": 2147483647,
+        "mask_mode": 3,         # mask 模式，见第六节
+        "win_left":  2147483647,
+        "win_right": 2147483647,
 
         # ---- Q/K/V 值域 ----
         "q_range": (-1.0, 1.0), # Q 均匀随机值域，省略则固定值 10
@@ -257,7 +270,7 @@ TestCases = {
     "layout_kv":     "TND",
     "layout_out":    "TND",
     "Dtype":         "bf16",
-    "mask_mode":     1,
+    "mask_mode":     3,
     # 累积序列长度列表（B+1 个元素）
     "cu_seqlens_q":  [0, 128, 256, 512],   # 3 个请求，seqlen 分别为 128/128/256
     "cu_seqlens_kv": [0, 128, 256, 512],
@@ -273,7 +286,7 @@ TestCases = {
     "layout_kv": "PA_BBND",     # 或 PA_BNBD
     "layout_out": "BNSD",
     "Dtype": "bf16",
-    "mask_mode": 1,
+    "mask_mode": 3,
     "seqused_kv": [256, 256, 512, 512],
     "block_size": 256,          # flash_attn 要求：必须是 256 的倍数
     "block_table": [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]],
@@ -282,18 +295,13 @@ TestCases = {
 
 ---
 
-## 六、mask_mode（sparse_mode）取值说明
+## 六、mask_mode 取值说明
 
 | 值 | 名称 | 说明 |
 |---|---|---|
-| `0` | BAND | 带状 mask，配合 `pre_tokens`/`next_tokens` |
-| `1` | NO_MASK | 无 mask（全 attention）|
-| `2` | CAUSAL | 上三角因果 mask |
+| `0` | NO_MASK | 不使能 mask（全 attention） |
 | `3` | RIGHT_DOWN_CAUSAL | 右下对齐因果 mask |
 | `4` | BAND_CAUSAL | BAND + CAUSAL 混合 |
-| `5` | PREFIX | 系统前缀 attention，配合 `prefix` 字段 |
-| `6` | DILATED | 膨胀 attention |
-| `7` / `8` | BAND_KV_SPLIT | 带状 + KV 分段 |
 
 ---
 
@@ -462,7 +470,7 @@ python test_flash_attn.py --case_id BASE_01 --use_gpu
 
 ### Q3：PA case 运行报错 `block_size must be multiple of 256`
 
-**A**：flash_attn_with_kvcache 要求 `block_size` 必须是 256 的倍数。调整 test_case.py：
+**A**：flash_attn_with_kvcache 要求 `block_size` 必须是 256 的倍数。调整用例：
 ```python
 "block_size": 256,  # 不是 64
 "S2": 1024,         # block数 × block_size
@@ -496,12 +504,13 @@ python test_flash_attn.py --case_id BASE_01 --meta_only
 ## 十二、文件职责速查
 
 | 文件 | 你需要改它吗？ | 典型改动 |
-|---|---|---|
-| `test_case.py` | **经常** | 新增/修改测试 case |
-| `test_case_fia_STC.py` | **经常** | 添加 FIA STC 用例 |
+|---|---|---|---|
+| `test_cases/base.py` | **经常** | 新增/修改测试 case |
+| `test_cases/fia_stc.py` | **经常** | 添加 FIA STC 用例 |
 | `test_flash_attn.py` | 偶尔 | 改参数、新增功能 |
-| `test_utils.py` | 很少 | 修改工具函数、三方对比逻辑 |
-| `cpu_impl.py` | 一般不改 | CPU golden 实现 |
-| `gpu_impl.py` | 很少 | GPU API 封装、PA 支持 |
-| `npu_impl.py` | 很少 | NPU 算子调用、metadata 解析 |
-| `precision_visual.py` | 很少 | 改热力图样式 |
+| `utils/compare.py` | 很少 | 精度对比 / 报告 / 失败分析 |
+| `utils/data.py` | 很少 | 测试数据生成 / mask / layout |
+| `backends/cpu_impl.py` | 一般不改 | CPU golden 实现 |
+| `backends/gpu_impl.py` | 很少 | GPU API 封装、PA 支持 |
+| `backends/npu_impl.py` | 很少 | NPU 算子调用、metadata 解析 |
+| `utils/precision_visual.py` | 很少 | 改热力图样式 |

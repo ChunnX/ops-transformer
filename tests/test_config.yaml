@@ -467,7 +467,20 @@ attention:
       ut: True
     options:
       - recurrent_gated_delta_rule
-
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    exclude:
+      - attention/flash_attn/docs
+      - attention/flash_attn/README.md
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
@@ -509,7 +522,7 @@ gmm:
     options:
       - grouped_matmul_swiglu_quant_v2
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_add:
     module: True
@@ -1420,6 +1433,25 @@ mc2:
         examples: False
       options:
         - quant_reduce_scatter
+        - quant_reduce_scatter_v2
+
+    quant_reduce_scatter_v2:
+      module: True
+      src:
+        - mc2/quant_reduce_scatter
+        - mc2/quant_reduce_scatter_v2
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/quant_reduce_scatter_v2/docs
+        - mc2/quant_reduce_scatter_v2/README.md
+      ut_cov_exclude:
+        - mc2/quant_reduce_scatter_v2/op_graph
+        - mc2/quant_reduce_scatter_v2/op_kernel
+      test:
+        examples: False
+      options:
+        - quant_reduce_scatter_v2
 
   moe_distribute:
     distribute_barrier:
