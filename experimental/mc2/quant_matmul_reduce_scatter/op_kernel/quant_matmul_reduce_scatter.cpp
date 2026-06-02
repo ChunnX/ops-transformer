@@ -8,7 +8,7 @@
 #include "block/block_mmad.h"
 #include "block/block_scheduler_policy.h"
 #include "lib/matmul_intf.h"
-#include "qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
+#include "quant_matmul_reduce_scatter_tiling_data.h"
 #include "include/tensor_api/tensor.h"
 #include "kernel_operator.h"
 #include "adv_api/hccl/hccl.h"
@@ -21,14 +21,12 @@
 
 using namespace AscendC;
 
-__global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR y, GM_ADDR gamma,
-    GM_ADDR dScaleB, GM_ADDR bias,  GM_ADDR dScaleA,
-    GM_ADDR y1, GM_ADDR y2, GM_ADDR x,
-    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void quant_matmul_reduce_scatter(
+    GM_ADDR x1, GM_ADDR x2, GM_ADDR dScaleB, GM_ADDR dScaleA,
+    GM_ADDR x, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(QbmmReduceScatterAddRmsNormCastTilingData);
-    GET_TILING_DATA_WITH_STRUCT(QbmmReduceScatterAddRmsNormCastTilingData, tilingData, tilingGM);
+    REGISTER_TILING_DEFAULT(QuantMatmulReduceScatterTilingData);
+    GET_TILING_DATA_WITH_STRUCT(QuantMatmulReduceScatterTilingData, tilingData, tilingGM);
     using TypeA = fp8_e4m3fn_t;
     using TypeB = fp8_e4m3fn_t;
     using TypeC = bfloat16_t;
@@ -75,9 +73,9 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(
             tilingData.qbmmTilingdata.baseM, tilingData.qbmmTilingdata.baseN,
             tilingData.qbmmTilingdata.baseK, tilingData.qbmmTilingdata.dbL0c};
         CommParams commParams{
-            problemShape.m / tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize,
-            static_cast<int32_t>(tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize)};
-        OutputParams outputParams{y1, y2, x, y, gamma};
+            problemShape.m / tilingData.quantMatmulReduceScatterTilingInfo.rankSize,
+            static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
+        OutputParams outputParams{x};
 
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams, outputParams};
@@ -125,9 +123,9 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(
             tilingData.qbmmTilingdata.baseM, tilingData.qbmmTilingdata.baseN,
             tilingData.qbmmTilingdata.baseK, tilingData.qbmmTilingdata.dbL0c};
         CommParams commParams{
-            problemShape.m / tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize,
-            static_cast<int32_t>(tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize)};
-        OutputParams outputParams{y1, y2, x, y, gamma};
+            problemShape.m / tilingData.quantMatmulReduceScatterTilingInfo.rankSize,
+            static_cast<int32_t>(tilingData.quantMatmulReduceScatterTilingInfo.rankSize)};
+        OutputParams outputParams{x};
 
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams, outputParams};

@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file qbmm_reduce_scatter_add_rms_norm_cast.cpp
+ * \file quant_matmul_reduce_scatter.cpp
  * \brief 算子信息库定义
  */
 #include <register/op_def_registry.h>
 
 namespace ops {
-class QbmmReduceScatterAddRmsNormCast : public OpDef {
+class QuantMatmulReduceScatter : public OpDef {
 public:
-    explicit QbmmReduceScatterAddRmsNormCast(const char* name) : OpDef(name)
+    explicit QuantMatmulReduceScatter(const char* name) : OpDef(name)
     {
         this->Input("x1")
             .ParamType(REQUIRED)
@@ -28,33 +28,13 @@ public:
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .Format({ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ})
             .IgnoreContiguous();
-        this->Input("y")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("gamma")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("scale") 
+        this->Input("scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("bias")
-            .ParamType(OPTIONAL)    // TODO:
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("pertoken_scale")
-            .ParamType(OPTIONAL)    // TODO:
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Output("y1")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Output("y2")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("x")
             .ParamType(REQUIRED)
@@ -63,8 +43,6 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("rank_size").AttrType(OPTIONAL).Int(0);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
-        this->Attr("dtype").AttrType(OPTIONAL).Int(0);
-        this->Attr("epsilon").AttrType(OPTIONAL).Float(1e-6f);
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)
@@ -80,5 +58,5 @@ public:
         this->MC2().HcclGroup("group");
     }
 };
-OP_ADD(QbmmReduceScatterAddRmsNormCast);
+OP_ADD(QuantMatmulReduceScatter);
 }  // namespace ops

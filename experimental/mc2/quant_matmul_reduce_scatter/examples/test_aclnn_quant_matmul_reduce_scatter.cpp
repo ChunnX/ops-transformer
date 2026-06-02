@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file test_aclnn_qbmm_reduce_scatter_add_rms_norm_cast.cpp
- * \brief qbmm_reduce_scatter_add_rms_norm_cast 算子测试用例
+ * \file test_aclnn_quant_matmul_reduce_scatter.cpp
+ * \brief quant_matmul_reduce_scatter 算子测试用例
  */
 
 #include <iostream>
@@ -19,7 +19,7 @@
 #include <mutex>
 #include <condition_variable>
 #include "hccl/hccl.h"
-#include "aclnnop/aclnn_qbmm_reduce_scatter_add_rms_norm_cast.h"
+#include "aclnnop/aclnn_quant_matmul_reduce_scatter.h"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -140,7 +140,7 @@ struct Args {
     aclrtContext context;
 };
 
-int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
+int LaunchOneThreadQuantMatmulReduceScatter(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
@@ -151,58 +151,39 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
 
     bool isNzMode = (getenv("NZ_MODE") != nullptr);
-    int64_t M = 252, K = 2560, N = 5120;  // M=128 rankSize=4
+    int64_t M = 252, K = 2560, N = 5120;
+    if (getenv("M_PER_RANK")) M = atoi(getenv("M_PER_RANK")) * RANK_SIZE;
+    if (getenv("K_DIM")) K = atoi(getenv("K_DIM"));
+    if (getenv("N_DIM")) N = atoi(getenv("N_DIM"));
     int64_t kt = (K + 15) / 16, nt = (N + 31) / 32;
     std::vector<int64_t> x1Shape = {M, K};
     std::vector<int64_t> x2Shape = isNzMode ? std::vector<int64_t>{nt, kt, 16, 32} : std::vector<int64_t>{K, N};
-    std::vector<int64_t> yShape = {M / RANK_SIZE, N};
-    std::vector<int64_t> gammaShape = {N};
     int64_t kd = (K + 63) / 64;
     std::vector<int64_t> scaleShape = isNzMode ? std::vector<int64_t>{kd, N, 2} : std::vector<int64_t>{N, kd, 2};
     std::vector<int64_t> pertokenScaleShape = {M, kd, 2};
-    std::vector<int64_t> y1Shape = {M / RANK_SIZE, N};
-    std::vector<int64_t> y2Shape = {M / RANK_SIZE, N};
-    std::vector<int64_t> xOutShape = {M / RANK_SIZE, N};  // full matmul for AIV-skip mode
+    std::vector<int64_t> xOutShape = {M / RANK_SIZE, N};
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
-    void *yDeviceAddr = nullptr;
-    void *gammaDeviceAddr = nullptr;
     void *scaleDeviceAddr = nullptr;
     void *pertokenScaleDeviceAddr = nullptr;
-    void *biasDeviceAddr = nullptr;
-    void *y1DeviceAddr = nullptr;
-    void *y2DeviceAddr = nullptr;
     void *xOutDeviceAddr = nullptr;
 
     aclTensor *x1 = nullptr;
     aclTensor *x2 = nullptr;
-    aclTensor *y = nullptr;
-    aclTensor *gamma = nullptr;
     aclTensor *scale = nullptr;
     aclTensor *pertokenScale = nullptr;
-    aclTensor *bias = nullptr;
-    aclTensor *y1 = nullptr;
-    aclTensor *y2 = nullptr;
     aclTensor *xOut = nullptr;
 
-    // 属性参数
     bool transposeX2 = false;
-    int64_t dtype = 0;
-    float epsilon = 1e-6f;
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
-// 计算shape size
     long long x1ShapeSize = GetShapeSize(x1Shape);
     long long x2ShapeSize = GetShapeSize(x2Shape);
-    long long yShapeSize = GetShapeSize(yShape);
-    long long gammaShapeSize = GetShapeSize(gammaShape);
-    long long scaleShapeSize = GetShapeSize(scaleShape);     // (5120, 40, 2)
-    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);  // (128, 40, 2)
-    long long y1ShapeSize = GetShapeSize(y1Shape);
-    long long y2ShapeSize = GetShapeSize(y2Shape);
+    long long scaleShapeSize = GetShapeSize(scaleShape);
+    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);
     long long xOutShapeSize = GetShapeSize(xOutShape);
     
     // 精度测试：从bin文件加载输入数据（而不是硬编码）
@@ -231,32 +212,16 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     ret = LoadBinFile(inputDir + "/input_scaleB" + rankSuffix + ".bin", scaleHostData);
     CHECK_RET(ret == 0, return ret);
     
-    std::vector<uint16_t> yHostData;
-    std::vector<float> gammaHostData;
-    ret = LoadBinFile(inputDir + "/input_y" + rankSuffix + ".bin", yHostData);
-    CHECK_RET(ret == 0, return ret);
-    ret = LoadBinFile(inputDir + "/input_gamma" + rankSuffix + ".bin", gammaHostData);
-    CHECK_RET(ret == 0, return ret);
-    
     // 输出初始化为0
-    std::vector<float> y1HostData(y1ShapeSize, 0.0f);
-    std::vector<uint16_t> y2HostData(y2ShapeSize, 0);
     std::vector<uint16_t> xOutHostData(xOutShapeSize, 0);
 
     // 创建输入tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
-    // B矩阵：kernel用ColumnMajor，stride设置为 [1, K]
     ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2, false, isNzMode ? aclFormat::ACL_FORMAT_FRACTAL_NZ : aclFormat::ACL_FORMAT_ND);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
-    ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &y);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gammaHostData, gammaShape, &gammaDeviceAddr, aclDataType::ACL_FLOAT, &gamma);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    
-    // ScaleB：shape是 (N, ceil(K/128), 2)，RowMajor stride
     ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     
@@ -264,18 +229,11 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
                           aclDataType::ACL_FLOAT8_E8M0, &pertokenScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 创建可选输入tensor (bias 可以为 nullptr，pertokenScale 必须有值)
-    bias = nullptr;
-
     // 创建输出tensor
-    ret = CreateAclTensor(y1HostData, y1Shape, &y1DeviceAddr, aclDataType::ACL_FLOAT, &y1);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(y2HostData, y2Shape, &y2DeviceAddr, aclDataType::ACL_BF16, &y2);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize\n", args.rankId);
+    LOG_PRINT("[INFO] rank = %d, Before aclnnQuantMatmulReduceScatterGetWorkspaceSize\n", args.rankId);
     
     // // Setup barrier: wait for all ranks to finish MC2 setup before launching kernels
     // {
@@ -293,13 +251,13 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     int loopCount = gPerfMode ? PERF_LOOP_COUNT : 1;
     for (int i = 0; i < loopCount; i++) {
         // 调用第一阶段接口
-        ret = aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize(
-            x1, x2, y, gamma, scale, bias, pertokenScale,
-            hcomName, RANK_SIZE, transposeX2, dtype, epsilon,
-            y1, y2, xOut,
+        ret = aclnnQuantMatmulReduceScatterGetWorkspaceSize(
+            x1, x2, scale, pertokenScale,
+            hcomName, RANK_SIZE, transposeX2,
+            xOut,
             &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+            LOG_PRINT("[ERROR] aclnnQuantMatmulReduceScatterGetWorkspaceSize failed. ret = %d \n", ret); return ret);
 
         LOG_PRINT("[INFO] rank = %d, workspaceSize = %lu\n", args.rankId, workspaceSize);
 
@@ -309,12 +267,12 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
             CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
         }
 
-        LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCast\n", args.rankId);
+        LOG_PRINT("[INFO] rank = %d, Before aclnnQuantMatmulReduceScatter\n", args.rankId);
 
     
         // 调用第二阶段接口
-        ret = aclnnQbmmReduceScatterAddRmsNormCast(workspaceAddr, workspaceSize, executor, args.stream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCast failed. ret = %d \n", ret); return ret);
+        ret = aclnnQuantMatmulReduceScatter(workspaceAddr, workspaceSize, executor, args.stream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQuantMatmulReduceScatter failed. ret = %d \n", ret); return ret);
 
         // 同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 30000);
@@ -322,7 +280,7 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
             return ret);
     }
 
-    LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully. loops=%d\n", args.rankId, loopCount);
+    LOG_PRINT("[INFO] rank = %d aclnnQuantMatmulReduceScatter execute successfully. loops=%d\n", args.rankId, loopCount);
 
     // === 精度测试：保存输出到bin文件 ===
     std::string outputDir = "./output";
@@ -332,8 +290,6 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     }
     
     std::vector<uint16_t> xOutResult(xOutShapeSize);
-    std::vector<float> y1OutResult(y1ShapeSize);
-    std::vector<uint16_t> y2OutResult(y2ShapeSize);
 
     // Copy xOut (bf16)
     ret = aclrtMemcpy(xOutResult.data(), xOutShapeSize * sizeof(uint16_t),
@@ -342,47 +298,15 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclrtMemcpy xOut failed. ret = %d\n", ret); return ret);
 
-    // Copy y1 (float32)
-    ret = aclrtMemcpy(y1OutResult.data(), y1ShapeSize * sizeof(float),
-                      y1DeviceAddr, y1ShapeSize * sizeof(float),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclrtMemcpy y1 failed. ret = %d\n", ret); return ret);
-
-    // Copy y2 (bf16)
-    ret = aclrtMemcpy(y2OutResult.data(), y2ShapeSize * sizeof(uint16_t),
-                      y2DeviceAddr, y2ShapeSize * sizeof(uint16_t),
-                      ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclrtMemcpy y2 failed. ret = %d\n", ret); return ret);
-
     // Save xOut
     std::string xOutFile = outputDir + "/npu_xout_rank" + std::to_string(args.rankId) + ".bin";
     ret = SaveBinFile(xOutFile, xOutResult);
-    CHECK_RET(ret == 0, return ret);
-
-    // Save y1 (float32)
-    std::string y1File = outputDir + "/npu_y1_rank" + std::to_string(args.rankId) + ".bin";
-    ret = SaveBinFile(y1File, y1OutResult);
-    CHECK_RET(ret == 0, return ret);
-
-    // Save y2 (bf16)
-    std::string y2File = outputDir + "/npu_y2_rank" + std::to_string(args.rankId) + ".bin";
-    ret = SaveBinFile(y2File, y2OutResult);
     CHECK_RET(ret == 0, return ret);
 
     // 打印前10个值验证
     LOG_PRINT("[INFO] rank=%d, xOut first 10 values (bf16 hex):\n", args.rankId);
     for (int i = 0; i < 10 && i < xOutShapeSize; i++) {
         LOG_PRINT("  [%d] 0x%04x\n", i, xOutResult[i]);
-    }
-    LOG_PRINT("[INFO] rank=%d, y1 first 10 values (float):\n", args.rankId);
-    for (int i = 0; i < 10 && i < y1ShapeSize; i++) {
-        LOG_PRINT("  [%d] %f\n", i, y1OutResult[i]);
-    }
-    LOG_PRINT("[INFO] rank=%d, y2 first 10 values (bf16 hex):\n", args.rankId);
-    for (int i = 0; i < 10 && i < y2ShapeSize; i++) {
-        LOG_PRINT("  [%d] 0x%04x\n", i, y2OutResult[i]);
     }
 
     // 释放device资源
@@ -394,14 +318,6 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
         aclDestroyTensor(x2);
         aclrtFree(x2DeviceAddr);
     }
-    if (y != nullptr) {
-        aclDestroyTensor(y);
-        aclrtFree(yDeviceAddr);
-    }
-    if (gamma != nullptr) {
-        aclDestroyTensor(gamma);
-        aclrtFree(gammaDeviceAddr);
-    }
     if (scale != nullptr) {
         aclDestroyTensor(scale);
         aclrtFree(scaleDeviceAddr);
@@ -409,14 +325,6 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     if (pertokenScale != nullptr) {
         aclDestroyTensor(pertokenScale);
         aclrtFree(pertokenScaleDeviceAddr);
-    }
-    if (y1 != nullptr) {
-        aclDestroyTensor(y1);
-        aclrtFree(y1DeviceAddr);
-    }
-    if (y2 != nullptr) {
-        aclDestroyTensor(y2);
-        aclrtFree(y2DeviceAddr);
     }
     if (xOut != nullptr) {
         aclDestroyTensor(xOut);
@@ -483,7 +391,7 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadQbmmReduceScatterAddRmsNormCast,
+        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadQuantMatmulReduceScatter,
             std::ref(args[rankId])));
     }
 

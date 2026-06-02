@@ -1,8 +1,8 @@
 {
-    "op_type": "QbmmReduceScatterAddRmsNormCast",
+    "op_type": "QuantMatmulReduceScatter",
     "op_list": [
         {
-            "bin_filename": "QbmmReduceScatterAddRmsNormCast_0",
+            "bin_filename": "QuantMatmulReduceScatter_0",
             "inputs": [
                 {
                     "name": "x1",
@@ -146,7 +146,7 @@
             ]
         }, 
         {
-            "bin_filename": "QbmmReduceScatterAddRmsNormCast_1",
+            "bin_filename": "QuantMatmulReduceScatter_1",
             "inputs": [
                 {
                     "name": "x1",

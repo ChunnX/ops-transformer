@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h
+ * \file quant_matmul_reduce_scatter_tiling_data.h
  * \brief 定义TilingData
  */
 
-#ifndef QBMM_REDUCE_SCATTER_ADD_RMS_NORM_CAST_H
-#define QBMM_REDUCE_SCATTER_ADD_RMS_NORM_CAST_H
+#ifndef QUANT_MATMUL_REDUCE_SCATTER_H
+#define QUANT_MATMUL_REDUCE_SCATTER_H
 
 #include <kernel_tiling/kernel_tiling.h>
 #include "quant_matmul_tiling_data.h"
 
-struct QbmmReduceScatterAddRmsNormCastTilingInfo {
+struct QuantMatmulReduceScatterTilingInfo {
     uint32_t aivNum;
     uint32_t aicNum;
     uint32_t rankSize;
@@ -31,11 +31,11 @@ struct QbmmReduceScatterAddRmsNormCastTilingInfo {
     uint32_t needUbBuffer;
 };
 
-struct QbmmReduceScatterAddRmsNormCastTilingData {
+struct QuantMatmulReduceScatterTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     QuantMatmulTilingData qbmmTilingdata;
-    QbmmReduceScatterAddRmsNormCastTilingInfo qbmmReduceScatterAddRmsNormCastTilingInfo;
+    QuantMatmulReduceScatterTilingInfo quantMatmulReduceScatterTilingInfo;
 };
 
-#endif // QBMM_REDUCE_SCATTER_ADD_RMS_NORM_CAST_H
+#endif // QUANT_MATMUL_REDUCE_SCATTER_H

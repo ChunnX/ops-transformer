@@ -25,11 +25,22 @@ public:
     QuantMatmulTilingSwat() = default;
     ~QuantMatmulTilingSwat() override = default;
 
+    // Cap baseM so each cube tile finishes sooner and can be communicated while
+    // the next tile is still computing (comm/compute overlap). Unlike a post-hoc
+    // override of tilingData.baseM, the cap is applied INSIDE the tiling flow so
+    // every dependent field (mTail*/baseK/dbL0c/usedCoreNum) is recomputed
+    // consistently. `v` must be a multiple of CUBE_BLOCK (16). Default = no cap.
+    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
+
 private:
     using Base = QuantMatmulTilingBase<aDataType, bDataType>;
     using Base::args_;
     using Base::platformInfo_;
     using Base::runInfo_;
+
+    // baseM upper bound (multiple of CUBE_BLOCK). Default = BASIC_BLOCK_SIZE_256,
+    // i.e. no effect since the engine never picks baseM > 256.
+    uint64_t maxBaseM_{BASIC_BLOCK_SIZE_256};
 
 protected:
     const char* TilingName() const override
@@ -237,6 +248,14 @@ private:
         CHECK_COND(
             runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
             "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
+
+        // Comm-overlap cap (see SetMaxBaseM): shrink baseM here, before all the
+        // tail/L1/coreNum stats below are derived from it, so the tiling stays
+        // self-consistent. Shrinking baseM only reduces L0A=baseM*baseK, so the
+        // engine's baseK stays valid (no L0A overflow).
+        if (runInfo_.baseM > maxBaseM_) {
+            runInfo_.baseM = maxBaseM_;
+        }
 
         runInfo_.mBlockCnt = CeilDiv(args_.m, runInfo_.baseM);
         runInfo_.nBlockCnt = CeilDiv(args_.n, runInfo_.baseN);

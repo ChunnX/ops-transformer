@@ -9,13 +9,13 @@
  */
 
 /*!
- * \file qbmm_reduce_scatter_add_rms_norm_cast_tiling.cpp
+ * \file quant_matmul_reduce_scatter_tiling.cpp
  * \brief host侧tiling实现
  */
 
 #include <register/op_def_registry.h>
 #include "util/math_util.h"
-#include "../../op_kernel/qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
+#include "../../op_kernel/quant_matmul_reduce_scatter_tiling_data.h"
 #include "quant_matmul_mx_tiling_swat.h"  // 使用 SWAT tiling engine
 
 #include "mc2_log.h"
@@ -29,20 +29,13 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr size_t X1_INDEX = 0;
 constexpr size_t X2_INDEX = 1;
-constexpr size_t Y_INDEX = 2;
-constexpr size_t GAMMA_INDEX = 3;
-constexpr size_t SCALE_INDEX = 4;
-constexpr size_t BIAS_INDEX = 5;
-constexpr size_t PER_TOKEN_SCALE_INDEX = 6;
-constexpr size_t Y1_INDEX = 0;
-constexpr size_t Y2_INDEX = 1;
-constexpr size_t X_INDEX = 2;
+constexpr size_t SCALE_INDEX = 2;
+constexpr size_t PER_TOKEN_SCALE_INDEX = 3;
+constexpr size_t X_INDEX = 0;
 constexpr size_t OUTPUT_INDEX = 0;
 constexpr size_t GROUP_INDEX = 0;
 constexpr size_t RANK_SIZE_INDEX = 1;
 constexpr size_t TRANSPOSE_X2_INDEX = 2;
-constexpr size_t OUT_PUT_DTYPE_INDEX = 3;
-constexpr size_t EPSILON_INDEX = 4;
 constexpr size_t DIM_ZERO = 0;
 constexpr size_t DIM_ONE = 1;
 constexpr size_t DIM_TWO = 2;
@@ -57,11 +50,11 @@ using namespace ge;
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QbmmReduceScatterAddRmsNormCastTilingData *tilingData,
+static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantMatmulReduceScatterTilingData *tilingData,
                         const std::string &group)
 {
     const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "group is %s in qbmm_reduce_scatter_add_rms_norm_cast.", group.c_str());
+    OP_LOGD(nodeName, "group is %s in quant_matmul_reduce_scatter.", group.c_str());
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, OP_TYPE_ALL_TO_ALL,
                                                  "AlltoAll=level0:fullmesh;level1:pairwise");
     // MTE方式必要适配
@@ -70,7 +63,7 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QbmmReduc
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2CcTiling GetTiling failed"), return ge::GRAPH_FAILED);
-    OP_LOGD("QbmmReduceScatterAddRmsNormCast set HCCL success.");
+    OP_LOGD("QuantMatmulReduceScatter set HCCL success.");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -80,7 +73,7 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QbmmReduc
  * @param tilingData: 框架根据context的opName匹配tiling模板，计算产生的tilingData
  * @return
  */
-// static void SetTilingData(gert::TilingContext *context, QbmmReduceScatterAddRmsNormCastTilingData &tilingData)
+// static void SetTilingData(gert::TilingContext *context, QuantMatmulReduceScatterTilingData &tilingData)
 // {
 //     const char *nodeName = context->GetNodeName();
 //     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
@@ -88,10 +81,10 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QbmmReduc
 //     // set corenum
 //     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
 //     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-//     OP_LOGD(nodeName, "aicNum is %u, aivNum is %u in qbmm_reduce_scatter_add_rms_norm_cast.", aicNum, aivNum);
+//     OP_LOGD(nodeName, "aicNum is %u, aivNum is %u in quant_matmul_reduce_scatter.", aicNum, aivNum);
 //     context->SetBlockDim(aicNum);   // TODO:
-//     tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.aicNum = aicNum;
-//     tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.aivNum = aivNum;
+//     tilingData.quantMatmulReduceScatterTilingInfo.aicNum = aicNum;
+//     tilingData.quantMatmulReduceScatterTilingInfo.aivNum = aivNum;
 // }
 
 /**
@@ -134,7 +127,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 }
 
 static ge::graphStatus SetTilingData(
-    gert::TilingContext *context, QbmmReduceScatterAddRmsNormCastTilingData *tilingData)
+    gert::TilingContext *context, QuantMatmulReduceScatterTilingData *tilingData)
 {
     const char *nodeName = context->GetNodeName();
     
@@ -172,6 +165,7 @@ static ge::graphStatus SetTilingData(
     // 3. 使用 SWAT tiling engine 计算 matmul tiling 参数
     QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
     bool transB = (x2Format == ge::FORMAT_ND); // ND→transB=true, NZ→transB=false
+    tilingEngine.SetMaxBaseM(128);
     tilingEngine.GetTilingData(M, N, K, false, transB, tilingData->qbmmTilingdata);
     
     // 注意：GetTilingData 会自动填充 qbmmTilingdata 的所有字段，包括：
@@ -182,7 +176,6 @@ static ge::graphStatus SetTilingData(
     // - mBaseTailSplitCnt, nBaseTailSplitCnt
     // - mTailMain, nTailMain
     // - usedCoreNum, nBufferNum, dbL0c
-    tilingData->qbmmTilingdata.baseM = 128;
     OP_LOGD(nodeName, "QuantMatmulTilingSwat computed tiling data successfully");
     OP_LOGD(nodeName, "  qbmmTilingdata.m=%u, n=%u, k=%u", 
             tilingData->qbmmTilingdata.m, tilingData->qbmmTilingdata.n, tilingData->qbmmTilingdata.k);
@@ -196,68 +189,62 @@ static ge::graphStatus SetTilingData(
     OP_TILING_CHECK(rankSizePtr == nullptr,
         OP_LOGE(nodeName, "rankSize is nullptr."), return ge::GRAPH_FAILED);
     uint32_t rankSize = *rankSizePtr;
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize = rankSize;
+    tilingData->quantMatmulReduceScatterTilingInfo.rankSize = rankSize;
     
-    // epsilon（从 attrs 获取）
-    const float* epsilonPtr = context->GetAttrs()->GetAttrPointer<float>(EPSILON_INDEX);
-    OP_TILING_CHECK(epsilonPtr == nullptr,
-        OP_LOGE(nodeName, "epsilon is nullptr."), return ge::GRAPH_FAILED);
-    float epsilon = *epsilonPtr;
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.epsilon = epsilon;
-    
-    // avgFactor（可选参数，用于 RMS Norm）
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.avgFactor = 1.0f / rankSize;
+    // avgFactor
+    tilingData->quantMatmulReduceScatterTilingInfo.avgFactor = 1.0f / rankSize;
+    tilingData->quantMatmulReduceScatterTilingInfo.epsilon = 1e-6f;
     
     // ubCalcM, ubCalcN（V核 UB 计算参数）
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.ubCalcM = tilingData->qbmmTilingdata.baseM;
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.ubCalcN = tilingData->qbmmTilingdata.baseN;
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.needUbBuffer = 1;
+    tilingData->quantMatmulReduceScatterTilingInfo.ubCalcM = tilingData->qbmmTilingdata.baseM;
+    tilingData->quantMatmulReduceScatterTilingInfo.ubCalcN = tilingData->qbmmTilingdata.baseN;
+    tilingData->quantMatmulReduceScatterTilingInfo.needUbBuffer = 1;
     
     // 获取平台信息（用于填充 aivNum/aicNum）
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.aivNum = ascendcPlatform.GetCoreNumAiv();
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.aicNum = ascendcPlatform.GetCoreNumAic();
+    tilingData->quantMatmulReduceScatterTilingInfo.aivNum = ascendcPlatform.GetCoreNumAiv();
+    tilingData->quantMatmulReduceScatterTilingInfo.aicNum = ascendcPlatform.GetCoreNumAic();
 
     context->SetBlockDim(ascendcPlatform.GetCoreNumAic()); 
     
     OP_LOGD(nodeName, "Custom tiling parameters filled:");
-    OP_LOGD(nodeName, "  rankSize=%u, epsilon=%f, avgFactor=%f", rankSize, epsilon, tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.avgFactor);
+    OP_LOGD(nodeName, "  rankSize=%u, epsilon=1e-6f, avgFactor=%f", rankSize, tilingData->quantMatmulReduceScatterTilingInfo.avgFactor);
     OP_LOGD(nodeName, "  ubCalcM=%u, ubCalcN=%u, needUbBuffer=%u", 
-            tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.ubCalcM,
-            tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.ubCalcN,
-            tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.needUbBuffer);
+            tilingData->quantMatmulReduceScatterTilingInfo.ubCalcM,
+            tilingData->quantMatmulReduceScatterTilingInfo.ubCalcN,
+            tilingData->quantMatmulReduceScatterTilingInfo.needUbBuffer);
     OP_LOGD(nodeName, "  aivNum=%u, aicNum=%u", 
-            tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.aivNum,
-            tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.aicNum);
+            tilingData->quantMatmulReduceScatterTilingInfo.aivNum,
+            tilingData->quantMatmulReduceScatterTilingInfo.aicNum);
     
     return ge::GRAPH_SUCCESS;
 }
 
 /**
- * @brief qbmm_reduce_scatter_add_rms_norm_cast算子的tiling函数
+ * @brief quant_matmul_reduce_scatter算子的tiling函数
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
  */
-static ge::graphStatus QbmmReduceScatterAddRmsNormCastTilingFunc(gert::TilingContext *context)
+static ge::graphStatus QuantMatmulReduceScatterTilingFunc(gert::TilingContext *context)
 {
     // 1. tiling参数校验
-    OP_LOGD("QbmmReduceScatterAddRmsNormCast tiling start.");
+    OP_LOGD("QuantMatmulReduceScatter tiling start.");
     // OP_TILING_CHECK(context == nullptr,
-    //                 OP_LOGE("qbmm_reduce_scatter_add_rms_norm_cast", "failed to get tiling context in qbmm_reduce_scatter_add_rms_norm_cast."),
+    //                 OP_LOGE("quant_matmul_reduce_scatter", "failed to get tiling context in quant_matmul_reduce_scatter."),
     //                 return ge::GRAPH_FAILED);
     const char *nodeName = context->GetNodeName();
     // OP_TILING_CHECK(nodeName == nullptr,
-    //                 OP_LOGE("qbmm_reduce_scatter_add_rms_norm_cast", "failed to get nodeName in qbmm_reduce_scatter_add_rms_norm_cast."),
+    //                 OP_LOGE("quant_matmul_reduce_scatter", "failed to get nodeName in quant_matmul_reduce_scatter."),
     //                 return ge::GRAPH_FAILED);
 
-    QbmmReduceScatterAddRmsNormCastTilingData *tilingData = context->GetTilingData<QbmmReduceScatterAddRmsNormCastTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in qbmm_reduce_scatter_add_rms_norm_cast."),
+    QuantMatmulReduceScatterTilingData *tilingData = context->GetTilingData<QuantMatmulReduceScatterTilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr in quant_matmul_reduce_scatter."),
                     return ge::GRAPH_FAILED);
 
 
     // // 校验输入输出tensor的dim/dtype/format
-    // OP_TILING_CHECK(QbmmReduceScatterAddRmsNormCastCheckTiling::TilingCheckQbmmReduceScatterAddRmsNormCast(context) !=
+    // OP_TILING_CHECK(QuantMatmulReduceScatterCheckTiling::TilingCheckQuantMatmulReduceScatter(context) !=
     //     ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check param failed."), return ge::GRAPH_FAILED);
     
     // 2. tiling参数设置
@@ -272,18 +259,18 @@ static ge::graphStatus QbmmReduceScatterAddRmsNormCastTilingFunc(gert::TilingCon
     OP_TILING_CHECK(SetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetTilingData failed."), return ge::GRAPH_FAILED);
     SetTilingKey(context);
-    OP_LOGD("QbmmReduceScatterAddRmsNormCast tiling end.");
+    OP_LOGD("QuantMatmulReduceScatter tiling end.");
     return ge::GRAPH_SUCCESS;
 }
  
-ge::graphStatus TilingParseForQbmmReduceScatterAddRmsNormCast(gert::TilingParseContext *context) {
+ge::graphStatus TilingParseForQuantMatmulReduceScatter(gert::TilingParseContext *context) {
     (void)context;
   	return ge::GRAPH_SUCCESS;
 }
-struct QbmmReduceScatterAddRmsNormCastCompileInfo {};
+struct QuantMatmulReduceScatterCompileInfo {};
  
-IMPL_OP_OPTILING(QbmmReduceScatterAddRmsNormCast)
-    .Tiling(QbmmReduceScatterAddRmsNormCastTilingFunc)
-    .TilingParse<QbmmReduceScatterAddRmsNormCastCompileInfo>(TilingParseForQbmmReduceScatterAddRmsNormCast);
+IMPL_OP_OPTILING(QuantMatmulReduceScatter)
+    .Tiling(QuantMatmulReduceScatterTilingFunc)
+    .TilingParse<QuantMatmulReduceScatterCompileInfo>(TilingParseForQuantMatmulReduceScatter);
 
 } // namespace MC2Tiling

@@ -116,11 +116,7 @@ public:
     };
 
     struct OutputParams {
-        GM_ADDR y1Out = nullptr;
-        GM_ADDR y2Out = nullptr;
         GM_ADDR xOut = nullptr;
-        GM_ADDR y = nullptr;
-        GM_ADDR gamma = nullptr;
     };
 
     struct Params {
@@ -337,11 +333,11 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     cGmAddr_ = reinterpret_cast<__gm__ CType*>(params.mmadParams.cGmAddr);
     scaleAGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t*>(params.mmadParams.scaleAGmAddr);
     scaleBGmAddr_ = reinterpret_cast<__gm__ fp8_e8m0_t*>(params.mmadParams.scaleBGmAddr);
-    y1GmAddr_ = reinterpret_cast<__gm__ float*>(params.outputParams.y1Out);
-    y2GmAddr_ = reinterpret_cast<__gm__ bfloat16_t*>(params.outputParams.y2Out);
+    y1GmAddr_ = nullptr;
+    y2GmAddr_ = nullptr;
     xGmAddr_ = reinterpret_cast<__gm__ bfloat16_t*>(params.outputParams.xOut);
-    yGmAddr_ = reinterpret_cast<__gm__ bfloat16_t*>(params.outputParams.y);
-    gammaGmAddr_ = reinterpret_cast<__gm__ float*>(params.outputParams.gamma);
+    yGmAddr_ = nullptr;
+    gammaGmAddr_ = nullptr;
 }
 
 QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
