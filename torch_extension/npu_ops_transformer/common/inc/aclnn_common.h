@@ -40,6 +40,7 @@
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
 #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
+
 #define NPU_NAME_SPACE at_npu::native
 
 using aclOpExecutor = struct aclOpExecutor;
@@ -99,8 +100,8 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Bits4x2, ACL_DT_UNDEFINED)                                                                       \
     _(at::ScalarType::Bits8, ACL_DT_UNDEFINED)                                                                         \
     _(at::ScalarType::Bits16, ACL_DT_UNDEFINED)                                                                        \
-    _(at::ScalarType::Float8_e5m2, ACL_FLOAT8_E5M2)                                                                    \
-    _(at::ScalarType::Float8_e4m3fn, ACL_FLOAT8_E4M3FN)                                                                \
+    _(at::ScalarType::Float8_e5m2, C_DT_FLOAT8_E5M2)                                                                    \
+    _(at::ScalarType::Float8_e4m3fn, C_DT_FLOAT8_E4M3FN)                                                                \
     _(at::ScalarType::Float8_e5m2fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::Float8_e4m3fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::UInt16, ACL_UINT16)                                                                              \
@@ -120,11 +121,11 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int5, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
-    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float8_e8m0fnu, C_DT_FLOAT8_E8M0)                                                                \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[] = {
+constexpr int kATenScalarTypeToAclDataTypeTable[] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
@@ -153,14 +154,14 @@ enum class DType {
     ENUM_OFFSET(INT4, ACL_INT4)
     ENUM_OFFSET(UINT1, ACL_UINT1)
     ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32)
-    ENUM_OFFSET(HIFLOAT8, ACL_HIFLOAT8)
-    ENUM_OFFSET(FLOAT8_E5M2, ACL_FLOAT8_E5M2)
-    ENUM_OFFSET(FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN)
-    ENUM_OFFSET(FLOAT8_E8M0, ACL_FLOAT8_E8M0)
-    ENUM_OFFSET(FLOAT6_E3M2, ACL_FLOAT6_E3M2)
-    ENUM_OFFSET(FLOAT6_E2M3, ACL_FLOAT6_E2M3)
-    ENUM_OFFSET(FLOAT4_E2M1, ACL_FLOAT4_E2M1)
-    ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
+    ENUM_OFFSET(HIFLOAT8, C_DT_HIFLOAT8)
+    ENUM_OFFSET(FLOAT8_E5M2, C_DT_FLOAT8_E5M2)
+    ENUM_OFFSET(FLOAT8_E4M3FN, C_DT_FLOAT8_E4M3FN)
+    ENUM_OFFSET(FLOAT8_E8M0, C_DT_FLOAT8_E8M0)
+    ENUM_OFFSET(FLOAT6_E3M2, C_DT_FLOAT6_E3M2)
+    ENUM_OFFSET(FLOAT6_E2M3, C_DT_FLOAT6_E2M3)
+    ENUM_OFFSET(FLOAT4_E2M1, C_DT_FLOAT4_E2M1)
+    ENUM_OFFSET(FLOAT4_E1M2, C_DT_FLOAT4_E1M2)
 };
 
 namespace op_infer {
@@ -189,7 +190,7 @@ typedef struct {
 
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
-    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+    return acl_data_type == C_DT_FLOAT4_E2M1 || acl_data_type == C_DT_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
 }
 
 static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL {
@@ -270,7 +271,7 @@ aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
                 ") is out of range: [0, ",
                 static_cast<int64_t>(at::ScalarType::NumOptions),
                 "]")
-    auto acl_dtype = kATenScalarTypeToAclDataTypeTable[dtype_index];
+    auto acl_dtype = static_cast<aclDataType>(kATenScalarTypeToAclDataTypeTable[dtype_index]);
     TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
                 std::string(c10::toString(data_type)) + " has not been supported")
     return acl_dtype;
