@@ -41,9 +41,13 @@ __global__ __aicore__ void bandwidth_test(
             op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process(); 
         } else if constexpr (CommMode == TILINGKEY_TPL_URAMA) {
+            uint64_t startTime = GetSystemCycle();
             BandwidthUrmaTest<DTYPE_X, DTYPE_Y> op;
             op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
             op.Process(); 
+            uint64_t endTime = GetSystemCycle();
+            uint64_t processTime = endTime - startTime;
+            PRINTF("BandwidthUrmaTest Process time: %d\n", processTime);
         }
     }
 }
