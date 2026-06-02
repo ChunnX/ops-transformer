@@ -31,17 +31,17 @@
 using namespace op;
 
 extern "C" aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(const aclTensor* x, const aclTensor* scales,
-                                                               char* group, char* reduceOp, int64_t worldSize,
+                                                               const char* group, const char* reduceOp,
                                                                const aclTensor* output,
                                                                uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnQuantReduceScatterGetWorkspaceSize start");
-    return aclnnQuantReduceScatterBaseGetWorkspaceSize(x, scales, group, reduceOp, worldSize,
-                                                       output, workspaceSize, executor);
+    return aclnnQuantReduceScatterBaseGetWorkspaceSize(x, scales, group, reduceOp, output,
+                                                       workspaceSize, executor);
 }
 
 extern "C" aclnnStatus aclnnQuantReduceScatter(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                               aclrtStream stream)
+                                               const aclrtStream stream)
 {
     OP_LOGD("aclnnQuantReduceScatter start");
     return aclnnQuantReduceScatterBase(workspace, workspaceSize, executor, stream);
