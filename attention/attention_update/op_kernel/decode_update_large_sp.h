@@ -20,7 +20,6 @@
 #include <limits>
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "decode_update_tiling.h"
 
 using namespace AscendC;
 
