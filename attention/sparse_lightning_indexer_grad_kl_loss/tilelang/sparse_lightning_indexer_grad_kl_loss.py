@@ -356,7 +356,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 # kl_row_accum_ub += P * log(P / softmaxI) for this K block
                                 T.tile.div(di_row_ub, p_row_ub, softmax_i_row_ub)
                                 T.barrier_all()
-                                T.tile.log(di_row_ub, di_row_ub)
+                                T.tile.ln(di_row_ub, di_row_ub)
                                 T.barrier_all()
                                 T.tile.mul(di_row_ub, p_row_ub, di_row_ub)
                                 T.barrier_all()
