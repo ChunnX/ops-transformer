@@ -42,124 +42,102 @@ constexpr MicroAPI::CastTrait QKV_RRC_CAST_F32_TO_FP8_E4M3FN = {
     RoundMode::CAST_RINT,
 };
 
-__simd_callee__ inline void ScatterRopeBf16HalfToNz(MicroAPI::RegTensor<bfloat16_t> &outBf16,
-    __ubuf__ bfloat16_t *rowOutNz, __ubuf__ uint16_t *nzScatterIndex, uint32_t indexOffset)
-{
-    MicroAPI::RegTensor<bfloat16_t> packedBf16;
-    MicroAPI::RegTensor<uint16_t> index;
-    uint32_t halfMaskValue = QKV_RRC_D128_HALF_SIZE;
-    MicroAPI::MaskReg mask64 = MicroAPI::UpdateMask<bfloat16_t>(halfMaskValue);
-
-    MicroAPI::Pack((MicroAPI::RegTensor<uint16_t> &)packedBf16, (MicroAPI::RegTensor<uint32_t> &)outBf16);
-    MicroAPI::LoadAlign<uint16_t>(index, nzScatterIndex + indexOffset);
-    MicroAPI::Scatter<bfloat16_t, uint16_t>(rowOutNz, packedBf16, index, mask64);
-}
-
-__simd_callee__ inline void StoreRopeBf16RowToNzByScatter(MicroAPI::RegTensor<bfloat16_t> &outLowBf16,
-    MicroAPI::RegTensor<bfloat16_t> &outHighBf16, __ubuf__ bfloat16_t *rowOutNz,
-    __ubuf__ uint16_t *nzScatterIndex)
-{
-    ScatterRopeBf16HalfToNz(outLowBf16, rowOutNz, nzScatterIndex, 0U);
-    ScatterRopeBf16HalfToNz(outHighBf16, rowOutNz, nzScatterIndex, QKV_RRC_D128_HALF_SIZE);
-}
-
-__simd_callee__ inline void QkRmsNormRopeD128RowNzVf(__ubuf__ bfloat16_t *inputBf16, uint32_t qkHead,
-    __ubuf__ float *gamma, __ubuf__ float *cosSin, __ubuf__ bfloat16_t *rowOutNz,
-    __ubuf__ uint16_t *nzScatterIndex, float reciprocal, float epsilon)
-{
-    MicroAPI::RegTensor<bfloat16_t> xLowBf16;
-    MicroAPI::RegTensor<bfloat16_t> xHighBf16;
-    MicroAPI::RegTensor<float> xLow;
-    MicroAPI::RegTensor<float> xHigh;
-    MicroAPI::RegTensor<float> gammaLow;
-    MicroAPI::RegTensor<float> gammaHigh;
-    MicroAPI::RegTensor<float> squareLow;
-    MicroAPI::RegTensor<float> squareHigh;
-    MicroAPI::RegTensor<float> squareSum;
-    MicroAPI::RegTensor<float> reduceSum;
-    MicroAPI::RegTensor<float> divisor;
-    MicroAPI::RegTensor<float> rms;
-    MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-
-    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        xLowBf16, inputBf16 + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U);
-    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
-        xHighBf16, inputBf16 + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
-    MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xLow, xLowBf16, mask64);
-    MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xHigh, xHighBf16, mask64);
-
-    MicroAPI::Mul(squareLow, xLow, xLow, mask64);
-    MicroAPI::Mul(squareHigh, xHigh, xHigh, mask64);
-    MicroAPI::Add(squareSum, squareLow, squareHigh, mask64);
-
-    MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-        reduceSum, squareSum, mask64);
-    MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(reduceSum, reduceSum, reciprocal, maskFirst);
-    MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(reduceSum, reduceSum, epsilon, maskFirst);
-    MicroAPI::Sqrt(rms, reduceSum, maskFirst);
-    MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(divisor, rms, mask64);
-
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaLow, gamma);
-    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaHigh, gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
-    MicroAPI::Div(xLow, xLow, divisor, mask64);
-    MicroAPI::Div(xHigh, xHigh, divisor, mask64);
-    MicroAPI::Mul(xLow, xLow, gammaLow, mask64);
-    MicroAPI::Mul(xHigh, xHigh, gammaHigh, mask64);
-
-    MicroAPI::RegTensor<float> cosValue;
-    MicroAPI::RegTensor<float> sinValue;
-    MicroAPI::RegTensor<float> outLow;
-    MicroAPI::RegTensor<float> outHigh;
-    MicroAPI::RegTensor<float> tmpLow;
-    MicroAPI::RegTensor<float> tmpHigh;
-    MicroAPI::RegTensor<bfloat16_t> outLowBf16;
-    MicroAPI::RegTensor<bfloat16_t> outHighBf16;
-
-    uint32_t halfMaskValue = QKV_RRC_D128_HALF_SIZE;
-    mask64 = MicroAPI::UpdateMask<float>(halfMaskValue);
-
-    MicroAPI::DataCopy(cosValue, cosSin);
-    MicroAPI::DataCopy(sinValue, cosSin + QKV_RRC_D128_HALF_SIZE);
-
-    MicroAPI::Mul(outLow, xLow, cosValue, mask64);
-    MicroAPI::Mul(tmpLow, xHigh, sinValue, mask64);
-    MicroAPI::Sub(outLow, outLow, tmpLow, mask64);
-
-    MicroAPI::Mul(outHigh, xHigh, cosValue, mask64);
-    MicroAPI::Mul(tmpHigh, xLow, sinValue, mask64);
-    MicroAPI::Add(outHigh, outHigh, tmpHigh, mask64);
-
-    MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outLowBf16, outLow, mask64);
-    MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outHighBf16, outHigh, mask64);
-    StoreRopeBf16RowToNzByScatter(outLowBf16, outHighBf16, rowOutNz, nzScatterIndex);
-}
-
-__simd_callee__ inline void QkRmsNormRopeD128HeadRangeNzVf(__ubuf__ bfloat16_t *inputBf16,
-    uint32_t qkHeadBase, __ubuf__ float *gamma, __ubuf__ float *cosSin, __ubuf__ bfloat16_t *rowOutNz,
-    __ubuf__ uint16_t *nzScatterIndex, uint32_t headSize, float reciprocal, float epsilon)
-{
-    for (uint32_t headIdx = 0U; headIdx < headSize; ++headIdx) {
-        QkRmsNormRopeD128RowNzVf(inputBf16, qkHeadBase + headIdx, gamma, cosSin, rowOutNz,
-            nzScatterIndex, reciprocal, epsilon);
-        rowOutNz += QKV_RRC_NZ_C0;
-    }
-}
-
 __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
     __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz, __ubuf__ uint16_t *nzScatterIndex,
     uint32_t tokenSize, uint32_t qkHeadBase, uint32_t headSize, uint32_t qkvStrideT,
     float reciprocal, float epsilon)
 {
-    __ubuf__ bfloat16_t *tokenInput = inputBf16;
-    __ubuf__ float *tokenCosSin = cosSin;
-    __ubuf__ bfloat16_t *tokenOutNz = outBf16Nz;
-    for (uint32_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, qkHeadBase, gamma, tokenCosSin, tokenOutNz,
-            nzScatterIndex, headSize, reciprocal, epsilon);
-        tokenInput += qkvStrideT;
-        tokenCosSin += QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
-        tokenOutNz += headSize * QKV_RRC_NZ_C0;
+    MicroAPI::RegTensor<float> gammaLow;
+    MicroAPI::RegTensor<float> gammaHigh;
+    MicroAPI::RegTensor<uint16_t> lowIndex;
+    MicroAPI::RegTensor<uint16_t> highIndex;
+    MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    uint32_t halfMaskValue = QKV_RRC_D128_HALF_SIZE;
+    MicroAPI::MaskReg maskHalf = MicroAPI::UpdateMask<float>(halfMaskValue);
+    MicroAPI::MaskReg bf16MaskHalf = MicroAPI::UpdateMask<bfloat16_t>(halfMaskValue);
+
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaLow, gamma);
+    MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaHigh, gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+    MicroAPI::LoadAlign<uint16_t>(lowIndex, nzScatterIndex);
+    MicroAPI::LoadAlign<uint16_t>(highIndex, nzScatterIndex + QKV_RRC_D128_HALF_SIZE);
+
+    for (uint16_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
+        const uint32_t tokenInputOffset = static_cast<uint32_t>(tokenIdx) * qkvStrideT;
+        const uint32_t tokenCosSinOffset = static_cast<uint32_t>(tokenIdx) * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+        const uint32_t tokenOutOffset = static_cast<uint32_t>(tokenIdx) * headSize * QKV_RRC_NZ_C0;
+        MicroAPI::RegTensor<float> cosValue;
+        MicroAPI::RegTensor<float> sinValue;
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(cosValue, cosSin + tokenCosSinOffset);
+        MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+            sinValue, cosSin + tokenCosSinOffset + QKV_RRC_D128_HALF_SIZE);
+
+        for (uint16_t headIdx = 0U; headIdx < headSize; ++headIdx) {
+            const uint32_t qkHead = qkHeadBase + static_cast<uint32_t>(headIdx);
+            const uint32_t inputOffset = tokenInputOffset + qkHead * QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
+            const uint32_t rowOutOffset = tokenOutOffset + static_cast<uint32_t>(headIdx) * QKV_RRC_NZ_C0;
+            MicroAPI::RegTensor<bfloat16_t> xLowBf16;
+            MicroAPI::RegTensor<bfloat16_t> xHighBf16;
+            MicroAPI::RegTensor<float> xLow;
+            MicroAPI::RegTensor<float> xHigh;
+            MicroAPI::RegTensor<float> squareLow;
+            MicroAPI::RegTensor<float> squareHigh;
+            MicroAPI::RegTensor<float> squareSum;
+            MicroAPI::RegTensor<float> reduceSum;
+            MicroAPI::RegTensor<float> divisor;
+            MicroAPI::RegTensor<float> rms;
+
+            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowBf16, inputBf16 + inputOffset);
+            MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                xHighBf16, inputBf16 + inputOffset + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
+            MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xLow, xLowBf16, mask64);
+            MicroAPI::Cast<float, bfloat16_t, QKV_RRC_CAST_BF16_TO_F32>(xHigh, xHighBf16, mask64);
+
+            MicroAPI::Mul(squareLow, xLow, xLow, mask64);
+            MicroAPI::Mul(squareHigh, xHigh, xHigh, mask64);
+            MicroAPI::Add(squareSum, squareLow, squareHigh, mask64);
+
+            MicroAPI::Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
+                reduceSum, squareSum, mask64);
+            MicroAPI::Muls<float, float, MicroAPI::MaskMergeMode::ZEROING>(reduceSum, reduceSum, reciprocal, maskFirst);
+            MicroAPI::Adds<float, float, MicroAPI::MaskMergeMode::ZEROING>(reduceSum, reduceSum, epsilon, maskFirst);
+            MicroAPI::Sqrt(rms, reduceSum, maskFirst);
+            MicroAPI::Duplicate<float, MicroAPI::HighLowPart::LOWEST, MicroAPI::MaskMergeMode::ZEROING>(
+                divisor, rms, mask64);
+
+            MicroAPI::Div(xLow, xLow, divisor, mask64);
+            MicroAPI::Div(xHigh, xHigh, divisor, mask64);
+            MicroAPI::Mul(xLow, xLow, gammaLow, mask64);
+            MicroAPI::Mul(xHigh, xHigh, gammaHigh, mask64);
+
+            MicroAPI::RegTensor<float> outLow;
+            MicroAPI::RegTensor<float> outHigh;
+            MicroAPI::RegTensor<float> tmpLow;
+            MicroAPI::RegTensor<float> tmpHigh;
+            MicroAPI::RegTensor<bfloat16_t> outLowBf16;
+            MicroAPI::RegTensor<bfloat16_t> outHighBf16;
+
+            MicroAPI::Mul(outLow, xLow, cosValue, maskHalf);
+            MicroAPI::Mul(tmpLow, xHigh, sinValue, maskHalf);
+            MicroAPI::Sub(outLow, outLow, tmpLow, maskHalf);
+
+            MicroAPI::Mul(outHigh, xHigh, cosValue, maskHalf);
+            MicroAPI::Mul(tmpHigh, xLow, sinValue, maskHalf);
+            MicroAPI::Add(outHigh, outHigh, tmpHigh, maskHalf);
+
+            MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outLowBf16, outLow, maskHalf);
+            MicroAPI::Cast<bfloat16_t, float, QKV_RRC_CAST_F32_TO_BF16>(outHighBf16, outHigh, maskHalf);
+
+            MicroAPI::RegTensor<bfloat16_t> packedLowBf16;
+            MicroAPI::Pack((MicroAPI::RegTensor<uint16_t> &)packedLowBf16,
+                (MicroAPI::RegTensor<uint32_t> &)outLowBf16);
+            MicroAPI::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset, packedLowBf16, lowIndex, bf16MaskHalf);
+
+            MicroAPI::RegTensor<bfloat16_t> packedHighBf16;
+            MicroAPI::Pack((MicroAPI::RegTensor<uint16_t> &)packedHighBf16,
+                (MicroAPI::RegTensor<uint32_t> &)outHighBf16);
+            MicroAPI::Scatter<bfloat16_t, uint16_t>(outBf16Nz + rowOutOffset, packedHighBf16, highIndex, bf16MaskHalf);
+        }
     }
 }
 
@@ -185,8 +163,8 @@ __simd_callee__ inline void VScaleFp8D128RowVf(__ubuf__ bfloat16_t *vBf16, __ubu
     MicroAPI::Mul(vHigh, vHigh, scale, mask64);
     MicroAPI::Cast<fp8_e4m3fn_t, float, QKV_RRC_CAST_F32_TO_FP8_E4M3FN>(vLowFp8, vLow, mask64);
     MicroAPI::Cast<fp8_e4m3fn_t, float, QKV_RRC_CAST_F32_TO_FP8_E4M3FN>(vHighFp8, vHigh, mask64);
-    MicroAPI::DataCopy<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(vOutFp8, vLowFp8, mask64);
-    MicroAPI::DataCopy<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
+    MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(vOutFp8, vLowFp8, mask64);
+    MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
         vOutFp8 + QKV_RRC_D128_FLOAT_REPEAT_SIZE, vHighFp8, mask64);
 }
 
@@ -237,10 +215,10 @@ __simd_callee__ inline void QkDynamicQuantD128RowVf(__ubuf__ float *qkFp32, __ub
     MicroAPI::Div(qkHigh, qkHigh, scaleBroadcast, mask64);
     MicroAPI::Cast<fp8_e4m3fn_t, float, QKV_RRC_CAST_F32_TO_FP8_E4M3FN>(qkLowFp8, qkLow, mask64);
     MicroAPI::Cast<fp8_e4m3fn_t, float, QKV_RRC_CAST_F32_TO_FP8_E4M3FN>(qkHighFp8, qkHigh, mask64);
-    MicroAPI::DataCopy<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(qkFp8, qkLowFp8, mask64);
-    MicroAPI::DataCopy<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
+    MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(qkFp8, qkLowFp8, mask64);
+    MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
         qkFp8 + QKV_RRC_D128_FLOAT_REPEAT_SIZE, qkHighFp8, mask64);
-    MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleOut, scale, maskFirst);
+    MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(scaleOut, scale, maskFirst);
 }
 
 __simd_vf__ inline void QkDynamicQuantD128Vf(__ubuf__ float *qkFp32, __ubuf__ fp8_e4m3fn_t *qkFp8,
