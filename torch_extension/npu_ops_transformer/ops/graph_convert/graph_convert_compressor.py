@@ -83,24 +83,4 @@ if _TORCHAIR_AVAILABLE:
         state_cache_stride_dim0: int = 0):
 
         
-        raise AssertionError(f"GE not supported!")
-        return Compressor(
-                        x = x,
-                        wkv = wkv,
-                        wgate = wgate,
-                        state_cache = state_cache,
-                        ape = ape,
-                        norm_weight = norm_weight,
-                        rope_sin = rope_sin,
-                        rope_cos = rope_cos,
-                        state_block_table = state_block_table,
-                        cu_seqlens = cu_seqlens,
-                        seqused = seqused,
-                        start_pos = start_pos,
-                        rope_head_dim = rope_head_dim,
-                        cmp_ratio = cmp_ratio,
-                        coff = coff,
-                        norm_eps = norm_eps,
-                        rotary_mode = rotary_mode,
-                        cache_mode = cache_mode,
-                        state_cache_stride_dim0 = state_cache_stride_dim0)
+        raise AssertionError(f"compressor is not supported in GE graph mode. Please use aclgraph mode instead.")
