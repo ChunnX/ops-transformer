@@ -242,7 +242,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     inplace_ = tilingData->inplace;
     convMode_ = tilingData->convMode;
     hasNumComputedTokens_ = tilingData->hasNumComputedTokens;
-    maxQueryLen_ = tilingData_.maxQueryLen;
+    maxQueryLen_ = tilingData->maxQueryLen;
 
     // === stride参数 ===
     dimSum_ = tilingData->xStride;
