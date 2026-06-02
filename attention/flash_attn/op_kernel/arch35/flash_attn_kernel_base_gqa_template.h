@@ -415,15 +415,15 @@ public:
         while (shouldDispatchTask || validTaskCount) {
             // 分发任务
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
-            if (shouldDispatchTask) {
+            if (likely(shouldDispatchTask)) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                if (likely(taskDealMode == TASK_DEAL_MODE::CREATE_TASK)) {
                     // 创建任务
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                } else if (unlikely(taskDealMode == TASK_DEAL_MODE::DEAL_ZERO)) {
                     if ASCEND_IS_AIV {
                         vecFaBlock.DealZeroActSeqLen(bN2Cur);
                     }
