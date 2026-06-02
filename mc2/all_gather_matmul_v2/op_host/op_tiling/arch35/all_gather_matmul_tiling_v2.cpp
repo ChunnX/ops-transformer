@@ -26,6 +26,7 @@
 
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "all_gather_hccl_utils.h"
 #include "graph/utils/type_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_comm_utils.h"
@@ -54,7 +55,7 @@ bool AllGatherMatmulTilingV2::IsCapable()
 ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 {
     auto rawTilingData = context_->GetRawTilingData();
-    OP_TILING_CHECK((rawTilingData == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "Fail to get rawTilingData."),
+    OP_TILING_CHECK((rawTilingData == nullptr), OP_LOGE(opName_, "Fail to get rawTilingData."),
                     return ge::GRAPH_FAILED);
     allGatherMatmulTilingDataV2_ = context_->GetTilingData<AllGatherMatmulTilingDataV2>();
     return ge::GRAPH_SUCCESS;
@@ -62,16 +63,15 @@ ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
 
 ge::graphStatus AllGatherMatmulTilingV2::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckHCCLSize());
-    GE_ASSERT_GRAPH_SUCCESS(CheckInput());
-    GE_ASSERT_GRAPH_SUCCESS(SetRawTilingData());
+    MC2_CHECK_LOG_RET(opName_, CheckHCCLSize());
+    MC2_CHECK_LOG_RET(opName_, CheckInput());
+    MC2_CHECK_LOG_RET(opName_, SetRawTilingData());
     OP_TILING_CHECK(SetMc2Hcomm(MutableRCSTilingData()) != ge::GRAPH_SUCCESS,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Fail to set Mc2Hcomm."),
+                    OP_LOGE(opName_, "Fail to set Mc2Hcomm."),
                     return ge::GRAPH_FAILED);
     SetRcsTilingData(MutableRCSTilingData());
     DoSplitMTiling(MutableRCSTilingData());
-    GE_ASSERT_GRAPH_SUCCESS(AdjustHCCLLimit(MutableRCSTilingData(), mc2tiling::Mc2QuantMode::DEFAULT));
-    GE_ASSERT_GRAPH_SUCCESS(DoVersion2Tiling());
+    MC2_CHECK_LOG_RET(opName_, DoVersion2Tiling());
     DoAllGatherTiling(MutableRCSTilingData(), MutableMC2MatmulV3TileTilingData().tCubeTiling,
                       MutableMC2MatmulV3TailTilingData().tCubeTiling, allGatherMatmulTilingDataV2_->debugMode,
                       allGatherMatmulTilingDataV2_->dataType);
@@ -114,8 +114,8 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
     context_->GetRawTilingData()->SetDataSize(sizeof(AllGatherMatmulTilingDataV2));
 
     OP_TILING_CHECK(sizeof(AllGatherMatmulTilingDataV2) % sizeof(uint64_t) != 0,
-                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "Tiling data size[%zu] not aligned to 8.",
-                                                    sizeof(AllGatherMatmulTilingDataV2)),
+                    OP_LOGE(opName_, "Tiling data size[%zu] not aligned to 8.",
+                            sizeof(AllGatherMatmulTilingDataV2)),
                     return ge::GRAPH_FAILED);
     PrintAllTilingData();
     context_->SetBlockDim(args_.aicCoreNum);
@@ -127,7 +127,11 @@ ge::graphStatus AllGatherMatmulTilingV2::PostTiling()
 CutResult AllGatherMatmulTilingV2::GetTilingResult()
 {
     AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-    return tileFormulate.GetTiling();
+    CutResult result = tileFormulate.GetTiling();
+
+    AdjustCutResultForHCCL(result, args_.mValue, args_.kValue, args_.inputDtypeSize, args_.rankDim, opName_);
+
+    return result;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
@@ -149,7 +153,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
 {
     // 获取芯片平台信息
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "Fail to get platformInfo."),
+    OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platformInfo."),
                     return ge::GRAPH_FAILED);
 
     // 获取 compileInfo
@@ -165,7 +169,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     NpuArch npuArch = ascendcPlatForm.GetCurNpuArch();
 
     std::vector<int32_t> priorities;
-    GE_ASSERT_GRAPH_SUCCESS(mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch, priorities, opName_));
+    MC2_CHECK_LOG_RET(opName_, mc2tiling::NewGetMatmulV3PriorityPolicy(npuArch, priorities, opName_));
 
     Mc2MMRegisterCfg registerCfg{"Mc2MatMulV3", npuArch, priorities};
 
@@ -174,14 +178,14 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
     // 计算 local 块 tiling
     Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
                                       reinterpret_cast<const void*>(&mmV3Args_));
-    GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
+    MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
 
     // 计算 tile 块 tiling
     mmV3Args_.mValue = tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tileCnt);
     Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
                                      reinterpret_cast<const void*>(&mmV3Args_), tileMValue_);
     tileTilingCfg.SetCommCnt(MutableRCSTilingData().tileCnt);
-    GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
+    MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
     MutableMC2MatmulV3TileTilingData().tCubeTiling.M = (tileMValue_ * (args_.rankDim - 1));
 
     if (tailMValue_ > 0) {
@@ -190,7 +194,7 @@ ge::graphStatus AllGatherMatmulTilingV2::DoVersion2Tiling()
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
                                          reinterpret_cast<const void*>(&mmV3Args_), tailMValue_);
         tailTilingCfg.SetCommCnt(MutableRCSTilingData().tailCnt);
-        GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
+        MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
         MutableMC2MatmulV3TailTilingData().tCubeTiling.M = (tailMValue_ * (args_.rankDim - 1));
     }
 
@@ -225,12 +229,14 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
 ge::graphStatus AllGatherMatmulTilingV2::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
-    OP_TILING_CHECK(x1ScaleShape != nullptr, CUBE_INNER_ERR_REPORT(opName_,
-                    "x1scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
+                    "x1Scale", "not nullptr",
+                    "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
-    OP_TILING_CHECK(x2ScaleShape != nullptr, CUBE_INNER_ERR_REPORT(opName_,
-                    "x2scale should be nullptr when x1 and x2 dtype is fp16 or bf16"),
+    OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
+                    "x2Scale", "not nullptr",
+                    "should be nullptr when x1 and x2 dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

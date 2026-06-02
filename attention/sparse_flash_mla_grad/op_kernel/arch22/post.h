@@ -15,7 +15,7 @@
 
 #pragma once
 #include "kernel_operator.h"
-#include "basic_modules/common_header.h"
+#include "basic_modules/sparse_flash_mla_grad_common_header.h"
 using namespace AscendC;
 
 template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uint32_t LAYOUT,
@@ -23,7 +23,7 @@ template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uin
 class SparseFlashMlaGradPost {
 public:
     __aicore__ inline SparseFlashMlaGradPost(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv, 
+    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *d_ori_kv, __gm__ uint8_t *d_cmp_kv,
                                 __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
     __aicore__ inline void Process();
 
@@ -121,9 +121,9 @@ __aicore__ inline void SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LA
 
     dimDqk = tilingData->opInfo.D;
     dOriKvSize = LAYOUT == 3 ?  tilingData->opInfo.S2 * tilingData->opInfo.N2 * dimDqk : 
-                                tilingData->opInfo.B * tilingData->opInfo.S2 * tilingData->opInfo.N2 * dimDqk;
+                               tilingData->opInfo.B * tilingData->opInfo.S2 * tilingData->opInfo.N2 * dimDqk;
     dCmpKvSize = LAYOUT == 3 ?  tilingData->opInfo.S3 * tilingData->opInfo.N2 * dimDqk : 
-                                tilingData->opInfo.B * tilingData->opInfo.S3 * tilingData->opInfo.N2 * dimDqk;
+                               tilingData->opInfo.B * tilingData->opInfo.S3 * tilingData->opInfo.N2 * dimDqk;
     /*
      * 初始化workspace
      */

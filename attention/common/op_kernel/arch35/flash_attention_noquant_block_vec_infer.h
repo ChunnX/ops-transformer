@@ -220,14 +220,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.totalSize = multiCoreParamsRegbase.totalSize;
 
     if ASCEND_IS_AIV {
-        if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTilingSSbuf = *tempTiling;
+        if constexpr (!isMlaNoQuant) { // mla模板c侧会拷贝tiling data,无需使用 sharedParams
+            if (subBlockIdx == 0) {
+                auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+                auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+                #pragma unroll
+                for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
+                    *tempTilingSSbuf = *tempTiling;
+                }
+                CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
             }
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
     }
 
@@ -816,9 +818,16 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::Bmm2FDOut(LocalTen
     if constexpr (BaseClass::splitD){
         dSizeAligned64 = constInfo.dBasicBlock;
     }
-    SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-    WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
-    attenOut = vec2ResUb;
+    if (constInfo.isRowInvalid) {
+        this->RowInvalid(vec2ResUb, vec2S1Idx, runInfo, constInfo, dSizeAligned64);
+        attenOut = vec2ResUb;
+        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
+        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[0]);
+    } else {
+        SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+        WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
+        attenOut = vec2ResUb;
+    }
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.vec2S1RealSize;

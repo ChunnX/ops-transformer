@@ -134,8 +134,8 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingASW::GetSizeWithDataType(uint64_t shap
         // 2: 判断是否是偶数
         OP_TILING_CHECK(
             shapeSize % 2 != 0,
-            CUBE_INNER_ERR_REPORT(
-                opName_, "To get size of matrix/array, the number of elements must be even when dtype is FLOAT4/INT4"),
+            OP_LOGE(
+                opName_, "To get size of matrix/array, the number of elements must be even when dtype is FLOAT4/INT4."),
             return 0);
         // 1/2: 这几种数据类型的dsize=1/2
         return shapeSize / 2;
@@ -326,7 +326,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::PostTiling()
     OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        CUBE_INNER_ERR_REPORT(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
+        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
         return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetTilingData<WeightQuantBatchMatmulV2ASWTilingData>(),
      context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);

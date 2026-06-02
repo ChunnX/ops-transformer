@@ -19,9 +19,9 @@ extern "C" {
  * @brief aclnnGroupedMatmulSwigluQuantWeightNzV2 的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  *
- * @param [in] x: 表示公式中的x，数据类型支持INT8、FLOAT8_E4M3FN数据类型，数据格式支持ND。
+ * @param [in] x: 表示公式中的x，数据类型支持INT8、FLOAT4_E1M2、FLOAT4_E2M1、FLOAT8_E4M3FN数据类型，数据格式支持ND。
  * @param [in] weight:
- * 表示公式中的weight，数据类型支持INT8、INT4、FLOAT8_E4M3FN数据类型，数据格式支持NZ。
+ * 表示公式中的weight，数据类型支持INT8、INT4、FLOAT4_E1M2、FLOAT4_E2M1、FLOAT8_E4M3FN数据类型，数据格式支持NZ。
  * @param [in] weightScale:
  * 表示量化参数，数据类型支持FLOAT32、UINT64、FLOAT8_E8M0数据类型，数据格式支持ND。
  * @param [in] weightAssistMatrix:

@@ -879,3 +879,494 @@ TEST_F(TestAclnnQuantMatmulAlltoAll, MXQuant_cases_params)
         }
     }
 }
+
+// 测试无效量化模式组合（覆盖 CheckDtypesValid else 分支）
+TEST_F(TestAclnnQuantMatmulAlltoAll, InvalidQuantModeCombo)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              0, 0, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 另一种无效量化模式组合 (x1QuantMode=1, x2QuantMode=1)
+TEST_F(TestAclnnQuantMatmulAlltoAll, InvalidQuantModeCombo2)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              1, 1, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// KC量化场景 - x1 为空指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullX1)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(nullptr, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// KC量化场景 - x2 为空指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullX2)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, nullptr, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// KC量化场景 - x1Scale 为空指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullX1Scale)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, nullptr, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// KC量化场景 - x2Scale 为空指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullX2Scale)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, nullptr, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// KC量化场景 - output 为空指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullOutput)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(nullptr));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// KC量化场景 - group 为 null 指针
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullGroup)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, (const char*)nullptr,
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// KC量化场景 - bias 为空指针（不传 bias）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullBias)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    // DAV_3510 平台下 KC 量化 bias 可以为空
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+// alltoAllAxesOptional 为空指针（应被兼容处理，不报错）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_NullAlltoAllAxes)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              nullptr, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    // alltoAllAxes为空时兼容性处理，不应返回参数无效
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// alltoAllAxesOptional 大小不为 2（长度为 3）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_AlltoAllAxesWrongSize)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2, 0};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// alltoAllAxesOptional data1 != -1（第一个轴不为 -1）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_AlltoAllAxesWrongData1)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-3, -2};  // data1=-3 不等于 -1
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// alltoAllAxesOptional data2 != -2（第二个轴不为 -2）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_AlltoAllAxesWrongData2)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -3};  // data2=-3 不等于 -2
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// KC量化场景 - output 为 FLOAT 类型（覆盖 yDtype == DT_FLOAT 分支，enumYDtype=0）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_OutputFloat)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// KC量化场景 - output 为 FLOAT16 类型（覆盖 yDtype == DT_FLOAT16 分支，enumYDtype=1）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_OutputFloat16)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// KC量化场景 - output 为 BF16 类型（覆盖 yDtype == DT_BF16 分支，enumYDtype=27）
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_OutputBF16)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// MX量化场景 - x2 不转置（transposeX2=false），覆盖 mx 场景下 x2 必须转置的检查
+TEST_F(TestAclnnQuantMatmulAlltoAll, MXQuant_NoTransposeX2)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256, 2, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256, 2, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              6, 6, 0, -1, MX_GROUP_SIZE, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// 测试第二段接口 aclnnQuantMatmulAlltoAll 传入 nullptr
+TEST_F(TestAclnnQuantMatmulAlltoAll, SecondApi_NullParams)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    aclnnStatus ret = aclnnQuantMatmulAlltoAll(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+// Helper: create a non-contiguous (transposed-stride) 2D aclTensor
+static aclTensor* CreateNonContiguousAclTensor(const std::vector<int64_t>& shape, aclDataType dataType, aclFormat format) {
+    void* storage_data = nullptr;
+    // Swap strides to make it non-contiguous (transpose-like layout)
+    std::vector<int64_t> strides(shape.size(), 1);
+    strides[0] = 1;          // dim0 stride = 1 (instead of dim1)
+    strides[1] = shape[0];   // dim1 stride = dim0 (instead of dim1*dim0... for 2D, normal would be strides[0]=shape[1], strides[1]=1)
+    aclTensor* tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
+        strides.data(), 0, format, shape.data(), shape.size(), storage_data);
+    assert(tensor != nullptr);
+    return tensor;
+}
+
+// Cover lines 443-444: non-contiguous x2 with transposeX2=true on DAV_3510 -> error
+TEST_F(TestAclnnQuantMatmulAlltoAll, NonContiguousX2_WithTranspose)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateNonContiguousAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    // transposeX2=true, non-contiguous x2 -> triggers error at line 443-444
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, true),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+// Cover lines 447, 449-451: non-contiguous x2 with transposeX2=false on DAV_3510 -> transposes x2
+TEST_F(TestAclnnQuantMatmulAlltoAll, NonContiguousX2_NoTranspose)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateNonContiguousAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    // transposeX2=false, non-contiguous x2 -> triggers transpose processing at lines 447,449-451
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    // After transpose processing, continues to CheckAndHandleParams which may fail
+    // but lines 447,449-451 are covered
+    (void)ret;
+}
+
+// Cover lines 503-507: phase-2 API aclnnQuantMatmulAlltoAll direct call
+TEST_F(TestAclnnQuantMatmulAlltoAll, Phase2ApiDirect)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    // Direct call to phase-2 covers the NnopbaseSetHcclServerType check and inner call
+    aclnnStatus ret = aclnnQuantMatmulAlltoAll(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
+// Cover lines 346-375: ReFormatNotND with NCHW format on all tensors
+TEST_F(TestAclnnQuantMatmulAlltoAll, KCQuant_ReFormatNotND)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    // Use NCHW format (not private, not ND) to trigger ReFormatNotND
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_NCHW);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_NCHW);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_NCHW);
+    auto x1Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_NCHW);
+    auto x2Scale = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_NCHW);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_NCHW);
+    vector<int64_t> axesAcl = {-1, -2};
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    auto ut = OP_API_UT(aclnnQuantMatmulAlltoAll,
+                        INPUT(x1, x2, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr,
+                              alltoAllAxesOptional, "ut_test_quant_matmul_allto_all",
+                              3, 2, 0, -1, 0, false, false),
+                        OUTPUT(output));
+    aclnnStatus ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    // After ReFormatNotND, continues to CheckAlltoAllAxes etc.
+    // The test covers ReFormatNotND regardless of final result
+    (void)ret;
+}

@@ -27,10 +27,10 @@ static graphStatus MoeDistributeDispatchV2ExecuteFunc(OpExecuteContext* host_api
   OP_LOGD(MoeDistributeDispatchV2Info, "start to fallback for moeDistributeDispatchV2");
   OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE(MoeDistributeDispatchV2Info, "host_api_ctx is null"), return ge::GRAPH_FAILED);
   const auto x = host_api_ctx->GetInputTensor(static_cast<size_t>(0));
-  OP_CHECK_IF(x == nullptr, OP_LOGE(MoeDistributeDispatchV2Info, "x is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(x == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeDispatchV2Info, "x"), return ge::GRAPH_FAILED);
 
   const auto expand_ids = host_api_ctx->GetInputTensor(static_cast<size_t>(1));
-  OP_CHECK_IF(expand_ids == nullptr, OP_LOGE(MoeDistributeDispatchV2Info, "expand_ids is null"), return ge::GRAPH_FAILED);
+  OP_CHECK_IF(expand_ids == nullptr, OP_LOGE_WITH_INVALID_INPUT(MoeDistributeDispatchV2Info, "expand_ids"), return ge::GRAPH_FAILED);
 
   const auto scales = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(2));
   const auto x_active_mask = host_api_ctx->GetOptionalInputTensor(static_cast<size_t>(3));

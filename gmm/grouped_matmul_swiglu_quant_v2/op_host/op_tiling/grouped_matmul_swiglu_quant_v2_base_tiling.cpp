@@ -247,14 +247,14 @@ int32_t GroupedMatmulSwigluQuantV2BaseTiling::FindBestSingleN(const uint32_t &ai
     }
     int32_t mDim = CeilDiv(tuningConfig_, baseM);
     int32_t nDim = CeilDiv(n_, baseN);
-    int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-    int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
+    int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum_);
+    int64_t taskNumPerCore = CeilDiv(taskNum, static_cast<int64_t>(aicNum));
     // 每个核只需要做1个基本块的时候，任务量太少，无需处理
     if (taskNumPerCore <= 1) {
         return baseN;
     }
     int32_t curNDim = 0;
-    int32_t curTaskNum = 0;
+    int64_t curTaskNum = 0;
     int32_t bestSingleN = baseN;
     float ratio = 0;
     for (uint32_t i = 1; i <= aicNum; ++i) {
@@ -268,8 +268,8 @@ int32_t GroupedMatmulSwigluQuantV2BaseTiling::FindBestSingleN(const uint32_t &ai
             return baseN;
         }
         curNDim = CeilDiv(n_, bestSingleN);
-        curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-        ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
+        curTaskNum = static_cast<int64_t>(mDim) * curNDim * static_cast<int64_t>(groupNum_);
+        ratio = static_cast<float>(curTaskNum) / static_cast<float>(AlignUp(curTaskNum, static_cast<int64_t>(aicNum)));
         if (ratio >= EFFECTIVE_TASK_RATIO) {
             return bestSingleN;
         }

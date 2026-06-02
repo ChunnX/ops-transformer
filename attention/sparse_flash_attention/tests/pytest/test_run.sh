@@ -9,6 +9,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set -euo pipefail
+
 # 脚本路径
 PT_SAVE_SCRIPT="./batch/test_sparse_flash_attention_pt_save.py"
 GEN_EXCEL_SCRIPT="./batch/gen_excel_from_paramset.py"
@@ -212,5 +214,3 @@ case "$mode" in
         exit 1
         ;;
 esac
-
-exit 0
