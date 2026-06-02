@@ -20,6 +20,7 @@
 #else
 #include "kernel_operator.h"
 #endif
+#include "adv_api/math/cumsum.h"
 #include "adv_api/reduce/sum.h"
 #include "adv_api/reduce/reduce.h"
 #include "kernel_tiling/kernel_tiling.h"
@@ -46,6 +47,8 @@ using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
 using namespace Mc2Aclnn;
+constexpr CumSumConfig SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG{
+    true, false, false, CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:
@@ -80,6 +83,7 @@ private:
     __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void SetExpertTokenNums();
+    __aicore__ inline void SetExpertTokenNumsPrefixSum(uint32_t localExpertNum);
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
     __aicore__ inline void WaitDispatchClearStatus();
@@ -177,6 +181,9 @@ private:
     LocalTensor<int32_t> performanceTmpTensor_;
     LocalTensor<int32_t> firstRecordTensor_;
     LocalTensor<uint32_t> dataStateLocalTensor_;
+    LocalTensor<float> expertCountTensor_;
+    LocalTensor<float> expertTokenNumTensor_;
+    LocalTensor<int64_t> expertTokenNumsLocalTensor_;
 
     TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
@@ -1036,8 +1043,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Sync
     LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
     LocalTensor<float> &statusSumOutTensor)
 {
-    gatherTmpTensor.SetValue(0, STATUS_BLOCK_COUNT_SEL_MASK);  // 源操作数每个datablock取下标为1的元素
-    uint32_t mask = STATUS_BLOCK_FIELD_NUM;                    // 源操作数每个datablock只需要处理两个元素
+    gatherTmpTensor.SetValue(0, STATUS_BLOCK_COUNT_SEL_PATTERN);  // 源操作数每个datablock取下标为1的元素
+    uint32_t mask = 2;               // 源操作数每个datablock只需要处理两个元素
     SyncFunc<AscendC::HardEvent::S_V>();
 
     // 将当前核对应的专家recv cnt收集到gatherMaskOutTensor
@@ -1130,7 +1137,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     }
     tpipe_->InitBuffer(tokenNumBuf_, Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN);
     totalUsedUB_ += Ceil(moeExpertNumPerRank_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t statusBufSize = moeExpertNumPerRank_ * epWorldSize_ * UB_ALIGN; 
+    uint32_t statusBufSize = moeExpertNumPerRank_ * epWorldSize_ * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     totalUsedUB_ += statusBufSize;
 }
@@ -1151,13 +1158,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::PerformanceInfoPerRank(uint64_t performanceTimeStart)
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::PerformanceInfoPerRank(
+    uint64_t performanceTimeStart)
 {
     uint64_t performanceTimecheck = static_cast<uint64_t>(GetSystemCycle());
     int32_t performanceTimeWait = static_cast<int32_t>((performanceTimecheck - performanceTimeStart) / CYCLES_PER_US);
     SyncFunc<AscendC::HardEvent::V_S>();
     for (uint32_t i = 0; i < recStatusNumPerCore_; i ++) {
-        if (statusFp32Tensor_.GetValue(i * FLAG_OFFSET) > float(0.5) && firstRecordTensor_.GetValue(i) == 0) {
+        if (statusFp32Tensor_.GetValue(i) > float(0.5) && firstRecordTensor_.GetValue(i) == 0) {
             uint32_t fromRankId;
             uint32_t index = startExpertId_ + i;
             if (isScalingDownFlag_) {
@@ -1199,29 +1207,37 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
     gatherTmpTensor.SetValue(0, 1);
     LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
-    uint32_t mask = 1; // gatherMask + sum 相关参数
     float compareTarget = sumTarget_ * recStatusNumPerCore_;
     float sumOfFlag = static_cast<float>(-1.0);
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+    DataCopyExtParams flagCopyParams{static_cast<uint16_t>(recStatusNumPerCore_), sizeof(float),
+        STATE_OFFSET - sizeof(float), 0U, 0U};
+    DataCopyPadExtParams<float> flagCopyPadParams{false, 0U, 0U, 0.0f};
+    uint32_t flagSumInner = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    SumParams flagSumParams{1, flagSumInner, recStatusNumPerCore_};
     if (isScalingDownFlag_) {
         elasticInst_.InitElasticInfoTensor(epWorldSizeOriginal_, elasticInfoTensor_);
     }
     uint64_t performanceTimeStart = static_cast<uint64_t>(GetSystemCycle());
     SyncFunc<AscendC::HardEvent::S_V>();
     while (sumOfFlag != compareTarget) {
-        DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], intriParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        DataCopyPad<float, PaddingMode::Compact>(statusFp32Tensor_,
+            windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET], flagCopyParams, flagCopyPadParams);
         if (isPerformanceFlag_) {
+            SyncFunc<AscendC::HardEvent::MTE2_S>();
             PerformanceInfoPerRank(performanceTimeStart);
         }
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutTensor, mask, recStatusNumPerCore_, 1);
+        Sum(statusSumOutTensor, statusFp32Tensor_, flagSumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
     if (isPerformanceFlag_) {
         PerformanceInfoCopyOut();
     }
+    // 清状态仍按完整32B block回写，需要先补搬完整status以保留count字段。
+    DataCopy(statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * FLAG_OFFSET], intriParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
     // 清状态
     WaitDispatchClearStatus();
 
@@ -1252,7 +1268,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetC
     DataCopy(statusTensorFp32, windowInstatusFp32Tensor_, statusCopyParams);
     LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
     LocalTensor<float> sharedTmpTensor = sumContinueBuf_.Get<float>();
-    uint32_t mask = STATUS_BLOCK_FIELD_NUM;
+    uint32_t mask = 2;
     SyncFunc<AscendC::HardEvent::MTE2_V>();
     if constexpr (IsNeedAllgather) {
         ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, copySumNum, 1);
@@ -1507,52 +1523,83 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allg
 
 // 更新tokenNumsOut tensor	 
 template <TemplateDispatchV2TypeClass>	 
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNumsPrefixSum(
+    uint32_t localExpertNum)
+{
+    bool useCumSum = (epWorldSize_ >= UB_ALIGN / sizeof(float));
+    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
+                                                0U, 0U, 0U};
+    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
+    if (!useCumSum) {
+        SyncFunc<AscendC::HardEvent::V_S>();
+        int64_t expertTokenNumCumsum = 0;
+        for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+            int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumInt32Tensor.GetValue(localExpertIdx));
+            expertTokenNumCumsum += expertTokenNum;
+            expertTokenNumsLocalTensor_.SetValue(localExpertIdx, expertTokenNumCumsum);
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
+        return;
+    }
+
+    uint32_t cumsumInner = Ceil(localExpertNum * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+    CumSumInfo cumsumInfo{1U, cumsumInner};
+    LocalTensor<float> expertTokenNumCumsumTensor = expertCountTensor_;
+    LocalTensor<float> cumsumLastRowTensor = scalarBuf_.Get<float>();
+    LocalTensor<uint8_t> cumsumTmpTensor = statusBuf_.Get<uint8_t>();
+    PipeBarrier<PIPE_V>();
+    CumSum<float, SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG>(
+        expertTokenNumCumsumTensor, cumsumLastRowTensor, expertTokenNumTensor_, cumsumTmpTensor, cumsumInfo);
+    PipeBarrier<PIPE_V>();
+    Cast(expertTokenNumsLocalTensor_, expertTokenNumCumsumTensor.ReinterpretCast<int32_t>(),
+        RoundMode::CAST_NONE, localExpertNum);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
+}
+
+template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()	 
 {	 
-    if (aivId_ != FIRST_CORE) {	 
-        return;	 
-    }	 
+    if (aivId_ != FIRST_CORE) {
+        return;
+    }
     // 等待 LocalWindowCopy 的 DataCopyPad(..., outCountLocal=gatherMaskOutBuf_, ...)
     // 读取完毕，再通过MTE2写入gatherMaskOutBuf_，避免覆盖
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
     uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
-    LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
+    expertCountTensor_ = gatherMaskOutBuf_.Get<float>();
     DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
     // tiling校验可确保总Moe专家数上限，单次DataCopyPad的blockCount不会超过4095
     DataCopyExtParams countCopyParams{static_cast<uint16_t>(localStatusSectionNum), sizeof(float),
         STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor,
+    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor_,
         windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET], countCopyParams, countCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-    LocalTensor<float> expertTokenNumTensor = statusBuf_.Get<float>();
+    expertTokenNumTensor_ = statusBuf_.Get<float>();
+    if ((expertTokenNumsType_ == 0) && (epWorldSize_ >= UB_ALIGN / sizeof(float))) {
+        expertTokenNumTensor_ = tokenNumBuf_.Get<float>();
+    }
     uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
     ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
-        expertTokenNumTensor, expertCountTensor, expertCountShape, false);
+        expertTokenNumTensor_, expertCountTensor_, expertCountShape, false);
 
-    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
+    expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
                                                 0U, 0U, 0U};
-    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor.ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
     if (expertTokenNumsType_ != 0) {
         PipeBarrier<PIPE_V>();
-        Cast(expertTokenNumsLocalTensor, expertTokenNumInt32Tensor, RoundMode::CAST_NONE, localExpertNum);
+        Cast(expertTokenNumsLocalTensor_, expertTokenNumInt32Tensor, RoundMode::CAST_NONE, localExpertNum);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
+        DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
         return;
     }
 
-    SyncFunc<AscendC::HardEvent::V_S>();
-    int64_t expertTokenNumCumsum = 0;
-    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
-        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumInt32Tensor.GetValue(localExpertIdx));
-        expertTokenNumCumsum += expertTokenNum;
-        expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
-    }
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
+    SetExpertTokenNumsPrefixSum(localExpertNum);
 }
 
 template <TemplateDispatchV2TypeClass> 
