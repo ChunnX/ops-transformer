@@ -12,8 +12,8 @@
  * \file mixed_quant_sparse_flash_mla_common_arch35.h
  * \brief
  */
-#ifndef KV_QUANT_SPARSE_ATTN_AHSREDKV_COMMON_ARCH35_H
-#define KV_QUANT_SPARSE_ATTN_AHSREDKV_COMMON_ARCH35_H
+#ifndef MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
+#define MIXED_QUANT_SPARSE_FLASH_MLA_COMMON_ARCH35_H
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../mixed_quant_sparse_flash_mla_common.h"
