@@ -354,6 +354,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::Process
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     // 情况一：一个个写入token
     if (dstRankId != epRankId_) {
+        printf("START WRITR TOKEN");
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, hAlignSize_);
     }
