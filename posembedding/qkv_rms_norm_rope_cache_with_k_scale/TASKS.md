@@ -32,12 +32,15 @@
 | T10 | AIV Q/K postprocess | Done | Basic block now waits `C_READY`, runs Vec Q/K postprocess, then sends `C_CONSUMED`, keeping CrossCore sequencing centralized. Vec consumes `qk_after_cube_ub`, runs `QkDynamicQuantD128Vf` for D=128 `max_abs / 448`, FP8 RINT/SAT cast, and scale staging, then writes Q rows to `q_out/q_scale` and K rows to `k_cache/k_scale_cache` by `slot_mapping`; Q/K output reuse uses local `V_MTE3`/`MTE3_V` event ids `2/3`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused Q/K postprocess UT is still pending. | This commit |
 | T11 | Rolling pipeline and drain | Done | Basic block now owns the rolling scheduler and final drain while controller holds the two-slot `TileParam` ring and passes current/previous slots, matching the grouped-matmul `curOffsetParam/lastOffsetParam` pattern without storing a pending tile member in basic block. AIC delays `C_CONSUMED` waits until the output DB window is full, then drains remaining pending consumptions in `EndAic()`, so Cube/Fixpipe for tile `i + 1` can overlap with AIV Q/K postprocess for tile `i` on different DB buffers. Basic block keeps all CrossCore sequencing centralized through fixed semantic wrappers. Q/K output pool reuse still waits in preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K postprocess releases it after MTE3 writeout, including empty local slices. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T12 | Tail and empty-slice synchronization | Done | Empty AIV slices now keep the fixed basic-block CrossCore protocol while Vec preprocess skips GM/UB/L1 data work after consuming input and Q/K output reusable events, so empty slices do not access invalid data paths. Host UT added `TailAndEmptySlicesKeepFixedCrossCoreProtocol`, enumerating tail token sizes `1..tokenTile` to verify contiguous AIV row coverage and fixed per-tile counts: two `A_READY` sets/waits, two `C_READY` sets/waits, and two `C_CONSUMED` sets/waits. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
+| H02 | q_rotation/k_rotation host contract and kernel-entry ABI split | Done | Host/API contract splits the former single `rotation` input into `q_rotation` and `k_rotation`, shifts `v_scale` to input index 11, updates host/infer-shape UTs and docs, and adapts the kernel entry ABI while internally mapping `q_rotation` to the existing single resident rotation path. `git diff --check` passed; stale host/test single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T13 | Synchronization protocol audit | Not started | Kernel compile + static audit | |
 | T14 | Kernel UT/ST closure | Not started | Full UT/ST | |
 
 ## Next Task
 
-Start T13 by auditing the CrossCore and intra-core synchronization protocol.
+Complete the kernel-internal q_rotation/k_rotation split by adding separate
+`GlobalTensors` fields, resident rotation binding/storage, and Q/K row rotation
+selection; then run full package/runtime verification before resuming T13.
 
 ## Kernel Layout
 
@@ -52,6 +55,13 @@ local base tensor and derives active-buffer views by offset inside the tile
 compute path.
 Host tiling owns the ceil-div core token split and writes the resulting
 `coreTokenTile` and `coreGroupNum` into the kernel POD tiling data.
+
+H02 updates the public host/API contract and kernel entry ABI from a single
+`rotation` input to `q_rotation` and `k_rotation`. The transitional kernel entry
+currently maps `q_rotation` to the existing single `GlobalTensors::rotation` /
+`rotation_l1_nz` path so the package continues to compile; `k_rotation` is
+validated and accepted by the ABI but its internal Cube consumption is deferred
+to the follow-up kernel split.
 
 T05/T06 keep intra-core event ids private to the AIV/AIC implementation
 classes. AIV reusable-event Init/End covers input UB with `V_MTE2`,

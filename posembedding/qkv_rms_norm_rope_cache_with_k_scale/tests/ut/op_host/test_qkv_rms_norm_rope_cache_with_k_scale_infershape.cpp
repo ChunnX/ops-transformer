@@ -27,6 +27,7 @@ std::vector<gert::InfershapeContextPara::TensorDescription> BuildInputs()
         {{{8, 2, 128, 1}, {8, 2, 128, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+        {{{128, 128}, {128, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
     };
 }

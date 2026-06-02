@@ -38,8 +38,9 @@ constexpr size_t kKCacheIndex = 5;
 constexpr size_t kVCacheIndex = 6;
 constexpr size_t kKScaleCacheIndex = 7;
 constexpr size_t kCuSeqLenIndex = 8;
-constexpr size_t kRotationIndex = 9;
-constexpr size_t kVScaleIndex = 10;
+constexpr size_t kQRotationIndex = 9;
+constexpr size_t kKRotationIndex = 10;
+constexpr size_t kVScaleIndex = 11;
 
 constexpr size_t kHeadNumsAttrIndex = 0;
 constexpr size_t kEpsilonAttrIndex = 1;
@@ -161,7 +162,8 @@ ge::graphStatus BuildContractInput(gert::TilingContext *context, ContractInput &
     input.vCache = ToTensorInfo(context, kVCacheIndex);
     input.kScaleCache = ToTensorInfo(context, kKScaleCacheIndex);
     input.cuSeqLen = cuSeqLen;
-    input.rotation = ToOptionalTensorInfo(context, kRotationIndex);
+    input.qRotation = ToOptionalTensorInfo(context, kQRotationIndex);
+    input.kRotation = ToOptionalTensorInfo(context, kKRotationIndex);
     input.vScale = ToOptionalTensorInfo(context, kVScaleIndex);
 
     const float *epsilonAttr = attrs->GetFloat(kEpsilonAttrIndex);

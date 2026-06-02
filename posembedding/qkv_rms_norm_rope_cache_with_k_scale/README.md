@@ -23,7 +23,10 @@ Current state:
    protocol, and `bufferId = tileId & 1` only selects data buffers. The raw
    `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their
    own typed GM tensors and neither controller nor basic block retains a shared
-   bound-GM bundle.
+   bound-GM bundle. The host/API and kernel entry now expose `q_rotation` and
+   `k_rotation`; during the transition, the kernel maps `q_rotation` to the
+   existing single resident `rotation_l1_nz`, while `k_rotation` is validated
+   and accepted by the ABI but not yet consumed internally.
 5. T04 adds fixed CrossCore flag ids and wrappers for `A_READY`, `C_READY`, and
    `C_CONSUMED`. CrossCore flag ids are semantic constants and are not derived
    from pingpong `bufferId` or loop generation.
@@ -39,3 +42,27 @@ Current state:
 9. Implementation work must follow `TASKS.md`.
 10. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.
+
+## Q/K rotation split transition
+
+The public host/API input contract has split the former single `rotation` input
+into two optional BF16 ND tensors that are required by the D=128 fast-path host
+contract:
+
+| Index | Input | Shape |
+|---:|---|---|
+| 9 | `q_rotation` | `[headDim, headDim]` |
+| 10 | `k_rotation` | `[headDim, headDim]` |
+| 11 | `v_scale` | `[numVHeads]` |
+
+Both rotation tensors must be present and BF16; missing inputs report
+`missing_q_rotation` or `missing_k_rotation`. Existing callers that used one
+rotation matrix must pass it to both `q_rotation` and `k_rotation` if the Q/K
+matrices are identical.
+
+The kernel entry signature has been adapted to the new ABI, but the internal
+Cube path is intentionally still transitional: `q_rotation` is bound to the
+existing single resident `rotation_l1_nz`, and `k_rotation` is accepted but not
+yet consumed. A follow-up kernel task must split `GlobalTensors`, resident L1
+rotation storage, and Cube selection so Q rows and K rows can use their own
+rotation matrices.

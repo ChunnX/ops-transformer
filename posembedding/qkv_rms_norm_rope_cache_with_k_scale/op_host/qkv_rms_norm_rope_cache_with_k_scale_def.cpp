@@ -32,7 +32,8 @@ public:
         this->Input("v_cache").ParamType(REQUIRED).DataType(fp8Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
         this->Input("k_scale_cache").ParamType(REQUIRED).DataType(fp32Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
         this->Input("cu_seq_len").ParamType(REQUIRED).DataType(int32Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
-        this->Input("rotation").ParamType(OPTIONAL).DataType(bf16Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
+        this->Input("q_rotation").ParamType(OPTIONAL).DataType(bf16Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
+        this->Input("k_rotation").ParamType(OPTIONAL).DataType(bf16Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
         this->Input("v_scale").ParamType(OPTIONAL).DataType(fp32Types).Format(ndFormats).UnknownShapeFormat(ndFormats);
 
         this->Output("q_out").ParamType(REQUIRED).DataType(fp8Types).Format(ndFormats).UnknownShapeFormat(ndFormats);

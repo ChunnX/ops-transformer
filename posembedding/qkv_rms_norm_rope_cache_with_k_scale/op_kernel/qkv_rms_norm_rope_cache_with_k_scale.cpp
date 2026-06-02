@@ -21,9 +21,9 @@ using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTi
 
 extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
     GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gamma, GM_ADDR cos_sin, GM_ADDR slot_mapping, GM_ADDR k_cache,
-    GM_ADDR v_cache, GM_ADDR k_scale_cache, GM_ADDR cu_seq_len, GM_ADDR rotation, GM_ADDR v_scale, GM_ADDR q_out,
-    GM_ADDR q_scale, GM_ADDR k_cache_out, GM_ADDR v_cache_out, GM_ADDR k_scale_cache_out, GM_ADDR workspace,
-    GM_ADDR tiling)
+    GM_ADDR v_cache, GM_ADDR k_scale_cache, GM_ADDR cu_seq_len, GM_ADDR q_rotation, GM_ADDR k_rotation,
+    GM_ADDR v_scale, GM_ADDR q_out, GM_ADDR q_scale, GM_ADDR k_cache_out, GM_ADDR v_cache_out,
+    GM_ADDR k_scale_cache_out, GM_ADDR workspace, GM_ADDR tiling)
 {
     if (TILING_KEY_IS(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_D128_FAST)) {
         KERNEL_TASK_TYPE(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_D128_FAST, KERNEL_TYPE_MIX_AIC_1_2);
@@ -32,9 +32,10 @@ extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
         GET_TILING_DATA_WITH_STRUCT(QkvRmsNormRopeCacheWithKScaleTilingData, tilingDataIn, tiling);
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData = &tilingDataIn;
 
+        (void)k_rotation;
         const GlobalTensors tensors = {
             qkv,       q_gamma, k_gamma,       cos_sin, slot_mapping, k_cache,     v_cache,
-            k_scale_cache,     cu_seq_len,    rotation, v_scale,      q_out,       q_scale,
+            k_scale_cache,     cu_seq_len,    q_rotation, v_scale,    q_out,       q_scale,
             k_cache_out,       v_cache_out,   k_scale_cache_out,      workspace,
         };
 

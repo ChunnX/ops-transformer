@@ -87,8 +87,11 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     if (input.aicNum == 0) {
         return ContractStatus::kUnsupportedResource;
     }
-    if (!input.rotation.shape.present) {
-        return ContractStatus::kMissingRotation;
+    if (!input.qRotation.shape.present) {
+        return ContractStatus::kMissingQRotation;
+    }
+    if (!input.kRotation.shape.present) {
+        return ContractStatus::kMissingKRotation;
     }
     if (!input.vScale.shape.present) {
         return ContractStatus::kMissingVScale;
@@ -106,7 +109,8 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         !HasDtype(input.kCache, ContractDtype::kFloat8E4M3fn) ||
         !HasDtype(input.vCache, ContractDtype::kFloat8E4M3fn) ||
         !HasDtype(input.kScaleCache, ContractDtype::kFloat) || !HasDtype(input.cuSeqLen, ContractDtype::kInt32) ||
-        !HasDtype(input.rotation, ContractDtype::kBf16) || !HasDtype(input.vScale, ContractDtype::kFloat)) {
+        !HasDtype(input.qRotation, ContractDtype::kBf16) || !HasDtype(input.kRotation, ContractDtype::kBf16) ||
+        !HasDtype(input.vScale, ContractDtype::kFloat)) {
         return ContractStatus::kInvalidDtype;
     }
 
@@ -125,8 +129,11 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
     if (!IsShape1D(input.cuSeqLen.shape, static_cast<uint64_t>(input.batch) + 1)) {
         return ContractStatus::kInvalidCuSeqLenShape;
     }
-    if (!IsShape2D(input.rotation.shape, input.headDim, input.headDim)) {
-        return ContractStatus::kInvalidRotationShape;
+    if (!IsShape2D(input.qRotation.shape, input.headDim, input.headDim)) {
+        return ContractStatus::kInvalidQRotationShape;
+    }
+    if (!IsShape2D(input.kRotation.shape, input.headDim, input.headDim)) {
+        return ContractStatus::kInvalidKRotationShape;
     }
     if (!IsShape1D(input.vScale.shape, input.numVHeads)) {
         return ContractStatus::kInvalidVScaleShape;
@@ -210,8 +217,10 @@ const char *ContractStatusName(ContractStatus status)
             return "invalid_max_seq_len";
         case ContractStatus::kInvalidBlockShape:
             return "invalid_block_shape";
-        case ContractStatus::kMissingRotation:
-            return "missing_rotation";
+        case ContractStatus::kMissingQRotation:
+            return "missing_q_rotation";
+        case ContractStatus::kMissingKRotation:
+            return "missing_k_rotation";
         case ContractStatus::kMissingVScale:
             return "missing_v_scale";
         case ContractStatus::kInvalidQkvShape:
@@ -224,8 +233,10 @@ const char *ContractStatusName(ContractStatus status)
             return "invalid_slot_mapping_shape";
         case ContractStatus::kInvalidCuSeqLenShape:
             return "invalid_cu_seq_len_shape";
-        case ContractStatus::kInvalidRotationShape:
-            return "invalid_rotation_shape";
+        case ContractStatus::kInvalidQRotationShape:
+            return "invalid_q_rotation_shape";
+        case ContractStatus::kInvalidKRotationShape:
+            return "invalid_k_rotation_shape";
         case ContractStatus::kInvalidVScaleShape:
             return "invalid_v_scale_shape";
         case ContractStatus::kInvalidCacheShape:

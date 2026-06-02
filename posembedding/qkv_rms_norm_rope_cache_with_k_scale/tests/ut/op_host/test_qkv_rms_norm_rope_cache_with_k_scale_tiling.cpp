@@ -53,7 +53,8 @@ void RefreshShapes(ContractInput &input)
     input.vCache.shape = Shape({input.blockNum, input.numVHeads, input.blockSize, input.headDim});
     input.kScaleCache.shape = Shape({input.blockNum, input.numKHeads, input.blockSize, 1});
     input.cuSeqLen.shape = Shape({static_cast<uint64_t>(input.batch) + 1});
-    input.rotation.shape = Shape({input.headDim, input.headDim});
+    input.qRotation.shape = Shape({input.headDim, input.headDim});
+    input.kRotation.shape = Shape({input.headDim, input.headDim});
     input.vScale.shape = Shape({input.numVHeads});
 }
 
@@ -81,7 +82,8 @@ ContractInput BuildInput(uint32_t totalTokens = 128, uint32_t numQHeads = 16, ui
     input.vCache.dtype = ContractDtype::kFloat8E4M3fn;
     input.kScaleCache.dtype = ContractDtype::kFloat;
     input.cuSeqLen.dtype = ContractDtype::kInt32;
-    input.rotation.dtype = ContractDtype::kBf16;
+    input.qRotation.dtype = ContractDtype::kBf16;
+    input.kRotation.dtype = ContractDtype::kBf16;
     input.vScale.dtype = ContractDtype::kFloat;
     RefreshShapes(input);
     return input;
@@ -225,8 +227,12 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsMissingOptionalButRequiredInput
 {
     ContractTiling tiling;
     auto input = BuildInput();
-    input.rotation.shape.present = false;
-    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingRotation);
+    input.qRotation.shape.present = false;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingQRotation);
+
+    input = BuildInput();
+    input.kRotation.shape.present = false;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kMissingKRotation);
 
     input = BuildInput();
     input.vScale.shape.present = false;
@@ -245,7 +251,23 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsInvalidShapeAndDtype)
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidScaleShape);
 
     input = BuildInput();
+    input.qRotation.shape.dim1 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidQRotationShape);
+
+    input = BuildInput();
+    input.kRotation.shape.dim0 += 1;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidKRotationShape);
+
+    input = BuildInput();
     input.qkv.dtype = ContractDtype::kFloat;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+
+    input = BuildInput();
+    input.qRotation.dtype = ContractDtype::kFloat;
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
+
+    input = BuildInput();
+    input.kRotation.dtype = ContractDtype::kFloat;
     EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kInvalidDtype);
 }
 

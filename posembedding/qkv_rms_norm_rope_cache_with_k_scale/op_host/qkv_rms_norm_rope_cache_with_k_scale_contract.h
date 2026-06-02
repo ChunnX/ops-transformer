@@ -34,14 +34,16 @@ enum class ContractStatus : uint32_t {
     kUnsupportedHeadDim,
     kInvalidMaxSeqLen,
     kInvalidBlockShape,
-    kMissingRotation,
+    kMissingQRotation,
+    kMissingKRotation,
     kMissingVScale,
     kInvalidQkvShape,
     kInvalidGammaShape,
     kInvalidCosSinShape,
     kInvalidSlotMappingShape,
     kInvalidCuSeqLenShape,
-    kInvalidRotationShape,
+    kInvalidQRotationShape,
+    kInvalidKRotationShape,
     kInvalidVScaleShape,
     kInvalidCacheShape,
     kInvalidScaleShape,
@@ -91,7 +93,8 @@ struct ContractInput {
     TensorContractInfo vCache;
     TensorContractInfo kScaleCache;
     TensorContractInfo cuSeqLen;
-    TensorContractInfo rotation;
+    TensorContractInfo qRotation;
+    TensorContractInfo kRotation;
     TensorContractInfo vScale;
 };
 
