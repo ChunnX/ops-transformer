@@ -146,24 +146,20 @@ __simd_callee__ inline void QkRmsNormRopeD128HeadRangeNzVf(__ubuf__ bfloat16_t *
     }
 }
 
-__simd_vf__ inline void QkRmsNormRopeD128NzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
+__simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputBf16, __ubuf__ float *gamma,
     __ubuf__ float *cosSin, __ubuf__ bfloat16_t *outBf16Nz, __ubuf__ uint16_t *nzScatterIndex,
-    uint32_t tokenSize, uint32_t numQHeads, uint32_t numKHeads, uint32_t qkvStrideT,
+    uint32_t tokenSize, uint32_t qkHeadBase, uint32_t headSize, uint32_t qkvStrideT,
     float reciprocal, float epsilon)
 {
-    const uint32_t qkHeadSize = numQHeads + numKHeads;
     __ubuf__ bfloat16_t *tokenInput = inputBf16;
     __ubuf__ float *tokenCosSin = cosSin;
     __ubuf__ bfloat16_t *tokenOutNz = outBf16Nz;
     for (uint32_t tokenIdx = 0U; tokenIdx < tokenSize; ++tokenIdx) {
-        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, 0U, gamma, tokenCosSin, tokenOutNz,
-            nzScatterIndex, numQHeads, reciprocal, epsilon);
-        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, numQHeads,
-            gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U, tokenCosSin,
-            tokenOutNz + numQHeads * QKV_RRC_NZ_C0, nzScatterIndex, numKHeads, reciprocal, epsilon);
+        QkRmsNormRopeD128HeadRangeNzVf(tokenInput, qkHeadBase, gamma, tokenCosSin, tokenOutNz,
+            nzScatterIndex, headSize, reciprocal, epsilon);
         tokenInput += qkvStrideT;
         tokenCosSin += QKV_RRC_D128_FLOAT_REPEAT_SIZE * 2U;
-        tokenOutNz += qkHeadSize * QKV_RRC_NZ_C0;
+        tokenOutNz += headSize * QKV_RRC_NZ_C0;
     }
 }
 

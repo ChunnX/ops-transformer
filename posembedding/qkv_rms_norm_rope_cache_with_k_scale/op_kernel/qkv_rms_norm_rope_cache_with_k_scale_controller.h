@@ -131,7 +131,7 @@ private:
         const uint32_t cubeIndex = GetAicCubeIndex();
         const TokenRange tokenRange = MakeCoreTokenRange(tilingData, cubeIndex);
         D128FastBasicBlock basicBlock;
-        basicBlock.InitAic(tensors, cubeIndex);
+        basicBlock.InitAic(tensors, tilingData, cubeIndex);
         basicBlock.PrepareBeforeLoopAic();
         ForEachTileAic(basicBlock, tilingData, tokenRange);
         basicBlock.EndAic();

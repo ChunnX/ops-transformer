@@ -32,19 +32,21 @@
 | T10 | AIV Q/K postprocess | Done | Basic block now waits `C_READY`, runs Vec Q/K postprocess, then sends `C_CONSUMED`, keeping CrossCore sequencing centralized. Vec consumes `qk_after_cube_ub`, runs `QkDynamicQuantD128Vf` for D=128 `max_abs / 448`, FP8 RINT/SAT cast, and scale staging, then writes Q rows to `q_out/q_scale` and K rows to `k_cache/k_scale_cache` by `slot_mapping`; Q/K output reuse uses local `V_MTE3`/`MTE3_V` event ids `2/3`. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. Focused Q/K postprocess UT is still pending. | This commit |
 | T11 | Rolling pipeline and drain | Done | Basic block now owns the rolling scheduler and final drain while controller holds the two-slot `TileParam` ring and passes current/previous slots, matching the grouped-matmul `curOffsetParam/lastOffsetParam` pattern without storing a pending tile member in basic block. AIC delays `C_CONSUMED` waits until the output DB window is full, then drains remaining pending consumptions in `EndAic()`, so Cube/Fixpipe for tile `i + 1` can overlap with AIV Q/K postprocess for tile `i` on different DB buffers. Basic block keeps all CrossCore sequencing centralized through fixed semantic wrappers. Q/K output pool reuse still waits in preprocess before `qk_after_cube_ub` is reused as BF16 staging, and Q/K postprocess releases it after MTE3 writeout, including empty local slices. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
 | T12 | Tail and empty-slice synchronization | Done | Empty AIV slices now keep the fixed basic-block CrossCore protocol while Vec preprocess skips GM/UB/L1 data work after consuming input and Q/K output reusable events, so empty slices do not access invalid data paths. Host UT added `TailAndEmptySlicesKeepFixedCrossCoreProtocol`, enumerating tail token sizes `1..tokenTile` to verify contiguous AIV row coverage and fixed per-tile counts: two `A_READY` sets/waits, two `C_READY` sets/waits, and two `C_CONSUMED` sets/waits. `git diff --check` passed; static scan found CrossCore primitives only in common wrappers and semantic wrapper calls only in basic block; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
-| H02 | q_rotation/k_rotation host contract and kernel-entry ABI split | Done | Host/API contract splits the former single `rotation` input into `q_rotation` and `k_rotation`, shifts `v_scale` to input index 11, updates host/infer-shape UTs and docs, and adapts the kernel entry ABI. Cube now binds both GM tensors, keeps separate resident `qRotationL1Nz_`/`kRotationL1Nz_` and L0B views, and selects the Q rotation for Q rows and K rotation for K rows. `git diff --check` passed; stale host/test single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
+| H02 | q_rotation/k_rotation host contract and kernel-entry ABI split | Done | Host/API contract splits the former single `rotation` input into `q_rotation` and `k_rotation`, shifts `v_scale` to input index 11, updates host/infer-shape UTs and docs, and adapts the kernel entry ABI. `git diff --check` passed; stale host/test single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; package generated at `build/cann-ops-transformer-custom_linux-x86_64.run`. | This commit |
+| H03 | Kernel q/k rotation resident and compact Q/K segments | Done | AIC binds both rotation GM tensors, copies them to separate resident `qRotationL1Nz_`/`kRotationL1Nz_`, and loads them once before the tile loop into L0B halves. Vec runs separate Q/K RMSNorm+RoPE segment VF calls and writes Q then K into one active AL1 A buffer using the compact `NzMatrixElements(qTileRows)` offset; Cube consumes the same compact offset and multiplies Q with `qRotationL0b()` and K with `kRotationL0b()`. No fixed Q/K slots, no offset helper/accessor, and no CrossCore protocol changes were added. `git diff --check` passed; stale single-rotation symbol scan passed; sourced `/usr/local/Ascend/cann-9.1.0/set_env.sh`; passed `bash build.sh --pkg --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8`; passed `bash build.sh --ophost_test --ops=qkv_rms_norm_rope_cache_with_k_scale --soc=ascend950 -j8` with 12 host UT. | This commit |
 | T13 | Synchronization protocol audit | Not started | Kernel compile + static audit | |
 | T14 | Kernel UT/ST closure | Not started | Full UT/ST | |
 
 ## Next Task
 
 Resume T13 synchronization protocol audit now that the Q/K rotation split is
-reflected in both the host/API contract and Cube internals. The audit should
+reflected in both the host/API contract and kernel internals. The audit should
 explicitly cover the four semantic CrossCore ids (`A_READY`, `A_CONSUMED`,
 `C_READY`, `C_CONSUMED`), their Set/Wait counts across rolling, tail, and empty
 AIV slices, and whether the design notes need to be updated for the A-side reuse
 credit. After T13, close T14 with kernel UT/ST and include a golden case where
-`q_rotation != k_rotation`.
+`q_rotation != k_rotation` and Q/K use the compact single-A-buffer segment
+layout.
 
 ## Kernel Layout
 
@@ -61,10 +63,13 @@ Host tiling owns the ceil-div core token split and writes the resulting
 `coreTokenTile` and `coreGroupNum` into the kernel POD tiling data.
 
 H02 updates the public host/API contract and kernel entry ABI from a single
-`rotation` input to `q_rotation` and `k_rotation`. The kernel entry forwards
-both GM addresses through `GlobalTensors`; Cube binds both tensors, copies them
-into separate resident L1 slots, loads separate L0B views, and consumes
-`q_rotation` for Q rows and `k_rotation` for K rows. T14 should include a
+`rotation` input to `q_rotation` and `k_rotation`. H03 completes the kernel side:
+the entry forwards both GM addresses through `GlobalTensors`; Cube binds both
+tensors, copies them into separate resident L1 slots, loads them once before the
+tile loop into L0B halves, and consumes `q_rotation` for Q rows and `k_rotation`
+for K rows. Vec preprocess handles Q/K as separate RMSNorm+RoPE segment VF calls
+but stores them compactly in one active AL1 A buffer: Q starts at the buffer base
+and K starts at `NzMatrixElements(qTileRows)`. T14 should include a
 golden/runtime case where the two matrices differ so this split is validated
 end-to-end.
 
@@ -75,9 +80,11 @@ staging boundary uses AIV-private `V_MTE3`/`MTE3_V` event id `4` inside the
 tile compute path only; it protects the pipe handoff around BF16 ND staging and
 ND2NZ AL1 write, and is not a per-AL1-buffer CrossCore flag. Basic block owns
 the `A_READY` CrossCore notify/wait between that AIV AL1 staging boundary and
-Cube AL1 consumption. T07 keeps `rotation_l1_nz` resident on AIC without a
-CrossCore flag, and AIC Init/End covers L0 reuse with `M_MTE1` and L0C reuse
-with `FIX_M`. All active ids are checked to stay within `0..5`.
+Cube AL1 consumption. T07/H03 keep `qRotationL1Nz_` and `kRotationL1Nz_`
+resident on AIC without a CrossCore flag; the two D=128 BF16 matrices load into
+separate L0B halves before the tile loop. AIC Init/End covers L0 reuse with
+`M_MTE1` and L0C reuse with `FIX_M`. All active ids are checked to stay within
+`0..5`.
 T08 binds the AIC-side view of the same output DB pool and emits L0C rows to
 the two AIV UB address spaces with `subBlockId` 0/1. The row boundary is
 derived from the same actual AIV token split used for AL1 input, so tail tiles

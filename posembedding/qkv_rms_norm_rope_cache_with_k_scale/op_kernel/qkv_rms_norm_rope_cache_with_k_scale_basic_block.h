@@ -18,10 +18,11 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 class D128FastBasicBlock {
 public:
-    __aicore__ inline void InitAic(const GlobalTensors &tensors, uint32_t cubeIndex)
+    __aicore__ inline void InitAic(const GlobalTensors &tensors,
+        const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, uint32_t cubeIndex)
     {
         aivTileCount_ = 0U;
-        cube_.Init(cubeIndex, tensors);
+        cube_.Init(cubeIndex, tilingData, tensors);
         cube_.InitIntraCoreEvents();
     }
 

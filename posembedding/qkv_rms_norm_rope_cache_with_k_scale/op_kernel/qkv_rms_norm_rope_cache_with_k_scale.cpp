@@ -32,11 +32,10 @@ extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
         GET_TILING_DATA_WITH_STRUCT(QkvRmsNormRopeCacheWithKScaleTilingData, tilingDataIn, tiling);
         const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData = &tilingDataIn;
 
-        (void)k_rotation;
         const GlobalTensors tensors = {
-            qkv,       q_gamma, k_gamma,       cos_sin, slot_mapping, k_cache,     v_cache,
-            k_scale_cache,     cu_seq_len,    q_rotation, v_scale,    q_out,       q_scale,
-            k_cache_out,       v_cache_out,   k_scale_cache_out,      workspace,
+            qkv,       q_gamma,    k_gamma,       cos_sin, slot_mapping, k_cache,     v_cache,
+            k_scale_cache,         cu_seq_len,    q_rotation, k_rotation, v_scale,    q_out,
+            q_scale,               k_cache_out,   v_cache_out, k_scale_cache_out,     workspace,
         };
 
         D128FastController controller;
