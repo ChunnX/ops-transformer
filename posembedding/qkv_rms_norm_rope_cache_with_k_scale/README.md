@@ -18,18 +18,20 @@ Current state:
    same contiguous cube-group token range. The controller creates the
    contiguous core token range, expands it into token-size tiles, and derives
    per-tile tail parameters before calling the D=128 fast-path basic block.
-4. T03 adds static GM/L1/UB tensor binding. `rotation_l1_nz` is AIC-only,
-   `a_rot_l1_nz` is the Cube AL1 data slot shared by the later AIV->AIC
-   protocol, and `bufferId = tileId & 1` only selects data buffers. The raw
-   `GlobalTensors` bundle is only an entry argument; Cube and Vec bind their
-   own typed GM tensors and neither controller nor basic block retains a shared
-   bound-GM bundle. The host/API and kernel entry now expose `q_rotation` and
-   `k_rotation`; during the transition, the kernel maps `q_rotation` to the
-   existing single resident `rotation_l1_nz`, while `k_rotation` is validated
-   and accepted by the ABI but not yet consumed internally.
-5. T04 adds fixed CrossCore flag ids and wrappers for `A_READY`, `C_READY`, and
-   `C_CONSUMED`. CrossCore flag ids are semantic constants and are not derived
-   from pingpong `bufferId` or loop generation.
+4. T03 adds static GM/L1/UB tensor binding. `qRotationL1Nz_` and
+   `kRotationL1Nz_` are AIC-only resident rotation slots, `a_rot_l1_nz` is the
+   Cube AL1 data slot shared by the AIV->AIC protocol, and
+   `bufferId = tileId & 1` only selects data buffers. The raw `GlobalTensors`
+   bundle is only an entry argument; Cube and Vec bind their own typed GM
+   tensors and neither controller nor basic block retains a shared bound-GM
+   bundle. The host/API and kernel entry expose `q_rotation` and `k_rotation`;
+   Cube binds both tensors, keeps separate resident L1/L0B views, and selects
+   `q_rotation` for Q rows and `k_rotation` for K rows.
+5. T04/T11 add fixed CrossCore flag ids and wrappers for `A_READY`,
+   `A_CONSUMED`, `C_READY`, and `C_CONSUMED`. `A_CONSUMED` is the A-side
+   double-buffer reuse credit; T13 still needs the final static protocol audit.
+   CrossCore flag ids are semantic constants and are not derived from pingpong
+   `bufferId` or loop generation.
 6. T05 adds fixed intra-core event constants and Init/End pairing for reusable
    AIV/AIC buffers. Active event ids stay within `0..5`; `a_rot_l1_nz` remains
    CrossCore-protected AL1 and does not consume AIV intra-core event ids.
@@ -37,13 +39,15 @@ Current state:
    `basic_block`, `cube`, and `vec` headers instead of keeping those larger
    modules inside one file. Core-type dispatch is centralized in the
    controller AIC/AIV entry split; lower layers do not inspect `g_coreType`.
-8. Real compute and the concrete synchronization call sites are left to later
-   tasks.
+8. Real Q/K/V compute, rotation matmul, Fixpipe distribution, rolling pipeline,
+   tail/empty-slice handling, and concrete synchronization call sites are
+   implemented through T12/H02. T13 synchronization audit and T14 kernel UT/ST
+   closure remain open.
 9. Implementation work must follow `TASKS.md`.
 10. After each task is coded and verified, update `TASKS.md` and commit the
    code plus the task status change together.
 
-## Q/K rotation split transition
+## Q/K rotation split status
 
 The public host/API input contract has split the former single `rotation` input
 into two optional BF16 ND tensors that are required by the D=128 fast-path host
@@ -60,9 +64,9 @@ Both rotation tensors must be present and BF16; missing inputs report
 rotation matrix must pass it to both `q_rotation` and `k_rotation` if the Q/K
 matrices are identical.
 
-The kernel entry signature has been adapted to the new ABI, but the internal
-Cube path is intentionally still transitional: `q_rotation` is bound to the
-existing single resident `rotation_l1_nz`, and `k_rotation` is accepted but not
-yet consumed. A follow-up kernel task must split `GlobalTensors`, resident L1
-rotation storage, and Cube selection so Q rows and K rows can use their own
-rotation matrices.
+The kernel entry ABI and Cube internals now both carry the split. `GlobalTensors`
+contains separate `qRotation` and `kRotation` entries, Cube binds them as
+separate GM tensors, copies them into `qRotationL1Nz_` and `kRotationL1Nz_`,
+loads separate L0B resident views, and uses the Q matrix for Q rows and the K
+matrix for K rows. Follow-up verification should include a `q_rotation !=
+k_rotation` golden/ST case before closing T14.
