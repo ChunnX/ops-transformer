@@ -287,7 +287,6 @@ def compile_model(model):
 
     return compiled_model
 
-
 class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -312,7 +311,6 @@ class BANDWIDTH_TEST_GRAPH_Model(torch.nn.Module):
 def set_device(rank):
     torch_npu.npu.set_device(rank % rank_per_dev)
     logger.info(f"current device set: {torch_npu.npu.current_device()}")
-
 
 def init_hccl_comm(rank, world_size_local):
     logger.info(f'[INFO] device_{rank} 创建HCCL通信链路')
@@ -582,7 +580,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         queue.put([rank, []])
         return
     
-    _, _, _, _,test_world_size, _ = configs[0]
+    _, _, _, _, test_world_size, _ = configs[0]
     
     logger.info(f'[INFO] device_{rank} 创建通信域（多配置共享）')
     hcomm_info, _ = init_hccl_comm(rank, test_world_size)
@@ -686,7 +684,7 @@ def run_precision_test(
     
     npu_outputs = {}
 
-    if result_queue.qsize()==world_size:
+    if result_queue.qsize() == world_size:
         while not result_queue.empty():
             rank, output = result_queue.get()
             if output is not None:
@@ -696,8 +694,7 @@ def run_precision_test(
                 return False
     else:
         logger.error("Get result_queue Failed")
-
-    
+  
     logger.info("\n" + "-" * 60)
     logger.info("Precision Verification:")
     logger.info("-" * 60)
@@ -719,7 +716,6 @@ def run_precision_test(
             all_pass = False
     
     return all_pass
-
 
 def run_bandwidth_test(
     x_per_rank: List[torch.Tensor], dstrank_id_per_rank: List[torch.Tensor],
@@ -761,7 +757,6 @@ def run_bandwidth_test(
     
     return perf_result
 
-
 def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     """运行多配置带宽测试（共享通信域）"""
     all_results = []
@@ -788,7 +783,8 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     processes = []
     for rank in range(world_size):
         rank_configs = [
-            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], world_size, all_inputs[i][4])
+            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3],
+            world_size, all_inputs[i][4])
             for i in range(len(all_inputs))
         ]
         p = Process(
@@ -827,7 +823,6 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     print_summary_table(all_results)
     
     return all_results
-
 
 def print_summary_table(results: List[Dict[str, Any]]):
     """打印汇总结果表格"""
@@ -916,7 +911,6 @@ def main():
         
         if is_precision_test and not precision_pass:
             exit(1)
-
 
 if __name__ == "__main__":
     mp.set_start_method('spawn')
