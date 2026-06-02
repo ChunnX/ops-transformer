@@ -105,7 +105,7 @@ public:
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr bool isFp8 = CubeBlockType::isFp8;
-    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
+    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;        // YYJ_TODO_M: 修正为128，128
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
     /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
@@ -197,8 +197,8 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
         }
     }
 
-    this->InitActualKVPrefixLen(actualSharedPrefixLen);
-    this->ComputeConstexpr();
+    this->InitActualKVPrefixLen(actualSharedPrefixLen);             // YYJ_TODO_D: KV-Prefix需求特性是否需要删除？
+    this->ComputeConstexpr();                                       // YYJ_TODO_ZS: C/V核计算常量表达式
     this->InitGlobalBuffer(query, key, value, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
         actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
         keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
@@ -210,9 +210,9 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
 {
     if constexpr (isInfer) {
-        if constexpr (enableKVPrefix) {
+        if constexpr (enableKVPrefix) {                                 // YYJ_TODO_HY: 如何理解KV-prefix？
             constInfo.kvPrefixSize = this->sharedParams.kvPrefixSize;
-            if (!this->sharedParams.isActualSharedPrefixLenNull) {
+            if (!this->sharedParams.isActualSharedPrefixLenNull) {      // YYJ_TODO_HY: 如何理解isActualSharedPrefixLenNull？
                 this->actualKVPrefixLen = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             } else {
                 this->actualKVPrefixLen = this->sharedParams.kvPrefixSize;
@@ -236,23 +236,23 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
     // 初始化vector用到的global buffer
     if constexpr (isInfer) {
         keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
-        if (constInfo.isQHasLeftPadding) {
+        if (constInfo.isQHasLeftPadding) {              // YYJ_TODO_D: 是否需要删除？
             constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
             if (constInfo.queryRightPaddingSize < 0) {
                 constInfo.queryRightPaddingSize = 0;
             }
         }
-        if (constInfo.isKVHasLeftPadding) {
+        if (constInfo.isKVHasLeftPadding) {             // YYJ_TODO_D: 是否需要删除？
             constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
             if (constInfo.kvRightPaddingSize < 0) {
                 constInfo.kvRightPaddingSize = 0;
             }
         }
     }
-    if constexpr (hasAtten) {
+    if constexpr (hasAtten) {                           // YYJ_TODO_D: 是否需要删除？
         attenMaskInfo.prefixNAddr = prefix;
     }
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {   // YYJ_TODO_M: 适配？
         actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
         actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
     } else {
@@ -266,19 +266,19 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
         }
     }
 
-    vecBlock.InitDropOut(dropMask, workspace);
+    vecBlock.InitDropOut(dropMask, workspace);          // YYJ_TODO_D: 该处是否可以删除
     uint64_t singleCoreOffset = 0;
     if constexpr (!bmm2Write2Ub) {
         int64_t bmm2ResBlock = this->sharedParams.dSizeV;
-        if constexpr (splitD) {
+        if constexpr (splitD) {                         // YYJ_TODO_D: 该处是否可以删除
             bmm2ResBlock = (int64_t)dVTemplateType;
         }
         int64_t mm2ResultSize = (s1BaseSize) * bmm2ResBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-        int64_t mm2Offset = CeilDiv(mm2ResultSize, 128) * 128 * sizeof(T);
+        int64_t mm2Offset = CeilDiv(mm2ResultSize, 128) * 128 * sizeof(T);      // YYJ_TODO_M: 该处如何理解，是否需要根据indices适配
         int64_t vec2ResultSize = (s1BaseSize) * constInfo.dBasicBlock;
-        int64_t vec2Offset = CeilDiv(vec2ResultSize, 128) * 128 * sizeof(T);
+        int64_t vec2Offset = CeilDiv(vec2ResultSize, 128) * 128 * sizeof(T);    // YYJ_TODO_M: 该处如何理解，是否需要根据indices适配
         singleCoreOffset = mm2Offset;
-        if constexpr (splitD) {
+        if constexpr (splitD) {                         // YYJ_TODO_HY: 如何理解, 为何非splitD不需要考虑vec2Offset
             singleCoreOffset = mm2Offset + vec2Offset;
         }
         int64_t totalOffset = this->aicIdx * 3 * singleCoreOffset; // 3为preload次数
@@ -290,13 +290,13 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
         prefix, attenMask, queryPaddingSize, kvPaddingSize, learnableSink, softmaxMax, softmaxSum, workspace, singleCoreOffset,
         this->aicIdx, constInfo);
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND && !isInfer) {           // YYJ_TODO_HY: 如何理解？
         if ASCEND_IS_AIV {
             int64_t actualS1Len;
             int64_t actualS2Len;
             for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
                 this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
-                if (actualS2Len <= 0 && actualS1Len != 0) {
+                if (actualS2Len <= 0 && actualS1Len != 0) {                     // YYJ_TODO_HY: 为何会出现Q不为空、KV长度为空的情况？
                     int64_t accumSize = (i == 0) ? 0 : ((__gm__ int64_t *)this->actualSeqQlenAddr)[i - 1];
                     if (actualS1Len < 0 && accumSize > 0) {
                         actualS1Len = constInfo.s1Size - accumSize;
@@ -338,10 +338,10 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
     }
     constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(INPUT_T);
-    l1BufferManager.Init(pipe, 524288); // 512 * 1024
+    l1BufferManager.Init(pipe, 524288); // 512 * 1024                               // YYJ_TODO_M: 大小适配
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    if constexpr (bmm2Write2Ub) {
+    if constexpr (bmm2Write2Ub) {                               // YYJ_TODO_ZS: BMM2结果写UB/GM 是否需要适配？
         if constexpr (!(useDn && isFp8)) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
@@ -361,7 +361,7 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     if ASCEND_IS_AIV {
-        if constexpr (useNz) {
+        if constexpr (useNz) {                                  // YYJ_TODO_M: 是否NZ分支先不考虑/最后考虑
             bmm1Buffers.Get().SetCrossCore<true>();
             bmm1Buffers.Get().SetCrossCore<true>();
         } else {
@@ -374,32 +374,32 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
-    vecBlock.InitLocalBuffer(pipe, constInfo);
+    vecBlock.InitLocalBuffer(pipe, constInfo);              // YYJ_TODO_ZS: 初始化UB分配
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
-    constInfo.s1BaseSize = s1BaseSize;
-    constInfo.s2BaseSize = s2BaseSize;
+    constInfo.s1BaseSize = s1BaseSize;                  // YYJ_TODO_ZS: S1方向基本块大小
+    constInfo.s2BaseSize = s2BaseSize;                  // YYJ_TODO_ZS: S2方向基本块大小
     // 计算轴的乘积
 
-    constInfo.bSize = sharedParams.bSize;
-    constInfo.t1Size = sharedParams.t1Size;
-    constInfo.t2Size = sharedParams.t2Size;
+    constInfo.bSize = sharedParams.bSize;               
+    constInfo.t1Size = sharedParams.t1Size;             // YYJ_TODO_HY: t1Size
+    constInfo.t2Size = sharedParams.t2Size;             // YYJ_TODO_HY: t2Size
     constInfo.n2Size = sharedParams.n2Size;
     constInfo.s1Size = sharedParams.s1Size;
     constInfo.s2Size = sharedParams.s2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
-    constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
-    if constexpr (hasRope) {
+    constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);        // YYJ_TODO_HY: Dv轴方向基本块大小 64对齐
+    if constexpr (hasRope) {                                        // YYJ_TODo_D: hasRope是否可以删除
         constInfo.dSizeRope = sharedParams.dSizeRope;
     } else {
         constInfo.dSizeRope = 0;
     }
     constInfo.gSize = sharedParams.gSize;
-    constInfo.s1OuterSize = sharedParams.s1OuterSize;
+    constInfo.s1OuterSize = sharedParams.s1OuterSize;               // YYJ_TODO_HY: s1OuterSize是否为s1方向基本块数量？s/gs？
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
@@ -417,7 +417,7 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
 
     if (sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD) ||
         sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
-        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD)) {
+        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD)) {         // YYJ_TODO_D: 是否需要删除？
         constInfo.t1Size = constInfo.bSize * constInfo.s1Size;
     }
 
@@ -428,24 +428,24 @@ __aicore__ inline void BlockSparseAttentionKernelBase<ChildClass, CubeBlockType,
         constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
     }
 
-    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {               // YYJ_TODO_D: 是否只需要保留部分需要实现的功能模块
         // (BS)ND
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
-        if constexpr (hasRope) {
+        if constexpr (hasRope) {                                        // YYJ_TODO_D: hasRope是否删除？
             constInfo.mm1RopeKa = constInfo.n2Size * constInfo.gSize * constInfo.dSizeRope;
             constInfo.mm1RopeKb = constInfo.n2Size * constInfo.dSizeRope;
         }
 
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
-        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
-        constInfo.mm2Kb = constInfo.n2Dv;
+        constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;     // YYJ_TODO_M: bmm1左矩阵的token偏移量是否需要适配？
+        constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;                       // YYJ_TODO_M: bmm1右矩阵的token偏移量是否需要适配？
+        constInfo.mm2Kb = constInfo.n2Dv;                                           // YYJ_TODO_M: bmm2右矩阵的token偏移量是否需要适配？
         if constexpr (isInfer) {
             if (sharedParams.isGqa) {
-                constInfo.mm1Ka = constInfo.dSize;
+                constInfo.mm1Ka = constInfo.dSize;                                  // YYJ_TODO_M: bmm1左矩阵的token偏移量是否需要适配？
             }
         }
         if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
+            constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);  // YYJ_TODO_M：vec2计算结果拷贝  是否需要适配
             if constexpr (isInfer) {
                 if (sharedParams.isPfaGS1Merge == 1) {
                     constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);

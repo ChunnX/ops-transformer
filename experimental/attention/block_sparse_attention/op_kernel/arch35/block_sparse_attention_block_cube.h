@@ -250,11 +250,11 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)query);
-        if constexpr (hasRope) {
+        if constexpr (hasRope) {                                                            // YYJ_TODO_D: rope功能特性是否删除？
             this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)queryRope);
             this->keyRopeGm.gmTensor.SetGlobalBuffer((__gm__ ROPE_T *)keyRope);
         }
-        if constexpr (!isInfer) {
+        if constexpr (!isInfer) {                                                // YYJ_TODO_HY: 推理KV-cache不需要配置？还是在其他位置配置？
             this->keyGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)key);
             this->valueGm.gmTensor.SetGlobalBuffer((__gm__ INPUT_T *)value);
         }
@@ -335,7 +335,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
         mmL0ABuffers.Init(l0aBufferManager, 32 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 32 * 1024);
     }
-
+    // YYJ_TODO_ZS: 根据bmm1输出shape大小判断L0C是2Buf还是4Buf
     if constexpr (s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 && s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4) {
         mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
     } else {

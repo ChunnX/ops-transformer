@@ -87,7 +87,7 @@ public:
             tPipe = pipe;
             tilingData = tiling;
             GetDerived()->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
-            this->GetExtremeValue(this->negativeFloatScalar, this->positiveFloatScalar);
+            this->GetExtremeValue(this->negativeFloatScalar, this->positiveFloatScalar);        // YYJ_TODO_HY: 该函数的作用是什么？是否必须？
             attenMaskInfoPtr = &attenMaskInfo;
             pseInfoPtr = &pseInfo;
         }
@@ -211,7 +211,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
     __gm__ uint8_t *learnableSink, __gm__ uint8_t *&workspace, ConstInfo<isInfer, hasRope> &constInfo)
 {
     if ASCEND_IS_AIV {
-        if constexpr (isFp8 || isInt8) {
+        if constexpr (isFp8 || isInt8) {            // YYJ_TODO_M: vec上的量化与反量化参数是否需要适配？
             deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
             deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
             deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
@@ -245,7 +245,7 @@ __aicore__ inline void BSABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuff
             }
             bmm2SubBlockOffset = constInfo.subBlockIdx * mm2ResultSize >> 1; // s1BaseSize一定可以被2整除
         }
-        if (learnableSink != nullptr) {
+        if (learnableSink != nullptr) {                     // YYJ_TODO_D: 该特性是否可以删除
             sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
             constInfo.learnableSinkFlag = true;
         }

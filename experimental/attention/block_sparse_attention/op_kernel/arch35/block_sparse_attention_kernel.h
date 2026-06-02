@@ -46,30 +46,30 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
 {
-    if constexpr (POST_QUANT) {
+    if constexpr (POST_QUANT) {                 // YYJ_TODO_M: 当前是否只有一种量化场景？适配
         this->constInfo.isPostQuantPerChnl = this->sharedParams.isPostQuantPerChnl;
         this->constInfo.isPostQuantBF16 = this->sharedParams.isPostQuantBF16;
     }
-    this->constInfo.isRowInvalid = this->sharedParams.isRowInvalid;
-    this->constInfo.headNumRatio = this->sharedParams.headNumRatio;
-    this->constInfo.isGqa = this->sharedParams.isGqa;
-    this->constInfo.isPfaGS1Merge = this->sharedParams.isPfaGS1Merge;
-    this->constInfo.isKvContinuous = this->sharedParams.isKvContinuous;
-    this->constInfo.actualSeqLenSize = this->sharedParams.actualSeqLengthsSize;
-    this->constInfo.actualSeqLenKVSize = this->sharedParams.actualSeqLengthsKVSize;
+    this->constInfo.isRowInvalid = this->sharedParams.isRowInvalid;     // YYJ_TODO_D：该变量是否需要删除？
+    this->constInfo.headNumRatio = this->sharedParams.headNumRatio;     // YYJ_TODO_HY：是否还需要考虑gs是否合轴？
+    this->constInfo.isGqa = this->sharedParams.isGqa;                   // YYJ_TODO_D：是否需要删除？
+    this->constInfo.isPfaGS1Merge = this->sharedParams.isPfaGS1Merge;   // YYJ_TODO_HY：何为pfa-GS合轴？
+    this->constInfo.isKvContinuous = this->sharedParams.isKvContinuous; // YYJ_TODO_HY：如何理解KV连续？
+    this->constInfo.actualSeqLenSize = this->sharedParams.actualSeqLengthsSize;     // YYJ_TODO_HY：是指变长序列的数组大小？
+    this->constInfo.actualSeqLenKVSize = this->sharedParams.actualSeqLengthsKVSize; // YYJ_TODO_HY：是指变长序列的数组大小？
     this->constInfo.isActualLenDimsNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsNull);
     this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
-    this->constInfo.isQHasLeftPadding = static_cast<bool>(this->sharedParams.isQHasLeftPadding);
-    this->constInfo.isKVHasLeftPadding = static_cast<bool>(this->sharedParams.isKVHasLeftPadding);
+    this->constInfo.isQHasLeftPadding = static_cast<bool>(this->sharedParams.isQHasLeftPadding);    // YYJ_TODO_HY：该变量的含义是什么？
+    this->constInfo.isKVHasLeftPadding = static_cast<bool>(this->sharedParams.isKVHasLeftPadding);  // YYJ_TODO_HY：该变量的含义是什么？
     // pageAttention
     if constexpr (isPa) {
         this->constInfo.blockTableDim2 = this->sharedParams.blockTableDim2;
         this->constInfo.blockSize = this->sharedParams.blockSize;
-        this->constInfo.paLayoutType = this->sharedParams.paLayoutType;
-        this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;
+        this->constInfo.paLayoutType = this->sharedParams.paLayoutType;         // YYJ_TODO_HY：该变量的含义是什么？
+        this->constInfo.paBlockNumSum = this->sharedParams.paBlockNumSum;       // YYJ_TODO_HY：该变量的含义是什么？
     }
 
-    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;
+    this->constInfo.transposeLayout = this->sharedParams.transposeLayout;       // YYJ_RODO_D: 是否可以删除
     if (this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
         this->constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND)) {
         this->constInfo.attentionOutStride =
@@ -80,7 +80,7 @@ BlockSparseAttentionKernel<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
     }
 
     // prefix
-    if constexpr (enableKVPrefix) {
+    if constexpr (enableKVPrefix) {                                             // YYJ_RODO_D: 是否可以删除
         this->constInfo.prefixLoopCount = (this->constInfo.actualKVPrefixSize + this->constInfo.s2BaseSize - 1) / this->constInfo.s2BaseSize;
     }
 }

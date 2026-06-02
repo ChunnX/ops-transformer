@@ -112,7 +112,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     sharedParams.bSize = inputParamsRegbase.bSize;
-    sharedParams.t1Size = inputParamsRegbase.t1Size;
+    sharedParams.t1Size = inputParamsRegbase.t1Size;        // YYJ_TODO_HY: t1对应的是什么？
     sharedParams.t2Size = inputParamsRegbase.t2Size;
     sharedParams.n2Size = inputParamsRegbase.n2Size;
     sharedParams.gSize = inputParamsRegbase.gSize;
@@ -120,61 +120,61 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.s2Size = inputParamsRegbase.s2Size;
     sharedParams.dSize = inputParamsRegbase.dSize;
     sharedParams.dSizeV = inputParamsRegbase.dSizeV;
-    if constexpr (hasRope) {
+    if constexpr (hasRope) {        // YYJ_TODO_D: hasRope是否删除？
         sharedParams.dSizeRope = inputParamsRegbase.dSizeRope;
     } else {
         sharedParams.dSizeRope = 0;
     }
-    sharedParams.preTokens = inputParamsRegbase.preTokens;
+    sharedParams.preTokens = inputParamsRegbase.preTokens;      // YYJ_TODO_D: preTokens/nextTokens是否需要删除？
     sharedParams.nextTokens = inputParamsRegbase.nextTokens;
-    sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;
+    sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;      // YYJ_TODO_HY: 该变量是什么含义？
     sharedParams.s2SparseValidSize = inputParamsRegbase.s2SparseValidSize;
-    sharedParams.bandIndex = inputParamsRegbase.bandIndex;
-    sharedParams.implMode = inputParamsRegbase.implMode;
+    sharedParams.bandIndex = inputParamsRegbase.bandIndex;                      // YYJ_TODO_D: 该变量是否需要删除？
+    sharedParams.implMode = inputParamsRegbase.implMode;                        // YYJ_TODO_HY: 该变量的含义是什么？
     sharedParams.layoutType = inputParamsRegbase.layoutType;
-    sharedParams.sparseType = inputParamsRegbase.sparseType;
-    sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
-    sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
+    sharedParams.sparseType = inputParamsRegbase.sparseType;                    // YYJ_TODO_HY：该变量的含义是什么？和attenMaskCompressMode有何不同？
+    sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;       // YYJ_TODO_HY：该变量的约束是什么？应包括哪几类？
+    sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;          // YYJ_TODO_HY：该变量的含义是什么？如果shape为[2048, 2048]固定值是否可以删除？
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
  
-    if constexpr (POST_QUANT) {
+    if constexpr (POST_QUANT) {                                                 // YYJ_TODO_HY：该模板参数的含义是否有所变化？
         sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
         sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
     }
-    sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
-    sharedParams.fromFused = inputParamsRegbase.fromFused;
-    sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
-    sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;
-    sharedParams.isGqa = inputParamsRegbase.isGqa;
-    sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
-    sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
-    sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;
-    sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
+    sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;          // YYJ_TODO_D：该变量是否需要删除？
+    sharedParams.fromFused = inputParamsRegbase.fromFused;                      // YYJ_TODO_D：该变量是否需要删除？
+    sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;                // YYJ_TODO_D：该变量是否需要删除？
+    sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;                // YYJ_TODO_HY：是否还需要考虑gs是否合轴？
+    sharedParams.isGqa = inputParamsRegbase.isGqa;                              // YYJ_TODO_D：是否需要删除？
+    sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1); // YYJ_TODO_HY：何为pfa-GS合轴？
+    sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;                    // YYJ_TODO_HY：如何理解KV连续？
+    sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;        // YYJ_TODO_HY：是指变长序列的数组大小？
+    sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;    // YYJ_TODO_HY：是指变长序列的数组大小？
     sharedParams.isActualSeqLengthsNull = inputParamsRegbase.isActualSeqLengthsNull;
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
-    sharedParams.isQHasLeftPadding = inputParamsRegbase.isQHasLeftPadding;
-    sharedParams.isKVHasLeftPadding = inputParamsRegbase.isKVHasLeftPadding;
+    sharedParams.isQHasLeftPadding = inputParamsRegbase.isQHasLeftPadding;              // YYJ_TODO_HY：该变量的含义是什么？
+    sharedParams.isKVHasLeftPadding = inputParamsRegbase.isKVHasLeftPadding;            // YYJ_TODO_HY：该变量的含义是什么？
     // pageAttention
     if constexpr (isPa) {
         sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
         sharedParams.blockSize = inputParamsRegbase.blockSize;
-        sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
-        sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+        sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;                    // YYJ_TODO_HY：该变量的含义是什么？
+        sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;                  // YYJ_TODO_HY：该变量的含义是什么？
     }
     // prefix
-    if constexpr (enableKVPrefix) {
+    if constexpr (enableKVPrefix) {                                                     // YYJ_TODO_D: 该模板参数是否可以删除？
         sharedParams.isActualSharedPrefixLenNull = inputParamsRegbase.isActualSharedPrefixLenNull;
         sharedParams.kvPrefixSize = inputParamsRegbase.prefixSeqInnerSize;
     }
     auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
-    sharedParams.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
+    sharedParams.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;                      // YYJ_TODO_ZS: s1基本块划分
     sharedParams.coreNum = multiCoreParamsRegbase.coreNum;
     /* 多核切分偏移计算 */
-    sharedParams.multiCoreInnerOffset = multiCoreParamsRegbase.sparseStartIdx[aicIdx];
-    sharedParams.multiCoreInnerLimit = multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1];
-    sharedParams.bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];
-    sharedParams.bnEndIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx + 1];
-    sharedParams.needInit = this->tilingData->initOutputParams.needInit;
+    sharedParams.multiCoreInnerOffset = multiCoreParamsRegbase.sparseStartIdx[aicIdx];  // YYJ_TODO_HY：含义是否对的上？
+    sharedParams.multiCoreInnerLimit = multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1]; // YYJ_TODO_HY：含义是否对的上？
+    sharedParams.bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];                // YYJ_TODO_M：metadata适配
+    sharedParams.bnEndIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx + 1];              // YYJ_TODO_M：metadata适配
+    sharedParams.needInit = this->tilingData->initOutputParams.needInit;                // YYJ_TODO_HY：何时会使用该变量？
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
@@ -196,17 +196,17 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        if constexpr (POST_QUANT) {
+        if constexpr (POST_QUANT) {                                     // YYJ_TODO_HY：该模板参数的含义是否有所变化？
             this->attentionOutInitGm.SetGlobalBuffer((__gm__ half *)attentionOut);
         }
         softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
-        if (this->tilingData->initOutputParams.needInit == 1) {
-            InitOutputSingleCore(constInfo);
+        if (this->tilingData->initOutputParams.needInit == 1) {         // YYJ_TODO_HY：该变量的含义是什么?
+            InitOutputSingleCore(constInfo);                            // YYJ_TODO_ZS: gm默认值初始化
             // lse output
             if (constInfo.isSoftmaxLseEnable) {
                 SyncAll();
-                InitLseOutputSingleCore(constInfo);
+                InitLseOutputSingleCore(constInfo);                     // YYJ_TODO_ZS: gm默认值初始化
             }
         }
     }
@@ -222,14 +222,14 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
 {
     BaseClass::InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, learnableSink, workspace, constInfo);
     if constexpr (POST_QUANT) {
-        this->InitPostQuant(constInfo, postQuantScale, postQuantOffset);
+        this->InitPostQuant(constInfo, postQuantScale, postQuantOffset);        // YYJ_TODO_M: 需要适配量化参数如何从GM中获取？
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
 {
-    if constexpr (POST_QUANT) {
+    if constexpr (POST_QUANT) {                         // YYJ_TODO_M: 需要适配量化参数如何从GM中获取？
         constInfo.isPostQuantOffsetExist = false;
         if (!constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
             if (postQuantScale != nullptr) {
