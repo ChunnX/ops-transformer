@@ -96,11 +96,12 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
             bfloat16_t, float, bfloat16_t, W_FORMAT, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
             true, true>;
         using A2avGmmSchedulerType = A2avGmmScheduler<HcclOpType, ComputeOpType, LocalComputeOpType>;
-        //comm
+        // comm
         HcclOpType commOp;
-        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
+        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM,
+            commXOutGm, gmmXPermuteGM);
         computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
-        //compute
+        // compute
         GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
             gmmArray, gmmArrayAddr_, tilingGM);
         GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
@@ -111,7 +112,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         LocalComputeOpType localComputeOp;
         localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, gmmXComputeGM,
                         tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe, true);
-        //scheduler
+        // scheduler
         A2avGmmSchedulerType a2avGmmScheduler(commOp, computeOp, localComputeOp, &tilingData_->taskTilingInfo,
                                             tilingData_->isNeedMM);
         a2avGmmScheduler.Process();
@@ -126,11 +127,12 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
         half, float, half, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
         true, true>;
     using A2avGmmSchedulerType = A2avGmmScheduler<HcclOpType, ComputeOpType, LocalComputeOpType>;
-    //comm
+    // comm
     HcclOpType commOp;
-    commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commXOutGm, gmmXPermuteGM);
+    commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM,
+        commXOutGm, gmmXPermuteGM);
     computeGmmXGM = isNeedPermute ? gmmXPermuteGM : commXOutGm;
-    //compute
+    // compute
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,
         gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, mmQuantTilingData,
@@ -141,7 +143,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     LocalComputeOpType localComputeOp;
     localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, gmmXComputeGM,
                     tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddr_, &pipe, true);
-    //scheduler
+    // scheduler
     A2avGmmSchedulerType a2avGmmScheduler(commOp, computeOp, localComputeOp, &tilingData_->taskTilingInfo,
                                         tilingData_->isNeedMM);
     a2avGmmScheduler.Process();

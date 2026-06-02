@@ -121,14 +121,16 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie, uint3
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
     if (gmmxMSzie != 0) {
         AlltoAllvMXQuantGmmTilingHelper gmmHelper(*this);
-        MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_, transGmmWeight_, expertNum));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(),
+            gmmHelper.SetInputParams(gmmxMSzie, n1_, h1_,transGmmWeight_, expertNum));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), gmmHelper.Process());
         tilingData->gmmQuantTilingData = gmmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->gmmQuantTilingData);
     }
     if (bs_ != 0) {
         AlltoAllvMXQuantGmmTilingHelper mmHelper(*this);
-        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_, 1));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(),
+            mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_, 1));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
         PrintGMMQuantTilingData(tilingData->mmQuantTilingData);
@@ -476,7 +478,7 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckMmScaleShape() const
 }
 
 void AlltoAllvMXQuantGmmTiling::SetWorkspaceInfo()
-{   
+{
     // check expertNum
     expertNum_ = Ops::Base::CeilDiv(e_, expertNum_) > MX_HCCL_HANDLE_MAX ?
         Ops::Base::CeilDiv(e_, static_cast<uint64_t>(MX_HCCL_HANDLE_MAX)) : expertNum_;
