@@ -49,7 +49,7 @@ public:
         uint64_t kBL1 = static_cast<uint64_t>(matmulTiling->stepKb) * static_cast<uint64_t>(matmulTiling->baseK);
         uint64_t scaleKL1 = Cgmct::Gemm::Min(
             Cgmct::Gemm::Max(scaleFactorA * kAL1, scaleFactorB * kBL1), static_cast<uint64_t>(matmulTiling->Ka));
-        typename BlockMmadMxOp::L1Params l1Params{kAL1, kBL1, scaleKL1, MX_L1_BUFFER_NUM};
+        typename BlockMmadMxOp::L1Params l1Params{kAL1, kBL1, scaleKL1};
         AscendC::Shape<int64_t, int64_t, int64_t> problemShape{matmulTiling->M, matmulTiling->N,
                                                                matmulTiling->Ka};
         AscendC::Shape<int64_t, int64_t, int64_t> l0TileShape{matmulTiling->baseM, matmulTiling->baseN,
@@ -113,7 +113,8 @@ public:
     static constexpr CubeFormat formatC = TagToFormat<LayoutC>::format;
 
     using BlockMmadMxOp = Block::BlockMmadMx<BlockMatmulPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType,
-                                             LayoutB, CType, LayoutC, BiasType, layout::RowMajor, TileCopyParam>;
+                                             LayoutB, layout::RowMajor, CType, LayoutC, BiasType, layout::RowMajor,
+                                             TileCopyParam, MX_L1_BUFFER_NUM>;
     using BlockMmadOp = Block::BlockMmadMxToUbAdapter<BlockMmadMxOp>;
 
     static constexpr int64_t l1M = GetIntegralConstant<MNK_M, L1TileShape>();
