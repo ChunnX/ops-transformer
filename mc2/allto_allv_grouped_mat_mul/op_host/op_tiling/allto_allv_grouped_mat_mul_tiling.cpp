@@ -237,12 +237,9 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
 
     const gert::StorageShape* mmXStorageShape = context->GetOptionalInputShape(MM_X_INDEX);
     const gert::StorageShape* mmWeightStorageShape = context->GetOptionalInputShape(MM_WEIGHT_INDEX);
-    const gert::StorageShape* outputMmYStorageShape = context->GetOutputShape(OUTPUT_MM_Y_INDEX);
-    if (!((mmXStorageShape == nullptr) && (mmWeightStorageShape == nullptr) &&
-          (outputMmYStorageShape == nullptr || outputMmYStorageShape->GetStorageShape().GetDimNum() == NUM_ZERO)) &&
-        !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr) &&
-          (outputMmYStorageShape != nullptr && outputMmYStorageShape->GetStorageShape().GetDimNum() != NUM_ZERO))) {
-        OP_LOGE(A_INNER_DEBUG, "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!");
+    if (!((mmXStorageShape == nullptr) && (mmWeightStorageShape == nullptr)) &&
+        !((mmXStorageShape != nullptr) && (mmWeightStorageShape != nullptr))) {
+        OP_LOGE(A_INNER_DEBUG, "mmX and mmWeight should both be nullptr or both be not nullptr!");
         return ge::GRAPH_FAILED;
     }
     tilingData->commonTilingInfo.isNeedMM = (mmXStorageShape != nullptr);
@@ -615,10 +612,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* 
             return ge::GRAPH_FAILED;
         }
     } else {
-        OP_TILING_CHECK(
-            (context->GetOutputShape(OUTPUT_MM_Y_INDEX) != nullptr &&
-             context->GetOutputShape(OUTPUT_MM_Y_INDEX)->GetStorageShape().GetDimNum() != NUM_ZERO),
-            OP_LOGE(A_INNER_DEBUG, "The mmY should be null when mmX and mmWeight are null!"), return ge::GRAPH_FAILED);
         if (tilingData->commonTilingInfo.isMmWeightTrans) {
             OP_LOGE(A_INNER_DEBUG, "The trans_mm_weight should be false when mmX mmWeight mmY is null!");
             return ge::GRAPH_FAILED;

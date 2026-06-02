@@ -145,10 +145,11 @@ std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
     return {
         {{{tilingParams.BSK, tilingParams.H1}, {tilingParams.BSK, tilingParams.H1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}, {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
+        {{{tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1},
+          {tilingParams.e, tilingParams.gmmWeightDim1, tilingParams.N1}},
          ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND}, // placeholder
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND}, // placeholder
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         *mmXShape,
         *mmWeightShape,
     };
@@ -215,7 +216,12 @@ TEST_P(AlltoAllvGroupedMatMulArch35TilingTest, ShapeSize)
     auto mmYShape = CreateTensorShape({{tilingParams.BS, tilingParams.N2}, {tilingParams.BS, tilingParams.N2}},
                                          ge::DT_FLOAT16, ge::FORMAT_ND);
 
-    if (!(has_any_target_key(testParam.tilingParamsStrPair, targets) || tilingParams.isNeedMM == false)) {
+    if (!has_any_target_key(testParam.tilingParamsStrPair, targets) && tilingParams.isNeedMM) {
+        mmXShape->shape_ = {};
+        mmWeightShape->shape_ = {};
+        mmYShape->shape_ = {};
+    }
+    if (!tilingParams.isNeedMM) {
         mmXShape->shape_ = {};
         mmWeightShape->shape_ = {};
         mmYShape->shape_ = {};
@@ -311,16 +317,16 @@ static TestParam testParams[] = {
      {{"sendCounts",
        std::vector<int64_t>{
            3201, 3201, 3200, 3200, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-           128,  128,  128,  128,  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
-       }}},
-     {},
-     ge::GRAPH_FAILED},
+128,  128,  128,  128,  128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        }}},
+      {},
+     ge::GRAPH_SUCCESS},
     // recv counts 校验
     {"Test_recv_counts_0",
      {{"A", "16386"}, {"BS", "8193"}, {"permuteOutFlag", "true"}},
      {{"recvCounts",
-       std::vector<int64_t>{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,  128,  128,  128,
-                            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 3201, 3201, 3200, 3200}}},
+       std::vector<int64_t>{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,  128,  128,  128, 128,
+                            128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 3201, 3201, 3200, 3200}}},
      {},
      ge::GRAPH_FAILED},
     // recv counts 2
@@ -357,8 +363,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BasicSuccess)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -394,8 +400,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, H4)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -431,8 +437,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, A1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -468,8 +474,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, BS1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -503,12 +509,12 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim1)
     uint64_t tilingDataSize = 8192;
     gert::TilingContextPara tilingContextPara("AlltoAllvGroupedMatMul",
     {
-        {{{2, 4096, 7168}, {2, 4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
     {
         {{{4096, 4096}, {4096, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -542,8 +548,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim2)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 4096}, {7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -579,8 +585,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim3)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -616,8 +622,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim5)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2, 2048, 7168}, {2, 2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -653,8 +659,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim6)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 7168, 64}, {2, 7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -690,8 +696,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim7)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 7168, 64}, {2, 7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -727,8 +733,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, Dim10)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -764,8 +770,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, TransMmWeight1)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -803,8 +809,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize2)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -842,8 +848,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize16)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -881,8 +887,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize32)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
@@ -920,8 +926,8 @@ TEST_F(AlltoAllvGroupedMatMulArch35TilingTest, EpWorldSize64)
     {
         {{{4096, 7168}, {4096, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{4, 7168, 4096}, {4, 7168, 4096}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
-        {{{32}, {32}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
+        {{}, ge::DT_INT32, ge::FORMAT_ND},
         {{{2048, 7168}, {2048, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{7168, 64}, {7168, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
     },
