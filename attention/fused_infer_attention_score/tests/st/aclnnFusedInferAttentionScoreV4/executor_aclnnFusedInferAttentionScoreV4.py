@@ -10430,7 +10430,7 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
                 mask_dim_num = len(input_data.kwargs["attenMaskOptional"].shape)
                 mask_dtype = input_data.kwargs["attenMaskOptional"].dtype
                 input_data.kwargs["attenMaskOptional"] = self.gen_compressed_triU_mask(mask_dim_num, mask_dtype).npu()
-            inspect_kwargs(input_data.kwargs)
+            # inspect_kwargs(input_data.kwargs)
 
         input_args = []  # 算子的入参列表
         if not self.split_fuse_flag and input_data.kwargs["blockTableOptional"] is not None: 
