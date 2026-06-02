@@ -884,7 +884,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>MoE计算中，对输入x做Sigmoid、SoftMax或者Softplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
+    <td>MoE计算中，对输入x做Sigmoid、SoftMax或者SqrtSoftplus计算，对计算结果分组进行排序，最后根据分组排序的结果选取前k个专家。</td>
   </tr>
   <tr>
     <td>moe</td>
