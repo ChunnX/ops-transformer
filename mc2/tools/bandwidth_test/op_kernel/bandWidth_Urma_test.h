@@ -438,13 +438,13 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::SetStat
         }
         uint32_t currRankId = dstRankId > epRankId_? dstRankId - 1 : dstRankId;
         uint64_t sendLength = curExpertCnt * hAlignWinSize_;
-        GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
+        GM_ADDR srcRankGM = (GM_ADDR)(GetWindAddrByRankId(dstRankId) +
                                             epRankId_ * expertPerSizeOnWin_);
         GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(dstRankId) +
                                         epRankId_ * expertPerSizeOnWin_);
-        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, urmaLocaLAddr, sendLength);
+        hcomm_.WriteNbi(context_->hcommHandle_[currRankId], remoteAddr, srcRankGM, sendLength);
     }
-    
+
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>(); // 等待所有核完成统计
     // ============ 将状态写入目标rank的状态区 ============
