@@ -100,19 +100,14 @@ inline uint64_t GetInputStride0(gert::TilingContext *context, const uint64_t inp
 {
 
     auto *stride = context->GetInputStride(inputIndex);
-    OP_LOGD(context->GetNodeName(), "===============GetInputStride(DIM_0): stride->GetStride(DIM_0) is %ld.===================", stride->GetStride(DIM_0));
 
     if (!context->InputIsView(inputIndex)) {
-        OP_LOGD(context->GetNodeName(), ">>>>>>>>>> !context->InputIsView(inputIndex) <<<<<<<<<<");
         return GetDefaultStride0(shape);
     }
 
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
-        OP_LOGD(context->GetNodeName(), ">>>>>>>>>> (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) <<<<<<<<<<");
         return GetDefaultStride0(shape);
     }
-
-    // OP_LOGD(context->GetNodeName(), "===============GetInputStride(DIM_0): stride->GetStride(DIM_0) is %ld.===================", stride->GetStride(DIM_0));
 
     return static_cast<uint64_t>(stride->GetStride(DIM_0));
 }
@@ -545,103 +540,72 @@ void MlaPreprocessTiling::PrintTilingData(gert::TilingContext *context)
 
 void MlaPreprocessTiling::PrintFirstTilingData(gert::TilingContext *context)
 {
-    OP_LOGD(context->GetNodeName(), ">>>>>>>>>> Start to print MlaPreprocess tiling data <<<<<<<<<<");
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: numCore is %ld.", mlaTilingData.get_numCore());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: n is %ld.", mlaTilingData.get_n());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: perTaskNum is %ld.", mlaTilingData.get_perTaskNum());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: resTaskNum is %ld.", mlaTilingData.get_resTaskNum());
-    OP_LOGD(
-        context->GetNodeName(),
-        "MlaPreprocess_tiling: mm1: bSize is %ld, mSize is %ld, kSize is %ld, nSize is %ld,  m0 is %ld, k0 is %ld, "
-        "n0 is %ld, mLoop is %ld, kLoop is %ld, nLoop is %ld, coreLoop is %ld, SwizzleCount is %ld, "
-        "SwizzleDirect is %ld, blockDim is %ld",
-        mlaTilingData.mm1.get_numBatch(), mlaTilingData.mm1.get_m(), mlaTilingData.mm1.get_k(),
-        mlaTilingData.mm1.get_n(), mlaTilingData.mm1.get_m0(), mlaTilingData.mm1.get_k0(), mlaTilingData.mm1.get_n0(),
-        mlaTilingData.mm1.get_mLoop(), mlaTilingData.mm1.get_kLoop(), mlaTilingData.mm1.get_nLoop(),
-        mlaTilingData.mm1.get_coreLoop(), mlaTilingData.mm1.get_swizzleCount(), mlaTilingData.mm1.get_swizzleDirect(),
-        mlaTilingData.mm1.get_blockDim());
-    OP_LOGD(
-        context->GetNodeName(),
-        "MlaPreprocess_tiling: mm2: bSize is %ld, mSize is %ld, kSize is %ld, nSize is %ld,  m0 is %ld, k0 is %ld, "
-        "n0 is %ld, mLoop is %ld, kLoop is %ld, nLoop is %ld, coreLoop is %ld, SwizzleCount is %ld, "
-        "SwizzleDirect is %ld, blockDim is %ld",
-        mlaTilingData.mm2.get_numBatch(), mlaTilingData.mm2.get_m(), mlaTilingData.mm2.get_k(),
-        mlaTilingData.mm2.get_n(), mlaTilingData.mm2.get_m0(), mlaTilingData.mm2.get_k0(), mlaTilingData.mm2.get_n0(),
-        mlaTilingData.mm2.get_mLoop(), mlaTilingData.mm2.get_kLoop(), mlaTilingData.mm2.get_nLoop(),
-        mlaTilingData.mm2.get_coreLoop(), mlaTilingData.mm2.get_swizzleCount(), mlaTilingData.mm2.get_swizzleDirect(),
-        mlaTilingData.mm2.get_blockDim());
-    OP_LOGD(
-        context->GetNodeName(),
-        "MlaPreprocess_tiling: mm3: bSize is %ld, mSize is %ld, kSize is %ld, nSize is %ld,  m0 is %ld, k0 is %ld, "
-        "n0 is %ld, mLoop is %ld, kLoop is %ld, nLoop is %ld, coreLoop is %ld, SwizzleCount is %ld, "
-        "SwizzleDirect is %ld, blockDim is %ld",
-        mlaTilingData.mm3.get_numBatch(), mlaTilingData.mm3.get_m(), mlaTilingData.mm3.get_k(),
-        mlaTilingData.mm3.get_n(), mlaTilingData.mm3.get_m0(), mlaTilingData.mm3.get_k0(), mlaTilingData.mm3.get_n0(),
-        mlaTilingData.mm3.get_mLoop(), mlaTilingData.mm3.get_kLoop(), mlaTilingData.mm3.get_nLoop(),
-        mlaTilingData.mm3.get_coreLoop(), mlaTilingData.mm3.get_swizzleCount(), mlaTilingData.mm3.get_swizzleDirect(),
-        mlaTilingData.mm3.get_blockDim());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCore1 is %ld.", mlaTilingData.get_rmsNumCore1());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCol1 is %ld.", mlaTilingData.get_rmsNumCol1());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumRow1 is %ld.", mlaTilingData.get_rmsNumRow1());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsQuantMin1 is %ld.", mlaTilingData.get_rmsQuantMin1());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling: numCore=%ld, n=%ld, perTaskNum=%ld, resTaskNum=%ld",
+            mlaTilingData.get_numCore(), mlaTilingData.get_n(),
+            mlaTilingData.get_perTaskNum(), mlaTilingData.get_resTaskNum());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling mm1: b=%ld,m=%ld,k=%ld,n=%ld,m0=%ld,k0=%ld,n0=%ld,"
+            "mLoop=%ld,kLoop=%ld,nLoop=%ld,coreLoop=%ld,swCnt=%ld,swDir=%ld,blockDim=%ld",
+            mlaTilingData.mm1.get_numBatch(), mlaTilingData.mm1.get_m(), mlaTilingData.mm1.get_k(),
+            mlaTilingData.mm1.get_n(), mlaTilingData.mm1.get_m0(), mlaTilingData.mm1.get_k0(),
+            mlaTilingData.mm1.get_n0(), mlaTilingData.mm1.get_mLoop(), mlaTilingData.mm1.get_kLoop(),
+            mlaTilingData.mm1.get_nLoop(), mlaTilingData.mm1.get_coreLoop(), mlaTilingData.mm1.get_swizzleCount(),
+            mlaTilingData.mm1.get_swizzleDirect(), mlaTilingData.mm1.get_blockDim());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling mm2: b=%ld,m=%ld,k=%ld,n=%ld,m0=%ld,k0=%ld,n0=%ld,"
+            "mLoop=%ld,kLoop=%ld,nLoop=%ld,coreLoop=%ld,swCnt=%ld,swDir=%ld,blockDim=%ld",
+            mlaTilingData.mm2.get_numBatch(), mlaTilingData.mm2.get_m(), mlaTilingData.mm2.get_k(),
+            mlaTilingData.mm2.get_n(), mlaTilingData.mm2.get_m0(), mlaTilingData.mm2.get_k0(),
+            mlaTilingData.mm2.get_n0(), mlaTilingData.mm2.get_mLoop(), mlaTilingData.mm2.get_kLoop(),
+            mlaTilingData.mm2.get_nLoop(), mlaTilingData.mm2.get_coreLoop(), mlaTilingData.mm2.get_swizzleCount(),
+            mlaTilingData.mm2.get_swizzleDirect(), mlaTilingData.mm2.get_blockDim());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling mm3: b=%ld,m=%ld,k=%ld,n=%ld,m0=%ld,k0=%ld,n0=%ld,"
+            "mLoop=%ld,kLoop=%ld,nLoop=%ld,coreLoop=%ld,swCnt=%ld,swDir=%ld,blockDim=%ld",
+            mlaTilingData.mm3.get_numBatch(), mlaTilingData.mm3.get_m(), mlaTilingData.mm3.get_k(),
+            mlaTilingData.mm3.get_n(), mlaTilingData.mm3.get_m0(), mlaTilingData.mm3.get_k0(),
+            mlaTilingData.mm3.get_n0(), mlaTilingData.mm3.get_mLoop(), mlaTilingData.mm3.get_kLoop(),
+            mlaTilingData.mm3.get_nLoop(), mlaTilingData.mm3.get_coreLoop(), mlaTilingData.mm3.get_swizzleCount(),
+            mlaTilingData.mm3.get_swizzleDirect(), mlaTilingData.mm3.get_blockDim());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling rms1: core=%ld, col=%ld, row=%ld, min=%ld",
+            mlaTilingData.get_rmsNumCore1(), mlaTilingData.get_rmsNumCol1(),
+            mlaTilingData.get_rmsNumRow1(), mlaTilingData.get_rmsQuantMin1());
 }
 
 void MlaPreprocessTiling::PrintLastTilingData(gert::TilingContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddtenState is %ld.", mlaTilingData.get_hiddtenState());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCore2 is %ld.", mlaTilingData.get_rmsNumCore2());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumCol2 is %ld.", mlaTilingData.get_rmsNumCol2());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsNumRow2 is %ld.", mlaTilingData.get_rmsNumRow2());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rmsQuantMin2 is %ld.", mlaTilingData.get_rmsQuantMin2());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: hiddenSizeQ is %ld.", mlaTilingData.get_hiddenSizeQ());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headNumQ is %ld.", mlaTilingData.get_headNumQ());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: headDim is %ld.", mlaTilingData.get_headDim());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: concatSize is %ld.", mlaTilingData.get_concatSize());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: rotaryCoeff is %ld.", mlaTilingData.get_rotaryCoeff());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: ntokens is %ld.", mlaTilingData.get_ntokens());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: realCore is %ld.", mlaTilingData.get_realCore());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: nlCoreRun is %ld.", mlaTilingData.get_nlCoreRun());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lCoreRun is %ld.", mlaTilingData.get_lCoreRun());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxNPerLoopForUb  is %ld.",
-              mlaTilingData.get_maxNPerLoopForUb());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopTime   is %ld.",
-              mlaTilingData.get_preCoreLoopTime());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: preCoreLoopNLast  is %ld.",
-              mlaTilingData.get_preCoreLoopNLast());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopTime  is %ld.",
-              mlaTilingData.get_lastCoreLoopTime());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: lastCoreLoopNLast is %ld.",
-              mlaTilingData.get_lastCoreLoopNLast());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCore      is %ld.",
-              mlaTilingData.get_esqFrontCore());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCore       is %ld.",
-              mlaTilingData.get_esqTailCore());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqFrontCoreBatch is %ld.",
-              mlaTilingData.get_esqFrontCoreBatch());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqTailCoreBatch  is %ld.",
-              mlaTilingData.get_esqTailCoreBatch());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadNum        is %ld.",
-              mlaTilingData.get_esqHeadNum());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColNum         is %ld.", mlaTilingData.get_esqColNum());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqUbHeadLoop     is %ld.",
-              mlaTilingData.get_esqUbHeadLoop());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadPerLoop    is %ld.",
-              mlaTilingData.get_esqHeadPerLoop());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqHeadTail       is %ld.",
-              mlaTilingData.get_esqHeadTail());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColLoop        is %ld.",
-              mlaTilingData.get_esqColLoop());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: esqColTail        is %ld.",
-              mlaTilingData.get_esqColTail());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: epsilon           is %f.", mlaTilingData.get_epsilon());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: maxWorkspaceSize  is %ld.",
-              mlaTilingData.get_maxWorkspaceSize());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheBlockSize  is %ld.",
-              mlaTilingData.get_kvCacheBlockSize());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheStride0    is %ld.",
-              mlaTilingData.get_kvCacheStride0());
-    OP_LOGD(context->GetNodeName(), "MlaPreprocess_tiling: kvCacheRopeStride0 is %ld.",
-              mlaTilingData.get_kvCacheRopeStride0());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling: hiddtenState=%ld, rms2: core=%ld,col=%ld,row=%ld,min=%ld",
+            mlaTilingData.get_hiddtenState(), mlaTilingData.get_rmsNumCore2(),
+            mlaTilingData.get_rmsNumCol2(), mlaTilingData.get_rmsNumRow2(), mlaTilingData.get_rmsQuantMin2());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling rope: hiddenSizeQ=%ld, headNumQ=%ld, headDim=%ld, concat=%ld, "
+            "rotaryCoeff=%ld, ntokens=%ld, realCore=%ld, nlCoreRun=%ld, lCoreRun=%ld",
+            mlaTilingData.get_hiddenSizeQ(), mlaTilingData.get_headNumQ(), mlaTilingData.get_headDim(),
+            mlaTilingData.get_concatSize(), mlaTilingData.get_rotaryCoeff(), mlaTilingData.get_ntokens(),
+            mlaTilingData.get_realCore(), mlaTilingData.get_nlCoreRun(), mlaTilingData.get_lCoreRun());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling rope ub: maxNPerLoop=%ld, preCoreLoop=%ld/%ld, lastCoreLoop=%ld/%ld",
+            mlaTilingData.get_maxNPerLoopForUb(), mlaTilingData.get_preCoreLoopTime(),
+            mlaTilingData.get_preCoreLoopNLast(), mlaTilingData.get_lastCoreLoopTime(),
+            mlaTilingData.get_lastCoreLoopNLast());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling esq: frontCore=%ld/%ld, tailCore=%ld/%ld, headNum=%ld, colNum=%ld",
+            mlaTilingData.get_esqFrontCore(), mlaTilingData.get_esqFrontCoreBatch(),
+            mlaTilingData.get_esqTailCore(), mlaTilingData.get_esqTailCoreBatch(),
+            mlaTilingData.get_esqHeadNum(), mlaTilingData.get_esqColNum());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling esq ub: headLoop=%ld, headPerLoop=%ld, headTail=%ld, "
+            "colLoop=%ld, colTail=%ld",
+            mlaTilingData.get_esqUbHeadLoop(), mlaTilingData.get_esqHeadPerLoop(),
+            mlaTilingData.get_esqHeadTail(), mlaTilingData.get_esqColLoop(), mlaTilingData.get_esqColTail());
+    OP_LOGD(context->GetNodeName(),
+            "MlaPreprocess_tiling: epsilon=%f, maxWorkspace=%ld, kvCacheBlock=%ld, kvStride0=%ld, kvRopeStride0=%ld",
+            mlaTilingData.get_epsilon(), mlaTilingData.get_maxWorkspaceSize(),
+            mlaTilingData.get_kvCacheBlockSize(), mlaTilingData.get_kvCacheStride0(),
+            mlaTilingData.get_kvCacheRopeStride0());
 }
 
 ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
