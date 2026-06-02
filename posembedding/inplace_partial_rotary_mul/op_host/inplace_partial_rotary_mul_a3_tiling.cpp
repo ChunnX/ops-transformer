@@ -26,6 +26,7 @@ constexpr int64_t TILING_KEY_PAD = 1;
 constexpr int64_t TILING_KEY_SPLIT_S = 0;
 constexpr int64_t TILING_KEY_SPLIT_BS = 100;
 constexpr int64_t TILING_KEY_SPLIT_BSN = 200;
+constexpr int64_t TILING_KEY_NOOP = 1;  // sliceLength=0, no computation
 constexpr int64_t FP16_BF16_DTYPE_SIZE = 2;
 constexpr int64_t FP32_DTYPE_SIZE = 4;
 constexpr int64_t INT32_DTYPE_SIZE = 4;
@@ -70,7 +71,7 @@ private:
     int64_t dim1_ = 0;
     int64_t dim2_ = 0;
     int64_t end_ =0;
-    int64_t tilingKey_ =1;
+    int64_t tilingKey_ = TILING_KEY_NOOP;
     bool isAlign_ = false;
     bool isSpecail_ = false;
     int64_t oneBlockSize_ = 0;
@@ -288,11 +289,17 @@ ge::graphStatus InplacePartialRotaryMulTiling::CheckInput()
     OP_CHECK_IF(mode != 1,
         OP_LOGE(context_->GetNodeName(), "mode only support interleave"),
         return ge::GRAPH_FAILED);
+    // 获取slice范围：空属性时默认 [0, allHeadDim_]，与A5行为一致
     auto sliceListAttr = attrs->GetAttrPointer<gert::ContinuousVector>(1);
-    auto sliceData = static_cast<const int64_t *>(sliceListAttr->GetData());
-    start_ = sliceData[0];
-    end_ = sliceData[1];
-    OP_LOGI(context_->GetNodeName(), "end_ %ld, end_ %ld",start_, end_);
+    if (sliceListAttr->GetSize() == 0) {
+        start_ = 0;
+        end_ = allHeadDim_;
+    } else {
+        auto sliceData = static_cast<const int64_t *>(sliceListAttr->GetData());
+        start_ = sliceData[0];
+        end_ = sliceData[1];
+    }
+    OP_LOGI(context_->GetNodeName(), "start_ %ld, end_ %ld", start_, end_);
 
     headDim_ = end_ - start_;
     xdim3_ = headDim_;
@@ -568,6 +575,7 @@ ge::graphStatus InplacePartialRotaryMulTiling::DoTiling()
         return ge::GRAPH_FAILED);
     // No-op: empty slice (sliceStart==sliceEnd), nothing to compute
     if (headDim_ == 0) {
+        tilingKey_ = TILING_KEY_NOOP;
         FillTilingData();
         context_->SetBlockDim(1);
         context_->SetTilingKey(tilingKey_);

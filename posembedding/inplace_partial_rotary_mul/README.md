@@ -97,8 +97,8 @@
   - interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
   - 仅支持interleave模式（rotary_mode = 1）。
   - Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
-  - 输入张量cos、sin最后一维大小必须相同，且必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。
-  - partial_slice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart > 0。
+  - 输入张量cos、sin最后一维大小必须相同，且必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。当sliceLength=0（包括[0, 0]）时表示不进行任何旋转编码（no-op）。
+  - partial_slice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart ≥ 0。sliceLength=0表示no-op，不对x做任何处理。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足广播关系。
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
