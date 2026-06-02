@@ -92,7 +92,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetPlatformInfo()
     OP_CHECK_IF(platformInfo == nullptr,
               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "platformInfo", "nullptr",
                                                     "Failed to get platform info"),
-                return ge::GRAPH_FAILED);
+              return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
 
     auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV2CompileInfo*>(context_->GetCompileInfo());
@@ -162,7 +162,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::CheckOutShape(bool isRegbase)
     OP_CHECK_IF(expandedRowIdxShapePtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "expandedRowIdx", "nullptr",
                                                       "The output shape should not be nullptr"),
-                return ge::GRAPH_FAILED);
+              return ge::GRAPH_FAILED);
     const gert::Shape expandedRowIdxShape = expandedRowIdxShapePtr->GetStorageShape();
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
@@ -371,32 +371,32 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
 void MoeInitRoutingV2TilingBase::ShowTilingData()
 {
     OP_LOGI(opName,
-            "moeInitRoutingTilingData is coreNum:%ld, n:%ld, cols:%ld, k:%ld, expertCapacity:%ld, expertNum:%ld, "
-            "dropPadMode:%ld, expertTokensCountOrCumsumFlag:%ld, expertTokensBeforeCapacityFlag:%ld",
-            moeInitRoutingTilingData.get_coreNum(), moeInitRoutingTilingData.get_n(),
-            moeInitRoutingTilingData.get_cols(), moeInitRoutingTilingData.get_k(),
-            moeInitRoutingTilingData.get_expertCapacity(), moeInitRoutingTilingData.get_expertNum(),
-            moeInitRoutingTilingData.get_dropPadMode(), moeInitRoutingTilingData.get_expertTokensCountOrCumsumFlag(),
-            moeInitRoutingTilingData.get_expertTokensBeforeCapacityFlag());
+              "moeInitRoutingTilingData is coreNum:%ld, n:%ld, cols:%ld, k:%ld, expertCapacity:%ld, expertNum:%ld, "
+              "dropPadMode:%ld, expertTokensCountOrCumsumFlag:%ld, expertTokensBeforeCapacityFlag:%ld",
+              moeInitRoutingTilingData.get_coreNum(), moeInitRoutingTilingData.get_n(),
+              moeInitRoutingTilingData.get_cols(), moeInitRoutingTilingData.get_k(),
+              moeInitRoutingTilingData.get_expertCapacity(), moeInitRoutingTilingData.get_expertNum(),
+              moeInitRoutingTilingData.get_dropPadMode(), moeInitRoutingTilingData.get_expertTokensCountOrCumsumFlag(),
+              moeInitRoutingTilingData.get_expertTokensBeforeCapacityFlag());
     OP_LOGI(opName,
-            "MoeV2VBSComputeTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
-            "perCorePerLoopElements:%ld, "
-            "perCoreLastLoopElements:%ld, lastCoreElements:%ld, lastCoreLoops:%ld, lastCorePerLoopElements:%ld, "
-            "lastCoreLastLoopElements:%ld, oneLoopMaxElements:%ld",
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLoops(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCorePerLoopElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLastLoopElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLoops(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCorePerLoopElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
-            moeInitRoutingTilingData.vbsComputeParamsOp.get_oneLoopMaxElements());
+              "MoeV2VBSComputeTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
+              "perCorePerLoopElements:%ld, "
+              "perCoreLastLoopElements:%ld, lastCoreElements:%ld, lastCoreLoops:%ld, lastCorePerLoopElements:%ld, "
+              "lastCoreLastLoopElements:%ld, oneLoopMaxElements:%ld",
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLoops(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCorePerLoopElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLastLoopElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLoops(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCorePerLoopElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
+              moeInitRoutingTilingData.vbsComputeParamsOp.get_oneLoopMaxElements());
     OP_LOGI(opName, "VMSMiddleComputeTilingData is needCoreNum:%ld",
-            moeInitRoutingTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
+              moeInitRoutingTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
     OP_LOGI(opName, "SortOutComputeTilingData is oneLoopMaxElements:%ld",
-            moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
+              moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
     OP_LOGI(
         opName,
         "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
@@ -410,15 +410,15 @@ void MoeInitRoutingV2TilingBase::ShowTilingData()
         moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
         moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
     OP_LOGI(opName,
-            "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_needCoreNum(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreRows(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCorePerLoopRows(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreLastLoopRows(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreRows(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCorePerLoopRows(),
-            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
+              "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+              "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_needCoreNum(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreRows(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCorePerLoopRows(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreLastLoopRows(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreRows(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCorePerLoopRows(),
+              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
     OP_LOGI(
         opName,
         "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
