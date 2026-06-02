@@ -15,7 +15,7 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 
-import ascend_ops
+import npu_ops_transformer_ext
 
 
 DTYPES = [torch.float16, torch.bfloat16]
@@ -59,7 +59,7 @@ def _max_error(actual, expected):
 def _run_precision_case(rows, hidden, dtype, active_rows):
     x_cpu = _make_input(rows, hidden, dtype)
     total_rows_npu = torch.tensor([active_rows], dtype=torch.int64).npu()
-    result_npu = torch.ops.ascend_ops.moe_gate_silu(x_cpu.npu(), total_rows_npu)
+    result_npu = torch.ops.npu_ops_transformer_ext.moe_gate_silu(x_cpu.npu(), total_rows_npu)
     result = result_npu.cpu()
     expected = _reference(x_cpu, active_rows)
     actual = result[:active_rows]
@@ -77,8 +77,8 @@ def _run_precision_case(rows, hidden, dtype, active_rows):
 
 
 def test_moe_gate_silu_interface_exist():
-    print(torch.ops.ascend_ops.moe_gate_silu)
-    assert hasattr(torch.ops.ascend_ops, "moe_gate_silu")
+    print(torch.ops.npu_ops_transformer_ext.moe_gate_silu)
+    assert hasattr(torch.ops.npu_ops_transformer_ext, "moe_gate_silu")
 
 
 @pytest.mark.skipif(not torch.npu.is_available(), reason="NPU device not found")

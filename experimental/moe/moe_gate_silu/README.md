@@ -13,7 +13,7 @@ MoeGateSilu 用于 MoE (Mixture of Experts) 架构的 Expert MLP 阶段，融合
 公开的 PyTorch 调用接口：
 
 ```python
-torch.ops.ascend_ops.moe_gate_silu(x, total_rows)
+torch.ops.npu_ops_transformer_ext.moe_gate_silu(x, total_rows)
 ```
 
 CPU 参考公式：
@@ -93,13 +93,13 @@ Kernel 包含 `InitTotal`、`ProcessTotal`、`Init`、`Process` 四个主要阶�
 ```python
 import torch
 import torch_npu
-import ascend_ops
+import npu_ops_transformer_ext
 
 rows, hidden = 128, 1024
 x = torch.randn(rows, hidden * 2, dtype=torch.bfloat16).npu()
 total_rows = torch.tensor([rows], dtype=torch.int64).npu()
 
-out = torch.ops.ascend_ops.moe_gate_silu(x, total_rows)
+out = torch.ops.npu_ops_transformer_ext.moe_gate_silu(x, total_rows)
 ```
 
-测试与精度对比见 `tests/moe_gate_silu`。
+测试与精度对比见 `test/test_moe_gate_silu.py`。

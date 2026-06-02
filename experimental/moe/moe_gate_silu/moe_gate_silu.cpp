@@ -18,17 +18,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include "acl/acl.h"
 #include <torch/all.h>
 #include <torch/library.h>
 
-#include "kernel_operator.h"
-#include "platform/platform_ascendc.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 
-namespace ascend_ops {
+namespace npu_ops_transformer_ext {
 namespace MoeGateSilu {
+
+#include "kernel_operator.h"
 
 using namespace AscendC;
 
@@ -38,6 +39,7 @@ constexpr int32_t BUFFER_NUM = 2;
 constexpr int32_t UB_BUFFER_SIZE = 192512;
 constexpr int32_t ACL_DTYPE_FLOAT16 = 1;
 constexpr int32_t ACL_DTYPE_BFLOAT16 = 27;
+constexpr int32_t BLOCK_DIM = 40;
 
 #define MOE_GATE_SILU_TYPE_SWITCH(dtype, DType, ...) \
     switch (dtype) {                                 \
@@ -310,18 +312,13 @@ void check_moe_gate_silu_common(const at::Tensor &x, const at::Tensor &totalRows
 
 } // namespace
 
-TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
-{
-    m.def("moe_gate_silu(Tensor x, Tensor total_rows) -> Tensor");
-}
-
 at::Tensor moe_gate_silu_meta(const at::Tensor &x, const at::Tensor &totalRows)
 {
     check_moe_gate_silu_common(x, totalRows);
     return at::empty({x.size(0), x.size(1) / 2}, x.options());
 }
 
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, Meta, m)
+TORCH_LIBRARY_IMPL(npu_ops_transformer_ext, Meta, m)
 {
     m.impl("moe_gate_silu", moe_gate_silu_meta);
 }
@@ -340,10 +337,6 @@ at::Tensor moe_gate_silu_npu(const at::Tensor &x, const at::Tensor &totalRows)
         return out;
     }
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    int32_t blockDim = static_cast<int32_t>(ascendcPlatform->GetCoreNumAiv());
-    TORCH_CHECK(blockDim > 0, "AIV core number must be positive");
-
     auto xPtr = static_cast<uint8_t *>(x.data_ptr());
     auto totalRowsPtr = static_cast<uint8_t *>(totalRows.data_ptr());
     auto outPtr = static_cast<uint8_t *>(out.data_ptr());
@@ -354,17 +347,17 @@ at::Tensor moe_gate_silu_npu(const at::Tensor &x, const at::Tensor &totalRows)
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
 
     auto aclCall = [=]() -> int {
-        moe_gate_silu_launch(xPtr, totalRowsPtr, outPtr, rows, perCount, perTotalCount, blockDim, stream, dtype);
+        moe_gate_silu_launch(xPtr, totalRowsPtr, outPtr, rows, perCount, perTotalCount, BLOCK_DIM, stream, dtype);
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("MoeGateSilu", aclCall);
     return out;
 }
 
-TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(npu_ops_transformer_ext, PrivateUse1, m)
 {
     m.impl("moe_gate_silu", moe_gate_silu_npu);
 }
 
 } // namespace MoeGateSilu
-} // namespace ascend_ops
+} // namespace npu_ops_transformer_ext

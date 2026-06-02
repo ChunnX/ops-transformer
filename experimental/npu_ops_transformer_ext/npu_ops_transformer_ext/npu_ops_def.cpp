@@ -44,6 +44,7 @@ TORCH_LIBRARY(npu_ops_transformer_ext, m)
     m.def("mambav2_chunk_state(Tensor dt_out, Tensor dacs, Tensor bt, Tensor xt) -> Tensor");
     m.def("mambav2_chunk_state_passing(Tensor dacs, Tensor init_states, Tensor states, Tensor ct) -> (Tensor, Tensor)");
     m.def("mambav2_chunk_scan(Tensor ct, Tensor bt, Tensor xt, Tensor dt, Tensor states, Tensor dacs, Tensor dtout) -> Tensor");
+    m.def("moe_gate_silu(Tensor x, Tensor total_rows) -> Tensor");
 }
 
 } // namespace npu_ops_transformer_ext
