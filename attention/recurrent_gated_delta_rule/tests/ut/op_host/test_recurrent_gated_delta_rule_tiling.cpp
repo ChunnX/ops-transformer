@@ -40,7 +40,7 @@ protected:
 
 TEST_F(RecurrentGatedDeltaRuleTilingTest, Test0)
 {
-    optiling::RecurrentGatedDeltaRuleCompileInfo compileinfo = {40, 196608}; // aivNum、ubSize
+    optiling::RecurrentGatedDeltaRuleCompileInfo compileinfo = {48, 196608}; // aivNum、ubSize
 
     int t = 128;
     int nk = 4;
