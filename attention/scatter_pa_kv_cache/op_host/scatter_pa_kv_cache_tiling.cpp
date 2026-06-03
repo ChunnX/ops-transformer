@@ -594,7 +594,7 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
                 OP_LOGD(context_, "VCacheStride enter2 ");
                 params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
                 for (int i =0;i<4;i++) {
-                    OP_LOGD(context_, "kCacheStride: %d ",VCacheStride->GetStride(i);
+                    OP_LOGD(context_, "kCacheStride: %d ",VCacheStride->GetStride(i));
                 }
             }
         }
