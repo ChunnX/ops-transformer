@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_tiling.cpp
@@ -16,6 +16,16 @@
 #include "lightning_indexer_grad_tiling_data.h"
 #include "../op_kernel/lightning_indexer_grad_template_tiling_key.h"
 
+#define CHECK_NULLPTR(ptr)       \
+    if (ptr == nullptr) {        \
+        return ge::GRAPH_FAILED; \
+    }
+
+#define ADD_TILING_DATA(context, tiling)                                                                     \
+    CHECK_NULLPTR(context->GetRawTilingData())                                                               \
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity()); \
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    
 using namespace ge;
 using namespace AscendC;
 using std::map;
@@ -31,6 +41,7 @@ constexpr uint64_t MAX_HEADIM = 128;
 constexpr uint64_t MAX_TOPK = 2048;
 constexpr uint64_t LIMIT_HEADNUMK = 1;
 constexpr uint64_t DOUBLE_BUFFER = 2;
+constexpr uint32_t SOC_VER_950_CODE = 4;
 
 ge::graphStatus LightningIndexerGradTiling::DoTiling()
 {
@@ -179,12 +190,132 @@ static ge::graphStatus TilingPrepareForLightningIndexerGrad(gert::TilingParseCon
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus Tiling4LightningIndexerGradArch35(gert::TilingContext* context)
+{
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint64_t ubSize;
+    ascendPlatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    auto aicNum = ascendPlatformInfo.GetCoreNumAic();
+    auto aivNum = ascendPlatformInfo.GetCoreNumAiv();
+
+    ubSize = ubSize - 40 * 1024;
+    context->SetDynUBufSize(ubSize);
+
+    if (aicNum == 0 || aivNum == 0) {
+        return ge::GRAPH_FAILED;
+    }
+    context->SetBlockDim(aicNum);
+    LightningIndexerGradArch35TilingData tilingData;
+    auto attrsPtr = context->GetAttrs();
+    CHECK_NULLPTR(attrsPtr);
+    auto layout = std::string(attrsPtr->GetStr(ATTR_LAYOUT_INDEX));
+    auto sparseMode = *attrsPtr->GetInt(ATTR_SPARSEMODE_INDEX);
+
+    int64_t batchSize = 0, headNumQ = 0, headDim = 128;
+    int64_t querySeqLen = 0;
+    int64_t keySeqLen = 0;
+    int64_t tileSeqQ = 1;
+    int64_t tileTopK = 128;
+    int64_t totalQuerySeqLength = 0;
+    int64_t totalKeySeqLength = 0;
+    int64_t inputLayout = 0;
+    const auto sparseIndicesPtr = context->GetInputShape(SPARSE_INDICES_INDEX);
+    CHECK_NULLPTR(sparseIndicesPtr);
+    auto sparseIndicesShape = sparseIndicesPtr->GetStorageShape();
+    int64_t topK = sparseIndicesShape.GetDim(sparseIndicesShape.GetDimNum() - 1);
+    
+    if (layout == "BSND") {
+        inputLayout = 0;
+        const auto queryShapePtr = context->GetInputShape(QUERY_INDEX);
+        CHECK_NULLPTR(queryShapePtr);
+        auto queryShape = queryShapePtr->GetStorageShape();
+
+        batchSize = queryShape.GetDim(0);
+        querySeqLen = queryShape.GetDim(1);
+        headNumQ = queryShape.GetDim(2);
+        headDim = queryShape.GetDim(3);
+        totalQuerySeqLength = batchSize * querySeqLen;
+
+        const auto keyShapePtr = context->GetInputShape(KEY_INDEX);
+        CHECK_NULLPTR(keyShapePtr);
+        auto keyShape = keyShapePtr->GetStorageShape();
+        keySeqLen = keyShape.GetDim(1);
+        totalKeySeqLength = batchSize * keySeqLen;
+    } else if (layout == "TND") {
+        inputLayout = 1;
+        const auto queryShapePtr = context->GetInputShape(QUERY_INDEX);
+        CHECK_NULLPTR(queryShapePtr);
+        auto queryShape = queryShapePtr->GetStorageShape();
+
+        const auto keyShapePtr = context->GetInputShape(KEY_INDEX);
+        CHECK_NULLPTR(keyShapePtr);
+        auto keyShape = keyShapePtr->GetStorageShape();
+
+        const auto actualSeqLengthsQueryPtr = context->GetInputShape(ACTUAL_SEQ_Q_INDEX);
+        CHECK_NULLPTR(actualSeqLengthsQueryPtr);
+        auto actualSeqLengthsQueryShape = actualSeqLengthsQueryPtr->GetStorageShape();
+
+        batchSize = actualSeqLengthsQueryShape.GetDim(0);
+        totalQuerySeqLength = queryShape.GetDim(0);
+        headNumQ = queryShape.GetDim(1);
+        headDim = queryShape.GetDim(2);
+        totalKeySeqLength = keyShape.GetDim(0);
+    }  else {
+        OP_LOGE(context, "only support layout is BSND and TND.\n", layout);
+        return ge::GRAPH_FAILED;
+    }
+
+    const auto queryTensorPtr = context->GetInputTensor(QUERY_INDEX);
+    CHECK_NULLPTR(queryTensorPtr);
+    matmul_tiling::DataType queryDataType;
+
+    if (queryTensorPtr->GetDataType() == ge::DT_FLOAT16) {
+        queryDataType = matmul_tiling::DataType::DT_FLOAT16;
+    }
+    else if (queryTensorPtr->GetDataType() == ge::DT_BF16)
+        queryDataType = matmul_tiling::DataType::DT_BF16;
+    else {
+        OP_LOGE(context, "input only support FP16 and BF16.\n");
+        return ge::GRAPH_FAILED;
+    }
+
+    tilingData.set_batchSize(batchSize);
+    tilingData.set_headNumQ(headNumQ);
+    tilingData.set_headDim(headDim);
+    tilingData.set_querySeqLen(querySeqLen);
+    tilingData.set_keySeqLen(keySeqLen);
+    tilingData.set_tileTopK(tileTopK);
+    tilingData.set_tileSeqQ(tileSeqQ);
+    tilingData.set_totalQuerySeqLength(totalQuerySeqLength);
+    tilingData.set_totalKeySeqLength(totalKeySeqLength);
+    tilingData.set_inputLayout(inputLayout);
+    tilingData.set_topK(topK);
+    tilingData.set_aivNum(aivNum);
+    tilingData.set_sparseMode(sparseMode);
+
+    ADD_TILING_DATA(context, tilingData);
+
+    size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
+    size_t usrWorkSpaceSize = 0;
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    CHECK_NULLPTR(currentWorkspace);
+    currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+
+    return ge::GRAPH_SUCCESS;
+}
+
 extern "C" ge::graphStatus TilingForLightningIndexerGrad(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerGrad", "Tiling context is null."),
                return ge::GRAPH_FAILED);
-    LightningIndexerGradTiling LIGTiling(context);
-    return LIGTiling.DoTiling();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t socVer = static_cast<uint32_t>(ascendcPlatform.GetSocVersion());
+    if (socVer == SOC_VER_950_CODE) {
+         return Tiling4LightningIndexerGradArch35(context);
+     } else {
+        LightningIndexerGradTiling LIGTiling(context);
+        return LIGTiling.DoTiling();
+     }
 }
 
 IMPL_OP_OPTILING(LightningIndexerGrad)
