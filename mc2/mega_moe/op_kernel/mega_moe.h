@@ -543,7 +543,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
     // wave-grain dispatch flag: 每个 expert 拥有 maxWavesPerExpert_ 个槽位，
     // 每个槽位累计该 wave (L1_TILE_M rows) 实际收到的行数。
     // 当槽位值达到 min(L1_TILE_M, m - waveIdx * L1_TILE_M) 时，gmm1 可以早启动该 wave。
-    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M);
+    constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     for (uint32_t idx = blockIdx_; idx < worldSize_ * dispatchBlockNumPerEP_; idx += blockNum_) {
         uint32_t dstRankIdx = idx / dispatchBlockNumPerEP_;
         uint32_t aivIdxInGroup = idx % dispatchBlockNumPerEP_;
