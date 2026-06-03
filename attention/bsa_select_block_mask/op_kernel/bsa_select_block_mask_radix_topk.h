@@ -292,7 +292,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
         int32_t involvedMaskTemp = static_cast<int32_t>(
             involvedMask16_ | static_cast<int16_t>(binMask << (roundId * bitsPerRound_)));
 
-        uint32_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint32_t>(REPEAT_SIZE / sizeof(int32_t)));
+        uint64_t curTileLenAlign = BSAAlignTo(curTileLen, static_cast<uint64_t>(REPEAT_SIZE / sizeof(int32_t)));
         Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                                    AscendC::CMPMODE::EQ, curTileLenAlign);
 
