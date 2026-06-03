@@ -123,9 +123,9 @@ def check_param_valid(
 
 # ==============================================================================
 # Kernel 1: Cube1 - Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
-# GatherKey: (B, S1, K, DQuery) - no G dimension (MQA, all groups share same key)
-# GatherKeyIndex: (B, S1, K, DQueryIndex) - no Nidx1 dimension (all gidx share same keyIndex)
-# Output: bmm1Res (B, S1, N1, K), bmm2Res (B, S1, Nidx1, K) with ReLU
+# Following AscendC arch22: batch all query heads into one gemm call.
+# Matmul1: query(N1, DQuery) @ gatherKey(K, DQuery)^T -> bmm1Res(N1, K), M=N1
+# Matmul2: queryIndex(Nidx1, DQueryIndex) @ gatherKeyIndex(K, DQueryIndex)^T -> bmm2Res(Nidx1, K), M=Nidx1
 # ==============================================================================
 @tilelang.jit(out_idx=[-2, -1], workspace_idx=[], pass_configs=pass_configs)
 def tilelang_cube1_bsnd(
@@ -159,74 +159,72 @@ def tilelang_cube1_bsnd(
             with T.Scope("C"):
                 T.barrier_all()
 
-                # --- Matmul1: query @ gatherKey^T -> bmm1Res ---
-                # query[b, s1, n1, :]: (1, DQuery)
-                # gatherKey[b, s1, k_start:k_end, :]: (block_n, DQuery)
-                # result: (1, block_n) -> bmm1Res[b, s1, n1, k_start:k_end]
-                Q_L1 = T.alloc_L1((1, block_k), input_dtype)
+                # --- Matmul1: query(N1, DQuery) @ gatherKey(K, DQuery)^T -> bmm1Res(N1, K) ---
+                # Query[b, s1, :, :] is (N1, DQuery), GatherKey[b, s1, :, :] is (K, DQuery)
+                # For each s1_row, load all N1 rows of query into Q_L1, then gemm with GK_L1
+                # N1 <= block_m=128, so Q_L1 fits in one (block_m, block_k) tile
+                Q_L1 = T.alloc_L1((block_m, block_k), input_dtype)
                 GK_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C_L0C = T.alloc_L0C((1, block_n), calc_dtype)
+                C_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for n1_idx in T.serial(N1):
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            for k_idx in T.serial(d_num_query):
-                                T.copy(
-                                    Query[bz, s1_row, n1_idx, k_idx * block_k:(k_idx + 1) * block_k],
-                                    Q_L1,
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    GatherKey[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
-                                    GK_L1,
-                                )
-                                T.barrier_all()
-                                T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
-                                T.barrier_all()
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        for k_idx in T.serial(d_num_query):
                             T.copy(
-                                C_L0C,
-                                bmm1Res[bz, s1_row, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                Query[bz, s1_row, 0:N1, k_idx * block_k:(k_idx + 1) * block_k],
+                                Q_L1,
                             )
                             T.barrier_all()
+                            T.copy(
+                                GatherKey[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                GK_L1,
+                            )
+                            T.barrier_all()
+                            T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
+                            T.barrier_all()
+                        T.copy(
+                            C_L0C,
+                            bmm1Res[bz, s1_row, 0:N1, n_idx * block_n:(n_idx + 1) * block_n],
+                        )
+                        T.barrier_all()
 
-                # --- Matmul2: queryIndex @ gatherKeyIndex^T -> bmm2Res (with ReLU) ---
-                QI_L1 = T.alloc_L1((1, block_k), input_dtype)
+                # --- Matmul2: queryIndex(Nidx1, DQueryIndex) @ gatherKeyIndex(K, DQueryIndex)^T -> bmm2Res(Nidx1, K) ---
+                # Nidx1 <= 64 < block_m=128, fits in one tile
+                QI_L1 = T.alloc_L1((block_m, block_k), input_dtype)
                 GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C2_L0C = T.alloc_L0C((1, block_n), calc_dtype)
+                C2_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for gidx_idx in T.serial(Nidx1):
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            for k_idx in T.serial(d_num_query_index):
-                                T.copy(
-                                    QueryIndex[bz, s1_row, gidx_idx, k_idx * block_k:(k_idx + 1) * block_k],
-                                    QI_L1,
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
-                                    GKI_L1,
-                                )
-                                T.barrier_all()
-                                T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
-                                T.barrier_all()
+                    for n_idx in T.serial(n_num):
+                        T.barrier_all()
+                        for k_idx in T.serial(d_num_query_index):
                             T.copy(
-                                C2_L0C,
-                                bmm2Res[bz, s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                enable_relu=True,
+                                QueryIndex[bz, s1_row, 0:Nidx1, k_idx * block_k:(k_idx + 1) * block_k],
+                                QI_L1,
                             )
                             T.barrier_all()
+                            T.copy(
+                                GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                GKI_L1,
+                            )
+                            T.barrier_all()
+                            T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
+                            T.barrier_all()
+                        T.copy(
+                            C2_L0C,
+                            bmm2Res[bz, s1_row, 0:Nidx1, n_idx * block_n:(n_idx + 1) * block_n],
+                            enable_relu=True,
+                        )
+                        T.barrier_all()
 
     return main
 
 
 # ==============================================================================
 # Kernel 2: Cube2 - Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
-# reluGrad: (B, S1, Nidx1, K) - computed in Python layer
-# GatherKeyIndex: (B, S1, K, DQueryIndex)
-# Output: dQueryIndex (B, S1, Nidx1, DQueryIndex)
+# Matmul4: reluGrad(Nidx1, K) @ gatherKeyIndex(K, DQueryIndex)^T -> dQueryIndex(Nidx1, DQueryIndex)
+# M=Nidx1, N=DQueryIndex, K_axis=K
 # ==============================================================================
 @tilelang.jit(out_idx=[-1], workspace_idx=[], pass_configs=pass_configs)
 def tilelang_cube2_bsnd(
@@ -257,56 +255,54 @@ def tilelang_cube2_bsnd(
             with T.Scope("C"):
                 T.barrier_all()
 
-                # Matmul4: dQueryIndex[gidx, d] = sum_k reluGrad[gidx, k] * gatherKeyIndex[k, d]
-                # reluGrad: (1, block_n), gatherKeyIndex: (block_n, block_k)
-                # gemm: (1, block_n) @ (block_n, block_k) = (1, block_k)
-                RG_L1 = T.alloc_L1((1, block_n), input_dtype)
+                # Matmul4: reluGrad(Nidx1, K) @ gatherKeyIndex(K, DQueryIndex)^T
+                # M=Nidx1 (<=64 < block_m), N=DQueryIndex=block_k, K_axis=K
+                # For each (s1_row, d_idx), accumulate over n_idx (K axis split)
+                RG_L1 = T.alloc_L1((block_m, block_n), input_dtype)
                 GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                DQ_L0C = T.alloc_L0C((1, block_k), calc_dtype)
+                DQ_L0C = T.alloc_L0C((block_m, block_k), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
-                    for gidx_idx in T.serial(Nidx1):
-                        for d_idx in T.serial(d_num_query_index):
-                            for n_idx in T.serial(n_num):
-                                T.barrier_all()
-                                T.copy(
-                                    ReluGrad[bz, s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                    RG_L1,
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
-                                    GKI_L1,
-                                )
-                                T.barrier_all()
-                                T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, init=(n_idx == 0))
-                                T.barrier_all()
+                    for d_idx in T.serial(d_num_query_index):
+                        for n_idx in T.serial(n_num):
+                            T.barrier_all()
                             T.copy(
-                                DQ_L0C,
-                                dQueryIndex_ws[bz, s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
+                                ReluGrad[bz, s1_row, 0:Nidx1, n_idx * block_n:(n_idx + 1) * block_n],
+                                RG_L1,
                             )
                             T.barrier_all()
+                            T.copy(
+                                GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
+                                GKI_L1,
+                            )
+                            T.barrier_all()
+                            T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
+                            T.barrier_all()
+                        T.copy(
+                            DQ_L0C,
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                        )
+                        T.barrier_all()
 
             # Cast dQueryIndex_ws FP32 -> FP16
             with T.Scope("V"):
-                dq_fp32_ub = T.alloc_ub(block_k, calc_dtype)
-                dq_fp16_ub = T.alloc_ub(block_k, input_dtype)
+                dq_fp32_ub = T.alloc_ub(block_m * block_k, calc_dtype)
+                dq_fp16_ub = T.alloc_ub(block_m * block_k, input_dtype)
                 for s1_row in T.serial(s1_start, s1_end):
-                    for gidx_idx in T.serial(Nidx1):
-                        for d_idx in T.serial(d_num_query_index):
-                            T.barrier_all()
-                            T.copy(
-                                dQueryIndex_ws[bz, s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
-                                dq_fp32_ub,
-                            )
-                            T.barrier_all()
-                            T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", block_k)
-                            T.barrier_all()
-                            T.copy(
-                                dq_fp16_ub,
-                                dQueryIndex[bz, s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
-                            )
-                            T.barrier_all()
+                    for d_idx in T.serial(d_num_query_index):
+                        T.barrier_all()
+                        T.copy(
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                            dq_fp32_ub,
+                        )
+                        T.barrier_all()
+                        T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", Nidx1 * block_k)
+                        T.barrier_all()
+                        T.copy(
+                            dq_fp16_ub,
+                            dQueryIndex[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                        )
+                        T.barrier_all()
 
     return main
 
