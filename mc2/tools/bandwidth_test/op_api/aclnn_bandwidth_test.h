@@ -38,8 +38,8 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* dstRankId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    const char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
+    char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
+    char *commAlg, int64_t aivNum, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
@@ -51,7 +51,7 @@ ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                  aclrtStream stream);
+                                         aclrtStream stream);
 #ifdef __cplusplus
 }
 #endif

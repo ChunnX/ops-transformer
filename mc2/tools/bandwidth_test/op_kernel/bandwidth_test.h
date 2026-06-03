@@ -10,21 +10,7 @@
 
 /*!
  * \file bandwidth_test.h
- * \brief Bandwidth test kernel - MOE AlltoAll Dispatch 通信带宽测试算子
- * 
- * 算子功能说明：
- * 本算子实现了 MOE (Mixture of Experts) 场景下的 AlltoAll Dispatch 通信，
- * 用于测试 NPU 设备间的通信带宽。每个 rank 根据 dst_rank_id 将 token 发送到
- * 对应的目标 rank，实现数据的分布式分发。
- * 
- * 执行流程 (mode=0 完整流程):
- * 1. SendToMoeExpert: 根据 dst_rank_id 将 token 写入目标 rank 的通信窗口
- * 2. SetStatus: 统计发送到各 rank 的 token 数量，写入状态区通知对端
- * 3. WaitDispatch: 等待所有 rank 完成数据发送并写入状态
- * 4. LocalWindowCopy: 从本地窗口读取接收到的数据，拷贝到输出 tensor
- * 
- * 执行流程 (mode=1 仅发送):
- * 仅执行 SendToMoeExpert，用于单向带宽测试
+ * \brief
  */
 
 #ifndef BANDWIDTH_TEST_H
@@ -83,14 +69,12 @@ private:
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
         return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
         return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 
@@ -167,13 +151,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
-    // epRankId_ = tilingData->rank_id; // 获取当前rank ID
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
     context_ = (__gm__ Mc2MoeContext *)context;
-    // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
@@ -185,7 +166,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     mode_ = tilingData->mode;
 
     // ============ 初始化窗口状态 ============
-    // 初始化状态区，获取当前状态值(0或1，用于双缓冲)
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
@@ -195,7 +175,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
-    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET
+                                                    + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
 
@@ -369,7 +350,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 
     // ============ 遍历token并发送到目标rank ============
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-        uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);// dst_rank_id 直接作为目标rank_id
+        uint32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
         int32_t curExpertCnt = 0;
 
         if (tokenIndex > 0) {
@@ -474,13 +455,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
         SyncFunc<AscendC::HardEvent::S_MTE2>();
-        DataCopy(statusFp32Tensor_, 
-                 windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
-                 intriParams);
+        DataCopy(statusFp32Tensor_,
+                 windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], intriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         
         // 计算所有flag的和
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 
+        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(),
                   1, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
