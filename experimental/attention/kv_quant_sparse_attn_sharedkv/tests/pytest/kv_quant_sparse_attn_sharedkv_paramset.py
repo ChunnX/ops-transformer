@@ -147,11 +147,79 @@ TEST_PARAMS = {
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
     },
+    # SCFA prefill 大用例: b=1, s1=8k, s2=128k, n=128, topk=1024
+    "scfa_prefill":{
+        "Testcase_Name": [None],
+        "layout_q": ["BSND"],
+        "layout_kv": ["PA_ND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.float8_e4m3fn],
+        "cmp_kv_type": [torch.float8_e4m3fn],
+        "B": [1],
+        "S1": [8192],
+        "S2": [131072],
+        "N1": [128],
+        "N2": [1],
+        "D": [512],
+        "K": [1024],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [128],
+        "block_size2": [128],
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "kv_quant_mode": [1],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": ["SCFA"], # SWA SCFA CFA
+        "actlen_mode":["full"],       # random full
+        "S1EQS2":[False]
+    },
+    # SCFA decode 用例: b=24, s1=2, s2=8k, n=128, topk=1024
+    "scfa_decode":{
+        "Testcase_Name": [None],
+        "layout_q": ["BSND"],
+        "layout_kv": ["PA_ND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.float8_e4m3fn],
+        "cmp_kv_type": [torch.float8_e4m3fn],
+        "B": [24],
+        "S1": [2],
+        "S2": [8192],
+        "N1": [128],
+        "N2": [1],
+        "D": [512],
+        "K": [1024],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [128],
+        "block_size2": [128],
+        "cu_seqlens_q": [None],
+        "seqused_kv": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "ori_mask_mode": [4],
+        "cmp_mask_mode": [3],
+        "ori_win_left": [127],
+        "ori_win_right": [0],
+        "kv_quant_mode": [1],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": ["SCFA"], # SWA SCFA CFA
+        "actlen_mode":["full"],       # random full
+        "S1EQS2":[False]
+    },
 }
 
 # 填入启用的测试参数
-ENABLED_PARAMS = [
-# TEST_PARAMS["decode_first"],
-TEST_PARAMS["my_test"],
-]
+# 通过环境变量 QSAS_CASE 选择用例 (scfa_prefill / scfa_decode / my_test ...)，默认 my_test
+import os as _os
+_case = _os.environ.get("QSAS_CASE", "my_test")
+ENABLED_PARAMS = [TEST_PARAMS[_case]]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

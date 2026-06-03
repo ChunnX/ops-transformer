@@ -1149,9 +1149,25 @@ __simd_vf__ void GetKVPhyAddrVFImpl(
     MicroAPI::Duplicate(vreg_zero, 0);
     MicroAPI::Duplicate(vreg_kvStride, kvStride);
 
-    for (uint16_t i = 0; i < s2Loop; i++){ // TODO 尾块需-1
+    // Tail generalization: the previous code assumed validS2 is a multiple of 128 and
+    // always processed a full 128 idx per loop (see old "TODO 尾块"). For arbitrary
+    // b/s1/k, validS2 (=> s2Tail) need not be 128-aligned, so the final loop carries
+    // 1..128 valid idx. We derive a per-register valid count for the last loop and
+    // build masks with UpdateMask: the masks zero the stale idx lanes before the
+    // gather (so DataCopyGather never reads a garbage block id) and bound the store.
+    // For aligned cases s2Tail==128 -> masks are full -> identical to the old path.
+    for (uint16_t i = 0; i < s2Loop; i++){
+        bool isTail = (i == s2Loop - 1);
+        uint32_t cnt1 = isTail ? (s2Tail < s2NumPerReg ? s2Tail : s2NumPerReg) : s2NumPerReg;
+        uint32_t cnt2 = isTail ? (s2Tail > s2NumPerReg ? s2Tail - s2NumPerReg : 0U) : s2NumPerReg;
+        AscendC::MicroAPI::MaskReg preg_tail_1 = AscendC::MicroAPI::UpdateMask<uint32_t>(cnt1);
+        AscendC::MicroAPI::MaskReg preg_tail_2 = AscendC::MicroAPI::UpdateMask<uint32_t>(cnt2);
+
         MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t>&)vreg_sparse_idx_1, sparseIdxUb + i * s2NumPerLoop);
         MicroAPI::LoadAlign<int32_t, MicroAPI::LoadDist::DIST_NORM>((MicroAPI::RegTensor<int32_t>&)vreg_sparse_idx_2, sparseIdxUb + s2NumPerReg + i * s2NumPerLoop);
+        // Force the stale tail lanes to idx 0 so the downstream gather stays in-bounds.
+        MicroAPI::Select(vreg_sparse_idx_1, vreg_sparse_idx_1, vreg_zero, preg_tail_1);
+        MicroAPI::Select(vreg_sparse_idx_2, vreg_sparse_idx_2, vreg_zero, preg_tail_2);
         // * sparseBlockSize
         // MicroAPI::Muls(vreg_sparse_idx_1, vreg_sparse_idx_1, sparseBlockSize, preg_all_b32);
         // MicroAPI::Muls(vreg_sparse_idx_2, vreg_sparse_idx_2, sparseBlockSize, preg_all_b32);
@@ -1185,11 +1201,10 @@ __simd_vf__ void GetKVPhyAddrVFImpl(
         MicroAPI::AddC(add_carry_h_1, vreg_total_offset_H_1, vreg_mul_overflow_L_1, vreg_zero, add_carry_l_1, preg_all_b32);
         MicroAPI::AddC(add_carry_h_2, vreg_total_offset_H_2, vreg_mul_overflow_L_2, vreg_zero, add_carry_l_2, preg_all_b32);
 
-        // 搬出 由于拆分为了int32类型，元素个数翻倍
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + i * outOffsetPerLoop, vreg_total_offset_L_1, vreg_total_offset_H_1, preg_all_b32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + outOffsetPerReg + i * outOffsetPerLoop, vreg_total_offset_L_2, vreg_total_offset_H_2, preg_all_b32);
+        // 搬出 由于拆分为了int32类型，元素个数翻倍。尾块用 tail mask 仅写有效 lane。
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + i * outOffsetPerLoop, vreg_total_offset_L_1, vreg_total_offset_H_1, preg_tail_1);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_INTLV_B32>(kvPhyAddrUb + outOffsetPerReg + i * outOffsetPerLoop, vreg_total_offset_L_2, vreg_total_offset_H_2, preg_tail_2);
     }
-    // TODO 带-1尾块
 }
 
 template <typename T>
@@ -1290,9 +1305,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     TBuf<> blkTableBuf;
     TBuf<> sparseIdxBuf;
     TBuf<> kvPhyAddrBuf;
+    // The VF loop processes a full 128-idx register per iteration, so its last
+    // (tail) iteration LoadAligns up to 128 idx even when validS2 isn't 128-aligned.
+    // Round the idx / phyaddr buffers up to a 128 multiple so that full-vector tail
+    // load/store stays in-bounds; the extra lanes are masked out of the result.
+    const uint32_t sparseBlockCountAlign = CeilAlign(constInfo.sparseBlockCount, 128U);
     tPipe->InitBuffer(blkTableBuf, 128 * 1024); // 最大 128K constInfo.cmpMaxBlockNumPerBatch * sizeof(int32_t)
-    tPipe->InitBuffer(sparseIdxBuf, constInfo.sparseBlockCount * sizeof(int32_t)); // k = 1024
-    tPipe->InitBuffer(kvPhyAddrBuf, constInfo.sparseBlockCount * sizeof(int32_t) * 2); // k = 1024
+    tPipe->InitBuffer(sparseIdxBuf, sparseBlockCountAlign * sizeof(int32_t)); // k 向上对齐 128
+    tPipe->InitBuffer(kvPhyAddrBuf, sparseBlockCountAlign * sizeof(int32_t) * 2); // k 向上对齐 128
     LocalTensor<int32_t> blkTableUb = blkTableBuf.template Get<int32_t>();
     LocalTensor<int32_t> sparseIdxUb = sparseIdxBuf.template Get<int32_t>();
     LocalTensor<uint32_t> kvPhyAddrUb = kvPhyAddrBuf.template Get<uint32_t>();

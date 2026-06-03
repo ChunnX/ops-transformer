@@ -1015,8 +1015,13 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
-    
+    if os.environ.get("QSAS_PERF_ONLY", "0") == "1":
+        # 仅做性能 profiling 时跳过昂贵的 CPU golden forward (大 case 下可达 ~50min)；
+        # msprof 仍会捕获真实 NPU kernel 耗时，精度比对结果在该模式下无意义。
+        cpu_result = torch.zeros_like(q)
+    else:
+        cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
+
     print("mode:%s\n",template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
