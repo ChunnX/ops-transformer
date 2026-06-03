@@ -22,6 +22,56 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
+
+const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
+    {ge::DT_UNDEFINED, "DT_UNDEFINED"},           // Used to indicate a DataType field has not been set.
+    {ge::DT_FLOAT, "DT_FLOAT"},                   // float type
+    {ge::DT_FLOAT16, "DT_FLOAT16"},               // fp16 type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},   // fp8_e4m3 type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},             // hifloat8 type
+    {ge::DT_INT8, "DT_INT8"},                     // int8 type
+    {ge::DT_INT16, "DT_INT16"},                   // int16 type
+    {ge::DT_UINT16, "DT_UINT16"},                 // uint16 type
+    {ge::DT_UINT8, "DT_UINT8"},                   // uint8 type
+    {ge::DT_INT32, "DT_INT32"},                   // uint32 type
+    {ge::DT_INT64, "DT_INT64"},                   // int64 type
+    {ge::DT_UINT32, "DT_UINT32"},                 // unsigned int32
+    {ge::DT_UINT64, "DT_UINT64"},                 // unsigned int64
+    {ge::DT_BOOL, "DT_BOOL"},                     // bool type
+    {ge::DT_DOUBLE, "DT_DOUBLE"},                 // double type
+    {ge::DT_DUAL, "DT_DUAL"},                     // dual output type
+    {ge::DT_DUAL_SUB_INT8, "DT_DUAL_SUB_INT8"},   // dual output int8 type
+    {ge::DT_DUAL_SUB_UINT8, "DT_DUAL_SUB_UINT8"}, // dual output uint8 type
+    {ge::DT_COMPLEX32, "DT_COMPLEX32"},           // complex32 type
+    {ge::DT_COMPLEX64, "DT_COMPLEX64"},           // complex64 type
+    {ge::DT_COMPLEX128, "DT_COMPLEX128"},         // complex128 type
+    {ge::DT_QINT8, "DT_QINT8"},                   // qint8 type
+    {ge::DT_QINT16, "DT_QINT16"},                 // qint16 type
+    {ge::DT_QINT32, "DT_QINT32"},                 // qint32 type
+    {ge::DT_QUINT8, "DT_QUINT8"},                 // quint8 type
+    {ge::DT_QUINT16, "DT_QUINT16"},               // quint16 type
+    {ge::DT_RESOURCE, "DT_RESOURCE"},             // resource type
+    {ge::DT_STRING_REF, "DT_STRING_REF"},         // string ref type
+    {ge::DT_STRING, "DT_STRING"},                 // string type
+    {ge::DT_VARIANT, "DT_VARIANT"},               // dt_variant type
+    {ge::DT_BF16, "DT_BFLOAT16"},                 // dt_bfloat16 type
+    {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
+    {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
+    {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+};
+
+static std::string QLIDataTypeToSerialString(ge::DataType type)
+{
+    const auto qliIt = DATATYPE_TO_STRING_MAP.find(type);
+    if (qliIt != DATATYPE_TO_STRING_MAP.end()) {
+        return qliIt->second;
+    } else {
+        OP_LOGE("QuantLightningIndexer", "datatype %d not support", type);
+        return "UNDEFINED";
+    }
+}
+
 // --------------------------QLIInfoParser类成员函数定义-------------------------------------
 ge::graphStatus QLIInfoParser::CheckRequiredInOutExistence() const
 {
@@ -271,53 +321,63 @@ ge::graphStatus QLIInfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
 
     OP_CHECK_IF(!(inputQType_ == inputKType_),
-               OP_LOGE(opName_, "The data types of the input query and key must be the same."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key", QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                    "The dtype of query and key must be same."),
                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         !(inputQueryScaleType_ == inputKeyScaleType_),
-        OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale", QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
+            "The dtype of query_dequant_scale and key_dequant_scale must be same."),
         return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(inputQType_ != ge::DT_FLOAT8_E4M3FN && inputQType_ != ge::DT_HIFLOAT8 && inputQType_ != ge::DT_INT8,
-               OP_LOGE(opName_, "The data types of the input query and key must be float8_e4m3, hifloat8 or int8."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key", QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                    "The dtype of query and key must be float8_e4m3, hifloat8 or int8."),
                return ge::GRAPH_FAILED);
         // hifloat8只支持bf16的weights和fp32的scale
         if (inputQType_ == ge::DT_FLOAT8_E4M3FN) {
             OP_CHECK_IF((weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT) && 
                         (weightsType_ != ge::DT_FLOAT16|| inputQueryScaleType_ != ge::DT_FLOAT16),
-                OP_LOGE(opName_, "When input query and key are float8_e4m3, ",
-                        "the data type of the input weights, query_dequant_scale and key_dequant_scale ",
-                        "must be (bfloat16, float32, float32) or (float16, float16, float16)."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, query_dequant_scale and key_dequant_scale",
+                    QLIDataTypeToSerialString(weightsType_) + ", " + QLIDataTypeToSerialString(inputQueryScaleType_) + "and " + QLIDataTypeToSerialString(inputKeyScaleType_),
+                    "When input query and key are float8_e4m3, the dtype of weights, query_dequant_scale and key_dequant_scale must be (bfloat16, float32, float32) or (float16, float16, float16)."),
                 return ge::GRAPH_FAILED);
         } else if (inputKType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_BF16 || inputQueryScaleType_ != ge::DT_FLOAT,
-                OP_LOGE(opName_, "When input query and key are hifloat8, ", 
-                        "the data types of the input weights, queryScale and keyScale ",
-                        "must be (bfloat16, float32, float32)."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
+                    QLIDataTypeToSerialString(weightsType_) + ", " + QLIDataTypeToSerialString(inputQueryScaleType_) + "and " + QLIDataTypeToSerialString(inputKeyScaleType_),
+                    "When input query and key are hifloat8, the dtype of weights, queryScale and keyScale must be (bfloat16, float32, float32)."),
                 return ge::GRAPH_FAILED);
         } else if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16 || inputQueryScaleType_ != ge::DT_FLOAT16,
-                OP_LOGE(opName_, "When input query and key are int8, ",
-                        "the data types of the input weights, queryScale and keyScale ",
-                        "must be float16."),
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "weights, queryScale and keyScale",
+                    QLIDataTypeToSerialString(weightsType_) + ", " + QLIDataTypeToSerialString(inputQueryScaleType_) + "and " + QLIDataTypeToSerialString(inputKeyScaleType_),
+                    "When input query and key are int8, the dtype of weights, queryScale and keyScale must be float16."),
                 return ge::GRAPH_FAILED);
         }
     } else {
         OP_CHECK_IF(inputQType_ != ge::DT_INT8,
                 OP_LOGE(opName_, "The data types of the input query and key must be int8."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key", QLIDataTypeToSerialString(inputQType_) + ", " + QLIDataTypeToSerialString(inputKType_),
+                    "The dtype of query and key must be int8."),
 
         OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-                OP_LOGE(opName_, "The data types of the input weights must be float16."), return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                    QLIDataTypeToSerialString(weightsType_).c_str(),
+                    "The dtype of weights must be float16."), return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(
             inputQueryScaleType_ != ge::DT_FLOAT16,
-            OP_LOGE(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float16."),
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale", QLIDataTypeToSerialString(inputQueryScaleType_) + ", " + QLIDataTypeToSerialString(inputKeyScaleType_),
+                "The dtype of query_dequant_scale and key_dequant_scale must be float16."),
             return ge::GRAPH_FAILED);        
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
-               OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sparse_indices",
+                    QLIDataTypeToSerialString(outputType_).c_str(),
+                    "The dtype of sparse_indices must be int32."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -356,8 +416,10 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
             opParamInfo_.actualSeqLengthsK.tensor == nullptr,
             OP_LOGE(opName_, "key layout only supported PA_BSND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
-                   OP_LOGE(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,                   
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "block_table",
+                    QLIDataTypeToSerialString(opParamInfo_.blockTable.desc->GetDataType()).c_str(),
+                    "The dtype of block_table must be int32."), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor != nullptr,
                    OP_LOGE(opName_, "key layout is not PA_BSND, input block_table must be null"),
@@ -371,7 +433,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.desc->GetDataType() != ge::DT_INT32,
-                   OP_LOGE(opName_, "input actual_seq_lengths_key data type only support int32"),
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actual_seq_lengths_key",
+                        QLIDataTypeToSerialString(opParamInfo_.actualSeqLengthsK.desc->GetDataType()).c_str(),
+                        "The dtype of actual_seq_lengths_key must be int32."),
                    return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
@@ -380,7 +444,9 @@ ge::graphStatus QLIInfoParser::GetAndCheckOptionalInput()
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
                    opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
-               OP_LOGE(opName_, "input actual_seq_lengths_query data type only support int32"),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actual_seq_lengths_query",
+                    QLIDataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+                    "The dtype of actual_seq_lengths_query must be int32."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
