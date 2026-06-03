@@ -274,7 +274,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
                 max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
 
+                mask_ub = T.alloc_ub(n_block, calc_dtype)
+                ones_ub = T.alloc_ub(n_block, calc_dtype)
+
                 for s1_id in T.serial(s1_start, s1_end):
+                    T.barrier_all()
+                    T.tile.fill(ones_ub, 1.0)
                     T.barrier_all()
                     T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
                     T.barrier_all()
@@ -458,7 +463,19 @@ def tilelang_grad_kl_loss_single_kernel(
                                 g_row = g_id * vector_baseg + i
                                 T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
                                 T.barrier_all()
-                                T.tile.mul(rg_ub[i, :], dw_chunk_ub[i, :], weight_ub[i])
+                                # reluGrad = weight * diff * I(reluRes > 0)
+                                # I(reluRes > 0) ≈ 1 - exp(-reluRes * 100)
+                                T.tile.mul(mask_ub, bmm2_ub[g_row, :], 100.0)
+                                T.barrier_all()
+                                T.tile.mul(mask_ub, mask_ub, -1.0)
+                                T.barrier_all()
+                                T.tile.exp(mask_ub, mask_ub)
+                                T.barrier_all()
+                                T.tile.sub(mask_ub, ones_ub, mask_ub)
+                                T.barrier_all()
+                                T.tile.mul(rg_ub[i, :], diff_ub, weight_ub[i])
+                                T.barrier_all()
+                                T.tile.mul(rg_ub[i, :], rg_ub[i, :], mask_ub)
                                 T.barrier_all()
 
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
