@@ -199,6 +199,7 @@ public:
             if (runTimeInfo_[ping_pong_idx].need_compute) {
                 SET_FLAG(MTE3, V, EVENT_ID0);
                 WAIT_FLAG(MTE3, V, EVENT_ID0);
+                vecOp.SendVecSftPreProcess();
                 CrossCoreWaitFlag<2, PIPE_V>(FLAG_C1_V1);
                 vecOp.SendVecSoftmax(p_l1_tensor_, mm1_res_ub_tensor_, runTimeInfo_[ping_pong_idx]);
                 CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_V1_C3);
