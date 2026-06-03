@@ -110,8 +110,6 @@ public:
         }
 
         ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-        ubOffset += 32;
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset);
     }
     CATLASS_DEVICE
     void Finalize()
@@ -158,27 +156,32 @@ public:
         }
         uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
 
-        uint32_t perCoreData = blockM / epilogueCoreNum;
+        uint32_t perCoreData =  blockM / epilogueCoreNum;
         uint32_t remainderData = blockM % epilogueCoreNum;
 
         uint32_t scaleBlock = (perCoreData * sizeof(ElementPerTokenScale) + 31) / 32 * 32;
         sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock);
 
-        uint32_t tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
-        uint32_t loopStartIdx =
-            epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
+        uint32_t tasksForIdx  = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
+        uint32_t loopStartIdx = epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData? epilogueCoreIdx : remainderData);
+
+        uint32_t alignedPerCoreData = RoundUp<BYTE_PER_BLK / sizeof(ElementPerTokenScale)>(perCoreData + 1);
 
         uint32_t ChunkTileLen = blockN / 2;
+        uint32_t HalfChunkTileLen = ChunkTileLen / 2;
+
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
+
             auto gmTileC = gmC[loopIdx * blockK];
 
             auto &ubC = ubCList[ubListId];
             auto &ubD = ubDList[ubListId];
 
             auto &ubCFp32 = ubCFp32List[ubListId];
-            auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId];
+            auto &ubCFp32ChunkN = ubCFp32ChunkNList[ubListId]; 
             auto &ubAbs = ubCFp32ChunkNAbsList[ubListId];
+            // auto &ubMax = ubCFp32ChunkNMaxList[ubListId];
             auto &ubReduceMax = ubCFp32ChunkNMaxList[ubListId];
             auto &ubOutputTmp = ubAbs;
             auto &sharedUbTmpBuffer = ubReduceMax;

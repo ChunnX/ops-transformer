@@ -361,14 +361,15 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1,
-            weight2GM_, layoutB2,
+            weight1GM_, layoutB1, bias1GM_,
+            weight2GM_, layoutB2, bias2GM_,
             weightScales1GM_, layoutScale1,
             weightScales2GM_, layoutScale2,
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingQuantV2TilingData,
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+            moeInitRoutingQuantV2TilingData,
             epilogueGranularity, activationClamp};
     } else {
         params = typename MatmulKernel::Params{
@@ -377,14 +378,15 @@ __aicore__ inline void DispatchFFNCombine<MegaMoeFunc>::Process()
             static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
             epilogueCoreNum,
             contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1,
-            weight2GM_, layoutB2,
+            weight1GM_, layoutB1, bias1GM_,
+            weight2GM_, layoutB2, bias2GM_,
             weightScales1GM_, layoutScale1,
             weightScales2GM_, layoutScale2,
             yGM_, layoutD1, layoutD2,
             topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
             expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_, bias1GM_, bias2GM_, moeInitRoutingV2TilingData,
+            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+            moeInitRoutingV2TilingData,
             epilogueGranularity, activationClamp};
     }
 

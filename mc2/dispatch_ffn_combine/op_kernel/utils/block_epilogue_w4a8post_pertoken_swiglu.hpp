@@ -83,7 +83,7 @@ public:
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource, int32_t n, Params const &params = Params{}) : params(params)
     {
-        size_t ubOffset = 0;
+        ubOffset = 0;
         int32_t eventVMTE2 = 0;
         int32_t eventMTE2V = 0;
         int32_t eventMTE3V = 0;
@@ -409,7 +409,6 @@ private:
     AscendC::LocalTensor<int4b_t> xHighI4TensorList[UB_STAGES];
     AscendC::LocalTensor<int4b_t> xLowI4TensorList[UB_STAGES];
     AscendC::LocalTensor<ElementD> ubD;
-    AscendC::LocalTensor<half> xHighHalfTensor;
     AscendC::LocalTensor<half> xLowHalfTensor;
     AscendC::LocalTensor<half> xLowHalfTensor2;
     AscendC::LocalTensor<int16_t> xLowI16Tensor;
@@ -427,6 +426,7 @@ private:
     int32_t eventxLowVMTE3List[UB_STAGES];
 
     uint32_t ubListId{0};
+    size_t ubOffset;
 
     AscendC::LocalTensor<float> ubCFp32;
     AscendC::LocalTensor<float> ubCFp32ChunkN;

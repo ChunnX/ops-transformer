@@ -96,8 +96,10 @@ public:
         LayoutA layoutA2;
         __gm__ ElementB *ptrB1;
         LayoutB layoutB1;
+        __gm__ float *ptrBias1;
         __gm__ ElementB *ptrB2;
         LayoutB layoutB2;
+        __gm__ float *ptrBias2;
         // The unified op def exposes optional bias1/bias2 inputs; when absent
         // ptrBias1/ptrBias2 are nullptr. Per-channel scale info is fully carried
         // by `weight_scales1` / `weight_scales2` (forwarded as `ptrScale1` / `ptrScale2`).
@@ -126,8 +128,6 @@ public:
         GM_ADDR probs;
         GM_ADDR ptrXActiveMask;
         GM_ADDR ptrScales;
-        GM_ADDR ptrBias1;
-        GM_ADDR ptrBias2;
         int64_t topK;
         uint64_t initRoutingQuantTilingKey;
         uint32_t epilogueCoreNum;
@@ -152,12 +152,12 @@ public:
                uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
                uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
-               LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
+               LayoutB layoutB1_, GM_ADDR ptrBias1_, GM_ADDR ptrB2_, LayoutB layoutB2_, GM_ADDR ptrBias2_,
                GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
                GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
-                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
+                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                 optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity())
@@ -177,8 +177,10 @@ public:
               layoutA2(layoutA2_),
               ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
               ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
               layoutB2(layoutB2_),
+              ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
               ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
               layoutScale1(layoutScale1_),
               ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
@@ -193,8 +195,6 @@ public:
               probs(probs_),
               ptrXActiveMask(ptrXActiveMask_),
               ptrScales(ptrScales_),
-              ptrBias1(ptrBias1_),
-              ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
@@ -217,12 +217,12 @@ public:
                uint32_t expertPerRank_, uint32_t maxOutputSize_, int64_t topK_,
                 uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
                 GM_ADDR contextGM_, GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
-                LayoutB layoutB1_, GM_ADDR ptrB2_, LayoutB layoutB2_,
+                LayoutB layoutB1_, GM_ADDR ptrBias1_, GM_ADDR ptrB2_, LayoutB layoutB2_, GM_ADDR ptrBias2_,
                 GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
                 GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                 GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                 GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
-               GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, GM_ADDR ptrBias1_, GM_ADDR ptrBias2_,
+               GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                optiling::MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                 uint32_t epilogueGranularity_ = 0,
                 float swigluLimit_ = std::numeric_limits<float>::infinity())
@@ -242,8 +242,10 @@ public:
               layoutA2(layoutA2_),
               ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_),
+              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
               ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
               layoutB2(layoutB2_),
+              ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
               ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
               layoutScale1(layoutScale1_),
               ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
@@ -258,8 +260,6 @@ public:
               probs(probs_),
               ptrXActiveMask(ptrXActiveMask_),
               ptrScales(ptrScales_),
-              ptrBias1(ptrBias1_),
-              ptrBias2(ptrBias2_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
               moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
@@ -915,7 +915,7 @@ private:
             AscendC::GlobalTensor<int32_t> srcAddress;
             srcAddress.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(shmem.windowsOutAddr() + localTokenPerExpertOffset));
             AscendC::GlobalTensor<int32_t> dstAddress;
-            __gm__ void *dstPeermemPtr = shmem(localTokenPerExpertOffset, coreIdx);
+            __gm__ void *dstPeermemPtr = shmem(localTokenPerExpertOffset, dstEpIdx);
             dstAddress.SetGlobalBuffer((__gm__ int32_t *)dstPeermemPtr);
 
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
