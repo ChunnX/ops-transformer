@@ -119,22 +119,22 @@ struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
     static constexpr size_t size = SIZE / sizeof(T);
 
-    static __aicore__ inline size_t Count(size_t len)
+    static inline size_t Count(size_t len)
     {
         return (len + size - 1) / size;
     }
 
-    static __aicore__ inline bool IsAligned(size_t len)
+    static inline bool IsAligned(size_t len)
     {
         return len % size == 0;
     }
 
-    static __aicore__ inline size_t AlignUp(size_t len)
+    static inline size_t AlignUp(size_t len)
     {
         return (len + size - 1) & ~(size - 1);
     }
 
-    static __aicore__ inline size_t AlignDown(size_t len)
+    static inline size_t AlignDown(size_t len)
     {
         return len & ~(size - 1);
     }

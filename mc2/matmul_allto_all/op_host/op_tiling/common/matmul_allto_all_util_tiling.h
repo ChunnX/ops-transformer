@@ -12,7 +12,6 @@
 #define MATMUL_ALLTO_ALL_UTIL_TILING_H
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 
 namespace MC2Tiling {
 
@@ -235,7 +234,7 @@ public:
     Mc2CcTilingConfigBuilder(const std::string &groupName, uint32_t opType, const std::string &algConfig);
 
     // 链式配置方法（声明),通过change和with方法来修改hccl中的对应属性
-    Mc2CcTilingConfigBuilder &withReduceType(const char *opName, AscendC::HcclReduceOp reduceType,
+    Mc2CcTilingConfigBuilder &withReduceType(const char *opName, mc2tiling::HcclReduceOp reduceType,
                                              ge::DataType dstDataType, ge::DataType srcDataType);
     Mc2CcTilingConfigBuilder &withStepSize(uint8_t stepSize);
     Mc2CcTilingConfigBuilder &isLocalRankDataToLocalDst(bool flag);

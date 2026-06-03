@@ -781,8 +781,8 @@ Mc2CcTilingConfigBuilder::Mc2CcTilingConfigBuilder(const std::string &groupName,
 {
 }
 
-Mc2CcTilingConfigBuilder &Mc2CcTilingConfigBuilder::withReduceType(const char *opName, AscendC::HcclReduceOp reduceType,
-                                                                   ge::DataType dstDataType, ge::DataType srcDataType)
+Mc2CcTilingConfigBuilder &Mc2CcTilingConfigBuilder::withReduceType(const char *opName, mc2tiling::HcclReduceOp reduceType,
+                                                                    ge::DataType dstDataType, ge::DataType srcDataType)
 {
     this->reduceType = static_cast<uint32_t>(reduceType);
     this->dstDataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName, dstDataType));

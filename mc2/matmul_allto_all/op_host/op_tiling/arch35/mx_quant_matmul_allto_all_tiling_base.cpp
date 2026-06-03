@@ -636,7 +636,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
-            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType,
+            .withReduceType(opName_, mc2tiling::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType,
                             contextInfo.args_.geCType)
             .withCommEngine(engineType)
             .build();
