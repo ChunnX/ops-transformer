@@ -167,6 +167,8 @@ public:
     bool antiquantPerHeadFlag;
     uint32_t antiqSeqSize;
     event_t UbToL1Event;
+    AntiquantProcessorBaseAPI<ANTIQUANT_PROCESSOR_ARGS, KEY_ANTIQUANT_PER_TOKEN> keyAntiquantProcessor;
+    AntiquantProcessorBaseAPI<ANTIQUANT_PROCESSOR_ARGS, VALUE_ANTIQUANT_PER_TOKEN> valueAntiquantProcessor;
 
 protected:
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
@@ -209,6 +211,7 @@ protected:
     bool isBeforeHalf;
     AntiquantTaskParamBaseAPI taskParam;
 
+
 private:
     TPipe *tPipe;
     const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
@@ -234,8 +237,7 @@ private:
     AttenMaskInfo attenMaskInfo;
     GlobalTensor<float> softmaxMaxGm;
     GlobalTensor<float> softmaxSumGm;
-    AntiquantProcessorBaseAPI<ANTIQUANT_PROCESSOR_ARGS, KEY_ANTIQUANT_PER_TOKEN> keyAntiquantProcessor;
-    AntiquantProcessorBaseAPI<ANTIQUANT_PROCESSOR_ARGS, VALUE_ANTIQUANT_PER_TOKEN> valueAntiquantProcessor;
+
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     postQuantGmType postQuantScaleGm;
     postQuantGmType postQuantOffsetGm;
