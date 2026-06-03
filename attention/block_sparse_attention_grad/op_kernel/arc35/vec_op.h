@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #pragma once
+#include "vector_api/vf_cast_nd2nz.h"
 using namespace AscendC;
 
 namespace BSA_ARC35 {
@@ -261,11 +262,7 @@ public:
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
                       (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
-        Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
-        PipeBarrier<PIPE_V>();
-
-        ND2NZ(softmax_res_nz_tensor_, softmax_res_tensor_, half_s1_process_align_, s2_process_align_);
-        PipeBarrier<PIPE_V>();
+        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
 
@@ -295,11 +292,7 @@ public:
                            (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
                            (__ubuf__ float *)sft_front_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
-        Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
-        PipeBarrier<PIPE_V>();
-
-        ND2NZ(sftg_res_nz_tensor_, softmax_res_tensor_, half_s1_process_align_, s2_process_align_);
-        PipeBarrier<PIPE_V>();
+        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
 
@@ -568,26 +561,6 @@ private:
                 StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
                 ub_offset += repeat_size;
             }
-        }
-    }
-
-    __aicore__ inline void ND2NZ(const LocalTensor<INPUT_TYPE> &dstTensor, const LocalTensor<INPUT_TYPE> &srcTensor,
-                                 const uint64_t row, const uint64_t col)
-    {
-        uint64_t src_offset = 0;
-        uint64_t dst_offset = 0;
-        uint32_t C0_NUM = CeilDiv<uint32_t>(col, C0_SIZE);
-
-        DataCopyParams repeatParams;
-        repeatParams.blockCount = C0_NUM;
-        repeatParams.blockLen = C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-        repeatParams.srcStride = 0;
-        repeatParams.dstStride = (row - 1) * C0_SIZE * sizeof(INPUT_TYPE) / BLOCK_SIZE;
-
-        for (uint64_t i = 0; i < row; i++) {
-            src_offset = i * col;
-            dst_offset = i * C0_SIZE;
-            DataCopy(dstTensor[dst_offset], srcTensor[src_offset], repeatParams);
         }
     }
 
