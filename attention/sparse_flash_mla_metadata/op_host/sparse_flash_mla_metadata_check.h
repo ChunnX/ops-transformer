@@ -165,10 +165,6 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (strstr(socVersion, "Ascend950") == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "This operator supports [Ascend950], but now is on %s", socVersion);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     return ACLNN_SUCCESS;
 }
 

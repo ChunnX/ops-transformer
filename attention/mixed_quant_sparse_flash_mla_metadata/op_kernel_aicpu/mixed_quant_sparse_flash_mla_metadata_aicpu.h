@@ -332,14 +332,14 @@ private:
     uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
 
     // attr
-    std::string socVersion_ = "";
+    std::string socVersion_ = "Ascend950";
     int64_t oriPreToken_ = 0;
     int64_t oriNextToken_ = 0;
     int64_t cmpPreToken_ = 0;
     int64_t cmpNextToken_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 0;
-    uint32_t s2BaseSize_;
+    uint32_t s2BaseSize_ = 128U;
     bool isS1G_ = true;
     bool supportFd = false;
     uint32_t oriAttentionMode_ = 1;

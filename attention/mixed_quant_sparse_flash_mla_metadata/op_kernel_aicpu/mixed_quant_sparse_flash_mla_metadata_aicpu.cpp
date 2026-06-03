@@ -180,19 +180,22 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     if (numHeadsQ_ == 128) {
     	isSplitG_ = true;
     }
-    if (isSplitG_) {
-        mBaseSize_ = groupSize_;
-        aicCoreNum_ /= 2;
-        aivCoreNum_ /= 2;
-    } else {
-        ValidSocVersion validSocVersion = ProcessSocVersion();
-        if (validSocVersion == ValidSocVersion::ASCEND910) {
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND910) {
+        mBaseSize_ = 64U;
+        s2BaseSize_ = 512U;
+    } else if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (isSplitG_) {
+            mBaseSize_ = groupSize_;
+            aicCoreNum_ /= 2;
+            aivCoreNum_ /= 2;
+        } else {
             mBaseSize_ = 64U;
-            s2BaseSize_ = 512U;
-        } else if (validSocVersion == ValidSocVersion::ASCEND950) {
-            mBaseSize_ = 64U;
-            s2BaseSize_ = 128U;
         }
+        s2BaseSize_ = 128U;
+    } else {
+        mBaseSize_ = 64U;
+        s2BaseSize_ = 128U;
     }
     return true;
 }
@@ -310,7 +313,8 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcOriPreTokenLeftUp(uint32_
 {
     auto mode = static_cast<SparseMode>(oriMaskMode_);
     if (mode == SparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + oriPreToken_;
+        return oriPreToken_ == INT64_MAX ?
+            INT64_MAX : static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + oriPreToken_;
     }
     return oriPreToken_;
 }
@@ -336,7 +340,8 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_
 {
     auto mode = static_cast<SparseMode>(cmpMaskMode_);
     if (mode == SparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + cmpPreToken_;
+        return cmpPreToken_ == INT64_MAX ?
+            INT64_MAX : static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + cmpPreToken_;
     }
     return cmpPreToken_;
 }
