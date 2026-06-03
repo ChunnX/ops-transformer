@@ -47,11 +47,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList* weight1, const aclTensorList* weight2, const aclTensorList* weightScales1Optional,
     const aclTensorList* weightScales2Optional, const aclTensorList* bias1Optional,
     const aclTensorList* bias2Optional, const aclTensor* xActiveMaskOptional,
-    const aclTensor* scalesOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
+    int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
     const char* commAlg, int64_t numMaxTokensPerRank, const char* activation, double activationClamp,
-    int64_t activationOutDtype, bool transposeWeight1, bool transposeWeight2, int64_t weight1Interleave,
-    aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
+    int64_t activationOutDtype, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
@@ -77,15 +76,17 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CreateEmptyTensor(ACL_INT64, weightScales1Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_INT64, weightScales2Optional, tmpScaleList, *executor);
 
+    // aclTensor *scalesOptional = (*executor)->AllocTensor({0}, static_cast<op::DataType>(ACL_FLOAT));
+
     char* commAlgNonConst = const_cast<char*>(commAlg);
     char* activationNonConst = const_cast<char*>(activation);
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
-        xActiveMaskOptional, scalesOptional,
-        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
-        combineQuantMode, commAlgNonConst, numMaxTokensPerRank, activationNonConst, activationClamp,
-        activationOutDtype, transposeWeight1, transposeWeight2, weight1Interleave,
+        xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+        dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, commAlgNonConst,
+        numMaxTokensPerRank, activationNonConst, activationClamp,
+        activationOutDtype, false, false, 0,
         yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
