@@ -785,6 +785,10 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/tests/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/examples/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/docs/
+                - ops/ops-transformer/moe/moe_init_routing_v3/tests/
+                - ops/ops-transformer/moe/moe_re_routing/tests/
+                - ops/ops-transformer/moe/moe_token_permute/tests/
+                - ops/ops-transformer/moe/moe_token_permute_grad/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/examples/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/docs/
