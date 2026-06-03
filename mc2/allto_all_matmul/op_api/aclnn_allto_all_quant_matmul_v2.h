@@ -23,7 +23,7 @@ extern "C" {
 
 /**
  * 算子功能：实现all2all + quant + matmul融合计算
- * @brief aclnnAlltoAllQuantMatMul的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnAlltoAllQuantMatMulV2的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] x1: 左矩阵输入张量，数据类型支持FLOAT16、BFLOAT16、INT4。
  * @param [in] x2: 右矩阵输入张量，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2、INT8、INT4。
@@ -51,6 +51,7 @@ extern "C" {
  * @param [in] x1QuantDtype:
  * Matmul左矩阵的量化类型，在A5中仅支持配置35（表示ACL_FLOAT8_E5M2）或36（表示ACL_FLOAT8_E4M3FN），在A2中仅支持配置2（表示ACL_INT8）。
  * @param [in] groupSize: Matmul计算三个方向上的量化分组大小。
+ * @param [in] commMode: 通信引擎参数，用于启动不同的通信引擎。
  * @param [in] transposeX1: 左矩阵是否转置过，暂不支持配置为True。
  * @param [in] transposeX2: 右矩阵是否转置过。
  * @param [out] output: 矩阵乘法的输出结果。
@@ -69,7 +70,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllQuantMatmulV2Get
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnAlltoAllQuantMatMul的第二段接口，用于执行计算。
+ * @brief aclnnAlltoAllQuantMatMulV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
  * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllQuantMatMulGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
