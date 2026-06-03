@@ -266,12 +266,12 @@ def tilelang_grad_kl_loss_single_kernel(
 
 
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_2d_ub = T.alloc_ub((1, n_block), calc_dtype)
-                rsy_max_ub = T.alloc_ub(1, calc_dtype)
-                rsy_sum_ub = T.alloc_ub(1, calc_dtype)
-                rsy_chunk_max_ub = T.alloc_ub(1, calc_dtype)
-                rsy_chunk_sum_ub = T.alloc_ub(1, calc_dtype)
-                max_pair_ub = T.alloc_ub((1, 2), calc_dtype)
+                rsy_2d_ub = T.alloc_ub((16, n_block), calc_dtype)
+                rsy_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_sum_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_max_ub = T.alloc_ub(16, calc_dtype)
+                rsy_chunk_sum_ub = T.alloc_ub(16, calc_dtype)
+                max_pair_ub = T.alloc_ub((2, 16), calc_dtype)
 
                 for s1_id in T.serial(s1_start, s1_end):
                     T.barrier_all()
@@ -369,17 +369,20 @@ def tilelang_grad_kl_loss_single_kernel(
                             rsy_chunk_ub,
                         )
                         T.barrier_all()
-                        # Copy 1D chunk to 2D buffer for reduce_max
-                        T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
-                        T.barrier_all()
+                        # Broadcast 1D chunk to 16 rows of rsy_2d_ub for reduce_max
+                        for i in T.serial(16):
+                            T.barrier_all()
+                            T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
+                            T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
                         # Update global max: max(old_max, chunk_max)
-                        T.copy(rsy_max_ub, max_pair_ub[0, 0:1])
+                        # max_pair_ub[0, :] = rsy_max_ub, max_pair_ub[1, :] = rsy_chunk_max_ub
+                        T.copy(rsy_max_ub, max_pair_ub[0, :])
                         T.barrier_all()
-                        T.copy(rsy_chunk_max_ub, max_pair_ub[0, 1:2])
+                        T.copy(rsy_chunk_max_ub, max_pair_ub[1, :])
                         T.barrier_all()
-                        T.reduce_max(max_pair_ub, rsy_max_ub, 1)
+                        T.reduce_max(max_pair_ub, rsy_max_ub, 0)
                         T.barrier_all()
 
                     # Step 2: exp(reduceSumY - max) and accumulate sum, write to SoftmaxI GM
@@ -402,9 +405,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
                         T.barrier_all()
-                        # Accumulate sum: copy to 2D and reduce_sum
-                        T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
-                        T.barrier_all()
+                        # Accumulate sum: broadcast to 2D and reduce_sum
+                        for i in T.serial(16):
+                            T.barrier_all()
+                            T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
+                            T.barrier_all()
                         T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
                         T.barrier_all()
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
