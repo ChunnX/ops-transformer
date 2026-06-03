@@ -83,6 +83,8 @@ private:
     __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void SetExpertTokenNums();
+    __aicore__ inline void SetExpertTokenNumsA3();
+    __aicore__ inline void SetExpertTokenNumsA5();
     __aicore__ inline void SetExpertTokenNumsPrefixSum(uint32_t localExpertNum);
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
@@ -1094,14 +1096,17 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     // 内存复用，取大
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
+    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ?
+        recStatusNumPerCoreSpace : recvWinBlockNumSpace;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    // SetExpertTokenNums使用二维ReduceSum，GatherMask输出按[expert][rank]紧凑存放，不需要按行padding。
+    // SetExpertTokenNums使用二维ReduceSum，GatherMask输出按[expert][rank]紧凑存放。
     uint64_t setExpertTokenNumsStatusSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) *
         epWorldSize_ * sizeof(float);
     setExpertTokenNumsStatusSpace = Ceil(setExpertTokenNumsStatusSpace, UB_ALIGN) * UB_ALIGN;
-    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsStatusSpace) ?
         gatherMaskOutSize : setExpertTokenNumsStatusSpace;
+#endif
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);                 // recStatusNumPerCore_32对齐后大小  * 32B
     totalUsedUB_ += gatherMaskOutSize;
     tpipe_->InitBuffer(sumCoreBuf_, aivNum_ * UB_ALIGN);                      // 48 * 32B
@@ -1114,8 +1119,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     tpipe_->InitBuffer(sumContinueBuf_, reduceSumWorkNeedSize * sizeof(float));
     totalUsedUB_ += reduceSumWorkNeedSize * sizeof(float);
 #else
-    tpipe_->InitBuffer(sumContinueBuf_, aivNum_ * sizeof(float));             // 48 * 4B
-    totalUsedUB_ += aivNum_ * sizeof(float);
+    uint32_t workLocalBufSize = Ceil(epWorldSize_, UB_ALIGN / sizeof(float)) * UB_ALIGN;
+    uint32_t sumContinueBufSize = aivNum_ * sizeof(float);
+    sumContinueBufSize = (sumContinueBufSize > workLocalBufSize) ? sumContinueBufSize : workLocalBufSize;
+    tpipe_->InitBuffer(sumContinueBuf_, sumContinueBufSize);
+    totalUsedUB_ += sumContinueBufSize;
 #endif
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 3);                             // 96B
     totalUsedUB_ += UB_ALIGN * 3;
@@ -1559,11 +1567,44 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()	 
-{	 
-    if (aivId_ != FIRST_CORE) {
-        return;
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNumsA3()
+{
+    uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    uint16_t localStatusSectionNum = static_cast<uint16_t>(localExpertNum * epWorldSize_);
+    DataCopyParams allStatusCopyParams{localStatusSectionNum, 1,
+        static_cast<uint16_t>((stateOffset_ - UB_ALIGN) / UB_ALIGN), 0};
+    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
+    DataCopy(allStatusTensorFp32, windowInstatusFp32Tensor_, allStatusCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+    int64_t expertTokenNumCumsum = 0;
+    LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
+    LocalTensor<float> expertTokenNumTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), 0);
+    LocalTensor<float> workLocalTensor = sumContinueBuf_.Get<float>();
+    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+        LocalTensor<float> expertStatusTensor = statusBuf_.GetWithOffset<float>(
+            epWorldSize_ * UB_ALIGN / static_cast<uint32_t>(sizeof(float)), localExpertIdx * epWorldSize_ * UB_ALIGN);
+        uint32_t mask = 2;
+        SyncFunc<AscendC::HardEvent::S_V>();
+        ReduceSum(expertTokenNumTensor, expertStatusTensor, workLocalTensor, mask, epWorldSize_, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        int64_t expertTokenNum = static_cast<int64_t>(expertTokenNumTensor.ReinterpretCast<int32_t>().GetValue(0));
+        expertTokenNumCumsum += expertTokenNum;
+        if (expertTokenNumsType_ == 0) {
+            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNumCumsum);
+        } else {
+            expertTokenNumsLocalTensor.SetValue(localExpertIdx, expertTokenNum);
+        }
     }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
+                                                0U, 0U, 0U};
+    DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNumsA5()
+{
     // 等待 LocalWindowCopy 的 DataCopyPad(..., outCountLocal=gatherMaskOutBuf_, ...)
     // 读取完毕，再通过MTE2写入gatherMaskOutBuf_，避免覆盖
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
@@ -1600,6 +1641,20 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     }
 
     SetExpertTokenNumsPrefixSum(localExpertNum);
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()
+{
+    if (aivId_ != FIRST_CORE) {
+        return;
+    }
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    SetExpertTokenNumsA5();
+#else
+    SetExpertTokenNumsA3();
+#endif
 }
 
 template <TemplateDispatchV2TypeClass> 
