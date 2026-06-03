@@ -103,7 +103,8 @@ def _get_npu_fa_kwargs():
 #   Q/K: per-token-group, 沿 D 维度按 group_size 分组，每组独立计算 shared exponent
 #   V:   per-channel-group, 沿 S 维度按 group_size 分组，每组独立计算 shared exponent
 #   quant_scale = 2^(floor(log2(max_abs)) - emax)，全零组 scale=1
-#   dequant_scale = 1 / quant_scale (NPU 侧用 dequant_scale 还原)
+#   量化: quantized = original / quant_scale
+#   反量化: dequantized = quantized * dequant_scale, 其中 dequant_scale = quant_scale
 # ==============================================================================
 
 _EMAX_MAP = {
@@ -156,13 +157,13 @@ def get_mxfp8_per_channel_group_quant_scale(tensor, fp8_dtype, group_size=32):
 def mxfp8_per_token_group_quant(tensor, quant_scale, group_size=32):
     dim4 = tensor.shape[-1]
     scale_expanded = quant_scale.repeat_interleave(group_size, dim=-1)[..., :dim4]
-    return (tensor * scale_expanded.to(tensor.dtype)).to(torch.float32)
+    return (tensor / scale_expanded.to(tensor.dtype)).to(torch.float32)
 
 
 def mxfp8_per_channel_group_quant(tensor, quant_scale, group_size=32):
     dim3 = tensor.shape[2]
     scale_expanded = quant_scale.repeat_interleave(group_size, dim=2)[:, :, :dim3, :]
-    return (tensor * scale_expanded.to(tensor.dtype)).to(torch.float32)
+    return (tensor / scale_expanded.to(tensor.dtype)).to(torch.float32)
 
 
 def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
@@ -612,16 +613,17 @@ def generate_data():
     quant_scale_k = get_mxfp8_per_token_group_quant_scale(k_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
     quant_scale_v = get_mxfp8_per_channel_group_quant_scale(v_fp16, FP8_DTYPE, QUANT_GROUP_SIZE)
 
-    dequant_scale_q = 1 / quant_scale_q
-    dequant_scale_k = 1 / quant_scale_k
-    dequant_scale_v = 1 / quant_scale_v
+    dequant_scale_q = quant_scale_q
+    dequant_scale_k = quant_scale_k
+    dequant_scale_v = quant_scale_v
 
     v_sg = dequant_scale_v.shape[2]
     logger.info("[INFO] V scale Sg=%d, 是否奇数=%s", v_sg, v_sg % 2 != 0)
 
-    q_fp8 = mxfp8_per_token_group_quant(q_fp16, quant_scale_q, QUANT_GROUP_SIZE).to(FP8_DTYPE)
-    k_fp8 = mxfp8_per_token_group_quant(k_fp16, quant_scale_k, QUANT_GROUP_SIZE).to(FP8_DTYPE)
-    v_fp8 = mxfp8_per_channel_group_quant(v_fp16, quant_scale_v, QUANT_GROUP_SIZE).to(FP8_DTYPE)
+    fp8_max = 448.0 if FP8_DTYPE == torch.float8_e4m3fn else 57344.0
+    q_fp8 = mxfp8_per_token_group_quant(q_fp16, quant_scale_q, QUANT_GROUP_SIZE).clamp(-fp8_max, fp8_max).to(FP8_DTYPE)
+    k_fp8 = mxfp8_per_token_group_quant(k_fp16, quant_scale_k, QUANT_GROUP_SIZE).clamp(-fp8_max, fp8_max).to(FP8_DTYPE)
+    v_fp8 = mxfp8_per_channel_group_quant(v_fp16, quant_scale_v, QUANT_GROUP_SIZE).clamp(-fp8_max, fp8_max).to(FP8_DTYPE)
 
     block_table_torch = None
     if ENABLE_PA:
