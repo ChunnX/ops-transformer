@@ -96,6 +96,28 @@ def _mla_kv_cache_dim0_nc_view(t: torch.Tensor):
     return view, buf.shape
 
 
+def _mla_kv_cache_dim0_nc_empty(shape, dtype, device="npu"):
+    """构造一个「逻辑 shape=shape、底层 storage 首轴放大 N 倍、dim0 stride=N×hidden」的
+    全零 device 张量，用作非连续 cache 的 OUTPUT。
+
+    和 _mla_kv_cache_dim0_nc_view 镜像：先开 N 倍大的真实 buffer，再 as_strided 出逻辑视图。
+    这样 create_acl_tensor 读到的是「逻辑 shape 不变、storage=N×、2× stride」——逻辑 shape 不变
+    可避免 aclnn InferShape 不匹配；底层 N× buffer 保证 kernel 按 2b 写不越界；回读按 storage
+    拷回后，view[b]=buf[N*b] 正好取到写入值，与连续 golden 对齐。
+    返回 (strided view, 底层 buffer)。buffer 需被持有以防回收。
+    """
+    N = MLA_KV_CACHE_NC_DIM0_STRIDE
+    shape = tuple(int(s) for s in shape)
+    b0 = shape[0]
+    rest = shape[1:]
+    hidden = 1
+    for s in rest:
+        hidden *= int(s)
+    buf = torch.zeros((N * b0,) + rest, dtype=dtype, device=device)
+    view = buf.as_strided(size=shape, stride=(N * hidden,) + tuple(buf.stride()[1:]))
+    return view, buf
+
+
 def round_up(val: int, align: int) -> int:
     if align == 0:
         return 0
@@ -909,9 +931,14 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
     def __init__(self, task_result: TaskResult, backend):
         super().__init__(task_result, backend)
 
+    # 输出顺序：qOut(0), kvCacheOut(1), qRopeOut(2), krCacheOut(3)
+    IDX_KV_CACHE_OUT = 1
+    IDX_KR_CACHE_OUT = 3
+
     def init_by_input_data(self, input_data: InputDataset):
         cm = int(input_data.kwargs["cacheMode"])
-        if cm in (0, 1):
+        is_nc = cm in (0, 1)
+        if is_nc:
             for name in ("kvCache", "kvCacheRope"):
                 t = input_data.kwargs[name]
                 view, buf_shape = _mla_kv_cache_dim0_nc_view(t)
@@ -933,7 +960,59 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
                     )
                     logging.info(diff_msg)
                     print(diff_msg, flush=True)
-        return super().init_by_input_data(input_data)
+
+        input_args, output_packages = super().init_by_input_data(input_data)
+
+        if is_nc:
+            # ATK 默认给 output 另开一块「逻辑 shape」大小的连续 buffer（convert_output_data
+            # 里 torch.zeros(output_shape)）。但 kernel 按 input 的 2× stride 往物理行 2b 写，
+            # 连续 [192] buffer 会让高块越界、低块错位。这里把两个 cache output 换成和 input
+            # 镜像的「逻辑 [192] / 底层 N×192 / 2× stride」张量：逻辑 shape 不变(过 InferShape)，
+            # 底层 N× buffer 保证写不越界，回读后 view[b]=buf[N*b] 与连续 golden 对齐。
+            # 持有 buffer/view 防止被回收。
+            self._nc_out_keepalive = []
+            n_out = len(output_packages)
+            for out_idx in (self.IDX_KV_CACHE_OUT, self.IDX_KR_CACHE_OUT):
+                if out_idx >= n_out:
+                    print(f"[nc_dim0][WARN] output index {out_idx} >= n_out={n_out}, skip", flush=True)
+                    continue
+                od = self.task_result.output_info_list[out_idx]
+                out_dtype = getattr(torch, str(od.dtype).replace("torch.", ""))
+                view, buf = _mla_kv_cache_dim0_nc_empty(od.shape, out_dtype, device="npu")
+                acl_struct = self.torch_tensor_to_acl(view, AclFormat.ACL_FORMAT_ND)
+                self._nc_out_keepalive.append((view, buf, acl_struct))
+                output_packages[out_idx] = acl_struct
+                # input_args 末尾就是 output_packages（按顺序 extend 进去的）
+                input_args[len(input_args) - n_out + out_idx] = acl_struct
+                print(
+                    f"[nc_dim0] inject nc output[{out_idx}]: logical_shape={tuple(view.shape)}, "
+                    f"storage_shape={tuple(buf.shape)}, dim0_stride={view.stride()[0]}, "
+                    f"dtype={out_dtype}",
+                    flush=True,
+                )
+
+        return input_args, output_packages
+
+    def after_call(self, output_packages):
+        outs = list(super().after_call(output_packages))
+        # 对注入的两个 nc cache output，直接 clone 我们持有的 strided device view 重新精确回读：
+        # kernel 已把结果写进 buf 的 device 内存（物理行 N*b），view 按 N× stride 取 → view[b]=buf[N*b]，
+        # 这绕开 acl_tensor_to_torch 里依赖 data_size 的 memcpy，保证高/低块都正确，且与连续 golden 对齐。
+        keepalive = getattr(self, "_nc_out_keepalive", None)
+        if keepalive:
+            # keepalive 顺序与注入顺序一致：0->IDX_KV_CACHE_OUT, 1->IDX_KR_CACHE_OUT
+            order = [self.IDX_KV_CACHE_OUT, self.IDX_KR_CACHE_OUT]
+            for k, out_idx in enumerate(order):
+                if k < len(keepalive) and out_idx < len(outs):
+                    view, buf, _ = keepalive[k]
+                    fixed = view.clone()  # 在原 device 上按 stride 重新读 buf -> 连续 [192]
+                    outs[out_idx] = fixed
+                    print(
+                        f"[nc_dim0] readback nc output[{out_idx}] via strided view.clone(): "
+                        f"shape={tuple(fixed.shape)}, nonzero={int(fixed.count_nonzero())}",
+                        flush=True,
+                    )
+        return tuple(outs)
 
 
 MIN_ERR = 1e-7
