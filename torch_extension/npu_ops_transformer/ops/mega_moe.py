@@ -178,6 +178,7 @@ def get_symm_buffer_for_mega_moe(
 
 
 def mega_moe(
+    context: torch.Tensor,
     x: torch.Tensor,
     topk_ids: torch.Tensor,
     topk_weights: torch.Tensor,
@@ -194,7 +195,7 @@ def mega_moe(
 ):
 
     return torch.ops.npu_ops_transformer.npu_mega_moe(
-        sym_buffer.context,
+        context,
         x,
         topk_ids,
         topk_weights,
