@@ -14,6 +14,7 @@
  */
 
 #include <cmath>
+#include <algorithm>
 #include <vector>
 #include "register/op_impl_registry.h"
 #include "register/op_def_registry.h"
@@ -23,6 +24,7 @@
 #include "err/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "quant_grouped_matmul_dequant_tiling.h"
+#include "../../quant_grouped_matmul_dequant/op_kernel/quant_grouped_matmul_dequant_config.h"
 
 bool AddWorkspace(gert::TilingContext* context, const size_t workspace) {
   size_t* workspace_size = context->GetWorkspaceSizes(1);
@@ -72,6 +74,10 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context)
                       "QuantMatmulDequant weight_scale shape[0] and quantized_weight shape[0] not equal please check."),
                       return false);
         _Params.originN = shape.GetDim(1);
+        auto scaleDesc = context->GetInputDesc(idx - 1);
+        if (scaleDesc != nullptr) {
+            _Params.scaleIsInt64 = (scaleDesc->GetDataType() == ge::DT_INT64);
+        }
         OP_CHECK_IF((_Params.originN + NM_FRACTAL_INT8 -1) / NM_FRACTAL_INT8 != _Params.fracN,
                   OP_LOGE(context->GetNodeName(),
                   "QuantMatmulDequant get n-dim of weight_scale and quantized_weight not match, please check."),
@@ -105,6 +111,10 @@ bool QuantMatmulDequantTiling::CheckInOutShapes(gert::TilingContext* context)
                         OP_LOGE(context->GetNodeName(),
                         "QuantMatmulDequant get weight_scale shape ndim is not 1, please check."), return false);
         _Params.originN = (uint64_t)shape.GetDim(0);
+        auto scaleDesc = context->GetInputDesc(idx - 1);
+        if (scaleDesc != nullptr) {
+            _Params.scaleIsInt64 = (scaleDesc->GetDataType() == ge::DT_INT64);
+        }
         OP_CHECK_IF((_Params.originN + NM_FRACTAL_INT8 -1) / NM_FRACTAL_INT8 != _Params.fracN,
                   OP_LOGE(context->GetNodeName(),
                   "QuantMatmulDequant get n-dim of weight_scale and quantized_weight not match, please check."),
@@ -479,6 +489,190 @@ bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext* context)
         _Params.dynamicBaseKTail = (_Params.originK - 1) % _Params.dynamicBaseK + 1;
     }
 
+    if (isGrouped && _Params.perToken && _Params.dynamicQuant) {
+        const uint64_t kBytes = _Params.originKAligned32;
+        const uint64_t ubSize = _Params.UBSize;
+        const uint64_t l0aTotal = _Params.L0ASize / 2;
+        const uint64_t l0bTotal = _Params.L0BSize / 2;
+        const uint64_t l0cSize = _Params.L0CSize;
+        const uint64_t l1Size = _Params.L1Size;
+
+        uint32_t phaseXChunk = 128;
+        while ((phaseXChunk << 1u) <= kBytes && phaseXChunk < 2048) {
+            phaseXChunk <<= 1u;
+        }
+
+        auto ubFits = [&](uint32_t mb, uint32_t nb) -> bool {
+            const uint64_t chunk = phaseXChunk;
+            uint64_t persistent = 2ULL * mb * nb * sizeof(uint16_t)
+                                + 2ULL * nb * sizeof(uint64_t)
+                                + mb * sizeof(float);
+            if (_Params.originE == 1ULL) {
+                persistent += static_cast<uint64_t>(mb) * nb * sizeof(uint16_t);
+            }
+            if (!_Params.scaleIsInt64) persistent += nb * sizeof(uint32_t);
+            if (_Params.smoothScale) {
+                persistent += kBytes * sizeof(uint16_t) + chunk * sizeof(float);
+            }
+            const uint64_t mbAlignedPhX = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+            uint64_t phaseX = mbAlignedPhX * chunk
+                            + 2ULL * chunk * sizeof(uint16_t)
+                            + chunk * sizeof(uint16_t)
+                            + 2ULL * chunk * sizeof(float)
+                            + chunk * sizeof(int32_t)
+                            + chunk * sizeof(uint16_t);
+            const uint64_t mbAligned = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+            uint64_t phaseD = mbAligned * nb * sizeof(uint16_t);
+            if (!_Params.scaleIsInt64) phaseD += nb * sizeof(float);
+            uint64_t total = persistent + (phaseX > phaseD ? phaseX : phaseD) + 2048;
+            return total <= ubSize;
+        };
+
+        auto l0Fits = [&](uint32_t mb, uint32_t nb, uint32_t kb) -> bool {
+            return (static_cast<uint64_t>(mb) * kb <= l0aTotal)
+                && (static_cast<uint64_t>(kb) * nb <= l0bTotal)
+                && (static_cast<uint64_t>(mb) * nb * sizeof(int32_t) <= l0cSize);
+        };
+
+        auto l1Fits = [&](uint32_t mb, uint32_t nb, uint32_t kb) -> bool {
+            const uint64_t mbAligned = (mb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : mb;
+            uint64_t xL1 = mbAligned * kBytes;
+            uint64_t wL1 = 2ULL * kb * nb;
+            return xL1 + wL1 <= l1Size;
+        };
+
+        uint32_t bestMb = 16;
+        uint32_t bestNb = 16;
+        uint64_t bestScore = static_cast<uint64_t>(-1);
+        for (uint32_t nbI = 0; nbI < AscendC::NB_CANDIDATE_COUNT; ++nbI) {
+            uint32_t nb = AscendC::NB_CANDIDATES[nbI];
+            if (nb > _Params.originN) continue;
+            for (uint32_t mbI = 0; mbI < AscendC::MB_CANDIDATE_COUNT; ++mbI) {
+                uint32_t mb = AscendC::MB_CANDIDATES[mbI];
+                if (mb < 32U) continue;
+                uint64_t kbRaw = std::min({kBytes, l0aTotal / mb, l0bTotal / nb,
+                                           static_cast<uint64_t>(AscendC::MMAD_K_MAX)});
+                uint32_t kb = static_cast<uint32_t>((kbRaw / K_FRACTAL_INT8) * K_FRACTAL_INT8);
+                if (kb == 0) continue;
+                if (!l0Fits(mb, nb, kb)) continue;
+                if (!l1Fits(mb, nb, kb)) continue;
+                if (!ubFits(mb, nb)) continue;
+
+                const uint64_t weightBytes = static_cast<uint64_t>(_Params.originN) * kBytes;
+                const uint64_t iters = (_Params.originM + mb - 1) / mb;
+                const uint64_t cbPerIter = (_Params.originN + nb - 1) / nb;
+                const uint64_t coreNum = static_cast<uint64_t>(NUM_OF_AICORE);
+                const uint64_t perCoreIters = (iters + coreNum - 1) / coreNum;
+                const uint64_t kpasses = (kBytes + kb - 1) / kb;
+                const uint64_t mte2Bursts = perCoreIters * cbPerIter * kpasses;
+                const uint64_t cyclesMte2W = ((weightBytes + coreNum - 1) / coreNum) / 17ULL
+                                           + 422ULL * mte2Bursts;
+                const uint64_t cyclesMte1A = perCoreIters * cbPerIter * kpasses
+                                           * (static_cast<uint64_t>(mb) * kb) / 512ULL;
+                const uint64_t cyclesMte1B = perCoreIters * cbPerIter * kpasses
+                                           * (static_cast<uint64_t>(kb) * nb) / 256ULL;
+                const uint64_t mte1Calls = perCoreIters * cbPerIter * kpasses
+                                         * (static_cast<uint64_t>(mb) / 16ULL + 1ULL);
+                const uint64_t cyclesMte1Issue = 32ULL * mte1Calls;
+                const uint64_t cyclesCube = perCoreIters * cbPerIter * kpasses
+                                          * (static_cast<uint64_t>(mb) * nb * kb) / 2048ULL;
+                const uint64_t cyclesMte3 = perCoreIters * cbPerIter
+                                          * (static_cast<uint64_t>(mb) * nb * 2ULL) / 17ULL;
+                const uint64_t feedSum = cyclesMte2W + cyclesMte1A + cyclesMte1B + cyclesMte1Issue + cyclesMte3;
+                uint64_t score = (cyclesCube >= feedSum) ? cyclesCube : feedSum;
+                if (score < bestScore || (score == bestScore && mb > bestMb) ||
+                    (score == bestScore && mb == bestMb && nb > bestNb)) {
+                    bestScore = score;
+                    bestMb = mb;
+                    bestNb = nb;
+                }
+            }
+        }
+
+        _Params.optCoreNum = static_cast<uint32_t>(_Params.CoreNum);
+        _Params.optM = static_cast<uint32_t>(_Params.originM);
+        _Params.optK = static_cast<uint32_t>(_Params.originK);
+        _Params.optN = static_cast<uint32_t>(_Params.originN);
+        _Params.optE = static_cast<uint32_t>(_Params.originE);
+        _Params.optOriginKAligned32 = static_cast<uint32_t>(_Params.originKAligned32);
+        _Params.optOriginKAligned512 = static_cast<uint32_t>(_Params.originKAligned512);
+        _Params.optFracM = static_cast<uint32_t>((_Params.originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8);
+        _Params.optFracK = static_cast<uint32_t>(_Params.fracK);
+        _Params.optFracN = static_cast<uint32_t>(_Params.fracN);
+        _Params.optMb = bestMb;
+        _Params.optNb = bestNb;
+        uint64_t kbRaw = std::min({kBytes, l0aTotal / bestMb, l0bTotal / bestNb,
+                                   static_cast<uint64_t>(AscendC::MMAD_K_MAX)});
+        _Params.optKb = static_cast<uint32_t>((kbRaw / K_FRACTAL_INT8) * K_FRACTAL_INT8);
+        _Params.optKPasses = static_cast<uint32_t>((kBytes + _Params.optKb - 1) / _Params.optKb);
+        const uint64_t mbAlignedXL1 = (bestMb < NM_FRACTAL_INT8) ? NM_FRACTAL_INT8 : bestMb;
+        const uint64_t xL1Bytes = mbAlignedXL1 * kBytes;
+        const uint64_t wL1OnePair = 2ULL * _Params.optKb * bestNb;
+        const uint64_t l1Free = (l1Size > xL1Bytes) ? (l1Size - xL1Bytes) : 0ULL;
+        uint32_t wChunk = 1;
+        for (uint32_t cand = 2; cand <= _Params.optKPasses; cand <<= 1u) {
+            if ((_Params.optKPasses % cand) != 0) break;
+            if (cand * wL1OnePair > l1Free) break;
+            wChunk = cand;
+        }
+        _Params.optWChunkKPasses = wChunk;
+        _Params.optPhaseXChunk = phaseXChunk;
+        _Params.optPhaseXFullPairs = static_cast<uint32_t>(kBytes / phaseXChunk);
+        _Params.optPhaseXTail = static_cast<uint32_t>(kBytes % phaseXChunk);
+        _Params.optMaxOneTurnToken = bestMb;
+        _Params.optMaxWeightColOneTurn = bestNb;
+
+        if (_Params.originE > 1u || _Params.optFracM >= static_cast<uint64_t>(NUM_OF_AICORE)) {
+            _Params.optNCoreNum = 1u;
+            _Params.optMCoreNum = static_cast<uint32_t>(NUM_OF_AICORE);
+        } else {
+            uint32_t chosen = 0;
+            uint64_t minCost = (static_cast<uint64_t>(_Params.optFracN) << 3) + _Params.optFracM;
+            for (uint32_t i = 1; i < 4; ++i) {
+                uint64_t cost = (static_cast<uint64_t>(_Params.optFracN) << (3 - i)) +
+                                (static_cast<uint64_t>(_Params.optFracM) << i);
+                if (cost < minCost) {
+                    chosen = i;
+                    minCost = cost;
+                }
+            }
+            _Params.optNCoreNum = 1u << chosen;
+            _Params.optMCoreNum = static_cast<uint32_t>(NUM_OF_AICORE) / _Params.optNCoreNum;
+        }
+
+        uint64_t totalIters = (_Params.originM + bestMb - 1) / bestMb;
+        _Params.optPerCoreIters = static_cast<uint32_t>((totalIters + _Params.CoreNum - 1) / _Params.CoreNum);
+        _Params.optRemainderIters = static_cast<uint32_t>(totalIters % _Params.CoreNum);
+        _Params.optWeightBlockN1 = 0;
+        const uint32_t totalColBatch = static_cast<uint32_t>((_Params.originN + bestNb - 1) / bestNb);
+        const uint64_t cbBytes = static_cast<uint64_t>(bestNb) * _Params.originK;
+        const uint64_t l2Eff = static_cast<uint64_t>(AscendC::L2_HEADROOM_BYTES) *
+                               AscendC::L2_WEIGHT_SHARE_PCT / 100;
+        uint32_t nBlockSize = cbBytes > 0 ? static_cast<uint32_t>(l2Eff / cbBytes) : 1u;
+        if (nBlockSize == 0) nBlockSize = 1;
+        if (nBlockSize > totalColBatch) nBlockSize = totalColBatch;
+        _Params.optNBlockSize = nBlockSize;
+
+        const uint64_t xRawL1Bytes = mbAlignedXL1 * kBytes * sizeof(uint16_t);
+        const uint64_t wL1Bytes = 2ULL * _Params.optWChunkKPasses * _Params.optKb * _Params.optNb;
+        const bool hasXRawL1 = (xL1Bytes + wL1Bytes + xRawL1Bytes <= _Params.L1Size);
+        const bool dbL0c = (static_cast<uint64_t>(bestMb) * bestNb * sizeof(int32_t) <= l0cSize / 2ULL);
+        const bool useXZNWorkspace = (_Params.originE == 1 && _Params.originM >= 16 && _Params.originN >= 256);
+        const bool l2WeightFits = (static_cast<uint64_t>(_Params.originK) * _Params.originN <= AscendC::L2_HEADROOM_BYTES);
+
+        uint32_t flags = 0;
+        flags |= QGMMD_FLAG_DYNAMIC_QUANT;
+        flags |= QGMMD_FLAG_PER_TOKEN;
+        if (_Params.smoothScale) flags |= QGMMD_FLAG_HAS_SMOOTH;
+        if (_Params.scaleIsInt64) flags |= QGMMD_FLAG_SCALE_IS_INT64;
+        if (bestMb <= AscendC::SMALL_M_THRESHOLD) flags |= QGMMD_FLAG_SMALL_M;
+        if (l2WeightFits) flags |= QGMMD_FLAG_L2_WEIGHT_FITS;
+        if (hasXRawL1) flags |= QGMMD_FLAG_HAS_X_RAW_L1;
+        if (dbL0c) flags |= QGMMD_FLAG_DBL0C;
+        if (useXZNWorkspace) flags |= QGMMD_FLAG_USE_XZN_WORKSPACE;
+        _Params.optFlags = flags;
+    }
+
     return true;
 }
 
@@ -537,6 +731,33 @@ bool QuantMatmulDequantTiling::SetTilingData(gert::TilingContext* context)
     tilingData.set_baseKTail_2(_Params.baseKTail_2);
     tilingData.set_ubKMask(_Params.ubKMask);
     tilingData.set_isXScaleHalf(_Params.isXScaleHalf);
+    tilingData.set_optCoreNum(_Params.optCoreNum);
+    tilingData.set_optMCoreNum(_Params.optMCoreNum);
+    tilingData.set_optNCoreNum(_Params.optNCoreNum);
+    tilingData.set_optM(_Params.optM);
+    tilingData.set_optK(_Params.optK);
+    tilingData.set_optN(_Params.optN);
+    tilingData.set_optE(_Params.optE);
+    tilingData.set_optOriginKAligned32(_Params.optOriginKAligned32);
+    tilingData.set_optOriginKAligned512(_Params.optOriginKAligned512);
+    tilingData.set_optFracM(_Params.optFracM);
+    tilingData.set_optFracK(_Params.optFracK);
+    tilingData.set_optFracN(_Params.optFracN);
+    tilingData.set_optMb(_Params.optMb);
+    tilingData.set_optNb(_Params.optNb);
+    tilingData.set_optKb(_Params.optKb);
+    tilingData.set_optKPasses(_Params.optKPasses);
+    tilingData.set_optWChunkKPasses(_Params.optWChunkKPasses);
+    tilingData.set_optPhaseXChunk(_Params.optPhaseXChunk);
+    tilingData.set_optPhaseXFullPairs(_Params.optPhaseXFullPairs);
+    tilingData.set_optPhaseXTail(_Params.optPhaseXTail);
+    tilingData.set_optMaxOneTurnToken(_Params.optMaxOneTurnToken);
+    tilingData.set_optMaxWeightColOneTurn(_Params.optMaxWeightColOneTurn);
+    tilingData.set_optPerCoreIters(_Params.optPerCoreIters);
+    tilingData.set_optRemainderIters(_Params.optRemainderIters);
+    tilingData.set_optWeightBlockN1(_Params.optWeightBlockN1);
+    tilingData.set_optNBlockSize(_Params.optNBlockSize);
+    tilingData.set_optFlags(_Params.optFlags);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return true;
@@ -582,6 +803,7 @@ bool QuantMatmulDequantTiling::GetCheckAttr(gert::TilingContext* context)
 ge::graphStatus QuantMatmulDequantTiling::runTiling(gert::TilingContext* context, bool is_grouped)
 {
     isGrouped = is_grouped;
+    _Params = QuantMatmulDequantParam{};
     // 310P AscendC platformINFO
     OP_CHECK_IF(!GetPlatformInfo(context),
                     OP_LOGE(context->GetNodeName(), "get platforminfo fail."),
