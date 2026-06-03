@@ -127,8 +127,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInf
     }
     OP_CHECK_IF(
         fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE && fiaInfo.softmaxLseFlag,
-        OP_LOGE(fiaInfo.opName,
-            "In GQA scenario, not support softmaxLse when query and key headdim is not equal to value headdim."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "softmax_lse", "enabled",
+                    "GQA with unequal headdim does not support softmax_lse"),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

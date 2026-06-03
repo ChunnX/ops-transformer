@@ -1557,11 +1557,15 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingCon
         workspace = platformInfo_.defaultSysWorkspaceSize;
     } else if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
         OP_CHECK_IF(SetWorkspaceAntiQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "workspace_size", "0",
+                        "Get workspace failed"),
+                    return ge::GRAPH_FAILED);
 
     } else {
         OP_CHECK_IF(SetWorkspaceNormal(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "workspace_size", "0",
+                        "Get workspace failed"),
+                    return ge::GRAPH_FAILED);
     }
 
     OP_LOGI(fiaInfo.opName, "Workspaces: %ld", workspace);

@@ -98,13 +98,13 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
 {
     OP_CHECK_IF((fiaInfo.opParamInfo.queryPaddingSize.tensor != nullptr) ||
         (fiaInfo.opParamInfo.kvPaddingSize.tensor != nullptr),
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, left padding is not supported."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "left_padding", "not empty",
+            "page attention does not support left padding"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.opParamInfo.keySharedPrefix.tensor != nullptr) ||
         (fiaInfo.opParamInfo.valueSharedPrefix.tensor != nullptr),
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, system prefix is not supported."),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "system_prefix", "not empty",
+            "page attention does not support system prefix"),
         return ge::GRAPH_FAILED);
     if (fiaInfo.npuArch == NpuArch::DAV_3510) {
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
@@ -245,16 +245,17 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
         
         if (fiaInfo.inputKvType == ge::DT_INT4) {
             OP_CHECK_IF(tempD != compareD,
-                OP_LOGE(fiaInfo.opName, "When page attention enable, if input kv dataType is INT32, "
-                    "the axis D of %s(%u) should be %u, "
-                    "if input kv dataType is INT4, the axis D of %s(%u) should be %u",
-                    inputName.c_str(), tempD / NUM8, compareD / NUM8,
-                    inputName.c_str(), tempD, compareD),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis_D",
+                    std::to_string(tempD).c_str(),
+                    ("When page attention is enabled, axis D of " + inputName
+                        + " should be " + std::to_string(compareD)).c_str()),
                 return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(tempD != compareD,
-                OP_LOGE(fiaInfo.opName, "When page attention enable, the axis D of %s(%u) should be %u",
-                    inputName.c_str(), tempD, compareD),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis_D",
+                    std::to_string(tempD).c_str(),
+                    ("When page attention is enabled, axis D of " + inputName
+                        + " should be " + std::to_string(compareD)).c_str()),
                 return ge::GRAPH_FAILED);
         }
     } else { // [blockNums, N, D1, blocksize, D0]
@@ -508,7 +509,8 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
-        OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
+        OP_CHECK_IF(dimNum == 3, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "pa_bnbs_h", "enabled",
+                "MXFP8 fullquant does not support PA BnBsH"),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "

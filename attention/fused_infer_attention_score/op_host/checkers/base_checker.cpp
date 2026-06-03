@@ -69,7 +69,8 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("FusedInferAttentionScore", "datatype %d not support", type);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FusedInferAttentionScore", "datatype",
+            std::to_string(static_cast<int32_t>(type)).c_str(), "not supported");
         return "UNDEFINED";
     }
 }
