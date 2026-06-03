@@ -32,8 +32,8 @@
   - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
 
   当前支持的布局：
-  - qInputLayout: "TND" "BNSD"
-  - kvInputLayout: "TND" "BNSD"
+  - qInputLayout: "TND" "BNSD" "BSND"
+  - kvInputLayout: "TND" "BNSD" "BSND"
 
 - **FP8特性说明（仅<term>Ascend 950PR/Ascend 950DT</term>支持）**：
   
@@ -135,6 +135,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>支持的shape为：
         <ul><li>TND: [totalQTokens, headNum, headDim]。</li>
         <li>BNSD: [batch, headNum, maxQSeqLength, headDim]。</li></ul>
+        <li>BSND: [batch, maxQSeqLength, headNum, headDim]。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -149,6 +150,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         <ul>
           <li>TND: [totalKTokens, numKeyValueHeads, headDim]。</li>
           <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
+          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -165,6 +167,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         <ul>
           <li>TND: [totalVTokens, numKeyValueHeads, headDim]。</li>
           <li>BNSD: [batch, numKeyValueHeads, maxKvSeqLength, headDim]。</li>
+          <li>BSND: [batch, maxKvSeqLength, numKeyValueHeads, headDim]。</li>
         </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -228,7 +231,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         可选输入，用于变长序列场景：
         <ul>
           <li>当qInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当qInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照query的shape中的S进行处理。</li>
+          <li>当qInputLayout为"BNSD"或"BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照query的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -244,7 +247,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         可选输入，用于变长序列场景：
         <ul>
           <li>当kvInputLayout为"TND"时：该项输入必须配置。</li>
-          <li>当kvInputLayout为"BNSD"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照key/value的shape中的S进行处理。</li>
+          <li>当kvInputLayout为"BNSD"或"BSND"时：如配置该项输入，算子内会按该输入指定的实际序列长度进行处理；如不配置该项输入（传入nullptr），算子内会按照key/value的shape中的S进行处理。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -326,7 +329,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>qInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入query的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -336,7 +339,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>kvInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
-      <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
+      <td>当前仅支持"TND"和"BNSD"和"BSND"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -429,7 +432,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>输入</td>
       <td>是否使能softmaxLse输出的标志位。</td>
       <td>
-        当前只支持传0或1。其中，<term>Ascend 950PR/Ascend 950DT</term>仅支持配置为0，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持配置为0或1
+        当前只支持传0或1。
         <ul>
           <li>0：表示不输出softmaxLse。</li>
           <li>1：表示输出softmaxLse，相比不输出softmaxLse可能存在性能损失。</li>
@@ -459,6 +462,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         <ul>
           <li>query为"TND": [totalQTokens, headNum, 1]。</li>
           <li>query为"BNSD": [batch, headNum, maxQSeqLength, 1]。</li>
+          <li>query为"BNSD": [batch, maxQSeqLength, headNum, 1]。</li>
         </ul>
       </td>
       <td>FLOAT</td>
@@ -578,8 +582,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - 确定性计算：
   - aclnnBlockSparseAttentionV2默认确定性实现。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- qInputLayout当前仅支持"TND"和"BNSD"。
-- kvInputLayout当前仅支持"TND"和"BNSD"。
+- qInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
+- kvInputLayout当前仅支持"TND"和"BNSD"和"BSND"。
 - 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
@@ -590,7 +594,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - actualSeqLengthsOptional与actualSeqLengthsKvOptional当前必须同时配置或同时不配置，仅配置其中之一的行为将被算子拦截。
 - blockTableOptional当前只支持传入nullptr，表示不开启PagedAttention特性。
 - innerPrecise仅支持配置4，表示混合精度运算，在性能与精度上取得一个折中。
-- softmaxLseFlag仅支持配置0或1，分别表示不开启/开启softmaxLse输出。当前，<term>Ascend 950PR/Ascend 950DT</term>仅支持配置为0，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持配置为0或1。
+- softmaxLseFlag仅支持配置0或1，分别表示不开启/开启softmaxLse输出。
 - qSeqlen和kvSeqlen不需要被blockShape整除，支持非对齐场景，实际分块数通过向上取整计算。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0。
 - maskType当前只支持输入0，表示不加mask。
