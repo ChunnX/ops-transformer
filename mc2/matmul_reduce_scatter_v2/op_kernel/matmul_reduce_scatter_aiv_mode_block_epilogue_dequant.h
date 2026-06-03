@@ -380,25 +380,25 @@ public:
 
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
+                auto biasTileOffsetCoord = tileOffset.template GetCoordByAxis<1>();
+                auto biasTileShapeCoord = actualTileShape.template GetCoordByAxis<1>();
 
-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
+                auto gmTileBiasGlobalTensor = gmBias[layoutBias.GetOffset(biasTileOffsetCoord)];
+                auto layoutGmTileBiasLayout = layoutBias.GetTileLayout(biasTileShapeCoord);
 
-                auto &ubBias = ubBiasList[ubListId];
-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
+                auto &ubBiasLocalTensor = ubBiasList[ubListId];
+                auto layoutUbBiasLayout = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShapeCoord);
 
                 // 把bias 从GM拷贝到UB
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
+                copyGmToUbBias(ubBiasLocalTensor, gmTileBiasGlobalTensor, layoutUbBiasLayout, layoutGmTileBiasLayout);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                    AscendC::Cast(ubBiasFp32, ubBiasLocalTensor, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
@@ -510,25 +510,25 @@ public:
 
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
+                auto coordBiasTileOffset = tileOffset.template GetCoordByAxis<1>();
+                auto coordBiasTileShape = actualTileShape.template GetCoordByAxis<1>();
 
-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
+                auto globalTensorGmTileBias = gmBias[layoutBias.GetOffset(coordBiasTileOffset)];
+                auto gmTileBiasLayoutInfo = layoutBias.GetTileLayout(coordBiasTileShape);
 
-                auto &ubBias = ubBiasList[ubListId];
-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
+                auto &localTensorUbBias = ubBiasList[ubListId];
+                auto ubBiasLayoutInfo = LayoutBias::template MakeLayoutInUb<ElementBias>(coordBiasTileShape);
 
                 // 把bias 从GM拷贝到UB
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
+                copyGmToUbBias(localTensorUbBias, globalTensorGmTileBias, ubBiasLayoutInfo, gmTileBiasLayoutInfo);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
                     AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                    AscendC::Cast(ubBiasFp32, localTensorUbBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
                 }
             }
