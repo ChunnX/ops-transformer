@@ -179,6 +179,23 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     OP_CHECK_NULL_WITH_CONTEXT(context, dropPadModePtr);
     const int64_t dropPadMode = *dropPadModePtr;
 
+    auto zeroExpertRangePtr = attrs->GetListInt(1);
+    auto copyExpertRangePtr = attrs->GetListInt(2);
+    auto constantExpertRangePtr = attrs->GetListInt(3);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(4);
+    if (nullptr == zeroExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "zeroExpertRangePtr");
+    }
+    if (nullptr == copyExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
+    }
+    if (nullptr == constantExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
+    }
+    if (nullptr == kPtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "kPtr");
+    }
+
     auto outShape = context->GetOutputShape(INDEX_OUT);
     OP_CHECK_IF(
         dropPadMode < VALUE_MODE_0 || dropPadMode > VALUE_MODE_3,
@@ -347,6 +364,7 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
 }
 
 IMPL_OP_INFERSHAPE(MoeFinalizeRoutingV2)
+.
     .InferShape(Infershape4MoeFinalizeRoutingV2)
     .InferDataType(InferDataTypeMoeFinalizeRoutingV2);
 } // namespace ops
