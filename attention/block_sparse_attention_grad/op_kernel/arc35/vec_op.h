@@ -292,7 +292,7 @@ public:
                            (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
                            (__ubuf__ float *)sft_front_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
-        CastND2NZ<INPUT_TYPE>(softmax_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
+        CastND2NZ<INPUT_TYPE>(sftg_res_nz_tensor_, src_ub_tensor, half_s1_process_align_, s2_process_align_);
         SET_FLAG(V, MTE3, EVENT_ID0);
         WAIT_FLAG(V, MTE3, EVENT_ID0);
 
