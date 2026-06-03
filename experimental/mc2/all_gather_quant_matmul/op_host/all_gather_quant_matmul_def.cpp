@@ -30,12 +30,12 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ})
             .IgnoreContiguous();
-        this->Input("scaleInv1")   // 左矩阵 ScaleA, AllGather用
+        this->Input("x1_scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Input("scaleInv2")   // 右矩阵 ScaleB，matmul用
+        this->Input("x2_scale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
@@ -59,6 +59,7 @@ public:
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("rank_size").AttrType(OPTIONAL).Int(0);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
+        this->Attr("is_optional_output").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicore_config_950;
         aicore_config_950.DynamicCompileStaticFlag(true)

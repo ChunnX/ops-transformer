@@ -41,7 +41,7 @@ class allGatherMatmulImpl {
 public:
     __aicore__ inline allGatherMatmulImpl() {};
 
-    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scaleInv1, GM_ADDR scaleInv2,
+    __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR x1Scale, GM_ADDR x2Scale,
                                 GM_ADDR cGM, GM_ADDR allGatherDataOut, GM_ADDR allGatherScalesOut,
                                 GM_ADDR tilingGM);
     __aicore__ inline void Process();
@@ -63,7 +63,7 @@ private:
     GM_ADDR scaleAAddr_;
     GM_ADDR bGM_;
     GM_ADDR cGM_;
-    GM_ADDR scaleInv2GM;
+    GM_ADDR x2ScaleGM;
     __gm__ allGatherMatmulTilingData* tilingData;
 
     uint32_t aivId_{0};
@@ -78,7 +78,7 @@ private:
 
 template<TemplateMC2TypeClass>
 __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::Init(
-    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scaleInv1, GM_ADDR scaleInv2,
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR x1Scale, GM_ADDR x2Scale,
     GM_ADDR cGM, GM_ADDR allGatherDataOut, GM_ADDR allGatherScalesOut,
     GM_ADDR tilingGM)
 {
@@ -96,7 +96,7 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::Init(
     allGatherDataOutAddr_ = allGatherDataOut;
     allGatherScalesOutAddr_ = allGatherScalesOut;
     inputXAddr_ = aGM;
-    inputXScaleAddr_ = scaleInv1;
+    inputXScaleAddr_ = x1Scale;
     allGatherMte_.InitParams(&tilingData->allGatherTiling, winContext_);
 
     uint64_t xSize = axisM_ * axisKa_ * sizeof(int8_t);
@@ -106,7 +106,7 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::Init(
     scaleAAddr_ = (GM_ADDR)allGatherMte_.GetSelfDataAddrGm() + winOffset;
     bGM_ = bGM;
     cGM_ = cGM;
-    scaleInv2GM = scaleInv2;
+    x2ScaleGM = x2Scale;
 
     if ASCEND_IS_AIC {
         return;
@@ -150,7 +150,7 @@ __aicore__ inline void allGatherMatmulImpl<TemplateMC2TypeFunc>::MatmulProcess()
 
     ProblemShape problemShape{tilingData->qbmmTilingData.m, tilingData->qbmmTilingData.n,
         tilingData->qbmmTilingData.k, 1UL};
-    typename BlockMmad::Params mmadParams{selfRankAddr_, bGM_, cGM_, scaleAAddr_, scaleInv2GM};
+    typename BlockMmad::Params mmadParams{selfRankAddr_, bGM_, cGM_, scaleAAddr_, x2ScaleGM};
     typename KernelImpl::L1Params l1Params{
         static_cast<uint64_t>(tilingData->qbmmTilingData.stepK) * tilingData->qbmmTilingData.baseK,
         tilingData->qbmmTilingData.scaleKL1};
