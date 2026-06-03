@@ -19,9 +19,8 @@
 #define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#endif
-#ifndef HCOMM_VERSION_NUM
-#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION + 1)
+#else
+#define HCOMM_VERSION_NUM HCCL_CHANNEL_SUPPORT_VERSION
 #endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
