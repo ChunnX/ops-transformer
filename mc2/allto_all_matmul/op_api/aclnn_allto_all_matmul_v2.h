@@ -30,6 +30,7 @@ extern "C" {
  * @param [in] biasOptional: 可选输入张量，偏置项。
  * @param [in] alltoAllAxesOptional: all2all做数据交换的方向。
  * @param [in] group: 通信域标识，用于标识不同的通信组。
+ * @param [in] commMode: 通信引擎参数，用于启动不同的通信引擎。
  * @param [in] transposeX1: 是否对x1转置。
  * @param [in] transposeX2: 是否对x2转置。
  * @param [out] output: 矩阵乘法的输出结果。
@@ -45,7 +46,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulV2GetWorks
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnAlltoAllMatMul的第二段接口，用于执行计算。
+ * @brief aclnnAlltoAllMatMulV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
  * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllMatMulGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
