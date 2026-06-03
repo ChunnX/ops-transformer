@@ -26,8 +26,7 @@ const c10::optional<at::Tensor> qli_v2_get_valid_tensor(const c10::optional<at::
 };
 
 at::Tensor npu_quant_lightning_indexer_v2_metadata(
-    int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk, int64_t q_quant_mode,
-    int64_t k_quant_mode,
+    int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk, int64_t quant_mode,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_k,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_k,
     const c10::optional<at::Tensor> &cmp_residual_k,
@@ -63,7 +62,7 @@ at::Tensor npu_quant_lightning_indexer_v2_metadata(
 
     ACLNN_CMD(aclnnQuantLightningIndexerV2Metadata, cu_seqlens_q_val, cu_seqlens_k_val, seqused_q_val, seqused_k_val,
               cmp_residual_k_val,
-              num_heads_q, num_heads_k, head_dim, topk, q_quant_mode, k_quant_mode,
+              num_heads_q, num_heads_k, head_dim, topk, quant_mode,
               batch_size, max_seqlen_q, max_seqlen_k, layout_q_ptr, layout_k_ptr, mask_mode, cmp_ratio,
               output);
     return output;

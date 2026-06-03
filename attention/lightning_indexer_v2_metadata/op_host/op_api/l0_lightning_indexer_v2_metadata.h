@@ -21,7 +21,7 @@ const aclTensor *LightningIndexerV2Metadata(
     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
     char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
     int64_t aicCoreNum, int64_t aivCoreNum, const char *socVersion,
-    const aclTensor *metaData, aclOpExecutor *executor);
+    const aclTensor *metadata, aclOpExecutor *executor);
 } // namespace l0op
 
 #endif

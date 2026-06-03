@@ -67,13 +67,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct qliV2MetaData {
+    struct qliV2Metadata {
         uint32_t qliV2Metadata[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
         uint32_t qldV2Metadata[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
     };
 };
 
-static_assert(QLI_V2_META_SIZE * sizeof(QLI_V2_METADATA_T) >= sizeof(detail::qliV2MetaData));
+static_assert(QLI_V2_META_SIZE * sizeof(QLI_V2_METADATA_T) >= sizeof(detail::qliV2Metadata));
 };
 
 #endif
