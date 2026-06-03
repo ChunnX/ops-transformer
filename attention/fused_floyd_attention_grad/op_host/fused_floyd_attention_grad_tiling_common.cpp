@@ -114,13 +114,32 @@ ge::graphStatus CheckInputShapeValid(gert::TilingContext *context, int64_t b, in
                 OP_LOGE(context, "input shape error, got 0 in bhmnkd(%ld,%ld,%ld,%ld,%ld,%ld)", b, n, s1, s2, s3, d),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF((s1 % ALIGNED_NUM_16 != 0 || s2 % ALIGNED_NUM_128 != 0),
-                OP_LOGE(context, "The third dimension of the query only supports 16-byte alignment, and the fourth "
-                                 "dimension only supports 128-byte alignment"),
+    // Documented constraints from aclnnFusedFloydAttentionGrad.md
+    constexpr int64_t MAX_B = 2048;      // B: 1~2K
+    constexpr int64_t MAX_H = 256;       // H: 1~256 (mapped to head/group dims)
+    constexpr int64_t MAX_N = 1000000;   // N: 16~1M, %16==0
+    constexpr int64_t MIN_N = 16;
+    constexpr int64_t MAX_MK = 1000000;  // M/K: 128~1M, %128==0
+    constexpr int64_t MIN_MK = 128;
+
+    OP_CHECK_IF(b > MAX_B,
+                OP_LOGE(context, "b exceeds max %ld, got %ld.", MAX_B, b),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(s3 % ALIGNED_NUM_128 != 0,
-                OP_LOGE(context, "The fourth dimension of the key1 only supports 128-byte alignment"),
+    OP_CHECK_IF(n > MAX_H && n < MIN_N,  // loose; n2/g may map to H or N
+                OP_LOGE(context, "head dim out of range."),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((n < MIN_N || n % 16 != 0 || n > MAX_N),
+                OP_LOGE(context, "N (head) must be 16~1M and multiple of 16, got %ld.", n),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((s2 < MIN_MK || s2 % ALIGNED_NUM_128 != 0 || s2 > MAX_MK),
+                OP_LOGE(context, "s1 (M) must be 128~1M and 128-byte aligned, got %ld.", s2),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((s3 < MIN_MK || s3 % ALIGNED_NUM_128 != 0 || s3 > MAX_MK),
+                OP_LOGE(context, "s2 (K) must be 128~1M and 128-byte aligned, got %ld.", s3),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF((d != 32 && d != 64 && d != 128), OP_LOGE(context, "Headdim only supports 32/64/128."),

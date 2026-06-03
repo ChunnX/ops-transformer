@@ -212,7 +212,7 @@ private:
     GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dk
     GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCATTER_BUFFER_NUM * K * Dv
     // workspace
-    uint32_t mm12WorkspaceLen;
+    uint64_t mm12WorkspaceLen;
     int64_t dqWorkspaceLen;
     int64_t dkWorkspaceLen;
     int64_t dvWorkspaceLen;

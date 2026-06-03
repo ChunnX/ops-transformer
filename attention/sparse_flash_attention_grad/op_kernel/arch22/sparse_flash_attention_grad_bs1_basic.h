@@ -117,10 +117,10 @@ private:
 
     int32_t lastblkCntOffset;
     // workspace
-    uint32_t selectedKWorkspaceLen;
-    uint32_t selectedVWorkspaceLen;
-    uint32_t mm12WorkspaceLen;
-    uint32_t mm345WorkspaceLen;
+    uint64_t selectedKWorkspaceLen;
+    uint64_t selectedVWorkspaceLen;
+    uint64_t mm12WorkspaceLen;
+    uint64_t mm345WorkspaceLen;
     // Index
     int64_t bIndex{0};
     int64_t s1Index{0};
@@ -235,7 +235,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
     if constexpr (IS_BSND == false) {
-        validT1 = ((__gm__ int32_t *)actual_seq_qlen)[dimB - 1];
+        validT1 = ((__gm__ int64_t *)actual_seq_qlen)[dimB - 1];
         totalS1 = validT1;
     }
 
@@ -940,21 +940,21 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
                         const GM_ADDR actual_seq_kvlen_addr, const int64_t t1Idx, int64_t &bIdx)
 {
     if constexpr (IS_BSND == false) {
-        int64_t curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex];
+        int64_t curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex];
         while (t1Idx >= curT1) {
-            curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[++bIndexScatterIndex];
+            curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[++bIndexScatterIndex];
         }
 
         if (unlikely(bIndexScatterIndex == 0)) {
             t1OffsetScatterIndex = 0;
             t2OffsetScatterIndex = 0;
-            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex];
-            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex];
+            curS1Scatter = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex];
+            curS2Scatter = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex];
         } else {
-            t1OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
-            t2OffsetScatterIndex = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
-            curS1Scatter = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
-            curS2Scatter = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
+            t1OffsetScatterIndex = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
+            t2OffsetScatterIndex = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
+            curS1Scatter = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex] - ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
+            curS2Scatter = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
         }
 
         s1IndexScatterIndex = t1Idx - t1OffsetScatterIndex;
@@ -972,21 +972,21 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
                                                                        const int64_t t1Idx, int64_t &bIdx)
 {
     if constexpr (IS_BSND == false) {
-        int64_t curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex];
+        int64_t curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex];
         while (t1Idx >= curT1) {
-            curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[++bIndex];
+            curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[++bIndex];
         }
 
         if (unlikely(bIndex == 0)) {
             t1Offset = 0;
             t2Offset = 0;
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex];
-            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex];
+            curS1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex];
+            curS2 = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex];
         } else {
-            t1Offset = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            t2Offset = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
-            curS1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex - 1];
-            curS2 = ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int32_t *)actual_seq_kvlen_addr)[bIndex - 1];
+            t1Offset = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
+            t2Offset = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
+            curS1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
+            curS2 = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
         }
 
         s1Index = t1Idx - t1Offset;

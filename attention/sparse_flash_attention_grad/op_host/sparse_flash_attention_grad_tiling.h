@@ -43,11 +43,11 @@ TILING_DATA_FIELD_DEF(uint64_t, qPostBlockTotal);
 TILING_DATA_FIELD_DEF(uint32_t, qPostBaseNum);
 TILING_DATA_FIELD_DEF(uint32_t, qPostTailNum);
 TILING_DATA_FIELD_DEF(uint32_t, kPostBlockFactor);
-TILING_DATA_FIELD_DEF(uint32_t, kPostBlockTotal);
+TILING_DATA_FIELD_DEF(uint64_t, kPostBlockTotal);
 TILING_DATA_FIELD_DEF(uint32_t, kPostBaseNum);
 TILING_DATA_FIELD_DEF(uint32_t, kPostTailNum);
 TILING_DATA_FIELD_DEF(uint32_t, vPostBlockFactor);
-TILING_DATA_FIELD_DEF(uint32_t, vPostBlockTotal);
+TILING_DATA_FIELD_DEF(uint64_t, vPostBlockTotal);
 TILING_DATA_FIELD_DEF(uint32_t, vPostBaseNum);
 TILING_DATA_FIELD_DEF(uint32_t, vPostTailNum);
 TILING_DATA_FIELD_DEF(uint64_t, qSizeAlign);
@@ -118,9 +118,9 @@ TILING_DATA_FIELD_DEF(int64_t, D2); // v_dim
 TILING_DATA_FIELD_DEF(int64_t, ropeD); // rope_dim
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, layout);
-TILING_DATA_FIELD_DEF(uint32_t, selectedKWorkspaceLen);
-TILING_DATA_FIELD_DEF(uint32_t, selectedVWorkspaceLen);
-TILING_DATA_FIELD_DEF(uint32_t, mm12WorkspaceLen);
+TILING_DATA_FIELD_DEF(uint64_t, selectedKWorkspaceLen);
+TILING_DATA_FIELD_DEF(uint64_t, selectedVWorkspaceLen);
+TILING_DATA_FIELD_DEF(uint64_t, mm12WorkspaceLen);
 TILING_DATA_FIELD_DEF(uint32_t, castUsedCoreNum);
 TILING_DATA_FIELD_DEF(int64_t, dqWorkspaceLen);
 TILING_DATA_FIELD_DEF(int64_t, dkWorkspaceLen);
