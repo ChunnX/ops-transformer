@@ -256,7 +256,7 @@ public:
         }
 
         SimpleSoftmax((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
-                      (__ubuf__ float *)src_ub_tensor.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
+                      (__ubuf__ float *)lse_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
         Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
         PipeBarrier<PIPE_V>();
@@ -288,12 +288,9 @@ public:
         if (half_s1_process_real_ <= 0) {
             return;
         }
-
-        SubBrcb(src_ub_tensor, src_ub_tensor, sft_front_tensor_, half_s1_process_align_, s2_process_align_);
-        PipeBarrier<PIPE_V>();
-
-        Mul(src_ub_tensor, src_ub_tensor, softmax_ub_tensor, data_size);
-        PipeBarrier<PIPE_V>();
+        ComputeSoftmaxGrad((__ubuf__ float *)src_ub_tensor.GetPhyAddr(), (__ubuf__ float *)src_ub_tensor.GetPhyAddr(),
+                           (__ubuf__ float *)softmax_ub_tensor.GetPhyAddr(),
+                           (__ubuf__ float *)sft_front_tensor_.GetPhyAddr(), half_s1_process_align_, s2_process_align_);
 
         Cast(softmax_res_tensor_, src_ub_tensor, AscendC::RoundMode::CAST_RINT, data_size);
         PipeBarrier<PIPE_V>();
@@ -541,19 +538,32 @@ private:
         }
     }
 
-    __aicore__ inline void SubBrcb(const LocalTensor<float> &dstTensor, const LocalTensor<float> &src0Tensor,
-                                   const LocalTensor<float> &src1Tensor, const uint64_t row, const uint64_t col)
+    __simd_vf__ inline void ComputeSoftmaxGrad(__ubuf__ float *dstTensor, __ubuf__ float *src0Tensor,
+                                               __ubuf__ float *src1Tensor, const uint64_t row, const uint64_t col)
     {
-        /*
-         * function: dstTensor = src0Tensor - src1Tensor
-         * input shape： src0Tensor[row, col], src1Tensor[row, 8]
-         * out shape:    [row, col]
-         */
-        for (uint32_t i = 0; i < row; i++) {
-            float sub_value = src1Tensor.GetValue(i * BLOCK_FP32);
-            SET_FLAG(S, V, EVENT_ID0);
-            WAIT_FLAG(S, V, EVENT_ID0);
-            Subs(dstTensor[i * col], src0Tensor[i * col], sub_value, col);
+        AscendC::Reg::RegTensor<float> src_reg;
+        AscendC::Reg::RegTensor<float> lse_reg;
+        AscendC::Reg::RegTensor<float> scale_reg;
+        AscendC::Reg::MaskReg msk_reg;
+        constexpr static uint16_t repeat_size = 256 / sizeof(float);
+        uint16_t repeat_times = (col + repeat_size - 1) / repeat_size;
+        uint32_t ub_offset = 0;
+        Duplicate(scale_reg, softmax_scale_);
+
+        for (int32_t i = 0; i < row; i++) {
+            LoadAlign<float, AscendC::Reg::LoadDist::DIST_BRC_B32>(lse_reg, src1Tensor + i * 8);
+            uint32_t count = col;
+            ub_offset = i * col;
+
+            for (int32_t j = 0; j < repeat_times; j++) {
+                msk_reg = AscendC::Reg::UpdateMask<float>(count);
+
+                LoadAlign(src_reg, src0Tensor + ub_offset);
+                Mul(src_reg, src_reg, scale_reg, msk_reg);
+                Sub(src_reg, src_reg, lse_reg, msk_reg);
+                StoreAlign<float, AscendC::Reg::StoreDist::DIST_NORM_B32>(dstTensor + ub_offset, src_reg, msk_reg);
+                ub_offset += repeat_size;
+            }
         }
     }
 
