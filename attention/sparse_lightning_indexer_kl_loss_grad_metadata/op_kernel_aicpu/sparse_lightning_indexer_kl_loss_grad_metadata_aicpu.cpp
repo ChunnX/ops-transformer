@@ -184,11 +184,7 @@ int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t
         s2SparseLen = (s2Size * cmpRatio_ - s1Size + s1Idx + 1) / cmpRatio_;
     }
 
-    int64_t s2RealSize = std::min(s2SparseLen, kSize_);
-    if (cmpRatio_ != 0) {
-        s2RealSize = std::max<int64_t>(1, s2RealSize);
-    }
-    return s2RealSize;
+    return std::max<int64_t>(0, std::min(s2SparseLen, kSize_));
 }
 
 bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(std::vector<int64_t> &sparseValidArray)
@@ -249,15 +245,15 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::CanSplitWithMaxLoad(
 }
 
 int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::FindMinMaxLoad(
-    const std::vector<int64_t> &sparseValidArray) const
+    const std::vector<int64_t> &sparseValidArray, int64_t start, int64_t partNum) const
 {
-    int64_t totalLoad = std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL);
-    int64_t minMaxLoad = std::max(*std::max_element(sparseValidArray.begin(), sparseValidArray.end()),
-                                  CeilDiv(totalLoad, coreNum_));
+    int64_t totalLoad = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.end(), 0LL);
+    int64_t minMaxLoad = std::max(*std::max_element(sparseValidArray.begin() + start, sparseValidArray.end()),
+                                  CeilDiv(totalLoad, partNum));
     int64_t maxLoad = totalLoad;
     while (minMaxLoad < maxLoad) {
         int64_t midLoad = minMaxLoad + (maxLoad - minMaxLoad) / 2;
-        if (CanSplitWithMaxLoad(sparseValidArray, 0, coreNum_, midLoad)) {
+        if (CanSplitWithMaxLoad(sparseValidArray, start, partNum, midLoad)) {
             maxLoad = midLoad;
         } else {
             minMaxLoad = midLoad + 1;
@@ -270,8 +266,17 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildBalancedSparseStart
     const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &sparseStartIdx) const
 {
     sparseStartIdx.assign(SLI_METADATA_MAX_CORE_NUM, totalSize_);
-    sparseStartIdx[0] = 0;
-    if (coreNum_ == 1) {
+    int64_t activeStart = 0;
+    while (activeStart < totalSize_ && sparseValidArray[activeStart] <= 0) {
+        ++activeStart;
+    }
+    if (activeStart >= totalSize_) {
+        return true;
+    }
+
+    int64_t activeCoreNum = std::min(coreNum_, totalSize_ - activeStart);
+    sparseStartIdx[0] = activeStart;
+    if (activeCoreNum == 1) {
         return true;
     }
 
@@ -280,10 +285,10 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildBalancedSparseStart
         prefixLoad[idx + 1] = prefixLoad[idx] + sparseValidArray[idx];
     }
 
-    int64_t maxLoad = FindMinMaxLoad(sparseValidArray);
-    int64_t prevStart = 0;
-    for (int64_t coreIdx = 1; coreIdx < coreNum_; ++coreIdx) {
-        int64_t remainingPartNum = coreNum_ - coreIdx;
+    int64_t maxLoad = FindMinMaxLoad(sparseValidArray, activeStart, activeCoreNum);
+    int64_t prevStart = activeStart;
+    for (int64_t coreIdx = 1; coreIdx < activeCoreNum; ++coreIdx) {
+        int64_t remainingPartNum = activeCoreNum - coreIdx;
         int64_t minStart = prevStart + 1;
         int64_t maxStart = totalSize_ - remainingPartNum;
 

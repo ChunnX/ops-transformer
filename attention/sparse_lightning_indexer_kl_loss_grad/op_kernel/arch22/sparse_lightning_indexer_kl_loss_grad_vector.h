@@ -748,6 +748,12 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
         runInfo.accumS2Idx = bIdx * constInfo.s2Size;
     }
     runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
+    if (runInfo.s2SparseLen <= 0) {
+        runInfo.s2RealSize = 0;
+        runInfo.kRealSize = 0;
+        runInfo.kRealSizeAlign8 = 0;
+        return;
+    }
     runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
 
     if (constInfo.cmpRatio != 0) {
@@ -831,6 +837,9 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIKLLo
         }
 
         GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo);
+        if (runInfo.s2SparseLen <= 0) {
+            continue;
+        }
 
         int32_t v0RealKSize, v1RealKSize, vRealKSize;
         int32_t perCoreKSize, tailCoreKSize, curCoreKSize;

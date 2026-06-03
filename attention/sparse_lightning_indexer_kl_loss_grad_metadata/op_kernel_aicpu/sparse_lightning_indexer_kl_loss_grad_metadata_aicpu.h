@@ -93,7 +93,9 @@ private:
                              int64_t start,
                              int64_t partNum,
                              int64_t maxLoad) const;
-    int64_t FindMinMaxLoad(const std::vector<int64_t> &sparseValidArray) const;
+    int64_t FindMinMaxLoad(const std::vector<int64_t> &sparseValidArray,
+                           int64_t start,
+                           int64_t partNum) const;
     bool BuildBalancedSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
                                      std::vector<int64_t> &sparseStartIdx) const;
     int64_t GetS2RealSize(int64_t s1Size, int64_t s2Size, int64_t s1Idx) const;
