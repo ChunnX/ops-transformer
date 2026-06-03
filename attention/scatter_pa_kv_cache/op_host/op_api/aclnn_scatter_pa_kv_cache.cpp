@@ -28,6 +28,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/platform.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -36,6 +37,8 @@ extern "C" {
 #endif
 
 namespace {
+
+static constexpr const char* kOpName = "aclnnScatterPaKvCache";
 
 static const std::initializer_list<op::DataType> KEY_VALUE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT16, DataType::DT_FLOAT, DataType::DT_BF16,
@@ -92,9 +95,27 @@ static aclnnStatus CheckDtypeValid(
     bool isArch35 = (socVersion == NpuArch::DAV_3510);
     auto dtypeSupportList = isArch35 ? KEY_VALUE_DTYPE_SUPPORT_LIST : KEY_VALUE_DTYPE_SUPPORT_LIST_910;
 
-    OP_CHECK_DTYPE_NOT_SUPPORT(key, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(keyCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-    OP_CHECK_DTYPE_NOT_SUPPORT(slotMapping, INDEX_DTYPE_SUPPORT_LIST, return ACLNN_ERR_PARAM_INVALID);
+    if (!CheckType(key->GetDataType(), dtypeSupportList)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "key",
+            op::ToString(key->GetDataType()).GetString(),
+            std::string("The dtype of key must be within the range ") +
+                op::ToString(dtypeSupportList).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!CheckType(keyCacheRef->GetDataType(), dtypeSupportList)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "keyCacheRef",
+            op::ToString(keyCacheRef->GetDataType()).GetString(),
+            std::string("The dtype of keyCacheRef must be within the range ") +
+                op::ToString(dtypeSupportList).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (!CheckType(slotMapping->GetDataType(), INDEX_DTYPE_SUPPORT_LIST)) {
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "slotMapping",
+            op::ToString(slotMapping->GetDataType()).GetString(),
+            std::string("The dtype of slotMapping must be within the range ") +
+                op::ToString(INDEX_DTYPE_SUPPORT_LIST).GetString());
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
     auto keyDtype = key->GetDataType();
     auto keyCacheDtype = keyCacheRef->GetDataType();
@@ -107,8 +128,20 @@ static aclnnStatus CheckDtypeValid(
     }
 
     if (value != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(value, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
-        OP_CHECK_DTYPE_NOT_SUPPORT(valueCacheRef, dtypeSupportList, return ACLNN_ERR_PARAM_INVALID);
+        if (!CheckType(value->GetDataType(), dtypeSupportList)) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "value",
+                op::ToString(value->GetDataType()).GetString(),
+                std::string("The dtype of value must be within the range ") +
+                    op::ToString(dtypeSupportList).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (!CheckType(valueCacheRef->GetDataType(), dtypeSupportList)) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(kOpName, "valueCacheRef",
+                op::ToString(valueCacheRef->GetDataType()).GetString(),
+                std::string("The dtype of valueCacheRef must be within the range ") +
+                    op::ToString(dtypeSupportList).GetString());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
 
         auto valueDtype = value->GetDataType();
         auto valueCacheDtype = valueCacheRef->GetDataType();
