@@ -127,6 +127,12 @@ public:
     bool emptyBatch = false;
     uint32_t dealZerosMSize = 0;
 
+    // Cached values for CalcParams optimization
+    uint32_t cachedBIdx = 0;
+    uint32_t cachedN2Idx = 0;
+    int64_t cachedPreTokensLeftUp = 0;
+    int64_t cachedNextTokensLeftUp = 0;
+
     // metadata
     uint32_t sectionNum_;
     bool isFd;
@@ -456,6 +462,8 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
+            cachedBIdx = bIdx;
+            cachedN2Idx = bN2Cur % constInfo.n2Size;
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
@@ -470,6 +478,7 @@ public:
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
+            GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, cachedPreTokensLeftUp, cachedNextTokensLeftUp);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
@@ -666,8 +675,8 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = cachedBIdx;
+        info.n2Idx = cachedN2Idx;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
@@ -703,7 +712,8 @@ public:
             }
         }
 
-        GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
+        info.preTokensLeftUp = cachedPreTokensLeftUp;
+        info.nextTokensLeftUp = cachedNextTokensLeftUp;
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
         // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
