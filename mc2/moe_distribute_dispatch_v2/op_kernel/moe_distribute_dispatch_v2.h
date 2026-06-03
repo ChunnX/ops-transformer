@@ -83,6 +83,8 @@ private:
     __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void SetExpertTokenNums();
+    __aicore__ inline void ReduceExpertTokenNumsA3(uint32_t localExpertNum);
+    __aicore__ inline void ReduceExpertTokenNumsA5(uint32_t localExpertNum);
     __aicore__ inline void SetExpertTokenNumsPrefixSum(uint32_t localExpertNum);
     __aicore__ inline void TokenActiveMaskCal();
     __aicore__ inline void ExpertActiveMaskCal();
@@ -1094,12 +1096,13 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     // 内存复用，取大
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
+    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ?
+        recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    // SetExpertTokenNums使用二维ReduceSum，GatherMask输出按[expert][rank]紧凑存放，不需要按行padding。
+    // SetExpertTokenNums中expert count按[expert][rank]紧凑存放。
     uint64_t setExpertTokenNumsStatusSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) *
         epWorldSize_ * sizeof(float);
     setExpertTokenNumsStatusSpace = Ceil(setExpertTokenNumsStatusSpace, UB_ALIGN) * UB_ALIGN;
-    uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsStatusSpace) ?
         gatherMaskOutSize : setExpertTokenNumsStatusSpace;
     tpipe_->InitBuffer(gatherMaskOutBuf_, gatherMaskOutSize);                 // recStatusNumPerCore_32对齐后大小  * 32B
@@ -1559,11 +1562,33 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
 }
 
 template <TemplateDispatchV2TypeClass>
-__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()	 
-{	 
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::ReduceExpertTokenNumsA3(
+    uint32_t localExpertNum)
+{
+    SumParams sumParams{1, epWorldSize_, epWorldSize_};
+    PipeBarrier<PIPE_V>();
+    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+        Sum(expertTokenNumTensor_[localExpertIdx],
+            expertCountTensor_[localExpertIdx * epWorldSize_], sumParams);
+    }
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::ReduceExpertTokenNumsA5(
+    uint32_t localExpertNum)
+{
+    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
+    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
+        expertTokenNumTensor_, expertCountTensor_, expertCountShape, false);
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetExpertTokenNums()
+{
     if (aivId_ != FIRST_CORE) {
         return;
     }
+
     // 等待 LocalWindowCopy 的 DataCopyPad(..., outCountLocal=gatherMaskOutBuf_, ...)
     // 读取完毕，再通过MTE2写入gatherMaskOutBuf_，避免覆盖
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
@@ -1583,9 +1608,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     if ((expertTokenNumsType_ == 0) && (epWorldSize_ >= UB_ALIGN / sizeof(float))) {
         expertTokenNumTensor_ = tokenNumBuf_.Get<float>();
     }
-    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
-        expertTokenNumTensor_, expertCountTensor_, expertCountShape, false);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    ReduceExpertTokenNumsA5(localExpertNum);
+#else
+    ReduceExpertTokenNumsA3(localExpertNum);
+#endif
 
     expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
