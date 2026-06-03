@@ -909,9 +909,17 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
     def __init__(self, task_result: TaskResult, backend):
         super().__init__(task_result, backend)
 
+    # cpp 签名里输入张量顺序：... wuk(18), kvCache(19), kvCacheRope(20), ...
+    IDX_KV_CACHE_IN = 19
+    IDX_KV_CACHE_ROPE_IN = 20
+    # 输出顺序：qOut(0), kvCacheOut(1), qRopeOut(2), krCacheOut(3)
+    IDX_KV_CACHE_OUT = 1
+    IDX_KR_CACHE_OUT = 3
+
     def init_by_input_data(self, input_data: InputDataset):
         cm = int(input_data.kwargs["cacheMode"])
-        if cm in (0, 1):
+        is_nc = cm in (0, 1)
+        if is_nc:
             for name in ("kvCache", "kvCacheRope"):
                 t = input_data.kwargs[name]
                 view, buf_shape = _mla_kv_cache_dim0_nc_view(t)
@@ -933,7 +941,32 @@ class aclnnMlaPreprocessKvCacheNcDim0Api(aclnnMlaPreprocessApi):
                     )
                     logging.info(diff_msg)
                     print(diff_msg, flush=True)
-        return super().init_by_input_data(input_data)
+
+        input_args, output_packages = super().init_by_input_data(input_data)
+
+        if is_nc:
+            # 算子把 cache 写到 OUTPUT 的 GM（keycacheOutGm），并按 input 的 N× stride 写物理行 N*b。
+            # ATK 默认给 output 另开一块 1×(192 行) 连续 buffer，会导致：高块 b>=192/N 越界丢数据、
+            # 低块落到错误的物理行 N*b。这里让 cache 的两个 output 复用输入那块 N× 的 nc-view aclTensor
+            # （真正 in-place，和 FIA 非连续 KV 范式一致），保证：不越界、未写 slot 保留原值、回读按 stride 对齐。
+            if (len(input_args) > self.IDX_KV_CACHE_ROPE_IN
+                    and len(output_packages) > self.IDX_KR_CACHE_OUT):
+                output_packages[self.IDX_KV_CACHE_OUT] = input_args[self.IDX_KV_CACHE_IN]
+                output_packages[self.IDX_KR_CACHE_OUT] = input_args[self.IDX_KV_CACHE_ROPE_IN]
+                print(
+                    f"[nc_dim0] bind in-place output: kvCacheOut<-input[{self.IDX_KV_CACHE_IN}], "
+                    f"krCacheOut<-input[{self.IDX_KV_CACHE_ROPE_IN}] "
+                    f"(len_in={len(input_args)}, len_out={len(output_packages)})",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[nc_dim0][WARN] in-place bind skipped: unexpected lengths "
+                    f"len_in={len(input_args)}, len_out={len(output_packages)}",
+                    flush=True,
+                )
+
+        return input_args, output_packages
 
 
 MIN_ERR = 1e-7
