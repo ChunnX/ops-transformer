@@ -73,8 +73,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpScaleList = nullptr;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_INT64, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_INT64, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
 
     // aclTensor *scalesOptional = (*executor)->AllocTensor({0}, static_cast<op::DataType>(ACL_FLOAT));
 
