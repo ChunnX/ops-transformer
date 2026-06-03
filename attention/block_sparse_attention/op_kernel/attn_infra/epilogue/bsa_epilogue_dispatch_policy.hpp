@@ -45,7 +45,9 @@ struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <LseMode LSE_MODE_, LseFormat LSE_FORMAT_>
+template <
+    LseMode LSE_MODE_ = LseMode::NONE,
+    LseFormat LSE_FORMAT_ = LseFormat::BNS1>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
