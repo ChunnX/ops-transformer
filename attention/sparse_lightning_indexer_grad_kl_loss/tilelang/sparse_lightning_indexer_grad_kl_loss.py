@@ -324,15 +324,10 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 )
                                 T.barrier_all()
 
-                                # --- KL Loss: P * log(P / softmaxI), atomic_add each block to Loss ---
-                                T.tile.div(di_row_ub, p_row_ub, softmax_i_row_ub)
-                                T.barrier_all()
-                                T.tile.ln(di_row_ub, di_row_ub)
-                                T.barrier_all()
-                                T.tile.mul(di_row_ub, p_row_ub, di_row_ub)
-                                T.barrier_all()
-                                T.tile.atomic_add(Loss[0:1], di_row_ub)
-                                T.barrier_all()
+                                # --- KL Loss: skip in kernel, compute in Python layer ---
+                                # T.tile.atomic_add requires same size for dst and src,
+                                # but Loss is (1,) and di_row_ub is (block_n,).
+                                # TODO: Implement KL Loss in Python layer after kernel outputs are verified
 
                                 # ReLU mask: bmm2Res > 0 (use original bmm2Res, not scaled)
                                 T.tile.compare(mask_ub, bmm2_row_ub, 0.0, "GT")
@@ -476,6 +471,8 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, G, 
     # Gather key: (B, S2, N2, DQuery) -> gatherKey: (B, N2, S1, G, K, DQuery)
     # sparse_indices: (B, S1, Nidx2, K), Nidx2=1, N2=1
     sparse_idx_3d = sparse_indices[:, :, 0, :]  # (B, S1, K)
+    # Replace -1 (padding) with 0 to avoid negative indexing in gather
+    sparse_idx_3d = sparse_idx_3d.clamp(min=0)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
     # key: (B, S2, N2, DQuery) -> gather along S2 dim
