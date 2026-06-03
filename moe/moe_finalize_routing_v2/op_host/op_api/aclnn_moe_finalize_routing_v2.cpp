@@ -144,13 +144,13 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, int64_t dropPadMode, const aclTensor* out,
+    const aclTensor* expertIdxOptional, int64_t dropPadMode, int64_t k, const aclTensor* out,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-            scalesOptional, expertIdxOptional, dropPadMode),
+            scalesOptional, expertIdxOptional, dropPadMode, k),
                    DFX_OUT(out));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -209,7 +209,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
                                            expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
-                                           dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+                                           dropPadMode, nullptr, nullptr, nullptr, k, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续

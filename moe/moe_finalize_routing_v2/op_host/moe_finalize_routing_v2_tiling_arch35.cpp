@@ -58,6 +58,7 @@ const static int64_t ATTR_DROP_PAD_MODE_IDX = 0LL;
 const static int64_t ATTR_ZERO_EXPERT_RANGE_IDX = 1LL;
 const static int64_t ATTR_COPY_EXPERT_RANGE_IDX = 2LL;
 const static int64_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3LL;
+const static int64_t ATTR_K_IDX = 4LL;
 
 class MoeFinalizeRoutingV2Regbase : public MoeFinalizeRoutingTilingV2
 {
@@ -605,6 +606,9 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
         GetK(scalesShape) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K", "GRAPH_FAILED",
             "failed to get K."), return ge::GRAPH_FAILED);
+    auto kPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kPtr);
+    k = *kPtr;
 
     auto expandedRowIdxShape = context_->GetInputShape(EXPANDED_ROW_IDX_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expandedRowIdxShape);
