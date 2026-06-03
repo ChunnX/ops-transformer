@@ -216,6 +216,11 @@ def tilelang_cube1_bsnd(
                         )
                         T.barrier_all()
 
+                T.set_cross_flag("FIX", 1)
+
+            with T.Scope("V"):
+                T.wait_cross_flag(1)
+
     return main
 
 
