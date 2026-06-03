@@ -109,7 +109,6 @@ __aicore__ inline void NsaCompressGradND<T>::InitWorkspace(GM_ADDR workspace) {
 
     if (isOverLap_) {
         // overLap场景需要使用workspace累加
-        // 使用 uint64_t 防止连乘溢出
         uint64_t inputGradOffset = static_cast<uint64_t>(blockSize_) * headNum_ * coreNum_ * sizeof(float);
         inputGradAtomicWs_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace + inputGradOffset));
     }
