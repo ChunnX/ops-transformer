@@ -32,10 +32,10 @@ bool QuantMatmulAllReduceTiling310General::IsCapable()
 
 ge::graphStatus QuantMatmulAllReduceTiling310General::DoOpTiling()
 {
-    GE_ASSERT_GRAPH_SUCCESS(CheckA8W8());
+    MC2_CHECK_LOG_RET(opName_, CheckA8W8());
     DoRCSTiling();
     DoSplitMTiling();
-    GE_ASSERT_GRAPH_SUCCESS(DoQuantTiling());
+    MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
     DoAllReduceTiling();
     return ge::GRAPH_SUCCESS;
 }
@@ -59,7 +59,7 @@ uint64_t QuantMatmulAllReduceTiling310General::GetTilingKey() const
 
 ge::graphStatus QuantMatmulAllReduceTiling310General::GetWorkspaceSize()
 {
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
+    MC2_CHECK_LOG_RET(opName_, MatmulAllReduceTilingBase::GetWorkspaceSize());
     myWorkSpaceSize_ = myWorkSpaceSize_ + (workspaceSize_ - libApiWorkSpaceSize_);
     OP_LOGI(opName_, " set max workspace size %lu to context", myWorkSpaceSize_);
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
@@ -75,8 +75,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::PostTiling()
         tilingDataSize, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+        OP_LOGE(opName_, "tiling data size[%s] not aligned to 8", std::to_string(tilingDataSize).c_str()),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -101,7 +100,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::PostTiling()
     // 涉及SyncAll，设置batch mode模式，所有核同时启动
     uint32_t batch_mode = 1U;
     ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret); 
+    MC2_CHECK_LOG_RET(opName_, ret); 
     return ge::GRAPH_SUCCESS;
 }
 
@@ -132,7 +131,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
     if (args_.enableSplitK) {
         return mmTile.DoTiling();
     } else {
-        GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
+        MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
         if (MutableRCSTilingData().tailCnt == 0) {
             return ge::GRAPH_SUCCESS;
         }

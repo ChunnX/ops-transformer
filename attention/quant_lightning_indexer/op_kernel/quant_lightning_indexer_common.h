@@ -117,7 +117,8 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
-
+    bool setL2DisableFlag = false;
+    
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式

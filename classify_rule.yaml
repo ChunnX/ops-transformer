@@ -169,6 +169,8 @@ transformer-vf@ops-transformer:
         release:
             huawei_style:  
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
+                - ops/ops-transformer/attention/lightning_indexer/op_kernel/arch35/vf
+                - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/arch35/vf
             opensource_style: null 
             kernel_style: null 
         unrelease:
@@ -359,6 +361,7 @@ gmm@ops-transformer:
         release:
             huawei_style: 
                 - ops/ops-transformer/gmm/grouped_matmul
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null 
@@ -367,6 +370,8 @@ gmm@ops-transformer:
             test_code: 
                 - ops/ops-transformer/gmm/grouped_matmul/tests
                 - ops/ops-transformer/gmm/grouped_matmul/examples
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/tests
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/examples
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/tests
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/examples
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/tests
@@ -739,6 +744,10 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_re_routing/op_host/moe_re_routing_tiling.h
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/arch35
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/moe_re_routing_apt.cpp
+                - ops/ops-transformer/moe/moe_token_permute/op_host/op_api
+ 	            - ops/ops-transformer/moe/moe_token_permute_grad/op_host/op_api
+ 	            - ops/ops-transformer/moe/moe_token_unpermute/op_host/op_api
+ 	            - ops/ops-transformer/moe/moe_token_unpermute_grad/op_host/op_api
             opensource_style: null 
             kernel_style: null  
         unrelease:
@@ -776,6 +785,10 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/tests/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/examples/
                 - ops/ops-transformer/moe/moe_init_routing_v2_grad/docs/
+                - ops/ops-transformer/moe/moe_init_routing_v3/tests/
+                - ops/ops-transformer/moe/moe_re_routing/tests/
+                - ops/ops-transformer/moe/moe_token_permute/tests/
+                - ops/ops-transformer/moe/moe_token_permute_grad/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/tests/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/examples/
                 - ops/ops-transformer/moe/moe_token_permute_with_ep/docs/

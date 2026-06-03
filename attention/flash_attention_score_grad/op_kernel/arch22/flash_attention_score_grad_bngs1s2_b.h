@@ -250,7 +250,7 @@ protected:
     int64_t dstStride;
 
     int64_t innerReduceNum;
-    int32_t innerMatResNum;
+    int64_t innerMatResNum;
     int64_t maskInputNum;
     int64_t pseInputNum;
 
