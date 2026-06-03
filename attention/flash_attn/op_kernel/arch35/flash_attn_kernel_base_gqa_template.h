@@ -96,6 +96,8 @@ public:
     __gm__ uint8_t *valuePtr = nullptr;
 
     ConstInfoX constInfo;
+    HotConstInfo hotConst;
+    ColdConstInfo coldConst;
 
     const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
@@ -271,12 +273,11 @@ public:
         // GM Buffer
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize; // 3为preload次数
-            // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
+                mBaseSize * hotConst.dBasicBlock;
+            int64_t prevCoretotalOffset = hotConst.aicIdx * 3 * mm2ResultSize;
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
             bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
+            workspace = workspace + hotConst.coreNum * 3 * mm2ResultSize * sizeof(T);
         }
     }
 
@@ -347,6 +348,46 @@ public:
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
 
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+
+        hotConst.bSize = constInfo.bSize;
+        hotConst.n2Size = constInfo.n2Size;
+        hotConst.gSize = constInfo.gSize;
+        hotConst.dSize = constInfo.dSize;
+        hotConst.dSizeV = constInfo.dSizeV;
+        hotConst.dBasicBlock = constInfo.dBasicBlock;
+        hotConst.s1Size = constInfo.s1Size;
+        hotConst.s2Size = constInfo.s2Size;
+        hotConst.scaleValue = constInfo.scaleValue;
+        hotConst.coreNum = constInfo.coreNum;
+        hotConst.subBlockIdx = constInfo.subBlockIdx;
+        hotConst.aicIdx = constInfo.aicIdx;
+
+        coldConst.t1Size = constInfo.t1Size;
+        coldConst.t2Size = constInfo.t2Size;
+        coldConst.cuSeqLensQSize = constInfo.cuSeqLensQSize;
+        coldConst.cuSeqLensKVSize = constInfo.cuSeqLensKVSize;
+        coldConst.seqUsedQSize = constInfo.seqUsedQSize;
+        coldConst.seqUsedKvSize = constInfo.seqUsedKvSize;
+        coldConst.sparseMode = constInfo.sparseMode;
+        coldConst.attenMaskBatch = constInfo.attenMaskBatch;
+        coldConst.attenMaskS1Size = constInfo.attenMaskS1Size;
+        coldConst.attenMaskS2Size = constInfo.attenMaskS2Size;
+        coldConst.preTokens = constInfo.preTokens;
+        coldConst.nextTokens = constInfo.nextTokens;
+        coldConst.isExistRowInvalid = constInfo.isExistRowInvalid;
+        coldConst.aivIdx = constInfo.aivIdx;
+        coldConst.accumOutSize = constInfo.accumOutSize;
+        coldConst.logSumExpSize = constInfo.logSumExpSize;
+        coldConst.outputLayout = constInfo.outputLayout;
+        coldConst.needInitOutput = constInfo.needInitOutput;
+        coldConst.isKvContinuous = constInfo.isKvContinuous;
+        if constexpr (PAGE_ATTENTION) {
+            coldConst.maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
+            coldConst.blockSize = constInfo.blockSize;
+            coldConst.paLayoutType = constInfo.paLayoutType;
+        }
+        coldConst.isSoftmaxLseEnable = constInfo.isSoftmaxLseEnable;
+        coldConst.learnableSinkFlag = constInfo.learnableSinkFlag;
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -389,7 +430,7 @@ public:
     }
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
     {
-        if (constInfo.aicIdx >= constInfo.coreNum) {
+        if (hotConst.aicIdx >= hotConst.coreNum) {
             return;
         }
 
@@ -453,7 +494,7 @@ public:
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
         bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
-        uint32_t bIdx = bN2Cur / constInfo.n2Size;
+        uint32_t bIdx = bN2Cur / hotConst.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
             if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
@@ -472,7 +513,7 @@ public:
             }
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1Size = actSeqLensQ * hotConst.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
@@ -551,13 +592,13 @@ public:
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(hotConst.gSize)) -
                                1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo.gSize);
+            s1FirstToken = static_cast<int64_t>(s1GFirstToken / hotConst.gSize);
+            s1LastToken = static_cast<int64_t>(s1GLastToken / hotConst.gSize);
         } else {
             if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ) == s1GLastToken / static_cast<int64_t>(actSeqLensQ)) {
                 // start and end locate in one G
@@ -666,13 +707,13 @@ public:
     {
         info.loop = loop;
         info.mloop = mloop;
-        info.bIdx = bN2Cur / constInfo.n2Size;
-        info.n2Idx = bN2Cur % constInfo.n2Size;
+        info.bIdx = bN2Cur / hotConst.n2Size;
+        info.n2Idx = bN2Cur % hotConst.n2Size;
         info.gS1Idx = gS1Cur * mBaseSize;
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_BSH || LAYOUT_Q == LayOutTypeEnum::LAYOUT_SBH ||
                       LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo.gSize;
+            info.s1Idx = info.gS1Idx / hotConst.gSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ;
@@ -682,7 +723,7 @@ public:
         info.actS2Size = actSeqLensKv;
 
         info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo.gSize;
+        uint64_t gS1Size = info.actS1Size * hotConst.gSize;
         if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
             info.actMSize = gS1Size - gS1Cur * mBaseSize;
         }
@@ -721,7 +762,7 @@ public:
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
-        if (constInfo.subBlockIdx == 1) {
+        if (hotConst.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
@@ -745,7 +786,7 @@ public:
                                           uint32_t &s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1Size = actSeqLensQ * hotConst.gSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
         // 当前S2未处理完
@@ -794,14 +835,14 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
-        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
-        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
-        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
-        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
+        bN2Start_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
+        gS1OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        s2OStart_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
+        bN2End_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
+        gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
+            GetFAMetaDataIndex(hotConst.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
     }
 
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
@@ -824,7 +865,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (constInfo.aicIdx < constInfo.coreNum) {
+        if (hotConst.aicIdx < hotConst.coreNum) {
             CrossCoreBufferInit();
             if ASCEND_IS_AIV {
                 vecFaBlock.InitBuffers(SharedBuffer1, SharedBuffer2, SharedBuffer3);
@@ -835,7 +876,7 @@ public:
             }
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
-            if (constInfo.aicIdx < constInfo.coreNum) {
+            if (hotConst.aicIdx < hotConst.coreNum) {
                 FlashAttention(sectionIdx);
             }
             if ASCEND_IS_AIV {
@@ -843,7 +884,7 @@ public:
             }
         }
 
-        if (constInfo.aicIdx < constInfo.coreNum) {
+        if (hotConst.aicIdx < hotConst.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();
             } else {

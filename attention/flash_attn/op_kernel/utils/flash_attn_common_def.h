@@ -368,6 +368,57 @@ struct SysPrefixConstInfo {
     int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
 };
 
+struct HotConstInfo {
+    uint32_t bSize;
+    uint32_t n2Size;
+    uint32_t gSize;
+    uint32_t dSize;
+    uint32_t dSizeV;
+    uint32_t dBasicBlock;
+    uint64_t s1Size;
+    uint64_t s2Size;
+    float scaleValue;
+    uint32_t coreNum;
+    uint8_t subBlockIdx;
+    uint32_t aicIdx;
+};
+
+struct ColdConstInfo : PAConstInfo,
+                       LseConstInfo,
+                       SinkConstInfo,
+                       PseConstInfo,
+                       TensorListConstInfo,
+                       PostQuantConstInfo,
+                       LeftPaddingConstInfo,
+                       SysPrefixConstInfo {
+    uint64_t t1Size;
+    uint64_t t2Size;
+    uint32_t dSizeRope;
+    uint64_t cuSeqLensQSize;
+    uint64_t cuSeqLensKVSize;
+    uint64_t seqUsedQSize;
+    uint64_t seqUsedKvSize;
+    uint32_t bN2Start;
+    uint32_t bN2End;
+    uint32_t gS1OStart;
+    uint32_t gS1OEnd;
+    uint32_t s2OStart;
+    uint32_t s2OEnd;
+    uint32_t coreFirstTmpOutWsPos;
+    uint32_t sparseMode;
+    uint32_t attenMaskBatch;
+    uint32_t attenMaskS1Size;
+    uint32_t attenMaskS2Size;
+    int64_t preTokens;
+    int64_t nextTokens;
+    bool isExistRowInvalid;
+    uint32_t aivIdx;
+    uint32_t accumOutSize;
+    uint32_t logSumExpSize;
+    FA_LAYOUT outputLayout;
+    bool needInitOutput;
+};
+
 template <FiaKernelType>
 struct ConstInfo_t;
 
