@@ -97,113 +97,13 @@ public:
 
     __aicore__ inline void Process()
     {
-        ComputePrefixSum();
-        SyncAll<true>();
-
-        CopyFromWindow();
-        SyncAll<true>();
-
-        if (aivId_ == 0) {
-            CopyHostPinnedToDevice();
-        }
+        return;
     }
 
 private:
-    __aicore__ inline void ComputePrefixSum()
-    {
-        __gm__ int32_t* hpRankPtr = reinterpret_cast<__gm__ int32_t*>(td_->numRecvPerRankAddr);
-
-        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
-            ubPrefixSum_.SetValue(i, *reinterpret_cast<__gm__ int32_t*>(hpRankPtr + i));
-        }
-
-        int32_t acc = 0;
-        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
-            int32_t val = ubPrefixSum_.GetValue(i);
-            acc += val;
-            ubPrefixSum_.SetValue(i, acc);
-        }
-
-        GM_ADDR pfxWorkspace = workspace_;
-        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
-            *reinterpret_cast<__gm__ int32_t*>(pfxWorkspace + i * sizeof(int32_t))
-                = ubPrefixSum_.GetValue(i);
-        }
-    }
-
-    __aicore__ inline void CopyFromWindow()
-    {
-        uint32_t my_rank = rankId_;
-        GM_ADDR pfxWorkspace = workspace_;
-
-        uint32_t srStart = aivId_ * td_->cfg.epWorldSize / td_->aivNum;
-        uint32_t srEnd   = (aivId_ + 1) * td_->cfg.epWorldSize / td_->aivNum;
-
-        GM_ADDR localWinBase = GetBaseWinAddrByRankId(my_rank);
-
-        for (uint32_t sr = srStart; sr < srEnd; ++sr) {
-            int32_t base = *reinterpret_cast<__gm__ int32_t*>(pfxWorkspace + sr * sizeof(int32_t));
-            __gm__ int32_t* hpRankPtr = reinterpret_cast<__gm__ int32_t*>(td_->numRecvPerRankAddr);
-            int32_t cnt = *reinterpret_cast<__gm__ int32_t*>(hpRankPtr + sr);
-
-            GM_ADDR srcRankWinBase = localWinBase + sr * td_->cfg.numMaxTokensPerRank
-                                     * td_->cfg.perSlotBytes;
-
-            for (int32_t slotIdx = 0; slotIdx < cnt; ++slotIdx) {
-                uint32_t a = base + slotIdx;
-                if (a >= td_->aAlloc) break;
-
-                GM_ADDR slotAddr = srcRankWinBase + slotIdx * td_->cfg.perSlotBytes;
-
-                GlobalTensor<bfloat16_t> srcTokenTensor;
-                srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(slotAddr), td_->cfg.hidden);
-                uint16_t copyLen = static_cast<uint16_t>(td_->cfg.hidden);
-                DataCopyPad(ubToken_[slotIdx % 2], srcTokenTensor,
-                    DataCopyParams(1, copyLen, 0, 0),
-                    DataCopyPadParams(false, 0, 0, 0));
-                DataCopyPad(recvXGm_[a * td_->cfg.hidden], ubToken_[slotIdx % 2],
-                    DataCopyParams(1, copyLen, 0, 0));
-
-                uint32_t metaOffset = ALIGN_UP(td_->cfg.hidden * sizeof(bfloat16_t), WIN_ADDR_ALIGN);
-                __gm__ int32_t* metaPtr = reinterpret_cast<__gm__ int32_t*>(slotAddr + metaOffset);
-                GlobalTensor<int32_t> srcMetaTensor;
-                srcMetaTensor.SetGlobalBuffer(metaPtr, td_->cfg.topK * 2 + 2);
-                DataCopy(ubMeta_, srcMetaTensor,
-                    DataCopyParams(1, static_cast<uint16_t>(td_->cfg.topK * 2 + 2), 0, 0));
-
-                for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
-                    recvTopkIdxGm_.SetValue(a * td_->cfg.topK + kk, ubMeta_.GetValue(kk));
-                }
-
-                for (uint32_t kk = 0; kk < td_->cfg.topK; ++kk) {
-                    int32_t rawBits = ubMeta_.GetValue(td_->cfg.topK + kk);
-                    recvTopkWeightsGm_.SetValue(a * td_->cfg.topK + kk,
-                        *reinterpret_cast<float*>(&rawBits));
-                }
-
-                int32_t src_rank_id   = ubMeta_.GetValue(td_->cfg.topK * 2);
-                int32_t src_token_idx = ubMeta_.GetValue(td_->cfg.topK * 2 + 1);
-                int32_t src_token_global = src_rank_id * td_->cfg.numMaxTokensPerRank + src_token_idx;
-
-                recvSrcMetadataGm_.SetValue(a * 3 + 0, src_token_global);
-                recvSrcMetadataGm_.SetValue(a * 3 + 1, src_rank_id);
-                recvSrcMetadataGm_.SetValue(a * 3 + 2, slotIdx);
-            }
-        }
-    }
-
-    __aicore__ inline void CopyHostPinnedToDevice()
-    {
-        __gm__ int32_t* hpRankSrc = reinterpret_cast<__gm__ int32_t*>(td_->numRecvPerRankAddr);
-        for (uint32_t i = 0; i < td_->cfg.epWorldSize; ++i) {
-            numRecvPerRankGm_.SetValue(i, *reinterpret_cast<__gm__ int32_t*>(hpRankSrc + i));
-        }
-
-        __gm__ int64_t* hpExpertSrc = reinterpret_cast<__gm__ int64_t*>(td_->numRecvPerExpertAddr);
-        for (uint32_t i = 0; i < td_->numLocalExperts; ++i) {
-            numRecvPerExpertGm_.SetValue(i, *reinterpret_cast<__gm__ int64_t*>(hpExpertSrc + i));
-        }
-    }
+    __aicore__ inline void ComputePrefixSum() {}
+    __aicore__ inline void CopyFromWindow() {}
+    __aicore__ inline void CopyHostPinnedToDevice() {}
 
     TPipe* tpipe_{nullptr};
     const MoeEpDispatchEpilogueInfo* td_{nullptr};
