@@ -33,6 +33,15 @@ public:
 
 private:
     __aicore__ inline void CopyIn();
+    __aicore__ inline void ProcessTargetSS(float target, const LocalTensor<float>& inputCast,
+                                            const LocalTensor<float>& targetBuf, const LocalTensor<float>& oneBuf,
+                                            const LocalTensor<uint8_t>& mask1, LocalTensor<float>& resultBuf,
+                                            LocalTensor<float>& reduceMaxAnsBuf, LocalTensor<float>& reduceSumAnsBuf,
+                                            LocalTensor<float>& workLocal, LocalTensor<T>& output,
+                                            int32_t startOffset, int32_t& lastIdx, int32_t& lastVal,
+                                            uint64_t mask, int32_t repeat,
+                                            const BinaryRepeatParams& repeatParamsCompare,
+                                            const BinaryRepeatParams& repeatParamsSelect);
     __aicore__ inline void Compute();
     __aicore__ inline void CopyOut();
     __aicore__ inline int64_t Int32AlignmentProcess(int64_t param);
@@ -159,6 +168,46 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::CopyIn()
 }
 
 template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32SS<T>::ProcessTargetSS(
+    float target, const LocalTensor<float>& inputCast,
+    const LocalTensor<float>& targetBuf, const LocalTensor<float>& oneBuf,
+    const LocalTensor<uint8_t>& mask1, LocalTensor<float>& resultBuf,
+    LocalTensor<float>& reduceMaxAnsBuf, LocalTensor<float>& reduceSumAnsBuf,
+    LocalTensor<float>& workLocal, LocalTensor<T>& output,
+    int32_t startOffset, int32_t& lastIdx, int32_t& lastVal,
+    uint64_t mask, int32_t repeat,
+    const BinaryRepeatParams& repeatParamsCompare,
+    const BinaryRepeatParams& repeatParamsSelect)
+{
+    Duplicate(targetBuf, target, 8);
+
+    PipeBarrier<PIPE_V>();
+    Compare(mask1, inputCast, targetBuf, CMPMODE::EQ, mask, repeat, repeatParamsCompare);
+    PipeBarrier<PIPE_V>();
+    Select<float>(resultBuf, mask1, oneBuf, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat, repeatParamsSelect);
+    PipeBarrier<PIPE_V>();
+    ReduceMax<float>(reduceMaxAnsBuf, resultBuf, workLocal, handleNum_, true);
+
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    bool isFind = reduceMaxAnsBuf.GetValue(0) != 0;
+    if (!isFind) {
+        output.SetValue(static_cast<int32_t>(target), lastVal);
+        return;
+    }
+    ReduceSum<float>(reduceSumAnsBuf, resultBuf, workLocal, handleNum_);
+
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    float index = reduceMaxAnsBuf.GetValue(1);
+    float sumNum = reduceSumAnsBuf.GetValue(0);
+    int32_t targetLocation = (reinterpret_cast<int32_t&>(index) + sumNum);
+    lastVal = startOffset + targetLocation;
+    lastIdx = target;
+    output.SetValue(static_cast<int32_t>(target), lastVal);
+}
+
+template <typename T>
 __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
 {
     LocalTensor<T> input = inputQueue_.DeQue<T>();
@@ -187,7 +236,6 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
     float endTarget = inputCast.GetValue(endIdx);
 
     int32_t startOffset = handleNumPerCoreBefore_ * GetBlockIdx();
-    int32_t targetLocation = 0;
     int32_t lastIdx = 0;
     int32_t lastVal = 0;
 
@@ -196,32 +244,10 @@ __aicore__ inline void MoeComputeExpertTokensInt32SS<T>::Compute()
     BinaryRepeatParams repeatParamsSelect = {1, 0, 0, 8, 0, 0};
 
     for (float target = startTarget; target <= endTarget; target++) {
-        Duplicate(targetBuf, target, 8);
-
-        PipeBarrier<PIPE_V>();
-        Compare(mask1, inputCast, targetBuf, CMPMODE::EQ, mask, repeat, repeatParamsCompare);
-        PipeBarrier<PIPE_V>();
-        Select<float>(resultBuf, mask1, oneBuf, static_cast<float>(0), SELMODE::VSEL_TENSOR_SCALAR_MODE, mask, repeat, repeatParamsSelect);
-        PipeBarrier<PIPE_V>();
-        ReduceMax<float>(reduceMaxAnsBuf, resultBuf, workLocal, handleNum_, true);
-
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        bool isFind = reduceMaxAnsBuf.GetValue(0) != 0;
-        if (!isFind) {
-            output.SetValue(static_cast<int32_t>(target), lastVal);
-            continue;
-        }
-        ReduceSum<float>(reduceSumAnsBuf, resultBuf, workLocal, handleNum_);
-
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        float index = reduceMaxAnsBuf.GetValue(1);
-        float sumNum = reduceSumAnsBuf.GetValue(0);
-        targetLocation = (reinterpret_cast<int32_t&>(index) + sumNum);
-        lastVal = startOffset + targetLocation;
-        lastIdx = target;
-        output.SetValue(static_cast<int32_t>(target), lastVal);
+        ProcessTargetSS(target, inputCast, targetBuf, oneBuf, mask1, resultBuf,
+                        reduceMaxAnsBuf, reduceSumAnsBuf, workLocal, output,
+                        startOffset, lastIdx, lastVal, mask, repeat,
+                        repeatParamsCompare, repeatParamsSelect);
     }
     for (int k = lastIdx + 1; k < numOfExpert_; k++) {
         output.SetValue(k, lastVal);

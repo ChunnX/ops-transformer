@@ -38,8 +38,14 @@ private:
     __aicore__ inline void CopyInBefore(int64_t loop1Idx, int64_t loop2Idx);
     __aicore__ inline void CopyInTailCoreBefore(int64_t loop1Idx, int64_t loop2Idx);
     __aicore__ inline void CopyInTailCoreLastBefore(int64_t loop1Idx, int64_t loop2Idx);
+    __aicore__ inline void BinarySearchBeforeTarget(
+        int32_t target, const LocalTensor<T>& input, LocalTensor<T>& output,
+        int32_t startIdx, int32_t endIdx, int32_t loop1Idx, int32_t loop2Idx);
     __aicore__ inline void ComputeBefore(
         int64_t loop1Idx, int64_t loop2Idx, LocalTensor<T>& output, int32_t indexOffset, int32_t handleNum);
+    __aicore__ inline void BinarySearchTailCoreBeforeTarget(
+        int32_t target, const LocalTensor<T>& input, LocalTensor<T>& output,
+        int32_t startIdx, int32_t endIdx, int32_t loop1Idx, int32_t startOffset);
     __aicore__ inline void ComputeTailCoreBefore(
         int64_t loop1Idx, int64_t loop2Idx, LocalTensor<T>& output, int32_t indexOffset, int32_t handleNum,
         int32_t startOffset);
@@ -252,6 +258,36 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::Init(
 }
 
 template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32L<T>::BinarySearchTailCoreBeforeTarget(
+    int32_t target, const LocalTensor<T>& input, LocalTensor<T>& output,
+    int32_t startIdx, int32_t endIdx, int32_t loop1Idx, int32_t startOffset)
+{
+    int32_t low = startIdx;
+    int32_t high = endIdx - startIdx;
+    int32_t targetLocation = 0;
+    int32_t mid = 0;
+    while (low <= high) {
+        mid = (low + high) / 2;
+        if (input.GetValue(mid) > target) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+            targetLocation = mid;
+        }
+    }
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    if (input.GetValue(targetLocation) == target) {
+        Duplicate(
+            output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32],
+            startOffset + targetLocation + 1, 1);
+        lastVal_ = startOffset + targetLocation + 1;
+    } else {
+        Duplicate(output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32], lastVal_, 1);
+    }
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+}
+
+template <typename T>
 __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeTailCoreBefore(
     int64_t loop1Idx, int64_t loop2Idx, LocalTensor<T>& output, int32_t indexOffset, int32_t handleNum,
     int32_t startOffset)
@@ -262,9 +298,6 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeTailCoreBefore(
 
     int32_t startTarget = loop1Idx * handleExpertNumMainCorePerLoop_;
     int32_t endTarget = startTarget + handleNum - 1;
-
-    int32_t lastIdx = 0;        // 最后一个可以找到的专家索引
-    int32_t lastVal = lastVal_; // 最后一个可以找到的专家号
 
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
@@ -278,33 +311,7 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeTailCoreBefore(
 
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     for (int32_t target = startTarget; target <= endTarget; target++) {
-        int32_t low = startIdx;
-        int32_t high = endIdx - startIdx;
-        int32_t targetLocation = 0;
-        int32_t mid = 0;
-        while (low <= high) {
-            mid = (low + high) / 2;
-            if (input.GetValue(mid) > target) {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-                targetLocation = mid;
-            }
-        }
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        // 可以找到
-        if (input.GetValue(targetLocation) == target) {
-            Duplicate(
-                output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32],
-                startOffset + targetLocation + 1, 1);
-            lastIdx = target;
-            lastVal = startOffset + targetLocation + 1;
-            lastVal_ = lastVal;
-        } else {
-            // target找不到，该位置数置为0
-            Duplicate(output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32], lastVal, 1);
-        }
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
+        BinarySearchTailCoreBeforeTarget(target, input, output, startIdx, endIdx, loop1Idx, startOffset);
     }
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
 
@@ -321,6 +328,37 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeTailCoreBefore(
 }
 
 template <typename T>
+__aicore__ inline void MoeComputeExpertTokensInt32L<T>::BinarySearchBeforeTarget(
+    int32_t target, const LocalTensor<T>& input, LocalTensor<T>& output,
+    int32_t startIdx, int32_t endIdx, int32_t loop1Idx, int32_t loop2Idx)
+{
+    int32_t low = startIdx;
+    int32_t high = endIdx - startIdx;
+    int32_t targetLocation = 0;
+    int32_t mid = 0;
+    while (low <= high) {
+        mid = (low + high) / 2;
+        if (input.GetValue(mid) > target) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+            targetLocation = mid;
+        }
+    }
+    WaitFlag<HardEvent::V_S>(EVENT_ID0);
+    if (input.GetValue(targetLocation) == target) {
+        int32_t startOffset = handleNumPerCoreBefore_ * GetBlockIdx() + loop2Idx * handleNumPerLoopBefore_;
+        Duplicate(
+            output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32],
+            startOffset + targetLocation + 1, 1);
+        lastVal_ = startOffset + targetLocation + 1;
+    } else {
+        Duplicate(output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32], lastVal_, 1);
+    }
+    SetFlag<HardEvent::V_S>(EVENT_ID0);
+}
+
+template <typename T>
 __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeBefore(
     int64_t loop1Idx, int64_t loop2Idx, LocalTensor<T>& output, int32_t indexOffset, int32_t handleNum)
 {
@@ -331,9 +369,6 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeBefore(
 
     int32_t startTarget = loop1Idx * handleExpertNumMainCorePerLoop_;
     int32_t endTarget = startTarget + handleNum - 1;
-
-    int32_t lastIdx = 0;        // 最后一个可以找到的专家索引
-    int32_t lastVal = lastVal_; // 最后一个可以找到的专家号
 
     SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
@@ -347,34 +382,7 @@ __aicore__ inline void MoeComputeExpertTokensInt32L<T>::ComputeBefore(
 
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     for (int32_t target = startTarget; target <= endTarget; target++) {
-        int32_t low = startIdx;
-        int32_t high = endIdx - startIdx;
-        int32_t targetLocation = 0;
-        int32_t mid = 0;
-        while (low <= high) {
-            mid = (low + high) / 2;
-            if (input.GetValue(mid) > target) {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-                targetLocation = mid;
-            }
-        }
-        WaitFlag<HardEvent::V_S>(EVENT_ID0);
-        // 可以找到
-        if (input.GetValue(targetLocation) == target) {
-            int32_t startOffset = handleNumPerCoreBefore_ * GetBlockIdx() + loop2Idx * handleNumPerLoopBefore_;
-            Duplicate(
-                output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32],
-                startOffset + targetLocation + 1, 1);
-            lastIdx = target;
-            lastVal = startOffset + targetLocation + 1;
-            lastVal_ = lastVal;
-        } else {
-            // target找不到，该位置数置为0
-            Duplicate(output[(target - handleExpertNumMainCorePerLoop_ * loop1Idx) * ONCE_ALGN_NUM_INT32], lastVal, 1);
-        }
-        SetFlag<HardEvent::V_S>(EVENT_ID0);
+        BinarySearchBeforeTarget(target, input, output, startIdx, endIdx, loop1Idx, loop2Idx);
     }
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
 

@@ -296,19 +296,14 @@ static inline ge::graphStatus CalcTemplate3ParamTiling(const gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
+static inline ge::graphStatus CheckPlatformInfo(const gert::TilingContext *context,
+                                                 int64_t &effectiveCoreNum, int64_t &ubSize)
 {
-    OP_LOGD(context->GetNodeName(), "[MoeComputeExpertTokens] Tiling4MoeComputeExpertTokens running begin");
-    OP_CHECK_IF(!CheckParamsShape(context),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckParamsShape",
-                    "GRAPH_FAILED", "Tiling4MoeComputeExpertTokens check shape failed."),
-                return ge::GRAPH_FAILED);
-
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     const int64_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    const int64_t effectiveCoreNum = min(totalCoreNum, MAX_CORE_NUM);
+    effectiveCoreNum = min(totalCoreNum, MAX_CORE_NUM);
     std::string totalCoreNumStr = std::to_string(totalCoreNum);
     OP_CHECK_IF((totalCoreNum <= 0),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "total_core_num",
@@ -323,18 +318,18 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "ub_size",
                     ubSizePlatFormStr.c_str(), "The platform UB size should be greater than 0."),
                 return ge::GRAPH_FAILED);
+    ubSize = static_cast<int64_t>(ubSizePlatForm);
 
-    // 实例化对象op
-    MoeComputeExpertTokensTilingData tilingData;
+    return ge::GRAPH_SUCCESS;
+}
 
-    // 设置totalCoreNum
+static inline ge::graphStatus InitTilingData(const gert::TilingContext *context,
+                                              MoeComputeExpertTokensTilingData &tilingData,
+                                              int64_t effectiveCoreNum, int64_t ubSize)
+{
     tilingData.set_totalCoreNum(effectiveCoreNum);
-
-    // 设置总ubsize
-    int64_t ubSize = static_cast<int64_t>(ubSizePlatForm);
     tilingData.set_ubSize(ubSize);
 
-    // 获取sortedExpert的维度
     auto sortedExpertInput = context->GetInputTensor(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sortedExpertInput);
     auto sortedExpertInputShape = sortedExpertInput->GetStorageShape();
@@ -351,7 +346,6 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
                     sortedExpertNumStr.c_str(), "not greater than 2**24"),
                 return ge::GRAPH_FAILED);
 
-    // 获取numExpert的输入数据的属性
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *numOfExpertPtr = attrs->GetAttrPointer<int64_t>(0);
@@ -364,25 +358,33 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
                     numOfExpertStr.c_str(), "not greater than 2048"),
                 return ge::GRAPH_FAILED);
 
-    // 设置syncAll之前before模板3的参数
+    return ge::GRAPH_SUCCESS;
+}
+
+static inline ge::graphStatus CalcSubTilings(const gert::TilingContext *context,
+                                              MoeComputeExpertTokensTilingData &tilingData)
+{
     OP_CHECK_IF(CalcTemplate3ParamTiling(context, tilingData) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CalcTemplate3ParamTiling",
                     "GRAPH_FAILED", "CalcTemplate3ParamTiling failed."),
                 return ge::GRAPH_FAILED);
 
-    // 设置syncAll之前的参数设置
     OP_CHECK_IF(CalcSortedExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CalcSortedExpertTiling",
                     "GRAPH_FAILED", "CalcSortedExpertTiling failed."),
                 return ge::GRAPH_FAILED);
 
-    // 设置syncAll之后的参数设置
     OP_CHECK_IF(CalcNumOfExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CalcNumOfExpertTiling",
                     "GRAPH_FAILED", "CalcNumOfExpertTiling failed."),
                 return ge::GRAPH_FAILED);
 
-    // 设置tilingKey，所有场景都开启SetScheduleMode = BatchMode
+    return ge::GRAPH_SUCCESS;
+}
+
+static inline void SetTilingKeyAndScene(const gert::TilingContext *context,
+                                         MoeComputeExpertTokensTilingData &tilingData)
+{
     static const int64_t SCHEDULE_MODE_BATCH = 1;
     context->SetScheduleMode(SCHEDULE_MODE_BATCH);
     bool isSortedExpertOverBound = (tilingData.get_sortedExpertNum() > BSK_BOUND_NUM);
@@ -395,19 +397,20 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
         tilingData.set_tilingKey(COM_SCENE_FLAG_3);
     }
 
-    // 特殊网络case场景
     bool isNetScene =
         (tilingData.get_sortedExpertNum() == NET_BSK_BOUND_NUM) && (tilingData.get_numOfExpert() == NET_E_BOUND_NUM);
     if (isNetScene) {
         tilingData.set_tilingKey(COM_SCENE_FLAG_1);
     }
+}
 
-    // 计算workLocal使用空间
+static inline ge::graphStatus SetWorkspaceAndFinalize(const gert::TilingContext *context,
+                                                       MoeComputeExpertTokensTilingData &tilingData)
+{
     int64_t handleNum = tilingData.get_normalCoreHandleNumBefore();
     int64_t workLocalNeedSize = CalcWorkLocal(handleNum);
     tilingData.set_workLocalNeedSize(workLocalNeedSize);
 
-    // 设置workspace
     size_t userSize = tilingData.get_numOfExpert() * tilingData.get_totalCoreNum() * sizeof(int32_t);
     size_t sysWorkspaceSize = SYS_WORKSPACE;
     size_t *userWorkspaceSize = context->GetWorkspaceSizes(1);
@@ -424,6 +427,42 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
     context->SetTilingKey(tilingData.get_tilingKey());
 
     PrintTilingData(tilingData);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "[MoeComputeExpertTokens] Tiling4MoeComputeExpertTokens running begin");
+    OP_CHECK_IF(!CheckParamsShape(context),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckParamsShape",
+                    "GRAPH_FAILED", "Tiling4MoeComputeExpertTokens check shape failed."),
+                return ge::GRAPH_FAILED);
+
+    int64_t effectiveCoreNum = 0;
+    int64_t ubSize = 0;
+    OP_CHECK_IF(CheckPlatformInfo(context, effectiveCoreNum, ubSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CheckPlatformInfo",
+                    "GRAPH_FAILED", "CheckPlatformInfo failed."),
+                return ge::GRAPH_FAILED);
+
+    MoeComputeExpertTokensTilingData tilingData;
+    OP_CHECK_IF(InitTilingData(context, tilingData, effectiveCoreNum, ubSize) != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "InitTilingData",
+                    "GRAPH_FAILED", "InitTilingData failed."),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(CalcSubTilings(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "CalcSubTilings",
+                    "GRAPH_FAILED", "CalcSubTilings failed."),
+                return ge::GRAPH_FAILED);
+
+    SetTilingKeyAndScene(context, tilingData);
+
+    OP_CHECK_IF(SetWorkspaceAndFinalize(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "SetWorkspaceAndFinalize",
+                    "GRAPH_FAILED", "SetWorkspaceAndFinalize failed."),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
