@@ -3,7 +3,7 @@
 精度测试 - SparseLightningIndexerGradKLLoss TileLang BSND layout
 
 对比 TileLang 实现与官方 Ascend C 算子的结果，使用 BSND layout。
-入参严格对齐 debug_official.py 的 BSND 调用方式（TND unsqueeze B=1）。
+直接构造 BSND 格式入参，不经过 TND 转换。
 """
 
 import torch
@@ -22,63 +22,41 @@ def run_precision_test():
     print("精度测试 - SparseLightningIndexerGradKLLoss TileLang (BSND layout)")
     print("=" * 70)
 
-    # 对齐 debug_official.py 的 BSND 调用方式
-    # TND 参数: t1=1, t2=1, n1=128, n2=1, nQueryIndex=64, topK=2048
-    # BSND: B=1, S1=t1=1, S2=t2=1, N1=128, N2=1, Nidx1=64, Nidx2=1
-    t1 = 1
-    t2 = 1
-    n1 = 128
-    n2 = 1
-    n_query_index = 64
-    d_query = 512
-    d_query_index = 128
-    d_rope = 64
-    topk = 2048
-    G = n1 // n2  # G=128
-
-    # BSND shapes (unsqueeze TND with B=1)
     B = 1
-    S1 = t1
-    S2 = t2
+    S1 = 1
+    S2 = 1
+    N1 = 128
+    N2 = 1
+    Nidx1 = 64
+    Nidx2 = 1
+    DQuery = 512
+    DQueryIndex = 128
+    d_rope = 64
+    K = 2048
+    G = N1 // N2
 
-    print(f"\n测试配置 (对齐 debug_official.py BSND 调用):")
-    print(f"  B={B}, S1={S1}, S2={S2}, N1={n1}, N2={n2}, Nidx1={n_query_index}")
-    print(f"  d_query={d_query}, d_query_index={d_query_index}, d_rope={d_rope}, topk={topk}, G={G}")
+    print(f"\n测试配置 (BSND layout):")
+    print(f"  B={B}, S1={S1}, S2={S2}, N1={N1}, N2={N2}, Nidx1={Nidx1}, Nidx2={Nidx2}")
+    print(f"  DQuery={DQuery}, DQueryIndex={DQueryIndex}, d_rope={d_rope}, K={K}, G={G}")
 
     torch.manual_seed(42)
 
-    # 先构造 TND tensors（与 debug_official.py 一致），再 unsqueeze 得到 BSND
-    query_tnd = torch.randn(t1, n1, d_query, dtype=torch.float16).npu()
-    key_tnd = torch.randn(t2, n2, d_query, dtype=torch.float16).npu()
-    query_index_tnd = torch.randn(t1, n_query_index, d_query_index, dtype=torch.float16).npu()
-    key_index_tnd = torch.randn(t2, n2, d_query_index, dtype=torch.float16).npu()
-    weights_tnd = torch.randn(t1, n_query_index, dtype=torch.float16).npu()
-    query_rope_tnd = torch.randn(t1, n1, d_rope, dtype=torch.float16).npu()
-    key_rope_tnd = torch.randn(t2, n2, d_rope, dtype=torch.float16).npu()
+    query = torch.randn(B, S1, N1, DQuery, dtype=torch.float16).npu()
+    key = torch.randn(B, S2, N2, DQuery, dtype=torch.float16).npu()
+    query_index = torch.randn(B, S1, Nidx1, DQueryIndex, dtype=torch.float16).npu()
+    key_index = torch.randn(B, S2, Nidx2, DQueryIndex, dtype=torch.float16).npu()
+    weights = torch.randn(B, S1, Nidx1, dtype=torch.float16).npu()
+    query_rope = torch.randn(B, S1, N1, d_rope, dtype=torch.float16).npu()
+    key_rope = torch.randn(B, S2, N2, d_rope, dtype=torch.float16).npu()
 
-    # sparseIndices: TND (T1, N2, topK)
-    sparse_indices_tnd = torch.full((t1, n2, topk), -1, dtype=torch.int32).npu()
-    for i in range(t2):
-        sparse_indices_tnd[0, 0, i] = i
+    sparse_indices = torch.full((B, S1, Nidx2, K), -1, dtype=torch.int32).npu()
+    for i in range(S2):
+        sparse_indices[0, 0, 0, i] = i
 
-    # softmaxMax/Sum: TND (N2, T1, G)
-    softmax_max_tnd = torch.full((n2, t1, G), 25.4483, dtype=torch.float32).npu()
-    softmax_sum_tnd = torch.full((n2, t1, G), 1.0, dtype=torch.float32).npu()
+    softmax_max = torch.full((B, N2, S1, G), 25.4483, dtype=torch.float32).npu()
+    softmax_sum = torch.full((B, N2, S1, G), 1.0, dtype=torch.float32).npu()
 
-    scale_value = 1.0 / math.sqrt(d_query)
-
-    # TND -> BSND: unsqueeze B=1
-    query = query_tnd.unsqueeze(0)
-    key = key_tnd.unsqueeze(0)
-    query_index = query_index_tnd.unsqueeze(0)
-    key_index = key_index_tnd.unsqueeze(0)
-    weights = weights_tnd.unsqueeze(0)
-    sparse_indices = sparse_indices_tnd.unsqueeze(0)
-    query_rope = query_rope_tnd.unsqueeze(0)
-    key_rope = key_rope_tnd.unsqueeze(0)
-    # softmaxMax/Sum: TND (N2,T1,G) -> BSND (B,N2,T1,G)
-    softmax_max = softmax_max_tnd.unsqueeze(0)
-    softmax_sum = softmax_sum_tnd.unsqueeze(0)
+    scale_value = 1.0 / math.sqrt(DQuery)
 
     print(f"\nBSND Tensor shapes:")
     print(f"  query: {query.shape}, key: {key.shape}")

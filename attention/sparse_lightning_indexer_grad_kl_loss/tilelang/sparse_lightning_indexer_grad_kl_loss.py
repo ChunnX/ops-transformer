@@ -496,12 +496,12 @@ def sparse_lightning_indexer_grad_kl_loss(
 
     if layout_query == "BSND" and sparse_mode in (3,):
         if actual_seq_lengths_query is not None:
-            actual_q_len = actual_seq_lengths_query.to(torch.int32)
+            actual_q_len = torch.tensor(actual_seq_lengths_query, dtype=torch.int32) if isinstance(actual_seq_lengths_query, list) else actual_seq_lengths_query.to(torch.int32)
         else:
             actual_q_len = torch.full((B,), S1, dtype=torch.int32)
 
         if actual_seq_lengths_key is not None:
-            actual_k_len = actual_seq_lengths_key.to(torch.int32)
+            actual_k_len = torch.tensor(actual_seq_lengths_key, dtype=torch.int32) if isinstance(actual_seq_lengths_key, list) else actual_seq_lengths_key.to(torch.int32)
         else:
             actual_k_len = torch.full((B,), S2, dtype=torch.int32)
 
@@ -606,12 +606,12 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     softmax_sum_b = softmax_sum.unsqueeze(0)
 
     if actual_seq_lengths_query is not None:
-        actual_q_len = actual_seq_lengths_query.to(torch.int32)
+        actual_q_len = torch.tensor(actual_seq_lengths_query, dtype=torch.int32) if isinstance(actual_seq_lengths_query, list) else actual_seq_lengths_query.to(torch.int32)
     else:
         actual_q_len = torch.tensor([query.shape[0]], dtype=torch.int32)
 
     if actual_seq_lengths_key is not None:
-        actual_k_len = actual_seq_lengths_key.to(torch.int32)
+        actual_k_len = torch.tensor(actual_seq_lengths_key, dtype=torch.int32) if isinstance(actual_seq_lengths_key, list) else actual_seq_lengths_key.to(torch.int32)
     else:
         actual_k_len = torch.tensor([key.shape[0]], dtype=torch.int32)
 
