@@ -18,7 +18,7 @@ try:
     from . import _C
 except ImportError as e:
     raise ImportError(
-        "Cannot import _C. Please make sure the `ascend_ops` is properly installed. "
+        "Cannot import _C. Please make sure the `fast_kernel_launch` is properly installed. "
     ) from e
 
 from . import ops

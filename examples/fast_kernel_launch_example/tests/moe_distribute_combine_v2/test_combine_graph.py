@@ -6,8 +6,8 @@ import torch_npu
 import torch.distributed as dist
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
-import ascend_ops
-from ascend_ops import MoeDistributeBuffer
+import fast_kernel_launch
+from fast_kernel_launch import MoeDistributeBuffer
 
 # Constants
 MASTER_PORT = 50001

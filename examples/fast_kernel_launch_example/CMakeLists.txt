@@ -27,8 +27,8 @@ include(cmake/func.cmake)
 
 # set NPU architecture, default to ascend910b
 set(NPU_ARCH "ascend910b" CACHE STRING "NPU architecture")
-# set EXTENSION_MODULE_NAME to `ascend_ops`
-set(EXTENSION_MODULE_NAME "ascend_ops" CACHE STRING "Extension module name")
+# set EXTENSION_MODULE_NAME to `fast_kernel_launch`
+set(EXTENSION_MODULE_NAME "fast_kernel_launch" CACHE STRING "Extension module name")
 
 if(DEFINED ENV{ASCEND_HOME_PATH})
     set(ASCEND_HOME "$ENV{ASCEND_HOME_PATH}" CACHE PATH "Ascend installation path" FORCE)
