@@ -372,7 +372,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Copy 1D chunk to 2D buffer for reduce_max
                         T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
                         T.barrier_all()
-                        T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 0)
+                        T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
                         # Update global max: max(old_max, chunk_max)
                         T.copy(rsy_max_ub, max_pair_ub[0, 0:1])
@@ -405,7 +405,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Accumulate sum: copy to 2D and reduce_sum
                         T.copy(rsy_chunk_ub, rsy_2d_ub[0, :])
                         T.barrier_all()
-                        T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 0)
+                        T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
                         T.barrier_all()
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
                         T.barrier_all()
