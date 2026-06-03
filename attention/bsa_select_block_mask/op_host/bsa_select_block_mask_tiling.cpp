@@ -219,7 +219,14 @@ void BSASelectBlockMaskTilingBase::CalcOutputParams()
     uint64_t kCmpSize = static_cast<uint64_t>(yBlocks) * dSize * sizeof(float);
     uint64_t attnScoreSize = static_cast<uint64_t>(xBlocks) * yBlocks * 2;  // FP16: 2 bytes per element
     uint64_t softmaxTmpSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(float);
-    uint64_t topkWorkspaceSize = static_cast<uint64_t>(RADIX_NUM_BINS * aicNum + aicNum + aicNum) * sizeof(int32_t);
+
+    uint64_t sortLen = static_cast<uint64_t>(xBlocks) * yBlocks;
+    uint64_t tileLen = std::min(static_cast<uint64_t>(7168), sortLen);
+    uint64_t totalTileNum = (sortLen + tileLen - 1) / tileLen;
+    uint64_t topkHeaderSize = static_cast<uint64_t>(RADIX_NUM_BINS * aicNum + aicNum + aicNum) * sizeof(int32_t);
+    uint64_t topkTileDataSize = static_cast<uint64_t>(totalTileNum) * (1 + RADIX_NUM_BINS) * sizeof(int32_t);
+    uint64_t topkWorkspaceSize = topkHeaderSize + topkTileDataSize;
+
     uint64_t maskSize = static_cast<uint64_t>(xBlocks) * yBlocks * sizeof(uint8_t);
 
     outputParams_->set_qCmpSize(qCmpSize);

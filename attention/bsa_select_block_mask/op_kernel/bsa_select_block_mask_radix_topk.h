@@ -52,12 +52,14 @@ private:
     GlobalTensor<int32_t> globalHistGm_;
     GlobalTensor<int32_t> boundaryBinCumSumGm_;
     GlobalTensor<int32_t> coreTopKGm_;
+    GlobalTensor<int32_t> tileTopKGm_;
+    GlobalTensor<int32_t> tileHistGm_;
 
-    TBuf<TPosition::VECIN> xBuf0_;
-    TBuf<TPosition::VECIN> xBuf1_;
+    TBuf<TPosition::VECIN> xBufPing_;
+    TBuf<TPosition::VECIN> xBufPong_;
     TBuf<TPosition::VECOUT> maskLocalBuf_;
     TBuf<TPosition::VECOUT> globalHistBuf_;
-    TBuf<TPosition::VECCALC> tileTopKBuf_;
+    TBuf<TPosition::VECCALC> tileHistAndTopKBuf_;
     TBuf<TPosition::VECCALC> tempBuf_;
 
     int16_t involvedMask16_;
@@ -77,8 +79,22 @@ private:
     uint32_t numValue_;
     uint32_t bitsPerRound_;
 
-    event_t eventBuf0_;
-    bool xBufUse0_;
+    uint64_t totalTileNum_;
+    uint64_t formerCoreNum_;
+    uint64_t tailCoreNum_;
+    uint64_t formerTileNum_;
+    uint64_t tailTileNum_;
+    uint64_t formerTileLen_;
+    uint64_t tailTileLen_;
+    uint32_t tileNumRepeatTimes_;
+    uint32_t tileNumRemain_;
+    uint32_t tileNumBy2RepeatTimes_;
+    uint32_t tileNumBy2Remain_;
+    uint32_t tileNumBy3RepeatTimes_;
+    uint32_t tileNumBy3Remain_;
+
+    event_t eventIDMTE2ToVForX_;
+    bool pingPongFlag;
 };
 
 template <typename BSAT>
@@ -95,21 +111,45 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitParams(const BSAConstInfo 
     this->round_ = RADIX_ROUNDS_FP16;
 
     this->tileLen_ = BSAMin(static_cast<uint64_t>(7168), sortLen_);
-    this->tileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
+    this->totalTileNum_ = (sortLen_ + tileLen_ - 1) / tileLen_;
+    this->tileNum_ = totalTileNum_;
     this->tileNumAlign_ = BSACeilDiv(tileNum_, static_cast<uint64_t>(8)) * 8;
+
+    this->formerTileLen_ = tileLen_;
+    this->tailTileLen_ = sortLen_ - (totalTileNum_ - 1) * tileLen_;
+    if (tailTileLen_ == 0) {
+        tailTileLen_ = tileLen_;
+    }
+
+    uint32_t coreNum = constInfo.coreNum;
+    uint64_t baseTilesPerCore = totalTileNum_ / coreNum;
+    uint64_t extraCores = totalTileNum_ % coreNum;
+    this->formerCoreNum_ = extraCores;
+    this->tailCoreNum_ = coreNum - extraCores;
+    this->formerTileNum_ = baseTilesPerCore + (extraCores > 0 ? 1 : 0);
+    this->tailTileNum_ = baseTilesPerCore;
+
+    uint64_t myTileNum = (GetBlockIdx() < formerCoreNum_) ? formerTileNum_ : tailTileNum_;
+    this->tileNum_ = myTileNum;
+    this->tileNumAlign_ = BSACeilDiv(myTileNum, static_cast<uint64_t>(8)) * 8;
+
+    this->tileNumRepeatTimes_ = static_cast<uint32_t>(myTileNum / MAX_TILE_NUM_IN_UB);
+    this->tileNumRemain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB);
+    this->tileNumBy2RepeatTimes_ = static_cast<uint32_t>(myTileNum / MAX_TILE_NUM_IN_UB_BY2);
+    this->tileNumBy2Remain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB_BY2);
+    this->tileNumBy3RepeatTimes_ = static_cast<uint32_t>(myTileNum / MAX_TILE_NUM_IN_UB_BY3);
+    this->tileNumBy3Remain_ = static_cast<uint32_t>(myTileNum % MAX_TILE_NUM_IN_UB_BY3);
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(xBuf0_, tileLen_ * sizeof(float));
-    pipe->InitBuffer(xBuf1_, tileLen_ * sizeof(float));
-    pipe->InitBuffer(tileTopKBuf_, tileNumAlign_ * sizeof(int32_t));
+    pipe->InitBuffer(xBufPing_, tileLen_ * sizeof(float));
+    pipe->InitBuffer(xBufPong_, tileLen_ * sizeof(float));
+    pipe->InitBuffer(tileHistAndTopKBuf_, MAX_TILE_NUM_IN_UB * sizeof(int32_t));
 
-    uint32_t tileHistSize = numValue_ * tileNumAlign_ * sizeof(int32_t);
     uint32_t cmpMaskSize = tileLen_ * sizeof(uint8_t) / BYTE_SIZE;
-    uint32_t tempBufSize = BSAMax(tileHistSize, cmpMaskSize);
-    pipe->InitBuffer(tempBuf_, tempBufSize);
+    pipe->InitBuffer(tempBuf_, cmpMaskSize);
 
     pipe->InitBuffer(globalHistBuf_, numValue_ * sizeof(int32_t));
     pipe->InitBuffer(maskLocalBuf_, tileLen_ * sizeof(int32_t) + tileLen_ * sizeof(int16_t) + tileLen_ * sizeof(uint8_t));
@@ -126,17 +166,31 @@ __aicore__ inline void BSARadixTopKService<BSAT>::InitGM(
     this->maskTmpGmLocal = maskTmpGm;
 
     uint32_t coreNum = constInfo.coreNum;
+    uint32_t headerSize = (numValue_ * coreNum + coreNum + coreNum);
     this->globalHistGm_.SetGlobalBuffer((__gm__ int32_t *)topkWorkspaceGm.GetPhyAddr());
     this->boundaryBinCumSumGm_.SetGlobalBuffer(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + numValue_ * coreNum * sizeof(int32_t)));
     this->coreTopKGm_.SetGlobalBuffer(
         (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + (numValue_ * coreNum + coreNum) * sizeof(int32_t)));
+
+    uint64_t tileTopKOffset = 0;
+    if (GetBlockIdx() < formerCoreNum_) {
+        tileTopKOffset = GetBlockIdx() * formerTileNum_;
+    } else {
+        tileTopKOffset = formerCoreNum_ * formerTileNum_ + (GetBlockIdx() - formerCoreNum_) * tailTileNum_;
+    }
+    uint64_t tileHistOffset = numValue_ * tileTopKOffset;
+
+    this->tileTopKGm_.SetGlobalBuffer(
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + tileTopKOffset * sizeof(int32_t)));
+    this->tileHistGm_.SetGlobalBuffer(
+        (__gm__ int32_t *)(topkWorkspaceGm.GetPhyAddr() + headerSize * sizeof(int32_t) + totalTileNum_ * sizeof(int32_t) + tileHistOffset * sizeof(int32_t)));
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::AllocEventID()
 {
-    eventBuf0_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    eventIDMTE2ToVForX_ = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
 }
 
 template <typename BSAT>
@@ -168,7 +222,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
         uint64_t curTileLen = BSAMin(tileLen_, sortLen_ - tileIdx * tileLen_);
         uint64_t tileGmOffset = tileIdx * tileLen_;
 
-        LocalTensor<IN_T> xLocal = xBuf0_.Get<IN_T>();
+        LocalTensor<IN_T> xLocal = xBufPing_.Get<IN_T>();
         uint64_t alignLen = BSAAlignTo(curTileLen, static_cast<uint64_t>(VEC_ALIGN_SIZE));
 
         DataCopyPad(xLocal, attnScoreGmLocal[tileGmOffset],

@@ -32,6 +32,10 @@ static constexpr uint32_t RADIX_BITS_PER_ROUND = 2;
 static constexpr uint32_t RADIX_NUM_BINS = 4;
 static constexpr uint32_t RADIX_ROUNDS_FP16 = 8;
 static constexpr float SOFTMAX_NEG_INF = -1e38f;
+static constexpr uint32_t MAX_TILE_NUM_IN_UB = 6144;
+static constexpr uint32_t MAX_TILE_NUM_IN_UB_BY2 = 3072;
+static constexpr uint32_t MAX_TILE_NUM_IN_UB_BY3 = 2048;
+static constexpr uint32_t FLOAT32_SAFE_INT = 16777216;
 
 enum class BSALayout {
     TND = 0,
