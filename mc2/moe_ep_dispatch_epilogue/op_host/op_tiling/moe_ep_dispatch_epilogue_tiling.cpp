@@ -1,3 +1,18 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file moe_ep_dispatch_epilogue_tiling.cpp
+ * \brief
+ */
+
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -20,10 +35,11 @@ using namespace Mc2Tiling;
 
 namespace optiling {
 
-constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 0U;
-constexpr uint32_t RECV_SRC_META_INTERNAL_INDEX = 1U;
-constexpr uint32_t NUM_RECV_PER_RANK_HP_INDEX = 2U;
-constexpr uint32_t NUM_RECV_PER_EXPERT_HP_INDEX = 3U;
+constexpr uint32_t CONTEXT_INDEX = 0U;
+constexpr uint32_t DST_BUFFER_SLOT_IDX_INDEX = 1U;
+constexpr uint32_t RECV_SRC_META_INTERNAL_INDEX = 2U;
+constexpr uint32_t NUM_RECV_PER_RANK_HP_INDEX = 3U;
+constexpr uint32_t NUM_RECV_PER_EXPERT_HP_INDEX = 4U;
 
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
 constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
@@ -32,36 +48,60 @@ constexpr uint32_t ATTR_NUM_MAX_TPR_INDEX = 3;
 constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 constexpr uint32_t ATTR_EXPERT_ALIGNMENT_INDEX = 5;
 
+constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
-constexpr int64_t MAX_EP_WORLD_SIZE = 288;
+constexpr int64_t MAX_EP_WORLD_SIZE = 768;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
 {
-    OPS_LOG_D(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
+    OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
               info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
-    OPS_LOG_D(nodeName, "hidden=%u, topK=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
+    OP_LOGD(nodeName, "hidden=%u, topK=%u, numMaxTokensPerRank=%u, perSlotBytes=%u",
               info.cfg.hidden, info.cfg.topK, info.cfg.numMaxTokensPerRank, info.cfg.perSlotBytes);
-    OPS_LOG_D(nodeName, "aAlloc=%u, numLocalExperts=%u, aivNum=%u", info.aAlloc, info.numLocalExperts, info.aivNum);
-    OPS_LOG_D(nodeName, "windowBaseAddr=%lu, numRecvPerRankAddr=%lu, numRecvPerExpertAddr=%lu",
+    OP_LOGD(nodeName, "aAlloc=%u, numLocalExperts=%u, aivNum=%u", info.aAlloc, info.numLocalExperts, info.aivNum);
+    OP_LOGD(nodeName, "windowBaseAddr=%lu, numRecvPerRankAddr=%lu, numRecvPerExpertAddr=%lu",
               info.windowBaseAddr, info.numRecvPerRankAddr, info.numRecvPerExpertAddr);
 }
 
-static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *context)
+static ge::graphStatus CheckInputTensorShape(const gert::TilingContext *context, const char *nodeName)
 {
-    context->SetScheduleMode(1U);
-    const char *nodeName = context->GetNodeName();
-    OPS_ERR_IF(nodeName == nullptr, OPS_LOG_E("unKnownNodeName", "nodeName is nullptr."),
-               return ge::GRAPH_FAILED);
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(CONTEXT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, contextStorageShape);
+    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != 1,
+        OP_LOGE(nodeName, "contextShape dims must be 1."),
+        return ge::GRAPH_FAILED);
 
-    MoeEpDispatchEpilogueTilingData *tilingData = context->GetTilingData<MoeEpDispatchEpilogueTilingData>();
-    OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."),
-               return ge::GRAPH_FAILED);
+    const gert::StorageShape *dstBufferSlotIdxShape = context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dstBufferSlotIdxShape);
+    OP_TILING_CHECK(dstBufferSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "dstBufferSlotIdxShape dims must be 2."), return ge::GRAPH_FAILED);
 
+    const gert::StorageShape *recvSrcMetaInternalShape = context->GetInputShape(RECV_SRC_META_INTERNAL_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, recvSrcMetaInternalShape);
+    OP_TILING_CHECK(recvSrcMetaInternalShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "recvSrcMetaInternalShape dims must be 2."), return ge::GRAPH_FAILED);
+
+    const gert::StorageShape *numRecvPerRankHpShape = context->GetInputShape(NUM_RECV_PER_RANK_HP_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerRankHpShape);
+    OP_TILING_CHECK(numRecvPerRankHpShape->GetStorageShape().GetDimNum() != 1,
+        OP_LOGE(nodeName, "numRecvPerRankHpShape dims must be 1."), return ge::GRAPH_FAILED);
+
+    const gert::StorageShape *numRecvPerExpertHpShape = context->GetInputShape(NUM_RECV_PER_EXPERT_HP_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertHpShape);
+    OP_TILING_CHECK(numRecvPerExpertHpShape->GetStorageShape().GetDimNum() != 1,
+        OP_LOGE(nodeName, "numRecvPerExpertHpShape dims must be 1."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const char *nodeName,
+                                         MoeEpDispatchEpilogueInfo &info)
+{
     auto attrs = context->GetAttrs();
-    OPS_ERR_IF(attrs == nullptr, OPS_LOG_E(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName, "attrs is nullptr."), return ge::GRAPH_FAILED);
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
@@ -70,8 +110,29 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
     auto expertAlignmentPtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_ALIGNMENT_INDEX);
 
+    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE(nodeName, "epWorldSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE(nodeName, "epRankIdPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numExpertsPtr == nullptr, OP_LOGE(nodeName, "numExpertsPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(nmtPtr == nullptr, OP_LOGE(nodeName, "nmtPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr, OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertAlignmentPtr == nullptr, OP_LOGE(nodeName, "expertAlignmentPtr is null."), return ge::GRAPH_FAILED);
+
     int64_t epWorldSize = *epWorldSizePtr;
-    MoeEpDispatchEpilogueInfo &info = tilingData->moeEpDispatchEpilogueInfo;
+    OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
+        OP_LOGE(nodeName, "epWorldSize is invalid, should be in [%ld, %ld], got %ld.",
+            MIN_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE, epWorldSize),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
+        OP_LOGE(nodeName, "epRankId is invalid, should be in [0, %ld), got %ld.",
+            epWorldSize, *epRankIdPtr),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*numExpertsPtr <= 0) || (*numExpertsPtr % epWorldSize != 0),
+        OP_LOGE(nodeName, "numExperts must be positive and divisible by epWorldSize, got %ld.",
+            *numExpertsPtr),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*nmtPtr <= 0, OP_LOGE(nodeName, "numMaxTokensPerRank must be positive, got %ld.", *nmtPtr),
+        return ge::GRAPH_FAILED);
+
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     info.cfg.numExperts = static_cast<uint32_t>(*numExpertsPtr);
@@ -80,9 +141,31 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     info.cfg.expertAlignment = static_cast<uint32_t>(*expertAlignmentPtr);
     info.numLocalExperts = info.cfg.numLocalExperts;
 
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *context)
+{
+    context->SetScheduleMode(1U);
+    const char *nodeName = context->GetNodeName();
+    OP_TILING_CHECK(nodeName == nullptr, OP_LOGE("unKnownNodeName", "nodeName is nullptr."),
+        return ge::GRAPH_FAILED);
+
+    MoeEpDispatchEpilogueTilingData *tilingData = context->GetTilingData<MoeEpDispatchEpilogueTilingData>();
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
+        return ge::GRAPH_FAILED);
+
+    MoeEpDispatchEpilogueInfo &info = tilingData->moeEpDispatchEpilogueInfo;
+
+    OP_TILING_CHECK(CheckAttrParams(context, nodeName, info) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check attr params failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckInputTensorShape(context, nodeName) != ge::GRAPH_SUCCESS,
+        OP_LOGE(nodeName, "Check input tensor shape failed."), return ge::GRAPH_FAILED);
+
     auto recvXShape = context->GetOutputShape(0);
-    OPS_ERR_IF(recvXShape == nullptr, OPS_LOG_E(nodeName, "recvX output shape is null."),
-               return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvXShape == nullptr, OP_LOGE(nodeName, "recvX output shape is null."),
+        return ge::GRAPH_FAILED);
     info.aAlloc = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(0));
     info.cfg.hidden = static_cast<uint32_t>(recvXShape->GetStorageShape().GetDim(1));
     info.cfg.perSlotBytes = static_cast<uint32_t>(
@@ -90,9 +173,9 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
         + 80UL + 16UL);
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OPS_ERR_IF(workSpaces == nullptr, OPS_LOG_E(nodeName, "workSpaces is nullptr."),
-               return ge::GRAPH_FAILED);
-    uint64_t prefixSumBytes = static_cast<uint64_t>(epWorldSize + 1) * sizeof(int32_t);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
+        return ge::GRAPH_FAILED);
+    uint64_t prefixSumBytes = static_cast<uint64_t>(info.cfg.epWorldSize + 1) * sizeof(int32_t);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + prefixSumBytes;
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -106,7 +189,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
 
     uint64_t tilingKey = GET_TPL_TILING_KEY(TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
-    OPS_LOG_D(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
+    OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u", tilingKey, blockDim, aivNum);
 
     PrintTilingDataInfo(nodeName, info);
     return ge::GRAPH_SUCCESS;
