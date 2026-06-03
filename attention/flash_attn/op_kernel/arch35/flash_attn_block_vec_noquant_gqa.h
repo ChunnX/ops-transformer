@@ -289,7 +289,14 @@ public:
                 InitLseOutputSingleCore();
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
-            SyncAll();
+            // 替换 SyncAll()：确保所有 AIV 核心完成初始化后再进入主循环
+            constexpr uint64_t CC_MODE = 4U;
+            constexpr uint32_t CC_INIT = 10U;
+            constexpr uint32_t AIV_OFFSET = 16U;
+            AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_INIT);
+            AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_INIT + AIV_OFFSET);
+            AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_INIT);
+            AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_INIT + AIV_OFFSET);
         }
     }
 

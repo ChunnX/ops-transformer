@@ -92,6 +92,9 @@ public:
     static constexpr uint32_t CC_L1P_0  = 5U;   // l1P slot0（FORWARD）
     static constexpr uint32_t CC_L1P_1  = 8U;   // l1P slot1（跳过 6、7）
     static constexpr uint32_t CC_L1P_2  = 9U;   // l1P slot2
+    // 用于替代 SyncAll() 的全局同步事件（避开 0-9 和 16-25 范围）
+    static constexpr uint32_t CC_KERNEL_INIT = 10U; // kernel 入口同步
+    static constexpr uint32_t CC_FD_BARRIER  = 11U; // FlashDecode 同步
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -820,9 +823,24 @@ public:
                 AscendC::PipeBarrier<PIPE_V>();
             }
         }
-        SyncAll();
+        // 替换 SyncAll()：确保所有 AIV 核心都到达后再启动 FD
+        // 使用 CrossCoreSetFlag/WaitFlag 模式0替代
+        constexpr uint64_t CC_MODE = 4U;
+        constexpr uint32_t CC_FD_BARRIER = 11U;
+        constexpr uint32_t AIV_OFFSET = 16U;
+        AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER);
+        AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER + AIV_OFFSET);
+        AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER);
+        AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER + AIV_OFFSET);
+
         vecFdBlock.FlashDecode(fdParams_);
-        SyncAll();
+
+        // 替换 SyncAll()：确保所有 AIV 核心都完成 FD 后再清理
+        AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER);
+        AscendC::CrossCoreSetFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER + AIV_OFFSET);
+        AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER);
+        AscendC::CrossCoreWaitFlag<CC_MODE, AscendC::PIPE_V>(CC_FD_BARRIER + AIV_OFFSET);
+
         vecFdBlock.FreeEventID();
     }
 

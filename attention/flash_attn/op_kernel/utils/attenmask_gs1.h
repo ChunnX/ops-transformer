@@ -37,6 +37,14 @@ enum SparseMode : uint8_t {
     BAND,
 };
 
+// 静态事件ID：attenmask 模块专用，避免与 FA Vec/FD 各模块事件ID冲突
+// FA VecBlock: 0-5, 8-9; FA Cube: 0-9; FD: 2,4,8-13
+// attenmask 仅用于 MTE2_V 同步，ID=7 独占
+namespace AttenMaskStatic {
+    static constexpr uint32_t ATTEN_MASK_MTE2_V_ID = 7U;
+} // namespace AttenMaskStatic
+
+
 struct MaskInfo {
     uint32_t gs1StartIdx;
     uint32_t gs1dealNum;
@@ -294,9 +302,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        SetFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
+        WaitFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
     } else {
         uint32_t headS1Count = info.s1Size - s1StartIdx;
         uint32_t remainRowCount = info.gs1dealNum - headS1Count;
@@ -306,9 +313,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         // 第一块完整的mask
         LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
-        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        SetFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
+        WaitFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
 
         // head
         DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
@@ -362,9 +368,8 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyPad(attenMaskUb[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
 
-    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
-    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+    SetFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
+    WaitFlag<HardEvent::MTE2_V>(AttenMaskStatic::ATTEN_MASK_MTE2_V_ID);
 
     MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
 }

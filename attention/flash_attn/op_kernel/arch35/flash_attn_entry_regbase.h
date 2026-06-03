@@ -108,7 +108,15 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
         (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     InitSocState();
-    AscendC::SyncAll();
+    // 替换 SyncAll()：确保所有核心完成 InitSocState() 后再继续执行
+    // 使用 CrossCoreSetFlag/WaitFlag 模式0替代，避免与静态 event ID 冲突
+    constexpr uint64_t KERNEL_INIT_MODE = 4U;
+    constexpr uint32_t KERNEL_INIT_EVENT = 10U;
+    constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+    AscendC::CrossCoreSetFlag<KERNEL_INIT_MODE, AscendC::PIPE_V>(KERNEL_INIT_EVENT);
+    AscendC::CrossCoreSetFlag<KERNEL_INIT_MODE, AscendC::PIPE_V>(KERNEL_INIT_EVENT + AIV0_AIV1_OFFSET);
+    AscendC::CrossCoreWaitFlag<KERNEL_INIT_MODE, AscendC::PIPE_V>(KERNEL_INIT_EVENT);
+    AscendC::CrossCoreWaitFlag<KERNEL_INIT_MODE, AscendC::PIPE_V>(KERNEL_INIT_EVENT + AIV0_AIV1_OFFSET);
     Kernel op;
     op.Init(query, key, value, attenMask, cuSeqLensQ, cuSeqLensKv, blocktable, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData);
