@@ -198,20 +198,37 @@ public:
                                                           : baseGmOffsetLse + q_half * qHeads;
                 }
 
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
-
                 if (q_len == 1) {
+                    // Single query: heads are contiguous in GM and tsUbTensor base
+                    // (offset 0) is 32B aligned, so a single copy is safe.
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+
                     AscendC::DataCopyPad(
                         oLseGmTensor[gmLseScalar], tsUbTensor,
                         AscendC::DataCopyExtParams(1, lseBlock * sizeof(float), 0, 0, 0));
                 } else {
+                    // Multiple queries: GM rows are strided by qHeads. The packed
+                    // tsUbTensor[qi * n_len] base is not 32B aligned when n_len is not
+                    // a multiple of 8 (e.g. n_len=1), which triggers an ADDR_MISALIGN
+                    // aicore exception. Brcb expands each LSE value into its own 32B
+                    // block so every per-query DataCopyPad source address is aligned.
+                    constexpr uint32_t FLOAT_PER_BLOCK = 8;  // 32B / sizeof(float)
+                    AscendC::Brcb(loFloatUbTensor.ReinterpretCast<uint32_t>(),
+                                  tsUbTensor.ReinterpretCast<uint32_t>(),
+                                  (lseBlockAlign + FLOAT_PER_BLOCK - 1) / FLOAT_PER_BLOCK,
+                                  AscendC::BrcbRepeatParams(1, 8));
+                    AscendC::PipeBarrier<PIPE_V>();
+
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
+
                     uint32_t qTile = lseBlock / n_len;
                     for (uint32_t qi = 0; qi < qTile; ++qi) {
                         AscendC::DataCopyPad(
                             oLseGmTensor[gmLseScalar + qi * qHeads],
-                            tsUbTensor[qi * n_len],
-                            AscendC::DataCopyExtParams(1, n_len * sizeof(float), 0, 0, 0));
+                            loFloatUbTensor[qi * n_len * FLOAT_PER_BLOCK],
+                            AscendC::DataCopyExtParams(n_len, sizeof(float), 0, 0, 0));
                     }
                 }
 
