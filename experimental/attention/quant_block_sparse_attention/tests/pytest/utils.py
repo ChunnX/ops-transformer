@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 
-REQUIRED_EXCEL_COLUMNS = ["layout_q", "kv_layout", "B", "S1", "S2", "N1", "N2", "D"]
+REQUIRED_EXCEL_COLUMNS = ["layout_q", "layout_kv", "B", "S1", "S2", "N1", "N2", "D"]
 
 
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
@@ -43,18 +43,18 @@ def _row_from_dict(params, result, fulfill_percent):
     keys = [
         "Testcase_Name",
         "layout_q",
-        "kv_layout",
+        "layout_kv",
         "B",
         "S1",
         "S2",
         "N1",
         "N2",
         "D",
-        "q_block_size",
-        "kv_block_size",
+        "sparse_q_block_size",
+        "sparse_kv_block_size",
         "sparse_count",
         "softmax_scale",
-        "sparse_indices_layout",
+        "layout_sparse_indices",
         "quant_mode",
         "mask_mode",
         "return_softmax_lse",
@@ -76,7 +76,7 @@ def _row_from_legacy_tuple(params, result, fulfill_percent):
     row_data = {
         "case_name": params[0],
         "layout_q": params[1],
-        "kv_layout": params[2],
+        "layout_kv": params[2],
         "B": params[6],
         "S1": params[7],
         "N1": params[9],

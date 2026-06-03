@@ -4,17 +4,17 @@
 
 The pytest framework follows the current `QuantBlockSparseAttention` op definition:
 
-- Inputs: `query`, `key`, `value`, `q_scale`, `k_scale`, `v_scale`, `p_scale`, `cu_seqlens_q`, `cu_seqlens_kv`, `seqused_q`, `seqused_kv`, `sparse_indices`, `sparse_seq_len`, `block_table`, `atten_mask`, `metadata`
+- Inputs: `query`, `key`, `value`, `q_descale`, `k_descale`, `v_descale`, `p_scale`, `cu_seqlens_q`, `cu_seqlens_kv`, `seqused_q`, `seqused_kv`, `sparse_indices`, `sparse_seq_len`, `block_table`, `atten_mask`, `metadata`
 - Outputs: `attention_out`, optional `softmax_lse`
-- Attrs: `max_seqlen_q`, `max_seqlen_kv`, `softmax_scale`, `q_block_size`, `kv_block_size`, `kv_layout`, `sparse_indices_layout`, `quant_mode`, `mask_mode`, `return_softmax_lse`
+- Attrs: `max_seqlen_q`, `max_seqlen_kv`, `softmax_scale`, `sparse_q_block_size`, `sparse_kv_block_size`, `layout_kv`, `layout_sparse_indices`, `quant_mode`, `mask_mode`, `return_softmax_lse`
 
 ## Golden Semantics
 
 The CPU golden follows BSA scheme 2.4:
 
 - `sparse_indices` stores logical KV block ids in actual KV token space.
-- `q_scale` and `k_scale` are applied in Vec1 as row x column scale on raw `QK^T`.
-- `p_scale[0]` is a static per-tensor P quant scale; golden casts `softmax / p_scale` to FP8 and multiplies BMM2 output by `p_scale * v_scale[n2]`.
+- `q_descale` and `k_descale` are applied in Vec1 as row x column scale on raw `QK^T`.
+- `p_scale[0]` is a static per-tensor P quant scale; golden casts `softmax / p_scale` to FP8 and multiplies BMM2 output by `p_scale * v_descale[n2]`.
 - Empty sparse tasks produce zero `attention_out` and `EMPTY_LSE` softmax LSE.
 - `mask_mode`: `0` no mask, `1` LEFT_UP causal, `2` RIGHT_DOWN causal.
 

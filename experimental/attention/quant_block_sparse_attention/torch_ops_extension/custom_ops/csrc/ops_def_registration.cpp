@@ -17,15 +17,15 @@
 //   - 张量 dtype / 属性默认值对齐 op_host/quant_block_sparse_attention_def.cpp
 TORCH_LIBRARY(custom, m) {
     m.def("npu_quant_block_sparse_attention(Tensor query, Tensor key, Tensor value, "
-          "Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor p_scale, "
+          "Tensor q_descale, Tensor k_descale, Tensor v_descale, Tensor p_scale, "
           "Tensor sparse_indices, Tensor sparse_seq_len, Tensor atten_mask, "
-          "float softmax_scale, int q_block_size, int kv_block_size, *, "
+          "float softmax_scale, int sparse_q_block_size, int sparse_kv_block_size, *, "
           "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
           "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
           "Tensor? block_table=None, Tensor? metadata=None, "
           "int max_seqlen_q=0, int max_seqlen_kv=0, "
-          "str kv_layout='PA_BSND', str sparse_indices_layout='BNQQbKb', "
-          "int quant_mode=0, int mask_mode=0, bool return_softmax_lse=False) -> (Tensor, Tensor)");
+          "str layout_kv='PA_BNSD', str layout_q='TND', str layout_sparse_indices='B_N_Qb_Kb', "
+          "int quant_mode=1, int mask_mode=3, bool return_softmax_lse=False) -> (Tensor, Tensor)");
 }
 
 // 通过pybind将c++接口和python接口绑定，这里绑定的是接口不是算子

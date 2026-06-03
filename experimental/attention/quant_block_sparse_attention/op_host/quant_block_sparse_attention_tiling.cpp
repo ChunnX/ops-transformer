@@ -115,8 +115,8 @@ ge::graphStatus TilingQuantBlockSparseAttention(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    const uint32_t qBlockSize = GetPositiveAttr(attrs, BSA_Q_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
-    const uint32_t kvBlockSize = GetPositiveAttr(attrs, BSA_KV_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
+    const uint32_t qBlockSize = GetPositiveAttr(attrs, BSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
+    const uint32_t kvBlockSize = GetPositiveAttr(attrs, BSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX, BSA_BLOCK_SIZE);
     if (qBlockSize != BSA_BLOCK_SIZE || kvBlockSize != BSA_BLOCK_SIZE) {
         return ge::GRAPH_FAILED;
     }

@@ -11,7 +11,7 @@ TODO: 待实现 - 当前目录完成 quant_block_sparse_attention 的代码结�
 待实现重点：
 
 - kernel 主循环接入 `sparseSeqLen` tail-drain 保护、`sparseIndices` 到 actual KV token offset 的映射和空 sparse 输出写回。
-- Vec1 按行应用 `q_scale[b, s1, n1] * k_scale[0] * softmax_scale`，BMM1 不复用 FIA block 级 Q deq scalar。
-- BMM2/Vec2 接入 `v_scale[0]`。
+- Vec1 按行应用 `q_descale[b, s1, n1] * k_descale[0] * softmax_scale`，BMM1 不复用 FIA block 级 Q deq scalar。
+- BMM2/Vec2 接入 `v_descale[0]`。
 - `quant_block_sparse_attention_attenmask.h` 将 compress mask 的 S2 offset 切到 `runInfo.sparseS2TokenOffset`，并覆盖 LEFT_UP / RIGHT_DOWN / TND / left padding 组合。
 - pytest golden 按 BSA 接口重写输入生成、稀疏 reference、LSE 和非法 sparseIndices 用例。

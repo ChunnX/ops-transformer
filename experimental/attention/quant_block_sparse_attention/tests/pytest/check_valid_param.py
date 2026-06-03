@@ -34,9 +34,9 @@ def check_valid_param(params):
         raise ValueError("quant_block_sparse_attention params should be a dict aligned with op def inputs and attrs")
 
     params = dict(params)
-    params.setdefault("q_block_size", 128)
-    params.setdefault("kv_block_size", 128)
-    params.setdefault("sparse_indices_layout", "BNQQbKb")
+    params.setdefault("sparse_q_block_size", 128)
+    params.setdefault("sparse_kv_block_size", 128)
+    params.setdefault("layout_sparse_indices", "BNQQbKb")
     params.setdefault("quant_mode", 0)
     params.setdefault("mask_mode", 0)
     params.setdefault("output_dtype", torch.bfloat16)
@@ -44,29 +44,29 @@ def check_valid_param(params):
     params.setdefault("scale_pattern", "ones")
     params.setdefault("block_table_pattern", "sequential")
     params.setdefault("p_scale_value", 1.0)
-    params["sparse_count"] = params.get("sparse_count") or math.ceil(params["S2"] / params["kv_block_size"])
+    params["sparse_count"] = params.get("sparse_count") or math.ceil(params["S2"] / params["sparse_kv_block_size"])
     params["softmax_scale"] = params.get("softmax_scale") or (1.0 / math.sqrt(params["D"]))
     for key in ("quant_mode", "mask_mode"):
         if isinstance(params.get(key), float) and params[key].is_integer():
             params[key] = int(params[key])
 
-    for key in ("B", "S1", "S2", "N1", "N2", "D", "q_block_size", "kv_block_size", "sparse_count"):
+    for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count"):
         _require_positive(params, key)
 
     if params["layout_q"] not in ("BSND", "TND"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")
 
-    if params.get("kv_layout") != "PA_BSND":
-        raise ValueError(f"unsupported kv_layout: {params.get('kv_layout')}")
+    if params.get("layout_kv") != "PA_BSND":
+        raise ValueError(f"unsupported layout_kv: {params.get('layout_kv')}")
 
-    if params.get("sparse_indices_layout") != "BNQQbKb":
-        raise ValueError(f"unsupported sparse_indices_layout: {params.get('sparse_indices_layout')}")
+    if params.get("layout_sparse_indices") != "BNQQbKb":
+        raise ValueError(f"unsupported layout_sparse_indices: {params.get('layout_sparse_indices')}")
 
     if params["N1"] % params["N2"] != 0:
         raise ValueError(f"N1 should be divisible by N2, got N1={params['N1']}, N2={params['N2']}")
 
-    if params["q_block_size"] != 128 or params["kv_block_size"] != 128:
-        raise ValueError("q_block_size and kv_block_size should both be 128 for the current kernel")
+    if params["sparse_q_block_size"] != 128 or params["sparse_kv_block_size"] != 128:
+        raise ValueError("sparse_q_block_size and sparse_kv_block_size should both be 128 for the current kernel")
 
     if params.get("quant_mode", 0) != 0:
         raise ValueError(f"unsupported quant_mode: {params.get('quant_mode')}")

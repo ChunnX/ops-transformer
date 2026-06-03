@@ -53,10 +53,10 @@ import custom_ops   # 注册 torch.ops.custom.npu_quant_block_sparse_attention �
 
 attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attention(
     query, key, value,                       # FP8_E4M3FN
-    q_scale, k_scale, v_scale, p_scale,      # FLOAT32
+    q_descale, k_descale, v_descale, p_scale,      # FLOAT32
     sparse_indices, sparse_seq_len, atten_mask,
-    softmax_scale, q_block_size, kv_block_size,
-    kv_layout="PA_BSND", sparse_indices_layout="BNQQbKb",
+    softmax_scale, sparse_q_block_size, sparse_kv_block_size,
+    layout_kv="PA_BSND", layout_sparse_indices="BNQQbKb",
     block_table=block_table,                 # 可选：PagedAttention
     return_softmax_lse=False,
 )
