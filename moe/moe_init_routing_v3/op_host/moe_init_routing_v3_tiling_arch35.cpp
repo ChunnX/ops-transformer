@@ -260,6 +260,8 @@ private:
                                         int64_t lastCoreIndicesElements);
 
     // DropPad模式Tiling计算函数
+    void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
+    void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
     void Tiling4SrcToDstDropPadCompute();
     void Tiling4GatherOutDropPadCompute();
 
@@ -1920,51 +1922,18 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     return remainUb > 0;
 }
 
-// DropPad模式的SrcToDst Tiling计算函数
-// 参考非arch35版本的实现：Tiling4SrcToDstDropPadCompute
-void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
+void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
 {
-    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()");
-
     auto *tilingData = &tilingDataPtr_->srcToDstDropPadParamsOp;
-
-    int64_t perCoreRows = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
-    if (perCoreRows <= 0) {
-        tilingData->needCoreNum = 0;
-        return;
-    }
-
-    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreRows);
-    tilingData->needCoreNum = needCoreNum;
-    tilingData->perCoreRows = perCoreRows;
-
-    int64_t lastCoreRows = totalLength_ - perCoreRows * (needCoreNum - 1);
-    tilingData->lastCoreRows = lastCoreRows;
-
-     // 参考非arch35版本的UB空间计算
-    // INT8类型需要扩展为INT16处理
     int64_t effectiveDtypeSize = (inputXDtypeSize_ == sizeof(int8_t)) ? sizeof(int16_t) : inputXDtypeSize_;
-
-    // 计算UB空间需求：应该使用每次循环处理的行数，而非核处理总行数
-    // 先计算理论上的最大每次循环行数，用于判断能否全载
     int64_t colSize = AlignBytes(cols_ * effectiveDtypeSize, UB_BLOCK_SIZE);
-    
-    // 理论最大每次循环行数（假设列全载）
-    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE)
-                                         / sizeof(int32_t) / NUM_TWO;
+    int64_t theoreticalMaxPerLoopRows = (availUbSize_ - colSize - UB_BLOCK_SIZE) / sizeof(int32_t) / NUM_TWO;
     theoreticalMaxPerLoopRows = Align(theoreticalMaxPerLoopRows, sizeof(int32_t));
 
-    // 每次循环实际处理的行数（取核处理行数和理论最大值的较小者）
     int64_t perLoopRowsEstimate = std::min(perCoreRows, theoreticalMaxPerLoopRows);
-    int64_t lastPerLoopRowsEstimate = std::min(lastCoreRows, theoreticalMaxPerLoopRows);
-
-    // 使用每次循环行数计算UB需求
     int64_t rowSize = AlignBytes(perLoopRowsEstimate * sizeof(int32_t), UB_BLOCK_SIZE) * NUM_TWO;
+    int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE;
 
-    // 如果能全载（一行能全部放入UB）
-    // 需要额外考虑固定开销：copyOutQueue(32字节) + scaleZeroOutQueue(32字节) + UB_BLOCK_SIZE(对齐)
-    int64_t fixedOverhead = UB_BLOCK_SIZE * NUM_TWO + UB_BLOCK_SIZE; // 32*2 + 32 = 96字节
-    
     if (rowSize + colSize + fixedOverhead < availUbSize_) {
         tilingData->perCorePerLoopRows = perCoreRows;
         tilingData->perCoreLastLoopRows = perCoreRows;
@@ -1976,18 +1945,13 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
         tilingData->lastLoopCols = cols_;
         tilingData->colLoops = 1;
     } else {
-        // 需要分批处理
         int64_t baseMaxCols = MAX_COLS_ONE_LOOP;
         int64_t baseMaxColsSize = AlignBytes(baseMaxCols, effectiveDtypeSize);
-
-        // 计算每循环最大行数（需要考虑固定开销）
-        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead)
-                                      / sizeof(int32_t) / NUM_TWO;
+        int64_t basePerLoopMaxRows = (availUbSize_ - baseMaxColsSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
         basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
 
         if (cols_ < MAX_COLS_ONE_LOOP) {
-            basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead)
-                                  / sizeof(int32_t) / NUM_TWO;
+            basePerLoopMaxRows = (availUbSize_ - colSize - fixedOverhead) / sizeof(int32_t) / NUM_TWO;
             basePerLoopMaxRows = Align(basePerLoopMaxRows, sizeof(int32_t));
         } else if (perCoreRows < basePerLoopMaxRows) {
             baseMaxCols = (availUbSize_ - rowSize - fixedOverhead) / effectiveDtypeSize;
@@ -2008,6 +1972,28 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
                                            basePerLoopMaxRows - 1) * basePerLoopMaxRows;
         tilingData->lastCoreLoops = Ops::Base::CeilDiv(lastCoreRows, basePerLoopMaxRows);
     }
+}
+
+void MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4SrcToDstDropPadCompute()");
+
+    auto *tilingData = &tilingDataPtr_->srcToDstDropPadParamsOp;
+
+    int64_t perCoreRows = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+    if (perCoreRows <= 0) {
+        tilingData->needCoreNum = 0;
+        return;
+    }
+
+    int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreRows);
+    tilingData->needCoreNum = needCoreNum;
+    tilingData->perCoreRows = perCoreRows;
+
+    int64_t lastCoreRows = totalLength_ - perCoreRows * (needCoreNum - 1);
+    tilingData->lastCoreRows = lastCoreRows;
+
+    SetLoopParams4SrcToDstDropPad(perCoreRows, lastCoreRows);
 
     OP_LOGD(context_, "DropPad SrcToDst Tiling: needCoreNum=%ld, perCoreRows=%ld, lastCoreRows=%ld, "
             "perLoopCols=%ld, colLoops=%ld, perCoreLoops=%ld",
