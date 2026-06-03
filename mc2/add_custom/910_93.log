@@ -1,0 +1,39 @@
+=== [1/4] Generating test data ===
+[INFO] Generated input_x, input_y, golden (shape=(8, 2048), dtype=float16)
+[INFO] input_x[:5]=[3.525 7.402 8.38  2.742 2.459]
+[INFO] input_y[:5]=[9.93  8.414 5.902 1.514 1.987]
+[INFO] golden[:5] =[13.45  15.81  14.28   4.258  4.445]
+=== [2/4] Building (dav-2201) ===
+-- System processer: aarch64
+-- CMAKE_ASC_COMPILER: /home/developer/Ascend/cann-9.1.0/bin/bisheng
+-- ASCEND_CANN_PACKAGE_LINUX_PATH: /home/developer/Ascend/cann-9.1.0/aarch64-linux
+-- CMAKE_ASC_LLD_LINKER: /home/developer/Ascend/cann-9.1.0/aarch64-linux/ccec_compiler/bin/ld.lld
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/mc2/add_custom/build
+[ 50%] Building ASC object CMakeFiles/demo.dir/add_custom.asc.o
+[100%] Linking ASC executable demo
+[100%] Built target demo
+=== [3/4] Running on NPU ===
+[INFO] syncHost=0x12c0014e1000  syncDev=0x3fff8200000
+[INFO] Launch OP1 ...
+[INFO] Polling syncHost (zero-copy) ...
+[INFO] OP1 done, size=32768 bytes
+[INFO] RegisterV2(bufB PINNED) host=0xaaaabc686ff0 size=32768
+[INFO] Launch OP2 ...
+[INFO] Done.
+=== [4/4] Verifying result ===
+
+>>> Verifying output/output_op1.bin vs output/golden.bin
+error ratio: 0.0000, tolerance: 0.0001
+
+>>> Verifying output/output_op2.bin vs output/golden.bin
+error ratio: 0.0000, tolerance: 0.0001
+
+all test pass!
