@@ -108,6 +108,7 @@ private:
     int32_t globalHistBoundaryNum_;
     uint64_t totalDefinitelyInTopK_;
     uint64_t remainK_;
+    uint64_t blockOffset_;
 
     uint64_t tileLen_;
     uint64_t tileNum_;
