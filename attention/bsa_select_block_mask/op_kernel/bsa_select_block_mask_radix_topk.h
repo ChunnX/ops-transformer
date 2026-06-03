@@ -34,7 +34,32 @@ private:
     __aicore__ inline void DoAndMask(TBuf<TPosition::VECIN>& xBuf, uint64_t curTileLen);
     __aicore__ inline void CalcCumsumHistogram(TBuf<TPosition::VECIN>& xBuf, int32_t roundId, 
                                                 int32_t tileId, uint64_t curTileLen);
+    __aicore__ inline void CopyIn(TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum, uint64_t xOffset);
+    __aicore__ inline void ClearTileTopKInWs();
+    __aicore__ inline void ClearTileHistInWs(uint32_t dstOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileHistWs2Ub(LocalTensor<int32_t>& dstTensor,
+                                              uint32_t srcOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileTopKWs2Ub(LocalTensor<int32_t>& dstTensor,
+                                              uint32_t srcOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileTopKUb2Ws(LocalTensor<int32_t>& srcTensor,
+                                              uint32_t dstOffset, uint32_t dataNum);
+    __aicore__ inline void CopyTileHistInWs(uint32_t dstOffset, uint32_t srcOffset);
+    __aicore__ inline void SubTileHistWs2Ub(LocalTensor<int32_t>& dstTensor,
+                                             LocalTensor<int32_t>& srcTensor,
+                                             uint32_t srcOffset0, uint32_t srcOffset1,
+                                             uint32_t dataNum);
+    __aicore__ inline void SubTileHistInWs(uint32_t dstOffset, uint32_t srcOffset0,
+                                            uint32_t srcOffset1, uint32_t dataNum);
+    __aicore__ inline void SubTileHistInWsAll(uint32_t dstOffset, uint32_t srcOffset0,
+                                               uint32_t srcOffset1);
+    __aicore__ inline void AddTileHist2TileTopKInWs(uint64_t tileHistOffset);
+    __aicore__ inline void ClearHistInWs(int32_t roundId);
     __aicore__ inline void VToSSync();
+    __aicore__ inline void SToVSync();
+    __aicore__ inline void MTE2ToMTE3Sync();
+    __aicore__ inline void MTE3ToMTE2Sync();
+    __aicore__ inline void VToMTE3Sync();
+    __aicore__ inline void MTE2ToVSync();
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -199,6 +224,10 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[TopK] v6.4d: ClearHistInWs+WS transfer+CopyIn implemented\n");
+    }
+
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         NegateAttnScore();
     }
@@ -316,6 +345,246 @@ __aicore__ inline void BSARadixTopKService<BSAT>::VToSSync()
     event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIDVToS);
     WaitFlag<HardEvent::V_S>(eventIDVToS);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::SToVSync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    SetFlag<HardEvent::S_V>(eventID);
+    WaitFlag<HardEvent::S_V>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::MTE2ToMTE3Sync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+    SetFlag<HardEvent::MTE2_MTE3>(eventID);
+    WaitFlag<HardEvent::MTE2_MTE3>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::MTE3ToMTE2Sync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+    SetFlag<HardEvent::MTE3_MTE2>(eventID);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::VToMTE3Sync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventID);
+    WaitFlag<HardEvent::V_MTE3>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::MTE2ToVSync()
+{
+    event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventID);
+    WaitFlag<HardEvent::MTE2_V>(eventID);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(
+    TBuf<TPosition::VECIN>& xBuf, uint64_t dataNum, uint64_t xOffset)
+{
+    LocalTensor<IN_T> xLocal = xBuf.Get<IN_T>();
+    int32_t ubOffset = 0;
+    if constexpr (sizeof(IN_T) == 2) {
+        ubOffset = tileLen_;
+    }
+    DataCopyExtParams xCopyParams{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(IN_T) * dataNum), 0, 0, 0};
+    DataCopyPadExtParams<IN_T> xPadParams{true, 0, 0, 0};
+    DataCopyPad(xLocal[ubOffset], attnScoreGmLocal[xOffset], xCopyParams, xPadParams);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistWs2Ub(
+    LocalTensor<int32_t>& dstTensor, uint32_t srcOffset, uint32_t dataNum)
+{
+    DataCopyExtParams params{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
+    DataCopyPad(dstTensor, tileHistGm_[srcOffset], params, padParams);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKWs2Ub(
+    LocalTensor<int32_t>& dstTensor, uint32_t srcOffset, uint32_t dataNum)
+{
+    DataCopyExtParams params{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
+    DataCopyPad(dstTensor, tileTopKGm_[srcOffset], params, padParams);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileTopKUb2Ws(
+    LocalTensor<int32_t>& srcTensor, uint32_t dstOffset, uint32_t dataNum)
+{
+    DataCopyExtParams params{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+    DataCopyPad(tileTopKGm_[dstOffset], srcTensor, params);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::ClearTileTopKInWs()
+{
+    LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
+    for (int i = 0; i < static_cast<int>(tileNumRepeatTimes_); i++) {
+        Duplicate<int32_t>(tileTopK, 0, MAX_TILE_NUM_IN_UB);
+        CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB, MAX_TILE_NUM_IN_UB);
+    }
+    if (tileNumRemain_ > 0) {
+        Duplicate<int32_t>(tileTopK, 0, tileNumRemain_);
+        CopyTileTopKUb2Ws(tileTopK, tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB, tileNumRemain_);
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::ClearTileHistInWs(
+    uint32_t dstOffset, uint32_t dataNum)
+{
+    if (dataNum == 0) return;
+    uint32_t repeatTimes = dataNum / MAX_TILE_NUM_IN_UB;
+    uint32_t remain = dataNum % MAX_TILE_NUM_IN_UB;
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    for (uint32_t i = 0; i < repeatTimes; i++) {
+        Duplicate<int32_t>(tileHist, 0, MAX_TILE_NUM_IN_UB);
+        DataCopyExtParams params{
+            static_cast<uint16_t>(1),
+            static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
+        DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
+    }
+    if (remain > 0) {
+        Duplicate<int32_t>(tileHist, 0, remain);
+        DataCopyExtParams params{
+            static_cast<uint16_t>(1),
+            static_cast<uint32_t>(sizeof(int32_t) * remain), 0, 0, 0};
+        DataCopyPad(tileHistGm_[dstOffset + repeatTimes * MAX_TILE_NUM_IN_UB], tileHist, params);
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::CopyTileHistInWs(
+    uint32_t dstOffset, uint32_t srcOffset)
+{
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    for (uint32_t i = 0; i <= tileNumRepeatTimes_; i++) {
+        uint32_t dataNum = (i == tileNumRepeatTimes_) ? tileNumRemain_ : MAX_TILE_NUM_IN_UB;
+        if (dataNum == 0) continue;
+        CopyTileHistWs2Ub(tileHist, srcOffset + i * MAX_TILE_NUM_IN_UB, dataNum);
+        MTE2ToMTE3Sync();
+        DataCopyExtParams params{
+            static_cast<uint16_t>(1),
+            static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+        DataCopyPad(tileHistGm_[dstOffset + i * MAX_TILE_NUM_IN_UB], tileHist, params);
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistWs2Ub(
+    LocalTensor<int32_t>& dstTensor, LocalTensor<int32_t>& srcTensor,
+    uint32_t srcOffset0, uint32_t srcOffset1, uint32_t dataNum)
+{
+    DataCopyExtParams params{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+    DataCopyPadExtParams<int32_t> padParams{true, 0, 0, 0};
+    DataCopyPad(srcTensor, tileHistGm_[srcOffset0], params, padParams);
+    DataCopyPad(srcTensor[MAX_TILE_NUM_IN_UB_BY2], tileHistGm_[srcOffset1], params, padParams);
+    MTE2ToVSync();
+    Sub(dstTensor, srcTensor, srcTensor[MAX_TILE_NUM_IN_UB_BY2], dataNum);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistInWs(
+    uint32_t dstOffset, uint32_t srcOffset0, uint32_t srcOffset1, uint32_t dataNum)
+{
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    SubTileHistWs2Ub(tileHist, tileHist, srcOffset0, srcOffset1, dataNum);
+    VToMTE3Sync();
+    DataCopyExtParams params{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * dataNum), 0, 0, 0};
+    DataCopyPad(tileHistGm_[dstOffset], tileHist, params);
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::SubTileHistInWsAll(
+    uint32_t dstOffset, uint32_t srcOffset0, uint32_t srcOffset1)
+{
+    for (uint32_t i = 0; i <= tileNumBy2RepeatTimes_; i++) {
+        uint32_t dataNum = (i == tileNumBy2RepeatTimes_) ? tileNumBy2Remain_ : MAX_TILE_NUM_IN_UB_BY2;
+        if (dataNum == 0) continue;
+        SubTileHistInWs(dstOffset + i * MAX_TILE_NUM_IN_UB_BY2,
+            srcOffset0 + i * MAX_TILE_NUM_IN_UB_BY2,
+            srcOffset1 + i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
+        MTE3ToMTE2Sync();
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::AddTileHist2TileTopKInWs(uint64_t tileHistOffset)
+{
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tileTopK = tileHist[MAX_TILE_NUM_IN_UB_BY2];
+    for (uint32_t i = 0; i <= tileNumBy2RepeatTimes_; i++) {
+        uint32_t dataNum = (i == tileNumBy2RepeatTimes_) ? tileNumBy2Remain_ : MAX_TILE_NUM_IN_UB_BY2;
+        if (dataNum == 0) continue;
+        CopyTileHistWs2Ub(tileHist, tileHistOffset + i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
+        CopyTileTopKWs2Ub(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
+        MTE2ToVSync();
+        Add(tileTopK, tileTopK, tileHist, dataNum);
+        VToMTE3Sync();
+        CopyTileTopKUb2Ws(tileTopK, i * MAX_TILE_NUM_IN_UB_BY2, dataNum);
+        MTE3ToMTE2Sync();
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::ClearHistInWs(int32_t roundId)
+{
+    LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+    LocalTensor<int32_t> globalHist = globalHistBuf_.Get<int32_t>();
+
+    if (roundId == static_cast<int32_t>(round_) - 1) {
+        for (int i = 0; i < static_cast<int>(tileNumRepeatTimes_); i++) {
+            Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), MAX_TILE_NUM_IN_UB);
+            if (tileNumRemain_ == 0 && tailTileLen_ != tileLen_) {
+                tileHist.SetValue(MAX_TILE_NUM_IN_UB - 1, static_cast<int32_t>(tailTileLen_));
+            }
+            DataCopyExtParams params{
+                static_cast<uint16_t>(1),
+                static_cast<uint32_t>(sizeof(int32_t) * MAX_TILE_NUM_IN_UB), 0, 0, 0};
+            DataCopyPad(tileHistGm_[i * MAX_TILE_NUM_IN_UB], tileHist, params);
+        }
+        if (tileNumRemain_ > 0) {
+            Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNumRemain_);
+            if (tailTileLen_ != tileLen_) {
+                tileHist.SetValue(tileNumRemain_ - 1, static_cast<int32_t>(tailTileLen_));
+            }
+            DataCopyExtParams params{
+                static_cast<uint16_t>(1),
+                static_cast<uint32_t>(sizeof(int32_t) * tileNumRemain_), 0, 0, 0};
+            DataCopyPad(tileHistGm_[tileNumRepeatTimes_ * MAX_TILE_NUM_IN_UB], tileHist, params);
+        }
+        globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
+    } else {
+        if (boundaryBin < static_cast<int32_t>(numValue_) - 1) {
+            SubTileHistInWsAll(0, boundaryBin * static_cast<uint32_t>(tileNum_),
+                boundaryBinPrev * static_cast<uint32_t>(tileNum_));
+        } else {
+            CopyTileHistInWs(0, boundaryBin * static_cast<uint32_t>(tileNum_));
+        }
+    }
+
+    SToVSync();
+    globalHist.SetValue(0, globalHistBoundaryNum_);
+    ClearTileHistInWs(static_cast<uint32_t>(tileNum_),
+                      (numValue_ - 1) * static_cast<uint32_t>(tileNum_));
 }
 
 template <typename BSAT>
