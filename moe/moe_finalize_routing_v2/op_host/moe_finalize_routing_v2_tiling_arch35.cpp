@@ -182,7 +182,7 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::GetK(const gert::StorageShape* scal
 {
     if (!scalesShape) {
         hasScales_ = false;
-        k = 1;
+        // k = 1;
         return ge::GRAPH_SUCCESS;
     }
 
@@ -601,14 +601,15 @@ ge::graphStatus MoeFinalizeRoutingV2Regbase::DoGetShapeAttrsInfo()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "H", "GRAPH_FAILED",
             "failed to get H."), return ge::GRAPH_FAILED);
 
+    auto kPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kPtr);
+    k = *kPtr;
+    // 先用k赋值，后用scale的shape赋值覆盖，保证存量用例的兼容性
     auto scalesShape = context_->GetOptionalInputShape(SCALES_IDX);
     OP_CHECK_IF(
         GetK(scalesShape) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K", "GRAPH_FAILED",
             "failed to get K."), return ge::GRAPH_FAILED);
-    auto kPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, kPtr);
-    k = *kPtr;
 
     auto expandedRowIdxShape = context_->GetInputShape(EXPANDED_ROW_IDX_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expandedRowIdxShape);

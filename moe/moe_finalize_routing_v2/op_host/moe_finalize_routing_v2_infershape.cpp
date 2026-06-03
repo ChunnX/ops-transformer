@@ -29,7 +29,7 @@ static constexpr size_t INDEX_OUT = 0;
 static constexpr size_t SHAPE_SIZE = 2;
 static constexpr size_t INPUT_NUM = 7;
 static constexpr size_t ATTR_DROP_PAD_MODE = 0;
-static constexpr size_t ATTR_K = 4;
+static constexpr size_t ATTR_K = 1;
 static constexpr int64_t VALUE_MODE_0 = 0;
 static constexpr int64_t VALUE_MODE_1 = 1;
 static constexpr int64_t VALUE_MODE_2 = 2;
@@ -178,6 +178,23 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     const int64_t* dropPadModePtr = attrs->GetAttrPointer<int64_t>(ATTR_DROP_PAD_MODE);
     OP_CHECK_NULL_WITH_CONTEXT(context, dropPadModePtr);
     const int64_t dropPadMode = *dropPadModePtr;
+
+    auto zeroExpertRangePtr = attrs->GetListInt(1);
+    auto copyExpertRangePtr = attrs->GetListInt(2);
+    auto constantExpertRangePtr = attrs->GetListInt(3);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(4);
+    if (nullptr == zeroExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "zeroExpertRangePtr");
+    }
+    if (nullptr == copyExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "copyExpertRangePtr");
+    }
+    if (nullptr == constantExpertRangePtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "constantExpertRangePtr");
+    }
+    if (nullptr == kPtr) {
+        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "kPtr");
+    }
 
     auto outShape = context->GetOutputShape(INDEX_OUT);
     OP_CHECK_IF(
