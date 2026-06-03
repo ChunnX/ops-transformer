@@ -22,6 +22,7 @@
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "log/log.h"
 
 using namespace op;
 
@@ -45,7 +46,7 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
         OP_INPUT(gradOutput, x, hRes, hOut, hPost),
         OP_OUTPUT(gradX, gradHres, gradHout, gradHpost));
     if (retAicore != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "MhcPostBackward launch kernel failed.");
+        OP_LOGE("MhcPostBackward", "MhcPostBackward launch kernel failed.");
         return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*>(nullptr, nullptr, nullptr, nullptr);
     }
     return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*>(gradX, gradHres, gradHout, gradHpost);
