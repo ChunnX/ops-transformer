@@ -12,6 +12,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <limits>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_init_routing_v3_tiling.h"
 #include "tiling_context_faker.h"
@@ -24,23 +25,169 @@ constexpr int64_t EXPERT_NUM = 256;
 constexpr int64_t QUANT_MODE_UNQUANT = -1;
 constexpr int64_t QUANT_MODE_STATIC = 0;
 constexpr int64_t QUANT_MODE_DYNAMIC = 1;
+constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2;
+constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3;
+constexpr int64_t QUANT_MODE_HIF8_CAST = 6;
+constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7;
+constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8;
+constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12;
 // 可选row_idx_type
 constexpr int64_t ROW_IDX_TYPE_GATHER = 0;
 constexpr int64_t ROW_IDX_TYPE_SCATTER = 1;
-} // namespace
+constexpr int64_t EXPERT_TOKENS_TYPE_COUNT = 1;
+constexpr int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2;
+constexpr uint64_t SKIP_TILING_KEY_VALIDATION = std::numeric_limits<uint64_t>::max();
+constexpr ge::DataType kExpandedXDtypeAuto = static_cast<ge::DataType>(-2);
 
-class MoeInitRoutingV3Tiling : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        std::cout << "MoeInitRoutingV3Tiling SetUp" << std::endl;
-    }
+int64_t CeilDiv(int64_t a, int64_t b)
+{
+    return (a + b - 1) / b;
+}
 
-    static void TearDownTestCase()
-    {
-        std::cout << "MoeInitRoutingV3Tiling TearDown" << std::endl;
+int64_t CeilAlign(int64_t a, int64_t align)
+{
+    return CeilDiv(a, align) * align;
+}
+
+ge::DataType GetExpandedXDtype(int64_t quantMode, ge::DataType xDtype, ge::DataType expandedXDtypeOverride)
+{
+    if (expandedXDtypeOverride != kExpandedXDtypeAuto) {
+        return expandedXDtypeOverride;
     }
+    switch (quantMode) {
+        case QUANT_MODE_UNQUANT:
+            return xDtype;
+        case QUANT_MODE_STATIC:
+        case QUANT_MODE_DYNAMIC:
+            return ge::DT_INT8;
+        case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_FP8_PERBLOCK_E5M2:
+            return ge::DT_FLOAT8_E5M2;
+        case QUANT_MODE_MXFP8_E4M3FN:
+        case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+            return ge::DT_FLOAT8_E4M3FN;
+        case QUANT_MODE_MXFP4_E2M1:
+            return ge::DT_FLOAT4_E2M1;
+        case QUANT_MODE_HIF8_CAST:
+        case QUANT_MODE_HIF8_PERTENSOR:
+        case QUANT_MODE_HIF8_PERTOKEN:
+            return ge::DT_HIFLOAT8;
+        default:
+            return ge::DT_INT8;
+    }
+}
+
+struct ExpandedScaleDesc {
+    std::vector<int64_t> shape;
+    ge::DataType dtype = ge::DT_FLOAT;
 };
+
+bool IsMxfpXNoQuant(ge::DataType xDtype)
+{
+    return xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT4_E2M1;
+}
+
+ExpandedScaleDesc MakePerTokenScaleDesc(int64_t totalLength)
+{
+    ExpandedScaleDesc desc;
+    desc.shape = {totalLength};
+    return desc;
+}
+
+ExpandedScaleDesc MakeMxfp8ScaleDesc(int64_t totalLength, int64_t cols)
+{
+    ExpandedScaleDesc desc;
+    desc.dtype = ge::DT_FLOAT8_E8M0;
+    desc.shape = {totalLength, CeilAlign(CeilDiv(cols, 32), 2)};
+    return desc;
+}
+
+ExpandedScaleDesc MakeMxfp4ScaleDesc(int64_t totalLength, int64_t cols)
+{
+    ExpandedScaleDesc desc;
+    desc.dtype = ge::DT_FLOAT8_E8M0;
+    desc.shape = {totalLength, CeilDiv(cols, 64), 2};
+    return desc;
+}
+
+ExpandedScaleDesc MakeFp8PerBlockScaleDesc(int64_t totalLength, int64_t cols)
+{
+    ExpandedScaleDesc desc;
+    desc.dtype = ge::DT_FLOAT;
+    desc.shape = {totalLength, CeilDiv(cols, 256), 2};
+    return desc;
+}
+
+ExpandedScaleDesc MakeUnquantInputScaleDesc(int64_t totalLength, int64_t cols, ge::DataType xDtype)
+{
+    if (IsMxfpXNoQuant(xDtype)) {
+        ExpandedScaleDesc desc;
+        desc.dtype = ge::DT_FLOAT8_E8M0;
+        desc.shape = {totalLength, CeilDiv(cols, 64), 2};
+        return desc;
+    }
+    return MakePerTokenScaleDesc(totalLength);
+}
+
+ExpandedScaleDesc GetExpandedScaleDesc(int64_t quantMode, int64_t totalLength, int64_t cols, int64_t n,
+                                       bool isInputScale, ge::DataType xDtype, ge::DataType expandedXDtype)
+{
+    (void)n;
+    (void)expandedXDtype;
+    switch (quantMode) {
+        case QUANT_MODE_STATIC:
+        case QUANT_MODE_HIF8_CAST:
+        case QUANT_MODE_HIF8_PERTENSOR:
+        case QUANT_MODE_HIF8_PERTOKEN:
+        case QUANT_MODE_DYNAMIC:
+            return MakePerTokenScaleDesc(totalLength);
+        case QUANT_MODE_MXFP8_E5M2:
+        case QUANT_MODE_MXFP8_E4M3FN:
+            return MakeMxfp8ScaleDesc(totalLength, cols);
+        case QUANT_MODE_MXFP4_E2M1:
+            return MakeMxfp4ScaleDesc(totalLength, cols);
+        case QUANT_MODE_FP8_PERBLOCK_E5M2:
+        case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+            return MakeFp8PerBlockScaleDesc(totalLength, cols);
+        case QUANT_MODE_UNQUANT:
+            if (isInputScale) {
+                return MakeUnquantInputScaleDesc(totalLength, cols, xDtype);
+            }
+            return MakePerTokenScaleDesc(totalLength);
+        default:
+            return MakePerTokenScaleDesc(totalLength);
+    }
+}
+
+gert::StorageShape MakeStorageShape(const std::vector<int64_t> &dims)
+{
+    switch (dims.size()) {
+        case 0:
+            return gert::StorageShape({}, {});
+        case 1:
+            return gert::StorageShape({dims[0]}, {dims[0]});
+        case 2:
+            return gert::StorageShape({dims[0], dims[1]}, {dims[0], dims[1]});
+        case 3:
+            return gert::StorageShape({dims[0], dims[1], dims[2]}, {dims[0], dims[1], dims[2]});
+        default:
+            return gert::StorageShape({}, {});
+    }
+}
+
+void AppendOptionalInput(std::vector<gert::TilingContextPara::TensorDescription> &inputs,
+                         const std::vector<int64_t> &shape, ge::DataType dtype)
+{
+    inputs.emplace_back(MakeStorageShape(shape), dtype, ge::FORMAT_ND);
+}
+
+void AppendOptionalOutput(std::vector<gert::TilingContextPara::TensorDescription> &outputs,
+                          const std::vector<int64_t> &shape, ge::DataType dtype)
+{
+    outputs.emplace_back(MakeStorageShape(shape), dtype, ge::FORMAT_ND);
+}
 
 static std::string A5SocInfo = "{\n"
                                "  \"hardware_info\": {\n"
@@ -60,6 +207,107 @@ static std::string A5SocInfo = "{\n"
                                "    \"socVersion\": \"Ascend910_95\"\n"
                                "  }\n"
                                "}";
+
+std::vector<int64_t> GetExpertTokensShape(int64_t expertTokensNumType, int64_t expertNum, int64_t expertRange)
+{
+    if (expertTokensNumType == EXPERT_TOKENS_TYPE_KEY_VALUE) {
+        return {expertNum, 2};
+    }
+    return {expertRange};
+}
+
+std::vector<gert::TilingContextPara::TensorDescription> BuildArch35ExtendedInputs(
+    int64_t n, int64_t h, int64_t k, ge::DataType xDataType, const std::vector<int64_t> &scaleShape,
+    ge::DataType scaleDtype, const std::vector<int64_t> &offsetShape, ge::DataType offsetDtype)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> inputDesc;
+    inputDesc.emplace_back(gert::StorageShape({n, h}, {n, h}), xDataType, ge::FORMAT_ND);
+    inputDesc.emplace_back(gert::StorageShape({n, k}, {n, k}), ge::DT_INT32, ge::FORMAT_ND);
+    AppendOptionalInput(inputDesc, scaleShape, scaleDtype);
+    AppendOptionalInput(inputDesc, offsetShape, offsetDtype);
+    return inputDesc;
+}
+
+std::vector<gert::TilingContextPara::TensorDescription> BuildArch35ExtendedOutputs(
+    int64_t totalLength, int64_t h, ge::DataType expandedXDtype, const std::vector<int64_t> &expertTokensShape,
+    const ExpandedScaleDesc &expandedScale)
+{
+    std::vector<gert::TilingContextPara::TensorDescription> outputDesc;
+    outputDesc.emplace_back(gert::StorageShape({totalLength, h}, {totalLength, h}), expandedXDtype, ge::FORMAT_ND);
+    outputDesc.emplace_back(gert::StorageShape({totalLength}, {totalLength}), ge::DT_INT32, ge::FORMAT_ND);
+    outputDesc.emplace_back(MakeStorageShape(expertTokensShape), ge::DT_INT64, ge::FORMAT_ND);
+    AppendOptionalOutput(outputDesc, expandedScale.shape, expandedScale.dtype);
+    return outputDesc;
+}
+
+std::vector<gert::TilingContextPara::OpAttr> BuildArch35ExtendedAttrs(
+    int64_t activeNum, int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode, int64_t expertTokensNumType,
+    bool expertTokensNumFlag, int64_t quantMode, const std::vector<int64_t> &aciveExpertRange, int64_t rowIdxType)
+{
+    return {
+        {"active_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(activeNum)},
+        {"expert_capacity", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertCapacity)},
+        {"expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertNum)},
+        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dropPadMode)},
+        {"expert_tokens_num_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(expertTokensNumType)},
+        {"expert_tokens_num_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(expertTokensNumFlag)},
+        {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+        {"acive_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(aciveExpertRange)},
+        {"row_idx_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(rowIdxType)},
+    };
+}
+
+gert::TilingContextPara MakeArch35ExtendedTilingContextPara(
+    int64_t n, int64_t h, int64_t k, int64_t expertCapacity, int64_t dropPadMode, int64_t expertTokensNumType,
+    bool expertTokensNumFlag, int64_t quantMode, ge::DataType xDataType, const std::vector<int64_t> &aciveExpertRange,
+    int64_t rowIdxType, const std::vector<int64_t> &scaleShape, ge::DataType scaleDtype,
+    const std::vector<int64_t> &offsetShape, ge::DataType offsetDtype, ge::DataType expandedXDtypeOverride,
+    optiling::MoeInitRoutingV3CompileInfo *compileInfo)
+{
+    int64_t activeNum = n * k;
+    int64_t expertNum = EXPERT_NUM;
+    int64_t expertRange = aciveExpertRange[1] - aciveExpertRange[0];
+    int64_t totalLength = n * k;
+    ge::DataType expandedXDtype = GetExpandedXDtype(quantMode, xDataType, expandedXDtypeOverride);
+    ExpandedScaleDesc expandedScale =
+        GetExpandedScaleDesc(quantMode, totalLength, h, n, !scaleShape.empty(), xDataType, expandedXDtype);
+    std::vector<int64_t> expertTokensShape = GetExpertTokensShape(expertTokensNumType, expertNum, expertRange);
+    auto inputDesc = BuildArch35ExtendedInputs(n, h, k, xDataType, scaleShape, scaleDtype, offsetShape, offsetDtype);
+    auto outputDesc = BuildArch35ExtendedOutputs(totalLength, h, expandedXDtype, expertTokensShape, expandedScale);
+    auto attrs = BuildArch35ExtendedAttrs(activeNum, expertCapacity, expertNum, dropPadMode, expertTokensNumType,
+                                          expertTokensNumFlag, quantMode, aciveExpertRange, rowIdxType);
+    return gert::TilingContextPara("MoeInitRoutingV3", inputDesc, outputDesc, attrs, compileInfo, "Ascend950", A5SocInfo,
+                                   4096);
+}
+
+void RunArch35ExtendedTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity, int64_t dropPadMode,
+                               int64_t expertTokensNumType, bool expertTokensNumFlag, int64_t quantMode,
+                               ge::DataType xDataType, std::vector<int64_t> aciveExpertRange, int64_t rowIdxType,
+                               const std::vector<int64_t> &scaleShape, ge::DataType scaleDtype,
+                               const std::vector<int64_t> &offsetShape, ge::DataType offsetDtype,
+                               ge::DataType expandedXDtypeOverride, ge::graphStatus expectResult)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        N, H, K, expertCapacity, dropPadMode, expertTokensNumType, expertTokensNumFlag, quantMode, xDataType,
+        aciveExpertRange, rowIdxType, scaleShape, scaleDtype, offsetShape, offsetDtype, expandedXDtypeOverride,
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, expectResult, SKIP_TILING_KEY_VALIDATION, "", {});
+}
+} // namespace
+
+class MoeInitRoutingV3Tiling : public testing::Test {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "MoeInitRoutingV3Tiling SetUp" << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "MoeInitRoutingV3Tiling TearDown" << std::endl;
+    }
+};
 
 void RunSuccessTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCapacity, int64_t dropPadMode,
                         int64_t expertTokensNumType, bool expertTokensNumFlag, int64_t quantMode, int64_t isInputScale,
@@ -360,4 +608,152 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_15)
     std::vector<size_t> expectWorkspaces = {5329576};
     RunFailureTestcase(1, 83, 27, 0, 0, 1, true, QUANT_MODE_STATIC, 1, ge::DT_FLOAT, {180, 192}, ROW_IDX_TYPE_SCATTER,
                        ge::GRAPH_FAILED, 1020000, expectTilingData, expectWorkspaces);
+}
+
+// MXFP8 E5M2 fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_e5m2)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP8_E5M2, ge::DT_FLOAT16,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// MXFP8 E4M3FN fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_e4m3)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP8_E4M3FN, ge::DT_BF16,
+                              {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// MXFP4 E2M1 fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp4)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP4_E2M1, ge::DT_FLOAT16,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerBlock E5M2 fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_perblock_e5m2)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_PERBLOCK_E5M2,
+                              ge::DT_FLOAT16, {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// FP8 PerBlock E4M3FN fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_fp8_perblock_e4m3)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_FP8_PERBLOCK_E4M3FN,
+                              ge::DT_BF16, {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// UNQUANT + FP8 x + E8M0 scale
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_scale)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT8_E5M2, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2},
+                              ge::DT_FLOAT8_E8M0, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// dynamic quant + per-expert scale
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_dynamic_with_scale)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {12, 83}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// INT4 dynamic quant + smooth scale (1, H)
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic)
+{
+    int64_t h = 84;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {1, 84}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
+                              ge::GRAPH_SUCCESS);
+}
+
+// static quant success with scale and offset
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_static_success)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_STATIC, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {1}, ge::DT_FLOAT, {1}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// HIF8 cast fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_hif8_cast)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_HIF8_CAST, ge::DT_FLOAT16,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// HIF8 pertoken fullload
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_hif8_pertoken)
+{
+    int64_t h = 83;
+    RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_HIF8_PERTOKEN, ge::DT_BF16,
+                              {180, 192}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_SUCCESS);
+}
+
+// MXFP8 multicore
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp8_multicore)
+{
+    int64_t h = 60;
+    RunArch35ExtendedTestcase(8, 60, 32, 0, 0, EXPERT_TOKENS_TYPE_KEY_VALUE, true, QUANT_MODE_MXFP8_E5M2,
+                              ge::DT_FLOAT16, {0, 100}, ROW_IDX_TYPE_SCATTER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+// static quant missing scale
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_static_missing_scale)
+{
+    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_STATIC, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {1}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_FAILED);
+}
+
+// INT4 dynamic with odd cols
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_odd_cols)
+{
+    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
+                              ge::GRAPH_FAILED);
+}
+
+// MXFP4 unsupported x dtype
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_mxfp4_bad_xdtype)
+{
+    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP4_E2M1, ge::DT_FLOAT,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
+                              ge::GRAPH_FAILED);
+}
+
+// INT4 dynamic with float16 x
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_bad_xdtype)
+{
+    RunArch35ExtendedTestcase(1, 84, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT16,
+                              {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, ge::DT_INT4,
+                              ge::GRAPH_FAILED);
+}
+
+// UNQUANT FP8 with wrong scale dtype
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_bad_scale_dtype)
+{
+    RunArch35ExtendedTestcase(1, 83, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT8_E5M2, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_FAILED);
 }
