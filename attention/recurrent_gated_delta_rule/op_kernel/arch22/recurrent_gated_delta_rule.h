@@ -236,7 +236,7 @@ private:
         if constexpr (!std::is_same_v<stateType, float>) {
             Cast(stateInUb, stateLocal, AscendC::RoundMode::CAST_NONE, alignK_ * curSingleV);
         } else {
-            stateInUb = stateLocal;
+            DataCopy(stateInUb, stateLocal, alignK_ * curSingleV);
         }
         stateInQueue_.FreeTensor(stateLocal);
     }
@@ -293,7 +293,7 @@ private:
         if constexpr (!std::is_same_v<stateType, float>) {
             Cast(stateOutLocal, stateInUb, AscendC::RoundMode::CAST_RINT, alignK_ * curSingleV);
         } else {
-            stateOutLocal = stateInUb;
+            DataCopy(stateOutLocal, stateInUb, alignK_ * curSingleV);
         }
         stateOutQueue_.EnQue<stateType>(stateOutLocal);
         AscendC::PipeBarrier<PIPE_V>();
