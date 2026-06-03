@@ -214,10 +214,11 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMul默认确定性实现。
+- 不支持非连续。
 - 输入张量x最后一维（D）大小不超过1024。
 - interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
 - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
-- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart > 0。
+- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 - 仅支持interleave模式（rotary_mode = 1）。
 - Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
 - cos/sin的shape必须与x满足广播关系。

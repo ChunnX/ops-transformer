@@ -93,19 +93,20 @@
 
 ## 约束说明
 
-  - 输入张量x最后一维（D）大小不超过1024。
-  - interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
-  - 仅支持interleave模式（rotary_mode = 1）。
-  - Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
-  - 输入张量cos、sin最后一维大小必须相同，且必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。当sliceLength=0（包括[0, 0]）时表示不进行任何旋转编码（no-op）。
-  - partial_slice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart ≥ 0。sliceLength=0表示no-op，不对x做任何处理。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足广播关系。
+- 不支持非连续。
+- 输入张量x最后一维（D）大小不超过1024。
+- interleave模式（rotary_mode = 1）下，x最后一维（D）大小必须为2的倍数。
+- 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
+- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ x最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
+- 仅支持interleave模式（rotary_mode = 1）。
+- Inplace执行：输入x和输出共享同一个Tensor，计算结果直接写回输入x。
+- cos/sin的shape必须与x满足广播关系。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    输入张量x当前只支持BSND、B1ND、B11D、111D排布。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  输入张量x当前只支持BSND、B1ND、B11D、111D排布。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    输入张量x当前只支持BS1D、B11D排布。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  输入张量x当前只支持BS1D、B11D排布。
 
 ## 调用说明
 
