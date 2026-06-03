@@ -132,14 +132,14 @@ def tilelang_cube1_bsnd(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     input_dtype, calc_dtype
 ):
-    block_m = BLOCK_M
-    block_n = BLOCK_N
-    block_k = BLOCK_K
-    s1_tile_num = ceil_div(S1, block_m)
+    s1_block = BLOCK_M
+    n_block = BLOCK_N
+    k_block = BLOCK_K
+    s1_tile_num = ceil_div(S1, s1_block)
     block_num = B * s1_tile_num
-    n_num = K // block_n
-    d_num_query = DQuery // block_k
-    d_num_query_index = DQueryIndex // block_k
+    n_num = K // n_block
+    d_num_query = DQuery // k_block
+    d_num_query_index = DQueryIndex // k_block
 
     @T.prim_func
     def main(
@@ -153,31 +153,29 @@ def tilelang_cube1_bsnd(
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // s1_tile_num
             m = cid % s1_tile_num
-            s1_start = m * block_m
-            s1_end = T.min(s1_start + block_m, S1)
+            s1_start = m * s1_block
+            s1_end = T.min(s1_start + s1_block, S1)
 
             with T.Scope("C"):
                 T.barrier_all()
 
                 # --- Matmul1: query(N1, DQuery) @ gatherKey(K, DQuery)^T -> bmm1Res(N1, K) ---
-                # Query[b, s1, :, :] is (N1, DQuery), GatherKey[b, s1, :, :] is (K, DQuery)
-                # For each s1_row, load all N1 rows of query into Q_L1, then gemm with GK_L1
-                # N1 <= block_m=128, so Q_L1 fits in one (block_m, block_k) tile
-                Q_L1 = T.alloc_L1((block_m, block_k), input_dtype)
-                GK_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
+                # gemm: A(N1, k_block) @ B(n_block, k_block)^T -> C(N1, n_block)
+                Q_L1 = T.alloc_L1((N1, k_block), input_dtype)
+                GK_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
                         for k_idx in T.serial(d_num_query):
                             T.copy(
-                                Query[bz, s1_row, 0:N1, k_idx * block_k:(k_idx + 1) * block_k],
+                                Query[bz, s1_row, 0:N1, k_idx * k_block:(k_idx + 1) * k_block],
                                 Q_L1,
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKey[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                GatherKey[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GK_L1,
                             )
                             T.barrier_all()
@@ -185,27 +183,27 @@ def tilelang_cube1_bsnd(
                             T.barrier_all()
                         T.copy(
                             C_L0C,
-                            bmm1Res[bz, s1_row, 0:N1, n_idx * block_n:(n_idx + 1) * block_n],
+                            bmm1Res[bz, s1_row, 0:N1, n_idx * n_block:(n_idx + 1) * n_block],
                         )
                         T.barrier_all()
 
                 # --- Matmul2: queryIndex(Nidx1, DQueryIndex) @ gatherKeyIndex(K, DQueryIndex)^T -> bmm2Res(Nidx1, K) ---
-                # Nidx1 <= 64 < block_m=128, fits in one tile
-                QI_L1 = T.alloc_L1((block_m, block_k), input_dtype)
-                GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C2_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
+                # gemm: A(Nidx1, k_block) @ B(n_block, k_block)^T -> C(Nidx1, n_block)
+                QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
+                GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
                         for k_idx in T.serial(d_num_query_index):
                             T.copy(
-                                QueryIndex[bz, s1_row, 0:Nidx1, k_idx * block_k:(k_idx + 1) * block_k],
+                                QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block],
                                 QI_L1,
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, k_idx * k_block:(k_idx + 1) * k_block],
                                 GKI_L1,
                             )
                             T.barrier_all()
@@ -213,7 +211,7 @@ def tilelang_cube1_bsnd(
                             T.barrier_all()
                         T.copy(
                             C2_L0C,
-                            bmm2Res[bz, s1_row, 0:Nidx1, n_idx * block_n:(n_idx + 1) * block_n],
+                            bmm2Res[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                             enable_relu=True,
                         )
                         T.barrier_all()
@@ -231,13 +229,13 @@ def tilelang_cube2_bsnd(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     input_dtype, calc_dtype
 ):
-    block_m = BLOCK_M
-    block_n = BLOCK_N
-    block_k = BLOCK_K
-    s1_tile_num = ceil_div(S1, block_m)
+    s1_block = BLOCK_M
+    n_block = BLOCK_N
+    k_block = BLOCK_K
+    s1_tile_num = ceil_div(S1, s1_block)
     block_num = B * s1_tile_num
-    n_num = K // block_n
-    d_num_query_index = DQueryIndex // block_k
+    n_num = K // n_block
+    d_num_query_index = DQueryIndex // k_block
 
     @T.prim_func
     def main(
@@ -249,30 +247,30 @@ def tilelang_cube2_bsnd(
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             bz = cid // s1_tile_num
             m = cid % s1_tile_num
-            s1_start = m * block_m
-            s1_end = T.min(s1_start + block_m, S1)
+            s1_start = m * s1_block
+            s1_end = T.min(s1_start + s1_block, S1)
 
             with T.Scope("C"):
                 T.barrier_all()
 
                 # Matmul4: reluGrad(Nidx1, K) @ gatherKeyIndex(K, DQueryIndex)^T
-                # M=Nidx1 (<=64 < block_m), N=DQueryIndex=block_k, K_axis=K
-                # For each (s1_row, d_idx), accumulate over n_idx (K axis split)
-                RG_L1 = T.alloc_L1((block_m, block_n), input_dtype)
-                GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                DQ_L0C = T.alloc_L0C((block_m, block_k), calc_dtype)
+                # gemm: A(Nidx1, n_block) @ B(n_block, k_block)^T -> C(Nidx1, k_block)
+                # K_axis split by n_block, N_axis split by k_block
+                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         for n_idx in T.serial(n_num):
                             T.barrier_all()
                             T.copy(
-                                ReluGrad[bz, s1_row, 0:Nidx1, n_idx * block_n:(n_idx + 1) * block_n],
+                                ReluGrad[bz, s1_row, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                                 RG_L1,
                             )
                             T.barrier_all()
                             T.copy(
-                                GatherKeyIndex[bz, s1_row, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
+                                GatherKeyIndex[bz, s1_row, n_idx * n_block:(n_idx + 1) * n_block, d_idx * k_block:(d_idx + 1) * k_block],
                                 GKI_L1,
                             )
                             T.barrier_all()
@@ -280,27 +278,27 @@ def tilelang_cube2_bsnd(
                             T.barrier_all()
                         T.copy(
                             DQ_L0C,
-                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
                         T.barrier_all()
 
             # Cast dQueryIndex_ws FP32 -> FP16
             with T.Scope("V"):
-                dq_fp32_ub = T.alloc_ub(block_m * block_k, calc_dtype)
-                dq_fp16_ub = T.alloc_ub(block_m * block_k, input_dtype)
+                dq_fp32_ub = T.alloc_ub(Nidx1 * k_block, calc_dtype)
+                dq_fp16_ub = T.alloc_ub(Nidx1 * k_block, input_dtype)
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
                         T.barrier_all()
                         T.copy(
-                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                            dQueryIndex_ws[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                             dq_fp32_ub,
                         )
                         T.barrier_all()
-                        T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", Nidx1 * block_k)
+                        T.tile.cast(dq_fp16_ub, dq_fp32_ub, "CAST_ROUND", Nidx1 * k_block)
                         T.barrier_all()
                         T.copy(
                             dq_fp16_ub,
-                            dQueryIndex[bz, s1_row, 0:Nidx1, d_idx * block_k:(d_idx + 1) * block_k],
+                            dQueryIndex[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block],
                         )
                         T.barrier_all()
 
