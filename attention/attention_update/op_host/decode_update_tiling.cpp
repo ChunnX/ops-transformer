@@ -25,10 +25,6 @@
 #include "attention_update_tiling.h"
 
 namespace {
-    constexpr uint64_t TILING_KEY_GO_FP32_WITHOUT_MAX_OUT = 10010;
-    constexpr uint64_t TILING_KEY_GO_FP16_WITHOUT_MAX_OUT = 10020;
-    constexpr uint64_t TILING_KEY_GO_BF16_WITHOUT_MAX_OUT = 10030;
-
     constexpr uint64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024UL;
     constexpr uint32_t LSE_TOTAL_LENGTH_DIM = 0;
     constexpr uint32_t IN_HD_DIM = 1;
@@ -38,6 +34,18 @@ namespace {
 
     //  hDim = 128， spAligned = 8时，单核b*hc最大7，所以取3
     constexpr uint32_t MIN_BLOCK_LENGTH = 3;
+
+    // Tiling keys for sp <= 16 (original path)
+    constexpr uint64_t TILING_KEY_GO_FP32 = 10010;
+    constexpr uint64_t TILING_KEY_GO_FP16 = 10020;
+    constexpr uint64_t TILING_KEY_GO_BF16 = 10030;
+
+    // Tiling keys for sp > 16 (large sp path)
+    constexpr uint64_t TILING_KEY_GO_FP32_LARGE_SP = 10110;
+    constexpr uint64_t TILING_KEY_GO_FP16_LARGE_SP = 10120;
+    constexpr uint64_t TILING_KEY_GO_BF16_LARGE_SP = 10130;
+
+    constexpr uint32_t MAX_EFFECTIVE_SP = 16;
 }
 
 namespace optiling {
@@ -45,12 +53,22 @@ namespace optiling {
 uint64_t GetTilingKey(uint32_t sp, ge::DataType goType_)
 {
     uint64_t tiling_key = 0UL;
-    if (goType_ == ge::DataType::DT_FLOAT) {
-        tiling_key = TILING_KEY_GO_FP32_WITHOUT_MAX_OUT;
-    } else if (goType_ == ge::DataType::DT_FLOAT16) {
-        tiling_key = TILING_KEY_GO_FP16_WITHOUT_MAX_OUT;
-    } else if (goType_ == ge::DataType::DT_BF16) {
-        tiling_key = TILING_KEY_GO_BF16_WITHOUT_MAX_OUT;
+    if (sp <= MAX_EFFECTIVE_SP) {
+        if (goType_ == ge::DataType::DT_FLOAT) {
+            tiling_key = TILING_KEY_GO_FP32;
+        } else if (goType_ == ge::DataType::DT_FLOAT16) {
+            tiling_key = TILING_KEY_GO_FP16;
+        } else if (goType_ == ge::DataType::DT_BF16) {
+            tiling_key = TILING_KEY_GO_BF16;
+        }
+    } else {
+        if (goType_ == ge::DataType::DT_FLOAT) {
+            tiling_key = TILING_KEY_GO_FP32_LARGE_SP;
+        } else if (goType_ == ge::DataType::DT_FLOAT16) {
+            tiling_key = TILING_KEY_GO_FP16_LARGE_SP;
+        } else if (goType_ == ge::DataType::DT_BF16) {
+            tiling_key = TILING_KEY_GO_BF16_LARGE_SP;
+        }
     }
     return tiling_key;
 }
