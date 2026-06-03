@@ -23,7 +23,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "lightning_indexer_v2_metadata.h"
+#include "../../lightning_indexer_v2/op_kernel/lightning_indexer_v2_metadata.h"
 #include "../../common/op_kernel/aicpu_common.h"
 
 namespace aicpu {
