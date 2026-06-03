@@ -111,7 +111,7 @@ public:
         }
     }
 
-    template <class TensorLseGm, class TensorLseUb, LseFormat LSE_FORMAT_>
+    template <class TensorLseGm, class TensorLseUb>
     __aicore__ inline
     void CopyUbToGmLse(TensorLseGm const &gLseTensorTlaTile, TensorLseUb const &ubLseTensorTla)
     {
@@ -154,11 +154,11 @@ public:
 
         __ubuf__ ElementOTmp *goUb = (__ubuf__ ElementOTmp *) goUbTensor32.GetPhyAddr();
         __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *) loUbTensor[ubOTmpBufId].GetPhyAddr();
-        __ubuf__ ElementOTmp *glUb = ( __ubuf__ ElementOTmp *) glUbTensor32.GetPhyAddr();
+        __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *) glUbTensor32.GetPhyAddr();
         __ubuf__ ElementOTmp *dmUb =
             (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
-        __ubuf__ float *gmUb = ( __ubuf__ float *) gmUbTensor32.GetPhyAddr();
-        __ubuf__ float *lseUb = ( __ubuf__ float *) lseUbTensor32.GetPhyAddr();
+        __ubuf__ float *gmUb = (__ubuf__ float *) gmUbTensor32.GetPhyAddr();
+        __ubuf__ float *lseUb = (__ubuf__ float *) lseUbTensor32.GetPhyAddr();
         
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
@@ -175,8 +175,6 @@ public:
                     DivFuncLastAndFirst<DRegSplitStages::TWO>(
                         goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
                 }
-                // DivFuncLastAndFirst<ElementOTmp>(
-                //     goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colFullLoop, colTail, vlElemNum);
             }
         } else if (!isLastKvSTile) {
             if (dStages == 1) {
@@ -186,8 +184,6 @@ public:
                 RescaleFunc<DRegSplitStages::TWO>(
                     goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
             }
-            // RescaleFunc<ElementOTmp>(
-            //     goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colFullLoop, colTail, vlElemNum);
         } else {
             if (dStages == 1) {
                 RescaleFuncLastNotFirst<DRegSplitStages::ONE>(
@@ -196,8 +192,6 @@ public:
                 RescaleFuncLastNotFirst<DRegSplitStages::TWO>(
                 goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
             }
-            // RescaleFuncLastNotFirst<ElementOTmp>(
-            //     goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colFullLoop, colTail, vlElemNum);
         }
         // release lo buf
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
@@ -207,12 +201,16 @@ public:
                 uint32_t colStrideLseUb = 0;
                 if constexpr ((DispatchPolicy::LSE_FORMAT == LseFormat::TN1) ||
                     (DispatchPolicy::LSE_FORMAT == LseFormat::BSN1)) {
+                    LogSumExpFuncQSAxisIncontinuous(gmUb, glUb, lseUb, rowNumCurSubCore);
                     colNumLseUb = 8;
                     colStrideLseUb = 8;
                 } else if constexpr (DispatchPolicy::LSE_FORMAT == LseFormat::BNS1) {
+                    LogSumExpFuncQSAxisContinuous(gmUb, glUb, lseUb, rowNumCurSubCore);
                     colNumLseUb = 1;
                     colStrideLseUb = 1;
                 }
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID1);
                 auto ubLseLayoutTla = tla::MakeLayout(
                     tla::MakeShape(rowNumCurSubCore, colNumLseUb),
                     tla::MakeStride(colStrideLseUb, tla::Int<1>{}));
@@ -497,7 +495,7 @@ public:
     // When qS can be copied from UB to GM continuously,
     // qS would be stored from reg to UB continuously.
     __simd_vf__ inline void LogSumExpFuncQSAxisContinuous(
-        __ubuf__ ElementOTmp *gmUb, __ubuf__ ElementOTmp *glUb, __ubuf__ ElementOTmp *lseUb,
+        __ubuf__ float *gmUb, __ubuf__ float *glUb, __ubuf__ float *lseUb,
         uint32_t row)
     {
         // This vf works only when the rowNum in each AIV does not exceed 64
@@ -508,7 +506,7 @@ public:
         RegTensor<float> lseVreg;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
         MaskReg pregTail = UpdateMask<float>(row);
-        static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, LnAlgo::PRECISION_1ULP_FTZ_FALSE};
+        static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
 
         LoadAlign<float, LoadDist::DIST_NORM>(glVreg, glUb);
         LoadAlign<float, LoadDist::DIST_NORM>(gmVreg, gmUb);
@@ -520,7 +518,7 @@ public:
     // When qS cannot be copied from UB to GM continuously,
     // lse would be broadcasted and then stored from reg to UB continuously.
     __simd_vf__ inline void LogSumExpFuncQSAxisIncontinuous(
-        __ubuf__ ElementOTmp *gmUb, __ubuf__ ElementOTmp *glUb, __ubuf__ ElementOTmp *lseUb,
+        __ubuf__ float *gmUb, __ubuf__ float *glUb, __ubuf__ float *lseUb,
         uint32_t row)
     {
         using namespace AscendC::MicroAPI;
@@ -535,7 +533,7 @@ public:
         UnalignReg rowwiseUreg0;
         UnalignReg rowwiseUreg1;
         MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
-        static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, LnAlgo::PRECISION_1ULP_FTZ_FALSE};
+        static constexpr LnSpecificMode mode = {MaskMergeMode::ZEROING, AscendC::LnAlgo::PRECISION_1ULP_FTZ_FALSE};
         static constexpr uint32_t postUpdateStride = 32 / sizeof(float);
 
         for (uint16_t i = 0; i < row; i+=2) {
@@ -614,7 +612,6 @@ private:
     AscendC::LocalTensor<ElementO> goUbTensor16;
     AscendC::LocalTensor<ElementOTmp> goUbTensor32;
     AscendC::LocalTensor<float> lseUbTensor32;
-    
 
     CopyUbToGmO copyUbToGmO;
 
