@@ -25,7 +25,7 @@ class RotaryPositionEmbeddingABMixed {
 public:
     __aicore__ inline RotaryPositionEmbeddingABMixed(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y, GM_ADDR workspace,
-        const RopeRegbaseTilingData *tilingData, TPipe *pipe);
+        const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
@@ -43,7 +43,7 @@ private:
     GlobalTensor<float> cosGm_;
     GlobalTensor<float> sinGm_;
     GlobalTensor<TX> yGm_;
-    const RopeRegbaseTilingData *tilingData_;
+    const InplacePartialRopeRegbaseTilingData *tilingData_;
     DataCopyPadExtParams<TX> padParams_ = {false, 0, 0, static_cast<TX>(0)};
     DataCopyPadExtParams<float> padParamsFloat_ = {false, 0, 0, 0};
     uint8_t DB_FLAG = 2;
@@ -57,7 +57,7 @@ private:
 
 template <typename TX>
 __aicore__ inline void RotaryPositionEmbeddingABMixed<TX>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-    GM_ADDR workspace, const RopeRegbaseTilingData *tilingData, TPipe *pipe)
+    GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe)
 {
     pipe_ = pipe;
     tilingData_ = tilingData;
@@ -143,7 +143,7 @@ __aicore__ inline void RotaryPositionEmbeddingABMixed<TX>::ProcessLoop(int64_t x
         0,
         static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),
         0};
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         inParams = {static_cast<uint16_t>(totalCount),
             tilingData_->D * sizeof(TX),
             static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),

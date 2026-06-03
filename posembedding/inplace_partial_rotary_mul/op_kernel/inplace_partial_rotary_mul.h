@@ -25,7 +25,7 @@ class InplacePartialRotaryMulABA {
 public:
     __aicore__ inline InplacePartialRotaryMulABA() {};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR r1, GM_ADDR r2, GM_ADDR y, GM_ADDR workspace,
-        const RopeRegbaseTilingData *tilingData, TPipe *pipe);
+        const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyInData(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
     __aicore__ inline void CopyInDataR(LocalTensor<T> &xUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
@@ -35,7 +35,7 @@ public:
     __aicore__ inline void DataCopyOut(LocalTensor<T> &yUb, GlobalTensor<T> &xGm, int64_t blockCout, int64_t blockLen, int64_t gmOffset, int64_t ubOffset);
 private:
     TPipe* pipe_;
-    const RopeRegbaseTilingData* tiling_;
+    const InplacePartialRopeRegbaseTilingData* tiling_;
     int32_t blockIdx_ = 0;
 
     //需要的tilingdata
@@ -77,7 +77,7 @@ private:
 
 template <typename T, bool isBrc>
 __aicore__ inline void InplacePartialRotaryMulABA<T, isBrc>::Init(GM_ADDR x, GM_ADDR r1, GM_ADDR r2, GM_ADDR y, GM_ADDR workspace,
-    const RopeRegbaseTilingData *tilingData, TPipe *pipe)
+    const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe)
 {
     blockIdx_ = GetBlockIdx();
     tiling_ = tilingData;

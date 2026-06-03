@@ -19,7 +19,7 @@
 namespace optiling {
 constexpr uint32_t MODE_ATTR_IDX = 0;
 
-ge::graphStatus RotaryPosEmbeddingMembaseTilingClass::GetPlatformInfo()
+ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
@@ -30,7 +30,7 @@ ge::graphStatus RotaryPosEmbeddingMembaseTilingClass::GetPlatformInfo()
         socVersion_ = ascendcPlatform.GetSocVersion();
         aicoreParams_.ubSize = ubSizePlatForm;
     } else {
-        auto compileInfoPtr = reinterpret_cast<const RotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
@@ -39,7 +39,7 @@ ge::graphStatus RotaryPosEmbeddingMembaseTilingClass::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RotaryPosEmbeddingMembaseTilingClass::GetShapeAttrsInfo()
+ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetShapeAttrsInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -62,11 +62,11 @@ ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
     auto socVersion = ascendcPlatform.GetSocVersion();
     if (socVersion == platform_ascendc::SocVersion::ASCEND950)
     {
-        std::vector<std::unique_ptr<RopeRegBaseTilingClass>> regBaseTilingCases;
-        regBaseTilingCases.push_back(std::unique_ptr<RopeRegBaseTilingClass>(new RopeRegBaseTilingClassAAndB(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<RopeRegBaseTilingClass>(new RopeRegBaseTilingClassAB(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<RopeRegBaseTilingClass>(new RopeRegBaseTilingClassABAAndBA(context)));
-        regBaseTilingCases.push_back(std::unique_ptr<RopeRegBaseTilingClass>(new RopeRegBaseTilingClassBAB(context)));
+        std::vector<std::unique_ptr<InplacePartialRopeRegBaseTilingClass>> regBaseTilingCases;
+        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassAAndB(context)));
+        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassAB(context)));
+        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassABAAndBA(context)));
+        regBaseTilingCases.push_back(std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(new InplacePartialRopeRegBaseTilingClassBAB(context)));
         OP_LOGI(context, "Using arch35 tiling for ASCEND950");
         
         for (const auto& ptr : regBaseTilingCases)
@@ -83,7 +83,7 @@ ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
             }
         }
         OP_LOGI(context, "Using tiling for ASCEND910_71");
-        RotaryPosEmbeddingMembaseTilingClass rotaryPosEmbeddingMembaseTilingClass(context);
+        InplacePartialRotaryPosEmbeddingMembaseTilingClass rotaryPosEmbeddingMembaseTilingClass(context);
         return rotaryPosEmbeddingMembaseTilingClass.DoOpTiling();
     } else {
         return Tiling4InplacePartialRotaryMul(context);
@@ -98,6 +98,6 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbedding(gert::TilingParseContext
 
 IMPL_OP_OPTILING(InplacePartialRotaryMul)
     .Tiling(Tiling4RotaryPositionEmbedding)
-    .TilingParse<RotaryPositionEmbeddingCompileInfo>(TilingPrepareForRotaryPositionEmbedding);
+    .TilingParse<InplacePartialRotaryPositionEmbeddingCompileInfo>(TilingPrepareForRotaryPositionEmbedding);
 } // namespace optiling
 

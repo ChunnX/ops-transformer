@@ -40,7 +40,7 @@ constexpr uint32_t HALF_INTERLEAVE_COEF = 2;
 constexpr uint32_t QUARTER_MODE_COEF = 4;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 
-struct RotaryPosEmbeddingMode {
+struct InplacePartialRotaryPosEmbeddingMode {
     static constexpr int64_t HALF = 0;
     static constexpr int64_t INTERLEAVE = 1;
     static constexpr int64_t QUARTER = 2;

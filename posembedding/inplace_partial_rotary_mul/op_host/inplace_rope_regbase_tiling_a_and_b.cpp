@@ -31,18 +31,18 @@ constexpr uint64_t TILING_KEY_A_FP16_FP32 = 20240;
 constexpr uint64_t TILING_KEY_B_BF16_FP32 = 20141;
 constexpr uint64_t TILING_KEY_B_FP16_FP32 = 20241;
 
-bool RopeRegBaseTilingClassAAndB::IsCapable()
+bool InplacePartialRopeRegBaseTilingClassAAndB::IsCapable()
 {
     // 处理全boardcast和不boardcast的情况
-    return (IsRegbaseSocVersion()) && (layout_ == RopeLayout::NO_BROADCAST || layout_ == RopeLayout::BROADCAST_BSN);
+    return (IsRegbaseSocVersion()) && (layout_ == InplacePartialRopeLayout::NO_BROADCAST || layout_ == InplacePartialRopeLayout::BROADCAST_BSN);
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::MergeDim()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::MergeDim()
 {
     b_ = b_ * n_ * s_;
     n_ = 1;
     s_ = 1;
-    if (layout_ == RopeLayout::NO_BROADCAST) {
+    if (layout_ == InplacePartialRopeLayout::NO_BROADCAST) {
         cosb_ = b_;
     } else {
         cosb_ = 1;
@@ -50,7 +50,7 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::MergeDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::SplitCore()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::SplitCore()
 {
     blockFactorB_ = CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.blockDim);
     blockNumB_ = CeilDiv(static_cast<int64_t>(b_), blockFactorB_);
@@ -58,7 +58,7 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::SplitCore()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::ComputeUbFactor()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::ComputeUbFactor()
 {
     ubFactorB_ = 1;
 
@@ -69,7 +69,7 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::ComputeUbFactor()
     int64_t dSizeCosSin =
         CeilAlign(sliceLength_ * GetSizeByDataType(cosDtype) / dSplitCoef_, this->blockSize_) * dSplitCoef_;
 
-    if (layout_ == RopeLayout::NO_BROADCAST) {
+    if (layout_ == InplacePartialRopeLayout::NO_BROADCAST) {
         int64_t totalPerBUnit;
         if (isMixedPrecision) {
             // UB: 4 queues x double-buffer = 8 total buffers
@@ -127,7 +127,7 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::ComputeUbFactor()
     return ge::GRAPH_SUCCESS;
 }
 
-void RopeRegBaseTilingClassAAndB::SetTilingData()
+void InplacePartialRopeRegBaseTilingClassAAndB::SetTilingData()
 {
     tilingData_.set_B(b_);
     tilingData_.set_CosB(cosb_);
@@ -153,7 +153,7 @@ void RopeRegBaseTilingClassAAndB::SetTilingData()
     tilingData_.set_sliceLength(static_cast<int64_t>(sliceLength_));
 
     OP_LOGI(context_->GetNodeName(),
-        "RopeRegBaseTilingClassAAndB tilingData: "
+        "InplacePartialRopeRegBaseTilingClassAAndB tilingData: "
         "B is %ld, CosB is %ld, S is %ld, D is %ld, N is %ld, blockNumB %ld,"
         "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
         "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
@@ -184,7 +184,7 @@ void RopeRegBaseTilingClassAAndB::SetTilingData()
         tilingData_.get_sliceLength());
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::DoOpTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::DoOpTiling()
 {
     OP_CHECK_IF(MergeDim() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "failed to merge dim."),
@@ -198,17 +198,17 @@ ge::graphStatus RopeRegBaseTilingClassAAndB::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::DoLibApiTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t RopeRegBaseTilingClassAAndB::GetTilingKey() const
+uint64_t InplacePartialRopeRegBaseTilingClassAAndB::GetTilingKey() const
 {
     auto xDtype = context_->GetInputDesc(0)->GetDataType();
     auto cosDtype = context_->GetInputDesc(1)->GetDataType();
 
-    bool isNoBroadcast = (layout_ == RopeLayout::NO_BROADCAST);
+    bool isNoBroadcast = (layout_ == InplacePartialRopeLayout::NO_BROADCAST);
 
     if (xDtype == ge::DT_BF16 && cosDtype == ge::DT_FLOAT) {
         return isNoBroadcast ? TILING_KEY_A_BF16_FP32 : TILING_KEY_B_BF16_FP32;
@@ -219,13 +219,13 @@ uint64_t RopeRegBaseTilingClassAAndB::GetTilingKey() const
     return isNoBroadcast ? TILING_KEY_A : TILING_KEY_B;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::GetWorkspaceSize()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::GetWorkspaceSize()
 {
     workspaceSize_ = WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAAndB::PostTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAAndB::PostTiling()
 {
     SetTilingData();
     uint64_t tilingKey = GetTilingKey();

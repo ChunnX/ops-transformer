@@ -98,7 +98,7 @@ private:
     int64_t start_=0;
     int64_t blockFactor_=0;
     gert::TilingContext* context_ = nullptr;
-    RopeRegbaseTilingData tilingData_;
+    InplacePartialRopeRegbaseTilingData tilingData_;
 };
 int64_t GetCeilInt(int64_t value1, int64_t value2)
 {

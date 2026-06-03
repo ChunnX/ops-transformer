@@ -28,7 +28,7 @@ public:
     __aicore__ inline ~RotaryPositionEmbeddingAAndBMixed(){};
 
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR cos, GM_ADDR sin, GM_ADDR qOut, GM_ADDR workspace,
-        const RopeRegbaseTilingData *tilingData, TPipe *pipe);
+        const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe);
 
     __aicore__ inline void Process();
 
@@ -63,7 +63,7 @@ private:
     int64_t bBlockStart_ = 0;
     int64_t bBlockLength_ = 0;
 
-    const RopeRegbaseTilingData *tilingData_;
+    const InplacePartialRopeRegbaseTilingData *tilingData_;
     int64_t ubFactorB_ = 0;
     int64_t D_ = 0;
     int64_t dAlign_ = 0;
@@ -75,7 +75,7 @@ private:
 
 template <typename TX, bool IsBoardCast>
 __aicore__ inline void RotaryPositionEmbeddingAAndBMixed<TX, IsBoardCast>::Init(GM_ADDR q, GM_ADDR cos, GM_ADDR sin,
-    GM_ADDR qOut, GM_ADDR workspace, const RopeRegbaseTilingData *tilingData, TPipe *pipe)
+    GM_ADDR qOut, GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData *tilingData, TPipe *pipe)
 {
     this->tilingData_ = tilingData;
     this->pipe_ = pipe;
@@ -100,10 +100,10 @@ __aicore__ inline void RotaryPositionEmbeddingAAndBMixed<TX, IsBoardCast>::InitA
 {
     this->ubFactorB_ = this->tilingData_->ubFactorB;
     this->D_ = this->tilingData_->D;
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF) ||
-        tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF) ||
+        tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         this->dSplitCoef_ = QUARTER_MODE_COEF;
     }
     this->copyInQSplitCoef_ = dSplitCoef_;
@@ -111,7 +111,7 @@ __aicore__ inline void RotaryPositionEmbeddingAAndBMixed<TX, IsBoardCast>::InitA
         ops::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(TX)) * dSplitCoef_;
     this->dAlignFloat_ =
         ops::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(float)) * dSplitCoef_;
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->copyInQSplitCoef_ = 1;
         if constexpr (!IsBoardCast) {
             this->ubCopyInStride =

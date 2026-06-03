@@ -29,7 +29,7 @@ public:
     __aicore__ inline ~RotaryPositionEmbeddingAAndB(){};
 
     __aicore__ inline void Init(
-        GM_ADDR q, GM_ADDR cos, GM_ADDR sin, GM_ADDR qOut, GM_ADDR workspace, const RopeRegbaseTilingData* tilingData,
+        GM_ADDR q, GM_ADDR cos, GM_ADDR sin, GM_ADDR qOut, GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData* tilingData,
         TPipe* pipe);
 
     __aicore__ inline void Process();
@@ -72,7 +72,7 @@ private:
     int64_t bBlockLength_ = 0;
 
     // TilingData
-    const RopeRegbaseTilingData* tilingData_;
+    const InplacePartialRopeRegbaseTilingData* tilingData_;
     int64_t ubFactorB_ = 0;
     int64_t D_ = 0;
     int64_t dAlign_ = 0;
@@ -85,7 +85,7 @@ private:
 
 template <typename T, bool IsBoardCast>
 __aicore__ inline void RotaryPositionEmbeddingAAndB<T, IsBoardCast>::Init(
-    GM_ADDR q, GM_ADDR cos, GM_ADDR sin, GM_ADDR qOut, GM_ADDR workspace, const RopeRegbaseTilingData* tilingData,
+    GM_ADDR q, GM_ADDR cos, GM_ADDR sin, GM_ADDR qOut, GM_ADDR workspace, const InplacePartialRopeRegbaseTilingData* tilingData,
     TPipe* pipe)
 {
     this->tilingData_ = tilingData;
@@ -111,15 +111,15 @@ __aicore__ inline void RotaryPositionEmbeddingAAndB<T, IsBoardCast>::InitAllBuff
 {
     this->ubFactorB_ = this->tilingData_->ubFactorB;
     this->D_ = this->tilingData_->D;
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF) ||
-        tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF) ||
+        tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         this->dSplitCoef_ = QUARTER_MODE_COEF;
     }
     this->copyInQSplitCoef_ = dSplitCoef_;
     this->dAlign_ = ops::CeilAlign<int64_t>(tilingData_->sliceLength / dSplitCoef_, BLOCK_TYPE_SIZE / sizeof(T)) * dSplitCoef_;
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->copyInQSplitCoef_ = 1;
         // 非boardcast时，使用批量计算API，需要拷贝时添加stride
         if constexpr (!IsBoardCast) {
@@ -252,27 +252,27 @@ __aicore__ inline void RotaryPositionEmbeddingAAndB<T, IsBoardCast>::Compute(
     LocalTensor<T> inUb = this->qInQueue_.template DeQue<T>();
     LocalTensor<T> outUb = this->qOutQueue_.template AllocTensor<T>();
     if constexpr (IsBoardCast) {
-        if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF)) {
+        if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
             HalfAlignVF<T>(sin, cos, inUb, outUb, tilingData_->sliceLength, dAlign_, 1, bLength);
-        } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::INTERLEAVE)) {
+        } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
             InterleaveModeVF<T>(sin, cos, inUb, outUb, tilingData_->sliceLength, 1, bLength);
-        } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+        } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
             QuarterAlignVF<T>(sin, cos, inUb, outUb, tilingData_->sliceLength, dAlign_, 1, bLength);
         } else {
             DeepSeekInterleaveModeVF<T>(sin, cos, inUb, outUb, tilingData_->sliceLength, 1, bLength);
         }
     } else {
-        if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF)) {
+        if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
             BatchHalfAlignVF<T, IsBoardCast>(
                 (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
                 (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1, tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
-        } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::INTERLEAVE)) {
+        } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
             BatchInterleaveModeVF<T, IsBoardCast>(
                 (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
                 (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1, tilingData_->sliceLength, dAlign_,
                 ubFactorB_, 1);
-        } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+        } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
             BatchQuarterAlignVF<T, IsBoardCast>(
                 (__local_mem__ T*)inUb.GetPhyAddr(), (__local_mem__ T*)cos.GetPhyAddr(),
                 (__local_mem__ T*)sin.GetPhyAddr(), (__local_mem__ T*)outUb.GetPhyAddr(), bLength, 1, 1, tilingData_->sliceLength, dAlign_,
