@@ -745,9 +745,9 @@ moe@ops-transformer:
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/arch35
                 - ops/ops-transformer/moe/moe_re_routing/op_kernel/moe_re_routing_apt.cpp
                 - ops/ops-transformer/moe/moe_token_permute/op_host/op_api
- 	            - ops/ops-transformer/moe/moe_token_permute_grad/op_host/op_api
- 	            - ops/ops-transformer/moe/moe_token_unpermute/op_host/op_api
- 	            - ops/ops-transformer/moe/moe_token_unpermute_grad/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_permute_grad/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_unpermute/op_host/op_api
+                - ops/ops-transformer/moe/moe_token_unpermute_grad/op_host/op_api
             opensource_style: null 
             kernel_style: null  
         unrelease:
