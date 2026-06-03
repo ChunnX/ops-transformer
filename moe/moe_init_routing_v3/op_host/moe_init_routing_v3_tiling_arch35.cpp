@@ -231,6 +231,10 @@ private:
     ge::graphStatus CheckOutputExpandedRowIdx();
     ge::graphStatus CheckOutputExpertTokensCountOrCumsum();
     ge::graphStatus CheckOutputExpandedScale();
+    void CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0, int64_t &expectedDim1,
+                                     int64_t &expectedDim2);
+    ge::graphStatus ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0, int64_t expectedDim1,
+                                       int64_t expectedDim2);
 
     // 各阶段TilingData计算函数
     MultipleParams GetMultipleParams();
@@ -1187,19 +1191,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpertTokensCountO
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
+void MoeInitRoutingV3Arch35TilingClass::CalculateExpectedScaleShape(int64_t &expectedRank, int64_t &expectedDim0,
+                                                                    int64_t &expectedDim1, int64_t &expectedDim2)
 {
-    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()");
-
-    // 静态量化场景下expandedScale不输出，无需校验
-    if (quantMode_ == QUANT_MODE_STATIC) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    int64_t expectedRank{-1};
-    int64_t expectedDim0{-1};
-    int64_t expectedDim1{-1};
-    int64_t expectedDim2{-1};
 
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
         if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
@@ -1218,8 +1212,6 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     } else if ((quantMode_ == QUANT_MODE_HIF8_PERTOKEN)) {
         expectedRank = RANK_ONE;
         expectedDim0 = totalLength_;
-    } else if (quantMode_ == QUANT_MODE_HIF8_CAST) {
-        return ge::GRAPH_SUCCESS;
     } else if (quantMode_ == QUANT_MODE_MXFP4_E2M1 || quantMode_ == QUANT_MODE_FP8_PERBLOCK_E5M2 ||
                quantMode_ == QUANT_MODE_FP8_PERBLOCK_E4M3FN) {
         expectedRank = RANK_THREE;
@@ -1231,6 +1223,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
         }
         expectedDim2 = NUM_TWO;
     }
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::ValidateScaleShape(int64_t expectedRank, int64_t expectedDim0,
+                                                                      int64_t expectedDim1, int64_t expectedDim2)
+{
     auto rank = static_cast<int64_t>(expandedScaleShape_.GetDimNum());
     if (expectedRank != -1) {
         OP_CHECK_IF(rank != expectedRank,
@@ -1260,6 +1257,23 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
+{
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()");
+
+    if (quantMode_ == QUANT_MODE_STATIC || quantMode_ == QUANT_MODE_HIF8_CAST) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    int64_t expectedRank{-1};
+    int64_t expectedDim0{-1};
+    int64_t expectedDim1{-1};
+    int64_t expectedDim2{-1};
+
+    CalculateExpectedScaleShape(expectedRank, expectedDim0, expectedDim1, expectedDim2);
+    return ValidateScaleShape(expectedRank, expectedDim0, expectedDim1, expectedDim2);
 }
 
 ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputs()
