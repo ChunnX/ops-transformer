@@ -21,7 +21,6 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
-#include <set>
 #include <sstream>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"

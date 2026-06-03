@@ -279,12 +279,14 @@ __simd_vf__ void MulReduceSumbase512VFImpl(__ubuf__ T *kvAddr, __ubuf__ T *score
 }
 
 /**
- * @brief MulReduceSumbaseVF 包含mul和reducesum
- * @param outputLocal 输出tensor []
- * @param coff 
+ * @brief MulReduceSumbaseVF 逐元素乘法后按压缩块求和归约
+ * @param kvLocal kv输入tensor [scLoopCnt * coff * cmpRatio * baseD]
+ * @param scoreLocal score输入tensor [scLoopCnt * coff * cmpRatio * baseD]
+ * @param outputLocal 输出tensor [scLoopCnt * baseD]
+ * @param coff 重叠系数
  * @param cmpRatio 压缩块大小
- * @param baseD  核内d轴切分大小
- * @param scLoopCnt  sc数,
+ * @param baseD 核内d轴切分大小
+ * @param scLoopCnt sc循环次数
  */
 
 // 当前仅支持coff * cmpRatio为2的幂的情况

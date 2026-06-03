@@ -14,7 +14,6 @@
  * \brief
  */
 
-#include <numeric>
 #include <functional>
 #include <algorithm>
 #include <unordered_map>
@@ -89,13 +88,13 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
-    compressorContext.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
-    compressorContext.coff = attrs->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    compressorContext.cmpRatio = attrs->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    compressorContext.ropeHeadDim = attrs->GetAttrPointer<int>(ROPE_HEAD_DIM_ATTR_INDEX);
+    compressorContext.coff = attrs->GetAttrPointer<int>(COFF_ATTR_INDEX);
+    compressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     compressorContext.normEps = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_INDEX);
-    compressorContext.rotaryMode = attrs->GetAttrPointer<int64_t>(ROTARY_MODE_ATTR_INDEX);
-    compressorContext.cacheMode = attrs->GetAttrPointer<int64_t>(CACHE_MODE_ATTR_INDEX);
-    compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int64_t>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
+    compressorContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
+    compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
+    compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
