@@ -354,7 +354,6 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
                                    Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
             }
-            AscendC::PipeBarrier<PIPE_ALL>();
             NotifyVectorToCopyIn();
         }
     } else {
@@ -373,7 +372,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
                     auto nL1Size = Get<N_VALUE>(actualShape);
                     blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n, l1Params.kL1);
                 }
-                WaitForCubeFinishCopyout();
+                // WaitForCubeFinishCopyout();
             }
         } else {
             for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
@@ -722,7 +721,6 @@ __aicore__ inline void GroupMatmul2A8W4(
                                                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
 
-            AscendC::PipeBarrier<PIPE_ALL>();
             NotifyVectorToCopyIn();
         }
     } else {
@@ -740,7 +738,7 @@ __aicore__ inline void GroupMatmul2A8W4(
                 auto mL1Size = Get<M_VALUE>(actualShape);
                 auto nL1Size = Get<N_VALUE>(actualShape);
                 blockPrologue(gmB, mL1Size, k, nL1Size, nOffset, n, l1Params.kL1);
-                WaitForCubeFinishCopyout();
+                // WaitForCubeFinishCopyout();
             }
         } else {
             for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
@@ -762,18 +760,17 @@ __aicore__ inline void GroupMatmul2A8W4(
                 // auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
                 auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
                 AscendC::Te::Copy(copyGM2UB, l0cOutUbFirst, tensorBlockGm);
-                AscendC::PipeBarrier<PIPE_ALL>();
 
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(0);
                 MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
                     mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2First, actualShape, params);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-                
-                AscendC::PipeBarrier<PIPE_ALL>();
             }
         }
     }
