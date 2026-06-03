@@ -953,15 +953,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
         } else {
             t1OffsetScatterIndex = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
             t2OffsetScatterIndex = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
-<<<<<<< HEAD
-            curS1Scatter = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex] - ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
-            curS2Scatter = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
-=======
             curS1Scatter = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex] -
                 ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndexScatterIndex - 1];
             curS2Scatter = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex] -
                 ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndexScatterIndex - 1];
->>>>>>> 71500a812 (fix overflow)
         }
 
         s1IndexScatterIndex = t1Idx - t1OffsetScatterIndex;
@@ -992,15 +987,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
         } else {
             t1Offset = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
             t2Offset = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
-<<<<<<< HEAD
-            curS1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
-            curS2 = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
-=======
             curS1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex] -
                 ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
             curS2 = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex] -
                 ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
->>>>>>> 71500a812 (fix overflow)
         }
 
         s1Index = t1Idx - t1Offset;
