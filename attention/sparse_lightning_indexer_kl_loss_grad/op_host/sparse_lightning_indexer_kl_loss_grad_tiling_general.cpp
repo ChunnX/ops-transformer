@@ -328,7 +328,7 @@ void SparseLightningIndexerKLLossGradTilingBase::SetMultiCoreParamsRegbase(int64
     }
 }
 
-void SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
+ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
 {
     SLIKLLossGradInitOutputParams *initoutput = &tilingData->initOutputParams;
     auto &dKeyShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
@@ -338,8 +338,19 @@ void SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
     } else if (tilingKeyLayout == LayoutType::LAYOUT_BSND) {
         totalSize = static_cast<int64_t>(bSize) * dKeyShape.GetDim(1) * dKeyShape.GetDim(3);
     }
-    initoutput->set_singleCoreSize(static_cast<uint32_t>(CeilDivision(totalSize, static_cast<int64_t>(aivNum))));
+    int64_t singleCoreSize = CeilDivision(totalSize, static_cast<int64_t>(aivNum));
+    if (singleCoreSize > UINT32_MAX) {
+        OP_LOGE(context_, "singleCoreSize(%ld) exceeds UINT32_MAX limit.", singleCoreSize);
+        return ge::GRAPH_FAILED;
+    }
+    initoutput->set_singleCoreSize(static_cast<uint32_t>(singleCoreSize));
+
+    if (totalSize > INT64_MAX / 2) {
+        OP_LOGE(context_, "totalOutputSize(%ld) exceeds safe limit.", totalSize);
+        return ge::GRAPH_FAILED;
+    }
     initoutput->set_totalOutputSize(totalSize);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::DoOpTiling()
@@ -357,7 +368,10 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::DoOpTiling()
     SoftMaxTilingFunc(srcShape, sizeof(float), softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
     SoftMaxTilingFunc(srcShape, sizeof(float), softmaxTmpBufferSize, tilingData->vectorParams.simpleSoftmaxPTilingData);
 
-    InitOutputSplit();
+    auto ret = InitOutputSplit();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
     OP_LOGD(context_, "ending template[%s]", templateName);
     return ge::GRAPH_SUCCESS;
 }
