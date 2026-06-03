@@ -237,8 +237,9 @@ def tilelang_grad_kl_loss_single_kernel(
             # ============================================================
             # V scope 1: Compute softmaxI, P_reduced, dWeight, reluGrad
             # ============================================================
-            # All vector ops on FP32 buffers. No range() - use T.serial().
-            # P_reduced, reduceSumY, softmaxI stored in GM workspace.
+            # All vector ops on FP32 buffers.
+            # range() for UB row indexing (compile-time constant).
+            # T.serial() for GM indexing (runtime variable).
             with T.Scope("V"):
                 T.wait_cross_flag(1)
 
@@ -281,7 +282,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.barrier_all()
 
                     # --- Pass 1: compute P_reduced and reduceSumY per K chunk ---
-                    # Write results directly to GM workspace
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
                         T.copy(
@@ -290,12 +290,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         T.barrier_all()
 
-                        # P[g, k] = exp(bmm1[g,k] * scale - sm_max[g]) / sm_sum[g]
-                        # P_reduced[k] = (1/G) * sum_g P[g,k]
                         T.tile.fill(p_reduced_tmp_ub, 0)
                         T.barrier_all()
 
-                        for g_id in T.serial(G):
+                        for g_id in range(G):
                             T.barrier_all()
                             T.tile.mul(bmm1_ub[g_id, :], bmm1_ub[g_id, :], scale_value)
                             T.barrier_all()
@@ -311,14 +309,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
                         T.barrier_all()
 
-                        # Write P_reduced chunk to GM
                         T.copy(
                             p_reduced_tmp_ub,
                             PReduced[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
                         T.barrier_all()
 
-                        # reduceSumY: sum_g(reluRes[g,k] * weight[g])
                         T.copy(
                             bmm2Res[bz, s1_id, 0:Nidx1, n_idx * n_block:(n_idx + 1) * n_block],
                             bmm2_ub,
@@ -328,7 +324,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.fill(rsy_reduce_ub, 0)
                         T.barrier_all()
 
-                        for g_id in T.serial(g_num):
+                        for g_id in range(g_num):
                             T.barrier_all()
                             T.copy(
                                 Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
@@ -339,18 +335,17 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.barrier_all()
                             T.tile.fill(rsy_tmp_ub, 0)
                             T.barrier_all()
-                            for i in T.serial(vector_baseg):
+                            for i in range(vector_baseg):
                                 T.barrier_all()
                                 T.tile.mul(rsy_tmp_ub[i, :], bmm2_ub[g_id * vector_baseg + i, :], weight_ub[i])
                                 T.barrier_all()
                             T.barrier_all()
-                            for i in T.serial(vector_baseg):
+                            for i in range(vector_baseg):
                                 T.barrier_all()
                                 T.tile.add(rsy_reduce_ub, rsy_reduce_ub, rsy_tmp_ub[i, :])
                                 T.barrier_all()
 
                         T.barrier_all()
-                        # Write reduceSumY chunk to GM
                         T.copy(
                             rsy_reduce_ub,
                             ReduceSumY[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
@@ -358,8 +353,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
 
                     # --- Global softmax on reduceSumY -> softmaxI ---
-                    # Process per K chunk: find global max, then exp/sub/sum
-                    # Step 1: find global max of reduceSumY across all K chunks
                     T.tile.fill(rsy_max_ub, -1e30)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
@@ -369,15 +362,12 @@ def tilelang_grad_kl_loss_single_kernel(
                             rsy_chunk_ub,
                         )
                         T.barrier_all()
-                        # Broadcast 1D chunk to 16 rows of rsy_2d_ub for reduce_max
-                        for i in T.serial(16):
+                        for i in range(16):
                             T.barrier_all()
                             T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
                             T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
-                        # Update global max: max(old_max, chunk_max)
-                        # max_pair_ub[0, :] = rsy_max_ub, max_pair_ub[1, :] = rsy_chunk_max_ub
                         T.copy(rsy_max_ub, max_pair_ub[0, :])
                         T.barrier_all()
                         T.copy(rsy_chunk_max_ub, max_pair_ub[1, :])
@@ -385,7 +375,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.reduce_max(max_pair_ub, rsy_max_ub, 0)
                         T.barrier_all()
 
-                    # Step 2: exp(reduceSumY - max) and accumulate sum, write to SoftmaxI GM
                     T.tile.fill(rsy_sum_ub, 0)
                     T.barrier_all()
                     for n_idx in T.serial(n_num):
@@ -399,14 +388,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.barrier_all()
-                        # Write exp result to SoftmaxI GM (will divide by sum later)
                         T.copy(
                             rsy_chunk_ub,
                             SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                         )
                         T.barrier_all()
-                        # Accumulate sum: broadcast to 2D and reduce_sum
-                        for i in T.serial(16):
+                        for i in range(16):
                             T.barrier_all()
                             T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
                             T.barrier_all()
@@ -415,7 +402,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
                         T.barrier_all()
 
-                    # Step 3: divide SoftmaxI by sum (in-place on GM via UB)
                     for n_idx in T.serial(n_num):
                         T.barrier_all()
                         T.copy(
@@ -432,7 +418,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
 
                     # --- Pass 2: compute dWeight and reluGrad ---
-                    for g_id in T.serial(g_num):
+                    for g_id in range(g_num):
                         T.barrier_all()
                         T.copy(
                             Weights[bz, s1_id, g_id * vector_baseg:(g_id + 1) * vector_baseg],
@@ -453,7 +439,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             T.barrier_all()
 
-                            # Load softmaxI and P_reduced chunks from GM
                             T.copy(
                                 SoftmaxI[bz, s1_id, n_idx * n_block:(n_idx + 1) * n_block],
                                 softmax_i_chunk_ub,
@@ -465,13 +450,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             T.barrier_all()
 
-                            # diff[k] = softmaxI[k] - P_reduced[k]
                             T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_chunk_ub)
                             T.barrier_all()
 
-                            # dw_chunk[g, k] = diff[k] * reluRes[g, k]
-                            # rg_ub[g, k] = weight[g] * diff[k] * reluRes[g, k]
-                            for i in T.serial(vector_baseg):
+                            for i in range(vector_baseg):
                                 T.barrier_all()
                                 g_row = g_id * vector_baseg + i
                                 T.tile.mul(dw_chunk_ub[i, :], bmm2_ub[g_row, :], diff_ub)
@@ -479,16 +461,14 @@ def tilelang_grad_kl_loss_single_kernel(
                                 T.tile.mul(rg_ub[i, :], dw_chunk_ub[i, :], weight_ub[i])
                                 T.barrier_all()
 
-                            # dWeight accumulation
                             T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
                             T.barrier_all()
                             T.tile.add(dw_accum_ub, dw_accum_ub, dw_reduce_ub)
                             T.barrier_all()
 
-                            # Write reluGrad chunk to GM (cast FP32->FP16)
                             T.tile.cast(rg_half_ub, rg_ub, "CAST_ROUND", vector_baseg * n_block)
                             T.barrier_all()
-                            for i in T.serial(vector_baseg):
+                            for i in range(vector_baseg):
                                 T.barrier_all()
                                 g_row = g_id * vector_baseg + i
                                 T.copy(
@@ -497,7 +477,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                 )
                                 T.barrier_all()
 
-                        # Write dWeight for this g_id group (cast FP32->FP16)
                         T.tile.cast(dw_half_ub, dw_accum_ub, "CAST_ROUND", vector_baseg)
                         T.barrier_all()
                         T.copy(
