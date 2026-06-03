@@ -21,10 +21,12 @@
 
 using namespace optiling;
 
-#define KERNEL_STATUS_OK 0
-#define KERNEL_STATUS_PARAM_INVALID 1
-#define ORI_KV false
-#define CMP_KV true
+constexpr uint32_t KERNEL_STATUS_OK = 0;
+constexpr uint32_t KERNEL_STATUS_PARAM_INVALID = 1;
+constexpr uint32_t COST_WEIGHT_M = 6U;
+constexpr uint32_t COST_WEIGHT_S2 = 10U;
+constexpr bool ORI_KV = false;
+constexpr bool CMP_KV = true;
 
 namespace aicpu {
 uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::Compute(CpuKernelContext &ctx)
@@ -53,8 +55,8 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", queryHeadNum_) &&
-                        GetAttrValue(ctx, "num_heads_kv", kvHeadNum_) &&
+    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
+                        GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
                         GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
@@ -80,7 +82,21 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "has_ori_kv", hasOriKv_);
     GetAttrValueOpt(ctx, "has_cmp_kv", hasCmpKv_);
 
-    return ParamsInit();
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck() 
+{
+    return CheckTensorData();
+}
+
+bool MixedQuantSparseFlashMlaMetadataCpuKernel::CheckTensorData()
+{
+    if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("Output metadata tensor data is nullptr");
+        return false;
+    }
+    return true;
 }
 
 int32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
@@ -154,14 +170,14 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     CalcOriMaskMode();
     CalcCmpMaskMode();
     isS1G_ = (layoutQuery_ == "BSND" || layoutQuery_ == "BSH" || layoutQuery_ == "TND");
-    groupSize_ = queryHeadNum_ / kvHeadNum_;
+    groupSize_ = numHeadsQ_ / numHeadsKv_;
     if (hasOriKv_ && oriTopK_ != 0) {
         isSparseOriKv_ = true;
     }
     if (hasCmpKv_ && cmpTopK_ != 0) {
         isSparseCmpKv_ = true;
     }
-    if (queryHeadNum_ == 128) {
+    if (numHeadsQ_ == 128) {
     	isSplitG_ = true;
     }
     if (isSplitG_) {
@@ -273,15 +289,15 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcSplitInfo(SplitContext &spli
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
-        splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
-        splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
+        splitInfo.s1GBaseNum[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
+        splitInfo.s1GTailSize[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_) % mBaseSize_;
         if (hasOriKv_) {
             uint32_t curOriS2Size = GetOriS2SeqSize(bIdx);
-            splitInfo.oriS2BaseNum[bIdx] = (static_cast<int64_t>(curOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+            splitInfo.oriS2BaseNum[bIdx] = (static_cast<uint64_t>(curOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
         }
         if (hasCmpKv_) {
             uint32_t curCmpS2Size = GetCmpS2SeqSize(bIdx);
-            splitInfo.cmpS2BaseNum[bIdx] = (static_cast<int64_t>(curCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
+            splitInfo.cmpS2BaseNum[bIdx] = (static_cast<uint64_t>(curCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_;
         }
         if (splitInfo.s1GBaseNum[bIdx] != 0U &&
             (splitInfo.oriS2BaseNum[bIdx] != 0U || splitInfo.cmpS2BaseNum[bIdx] != 0U)) {
@@ -348,7 +364,7 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::OriCalcCost(uint32_t basicM, 
     uint32_t oriAlignCoefS2 = 64U;
     uint32_t oriAlignBasicM = (basicM + oriAlignCoefM - 1U) >> 4U;
     uint32_t oriAlignBasicS2 = (basicS2 + oriAlignCoefS2 - 1U) >> 6U;
-    return static_cast<int64_t>(6U * oriAlignBasicM + 10U * oriAlignBasicS2);
+    return static_cast<int64_t>(COST_WEIGHT_M * oriAlignBasicM + COST_WEIGHT_S2 * oriAlignBasicS2);
 }
 
 int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t basicS2)
@@ -357,7 +373,7 @@ int64_t MixedQuantSparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, 
     uint32_t cmpAlignCoefS2 = 64U;
     uint32_t cmpAlignBasicM = (basicM + cmpAlignCoefM - 1U) >> 4U;
     uint32_t cmpAlignBasicS2 = (basicS2 + cmpAlignCoefS2 - 1U) >> 6U;
-    return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);
+    return static_cast<int64_t>(COST_WEIGHT_M * cmpAlignBasicM + COST_WEIGHT_S2 * cmpAlignBasicS2);
 }
 
 void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
@@ -706,8 +722,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::CalcCostInfo(SplitContext &split
     // 计算 batch 的负载并记录，用于按batch分配，需要按行计算起止点，统计块数、负载
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         CalcBatchCost(bIdx, splitContext, costInfo);
-        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * kvHeadNum_;
-        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * kvHeadNum_;
+        costInfo.totalCost += costInfo.bN2CostOfEachBatch[bIdx] * numHeadsKv_;
+        costInfo.totalBlockNum += costInfo.bN2BlockOfEachBatch[bIdx] * numHeadsKv_;
     }
 }
 
@@ -734,15 +750,15 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext 
     }
 
     // Update Batch
-    if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) {  // 所有负载全部分配完，设置最后一个核的右开区间，返回
+    if (assignContext.curBN2Idx == batchSize_ * numHeadsKv_) {  // 所有负载全部分配完，设置最后一个核的右开区间，返回
         assignContext.curS1GIdx = 0U;
         assignContext.curS2Idx = 0U;
         assignContext.isFinished = true;
         return;
     }
 
-    if (assignContext.curBN2Idx / kvHeadNum_ != assignContext.curBIdx) {
-        assignContext.curBIdx = assignContext.curBN2Idx / kvHeadNum_;
+    if (assignContext.curBN2Idx / numHeadsKv_ != assignContext.curBIdx) {
+        assignContext.curBIdx = assignContext.curBN2Idx / numHeadsKv_;
         assignContext.curS1GIdx = 0U;
         UpdateBatch = true;
         UpdateS1G = true;
@@ -775,7 +791,7 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext
         assignContext.coreCache.block += assignContext.bN2Block;
         assignContext.curBN2Idx++;
         // to the end
-        if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) {
+        if (assignContext.curBN2Idx == batchSize_ * numHeadsKv_) {
             assignContext.curS1GIdx = 0U;
             assignContext.curS2Idx = 0U;
             assignContext.isFinished = true;
@@ -783,8 +799,8 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext
         }
 
         // next batch
-        if (assignContext.curBN2Idx / kvHeadNum_ != assignContext.curBIdx) {
-            assignContext.curBIdx = assignContext.curBN2Idx / kvHeadNum_;
+        if (assignContext.curBN2Idx / numHeadsKv_ != assignContext.curBIdx) {
+            assignContext.curBIdx = assignContext.curBN2Idx / numHeadsKv_;
             CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
         }
 
@@ -909,13 +925,13 @@ void MixedQuantSparseFlashMlaMetadataCpuKernel::RecordFDInfo(const SplitContext 
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
-    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / kvHeadNum_;
+    uint32_t splitBIdx = result.bN2End[assignContext.curCoreIdx - 1U] / numHeadsKv_;
     uint32_t splitS1GIdx = result.gS1End[assignContext.curCoreIdx - 1U];
     uint32_t s1Size = GetS1SeqSize(splitBIdx);
 
     // 计算归约数据的FD均衡划分信息
     uint32_t curFdS1gSize = (splitS1GIdx == splitInfo.s1GBaseNum[splitBIdx] - 1U) ?
-                            (s1Size * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
+                            (static_cast<uint64_t>(s1Size) * groupSize_ - splitS1GIdx * mBaseSize_) : mBaseSize_;
     // 记录
     result.maxS2SplitNum = std::max(result.maxS2SplitNum, assignContext.curKvSplitPart);
     // 若存在头归约，则切分点一定为上一个核结束的位置
@@ -1040,7 +1056,7 @@ bool MixedQuantSparseFlashMlaMetadataCpuKernel::BalanceSchedule(SplitResult &spl
     // 全空case
     if (splitContext.splitInfo.isKvSeqAllZero) {
         splitRes.usedCoreNum = 1U;
-        splitRes.bN2End[0] = batchSize_ * kvHeadNum_;
+        splitRes.bN2End[0] = batchSize_ * numHeadsKv_;
         splitRes.gS1End[0] = 0U;
         splitRes.s2End[0] = 0U;
         return true;

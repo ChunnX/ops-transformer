@@ -240,6 +240,8 @@ private:
     void CalcOriMaskMode();
     void CalcCmpMaskMode();
     ValidSocVersion ProcessSocVersion();
+    bool ParamsCheck();
+    bool CheckTensorData();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetadata(SplitResult &splitRes);
@@ -310,10 +312,10 @@ private:
     // attributes
     int32_t batchSize_ = 0;
     int32_t maxSeqlenQ_ = 0;
-    int32_t queryHeadNum_ = 0;
+    int32_t numHeadsQ_ = 0;
     int32_t maxSeqlenOriKv_ = 0;
     int32_t maxSeqlenCmpKv_ = 0;
-    int32_t kvHeadNum_ = 0;
+    int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
     int32_t oriTopK_ = 0;
     int32_t cmpTopK_ = 0;
@@ -326,8 +328,8 @@ private:
     std::string layoutKv_ = "PA_BNBD";
     bool hasOriKv_ = true;
     bool hasCmpKv_ = true;
-    uint32_t aicCoreNum_ = 24U;
-    uint32_t aivCoreNum_ = 48U;
+    uint32_t aicCoreNum_ = optiling::AIC_CORE_MAX_NUM;
+    uint32_t aivCoreNum_ = optiling::AIV_CORE_MAX_NUM;
 
     // attr
     std::string socVersion_ = "";
@@ -337,7 +339,7 @@ private:
     int64_t cmpNextToken_ = 0;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 0;
-    uint32_t s2BaseSize_ = 128U;
+    uint32_t s2BaseSize_;
     bool isS1G_ = true;
     bool supportFd = false;
     uint32_t oriAttentionMode_ = 1;

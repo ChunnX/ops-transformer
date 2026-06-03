@@ -14,6 +14,8 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
+QSMLA_METADATA_SIZE = 1024
+
 
 class MixedQuantSparseFlashMlaMetadataOpBuilder(OpBuilder):
     def __init__(self):
@@ -55,7 +57,7 @@ class MixedQuantSparseFlashMlaMetadataOpBuilder(OpBuilder):
             ori_win_right: Optional[int] = None, layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
             has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None,
             batch_invariant: Optional[int] = None):
-            return torch.empty((1024), dtype=torch.int32, device="npu")
+            return torch.empty((QSMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
 mixed_quant_sparse_flash_mla_metadata_op_builder = MixedQuantSparseFlashMlaMetadataOpBuilder()

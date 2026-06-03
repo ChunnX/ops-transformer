@@ -75,8 +75,8 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_q >= 0
-    if (numHeadsQ < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be >= 0, but got %ld", numHeadsQ);
+    if (numHeadsQ <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_q should be > 0, but got %ld", numHeadsQ);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // num_heads_kv: 1
@@ -131,6 +131,14 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                 cmpRatio);
             return ACLNN_ERR_PARAM_INVALID;
         }
+    }
+    if (layoutQOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_q is null!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (layoutKvOptional == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv is null!");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q: BSND or TND
     if ((strcmp(layoutQOptional, "TND") != 0) && (strcmp(layoutQOptional, "BSND") != 0)) {
