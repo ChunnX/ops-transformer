@@ -16,6 +16,7 @@
 
 using namespace AscendC;
 using namespace ge;
+using namespace Mc2Tiling;
 
 namespace optiling {
 
@@ -45,12 +46,12 @@ constexpr int64_t H_MAX = 7168;
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpCombineInfo &info)
 {
-    OPS_LOG_D(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u",
-              info.cfg.epWorldSize, info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
-    OPS_LOG_D(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u",
-              info.cfg.numTokens, info.cfg.hidden, info.cfg.topK, info.cfg.numMaxTokensPerRank);
-    OPS_LOG_D(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u",
-              info.cfg.perSlotBytes, info.hasTopkWeights, info.aivNum);
+    OPS_LOG_D(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u", info.cfg.epWorldSize,
+              info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
+    OPS_LOG_D(nodeName, "numTokens=%u, hidden=%u, topK=%u, numMaxTokensPerRank=%u", info.cfg.numTokens, info.cfg.hidden,
+              info.cfg.topK, info.cfg.numMaxTokensPerRank);
+    OPS_LOG_D(nodeName, "perSlotBytes=%u, hasTopkWeights=%u, aivNum=%u", info.cfg.perSlotBytes, info.hasTopkWeights,
+              info.aivNum);
     OPS_LOG_D(nodeName, "totalWinSizeEp=%lu, totalUbSize=%lu", info.totalWinSizeEp, info.totalUbSize);
 }
 
@@ -58,12 +59,10 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 {
     context->SetScheduleMode(1U);
     const char *nodeName = context->GetNodeName();
-    OPS_ERR_IF(nodeName == nullptr, OPS_LOG_E("unKnownNodeName", "nodeName is nullptr."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(nodeName == nullptr, OPS_LOG_E("unKnownNodeName", "nodeName is nullptr."), return ge::GRAPH_FAILED);
 
     MoeEpCombineTilingData *tilingData = context->GetTilingData<MoeEpCombineTilingData>();
-    OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(tilingData == nullptr, OPS_LOG_E(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
     OPS_LOG_I(nodeName, "Enter MoeEpCombine tiling func.");
 
     auto attrs = context->GetAttrs();
@@ -88,22 +87,22 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
 
     const gert::StorageShape *xShape = context->GetInputShape(X_INDEX);
     OPS_ERR_IF(xShape == nullptr, OPS_LOG_E(nodeName, "xShape is null."), return ge::GRAPH_FAILED);
-    OPS_ERR_IF(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-               OPS_LOG_E(nodeName, "xShape dims must be 2."), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(xShape->GetStorageShape().GetDimNum() != TWO_DIMS, OPS_LOG_E(nodeName, "xShape dims must be 2."),
+               return ge::GRAPH_FAILED);
     info.cfg.numTokens = static_cast<uint32_t>(xShape->GetStorageShape().GetDim(0));
     info.cfg.hidden = static_cast<uint32_t>(xShape->GetStorageShape().GetDim(1));
-    info.cfg.topK = static_cast<uint32_t>(context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX)
-                                          ->GetStorageShape().GetDim(1));
+    info.cfg.topK =
+        static_cast<uint32_t>(context->GetInputShape(DST_BUFFER_SLOT_IDX_INDEX)->GetStorageShape().GetDim(1));
     info.cfg.perSlotBytes = static_cast<uint32_t>(
-        ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN
-        + 80UL + 16UL);
+        ((static_cast<uint64_t>(info.cfg.hidden) * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN + 80UL +
+        16UL);
 
     uint64_t maxWindowSize = static_cast<uint64_t>(*cclBufferSizePtr);
     uint32_t combineTopk = std::min(static_cast<uint32_t>(epWorldSize), info.cfg.topK);
-    uint64_t winNeedCombine = static_cast<uint64_t>(combineTopk) * static_cast<uint64_t>(*nmtPtr)
-                              * static_cast<uint64_t>(info.cfg.perSlotBytes);
-    uint64_t winNeed = static_cast<uint64_t>(epWorldSize) * static_cast<uint64_t>(*nmtPtr)
-                       * static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t winNeedCombine = static_cast<uint64_t>(combineTopk) * static_cast<uint64_t>(*nmtPtr) *
+                              static_cast<uint64_t>(info.cfg.perSlotBytes);
+    uint64_t winNeed = static_cast<uint64_t>(epWorldSize) * static_cast<uint64_t>(*nmtPtr) *
+                       static_cast<uint64_t>(info.cfg.perSlotBytes);
     uint64_t winNeedTotal = (winNeed > winNeedCombine) ? winNeed : winNeedCombine;
     OPS_ERR_IF(winNeedTotal > maxWindowSize,
                OPS_LOG_E(nodeName, "HCCL_BUFFSIZE too small, need %luMB.", (winNeedTotal / MB_SIZE) + 1UL),
@@ -111,10 +110,9 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     info.totalWinSizeEp = maxWindowSize;
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OPS_ERR_IF(workSpaces == nullptr, OPS_LOG_E(nodeName, "workSpaces is nullptr."),
-               return ge::GRAPH_FAILED);
-    uint64_t stashBytes = static_cast<uint64_t>(info.cfg.numTokens) * static_cast<uint64_t>(info.cfg.topK)
-                          * static_cast<uint64_t>(info.cfg.perSlotBytes);
+    OPS_ERR_IF(workSpaces == nullptr, OPS_LOG_E(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
+    uint64_t stashBytes = static_cast<uint64_t>(info.cfg.numTokens) * static_cast<uint64_t>(info.cfg.topK) *
+                          static_cast<uint64_t>(info.cfg.perSlotBytes);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes;
 
     uint32_t tplHasTopkWeights = hasTopkWeights ? 1 : 0;
@@ -145,4 +143,4 @@ ge::graphStatus TilingParseForMoeEpCombine(gert::TilingParseContext *context)
 IMPL_OP_OPTILING(MoeEpCombine)
     .Tiling(MoeEpCombineTilingFunc)
     .TilingParse<MoeEpCombineCompileInfo>(TilingParseForMoeEpCombine);
-}  // namespace optiling
+} // namespace optiling

@@ -23,8 +23,11 @@ static constexpr size_t COMBINE_ATTR_CCL_BUFFER_SIZE_INDEX = 4;
 
 static constexpr size_t DIM_TWO = 2UL;
 
-static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context) {
-    if (context == nullptr) { return ge::GRAPH_FAILED; }
+static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context)
+{
+    if (context == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape for MoeEpCombine.");
 
     const gert::Shape *xShape = context->GetInputShape(COMBINE_INPUT_X_INDEX);
@@ -58,18 +61,20 @@ static ge::graphStatus InferShapeMoeEpCombine(gert::InferShapeContext *context) 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeEpCombine(gert::InferDataTypeContext *context) {
-    if (context == nullptr) { return ge::GRAPH_FAILED; }
+static ge::graphStatus InferDataTypeMoeEpCombine(gert::InferDataTypeContext *context)
+{
+    if (context == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
     context->SetOutputDataType(COMBINE_OUTPUT_COMBINED_X_INDEX, ge::DT_BF16);
-    const gert::Shape *topkWeightsShape = context->GetOptionalInputShape(COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX);
-    if (topkWeightsShape != nullptr) {
+    const ge::DataType topkWeightsDataType =
+        context->GetOptionalInputDataType(COMBINE_INPUT_TOPK_WEIGHTS_OPTIONAL_INDEX);
+    if (topkWeightsDataType != ge::DT_UNDEFINED) {
         context->SetOutputDataType(COMBINE_OUTPUT_COMBINED_TOPK_WEIGHTS_OPTIONAL_INDEX, ge::DT_FLOAT);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(MoeEpCombine)
-    .InferShape(InferShapeMoeEpCombine)
-    .InferDataType(InferDataTypeMoeEpCombine);
+IMPL_OP_INFERSHAPE(MoeEpCombine).InferShape(InferShapeMoeEpCombine).InferDataType(InferDataTypeMoeEpCombine);
 
-}  // namespace ops
+} // namespace ops

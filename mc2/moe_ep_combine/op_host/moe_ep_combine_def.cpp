@@ -4,7 +4,8 @@ namespace ops {
 
 class MoeEpCombine : public OpDef {
 public:
-    explicit MoeEpCombine(const char* name) : OpDef(name) {
+    explicit MoeEpCombine(const char *name) : OpDef(name)
+    {
         this->Input("context")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
@@ -12,47 +13,47 @@ public:
             .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("dst_buffer_slot_idx")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("recv_src_metadata")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("topk_weights_optional")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("bias_optional_0")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("bias_optional_1")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
         this->Output("combined_x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND});
         this->Output("combined_topk_weights_optional")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
@@ -80,4 +81,4 @@ public:
 
 OP_ADD(MoeEpCombine);
 
-}  // namespace ops
+} // namespace ops
