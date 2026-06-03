@@ -34,20 +34,19 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
-        [False, False, False, False, True, True, True, True, True, True, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False,
-         False, False, False, False, True, True])
+        [False, False, False, False, True, True, True, True, True, True, False],
+        [False, False, False, False, False, False, False, False, False, False,
+         False, False, True, True])
     def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
                 weight1: List[Tensor], weight2: List[Tensor],
                 weight_scales1: List[Tensor], weight_scales2: List[Tensor],
                 bias1: List[Tensor], bias2: List[Tensor],
-                x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
+                x_active_mask: Optional[Tensor], *,
                 moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
                 max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
                 dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
                 num_max_tokens_per_rank: int = 0, activation: str = "swiglu",
                 activation_clamp: float = 3.4028234663852886e+38, activation_out_dtype: int = 28,
-                transpose_weight1: bool = False, transpose_weight2: bool = False, weight1_interleave: int = 0,
                 dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
@@ -64,7 +63,6 @@ if _TORCHAIR_AVAILABLE:
         .DYNAMIC_INPUT(bias1, TensorType({DT_FLOAT}))\n
         .DYNAMIC_INPUT(bias2, TensorType({DT_FLOAT}))\n
         .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))\n
-        .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OUTPUT(y, TensorType({DT_BF16, DT_FLOAT16}))\n
         .OUTPUT(expert_token_nums, TensorType({DT_INT32}))\n
         .REQUIRED_ATTR(moe_expert_num, Int)\n
@@ -79,9 +77,6 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
         .ATTR(activation_out_dtype, Int, 28)\n
-        .ATTR(transpose_weight1, Bool, false)\n
-        .ATTR(transpose_weight2, Bool, false)\n
-        .ATTR(weight1_interleave, Int, 0)\n
         """
         inputs = {
             "context": context,
@@ -95,7 +90,6 @@ if _TORCHAIR_AVAILABLE:
             "bias1": bias1,
             "bias2": bias2,
             "x_active_mask": x_active_mask,
-            "scales": scales,
         }
 
         attrs = {
@@ -110,10 +104,7 @@ if _TORCHAIR_AVAILABLE:
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
             "activation_clamp": attr.Float(activation_clamp),
-            "activation_out_dtype": attr.Int(dispatch_quant_out_dtype),
-            "transpose_weight1": attr.Bool(transpose_weight1),
-            "transpose_weight2": attr.Bool(transpose_weight2),
-            "weight1_interleave": attr.Int(weight1_interleave)
+            "activation_out_dtype": attr.Int(dispatch_quant_out_dtype)
         }
 
         outputs = [
@@ -142,7 +133,6 @@ if _TORCHAIR_AVAILABLE:
             .dynamic_input("bias1", "DT_FLOAT") \
             .dynamic_input("bias2", "DT_FLOAT") \
             .optional_input("x_active_mask", "DT_INT8") \
-            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .required_attr("moe_expert_num", attr.Int) \
             .required_attr("ep_world_size", attr.Int) \
             .required_attr("ccl_buffer_size", attr.Int) \
@@ -155,9 +145,6 @@ if _TORCHAIR_AVAILABLE:
             .attr("activation", attr.Str("swiglu")) \
             .attr("activation_clamp", attr.Float(3.4028234663852886e+38)) \
             .attr("activation_out_dtype", attr.Int(28)) \
-            .attr("transpose_weight1", attr.Bool(false)) \
-            .attr("transpose_weight2", attr.Bool(false)) \
-            .attr("weight1_interleave", attr.Int(0)) \
             .output("y", "DT_BF16, DT_FLOAT16") \
             .output("expert_token_nums", "DT_INT32")
         )
@@ -179,7 +166,6 @@ if _TORCHAIR_AVAILABLE:
         bias1: Optional[List[Tensor]] = None,
         bias2: Optional[List[Tensor]] = None,
         x_active_mask: Optional[Tensor] = None,
-        scales: Optional[Tensor] = None,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         combine_quant_mode: int = 0,
@@ -187,9 +173,6 @@ if _TORCHAIR_AVAILABLE:
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e+38,
-        transpose_weight1: bool = False,
-        transpose_weight2: bool = False,
-        weight1_interleave: int = 0,
         dispatch_quant_out_dtype: int = 28,
         activation_out_dtype: int = 28,
         weight1_type: int = 28,
@@ -207,7 +190,6 @@ if _TORCHAIR_AVAILABLE:
                        bias1=bias1,
                        bias2=bias2,
                        x_active_mask=x_active_mask,
-                       scales=scales,
                        moe_expert_num=moe_expert_num,
                        ep_world_size=ep_world_size,
                        ccl_buffer_size=ccl_buffer_size,
@@ -219,8 +201,5 @@ if _TORCHAIR_AVAILABLE:
                        num_max_tokens_per_rank=num_max_tokens_per_rank,
                        activation=activation,
                        activation_clamp=activation_clamp,
-                       activation_out_dtype=activation_out_dtype,
-                       transpose_weight1=transpose_weight1,
-                       transpose_weight2=transpose_weight2,
-                       weight1_interleave=weight1_interleave)
+                       activation_out_dtype=activation_out_dtype)
 

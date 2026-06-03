@@ -25,7 +25,6 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const c10::optional<std::vector<at::Tensor>> &bias1,
     const c10::optional<std::vector<at::Tensor>> &bias2,
     const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &scales,
     int64_t max_recv_token_num,
     int64_t dispatch_quant_mode,
     int64_t combine_quant_mode,
@@ -33,9 +32,6 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t num_max_tokens_per_rank,
     std::string activation,
     double activation_clamp,
-    bool transpose_weight1,
-    bool transpose_weight2,
-    int64_t weight1_interleave,
     c10::optional<int64_t> dispatch_quant_out_dtype,
     c10::optional<int64_t> activation_out_dtype,
     c10::optional<int64_t> weight1_type,
@@ -144,10 +140,10 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
         weight2_wrapper, weight_scales1_wrapper, weight_scales2_wrapper, bias1_wrapper, bias2_wrapper,
-        x_active_mask, scales, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
+        x_active_mask, moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
         dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
         comm_alg_ptr, num_max_tokens_per_rank, activation_ptr, activation_clamp, activation_out_result_dtype,
-        transpose_weight1, transpose_weight2, weight1_interleave, y, expert_token_nums);
+        y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
 }
