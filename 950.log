@@ -1,0 +1,66 @@
+[2026-06-03 09:37:45] Warning: Hardware type 'Ascend950' detected. Please ensure you are using compatible hardware.
+[2026-06-03 09:37:45] [2026-06-03 09:37:45] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DENABLE_EXPERIMENTAL=TRUE -DASCEND_OP_NAME=moe_distribute_combine_v2,moe_distribute_combine_v2;moe_distribute_combine_v3 -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/local/bin/ccache -DASCEND_COMPUTE_UNIT=Ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-06-03 09:37:46] -- The C compiler identification is GNU 13.3.0
+[2026-06-03 09:37:46] -- The CXX compiler identification is GNU 13.3.0
+[2026-06-03 09:37:46] -- Detecting C compiler ABI info
+[2026-06-03 09:37:46] -- Detecting C compiler ABI info - done
+[2026-06-03 09:37:46] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-06-03 09:37:46] -- Detecting C compile features
+[2026-06-03 09:37:46] -- Detecting C compile features - done
+[2026-06-03 09:37:46] -- Detecting CXX compiler ABI info
+[2026-06-03 09:37:46] -- Detecting CXX compiler ABI info - done
+[2026-06-03 09:37:46] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-06-03 09:37:46] -- Detecting CXX compile features
+[2026-06-03 09:37:46] -- Detecting CXX compile features - done
+[2026-06-03 09:37:46] -- Initialization summary: Found ccache, TARGET_ARCH: aarch64
+[2026-06-03 09:37:46] -- ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.1.0
+[2026-06-03 09:37:46] -- unsupport chip type
+[2026-06-03 09:37:46] -- Detected architecture: ARM64
+[2026-06-03 09:37:46] -- Configuring done
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    CHECK_COMPATIBLE
+    CUSTOM_CCACHE
+    ENABLE_BUILD_PKG
+    ENABLE_OPS_HOST
+    ENABLE_OPS_KERNEL
+
+
+[2026-06-03 09:37:46] -- Generating done
+[2026-06-03 09:37:46] -- Build files have been written to: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-03 09:37:46] [100%] Generating version.ops-transformer.info
+[2026-06-03 09:37:46] [100%] Built target version_ops-transformer_info
+[2026-06-03 09:37:46] Run CPack packaging tool...
+[2026-06-03 09:37:46] CPack: Create package using External
+[2026-06-03 09:37:46] CPack: Install projects
+[2026-06-03 09:37:46] CPack: - Run preinstall target for: cann_ops-transformer
+[2026-06-03 09:37:46] CPack: - Install project: cann_ops-transformer []
+[2026-06-03 09:37:46] CPack: Create package
+[2026-06-03 09:37:46] -- CPACK_CMAKE_SOURCE_DIR = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer
+[2026-06-03 09:37:46] -- CPACK_CMAKE_CURRENT_SOURCE_DIR = 
+[2026-06-03 09:37:46] -- CPACK_CMAKE_BINARY_DIR = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build
+[2026-06-03 09:37:46] -- CPACK_CMAKE_INSTALL_PREFIX = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build_out
+[2026-06-03 09:37:46] -- CMAKE_COMMAND = /opt/buildtools/cmake-3.20.5-linux-aarch64/bin/cmake
+[2026-06-03 09:37:46] -- CPACK_TEMPORARY_DIRECTORY = /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/Linux/External/ops-transformer-9.1.0-Linux
+[2026-06-03 09:37:46] -- CPACK_VERSION_SRC = 
+[2026-06-03 09:37:46] -- Install configuration: ""
+[2026-06-03 09:37:46] -- Installing: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/makeself_staging/share/info/ops_transformer/version.info
+[2026-06-03 09:37:46] -- Installing: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/makeself_staging/share/info/ops_transformer/script/help.info
+[2026-06-03 09:37:46] -- Installing: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/makeself_staging/share/info/ops_transformer/script/install.sh
+[2026-06-03 09:37:46] -- Installing: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/makeself_staging/share/info/ops_transformer/script/cleanup.sh
+[2026-06-03 09:37:47] -- Filelist generated successfully: [2026-06-03 09:37:47] [INFO] [/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_deps/cann-cmake-src/scripts/package/package.py] [901] /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_deps/cann-cmake-src/scripts/package/package.py --pkg_name ops_transformer --chip_name Ascend950 --os_arch linux-aarch64 --version_dir --delivery_dir /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build --source_dir /mnt/workspace/gitCode/gitcode_lijd/ops-transformer
+[2026-06-03 09:37:47] [2026-06-03 09:37:47] [INFO] [/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_deps/cann-cmake-src/scripts/package/package.py] [530] package cann-950-ops-transformer_9.1.0_linux-aarch64.run generate filelist.csv and makeself cmd successfully!
+[2026-06-03 09:37:47] -- script output: --pigz --complevel 4 --nomd5 --sha256 --nooverwrite --chown --tar-format gnu --tar-extra --numeric-owner --tar-quietly --cleanup share/info/ops_transformer/script/cleanup.sh cann-950-ops-transformer_9.1.0_linux-aarch64.run "ASCEND950_OPS-TRANSFORMER_RUN_PACKAGE"
+[2026-06-03 09:37:47] -- makeself: --pigz;--complevel;4;--nomd5;--sha256;--nooverwrite;--chown;--tar-format;gnu;--tar-extra;--numeric-owner;--tar-quietly;--cleanup;share/info/ops_transformer/script/cleanup.sh;/mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/_CPack_Packages/makeself_staging;cann-950-ops-transformer_9.1.0_linux-aarch64.run;"ASCEND950_OPS-TRANSFORMER_RUN_PACKAGE"
+[2026-06-03 09:37:47] -- package: cann-950-ops-transformer_9.1.0_linux-aarch64.run
+[2026-06-03 09:37:47] 
+[2026-06-03 09:37:47] About to compress 68 KB of data...
+[2026-06-03 09:37:47] Adding files to archive named "cann-950-ops-transformer_9.1.0_linux-aarch64.run"...
+[2026-06-03 09:37:47] CRC: 3373161544
+[2026-06-03 09:37:47] SHA256: 5fecad49d2ea639b894964dce515a674548b2642cdde033355f353c266fa6ab6
+[2026-06-03 09:37:47] Skipping md5sum at user request
+[2026-06-03 09:37:47] 
+[2026-06-03 09:37:47] Self-extractable archive "cann-950-ops-transformer_9.1.0_linux-aarch64.run" successfully created.
+[2026-06-03 09:37:47] -- Build pkg success: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build_out/cann-950-ops-transformer_9.1.0_linux-aarch64.run
+[2026-06-03 09:37:47] CPack: - package: /mnt/workspace/gitCode/gitcode_lijd/ops-transformer/build/ops-transformer-9.1.0-Linux.json generated.
