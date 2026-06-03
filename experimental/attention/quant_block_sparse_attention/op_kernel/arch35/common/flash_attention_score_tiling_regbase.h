@@ -18,44 +18,6 @@
 
 
 namespace optiling {
-class FlashAttentionScoreEmptyInputTilingDataRegbase {
-public:
-    uint32_t coreNum;
-    uint32_t attentionOutFormerNum;
-    uint32_t attentionOutTailNum;
-    uint32_t softmaxMaxFormerNum;
-    uint32_t softmaxMaxTailNum;
-    uint64_t attentionOutSingleCoreDataSize;
-    uint64_t attentionOutTailCoreDataSize;
-    uint64_t softmaxMaxSingleCoreDataSize;
-    uint64_t softmaxMaxTailCoreDataSize;
-    uint64_t attentionOutLastCoreDataSize;
-    uint64_t attentionOutLastCoreIndex;
-
-    uint32_t get_coreNum() const {return coreNum;}
-    uint32_t get_attentionOutFormerNum() const {return attentionOutFormerNum;}
-    uint32_t get_attentionOutTailNum() const {return attentionOutTailNum;}
-    uint32_t get_softmaxMaxFormerNum() const {return softmaxMaxFormerNum;}
-    uint32_t get_softmaxMaxTailNum() const {return softmaxMaxTailNum;}
-    uint64_t get_attentionOutSingleCoreDataSize() const {return attentionOutSingleCoreDataSize;}
-    uint64_t get_attentionOutTailCoreDataSize() const {return attentionOutTailCoreDataSize;}
-    uint64_t get_softmaxMaxSingleCoreDataSize() const {return softmaxMaxSingleCoreDataSize;}
-    uint64_t get_softmaxMaxTailCoreDataSize() const {return softmaxMaxTailCoreDataSize;}
-    uint64_t get_attentionOutLastCoreDataSize() const {return attentionOutLastCoreDataSize;}
-    uint64_t get_attentionOutLastCoreIndex() const {return attentionOutLastCoreIndex;}
-
-    void set_coreNum(uint32_t coreNumParam) {this->coreNum = coreNumParam;}
-    void set_attentionOutFormerNum(uint32_t attentionOutFormerNumParam) {this->attentionOutFormerNum = attentionOutFormerNumParam;}
-    void set_attentionOutTailNum(uint32_t attentionOutTailNumParam) {this->attentionOutTailNum = attentionOutTailNumParam;}
-    void set_softmaxMaxFormerNum(uint32_t softmaxMaxFormerNumParam) {this->softmaxMaxFormerNum = softmaxMaxFormerNumParam;}
-    void set_softmaxMaxTailNum(uint32_t softmaxMaxTailNumParam) {this->softmaxMaxTailNum = softmaxMaxTailNumParam;}
-    void set_attentionOutSingleCoreDataSize(uint64_t attentionOutSingleCoreDataSizeParam) {this->attentionOutSingleCoreDataSize = attentionOutSingleCoreDataSizeParam;}
-    void set_attentionOutTailCoreDataSize(uint64_t attentionOutTailCoreDataSizeParam) {this->attentionOutTailCoreDataSize = attentionOutTailCoreDataSizeParam;}
-    void set_softmaxMaxSingleCoreDataSize(uint64_t softmaxMaxSingleCoreDataSizeParam) {this->softmaxMaxSingleCoreDataSize = softmaxMaxSingleCoreDataSizeParam;}
-    void set_softmaxMaxTailCoreDataSize(uint64_t softmaxMaxTailCoreDataSizeParam) {this->softmaxMaxTailCoreDataSize = softmaxMaxTailCoreDataSizeParam;}
-    void set_attentionOutLastCoreDataSize(uint64_t attentionOutLastCoreDataSizeParam) {this->attentionOutLastCoreDataSize = attentionOutLastCoreDataSizeParam;}
-    void set_attentionOutLastCoreIndex(uint64_t attentionOutLastCoreIndexParam) {this->attentionOutLastCoreIndex = attentionOutLastCoreIndexParam;}
-};
 
 class InputParamsRegbase {
 public:

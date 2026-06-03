@@ -25,7 +25,5 @@
 #include "memcopy/parser.h"
 #include "memcopy/offset_calculator_v2.h"
 #include "memcopy/fa_gm_tensor.h"
-#include "memcopy/fa_l1_tensor.h"
-#include "memcopy/gm_coord.h"
 
 #endif
