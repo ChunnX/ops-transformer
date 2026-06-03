@@ -367,7 +367,6 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     uint32_t aivNum = platformAivNum;
     if (aivNumPtr != nullptr && *aivNumPtr <= platformAivNum) {
         aivNum = static_cast<uint32_t>(*aivNumPtr);
-        OP_LOGD(nodeName, "User set aiv_num = %ld", *aivNumPtr); 
     }
 
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);

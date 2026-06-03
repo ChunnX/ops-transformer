@@ -1,3 +1,16 @@
+#  Copyright (c) 2025 Huawei Technologies Co., Ltd.
+#  This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+#  CANN Open Software License Agreement Version 2.0 (the "License").
+#  Please refer to the License for details. You may not use this file except in compliance with the License.
+#  THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+#  INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+#  See LICENSE in the root of the software repository for the full text of the License.
+#
+
+# !
+#  \file bandwidth_test.py
+#  \brief
+
 import os
 import sys
 import socket
@@ -454,8 +467,6 @@ def compare_result(
         
         if max_rel_diff > rtol and max_diff > atol:
             logger.error(f"\n[ERROR] {name} 精度不满足要求:")
-            logger.error(f"  最大绝对误差: {max_diff}")
-            logger.error(f"  平均绝对误差: {mean_diff}")
             logger.error(f"  最大相对误差: {max_rel_diff}")
             logger.error(f"  容忍范围: rtol={rtol}, atol={atol}")
             return False
@@ -471,8 +482,6 @@ def compare_result(
         
         if max_diff > atol:
             logger.error(f"\n[ERROR] {name} 精度不满足要求:")
-            logger.error(f"  最大绝对误差: {max_diff}")
-            logger.error(f"  平均绝对误差: {mean_diff}")
             logger.error(f"  容忍范围: atol={atol}")
             return False
         else:
@@ -518,12 +527,6 @@ def run_bandwidth_test_npu(
     x_npu = x.to(input_dtype).npu()
     dstrank_id_npu = dstrank_id.to(torch.int32).npu()
     
-    logger.debug(f"[DEBUG] device_{rank} x shape: {x_npu.shape}, dtype: {x_npu.dtype}, device: {x_npu.device}")
-    logger.debug(f"[DEBUG] device_{rank} dstrank_id shape: {dstrank_id_npu.shape}, "
-          f"dtype: {dstrank_id_npu.dtype}, device: {dstrank_id_npu.device}")
-    logger.debug(f"[DEBUG] device_{rank} group: {hcomm_info}, world_size: {test_world_size}, "
-          f"max_bs: {test_max_bs}, mode: {test_mode}")
-    
     bandwidth_test_kwargs = {
         'x': x_npu,
         'dstrank_id': dstrank_id_npu,
@@ -559,7 +562,6 @@ def run_bandwidth_test_npu(
     
     if destroy_comm:
         dist.destroy_process_group()
-        logger.info(f'rank {rank} destroyed process group')
     
     logger.info(f'rank {rank} npu finished! \n')
     
@@ -611,24 +613,14 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         max_bs={test_max_bs}")
         logger.info(f"{'='*60}")
         
-        if is_save_tensor_to_bin:
-            save_tensor_to_bin(x.to(torch.float32), f"x_in_{rank}_config{config_index}")
-            save_tensor_to_bin(dstrank_id.to(torch.int32), f"dstrank_id_{rank}_config{config_index}")
-        
         logger.info(f'[INFO] device_{rank} 构造bandwidth_test算子输入数据')
         
         x_npu = x.to(input_dtype).npu()
         dstrank_id_npu = dstrank_id.to(torch.int32).npu()
         
         bandwidth_test_kwargs = {
-            'x': x_npu,
-            'dstrank_id': dstrank_id_npu,
-            'group': hcomm_info,
-            'world_size': test_world_size,
-            'max_bs': test_max_bs,
-            'mode': mode,
-            'comm_alg': comm_alg,
-            'aiv_num': aiv_num,
+            'x': x_npu, 'dstrank_id': dstrank_id_npu, 'group': hcomm_info, 'world_size': test_world_size,
+            'max_bs': test_max_bs, 'mode': mode, 'comm_alg': comm_alg, 'aiv_num': aiv_num,
         }
 
         torch.npu.synchronize()
@@ -652,10 +644,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         
         torch.npu.synchronize()
         
-        if is_save_tensor_to_bin:
-            save_tensor_to_bin(y.to(torch.float32), f"y_out_{rank}_config{config_index}")
-            save_tensor_to_bin(receive_cnt, f"receive_cnt_{rank}_config{config_index}")
-        
         results.append({
             'config_index': config_index,
             'y': y.cpu(),
@@ -667,7 +655,6 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
         logger.info(f'[INFO] device_{rank} Config [{config_index}] 完成')
     
     dist.destroy_process_group()
-    logger.info(f'[INFO] rank {rank} 销毁通信域，多配置测试完成\n')
     
     queue.put([rank, results])
 
@@ -781,12 +768,6 @@ def run_bandwidth_test(
 def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     """运行多配置带宽测试（共享通信域）"""
     all_results = []
-    
-    logger.info("\n" + "=" * 80)
-    logger.info("Multi-Config Bandwidth Test (Shared Communication Domain)")
-    logger.info("=" * 80)
-    logger.info(f"Total test configurations: {len(test_configs)}")
-    logger.info("-" * 80)
     
     clean_previous_profiling_result()
     

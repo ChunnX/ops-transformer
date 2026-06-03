@@ -51,7 +51,7 @@ ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                                  aclrtStream stream);
+                                         aclrtStream stream);
 #ifdef __cplusplus
 }
 #endif
