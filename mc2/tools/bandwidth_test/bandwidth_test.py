@@ -143,7 +143,7 @@ else:
     mode = 1
 # endregion
 
-comm_alg = "mte"
+comm_alg = "urma"
 
 # region 其他配置
 is_save_tensor_to_bin = False
@@ -202,7 +202,10 @@ def check_setting():
 def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
     active = num_loop // num_repeat - num_warmup
 
-    experimental_config = torch_npu.profiler._ExperimentalConfig(
+def get_profiling(num_loop, num_repeat, num_warmup, profiling_output_path):
+    active = num_loop // num_repeat - num_warmup
+
+    experimental_config = torch_npu.profiler._ExperimentalConfig(  # noqa: SLF001
         export_type=torch_npu.profiler.ExportType.Text,
         aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
         profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
@@ -288,6 +291,27 @@ def get_bandwidth_performance(prof_result_path: str, data_size_bytes: int, num_w
         'data_size': data_size_bytes // dtype_bytes,
         'bs': test_bs
     }
+
+
+def _extract_bandwidth_execution_times(prof_result_path: str) -> List[float]:
+    """从 profiling 结果中提取 BandwidthTest 的执行时间"""
+    execution_times = []
+    
+    for dirpath, _, filenames in os.walk(prof_result_path):
+        for filename in filenames:
+            if not filename.startswith("op_summary"):
+                continue
+            
+            op_summary = pd.read_csv(os.path.join(dirpath, filename))
+            bandwidth_test_info = op_summary[op_summary['OP Type'] == 'BandwidthTest']
+            
+            if bandwidth_test_info.empty:
+                continue
+            
+            op_execute_time_series = bandwidth_test_info['Task Duration(us)'].tail(50)
+            execution_times.extend(op_execute_time_series.tolist())
+    
+    return execution_times
 
 # endregion
 
@@ -639,7 +663,7 @@ def run_bandwidth_test_npu_multi_config(queue, rank, configs):
     
     results = []
     
-    for i, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
+    for _, (x, dstrank_id, test_max_bs, test_data_size, test_world_size, config_index) in enumerate(configs):
         test_bs = x.size(0)
         logger.info(f"{'='*60}")
         logger.info(f"[Rank {rank}] Config [{config_index}] bs={test_bs}, data_size={test_data_size},"
@@ -840,7 +864,8 @@ def run_multi_config_bandwidth_test() -> List[Dict[str, Any]]:
     processes = []
     for rank in range(world_size):
         rank_configs = [
-            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3], world_size, all_inputs[i][4])
+            (all_inputs[i][0][rank], all_inputs[i][1][rank], all_inputs[i][2], all_inputs[i][3],
+            world_size, all_inputs[i][4])
             for i in range(len(all_inputs))
         ]
         p = Process(

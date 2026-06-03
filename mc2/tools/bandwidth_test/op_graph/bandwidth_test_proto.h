@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file bandwidth_test_proto.h
- * \brief Bandwidth test operator for measuring communication bandwidth
+ * \brief
  */
 #ifndef BANDWIDTH_TEST_PROTO_H_
 #define BANDWIDTH_TEST_PROTO_H_
@@ -24,7 +24,8 @@ namespace ge {
 * @par Inputs
 * Two inputs, including:
 * @li x: A tensor. Support dtype: float16, bfloat16. Shape supports (BS, H), support format: ND.
-* @li dst_rank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
+* @li dst_rank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ),
+        support format: ND.
 
 * @par Attributes
 * @li group: Required. Communication group name, dtype: String.
@@ -35,7 +36,8 @@ namespace ge {
 
 * @par Outputs
 * Two outputs, including:
-* @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H), support format: ND.
+* @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H),
+        support format: ND.
 * @li receive_cnt: A tensor. Received token count from each rank. Support dtype: int32, support format: ND.
 */
 REG_OP(BandwidthTest)
