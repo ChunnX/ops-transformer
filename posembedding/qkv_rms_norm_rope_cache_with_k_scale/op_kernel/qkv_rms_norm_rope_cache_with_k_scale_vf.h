@@ -186,7 +186,7 @@ __simd_vf__ inline void VScaleFp8D128Vf(__ubuf__ bfloat16_t *inputBf16, __ubuf__
 }
 
 __simd_vf__ inline void QkDynamicQuantD128Vf(__ubuf__ float *qkFp32, __ubuf__ fp8_e4m3fn_t *qkFp8,
-    __ubuf__ float *scaleOut, uint32_t rowSize, uint32_t scaleStride)
+    __ubuf__ float *scaleOut, uint32_t rowSize, uint32_t headNum, uint32_t scaleTokenStride)
 {
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
@@ -222,8 +222,10 @@ __simd_vf__ inline void QkDynamicQuantD128Vf(__ubuf__ float *qkFp32, __ubuf__ fp
         MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(qkFp8 + rowOffset, qkLowFp8, mask64);
         MicroAPI::StoreAlign<fp8_e4m3fn_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
             qkFp8 + rowOffset + QKV_RRC_D128_FLOAT_REPEAT_SIZE, qkHighFp8, mask64);
+        const uint32_t scaleOffset = (static_cast<uint32_t>(rowIdx) / headNum) * scaleTokenStride +
+            static_cast<uint32_t>(rowIdx) % headNum;
         MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-            scaleOut + static_cast<uint32_t>(rowIdx) * scaleStride, scale, maskFirst);
+            scaleOut + scaleOffset, scale, maskFirst);
     }
 }
 
