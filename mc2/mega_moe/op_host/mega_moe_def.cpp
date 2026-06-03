@@ -123,85 +123,92 @@ public:
 
     this->AICore().AddConfig("ascend950", aicore_config);
 
-    OpAICoreConfig aicore_config_910b;
-    aicore_config_910b.Input("context")
+    OpAICoreConfig aicore_config_arch22;
+    aicore_config_arch22.Input("context")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("x")
+    aicore_config_arch22.Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
-                   ge::DT_FLOAT16, ge::DT_BF16})
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("topk_ids")
+    aicore_config_arch22.Input("topk_ids")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("topk_weights")
+    aicore_config_arch22.Input("topk_weights")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16,
-                   ge::DT_FLOAT, ge::DT_BF16})
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16,
+                   ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("weight1")
+    aicore_config_arch22.Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_BF16,
-                   ge::DT_INT8, ge::DT_INT8})
-        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
+        .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT32, ge::DT_INT32,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
         .IgnoreContiguous();
-    aicore_config_910b.Input("weight2")
+    aicore_config_arch22.Input("weight2")
         .ParamType(DYNAMIC)
-         .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_BF16,
-                   ge::DT_INT8, ge::DT_INT8})
-        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                 ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
+        .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT32, ge::DT_INT32,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
+                   ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+        .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
         .IgnoreContiguous();
-    aicore_config_910b.Input("weight_scales1")
+    aicore_config_arch22.Input("weight_scales1")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_UINT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("weight_scales2")
+    aicore_config_arch22.Input("weight_scales2")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_UINT64})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("bias1")
+    aicore_config_arch22.Input("bias1")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("bias2")
+    aicore_config_arch22.Input("bias2")
         .ParamType(DYNAMIC)
         .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("x_active_mask")
+    aicore_config_arch22.Input("x_active_mask")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_INT8})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    aicore_config_910b.Input("scales")
+    aicore_config_arch22.Input("scales")
         .ParamType(OPTIONAL)
         .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
-    aicore_config_910b.Output("y")
+    aicore_config_arch22.Output("y")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
-                   ge::DT_FLOAT16, ge::DT_BF16})
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16,
+                   ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND});
-    aicore_config_910b.Output("expert_token_nums")
+    aicore_config_arch22.Output("expert_token_nums")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND});
     
-    aicore_config_910b.DynamicCompileStaticFlag(true)
+    aicore_config_arch22.DynamicCompileStaticFlag(true)
         .DynamicFormatFlag(true)
         .DynamicRankSupportFlag(true)
         .DynamicShapeSupportFlag(true)
@@ -211,8 +218,8 @@ public:
         .ExtendCfgInfo("prebuildPattern.value", "Opaque")
         .ExtendCfgInfo("jitCompile.flag", "static_false")
         .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
-    this->AICore().AddConfig("ascend910_93", aicore_config_910b);
-    this->AICore().AddConfig("ascend910b", aicore_config_910b);
+    this->AICore().AddConfig("ascend910_93", aicore_config_arch22);
+    this->AICore().AddConfig("ascend910b", aicore_config_arch22);
   }
 };
 

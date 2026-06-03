@@ -51,6 +51,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const char* commAlg, int64_t globalBs, aclTensor* yOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
+    OP_LOGD("aclnn_mega_moe WorkspaceSize start");
+    
     OP_CHECK_NULL(context, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(topkIds, return ACLNN_ERR_PARAM_NULLPTR);
@@ -73,15 +75,15 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpScaleList = nullptr;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_INT64, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_INT64, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(ACL_UINT64, weightScales2Optional, tmpScaleList, *executor);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,
         weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
         xActiveMaskOptional, scalesOptional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutType,
-        combineQuantMode, const_cast<char*>(commAlg), globalBs, "swiglu",
+        combineQuantMode, const_cast<char*>(commAlg), 0, "swiglu",
         std::numeric_limits<float>::max(), ge::DT_UNDEFINED, false, false, 0,
         yOut, expertTokenNumsOut, workspaceSize, executor);
 
