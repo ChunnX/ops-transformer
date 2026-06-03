@@ -151,11 +151,12 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::FusionNode(
 ge::graphStatus MoeDistributeDispatchV2FusionPass::Fusion(
     ge::Graph &graph, ge::GNode &moeDistributeDispatchNode, ge::GNode &sharedCtxNode)
 {
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     int64_t hccl_buff_size = 0;
     if (Mc2MoeGraphContext::GetMc2ContextA5(graph, MOE_CONTEXT_TAG, MOE_EP_NAME,
                                             moeDistributeDispatchNode,
-                                            sharedCtxNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+                                             sharedCtxNode, hccl_buff_size) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(PASS_NAME.c_str(), "GetMc2ContextA5 failed, V2 node kept as-is");
         return ge::GRAPH_SUCCESS;
     }
     ge::Shape shape({static_cast<int64_t>(sizeof(Mc2MoeContext) / sizeof(int32_t))});
@@ -179,7 +180,7 @@ ge::graphStatus MoeDistributeDispatchV2FusionPass::Run(ge::GraphPtr &graph, ge::
     ge::GNode sharedCtxNode;
     for (auto &gNode : graph->GetDirectNode()) {
         ge::AscendString nodeType;
-        if (gNode.GetType(nodeType) != ge::GRAPH_SUCCESS || nodeType != FUSED_OP_TYPE2.c_str()) {
+        if ((gNode.GetType(nodeType) != ge::GRAPH_SUCCESS) || (nodeType != FUSED_OP_TYPE2.c_str())) {
             continue;
         }
         ge::AscendString commAlg;
