@@ -563,7 +563,6 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
                                                         hcclServerType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    OP_LOGE(opName_, "GetTilingKey failed");
     const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE: [%d,%d,%d,%d,%d], TilingKey is [%lu].",
             quantMode, x2TransposeFlag, biasDType, isSmallK, hcclServerType, tilingKey);
