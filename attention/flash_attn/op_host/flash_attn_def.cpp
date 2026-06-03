@@ -13,7 +13,7 @@
   * \file flash_attn_def.cpp 
   * \brief FlashAttn算子定义（训练推理归一，仅非量化） 
   *        输入数据类型仅支持FLOAT16和BFLOAT16。 
-  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_Nz）。 
+  *        支持BSND/BNSD/TND三种layout，支持分页KV缓存（PA_ND/PA_NZ）。 
   */ 
  
  
