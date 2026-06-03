@@ -399,22 +399,22 @@ namespace BlockSparse {
                 // strideB = N * S * D, strideN = S * D, strideS = D
                 // maxQSeqlen is the third dimension (S) of query shape, set in tiling
                 strideQOB = static_cast<uint64_t>(qHeads) * maxQSeqlen * embed;  // batch stride
-                strideQON = static_cast<uint64_t>(maxQSeqlen) * embed;  // head stride
+                strideQON = maxQSeqlen * embed;  // head stride
                 strideQOS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideQO = static_cast<uint64_t>(qHeads) * embed;
+                strideQO = qHeads * embed;
             }
 
             if constexpr (KV_CACHE_LAYOUT == 1) {  // BNSD
                 // BNSD: [B, N, S, D]
                 // maxKvSeqlen is the third dimension (S) of value shape, set in tiling
                 strideKVB = static_cast<uint64_t>(kvHeads) * maxKvSeqlen * embed;  // batch stride
-                strideKVN = static_cast<uint64_t>(maxKvSeqlen) * embed;  // head stride
+                strideKVN = maxKvSeqlen * embed;  // head stride
                 strideKVS = embed;  // seq stride
             } else {
                 // TND: [T, N, D]
-                strideKV = static_cast<uint64_t>(kvHeads) * embed;
+                strideKV = kvHeads * embed;
             }
 
             uint32_t embedRound = AlignUp<uint32_t>(embed, BLOCK_SIZE);
