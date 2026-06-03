@@ -1036,7 +1036,7 @@ TEST_F(MatmulReduceScatterV2CcuModeTest, LowAccuracyEmptyX1Scale)
     TensorDesc x2Scale = TensorDesc({1}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
-                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -1051,7 +1051,7 @@ TEST_F(MatmulReduceScatterV2CcuModeTest, HighAccuracyEmptyBias)
     TensorDesc bias = TensorDesc({0}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
-                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, bias, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -1067,7 +1067,7 @@ TEST_F(MatmulReduceScatterV2CcuModeTest, LowAccuracyEmptyX2Scale)
     TensorDesc x2Scale = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
-                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, nullptr, x1Scale, x2Scale, nullptr, 0, "test_group", "sum", 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -1084,7 +1084,7 @@ TEST_F(MatmulReduceScatterV2AclnnTest, NzFormatX2Aiv)
     TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_FRACTAL_NZ);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
-                        INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
@@ -1100,22 +1100,22 @@ TEST_F(MatmulReduceScatterV2AclnnTest, ExecuteNullWorkspace)
     EXPECT_EQ(ret, ACLNN_SUCCESS);
 }
 
-// =================== CCU 模式 AICPU 通信模式测试 ===================
+// =================== CCU 模式 ai_cpu 通信模式测试 ===================
 
-TEST_F(MatmulReduceScatterV2CcuModeTest, AicpuCommModeEnv)
+TEST_F(MatmulReduceScatterV2CcuModeTest, ai_cpuCommModeEnv)
 {
-    setenv("ENV_MC2_COMM_MODE_AICPU", "1", 1);
+    setenv("ENV_MC2_COMM_MODE_ai_cpu", "1", 1);
     TensorDesc x1 = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2 = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnMatmulReduceScatterV2,
-                        INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "aicpu"),
+                        INPUT(x1, x2, nullptr, nullptr, nullptr, nullptr, 0, "test_group", "sum", 8, 1, 0, "ai_cpu"),
                         OUTPUT(output, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
-    unsetenv("ENV_MC2_COMM_MODE_AICPU");
+    unsetenv("ENV_MC2_COMM_MODE_ai_cpu");
 }
 
 } // namespace
