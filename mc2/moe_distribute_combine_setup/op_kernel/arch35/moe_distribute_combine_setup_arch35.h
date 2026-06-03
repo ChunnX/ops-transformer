@@ -126,6 +126,40 @@ private:
     TBuf<> piCiBuf_;        // 32B，用于 GetPICI 的 MTE 搬运
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
+    //=============================== Urma --add by xuxn ===============================//
+    constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
+    constexpr uint32_t MAX_UB_SIZE = 170U * 1024U;
+    constexpr uint8_t BUFFER_SINGLE = 1;
+
+    uint32_t hOutSize_{0};         // 输出hidden size (字节)
+    uint32_t hAlignWinSize_{0};    // 窗口对齐后的hidden size
+    uint32_t hAlignWinCnt_{0};     // 窗口对齐后的元素个数
+    uint32_t hOutAlignUbSize_{0};  // UB对齐后的hidden size
+    uint32_t hAlignSize_{0};       // UB对齐后的hidden size
+    uint32_t bufferNum_{0};        // 缓冲区数量
+
+    __gm__ ChannelEntity* urmaCommHandle_[HCCL_MAX_RANK_SIZE];
+    AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_; // 通信上下文
+
+    __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const int32_t epRankId)
+    {
+        if (rankId == epRankId) {
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
+        }
+        uint32_t currRankId = rankId > epRankId? rankId - 1 : rankId;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr + STATE_SIZE;
+    }
+
+    __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId, const int32_t epRankId)
+    {
+        if (rankId == epRankId) {
+            return (GM_ADDR)urmaCommHandle_[0]->localBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
+        }
+        uint32_t currRankId = rankId > epRankId? rankId - 1 : rankId;
+        return (GM_ADDR)urmaCommHandle_[currRankId]->remoteBufferAddr->bufferInfo.rma.addr;// + dataState_ * WIN_STATE_OFFSET;
+    }
+    //=============================== Urma --add by xuxn ===============================//
+
 };
 
 template <TemplateMC2TypeClass>
@@ -137,7 +171,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     moeDistributeCombineSetupInfo_ = &(tilingData->moeDistributeCombineSetupInfo);
-    mc2Context_ = (__gm__ Mc2MoeContext* )mc2Context;
+    mc2Context_ = (__gm__ Mc2MoeContext* )context;
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
@@ -172,6 +206,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 
     epWindowGM_ = GetWinAddrByRankId(moeDistributeCombineSetupInfo_->epRankId);
     epStatusSpaceGM_ = GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId);
+
+    //=============================== Urma --add by xuxn ===============================//
+    hOutSize_ = axisH_ * sizeof(XType);                             // 原始hidden size
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; // UB 32字节对齐
+    hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN; // 窗口512字节对齐
+    hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
+    hOutAlignUbSize_ = hAlignSize_;
+
+    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
+    //=============================== Urma --add by xuxn ===============================//
+
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), moeDistributeCombineSetupInfo_->totalWinSize);
     OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
@@ -312,8 +359,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         for(uint32_t tokenIndex = 0; tokenIndex < curTokenNum; ++tokenIndex) {
             // 计算目标窗口地址:
             // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
-            GM_ADDR rankGM = (GM_ADDR)(GetWindAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
-            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
+            GM_ADDR rankGM = (GM_ADDR)(GetWinAddrByRankId(sendRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
+            GM_ADDR remoteAddr = (GM_ADDR)(GetUrmaAddrByRankId(sendRankId, moeDistributeCombineSetupInfo_->epRankId) + expertIdx * expertPerSizeOnWin_ + tokenIndex * hAlignWinSize_);
             uint32_t currRankId = sendRankId > moeDistributeCombineSetupInfo_->epRankId ? sendRankId - 1 : sendRankId;
             handleId = hcomm_.WriteNbi<false>(mc2Context_->hcommHandle_[currRankId], remoteAddr, rankGM, hAlignSize_);
             //hcomm_.Commit(handleId);

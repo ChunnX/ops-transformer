@@ -164,6 +164,7 @@ struct HcclCombinOpParam {
     HcclAiRMACQ cqs[MAX_RANK_NUM];
 };
 
+#if 0
 // URMA通信接口
 __aicore__ inline GM_ADDR GetURMASqInfoGMAddr(GM_ADDR hcclContext, uint32_t dstRankId)
 {
@@ -540,5 +541,7 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
     AscendC::DataCopy(piCiGlobalTensor, piCiTensor, copyParams);
 }
+#endif
+
 
 #endif // MOE_DISTRIBUTE_BASE_H
