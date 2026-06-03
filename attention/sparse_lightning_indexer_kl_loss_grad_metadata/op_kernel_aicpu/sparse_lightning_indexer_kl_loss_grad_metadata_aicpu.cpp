@@ -187,6 +187,15 @@ int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS2RealSize(int64_t
     return std::max<int64_t>(0, std::min(s2SparseLen, kSize_));
 }
 
+int64_t SparseLightningIndexerKLLossGradMetadataCpuKernel::GetS1Load(int64_t s2RealSize) const
+{
+    if (s2RealSize <= 0) {
+        return 0;
+    }
+    int64_t fixedS1Load = std::min<int64_t>(256, std::min<int64_t>(kSize_, std::max<int64_t>(64, kSize_ / 4)));
+    return s2RealSize + fixedS1Load;
+}
+
 bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(std::vector<int64_t> &sparseValidArray)
 {
     if (sparseValidArray.empty()) {
@@ -200,14 +209,14 @@ bool SparseLightningIndexerKLLossGradMetadataCpuKernel::BuildSparseValidArray(st
             int64_t actualS2 = GetActualSeqLen(cuSeqLensKey_, bIdx);
             for (int64_t s1Idx = 0; s1Idx < actualS1 && accumS1 < static_cast<int64_t>(sparseValidArray.size());
                  ++s1Idx, ++accumS1) {
-                sparseValidArray[accumS1] = GetS2RealSize(actualS1, actualS2, s1Idx);
+                sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(actualS1, actualS2, s1Idx));
             }
         }
     } else {
         int64_t accum = 0;
         for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
             for (int64_t s1Idx = 0; s1Idx < s1Size_; ++s1Idx, ++accum) {
-                sparseValidArray[accum] = GetS2RealSize(s1Size_, s2Size_, s1Idx);
+                sparseValidArray[accum] = GetS1Load(GetS2RealSize(s1Size_, s2Size_, s1Idx));
             }
         }
     }

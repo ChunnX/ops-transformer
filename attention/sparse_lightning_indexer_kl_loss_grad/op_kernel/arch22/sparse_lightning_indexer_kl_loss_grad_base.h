@@ -367,11 +367,20 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
             totalInvalidS1Size += GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
         }
 
-        int64_t singleCoreInvalidSize = CeilDiv(totalInvalidS1Size, totalCoreNum);
-        int64_t clearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreInvalidSize, totalInvalidS1Size);
-        int64_t clearEnd = Min(clearStart + singleCoreInvalidSize, totalInvalidS1Size);
+        int64_t dqTotalSize = totalInvalidS1Size * qBaseOffset;
+        int64_t dwTotalSize = totalInvalidS1Size * constInfo.gSizeQueryIndex;
+        int64_t softmaxTotalSize = totalInvalidS1Size * constInfo.n2Size * topKSize;
+        int64_t singleCoreDqSize = CeilDiv(dqTotalSize, totalCoreNum);
+        int64_t singleCoreDwSize = CeilDiv(dwTotalSize, totalCoreNum);
+        int64_t singleCoreSoftmaxSize = CeilDiv(softmaxTotalSize, totalCoreNum);
+        int64_t dqClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreDqSize, dqTotalSize);
+        int64_t dqClearEnd = Min(dqClearStart + singleCoreDqSize, dqTotalSize);
+        int64_t dwClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreDwSize, dwTotalSize);
+        int64_t dwClearEnd = Min(dwClearStart + singleCoreDwSize, dwTotalSize);
+        int64_t softmaxClearStart = Min(static_cast<int64_t>(constInfo.aivIdx) * singleCoreSoftmaxSize, softmaxTotalSize);
+        int64_t softmaxClearEnd = Min(softmaxClearStart + singleCoreSoftmaxSize, softmaxTotalSize);
         int64_t invalidS1Base = 0;
-        for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < clearEnd; ++bIdx) {
+        for (int64_t bIdx = 0; bIdx < constInfo.bSize && invalidS1Base < totalInvalidS1Size; ++bIdx) {
             int64_t accumS1Len = 0;
             int64_t accumS2Len = 0;
             int64_t actualSeqLensQ = 0;
@@ -386,16 +395,32 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::InitInvalidS1
             }
 
             int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
-            int64_t localClearStart = Max(clearStart - invalidS1Base, static_cast<int64_t>(0));
-            int64_t localClearEnd = Min(clearEnd - invalidS1Base, invalidS1Size);
-            for (int64_t s1Idx = localClearStart; s1Idx < localClearEnd; ++s1Idx) {
-                int64_t s1Offset = accumS1Len + s1Idx;
-                AscendC::InitOutput(dQueryIndexGm[s1Offset * qBaseOffset],
-                                    qBaseOffset, static_cast<OUT_T>(0));
-                AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQueryIndex],
-                                    constInfo.gSizeQueryIndex, static_cast<T>(0));
-                AscendC::InitOutput(softmaxOutGm[s1Offset * constInfo.n2Size * topKSize],
-                                    constInfo.n2Size * topKSize, static_cast<T>(0));
+            int64_t dqSegmentStart = invalidS1Base * qBaseOffset;
+            int64_t dqSegmentEnd = dqSegmentStart + invalidS1Size * qBaseOffset;
+            int64_t dqLocalStart = Max(dqClearStart, dqSegmentStart);
+            int64_t dqLocalEnd = Min(dqClearEnd, dqSegmentEnd);
+            if (dqLocalStart < dqLocalEnd) {
+                int64_t gmOffset = accumS1Len * qBaseOffset + dqLocalStart - dqSegmentStart;
+                AscendC::InitOutput(dQueryIndexGm[gmOffset], dqLocalEnd - dqLocalStart, static_cast<OUT_T>(0));
+            }
+
+            int64_t dwSegmentStart = invalidS1Base * constInfo.gSizeQueryIndex;
+            int64_t dwSegmentEnd = dwSegmentStart + invalidS1Size * constInfo.gSizeQueryIndex;
+            int64_t dwLocalStart = Max(dwClearStart, dwSegmentStart);
+            int64_t dwLocalEnd = Min(dwClearEnd, dwSegmentEnd);
+            if (dwLocalStart < dwLocalEnd) {
+                int64_t gmOffset = accumS1Len * constInfo.gSizeQueryIndex + dwLocalStart - dwSegmentStart;
+                AscendC::InitOutput(dWeightGm[gmOffset], dwLocalEnd - dwLocalStart, static_cast<T>(0));
+            }
+
+            int64_t softmaxRowSize = constInfo.n2Size * topKSize;
+            int64_t softmaxSegmentStart = invalidS1Base * softmaxRowSize;
+            int64_t softmaxSegmentEnd = softmaxSegmentStart + invalidS1Size * softmaxRowSize;
+            int64_t softmaxLocalStart = Max(softmaxClearStart, softmaxSegmentStart);
+            int64_t softmaxLocalEnd = Min(softmaxClearEnd, softmaxSegmentEnd);
+            if (softmaxLocalStart < softmaxLocalEnd) {
+                int64_t gmOffset = accumS1Len * softmaxRowSize + softmaxLocalStart - softmaxSegmentStart;
+                AscendC::InitOutput(softmaxOutGm[gmOffset], softmaxLocalEnd - softmaxLocalStart, static_cast<T>(0));
             }
             invalidS1Base += invalidS1Size;
         }
@@ -471,6 +496,13 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::CalcMultiCore
     int64_t bS1Index = GetMetadataBS1Index(constInfo.aicIdx);
     int64_t bS1EndIndex = constInfo.aicIdx + 1 < optiling::MAX_CORE_NUM ?
                 GetMetadataBS1Index(constInfo.aicIdx + 1) : GetMetadataTotalSize();
+    if (bS1Index >= bS1EndIndex || bS1Index >= GetMetadataTotalSize()) {
+        bStartIdx = 1;
+        bEndIdx = 0;
+        s1StartIdx = 0;
+        s1EndIdx = 0;
+        return;
+    }
     if constexpr (LAYOUT_T == SLILayout::TND) {
         bStartIdx = FindBIndex(0, bS1Index, actualSum);
         s1StartIdx = bS1Index - actualSum;
@@ -531,7 +563,11 @@ __aicore__ inline void SparseLightningIndexerKLLossGradBase<SLIT>::Process()
         } else if constexpr (LAYOUT_T == SLILayout::BSND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;
             s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;
+            actualSeqLensQ = constInfo.s1Size;
+            actualSeqLensK = constInfo.s2Size;
         }
+        int64_t invalidS1Size = GetInvalidS1Size(actualSeqLensQ, actualSeqLensK);
+        s1StartIdxThisBatch = Min(Max(s1StartIdxThisBatch, invalidS1Size), s1EndIdxThisBatch);
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
         }
