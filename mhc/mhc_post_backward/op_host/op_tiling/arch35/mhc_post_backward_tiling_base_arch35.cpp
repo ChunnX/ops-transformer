@@ -606,7 +606,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckSpecConstraints()
 {
     if (totalItems_ == 0) {
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(context_->GetNodeName(), "grad_output",
-            std::to_string(totalItems_).c_str(), "greater than 0",
+            std::to_string(totalItems_).c_str(),
             "totalItems (B*S for BSND or T for TND) cannot be zero");
         return ge::GRAPH_FAILED;
     }
