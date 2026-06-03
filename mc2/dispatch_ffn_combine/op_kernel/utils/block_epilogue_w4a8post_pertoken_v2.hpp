@@ -209,6 +209,7 @@ public:
 
         int32_t gmScaleOffset = (preSrcExpertSum + blockCoord.m()) / 2;
         for (int32_t row = 0; row < actualBlockShape.m() / 2; ++row) {
+            dcci(gmPerTokenScale.GetPhtAddr(gmScaleOffset + row), 0);
             float scale = gmPerTokenScale(gmScaleOffset + row);
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);

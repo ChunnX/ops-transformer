@@ -233,7 +233,7 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
     }
 
     uint32_t expertPerRank;
-    if (listLen == 1) {
+    if (listLen == 1 && w1Tensor->GetStorageShape().GetDim(0) == 3) {
         expertPerRank = w1Tensor->GetStorageShape().GetDim(0);
     } else {
         expertPerRank = listLen;
