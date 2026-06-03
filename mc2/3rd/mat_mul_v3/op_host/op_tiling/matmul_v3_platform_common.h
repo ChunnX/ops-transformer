@@ -23,6 +23,7 @@
 namespace optiling {
 const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {
     NpuArch::DAV_3510,
+    NpuArch::DAV_9201,
     NpuArch::DAV_RESV};  // supportMmadS8S4平台
 
 template <typename T>

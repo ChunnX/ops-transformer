@@ -43,7 +43,7 @@ constexpr uint32_t X2SCALE_INDEX = 4;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) &&
+    if ((npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) &&
         ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16))) {
         OP_LOGI(opName_, "start with MatmulReduceScatterV2Tiling tiling.");
         return true;
@@ -219,7 +219,8 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
         return scatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+        SocVersion inputSocVersion =
+            (npuArch_ == NpuArch::DAV_3510 || npuArch_ == NpuArch::DAV_9201) ? SocVersion::SOC950 : SocVersion::SOC910_B;
         MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
         scatterTiling.GetTiling();
         return scatterTiling.tilingM_.cutRes;
@@ -228,6 +229,7 @@ CutResult MatmulReduceScatterV2Tiling::GetTilingResult()
 
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, MatmulReduceScatterV2Tiling, \
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510), \
+                                                         static_cast<int32_t>(NpuArch::DAV_9201)}), 0);
 
 }
