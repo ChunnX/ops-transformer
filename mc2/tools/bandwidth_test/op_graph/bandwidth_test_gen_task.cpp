@@ -31,7 +31,7 @@ ge::Status BandwidthTestCalcParamFunc(gert::ExeResGenerationContext *context)
 }
 
 ge::Status BandwidthTestGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                             std::vector<std::vector<uint8_t>> &tasks)
+                                    std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
     OPS_LOG_D(nodeName, "Do bandwidth_test gen task.");
