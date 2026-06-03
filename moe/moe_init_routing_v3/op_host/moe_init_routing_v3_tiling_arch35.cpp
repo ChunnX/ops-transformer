@@ -256,6 +256,8 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     bool IsFullLoad();
+    void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
+                                        int64_t lastCoreIndicesElements);
 
     // DropPad模式Tiling计算函数
     void Tiling4SrcToDstDropPadCompute();
@@ -1732,6 +1734,27 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(int64_t p
     return (availUbSize_ - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
+void MoeInitRoutingV3Arch35TilingClass::SetIndicesLoopParams4GatherOut(
+    int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements, int64_t lastCoreIndicesElements)
+{
+    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+    int64_t perCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, perCoreIndicesElements);
+    int64_t perCoreIndicesLoops = Ops::Base::CeilDiv(perCoreIndicesElements, perCorePerLoopIndicesElements);
+    int64_t perCoreLastLoopIndicesElements =
+        perCoreIndicesElements - (perCoreIndicesLoops - 1) * perCorePerLoopIndicesElements;
+    gatherOutTiling->perCoreIndicesLoops = perCoreIndicesLoops;
+    gatherOutTiling->perCorePerLoopIndicesElements = perCorePerLoopIndicesElements;
+    gatherOutTiling->perCoreLastLoopIndicesElements = perCoreLastLoopIndicesElements;
+
+    int64_t lastCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, lastCoreIndicesElements);
+    int64_t lastCoreIndicesLoops = Ops::Base::CeilDiv(lastCoreIndicesElements, lastCorePerLoopIndicesElements);
+    int64_t lastCoreLastLoopIndicesElements =
+        lastCoreIndicesElements - (lastCoreIndicesLoops - 1) * lastCorePerLoopIndicesElements;
+    gatherOutTiling->lastCoreIndicesLoops = lastCoreIndicesLoops;
+    gatherOutTiling->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
+    gatherOutTiling->lastCoreLastLoopIndicesElements = lastCoreLastLoopIndicesElements;
+}
+
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxQuant()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxQuant()");
@@ -1751,7 +1774,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxQuant()
         perLoopCols = Ops::Base::CeilAlign(Ops::Base::CeilDiv(perLoopCols, NUM_TWO), MX_QUANT_BLOCK_SIZE);
         perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopMxQuant(perLoopCols);
     }
-    // 如果已经减到MX_QUANT_BLOCK_SIZE仍不满足条件，返回错误
     if (perLoopMaxIndicesElements <= 0) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "availUbSize, cols",
                                                (std::to_string(availUbSize_) + ", " +
@@ -1770,25 +1792,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxQuant()
     gatherOutTiling->perLoopCols = perLoopCols;
     gatherOutTiling->lastLoopCols = lastLoopCols;
 
-    int64_t perCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, perCoreIndicesElements);
-    int64_t perCoreIndicesLoops = Ops::Base::CeilDiv(perCoreIndicesElements, perCorePerLoopIndicesElements);
-    int64_t perCoreLastLoopIndicesElements =
-        perCoreIndicesElements - (perCoreIndicesLoops - 1) * perCorePerLoopIndicesElements;
-    gatherOutTiling->perCoreIndicesLoops =
-        perCoreIndicesLoops; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
-    gatherOutTiling->perCorePerLoopIndicesElements = perCorePerLoopIndicesElements;
-    gatherOutTiling->perCoreLastLoopIndicesElements =
-        perCoreLastLoopIndicesElements; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
-
-    int64_t lastCorePerLoopIndicesElements = std::min(perLoopMaxIndicesElements, lastCoreIndicesElements);
-    int64_t lastCoreIndicesLoops = Ops::Base::CeilDiv(lastCoreIndicesElements, lastCorePerLoopIndicesElements);
-    int64_t lastCoreLastLoopIndicesElements =
-        lastCoreIndicesElements - (lastCoreIndicesLoops - 1) * lastCorePerLoopIndicesElements;
-    gatherOutTiling->lastCoreIndicesLoops =
-        lastCoreIndicesLoops; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
-    gatherOutTiling->lastCorePerLoopIndicesElements = lastCorePerLoopIndicesElements;
-    gatherOutTiling->lastCoreLastLoopIndicesElements =
-        lastCoreLastLoopIndicesElements; // 没用这个，kernel根据读取到的expertTotalCount重新计算tiling相关值
+    SetIndicesLoopParams4GatherOut(perLoopMaxIndicesElements, perCoreIndicesElements, lastCoreIndicesElements);
     gatherOutTiling->activeNum = tilingDataPtr_->activeNum;
 
     LogGatherOutTilingData();
