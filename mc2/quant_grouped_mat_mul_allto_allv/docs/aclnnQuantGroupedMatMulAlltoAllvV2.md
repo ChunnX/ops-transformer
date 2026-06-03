@@ -17,7 +17,6 @@
 
 - 接口功能：
     - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/量化介绍.md)，兼容`aclnnQuantGroupedMatMulAlltoAllv`支持的功能。
-  - <term>Ascend 950PR/Ascend 950DT</term>: 新增`comm_mode`参数，根据该参数指定通信类型。。
 
 - 计算公式：
     - 路由专家：

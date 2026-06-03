@@ -417,14 +417,14 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
     auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
     CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
-
+    const size_t maxLength = 6UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "") == 0) {
+        } else if (strncmp(commModeStr, "", maxLength) == 0) {
             if (rankSize <= RANK_DIM_BOUNDARY) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {

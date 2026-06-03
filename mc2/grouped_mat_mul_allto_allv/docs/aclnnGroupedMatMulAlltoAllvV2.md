@@ -15,8 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**，兼容`aclnnGroupedMatMulAlltoAllv`支持的功能。
-  - <term>Ascend 950PR/Ascend 950DT</term>: 新增`comm_mode`参数，根据该参数指定通信类型。
+- 接口功能：完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，**先计算后通信**。
 
 - 计算公式：
 
@@ -33,6 +32,11 @@
     $$
     mmY = mmX \times mmWeight
     $$
+相较于`aclnnGroupedMatMulAlltoAllv`接口，该接口变更如下：
+
+- 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持空字符串`""`、`ai_cpu`和`ccu`。指定空字符串时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AI_CPU引擎。
 
 ## 函数原型
 

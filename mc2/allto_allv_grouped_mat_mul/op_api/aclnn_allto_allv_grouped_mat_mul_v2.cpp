@@ -50,14 +50,14 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
     auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
     CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
-
+    const size_t maxLength = 6UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (std::strcmp(commModeStr, "ai_cpu") == 0) {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-        } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (std::strcmp(commModeStr, "") == 0) {
+        } else if (strncmp(commModeStr, "", maxLength) == 0) {
             if (rankSize <= 8) {
                 commModeEnum = Mc2Comm::COMM_MODE_CCU;
             } else {
@@ -164,7 +164,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor *gmmX,
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
     if (commMode == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
-        return false;
+        return ACLNN_ERR_PARAM_INVALID;
     }
     char *str_commMode = const_cast<char *>(commMode);
     uint8_t commModeEnum = 0;
