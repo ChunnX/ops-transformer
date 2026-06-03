@@ -202,6 +202,9 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128 and should be powers of 2, "
                         "but now cmpRatio is %ld.",
                 *opParamInfo_.cmpRatio), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!((*opParamInfo_.returnValue == 0) || (*opParamInfo_.returnValue == 1)),
+               OP_LOGE(opName_, "input attr return_value only supported 0 or 1."),
+               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -298,6 +301,10 @@ ge::graphStatus LIV2InfoParser::GetAndCheckOptionalInput()
                 OP_LOGE(opName_, "when layout_query is TND, input cu_seqlens_q must not be null"),
                 return ge::GRAPH_FAILED);
     }
+    OP_CHECK_IF(opParamInfo_.cmpResidualK.tensor != nullptr &&
+                opParamInfo_.cmpResidualK.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "input cmp_residual_k data type only support int32"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
                 OP_LOGE(opName_, "when key layout is not PA_BSND, input block_table must be null"),
                 return ge::GRAPH_FAILED);
@@ -656,6 +663,9 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.topk = *opParamInfo_.topk;
     liInfo.maxSeqlenQ = *opParamInfo_.maxSeqlenQ;
     liInfo.cmpRatio = *opParamInfo_.cmpRatio;
+    if (opParamInfo_.cmpResidualK.tensor != nullptr) {
+        liInfo.cmpResidualK = static_cast<int64_t>(opParamInfo_.cmpResidualK.tensor->GetData<int32_t>()[0]);
+    }
     liInfo.returnValue = *opParamInfo_.returnValue;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
@@ -744,6 +754,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     tilingData_.set_preTokens(tilingInfo->preTokens);
     tilingData_.set_nextTokens(tilingInfo->nextTokens);
     tilingData_.set_cmpRatio(tilingInfo->cmpRatio);
+    tilingData_.set_cmpResidualK(tilingInfo->cmpResidualK);
     tilingData_.set_returnValue(tilingInfo->returnValue);
     tilingData_.set_usedCoreNum(blockDim);
     tilingData_.set_batchSupperFlag(tilingInfo->batchSupperFlag);

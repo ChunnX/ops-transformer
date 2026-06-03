@@ -98,6 +98,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maskMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
+TILING_DATA_FIELD_DEF(int64_t, cmpResidualK)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
@@ -161,6 +162,7 @@ public:
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     int64_t cmpRatio = 1;
+    int64_t cmpResidualK = 0;
     uint32_t batchSupperFlag = 0;
     uint32_t returnValue = 0;
 
