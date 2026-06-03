@@ -19,11 +19,13 @@
 
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
+// sfa
 
 constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
 constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
+// sfa
 constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
 constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
 
@@ -73,10 +75,12 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G
 
+// sfa
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
     X(KV_T) \
     X(T) \
+// sfa
     X(OUTPUT_T) \
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
@@ -92,6 +96,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type name = default_val,
 
+// sfa
 #define TEMPLATES_DEF \
 template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = true>
@@ -101,6 +106,7 @@ template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) \
 #define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
 template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
+// sfa
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
 
 /* 3. 生成有默认值的Args */

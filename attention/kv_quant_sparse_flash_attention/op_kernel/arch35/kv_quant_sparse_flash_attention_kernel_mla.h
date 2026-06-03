@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+// qsfa
 
 /*!
  * \file kv_quant_sparse_flash_attention_kernel_mla.h
@@ -33,6 +34,7 @@
 #endif
 #if __has_include("../../common/op_kernel/FixpipeOut.h")
 #include "../../common/op_kernel/FixpipeOut.h"
+// qsfa
 #else
 #include "../common/FixpipeOut.h"
 #endif
@@ -41,6 +43,7 @@
 #else
 #include "../common/CopyInL1.h"
 #endif
+// qsfa
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -76,6 +79,7 @@ private:
     __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
+// qsfa
 
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
@@ -92,12 +96,14 @@ private:
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
+// qsfa
 
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     CVSharedParams sharedParams;
     /* GM信息 */
+// qsfa
     __gm__ int32_t *actualSeqKvlenAddr = nullptr;
     __gm__ int32_t *actualSeqQlenAddr = nullptr;
 
@@ -115,6 +121,7 @@ private:
 
     /* 初始化后不变的信息 */
     ConstInfo constInfo;
+// qsfa
 
     /* 模板库Block */
     CubeBlockType cubeBlock;
@@ -182,45 +189,47 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 {
     // 计算总的基本块
     maxS2LoopCnt = 0; // 所有核中最大累计s2Loop
-    uint32_t totalBaseNum = 0;
+    uint32_t qsfaTotalBaseNum = 0;
     uint32_t s1GBaseSize = constInfo.gSize;
     uint32_t actBatchS2 = 1;
     uint32_t coreNum = GetBlockNum(); // G128时相邻两个cube核处理一个s1，coreNum减半
     uint32_t currCoreIdx = aicIdx;
     if constexpr (IS_SPLIT_G) {
+// qsfa
         coreNum = coreNum >> 1;
         currCoreIdx = currCoreIdx >> 1;
     }
     uint32_t actBatchS1 = 1;
     for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
         uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx); //不切S2，只关注S1
-        totalBaseNum += actBatchS1 * actBatchS2;
+        qsfaTotalBaseNum += actBatchS1 * actBatchS2;
     }
     uint32_t avgBaseNum = 1;
-    if (totalBaseNum > coreNum) {
-        avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
+    if (qsfaTotalBaseNum > coreNum) {
+        avgBaseNum = (qsfaTotalBaseNum + coreNum - 1) / coreNum;
         if constexpr (IS_SPLIT_G) {
-            usedCoreNum = ((totalBaseNum + avgBaseNum - 1) / avgBaseNum) << 1;
+            usedCoreNum = ((qsfaTotalBaseNum + avgBaseNum - 1) / avgBaseNum) << 1;
         }
     } else {
         if constexpr (IS_SPLIT_G) {
-            usedCoreNum = totalBaseNum << 1;
+            usedCoreNum = qsfaTotalBaseNum << 1;
         } else {
-            usedCoreNum = totalBaseNum;
+            usedCoreNum = qsfaTotalBaseNum;
         }
     }
 
     if constexpr (IS_SPLIT_G) {
         maxS2LoopCnt = avgBaseNum * (constInfo.sparseBlockCount + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
+// qsfa
 
     if (aicIdx >= usedCoreNum) {
         return;
     }
 	// 计算当前核的基本块
-    uint32_t accumBaseNum = 0; // 当前累积的基本块数
+    uint32_t qsfaAccumBaseNum = 0; // qsfa 当前累积的基本块数
     uint32_t targetBaseNum = 0;
-    uint32_t lastValidBIdx = 0;
+    uint32_t qsfaLastValidBIdx = 0;
     uint32_t lastValidactBatchS1 = 0;
     bool setStart = false;
     targetBaseNum = (currCoreIdx + 1) * avgBaseNum; // 计算当前的目标权重
@@ -229,35 +238,36 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         uint32_t bIdx = bN2Idx / constInfo.n2Size;
         actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
         for (uint32_t s1GIdx = 0; s1GIdx < actBatchS1; s1GIdx++) {
-            accumBaseNum += 1;
-            if (!setStart && accumBaseNum >= targetStartBaseNum) {
+            qsfaAccumBaseNum += 1;
+            if (!setStart && qsfaAccumBaseNum >= targetStartBaseNum) {
                 constInfo.bN2Start = bN2Idx;
                 constInfo.gS1Start = s1GIdx;
                 setStart = true;
             }
-            if (accumBaseNum >= targetBaseNum) {
+            if (qsfaAccumBaseNum >= targetBaseNum) {
                 // 更新当前核的End分核信息
                 constInfo.bN2End = bN2Idx;
                 constInfo.gS1End = s1GIdx;
                 constInfo.s2End = 0;
                 if (currCoreIdx != 0) {
+// qsfa
                     GetAxisStartIdx(constInfo.bN2Start, constInfo.gS1Start, 0);
                 }
                 return;
             }
         }
 	    if ((actBatchS1 > 0) && (actBatchS2 > 0)) {
-            lastValidBIdx = bIdx;
+            qsfaLastValidBIdx = bIdx;
             lastValidactBatchS1 = actBatchS1;
         }
     }
     if (!setStart) {
-        constInfo.bN2Start = lastValidBIdx;
+        constInfo.bN2Start = qsfaLastValidBIdx;
         constInfo.gS1Start = lastValidactBatchS1 - 1;
     }
-    if (accumBaseNum < targetBaseNum) {
+    if (qsfaAccumBaseNum < targetBaseNum) {
 		// 更新最后一个核的End分核信息
-        constInfo.bN2End = lastValidBIdx;
+        constInfo.bN2End = qsfaLastValidBIdx;
         constInfo.gS1End = lastValidactBatchS1 - 1;
         constInfo.s2End = 0;
         if (currCoreIdx != 0) {
@@ -266,6 +276,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         return;
     }
 }
+// qsfa
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline uint64_t KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::\
@@ -279,6 +290,7 @@ __aicore__ inline uint64_t KvQuantSparseFlashAttentionMla<CubeBlockType, VecBloc
         } else {
             return 0;
         }
+// qsfa
     } else {
         if (constInfo.isActualLenDimsNull == 1) {
             return constInfo.s1Size;
@@ -287,22 +299,25 @@ __aicore__ inline uint64_t KvQuantSparseFlashAttentionMla<CubeBlockType, VecBloc
         }
     }
 }
+// qsfa
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::GetAxisStartIdx(uint32_t bN2EndPrev,
                                                                                 uint32_t s1GEndPrev,
                                                                                 uint32_t s2EndPrev)
 {
-    uint32_t bEndPrev = bN2EndPrev / constInfo.n2Size;
-    uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bEndPrev);
+    uint32_t qsfaBEndPrev = bN2EndPrev / constInfo.n2Size;
+    uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, qsfaBEndPrev);
     uint32_t s1GPrevBaseNum = actualSeqQPrev;
     constInfo.bN2Start = bN2EndPrev;
     constInfo.gS1Start = s1GEndPrev;
+// qsfa
     
     constInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
         constInfo.gS1Start = 0;
         constInfo.bN2Start++;
+// qsfa
     } else {
         constInfo.gS1Start++;
     }
@@ -339,30 +354,36 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
+// qsfa
     crossCoreSyncBufId++;
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIC {
         l1RightBuffers.Get().SetCrossCore();
+// qsfa
         l1RightBuffers.Get().SetCrossCore();
         l1RightBuffers.Get().SetCrossCore();
     }
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+// qsfa
     bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
+// qsfa
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
     crossCoreSyncBufId++;
     bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId);
+// qsfa
     crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
+// qsfa
 
     if constexpr (IS_SPLIT_G) {
         uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
@@ -466,6 +487,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if (this->sharedParams.needInit) {
         SyncAll<false>();
     }
+// qsfa
 
     ProcessMainLoop();
 }
@@ -488,8 +510,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 
     // 适配分核左闭右开
     uint32_t bIdx = constInfo.bN2End / constInfo.n2Size;
-    uint32_t actS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
-    uint32_t gS1max = actS1Size;
+    uint32_t qsfaActS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
+    uint32_t gS1max = qsfaActS1Size;
     if (constInfo.gS1End + 1 < gS1max) {
         /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         constInfo.gS1End = constInfo.gS1End + 1;
@@ -500,26 +522,28 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     }
 
     // 分核信息
-    uint32_t bN2StartIdx = constInfo.bN2Start;
+    uint32_t qsfaBN2StartIdx = constInfo.bN2Start;
     uint32_t bN2EndIdx = constInfo.bN2End;
     uint32_t gS1StartIdx = constInfo.gS1Start;
     uint32_t nextGs1Idx = constInfo.gS1End;
     uint32_t s2StartIdx = 0;
     uint32_t s2EndIdx = 0;
+// qsfa
     uint32_t s2LoopLimit = 0;
 
     if (nextGs1Idx != 0) {
         bN2EndIdx++;
     }
+// qsfa
 
     int64_t taskId = 0;
     bool notLast = true;
     RunInfo runInfo[3];
     RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
-    for (int64_t bnIdx = bN2StartIdx; bnIdx < bN2EndIdx; bnIdx++) {
-        bool lastBN = (bnIdx == bN2EndIdx - 1);
-        runParam.boIdx = bnIdx;
+    for (int64_t qsfaBnIdx = qsfaBN2StartIdx; qsfaBnIdx < bN2EndIdx; qsfaBnIdx++) {
+        bool lastBN = (qsfaBnIdx == bN2EndIdx - 1);
+        runParam.boIdx = qsfaBnIdx;
         runParam.n2oIdx = 0;
         ComputeParamBatch<TEMPLATE_INTF_ARGS>(runParam, this->constInfo,
             this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
@@ -529,21 +553,22 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
             bool notLastTwoLoop = true;
             if (lastBN) {
-                int32_t extraGS1 = gS1Index - runParam.gs1LoopEndIdx;
-                switch (extraGS1) {
+                int32_t qsfaExtraGS1 = gS1Index - runParam.gs1LoopEndIdx;
+                switch (qsfaExtraGS1) {
                     case 0:
                         notLastTwoLoop = false;
                         break;
                     case 1:
                         notLast = false;
                         notLastTwoLoop = false;
+// qsfa
                         break;
                     default:
                         break;
                 }
             }
             if (notLastTwoLoop) {
-                this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
+                this->ComputeAxisIdxByBnAndGs1(qsfaBnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<TEMPLATE_INTF_ARGS>(
                     runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc =
@@ -595,13 +620,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
                 }
                 if (taskId > 1) {
                     if ASCEND_IS_AIV {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                        RunInfo &qsfaRunInfo3 = runInfo[(taskId + 1) % 3];
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), qsfaRunInfo3, this->constInfo);
                     }
                 }
                 ++taskId;
             }
             ++multiCoreInnerIdx;
+// qsfa
         }
         gS1StartIdx = 0;
     }
@@ -638,6 +664,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
+// qsfa
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
         runInfo.n2oIdx = runParam.n2oIdx;
@@ -646,11 +673,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
         runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
     }
+// qsfa
 
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
+// qsfa
 
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
@@ -678,6 +707,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     runInfo.mRealSize = runParam.mRealSize;
     runInfo.halfMRealSize = runParam.halfMRealSize;
     runInfo.firstHalfMRealSize = runParam.firstHalfMRealSize;
+// qsfa
 
     runInfo.vec2S1BaseSize = runInfo.halfS1RealSize;
     runInfo.vec2MBaseSize = runInfo.halfMRealSize;

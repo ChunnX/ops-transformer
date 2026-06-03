@@ -30,6 +30,7 @@
 #endif
 #if __has_include("../../common/op_kernel/matmul.h")
 #include "../../common/op_kernel/matmul.h"
+// sfa
 #else
 #include "../common/matmul.h"
 #endif
@@ -39,12 +40,15 @@
 #include "../common/FixpipeOut.h"
 #endif
 #if __has_include("../../common/op_kernel/CopyInL1.h")
+// sfa
 #include "../../common/op_kernel/CopyInL1.h"
 #else
 #include "../common/CopyInL1.h"
+// sfa
 #endif
 
 using namespace AscendC;
+// sfa
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
@@ -70,10 +74,10 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline SFAMatmulService() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr,
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &sfaL1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *queryRope);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-                        __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo);
+                        __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -85,7 +89,7 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr);
+    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -120,31 +124,33 @@ private:
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
 
+// sfa
     // D小于等于256 mm1左矩阵Q，GS1循环内左矩阵复用, GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
     BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
 
     // L0A
     BuffersPolicyDB<BufferType::L0A> mmL0ABuffers;
     // L0B
+// sfa
     BuffersPolicyDB<BufferType::L0B> mmL0BBuffers;
     // L0C
     BuffersPolicyDB<BufferType::L0C> mmL0CBuffers;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
+    TPipe *pipe, BufferManager<BufferType::L1> &sfaL1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
-        InitLocalBuffer(l1BuffMgr);
+        InitLocalBuffer(sfaL1BuffMgr);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
+    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *sfaActualSeqLengthsQ,
     const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
@@ -154,30 +160,32 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uin
         mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
         mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
         mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        InitGmTensor(actualSeqLengthsQ, constInfo);
+        InitGmTensor(sfaActualSeqLengthsQ, constInfo);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr)
+SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &sfaL1BuffMgr)
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init(l1BuffMgr, mm1LeftSize);
+    l1QBuffers.Init(sfaL1BuffMgr, mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
     l0bBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
+// sfa
     l0cBufferManager.Init(tPipe, L0C_SHARED_SIZE_256K);
 
     mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
     mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
+// sfa
     mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo)
+SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
@@ -186,7 +194,7 @@ SFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ,
             constInfo.s1Size, constInfo.dSizeRope);
     } else {  // SFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
+        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)sfaActualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             actualSeqQLen, constInfo.actualSeqLenSize);
         this->queryRopeGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeRope,
@@ -266,10 +274,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>:
         mmL0ABuffers, mmL0BBuffers,
         mm1ResL0C.GetTensor<T>(),
         param);
+// sfa
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
 
+// sfa
     mm1ResL0C.Set<HardEvent::M_FIX>();    // 通知
     mm1ResL0C.Wait<HardEvent::M_FIX>();   // 等待L0C
 
@@ -313,11 +323,13 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::IterateBmm2SFA(
                      };
     MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputRightBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeNope), // 左矩阵P 来自rope位置
+// sfa
         inputRightBuf.GetTensor<Q_T>(), // 右矩阵V nope
         mmL0ABuffers,
         mmL0BBuffers,
         mm2ResL0C.GetTensor<T>(),
         param);
+// sfa
 
     inputRightBuf.SetCrossCore();   // bmm2才释放KV，在这里释放
 
@@ -346,10 +358,10 @@ class SFAMatmulServiceDummy {
 public:
     __aicore__ inline SFAMatmulServiceDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe,
-        BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
+        BufferManager<BufferType::L1> &sfaL1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
-        __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo) {}
+        __gm__ uint8_t *sfaActualSeqLengthsQ, const ConstInfo& constInfo) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         RunInfo &runInfo, ConstInfo &constInfo) {}
@@ -357,6 +369,7 @@ public:
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
+// sfa
 };
 
 
@@ -366,6 +379,7 @@ struct CubeBlockTraits;  // 声明
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
+// sfa
 
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \

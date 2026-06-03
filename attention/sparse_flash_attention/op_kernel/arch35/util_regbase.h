@@ -2,12 +2,14 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
+// sfa
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+// sfa
 /*!
  * \file util_regbase.h
  * \brief
@@ -23,16 +25,20 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+// sfa
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
+// sfa
     int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
+// sfa
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineEndIdx;          /* S2方向按行的结束位置 */ \
     int64_t s2CmpLineEndIdx; \
+// sfa
     /* cube视角的sOuter，在SAMEAB场景中cubeSOuterSize为两倍的 halfS1RealSize souter层确定 */ \
     uint32_t s1RealSize; \
     uint32_t halfS1RealSize; \
@@ -52,6 +58,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int64_t gs1LoopStartIdx;
+// sfa
     int64_t gs1LoopEndIdx;
     // BN循环生产的数据
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
@@ -59,18 +66,21 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 
     // NBS1循环生产的数据
     int64_t sOuterOffset;               // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
+// sfa
     int64_t cubeSOuterOffset;           // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
     int64_t mOuterOffset;
     int64_t cubeMOuterOffset;
 
     // lse 输出offset
     int64_t softmaxLseOffset;       // souter层确定
+// sfa
 
     int64_t qSNumInOneBlock;
     int64_t kvLoopEndIdx;
 };
 
 #define COMMON_RUN_INFO \
+// sfa
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
@@ -78,6 +88,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t s1oIdx = 0; /* s1轴的index */ \
     int64_t loop = 0; /* for v0 perload loop */ \
     int64_t boIdx = 0; /* b轴的index */ \
+// sfa
     int64_t n2oIdx = 0; /* n2轴的index */ \
     int64_t goIdx = 0; /* g轴的index */ \
     int32_t s1RealSize; \
@@ -85,18 +96,21 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int32_t firstHalfS1RealSize; /* 当s1RealSize不是2的整数倍时，v0比v1少计算一行，计算subblock偏移的时候需要使用v0的s1 size */ \
     int32_t mRealSize; \
     int32_t halfMRealSize; \
+// sfa
     int32_t firstHalfMRealSize; \
     int32_t s2RealSize; /* s2方向基本块的真实长度 */ \
     int64_t s2AlignedSize; /* s2方向基本块对齐到16之后的长度 */ \
     int32_t vec2S1BaseSize; /* vector2侧开循环之后，经过切分的S1大小，例如把64切分成两份32 */ \
     int32_t vec2S1RealSize; /* vector2侧开循环之后，经过切分的S1的尾块大小，例如把63切分成两份32和31，第二份的实际大小是31 */ \
     int32_t vec2MBaseSize; \
+// sfa
     int32_t vec2MRealSize; \
     int64_t taskId; \
     int64_t multiCoreInnerIdx = 0; \
     int64_t attentionOutOffset; \
     int32_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int32_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
+// sfa
     int64_t preTokensPerBatch; /* vector2 左上顶点的pretoken */ \
     int64_t nextTokensPerBatch; /* vector2 左上顶点的nexttoken */ \
     uint8_t taskIdMod2; \
@@ -114,6 +128,7 @@ struct RunInfo {
     // lse 输出offset
     int64_t softmaxLseOffset;
 
+// sfa
     int64_t qSNumInOneBlock;
     int64_t kvLoopEndIdx;
 };
@@ -123,6 +138,7 @@ struct RunInfo {
     uint32_t bSize; \
     uint32_t needInit; \
     uint32_t s1BaseSize; \
+// sfa
     uint32_t s2BaseSize; \
     int64_t dSize; /* query d 512 */ \
     int64_t dSizeV; /* key d 512 */ \
@@ -131,6 +147,7 @@ struct RunInfo {
     int64_t dSizeRope; /* key rope d 64 */ \
     int64_t tileSize; /* 64 */ \
     int64_t sparseMode; \
+// sfa
     int64_t gSize; /* g轴的大小 */ \
     int64_t n2Size; \
     int64_t s1Size; /* s1总大小 */ \
@@ -139,6 +156,7 @@ struct RunInfo {
     int64_t s1D; \
     int64_t gS1D; \
     int64_t n2GS1D; \
+// sfa
     int64_t s2D; \
     int64_t n2S2D; \
     int64_t s1Dv; \
@@ -148,6 +166,7 @@ struct RunInfo {
     int64_t n2S2Dv; \
     int64_t s1S2; \
     int64_t gS1; \
+// sfa
     int64_t gD; \
     int64_t n2D; \
     int64_t bN2D; \
@@ -157,6 +176,7 @@ struct RunInfo {
     int64_t n2G; \
     int64_t n2GD; \
     int64_t bN2GD; \
+// sfa
     int64_t n2GDv; \
     int64_t bN2GDv; \
     int64_t gS2; \
@@ -165,6 +185,7 @@ struct RunInfo {
     int64_t n2GS1Dr; \
     int64_t s2Dr; \
     int64_t n2S2Dr; \
+// sfa
     int64_t gDr; \
     int64_t n2Dr; \
     int64_t bN2Dr; \
@@ -173,6 +194,7 @@ struct RunInfo {
     int32_t s2BaseN2D; \
     int32_t s1BaseN2GD; \
     int64_t s2BaseBN2D; \
+// sfa
     int64_t s1BaseBN2GD; \
     int32_t s1BaseD; \
     int32_t s2BaseD; \
@@ -194,6 +216,7 @@ struct RunInfo {
     /* 分核相关 */ \
     uint32_t s2Start; \
     uint32_t s2End; \
+// sfa
     uint32_t bN2Start; \
     uint32_t bN2End; \
     uint32_t gS1Start; \
@@ -202,6 +225,7 @@ struct RunInfo {
 #define INFER_CONST_INFO \
     /* 推理 */ \
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \
+// sfa
     bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */ \
     bool isSoftmaxLseEnable; \
     bool rsvd1; \
@@ -224,12 +248,14 @@ struct RunInfo {
     /* base params */ \
     uint32_t s1BaseSize; \
     uint32_t s2BaseSize; \
+// sfa
     uint32_t bSize;  \
     uint32_t n2Size;  \
     uint32_t gSize;  \
     uint32_t s1Size;  \
     uint32_t s2Size;  \
     uint32_t dSize : 10;  \
+// sfa
     int64_t dSizeVInput : 12;  \
     uint32_t needInit : 4; \
     uint32_t layoutType : 4;  \
@@ -254,11 +280,13 @@ struct RunInfo {
 
 struct ConstInfo {
     COMMON_CONST_INFO;
+// sfa
     INFER_CONST_INFO;
 };
 
 /* only support b32 or b64 */
 struct CVSharedParams {
+// sfa
     CV_SHARED_PARAMS;
 };
 }
