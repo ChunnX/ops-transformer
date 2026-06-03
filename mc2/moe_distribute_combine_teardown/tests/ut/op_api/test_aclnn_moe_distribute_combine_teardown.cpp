@@ -508,3 +508,9 @@ TEST_F(TestAclnnMoeDistributeCombineTeardownUnsupportedArch, UnsupportedArchErro
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
+
+TEST_F(TestAclnnMoeDistributeCombineTeardown, ExecuteCall)
+{
+    aclnnStatus ret = aclnnMoeDistributeCombineTeardown(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}

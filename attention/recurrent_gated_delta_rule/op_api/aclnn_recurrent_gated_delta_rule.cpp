@@ -23,6 +23,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "opdev/tensor_view_utils.h"
 
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/transpose.h"
@@ -175,7 +176,15 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
         numAcceptedTokens = l0op::Contiguous(numAcceptedTokens, uniqueExecutor.get());
     }
 
-    auto out_ = l0op::Contiguous(out, uniqueExecutor.get());
+    // stateRef非连续，使用CreateView将设置gert::TensorV2的stride信息
+    if (!IsContiguous(stateRef)) {
+        stateRef = uniqueExecutor.get()->CreateView(
+            stateRef,
+            stateRef->GetViewShape(),
+            stateRef->GetStorageShape(),
+            stateRef->GetViewStrides(),
+            stateRef->GetViewOffset());
+    }
 
     // 调用l0接口
     auto outRet =
@@ -185,7 +194,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
         return ACLNN_ERR_INNER_NULLPTR;
     }
 
-    auto ViewCopyResult = l0op::ViewCopy(outRet, out_, uniqueExecutor.get());
+    auto ViewCopyResult = l0op::ViewCopy(outRet, out, uniqueExecutor.get());
     if (ViewCopyResult == nullptr) {
         return ACLNN_ERR_INNER_NULLPTR;
     }
