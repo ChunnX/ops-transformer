@@ -181,10 +181,6 @@ public:
         vecOp.SendVecSftgFront(dout_gm_, attention_out_gm_, sftg_workspace_, tilingData, ub_buffer_);
         PipeBarrier<PIPE_ALL>();
         SyncAll();
-        /*
-         * I don't know why I need this, but if I don't set this flag, the precision will be failed.
-         * If someone can explain this, I will be very grateful.
-         */
         AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(FLAG_CUBE_POST);
 
         while (true) {
