@@ -33,13 +33,13 @@ const aclTensor *LightningIndexerV2Metadata(
     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
     char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
     int64_t aicCoreNum, int64_t aivCoreNum, const char *socVersion,
-    const aclTensor *metaData, aclOpExecutor *executor)
+    const aclTensor *metadata, aclOpExecutor *executor)
 {
     L0_DFX(LightningIndexerV2Metadata, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
         cmpResidualKOptional,
         numHeadsQ, numHeadsK, headDim, topk,
         batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio,
-        aicCoreNum, aivCoreNum, socVersion, metaData);
+        aicCoreNum, aivCoreNum, socVersion, metadata);
 
     static internal::AicpuTaskSpace space("LightningIndexerV2Metadata");
 
@@ -49,7 +49,7 @@ const aclTensor *LightningIndexerV2Metadata(
                         "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q", "layout_k", "mask_mode", "cmp_ratio",
                         "aic_core_num", "aiv_core_num", "soc_version" }),
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional),
-        OP_OUTPUT(metaData),
+        OP_OUTPUT(metadata),
         OP_ATTR(numHeadsQ, numHeadsK, headDim, topk, batchSize, maxSeqlenQ, maxSeqlenK,
                 layoutQOptional, layoutKOptional, maskMode, cmpRatio,
                 aicCoreNum, aivCoreNum, socVersion));
@@ -57,6 +57,6 @@ const aclTensor *LightningIndexerV2Metadata(
     OP_CHECK(ret == ACL_SUCCESS,
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "LightningIndexerV2Metadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
             return nullptr);
-    return metaData;
+    return metadata;
 }
 }  // namespace l0op

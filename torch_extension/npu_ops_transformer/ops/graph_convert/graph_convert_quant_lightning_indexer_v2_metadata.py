@@ -35,7 +35,7 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
     @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_quant_lightning_indexer_v2_metadata.default)
     def convert_npu_quant_lightning_indexer_v2_metadata(
-        num_heads_q: int, num_heads_kv: int, head_dim: int, topk: int, q_quant_mode: int, k_quant_mode: int, *,
+        num_heads_q: int, num_heads_kv: int, head_dim: int, topk: int, quant_mode: int, *,
         cu_seqlens_q: Optional[Tensor] = None, cu_seqlens_k: Optional[Tensor] = None,
         seqused_q: Optional[Tensor] = None, seqused_k: Optional[Tensor] = None, cmp_residual_k: Optional[Tensor] = None,
         batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
