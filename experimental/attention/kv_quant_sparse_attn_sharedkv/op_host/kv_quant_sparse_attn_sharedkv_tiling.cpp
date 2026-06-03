@@ -593,10 +593,23 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    if (tilingInfo->gSize > 64) {
-        workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
-    }
+    // 物理地址 workspace 需容纳所有 query 行: kernel 以 (bS1Idx + s1Idx) 为行下标写
+    // kvPhyAddrGm[(bS1Idx+s1Idx)*sparseBlockCount*2]。行数 = BSND 时 B*S1, TND 时 T1(总token)。
+    // 此前写死 4000, 当行数 > 4000 (如 prefill S1=8192) 时越界写 GM -> AICore MTE 异常(507015)。
+    const uint64_t bs1Rows = (tilingInfo->qTSize > 0) ?
+        static_cast<uint64_t>(tilingInfo->qTSize) :
+        static_cast<uint64_t>(tilingInfo->bSize) * tilingInfo->s1Size;
+    // v0 反量化区字节数 (与 kernel InitMMResBuf 一致): v0ResSize*3*(aicNum>>1)。
+    const uint64_t v0RegionBytes =
+        static_cast<uint64_t>(S2_BASE_SIZE) * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1);
+    // kernel GetKVPhyAddr 用 (uint32_t*)workspace + v0TotalOffset 设定物理地址区基址,
+    // 指针按元素(×sizeof(uint32_t))偏移, 故物理地址区真实起点 = v0RegionBytes * 4。
+    // host 须按同一基址预留, 否则物理地址区尾部越界 (prefill 大 bs1Rows 时触发 507015)。
+    constexpr uint64_t PHYS_BASE_SCALE = sizeof(uint32_t);
+    const uint64_t physAddrBase = v0RegionBytes * PHYS_BASE_SCALE;
+    const uint64_t physAddrBytes = bs1Rows * tilingInfo->sparseBlockCount * sizeof(int64_t);
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    workspaceSize += (physAddrBase + physAddrBytes);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 

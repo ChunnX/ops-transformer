@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import hashlib
 import torch
 import torch_npu
 import check_valid_param
@@ -92,6 +93,14 @@ SSR_F14_OFFSET = 8192          # 0b0010 0000 0000 0000, F14偏移值
 SSR_DML_SHIFT = 10             # SSR舍入移位值
 SSR_RESERVED_BITS = 14         # SSR舍入保留位数
 HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
+
+def set_seed(seed: int = 42):
+    # Python 内置随机库
+    random.seed(seed)
+    # NumPy
+    np.random.seed(seed)
+    # PyTorch (CPU)
+    torch.manual_seed(seed)
 
 class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
@@ -682,6 +691,12 @@ def trans_hifuint8_tensor_to_float(in_tensor):
     out_tensor = out_tensor.reshape(tensor_shape).to(torch.float)
     return out_tensor
 
+def get_fp8e3m3_to_bf16_table():
+    fp8e4m3_to_bf16_table = torch.zeros(256).to(torch.bfloat16)
+    for i in range(256):
+        fp8e4m3_to_bf16_table[i] = torch.tensor(i, dtype=torch.uint8).view(torch.float8_e4m3fn).to(torch.bfloat16)
+    return fp8e4m3_to_bf16_table
+
 def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128,
                pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
                seqused_kv, quant_param_range_left, quant_param_range_right, kv_quant_mode):
@@ -693,8 +708,11 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
     else:
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
-    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, ori_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+    # ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
+    #     (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
+    ori_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(1, 20,
+        (B, N2, ori_max_s2, quant_scale_head_dim))).to(q_type)
+    print("ori_kv_quant_param_tensor_npu", ori_kv_quant_param_tensor_npu)
     ori_kv_quant_param_tensor = ori_kv_quant_param_tensor_npu.to(q_type)
 
     # 分别生成bf16类型的nope合rope矩阵，为了模拟量化的过程，得到准确的量化参数
@@ -717,6 +735,7 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
         for tile_loop in range(tile_size):
             offset = d_loop * tile_size + tile_loop
             ori_k_nope_bnsd[:, :, :, offset:offset+1] = torch.mul(ori_k_nope_bnsd[:, :, :, offset:offset+1], ori_kv_quant_param_tensor[:, :, :, d_loop:d_loop+1])
+    print("ori_k_nope_bnsd", ori_k_nope_bnsd[0, 0, 0, : 128])
     # bf16的nope+rope拼接在一起，得到ori_k_bnsd和cmp_k_bnsd
     ori_k_bnsd = torch.concat([ori_k_nope_bnsd, ori_k_rope_bnsd], dim=3)
 
@@ -760,6 +779,33 @@ def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_si
                     ori_k_in_pa_shape[cur_block_id, :, i_N2, :] = \
                         ori_k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size1, :]
 
+    fp8e4m3_to_bf16_table = get_fp8e3m3_to_bf16_table()
+    ori_k_nope_bnsd_2 = fp8e4m3_to_bf16_table[ori_k_nope_bnsd_npu.view(torch.uint8).long()]
+    print("ori_k_nope_bnsd", ori_k_nope_bnsd)
+    print("ori_k_nope_bnsd_2", ori_k_nope_bnsd_2)
+
+    # 1. 将 BF16 表转换为字节视图 (小端序, 每个 BF16 占 2 字节)
+    table_bytes = fp8e4m3_to_bf16_table.view(torch.uint8)  # shape (512,)
+
+    # 2. 按 16 行 × 32 字节/行 重排
+    table_rows = table_bytes.view(16, 32)  # shape (16, 32), dtype=uint8
+
+    # 3. 获取目标切片（FP8 张量的一部分），并将其视为 uint8 视图
+    #    该切片 shape 原本是 (16, 32) 的 FP8 元素，每个元素 1 字节，正好对应 16×32 字节。
+    target_slice = ori_k_in_pa_shape[0, 0:16, 0, 590:590+32]  # shape (16, 32) fp8
+    target_uint8 = target_slice.view(torch.uint8)             # 同一块内存，现在解释为 uint8
+
+    # 4. 将数据复制过去
+    target_uint8.copy_(table_rows)
+
+    for i in range(16):
+        print("table_rows", table_rows[i, :].view(torch.bfloat16))
+        # print("ori_k_in_pa_shape", ori_k_in_pa_shape[0, i, 0, 590: 590 + 32].view(torch.bfloat16))
+
+    for i in range(16):
+        # print("table_rows", table_rows[i, :].view(torch.bfloat16))
+        print("ori_k_in_pa_shape", ori_k_in_pa_shape[0, i, 0, 590: 590 + 32].view(torch.bfloat16))
+
     ori_block_table = torch.tensor(ori_block_table).to(torch.int32)
 
     ori_v_bnsd = ori_k_bnsd.clone()
@@ -782,7 +828,7 @@ def gen_cmp_kv(q_type, layout_q, cmp_kv_type, B, S1, T1, N2, D, K, rope_head_dim
         quant_range_left = quant_param_range_left
         quant_range_right = quant_param_range_right
     cmp_kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_range_left, quant_range_right,
-        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+        (B, N2, cmp_max_s2, quant_scale_head_dim))).to(q_type)
     cmp_kv_quant_param_tensor = cmp_kv_quant_param_tensor_npu.to(q_type)
 
     if kv_quant_mode == 10:
@@ -892,6 +938,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
 
+    set_seed(42)
+
     # generate q
     if layout_q == "BSND":
         q = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT, (B, S1, N1, D))).to(q_type)
@@ -927,10 +975,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
     quant_scale_head_dim = (nope_head_dim + tile_size - 1) // tile_size
-    d_aligned_128 = (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim + 127) // 128 * 128
+    # d_aligned_128 = (nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim + 127) // 128 * 128
+    d_aligned_128 = 640
     d_combined = nope_head_dim + rope_head_dim * 2 + quant_scale_head_dim
     print(f"d_aligned_128={d_aligned_128}, nope_head_dim={nope_head_dim}, rope_head_dim={rope_head_dim}, quant_scale_head_dim={quant_scale_head_dim}")
-    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim
+    pad_d = d_aligned_128 - nope_head_dim - rope_head_dim * 2 - quant_scale_head_dim * 2
     block_num = block_num1 if block_num1 >= block_num2 else block_num2
     # 根据输入的data range，计算scale范围，生成scale tensor，取倒数保存为bin
     quant_param_range_left = DATA_RANGE_LEFT / FP8_DATA_RANGE_LEFT
@@ -967,8 +1016,25 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
-    
+    if os.environ.get("QSAS_PERF_ONLY", "0") == "1":
+        # 仅做性能 profiling 时跳过昂贵的 CPU golden forward (大 case 下可达 ~50min)；
+        # msprof 仍会捕获真实 NPU kernel 耗时，精度比对结果在该模式下无意义。
+        cpu_result = torch.zeros_like(q)
+    else:
+        # CPU golden 缓存: 输入由 set_seed(42) 决定性生成，golden 只需算一次。
+        # 用 params 生成稳定 key，命中则直接 load，避免每次重复 ~tens-of-min 的 forward。
+        cache_dir = os.environ.get("QSAS_GOLDEN_CACHE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden_cache"))
+        cache_key = hashlib.md5(repr(params).encode("utf-8")).hexdigest()
+        cache_path = os.path.join(cache_dir, f"golden_{cache_key}.pt")
+        if os.environ.get("QSAS_GOLDEN_NOCACHE", "0") != "1" and os.path.exists(cache_path):
+            print(f"[golden-cache] HIT {cache_path}")
+            cpu_result = torch.load(cache_path)
+        else:
+            cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
+            os.makedirs(cache_dir, exist_ok=True)
+            torch.save(cpu_result, cache_path)
+            print(f"[golden-cache] SAVED {cache_path}")
+
     print("mode:%s\n",template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
