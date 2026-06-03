@@ -986,7 +986,7 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
 }
 
 static ge::graphStatus SetWorkspace(
-    gert::TilingContext *context, WorkspaceInfo& workspaceInfo, const char *nodeName)
+    gert::TilingContext *context, WorkspaceInfoWave& workspaceInfo, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -1536,6 +1536,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     OP_TILING_CHECK(aivNum <= 0 || aicNum <= 0,
         OP_LOGE(nodeName, "aivNum(%u) or aicNum(%u) less than or equal 0.", aivNum, aicNum),
         return ge::GRAPH_FAILED);
+    tilingData->aicNum = aicNum;
 
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
@@ -1561,7 +1562,8 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     // WorkspaceSize
     WorkspaceInfo workspaceInfo((uint8_t*)0, tilingData);
-    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+    WorkspaceInfoWave workspaceInfo1((uint8_t*)0, tilingData);
+    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo1, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     // Print Info
