@@ -1,0 +1,1384 @@
+commit d1f180b4e83dc3bbe4b27af95e68e4841d008bc4 (from f8e5b0e1fa4ea91849c5d37b72526453f559106e)
+Merge: f8e5b0e1f 3c4ff7a45
+Author: libohao6 <libohao3@huawei.com>
+Date:   Wed Jun 3 15:49:16 2026 +0800
+
+    merge 'master_fix_cleancode_0603' into 'master'
+
+diff --git a/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v3.cpp b/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v3.cpp
+index a9f31bc3e..613f1cd60 100644
+--- a/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v3.cpp
++++ b/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v3.cpp
+@@ -64,11 +64,11 @@ static bool CheckDtypeValid(
+     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* commQuantScale1Optional,
+     const aclTensor* commQuantScale2Optional, const aclTensor* output)
+ {
+-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
++    const auto& dequantDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
+                                           DTYPE_SUPPORT_LIST_DEQUANT;
+ 
+-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
++    const auto& outDtypeList = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+                                       DTYPE_SUPPORT_LIST_310P :
+                                       DTYPE_SUPPORT_LIST;
+ 
+@@ -76,14 +76,14 @@ static bool CheckDtypeValid(
+     // 对于量化来说，x1,x2只为INT8
+     OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST_QUANT, return false);
+     OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST_QUANT, return false);
+-    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeSupport, return false);
+-    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeSupport, return false);
++    OP_CHECK_DTYPE_NOT_SUPPORT(dequantScale, dequantDtypeList, return false);
++    OP_CHECK_DTYPE_NOT_SUPPORT(output, outDtypeList, return false);
+     // 检查bias、offset、x3的数据类型是否在算子的支持列表内
+     if (bias != nullptr) {
+         OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST_BIAS, return false);
+     }
+     if (x3 != nullptr) {
+-        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeSupport, return false);
++        OP_CHECK_DTYPE_NOT_SUPPORT(x3, outDtypeList, return false);
+         // 检查x3和output的数据类型是否相同
+         OP_CHECK_DTYPE_NOT_SAME(x3, output, return false);
+     }
+diff --git a/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v4.cpp b/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v4.cpp
+index 20c80d09d..1a7827ac0 100644
+--- a/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v4.cpp
++++ b/mc2/matmul_all_reduce/op_api/aclnn_quant_matmul_all_reduce_v4.cpp
+@@ -174,9 +174,9 @@ static bool CheckShape(
+     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
+     if (bias != nullptr) {
+         OP_CHECK_WRONG_DIMENSION(bias, ONE_DIM, return false);
+-        op::Shape biasShape;
+-        biasShape.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
+-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShape, return false);
++        op::Shape biasShapeExpected;
++        biasShapeExpected.AppendDim(output->GetViewShape().GetDim(x1Len - 1));
++        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(bias, biasShapeExpected, return false);
+     }
+ 
+     // x3 shape [s,m,n]
+diff --git a/mc2/matmul_all_reduce/op_api/aclnn_weight_quant_matmul_all_reduce.cpp b/mc2/matmul_all_reduce/op_api/aclnn_weight_quant_matmul_all_reduce.cpp
+index 2899f79f4..5fcde8e01 100644
+--- a/mc2/matmul_all_reduce/op_api/aclnn_weight_quant_matmul_all_reduce.cpp
++++ b/mc2/matmul_all_reduce/op_api/aclnn_weight_quant_matmul_all_reduce.cpp
+@@ -188,7 +188,7 @@ static bool CheckShape(
+     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
+     const size_t x1Len = x1->GetViewShape().GetDimNum();
+     OP_LOGD("MatmulAllReduce, CheckShape x1Len is %lu", x1Len);
+-    if (x1->GetViewShape().GetDim(x1Len - 1) != x2Dim0) {
++    if (static_cast<uint64_t>(x1->GetViewShape().GetDim(x1Len - 1)) != x2Dim0) {
+         OP_LOGE(
+             ACLNN_ERR_PARAM_INVALID,
+             "Expected last dim of x1 to be equal to first dim of x2, but got x1 shape: %s, x2 shape: %s.",
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch22/quant_matmul_all_reduce_tiling.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch22/quant_matmul_all_reduce_tiling.cpp
+index 5c5e65414..e044b0a6f 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch22/quant_matmul_all_reduce_tiling.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch22/quant_matmul_all_reduce_tiling.cpp
+@@ -367,22 +367,22 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(QuantMatmulAllReduceTiling
+ 
+ CutResult QuantMatmulAllReduceTiling::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
++    CutResult mCutAllreduceRes;
++    SocVersion socVersion = SocVersion::SOC910_B;
++    SetMCutSocVersion(socVersion);
++    const gert::StorageShape *commQuantScaleA = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape *commQuantScaleB = mmrCtxInfo_.comm_quant_scale_2_shape;
++    if ((commQuantScaleA != nullptr) && (commQuantScaleB != nullptr)) { // low-bit comm
+         OP_LOGD(opName_, "TileCnt enter comm quant.");
+-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+-        quantAllReduceTilingHccl.GetTiling();
+-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
++        MMPlusQuantAllReduce quantAllReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion);
++        quantAllReduceTiling.GetTiling();
++        mCutAllreduceRes = quantAllReduceTiling.tilingM_.cutRes;
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersion, isPerBlock_);
++        allReduceTiling.GetTiling();
++        mCutAllreduceRes = allReduceTiling.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceRes;
+ }
+ 
+ 
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch22/weight_quant_matmul_all_reduce_tiling.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch22/weight_quant_matmul_all_reduce_tiling.cpp
+index 159d40bc1..6df5d8f2f 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch22/weight_quant_matmul_all_reduce_tiling.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch22/weight_quant_matmul_all_reduce_tiling.cpp
+@@ -310,22 +310,22 @@ WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(gert::TilingC
+ 
+ CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
++    CutResult mCutAllreduceVal;
++    SocVersion inputSocVer = SocVersion::SOC910_B;
++    SetMCutSocVersion(inputSocVer);
++    const gert::StorageShape *commQuantScaleFirstShape = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape *commQuantScaleSecondShape = mmrCtxInfo_.comm_quant_scale_2_shape;
++    if ((commQuantScaleFirstShape != nullptr) && (commQuantScaleSecondShape != nullptr)) { // low-bit comm
+         OP_LOGD(opName_, "TileCnt enter comm quant.");
+-        MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+-        quantAllReduceTilingHccl.GetTiling();
+-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
++        MMPlusQuantAllReduce quantAllReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer);
++        quantAllReduceHccl.GetTiling();
++        mCutAllreduceVal = quantAllReduceHccl.tilingM_.cutRes;
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
++        allReduceHccl.GetTiling();
++        mCutAllreduceVal = allReduceHccl.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceVal;
+ }
+ 
+ // 注册Tiling类
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/quant_matmul_all_reduce_tiling_310_general.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/quant_matmul_all_reduce_tiling_310_general.cpp
+index 3bb77bca2..4308664ad 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/quant_matmul_all_reduce_tiling_310_general.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/quant_matmul_all_reduce_tiling_310_general.cpp
+@@ -143,23 +143,23 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
+ 
+ CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
++    CutResult mCutAllreduceResult;
++    SocVersion inputSocVer = SocVersion::SOC910_B;
++    SetMCutSocVersion(inputSocVer);
++    const gert::StorageShape* commQuantScaleShapeOne = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape* commQuantScaleShapeTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
++    if ((commQuantScaleShapeOne != nullptr) && (commQuantScaleShapeTwo != nullptr)) { // low-bit comm
+         OP_LOGD(opName_, "TileCnt enter comm quant.");
+-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+-        quantAllReduceTilingHccl.GetTiling();
+-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
++        MMPlusQuantAllReduce quantAllReduceTilingHcclObj(
++            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer);
++        quantAllReduceTilingHcclObj.GetTiling();
++        mCutAllreduceResult = quantAllReduceTilingHcclObj.tilingM_.cutRes;
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
++        allReduceTilingHcclObj.GetTiling();
++        mCutAllreduceResult = allReduceTilingHcclObj.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceResult;
+ }
+ 
+ //注册tiling类
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/unquant_matmul_all_reduce_tiling_310.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/unquant_matmul_all_reduce_tiling_310.cpp
+index 965752af1..068a3d669 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/unquant_matmul_all_reduce_tiling_310.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/unquant_matmul_all_reduce_tiling_310.cpp
+@@ -191,23 +191,23 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
+ 
+ CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
++    CutResult mCutAllreduceRet;
++    SocVersion socVer = SocVersion::SOC910_B;
++    SetMCutSocVersion(socVer);
++    const gert::StorageShape* commQuantScaleOne = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape* commQuantScaleTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
++    if ((commQuantScaleOne != nullptr) && (commQuantScaleTwo != nullptr)) { // low-bit comm
+         OP_LOGD(opName_, "TileCnt enter comm quant.");
+-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+-        quantAllReduceTilingHccl.GetTiling();
+-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
++        MMPlusQuantAllReduce quantAllReduceHcclTiling(
++            args_, args_.rankDim, KernelType::ALL_REDUCE, socVer);
++        quantAllReduceHcclTiling.GetTiling();
++        mCutAllreduceRet = quantAllReduceHcclTiling.tilingM_.cutRes;
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceHcclTiling(args_, args_.rankDim, KernelType::ALL_REDUCE, socVer, isPerBlock_);
++        allReduceHcclTiling.GetTiling();
++        mCutAllreduceRet = allReduceHcclTiling.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceRet;
+ }
+ 
+ //注册Tiling
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/weight_quant_matmul_all_reduce_tiling_310p.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/weight_quant_matmul_all_reduce_tiling_310p.cpp
+index 2fff7be14..304cdd198 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch31/weight_quant_matmul_all_reduce_tiling_310p.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch31/weight_quant_matmul_all_reduce_tiling_310p.cpp
+@@ -248,23 +248,23 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
+ 
+ CutResult WeightQuantMatmulAllReduceTiling310P::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
++    CutResult mCutAllreduceOut;
++    SocVersion socVersionInput = SocVersion::SOC910_B;
++    SetMCutSocVersion(socVersionInput);
++    const gert::StorageShape* commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape* commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
++    if ((commQuantScaleFirst != nullptr) && (commQuantScaleSecond != nullptr)) { // low-bit comm
+         OP_LOGD(opName_, "TileCnt enter comm quant.");
+-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+-        quantAllReduceTilingHccl.GetTiling();
+-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
++        MMPlusQuantAllReduce quantAllReduceTilingObj(
++            args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput);
++        quantAllReduceTilingObj.GetTiling();
++        mCutAllreduceOut = quantAllReduceTilingObj.tilingM_.cutRes;
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceTilingObj(args_, args_.rankDim, KernelType::ALL_REDUCE, socVersionInput, isPerBlock_);
++        allReduceTilingObj.GetTiling();
++        mCutAllreduceOut = allReduceTilingObj.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceOut;
+ }
+ 
+ //注册Tiling类
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch35/matmul_all_reduce_tiling_950.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch35/matmul_all_reduce_tiling_950.cpp
+index 6e0c8f6e3..609894a9f 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch35/matmul_all_reduce_tiling_950.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch35/matmul_all_reduce_tiling_950.cpp
+@@ -296,20 +296,20 @@ Mc2Tiling::RCSTiling& MatmulAllReduceTilingA5::MutableRCSTilingData()
+ 
+ ge::graphStatus MatmulAllReduceTilingA5::CheckAxisSize()
+ {
+-    const uint64_t m = MatmulAllReduceTilingBase::GetMValue();
++    const uint64_t mValue = MatmulAllReduceTilingBase::GetMValue();
+     OP_TILING_CHECK(
+-        m > static_cast<uint64_t>(INT32_MAX),
+-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
++        mValue > static_cast<uint64_t>(INT32_MAX),
++        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(mValue).c_str(), "exceeds upper limit INT32_MAX"),
+         return ge::GRAPH_FAILED);
+-    const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
++    const uint64_t kValue = MatmulAllReduceTilingBase::GetKValue();
+     OP_TILING_CHECK(
+-        k > static_cast<uint64_t>(INT32_MAX),
+-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(k).c_str(), "exceeds upper limit INT32_MAX"),
++        kValue > static_cast<uint64_t>(INT32_MAX),
++        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x1", std::to_string(kValue).c_str(), "exceeds upper limit INT32_MAX"),
+         return ge::GRAPH_FAILED);
+-    const uint64_t n = MatmulAllReduceTilingBase::GetNValue();
++    const uint64_t nValue = MatmulAllReduceTilingBase::GetNValue();
+     OP_TILING_CHECK(
+-        n > static_cast<uint64_t>(INT32_MAX),
+-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(n).c_str(), "exceeds upper limit INT32_MAX"),
++        nValue > static_cast<uint64_t>(INT32_MAX),
++        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2", std::to_string(nValue).c_str(), "exceeds upper limit INT32_MAX"),
+         return ge::GRAPH_FAILED);
+ 
+     return CheckEmptyTensor();
+diff --git a/mc2/matmul_all_reduce/op_host/op_tiling/arch35/weight_quant_matmul_all_reduce_tiling_950.cpp b/mc2/matmul_all_reduce/op_host/op_tiling/arch35/weight_quant_matmul_all_reduce_tiling_950.cpp
+index cb5a30d41..9b46e59e0 100644
+--- a/mc2/matmul_all_reduce/op_host/op_tiling/arch35/weight_quant_matmul_all_reduce_tiling_950.cpp
++++ b/mc2/matmul_all_reduce/op_host/op_tiling/arch35/weight_quant_matmul_all_reduce_tiling_950.cpp
+@@ -687,27 +687,27 @@ WeightQuantMatmulAllReduceTilingA5::WeightQuantMatmulAllReduceTilingA5(gert::Til
+ 
+ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
+ {
+-    CutResult mCutAllreduce;
+-    SocVersion inputSocVersion = SocVersion::SOC910_B;
+-    SetMCutSocVersion(inputSocVersion);
+-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
++    CutResult mCutAllreduceOutput;
++    SocVersion inputSocVer = SocVersion::SOC910_B;
++    SetMCutSocVersion(inputSocVer);
++    const gert::StorageShape* commQuantScaleFirst = mmrCtxInfo_.comm_quant_scale_1_shape;
++    const gert::StorageShape* commQuantScaleSecond = mmrCtxInfo_.comm_quant_scale_2_shape;
+     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
++        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
+                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                         TopoType::STANDARD_CARD);
+-        mCutAllreduce = allReduceTilingHccl.GetTiling();
++        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
+     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
++        MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
+                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                         TopoType::EIGHT_P);
+-        mCutAllreduce = allReduceTilingHccl.GetTiling();
++        mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
+     } else {
+-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+-        allReduceTilingHccl.GetTiling();
+-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
++        MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
++        allReduceTilingHcclInst.GetTiling();
++        mCutAllreduceOutput = allReduceTilingHcclInst.tilingM_.cutRes;
+     }
+-    return mCutAllreduce;
++    return mCutAllreduceOutput;
+ }
+ 
+ //注册Tiling类
+diff --git a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce.cpp b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce.cpp
+index db9a0d0c2..9ff596e18 100644
+--- a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce.cpp
++++ b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce.cpp
+@@ -47,18 +47,18 @@
+     do {                                                                                                               \
+         GET_TILING_DATA_MEMBER(Mc2Tiling::QuantMatmulAllReduceTilingData, msg, msg, tilingGM);                         \
+         if (msg.debugMode != static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {                                  \
+-            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);              \
+-            templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, int8_t, __VA_ARGS__> matmul;     \
+-            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilingData;                 \
+-            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
+-            const AscendC::tiling::TCubeTiling *mmTilingTile = &(qBmmV3TilingData->matmulTiling);                      \
+-            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingDataTail =                                              \
+-                &(QuantMatmulAllReduceTiling->tailmatmulTiling);                                                       \
+-            const AscendC::tiling::TCubeTiling *mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                  \
+-            REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);         \
+-            matmul.Init(aGM, bGM, biasGM, addGM, dequantGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,         \
+-                        &tilingData, &tPipe);                                                                          \
+-            matmul.Process(opTile, opTail);                                                                            \
++            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingDataLocal, tilingGM);              \
++            templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, DTYPE_Y, DTYPE_Y, int8_t, __VA_ARGS__> matmulOp;     \
++            const Mc2Tiling::QuantMatmulAllReduceTilingData *quantMarTilingPtr = &tilingDataLocal;                 \
++            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingPtr = &(quantMarTilingPtr->tilematmulTiling); \
++            const AscendC::tiling::TCubeTiling *mmTilingTilePtr = &(qBmmV3TilingPtr->matmulTiling);                      \
++            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingTailPtr =                                              \
++                &(quantMarTilingPtr->tailmatmulTiling);                                                       \
++            const AscendC::tiling::TCubeTiling *mmTilingTailPtr = &(qBmmV3TilingTailPtr->matmulTiling);                  \
++            REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTilePtr, opTail.mm, mmTilingTailPtr);         \
++            matmulOp.Init(aGM, bGM, biasGM, addGM, dequantGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,         \
++                        &tilingDataLocal, &tPipe);                                                                          \
++            matmulOp.Process(opTile, opTail);                                                                            \
+             tPipe.Destroy();                                                                                           \
+         }                                                                                                              \
+     } while (0)
+@@ -67,9 +67,9 @@
+ #if ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_FLOAT16))
+ #define INVOKE_QUANT_BMM_DEQUANT_FP16_IMPL_COMM_INT8(templateClass, ...)                                               \
+     do {                                                                                                               \
+-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);                  \
++        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingDataLocal, tilingGM);                  \
+         templateClass<DTYPE_X1, DTYPE_X2, int32_t, DTYPE_Y, int8_t, __VA_ARGS__> op;                                   \
+-        op.Init(aGM, bGM, dequantGM, biasGM, addGM, cGM, workspaceGM, &tilingData, &tPipe);                            \
++        op.Init(aGM, bGM, dequantGM, biasGM, addGM, cGM, workspaceGM, &tilingDataLocal, &tPipe);                            \
+         op.InitScale(commQuantScale1GM, commQuantScale2GM);                                                            \
+         op.Process();                                                                                                  \
+     } while (0)
+@@ -80,18 +80,18 @@
+     do {                                                                                                               \
+         GET_TILING_DATA_MEMBER(Mc2Tiling::QuantMatmulAllReduceTilingData, msg, msg, tilingGM);                         \
+         if (msg.debugMode != static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {                                  \
+-            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);              \
+-            templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, scaleType, DTYPE_Y, int8_t, __VA_ARGS__> matmul;   \
+-            const Mc2Tiling::QuantMatmulAllReduceTilingData *QuantMatmulAllReduceTiling = &tilingData;                 \
+-            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingData = &(QuantMatmulAllReduceTiling->tilematmulTiling); \
+-            const AscendC::tiling::TCubeTiling *mmTilingTile = &(qBmmV3TilingData->matmulTiling);                      \
+-            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingDataTail =                                              \
+-                &(QuantMatmulAllReduceTiling->tailmatmulTiling);                                                       \
+-            const AscendC::tiling::TCubeTiling *mmTilingTail = &(qBmmV3TilingDataTail->matmulTiling);                  \
+-            REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTile, opTail.mm, mmTilingTail);         \
+-            matmul.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM,     \
+-                        userWS, &tilingData, &tPipe);                                                                  \
+-            matmul.Process(opTile, opTail);                                                                            \
++            GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingDataLocal, tilingGM);              \
++            templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, scaleType, DTYPE_Y, int8_t, __VA_ARGS__> matmulOp;   \
++            const Mc2Tiling::QuantMatmulAllReduceTilingData *quantMarTilingPtr = &tilingDataLocal;                 \
++            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingPtr = &(quantMarTilingPtr->tilematmulTiling); \
++            const AscendC::tiling::TCubeTiling *mmTilingTilePtr = &(qBmmV3TilingPtr->matmulTiling);                      \
++            const Mc2QuantBatchMatmulV3TilingData *qBmmV3TilingTailPtr =                                              \
++                &(quantMarTilingPtr->tailmatmulTiling);                                                       \
++            const AscendC::tiling::TCubeTiling *mmTilingTailPtr = &(qBmmV3TilingTailPtr->matmulTiling);                  \
++            REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), opTile.mm, mmTilingTilePtr, opTail.mm, mmTilingTailPtr);         \
++            matmulOp.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM,     \
++                        userWS, &tilingDataLocal, &tPipe);                                                                  \
++            matmulOp.Process(opTile, opTail);                                                                            \
+             tPipe.Destroy();                                                                                           \
+         }                                                                                                              \
+     } while (0)
+diff --git a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_310_general.h b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_310_general.h
+index 4a21f59a4..256a44a8f 100644
+--- a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_310_general.h
++++ b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_310_general.h
+@@ -112,30 +112,30 @@ __aicore__ inline void MatMulEmptyTensorBrcBias(GM_ADDR biasGM, GM_ADDR cGM,
+     LocalTensor<DTYPE_Y> bias = tmpBuf.Get<DTYPE_Y>();
+     GlobalTensor<DTYPE_Y> biasGlobal;
+     biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_Y*>(biasGM));
+-    uint32_t eleCnt = 32 / sizeof(DTYPE_Y);
+-    uint32_t alSize = (tilingData->param.rankN / eleCnt) * eleCnt;
+-    if (alSize > 0) {
+-        DataCopy(bias, biasGlobal, alSize);
+-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
+-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
++    uint32_t eleCntGen = 32 / sizeof(DTYPE_Y);
++    uint32_t alSizeGen = (tilingData->param.rankN / eleCntGen) * eleCntGen;
++    if (alSizeGen > 0) {
++        DataCopy(bias, biasGlobal, alSizeGen);
++        event_t eventIDGen = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
++        SetFlag<HardEvent::MTE2_MTE3>(eventIDGen);
++        WaitFlag<HardEvent::MTE2_MTE3>(eventIDGen);
+         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
+-            uint32_t offsetDst = i * tilingData->param.rankN;
+-            DataCopy(cGlobalHalf[offsetDst], bias, alSize);
++            uint32_t offsetDstGen = i * tilingData->param.rankN;
++            DataCopy(cGlobalHalf[offsetDstGen], bias, alSizeGen);
+         }
+     }
+-    if (tilingData->param.rankN % eleCnt) {
++    if (tilingData->param.rankN % eleCntGen) {
+         // 搬运biase非对齐部分
+-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+-        SetFlag<HardEvent::MTE3_MTE2>(eventID);
+-        WaitFlag<HardEvent::MTE3_MTE2>(eventID);
+-        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCnt], eleCnt);
+-        eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
+-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
++        event_t eventIDGen = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
++        SetFlag<HardEvent::MTE3_MTE2>(eventIDGen);
++        WaitFlag<HardEvent::MTE3_MTE2>(eventIDGen);
++        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCntGen], eleCntGen);
++        eventIDGen = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
++        SetFlag<HardEvent::MTE2_MTE3>(eventIDGen);
++        WaitFlag<HardEvent::MTE2_MTE3>(eventIDGen);
+         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
+-            uint32_t offsetDst = (i + 1) * tilingData->param.rankN - eleCnt;
+-            DataCopy(cGlobalHalf[offsetDst], bias, eleCnt);
++            uint32_t offsetDstGen = (i + 1) * tilingData->param.rankN - eleCntGen;
++            DataCopy(cGlobalHalf[offsetDstGen], bias, eleCntGen);
+         }
+     }
+ }
+diff --git a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_weight_quant_310.h b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_weight_quant_310.h
+index 72eb05351..7c9ab7f4f 100644
+--- a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_weight_quant_310.h
++++ b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_all_reduce_weight_quant_310.h
+@@ -175,30 +175,30 @@ __aicore__ inline void MatMulEmptyTensorBrcBias(GM_ADDR biasGM, GM_ADDR cGM,
+     biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_Y*>(biasGM));
+     TBuffAddr buffAddr;
+     buffAddr.logicPos = (uint8_t)QuePosition::VECCALC;
+-    uint32_t eleCnt = 32 / sizeof(DTYPE_Y);
+-    uint32_t alSize = (tilingData->param.rankN / eleCnt) * eleCnt;
+-    if (alSize > 0) {
+-        DataCopy(bias, biasGlobal, alSize);
+-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
+-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
++    uint32_t eleCntWq = 32 / sizeof(DTYPE_Y);
++    uint32_t alSizeWq = (tilingData->param.rankN / eleCntWq) * eleCntWq;
++    if (alSizeWq > 0) {
++        DataCopy(bias, biasGlobal, alSizeWq);
++        event_t eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
++        SetFlag<HardEvent::MTE2_MTE3>(eventIDWq);
++        WaitFlag<HardEvent::MTE2_MTE3>(eventIDWq);
+         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
+-            uint32_t offsetDst = i * tilingData->param.rankN;
+-            DataCopy(cGlobalHalf[offsetDst], bias, alSize);
++            uint32_t offsetDstWq = i * tilingData->param.rankN;
++            DataCopy(cGlobalHalf[offsetDstWq], bias, alSizeWq);
+         }
+     }
+-    if (tilingData->param.rankN % eleCnt) {
++    if (tilingData->param.rankN % eleCntWq) {
+         // 搬运biase非对齐部分
+-        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+-        SetFlag<HardEvent::MTE3_MTE2>(eventID);
+-        WaitFlag<HardEvent::MTE3_MTE2>(eventID);
+-        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCnt], eleCnt);
+-        eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
+-        SetFlag<HardEvent::MTE2_MTE3>(eventID);
+-        WaitFlag<HardEvent::MTE2_MTE3>(eventID);
++        event_t eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
++        SetFlag<HardEvent::MTE3_MTE2>(eventIDWq);
++        WaitFlag<HardEvent::MTE3_MTE2>(eventIDWq);
++        DataCopy(bias, biasGlobal[tilingData->param.rankN - eleCntWq], eleCntWq);
++        eventIDWq = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
++        SetFlag<HardEvent::MTE2_MTE3>(eventIDWq);
++        WaitFlag<HardEvent::MTE2_MTE3>(eventIDWq);
+         for (uint32_t i = 0; i < tilingData->param.rankM; ++i) {
+-            uint32_t offsetDst = (i + 1) * tilingData->param.rankN - eleCnt;
+-            DataCopy(cGlobalHalf[offsetDst], bias, eleCnt);
++            uint32_t offsetDstWq = (i + 1) * tilingData->param.rankN - eleCntWq;
++            DataCopy(cGlobalHalf[offsetDstWq], bias, eleCntWq);
+         }
+     }
+ }
+diff --git a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_compute_weight_quant.h b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_compute_weight_quant.h
+index 9cb823d0b..7442a9ba4 100644
+--- a/mc2/matmul_all_reduce/op_kernel/arch31/matmul_compute_weight_quant.h
++++ b/mc2/matmul_all_reduce/op_kernel/arch31/matmul_compute_weight_quant.h
+@@ -223,11 +223,11 @@ __aicore__ inline void MatmulComputeWeightQuant<
+     A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
+     hasAntiQuantOffset>::ComputeWithL2CacheEven(int32_t mTileIndex, uint32_t index, uint8_t enAtomic)
+ {
+-    for (int32_t nTileIndex = 0; nTileIndex < this->block.tilingL2.nTileCntL2; nTileIndex++) {
+-        this->block.UpdateBlockCnt(0, mTileIndex, nTileIndex);
++    for (int32_t nTileIdx = 0; nTileIdx < this->block.tilingL2.nTileCntL2; nTileIdx++) {
++        this->block.UpdateBlockCnt(0, mTileIndex, nTileIdx);
+         for (uint32_t j = 0; j < this->block.blockCnt; j++) {
+             if (index < this->block.totalTileCnt) {
+-                this->block.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(mTileIndex, nTileIndex);
++                this->block.template CalcGMOffset<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(mTileIndex, nTileIdx);
+                 this->mm.SetSingleShape(
+                     this->block.singleCoreM, this->block.singleCoreN, this->block.tiling.singleCoreK);
+                 this->mm.SetTensorA(this->aGlobal[this->block.offset.offsetA], this->block.isTransposeA);
+diff --git a/mc2/matmul_reduce_scatter/op_host/op_tiling/arch22/matmul_reduce_scatter_tiling_a2a3.cpp b/mc2/matmul_reduce_scatter/op_host/op_tiling/arch22/matmul_reduce_scatter_tiling_a2a3.cpp
+index 3b3c07f82..b7e4bba3d 100644
+--- a/mc2/matmul_reduce_scatter/op_host/op_tiling/arch22/matmul_reduce_scatter_tiling_a2a3.cpp
++++ b/mc2/matmul_reduce_scatter/op_host/op_tiling/arch22/matmul_reduce_scatter_tiling_a2a3.cpp
+@@ -15,7 +15,6 @@
+ #include "matmul_reduce_scatter_tiling_a2a3.h"
+ #include "vector"
+ #include "graph/utils/type_utils.h"
+-#include "mc2_log.h"
+ #include "register/op_def_registry.h"
+ #include "op_host/op_tiling/mc2_tiling_utils.h"
+ #include "mc2_hcom_topo_info.h"
+diff --git a/mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling_a5.cpp b/mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling_a5.cpp
+index 8348fa636..a1c605327 100644
+--- a/mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling_a5.cpp
++++ b/mc2/matmul_reduce_scatter/op_host/op_tiling/arch35/matmul_reduce_scatter_tiling_a5.cpp
+@@ -15,7 +15,6 @@
+ #include "matmul_reduce_scatter_tiling_a5.h"
+ #include "vector"
+ #include "graph/utils/type_utils.h"
+-#include "mc2_log.h"
+ #include "register/op_def_registry.h"
+ #include "op_host/op_tiling/mc2_tiling_utils.h"
+ #include "mc2_hcom_topo_info.h"
+diff --git a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h
+index 63d83753a..f36517d49 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h
++++ b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h
+@@ -16,6 +16,7 @@
+ #ifndef DECISION_RULES_H
+ #define DECISION_RULES_H
+ 
++#include <cstddef>
+ #include <cstdint>
+ 
+ namespace Tiling_Small_M {
+diff --git a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_tiling.cpp b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_tiling.cpp
+index 37985b6ca..b416ea9fe 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_tiling.cpp
++++ b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch22/matmul_reduce_scatter_v2_aiv_mode_tiling.cpp
+@@ -16,7 +16,6 @@
+ #include "vector"
+ #include "register/tilingdata_base.h"
+ #include "tiling/tiling_api.h"
+-#include "mc2_log.h"
+ #include "register/op_def_registry.h"
+ #include "op_host/op_tiling/mc2_tiling_utils.h"
+ #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
+@@ -894,7 +893,7 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData,
+         coreNum == 0,
+         OP_LOGE(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
+         return ge::GRAPH_FAILED);
+-    int32_t count_m_tile = cocTilingData.swizzlDirect ?
++    int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
+                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
+                                cocTilingData.swizzlCount;
+ 
+diff --git a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch35/quant_bmm_reduce_scatter_tiling.cpp b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch35/quant_bmm_reduce_scatter_tiling.cpp
+index c69a34125..9262f3b9b 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch35/quant_bmm_reduce_scatter_tiling.cpp
++++ b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/arch35/quant_bmm_reduce_scatter_tiling.cpp
+@@ -846,18 +846,18 @@ QuantBmmReduceScatterHelper::QuantBmmReduceScatterHelper(QuantBmmReduceScatterTi
+ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
+ {
+     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+-        MMReduceScatterFitBalanceTiling scatterTiling(args_,
++        MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_,
+             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::STANDARD_CARD);
+-        return scatterTiling.GetTiling();
++        return quantBmmScatterTiling.GetTiling();
+     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+-        MMReduceScatterFitBalanceTiling scatterTiling(args_,
++        MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_,
+             KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL, TopoType::EIGHT_P);
+-        return scatterTiling.GetTiling();
++        return quantBmmScatterTiling.GetTiling();
+     } else {
+         SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
+-        MMPlusReduceScatter scatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
+-        scatterTiling.GetTiling();
+-        return scatterTiling.tilingM_.cutRes;
++        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion);
++        quantBmmScatterTiling.GetTiling();
++        return quantBmmScatterTiling.tilingM_.cutRes;
+     }
+ }
+ //注册Tiling类
+diff --git a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/matmul_reduce_scatter_tiling_base.cpp b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/matmul_reduce_scatter_tiling_base.cpp
+index 1865c2c34..791bb0396 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/matmul_reduce_scatter_tiling_base.cpp
++++ b/mc2/matmul_reduce_scatter_v2/op_host/op_tiling/matmul_reduce_scatter_tiling_base.cpp
+@@ -22,7 +22,6 @@
+ #include <cmath>
+ #include <cstdint>
+ #include "mc2_hcom_topo_info.h"
+-#include "mc2_log.h"
+ #include "op_host/op_tiling/matmul_formulaic_tiling.h"
+ #include "reduce_scatter_formulaic_tiling.h"
+ #include "graph/utils/type_utils.h"
+@@ -546,6 +545,8 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &r
+                                                    const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
+                                                    uint32_t debugMode)
+ {
++    (void)mmTiling;
++    (void)tailTiling;
+     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
+     auto columnNum = args_.orgKValue;
+     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h b/mc2/matmul_reduce_scatter_v2/op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h
+index 7baa15565..65d2889e8 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h
+@@ -381,20 +381,20 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
+     const uint32_t handleShift = isTail ? cfg.tileCnt : 0;
+ 
+     // 指针初始化
+-    GM_ADDR currSendPtr = sendGM; // 当前发送缓冲区起始地址
+-    GM_ADDR currRecvPtr = recvGM; // 当前接收缓冲区起始地址
+-    GM_ADDR currOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
++    GM_ADDR currentSendPtr = sendGM; // 当前发送缓冲区起始地址
++    GM_ADDR currentRecvPtr = recvGM; // 当前接收缓冲区起始地址
++    GM_ADDR currentOutPtr = isTail ? cGM_ + tileOffset_ : cGM_; // 当前 reduceSum 输出的起始地址
+ 
+     // --- Prologue: 启动第 0 轮通信 ---
+     VecWaitCube(); // 确保依赖的 MatMul 已完成
+     handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
+-        currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
++        currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat
+     );
+     
+     // 移动指针准备下一轮
+-    currSendPtr += rankSliceBytes;
+-    currRecvPtr += rankSliceBytes;
+-    currOutPtr += rankSliceBytes;
++    currentSendPtr += rankSliceBytes;
++    currentRecvPtr += rankSliceBytes;
++    currentOutPtr += rankSliceBytes;
+ 
+     // --- Loop: 重叠执行 (等待上一轮 + 归约上一轮 + 启动下一轮) ---
+     for (uint32_t i = 0; i < count - 1; i++) {
+@@ -407,40 +407,40 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
+         // 2. 启动下一轮 (i+1) 通信
+         VecWaitCube(); 
+         handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
+-            currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
++            currentSendPtr, currentRecvPtr, rankSliceElems, dataType_, stride, repeat
+         );
+ 
+         // 3. 执行上一轮 (i) 数据的 ReduceSum
+         // 计算地址 = 当前指针 - 一步偏移
+-        GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
+-        GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
++        GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
++        GM_ADDR calculateOutPtr  = currentOutPtr - rankSliceBytes;
+ 
+         tPipe_->Reset();
+-        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
++        reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
+         reduceSum_.ExecuteReduceSum();
+ 
+         // 指针继续前移
+-        currSendPtr += rankSliceBytes;
+-        currRecvPtr += rankSliceBytes;
+-        currOutPtr += rankSliceBytes;
++        currentSendPtr += rankSliceBytes;
++        currentRecvPtr += rankSliceBytes;
++        currentOutPtr += rankSliceBytes;
+     }
+ 
+     // --- Epilogue: 处理最后一轮 (count-1) ---
+-    uint32_t lastIdx = count - 1;
++    uint32_t lastIndex = count - 1;
+     
+     // 等待最后一轮通信结束
+     if (GetBlockIdx() == 0) {
+-        hccl_.Wait(handles_[lastIdx + handleShift]); 
++        hccl_.Wait(handles_[lastIndex + handleShift]); 
+     }
+     SyncAll<true>();
+ 
+     // 执行最后一轮数据的 reduceSum
+     // 此时的计算地址同样是 "当前指针 - 偏移量"
+-    GM_ADDR calcRecvPtr = currRecvPtr - rankSliceBytes;
+-    GM_ADDR calcOutPtr  = currOutPtr - rankSliceBytes;
++    GM_ADDR calculateRecvPtr = currentRecvPtr - rankSliceBytes;
++    GM_ADDR calculateOutPtr  = currentOutPtr - rankSliceBytes;
+ 
+     tPipe_->Reset();
+-    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calcRecvPtr, calcOutPtr, tPipe_);
++    reduceSum_.Init(rankSliceElems, stride, cfg.rankDim, aivNum_, calculateRecvPtr, calculateOutPtr, tPipe_);
+     reduceSum_.ExecuteReduceSum();
+ }
+ 
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul.hpp b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul.hpp
+index bf8e117f1..e02b8fa94 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul.hpp
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul.hpp
+@@ -284,88 +284,88 @@ public:
+         gmWorkSpace.SetGlobalBuffer((__gm__ ElementC *)params.ptrWorkSpace);
+ 
+         BlockMmad blockMmad(resource);
+-        int32_t blockSize = L1TileShape::M * L1TileShape::N;
+-        for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
+-            int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
+-            if (calIdx >= MAX_BLOCK_COUNT) {
+-                WaitEvent(flagIdx);
++        int32_t matmulBlockSize = L1TileShape::M * L1TileShape::N;
++        for (int32_t matmulCalIdx = 0; matmulCalIdx < calCount; matmulCalIdx++) {
++            int32_t matmulFlagIdx = matmulCalIdx % MAX_BLOCK_COUNT;
++            if (matmulCalIdx >= MAX_BLOCK_COUNT) {
++                WaitEvent(matmulFlagIdx);
+             }
+             for (int32_t p = 0; p < params.pValue; p++) {
+-                int32_t loopIdx = calIdx * loopNumPerComm + p * coreNum + coreIdx;
+-                if (loopIdx >= coreLoops) {
++                int32_t matmulLoopIdx = matmulCalIdx * loopNumPerComm + p * coreNum + coreIdx;
++                if (matmulLoopIdx >= coreLoops) {
+                     break;
+                 }
+-                int32_t dstRankIdx = loopIdx % params.rankSize;
+-                int32_t inRankIdx = loopIdx / params.rankSize;
+-                int64_t gmABlockSt = static_cast<int64_t>(dstRankIdx) * finalM * kAlign;
+-                GemmCoord blockIdxCoord =
+-                    GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
+-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
+-                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoopPerRank, finalM, nLoops,
++                int32_t matmulDstRankIdx = matmulLoopIdx % params.rankSize;
++                int32_t matmulInRankIdx = matmulLoopIdx / params.rankSize;
++                int64_t matmulGmABlockSt = static_cast<int64_t>(matmulDstRankIdx) * finalM * kAlign;
++                GemmCoord matmulBlockIdxCoord =
++                    GetBlockIdCoord(matmulInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
++                GemmCoord matmulBlockLocCoord = GetBlockLocCoord(matmulBlockIdxCoord);
++                GemmCoord matmulBlockSizeCoord = GetBlockSizeCoord(matmulBlockIdxCoord, matmulBlockLocCoord, mLoopPerRank, finalM, nLoops,
+                                                              params.problemShape.n(), params.problemShape.k());
+ 
+-                MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
+-                MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
+-                MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
+-                int64_t gmOffsetA = gmABlockSt + params.layoutA.GetOffset(offsetA);
+-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+-                int64_t gmOffsetC;
++                MatrixCoord offsetA{matmulBlockLocCoord.m(), matmulBlockLocCoord.k()};
++                MatrixCoord offsetB{matmulBlockLocCoord.k(), matmulBlockLocCoord.n()};
++                MatrixCoord matmulOffsetC{matmulBlockLocCoord.m(), matmulBlockLocCoord.n()};
++                int64_t matmulGmOffsetA = matmulGmABlockSt + params.layoutA.GetOffset(offsetA);
++                int64_t matmulGmOffsetB = params.layoutB.GetOffset(offsetB);
++                int64_t matmulGmOffsetC;
+                 LayoutC layoutGmDst;
+                 AscendC::GlobalTensor<ElementC> gmDst;
+                 if (std::is_same<ElementC, int32_t>::value) {
+                     gmDst = gmWorkSpace;
+                     layoutGmDst = params.layoutPeerMem;
+-                    gmOffsetC = (flagIdx * loopNumPerComm + dstRankIdx * (loopNumPerComm / params.rankSize) +
+-                                 (loopIdx % loopNumPerComm) / params.rankSize) *
+-                                blockSize;
+-                } else if (dstRankIdx == params.rankIdx) {
++                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm + matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
++                                 (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
++                                matmulBlockSize;
++                } else if (matmulDstRankIdx == params.rankIdx) {
+                     gmDst = gmC;
+                     layoutGmDst = params.layoutC;
+-                    gmOffsetC = params.layoutC.GetOffset(offsetC);
++                    matmulGmOffsetC = params.layoutC.GetOffset(matmulOffsetC);
+                 } else {
+                     gmDst = gmPeerMem;
+                     layoutGmDst = params.layoutPeerMem;
+-                    gmOffsetC = (flagIdx * loopNumPerComm + dstRankIdx * (loopNumPerComm / params.rankSize) +
+-                                 (loopIdx % loopNumPerComm) / params.rankSize) *
+-                                blockSize;
++                    matmulGmOffsetC = (matmulFlagIdx * loopNumPerComm + matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
++                                 (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
++                                matmulBlockSize;
+                 }
+                 if constexpr (HasBias) {
+                     blockMmad(
+-                        gmA[gmOffsetA], params.layoutA,
+-                        gmB[gmOffsetB], params.layoutB,
+-                        gmDst[gmOffsetC], layoutGmDst,
+-                        gmBias[blockLocCoord.n()], blockSizeCoord);
++                        gmA[matmulGmOffsetA], params.layoutA,
++                        gmB[matmulGmOffsetB], params.layoutB,
++                        gmDst[matmulGmOffsetC], layoutGmDst,
++                        gmBias[matmulBlockLocCoord.n()], matmulBlockSizeCoord);
+                 } else {
+-                    bool isFirstBlock = loopIdx == coreIdx;
+-                    bool hasNextBlock = false;
++                    bool matmulIsFirstBlock = matmulLoopIdx == coreIdx;
++                    bool matmulHasNextBlock = false;
+                     GemmCoord nextBlockLocCoord;
+-                    GemmCoord nextBlockSizeCoord;
++                    GemmCoord matmulNextBlockSizeCoord;
+                     GemmCoord nextBlockIdCoord;
+-                    int32_t nextLoopIdx = loopIdx + coreNum;
++                    int32_t nextLoopIdx = matmulLoopIdx + coreNum;
+                     int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
+                     int32_t nextDstRankIdx = nextLoopIdx % params.rankSize;
+                     if (nextLoopIdx < coreLoops) {
+-                        hasNextBlock = true;
++                        matmulHasNextBlock = true;
+                         nextBlockIdCoord = GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect,
+                             params.swizzlCount);
+                         nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+-                        nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
++                        matmulNextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
+                             finalM, nLoops, params.problemShape.n(), params.problemShape.k());
+                     }
+                     int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
+                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
+-                    int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
+-                    int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
++                    int64_t matmulGmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
++                    int64_t matmulGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+                     blockMmad(
+-                        gmA[gmOffsetA], params.layoutA,
+-                        gmB[gmOffsetB], params.layoutB,
+-                        gmDst[gmOffsetC], layoutGmDst,
+-                        gmA[gmOffsetNextA], gmB[gmOffsetNextB],
+-                        blockSizeCoord, nextBlockSizeCoord, isFirstBlock, hasNextBlock);
++                        gmA[matmulGmOffsetA], params.layoutA,
++                        gmB[matmulGmOffsetB], params.layoutB,
++                        gmDst[matmulGmOffsetC], layoutGmDst,
++                        gmA[matmulGmOffsetNextA], gmB[matmulGmOffsetNextB],
++                        matmulBlockSizeCoord, matmulNextBlockSizeCoord, matmulIsFirstBlock, matmulHasNextBlock);
+                 }
+             }
+-            FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
++            FFTSCrossCoreSync<PIPE_FIX, 2>(matmulFlagIdx);
+         }
+     }
+ 
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode.h b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode.h
+index 9de72750b..ac14cc6db 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode.h
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode.h
+@@ -302,7 +302,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
+                                         L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
+                 using MatmulKernel =
+                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
+-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
++                typename MatmulKernel::Params colMajorParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
+                                                      layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
+                                                      reinterpret_cast<GM_ADDR>(cGM_),
+@@ -313,8 +313,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
+                                                      swizzl_direct, dequant_type,
+                                                      rank,          rank_size,
+                                                      need_fixpipe};
+-                MatmulKernel matmul_op;
+-                matmul_op(params);
++                MatmulKernel colMajorMatmulOp;
++                colMajorMatmulOp(colMajorParams);
+             } else {
+                 using L1TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L1TileShapeK>; // m n k
+                 using L0TileShape = GemmShape<TILE_SHAPE_256, TILE_SHAPE_128, L0TileShapeK>;
+@@ -322,7 +322,7 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
+                                     L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
+                 using MatmulKernel =
+                     Gemm::Kernel::MatmulReduceScatterAivMode<void, void, BlockMmadOpt, void, void, aicCalBias>;
+-                typename MatmulKernel::Params params{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
++                typename MatmulKernel::Params colMajorParams{processSize,   reinterpret_cast<GM_ADDR>(gm_a_src),
+                                                      layoutA,       reinterpret_cast<GM_ADDR>(gm_b_src),
+                                                      layoutB,       reinterpret_cast<GM_ADDR>(biasGM_),
+                                                      reinterpret_cast<GM_ADDR>(cGM_),
+@@ -333,8 +333,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
+                                                      swizzl_direct, dequant_type,
+                                                      rank,          rank_size,
+                                                      need_fixpipe};
+-                MatmulKernel matmul_op;
+-                matmul_op(params);
++                MatmulKernel colMajorMatmulOp;
++                colMajorMatmulOp(colMajorParams);
+             }
+         }
+     }
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h
+index c58171a9b..d034414d6 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_block_epilogue_dequant.h
+@@ -341,81 +341,81 @@ public:
+         if (ptrBias != nullptr) {
+             gmBias.SetGlobalBuffer((__gm__ ElementBias *)ptrBias);
+         }
+-        auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
+-        auto tileShape = TileShape::ToCoord();
+-        EpilogueTileSwizzle epilogueTileSwizzle(actualBlockShape, tileShape);
+-        uint32_t tileLoops = epilogueTileSwizzle.GetLoops();
+-        uint32_t subblockIdx = AscendC::GetSubBlockIdx();
+-        uint32_t subblockNum = AscendC::GetSubBlockNum();
++        auto ubTileStrideDequant = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
++        auto tileShapeDequant = TileShape::ToCoord();
++        EpilogueTileSwizzle epilogueTileSwizzleDequant(actualBlockShape, tileShapeDequant);
++        uint32_t tileLoopsDequant = epilogueTileSwizzleDequant.GetLoops();
++        uint32_t subblockIdxDequant = AscendC::GetSubBlockIdx();
++        uint32_t subblockNumDequant = AscendC::GetSubBlockNum();
+ 
+         InitFlag();
+-        for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
+-            auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
+-            auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
+-            auto tileOffset = tileCoord * tileShape;
++        for (uint32_t loopIdxDequant = subblockIdxDequant; loopIdxDequant < tileLoopsDequant; loopIdxDequant += subblockNumDequant) {
++            auto tileCoordDequant = epilogueTileSwizzleDequant.GetTileCoord(loopIdxDequant);
++            auto actualTileShapeDequant = epilogueTileSwizzleDequant.GetActualTileShape(tileCoordDequant);
++            auto tileOffsetDequant = tileCoordDequant * tileShapeDequant;
+ 
+-            auto gmTileC = gmC[layoutC.GetOffset(tileOffset)];
+-            auto layoutGmTileC = layoutC.GetTileLayout(actualTileShape);
++            auto gmTileCDequant = gmC[layoutC.GetOffset(tileOffsetDequant)];
++            auto layoutGmTileCDequant = layoutC.GetTileLayout(actualTileShapeDequant);
+ 
+-            auto &ubC = ubCList[ubListId];
+-            LayoutC layoutUbC{actualTileShape, ubTileStride};
++            auto &ubCDequant = ubCList[ubListId];
++            LayoutC layoutUbCDequant{actualTileShapeDequant, ubTileStrideDequant};
+ 
+             // 把 C 从GM拷贝到UB
+             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+-            copyGmToUbC(ubC, gmTileC, layoutUbC, layoutGmTileC);
++            copyGmToUbC(ubCDequant, gmTileCDequant, layoutUbCDequant, layoutGmTileCDequant);
+             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+ 
+-            auto scaleTileOffset = tileOffset.template GetCoordByAxis<1>();
+-            auto scaleTileShape = actualTileShape.template GetCoordByAxis<1>();
++            auto scaleTileOffsetDequant = tileOffsetDequant.template GetCoordByAxis<1>();
++            auto scaleTileShapeDequant = actualTileShapeDequant.template GetCoordByAxis<1>();
+ 
+-            auto gmTileScale = gmScale[layoutScale.GetOffset(scaleTileOffset)];
+-            auto layoutGmTileScale = layoutScale.GetTileLayout(scaleTileShape);
++            auto gmTileScaleDequant = gmScale[layoutScale.GetOffset(scaleTileOffsetDequant)];
++            auto layoutGmTileScaleDequant = layoutScale.GetTileLayout(scaleTileShapeDequant);
+ 
+-            auto &ubScale = ubScaleList[ubListId];
+-            auto layoutUbScale = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShape);
++            auto &ubScaleDequant = ubScaleList[ubListId];
++            auto layoutUbScaleDequant = LayoutScale::template MakeLayoutInUb<ElementScale>(scaleTileShapeDequant);
+ 
+             // 把 scale 从GM拷贝到UB
+-            copyGmToUbScale(ubScale, gmTileScale, layoutUbScale, layoutGmTileScale);
++            copyGmToUbScale(ubScaleDequant, gmTileScaleDequant, layoutUbScaleDequant, layoutGmTileScaleDequant);
+             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+ 
+             // 只有当bias不为nullptr时，才处理bias相关操作
+             if (ptrBias != nullptr) {
+-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
+-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
++                auto biasTileOffsetCoord = tileOffsetDequant.template GetCoordByAxis<1>();
++                auto biasTileShapeCoord = actualTileShapeDequant.template GetCoordByAxis<1>();
+ 
+-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
+-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
++                auto gmTileBiasGlobalTensor = gmBias[layoutBias.GetOffset(biasTileOffsetCoord)];
++                auto layoutGmTileBiasLayout = layoutBias.GetTileLayout(biasTileShapeCoord);
+ 
+-                auto &ubBias = ubBiasList[ubListId];
+-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
++                auto &ubBiasLocalTensor = ubBiasList[ubListId];
++                auto layoutUbBiasLayout = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShapeCoord);
+ 
+                 // 把bias 从GM拷贝到UB
+ 
+                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
+-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
++                copyGmToUbBias(ubBiasLocalTensor, gmTileBiasGlobalTensor, layoutUbBiasLayout, layoutGmTileBiasLayout);
+                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
+ 
+                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
+                     AscendC::IsSameType<ElementBias, half>::value) {
+                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
+-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
++                    AscendC::Cast(ubBiasFp32, ubBiasLocalTensor, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
+                 }
+             }
+             // 在UB上把C cast到FP32
+             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+-            AscendC::Cast(ubCFp32, ubC, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
++            AscendC::Cast(ubCFp32, ubCDequant, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
+             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+ 
+             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbScaleMTE2VList[ubListId]);
+ 
+             // 在UB上做广播乘法
+             AscendC::PipeBarrier<PIPE_V>();
+-            tileRowBroadcastMul(ubMul, ubCFp32, ubScale);
++            tileRowBroadcastMul(ubMul, ubCFp32, ubScaleDequant);
+             AscendC::PipeBarrier<PIPE_V>();
+ 
+             // 选择要cast的源tensor：如果有bias，使用ubBiasAdd；否则直接使用ubMul
+-            AscendC::LocalTensor<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubMul;
++            AscendC::LocalTensor<float> &castSrcDequant = ptrBias != nullptr ? ubBiasAdd : ubMul;
+ 
+             // 只有当bias不为nullptr时，才执行bias加法
+             if (ptrBias != nullptr) {
+@@ -430,20 +430,20 @@ public:
+                 }
+                 AscendC::PipeBarrier<PIPE_V>();
+             }
+-            auto &ubD = ubDList[ubListId];
+-            LayoutD layoutUbD{actualTileShape, ubTileStride};
++            auto &ubDDequant = ubDList[ubListId];
++            LayoutD layoutUbDDequant{actualTileShapeDequant, ubTileStrideDequant};
+ 
+             // 将乘法结果从UB cast到D
+             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
+-            AscendC::Cast(ubD, castSrc, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
++            AscendC::Cast(ubDDequant, castSrcDequant, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
+             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
+ 
+-            auto gmTileD = gmD[layoutD.GetOffset(tileOffset)];
+-            auto layoutGmTileD = layoutD.GetTileLayout(actualTileShape);
++            auto gmTileDDequant = gmD[layoutD.GetOffset(tileOffsetDequant)];
++            auto layoutGmTileDDequant = layoutD.GetTileLayout(actualTileShapeDequant);
+ 
+             // 把乘法结果从UB拷贝到GM
+             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
+-            copyUbToGmD(gmTileD, ubD, layoutGmTileD, layoutUbD);
++            copyUbToGmD(gmTileDDequant, ubDDequant, layoutGmTileDDequant, layoutUbDDequant);
+             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
+ 
+             ubListId = (ubListId + 1) % UB_STAGES;
+@@ -467,34 +467,34 @@ public:
+         gmIn.SetGlobalBuffer(ptrIn);
+         gmOut.SetGlobalBuffer(ptrOut);
+ 
+-        auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
+-        auto tileShape = TileShape::ToCoord();
+-        EpilogueTileSwizzle epilogueTileSwizzle(actualBlockShape, tileShape);
+-        uint32_t tileLoops = epilogueTileSwizzle.GetLoops();
+-        uint32_t subblockIdx = AscendC::GetSubBlockIdx();
+-        uint32_t subblockNum = AscendC::GetSubBlockNum();
++        auto ubTileStridePerToken = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
++        auto tileShapePerToken = TileShape::ToCoord();
++        EpilogueTileSwizzle epilogueTileSwizzlePerToken(actualBlockShape, tileShapePerToken);
++        uint32_t tileLoopsPerToken = epilogueTileSwizzlePerToken.GetLoops();
++        uint32_t subblockIdxPerToken = AscendC::GetSubBlockIdx();
++        uint32_t subblockNumPerToken = AscendC::GetSubBlockNum();
+ 
+         InitFlag();
+-        for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
+-            auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
+-            auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
+-            auto tileOffset = tileCoord * tileShape;
++        for (uint32_t loopIdxPerToken = subblockIdxPerToken; loopIdxPerToken < tileLoopsPerToken; loopIdxPerToken += subblockNumPerToken) {
++            auto tileCoordPerToken = epilogueTileSwizzlePerToken.GetTileCoord(loopIdxPerToken);
++            auto actualTileShapePerToken = epilogueTileSwizzlePerToken.GetActualTileShape(tileCoordPerToken);
++            auto tileOffsetPerToken = tileCoordPerToken * tileShapePerToken;
+ 
+-            auto gmTileIn = gmIn[layoutIn.GetOffset(tileOffset)];
+-            auto gmTileOut = gmOut[layoutOut.GetOffset(tileOffset)];
+-            auto layoutGmTileIn = layoutIn.GetTileLayout(actualTileShape);
+-            auto layoutGmTileOut = layoutOut.GetTileLayout(actualTileShape);
++            auto gmTileIn = gmIn[layoutIn.GetOffset(tileOffsetPerToken)];
++            auto gmTileOutPerToken = gmOut[layoutOut.GetOffset(tileOffsetPerToken)];
++            auto layoutGmTileIn = layoutIn.GetTileLayout(actualTileShapePerToken);
++            auto layoutGmTileOutPerToken = layoutOut.GetTileLayout(actualTileShapePerToken);
+ 
+-            auto &ubIn = ubDList[ubListId];
+-            LayoutD layoutUbIn{actualTileShape, ubTileStride};
++            auto &ubInPerToken = ubDList[ubListId];
++            LayoutD layoutUbIn{actualTileShapePerToken, ubTileStridePerToken};
+ 
+             // 把 D 从GM拷贝到UB
+             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+-            copyGmToUbD(ubIn, gmTileIn, layoutUbIn, layoutGmTileIn);
++            copyGmToUbD(ubInPerToken, gmTileIn, layoutUbIn, layoutGmTileIn);
+             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+ 
+-            auto perTokenScaleTileOffset = tileOffset.template GetCoordByAxis<0>();
+-            auto perTokenScaleTileShape = actualTileShape.template GetCoordByAxis<0>();
++            auto perTokenScaleTileOffset = tileOffsetPerToken.template GetCoordByAxis<0>();
++            auto perTokenScaleTileShape = actualTileShapePerToken.template GetCoordByAxis<0>();
+ 
+             auto gmTilePerTokenScale = gmPerTokenScale[layoutPerTokenScale.GetOffset(perTokenScaleTileOffset)];
+             auto layoutGmTilePerTokenScale = layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
+@@ -510,32 +510,32 @@ public:
+ 
+             // 只有当bias不为nullptr时，才处理bias相关操作
+             if (ptrBias != nullptr) {
+-                auto biasTileOffset = tileOffset.template GetCoordByAxis<1>();
+-                auto biasTileShape = actualTileShape.template GetCoordByAxis<1>();
++                auto coordBiasTileOffset = tileOffsetPerToken.template GetCoordByAxis<1>();
++                auto coordBiasTileShape = actualTileShapePerToken.template GetCoordByAxis<1>();
+ 
+-                auto gmTileBias = gmBias[layoutBias.GetOffset(biasTileOffset)];
+-                auto layoutGmTileBias = layoutBias.GetTileLayout(biasTileShape);
++                auto globalTensorGmTileBias = gmBias[layoutBias.GetOffset(coordBiasTileOffset)];
++                auto gmTileBiasLayoutInfo = layoutBias.GetTileLayout(coordBiasTileShape);
+ 
+-                auto &ubBias = ubBiasList[ubListId];
+-                auto layoutUbBias = LayoutBias::template MakeLayoutInUb<ElementBias>(biasTileShape);
++                auto &localTensorUbBias = ubBiasList[ubListId];
++                auto ubBiasLayoutInfo = LayoutBias::template MakeLayoutInUb<ElementBias>(coordBiasTileShape);
+ 
+                 // 把bias 从GM拷贝到UB
+ 
+                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
+-                copyGmToUbBias(ubBias, gmTileBias, layoutUbBias, layoutGmTileBias);
++                copyGmToUbBias(localTensorUbBias, globalTensorGmTileBias, ubBiasLayoutInfo, gmTileBiasLayoutInfo);
+                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
+ 
+                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
+                     AscendC::IsSameType<ElementBias, half>::value) {
+                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
+-                    AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
++                    AscendC::Cast(ubBiasFp32, localTensorUbBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
+                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
+                 }
+             }
+ 
+             // 在UB上把D cast到FP32
+             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+-            AscendC::Cast(ubCFp32, ubIn, AscendC::RoundMode::CAST_NONE, TileShape::COUNT);
++            AscendC::Cast(ubCFp32, ubInPerToken, AscendC::RoundMode::CAST_NONE, TileShape::COUNT);
+             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+ 
+             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
+@@ -548,7 +548,7 @@ public:
+             AscendC::PipeBarrier<PIPE_V>();
+ 
+             // 选择要cast的源tensor：如果有bias，使用ubBiasAdd；否则直接使用ubPerTokenMul
+-            AscendC::LocalTensor<float> &castSrc = ptrBias != nullptr ? ubBiasAdd : ubPerTokenMul;
++            AscendC::LocalTensor<float> &castSrcPerToken = ptrBias != nullptr ? ubBiasAdd : ubPerTokenMul;
+ 
+             // 只有当bias不为nullptr时，才执行bias加法
+             if (ptrBias != nullptr) {
+@@ -565,12 +565,12 @@ public:
+             }
+             // 将乘法结果从UB cast到D
+             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
+-            AscendC::Cast(ubIn, castSrc, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
++            AscendC::Cast(ubInPerToken, castSrcPerToken, AscendC::RoundMode::CAST_RINT, TileShape::COUNT);
+             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
+ 
+             // 把乘法结果从UB拷贝到GM
+             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
+-            copyUbToGmD(gmTileOut, ubIn, layoutGmTileOut, layoutUbIn);
++            copyUbToGmD(gmTileOutPerToken, ubInPerToken, layoutGmTileOutPerToken, layoutUbIn);
+             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
+ 
+             ubListId = (ubListId + 1) % UB_STAGES;
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_smallM.h b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_smallM.h
+index 6397de69b..d80c04084 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_smallM.h
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_reduce_scatter_aiv_mode_smallM.h
+@@ -403,7 +403,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
+                                                         CType_, BiasType_, TileCopy>;
+             using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void,
+                                                                                 BlockScheduler30, aicCalBias>;
+-            typename MatmulKernel::Params params{
++            typename MatmulKernel::Params elseParams{
+                 processSize,
+                 reinterpret_cast<GM_ADDR>(gm_a_src),
+                 layoutA,
+@@ -417,8 +417,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
+                 rank,
+                 rank_size,
+                 need_fixpipe};
+-            MatmulKernel matmul_op;
+-            matmul_op(params);
++            MatmulKernel elseMatmulOp;
++            elseMatmulOp(elseParams);
+         }
+     }
+ }
+diff --git a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_smallM.hpp b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_smallM.hpp
+index 72ad07651..9e6c24ac3 100644
+--- a/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_smallM.hpp
++++ b/mc2/matmul_reduce_scatter_v2/op_kernel/matmul_smallM.hpp
+@@ -288,105 +288,105 @@ public:
+         }
+ 
+         BlockMmad blockMmad(resource);
+-        int32_t blockSize = L1TileShape::M * L1TileShape::N;
++        int32_t smallMBlockSize = L1TileShape::M * L1TileShape::N;
+         CommColumnSplitter taskSplit(loop_num_per_comm, m_loop,
+                                      params.swizzlDirect ? params.swizzlCount : 1, n_loop);
+ 
+-        for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
+-            int32_t n_st = taskSplit.GetCulumnStartPos(calIdx);
+-            int32_t n_ed = calIdx == calCount - 1 ? n_loop : taskSplit.GetCulumnEndPos(calIdx);
+-            int32_t n_nxt_ed = calIdx == calCount - 2 ? n_loop : taskSplit.GetCulumnEndPos(calIdx + 1);
++        for (int32_t smallMCalIdx = 0; smallMCalIdx < calCount; smallMCalIdx++) {
++            int32_t smallMNSt = taskSplit.GetCulumnStartPos(smallMCalIdx);
++            int32_t smallMNEd = smallMCalIdx == calCount - 1 ? n_loop : taskSplit.GetCulumnEndPos(smallMCalIdx);
++            int32_t smallMNxtEd = smallMCalIdx == calCount - 2 ? n_loop : taskSplit.GetCulumnEndPos(smallMCalIdx + 1);
+ 
+-            int32_t flagIdx = calIdx % MAX_BLOCK_COUNT_SM;
++            int32_t smallMFlagIdx = smallMCalIdx % MAX_BLOCK_COUNT_SM;
+             for (int32_t p = 0; p < params.pValue; p++) {
+-                int32_t loopIdx = calIdx * loop_num_per_comm + p * core_num + block_id;
+-                if (loopIdx >= coreLoops) {
++                int32_t smallMLoopIdx = smallMCalIdx * loop_num_per_comm + p * core_num + block_id;
++                if (smallMLoopIdx >= coreLoops) {
+                     break;
+                 }
+-                GemmCoord blockIdxCoord =
+-                    GetBlockIdCoord(loopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
+-                GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
+-                GemmCoord blockSizeCoord =
+-                    GetBlockSizeCoord(blockIdxCoord, blockLocCoord, m_loop, params.problemShape.m(), n_loop,
++                GemmCoord smallMBlockIdxCoord =
++                    GetBlockIdCoord(smallMLoopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
++                GemmCoord smallMBlockLocCoord = GetBlockLocCoord(smallMBlockIdxCoord);
++                GemmCoord smallMBlockSizeCoord =
++                    GetBlockSizeCoord(smallMBlockIdxCoord, smallMBlockLocCoord, m_loop, params.problemShape.m(), n_loop,
+                                       params.problemShape.n(), params.problemShape.k());
+ 
+-                MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
+-                MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
+-                int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+-                int64_t gmOffsetC;
++                MatrixCoord offsetA{smallMBlockLocCoord.m(), smallMBlockLocCoord.k()};
++                MatrixCoord offsetB{smallMBlockLocCoord.k(), smallMBlockLocCoord.n()};
++                int64_t smallMGmOffsetA = params.layoutA.GetOffset(offsetA);
++                int64_t smallMGmOffsetB = params.layoutB.GetOffset(offsetB);
++                int64_t smallMGmOffsetC;
+                 AscendC::GlobalTensor<ElementC> gmDst;
+                 gmDst = gmC;
+ 
+                 int32_t n_comm_block = -1;
+                 LayoutC layout_tmp;
+                 // 计算切片的layout和offset
+-                if (blockIdxCoord.n() < n_ed) {
+-                    //当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。n_st~n_ed的通信矩阵切块是nd排布。
+-                    n_comm_block = n_ed - n_st;
+-                    int32_t comm_loopIdx = loopIdx - m_loop * n_st;
++                if (smallMBlockIdxCoord.n() < smallMNEd) {
++                    //当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。smallMNSt~n_ed的通信矩阵切块是nd排布。
++                    n_comm_block = smallMNEd - smallMNSt;
++                    int32_t comm_loopIdx = smallMLoopIdx - m_loop * smallMNSt;
+                     int32_t n_len = n_comm_block * L1TileShape::N;
+                     layout_tmp = {static_cast<uint32_t>(params.problemShape.m()), static_cast<uint32_t>(n_len)};
+                     GemmCoord comm_blockIdxCoord =
+                         GetBlockIdCoord(comm_loopIdx, m_loop, n_comm_block, params.swizzlDirect, params.swizzlCount);
+-                    if (params.swizzlDirect && ((n_st / params.swizzlCount) & 1)) {
++                    if (params.swizzlDirect && ((smallMNSt / params.swizzlCount) & 1)) {
+                         comm_blockIdxCoord.m() = m_loop - comm_blockIdxCoord.m() - 1;
+                     }
+                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
+                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
+-                    gmOffsetC = L1TileShape::N * n_st * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
++                    smallMGmOffsetC = L1TileShape::N * smallMNSt * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                 } else {
+                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
+-                    n_comm_block = n_nxt_ed - n_ed;
+-                    int32_t comm_loopIdx = loopIdx - m_loop * n_ed;
++                    n_comm_block = smallMNxtEd - smallMNEd;
++                    int32_t comm_loopIdx = smallMLoopIdx - m_loop * smallMNEd;
+                     int32_t n_len = n_comm_block * L1TileShape::N;
+                     layout_tmp = {static_cast<uint32_t>(params.problemShape.m()), static_cast<uint32_t>(n_len)};
+                     GemmCoord comm_blockIdxCoord =
+                         GetBlockIdCoord(comm_loopIdx, m_loop, n_comm_block, params.swizzlDirect, params.swizzlCount);
+-                    if (params.swizzlDirect && ((n_ed / params.swizzlCount) & 1) & 1) {
++                    if (params.swizzlDirect && ((smallMNEd / params.swizzlCount) & 1) & 1) {
+                         comm_blockIdxCoord.m() = m_loop - comm_blockIdxCoord.m() - 1;
+                     }
+                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
+                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
+-                    gmOffsetC = L1TileShape::N * n_ed * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
++                    smallMGmOffsetC = L1TileShape::N * smallMNEd * params.problemShape.m() + layout_tmp.GetOffset(offsetC_comm);
+                 }
+ 
+                 if constexpr (HasBias) {
+                     blockMmad(
+-                        gmA[gmOffsetA], params.layoutA,
+-                        gmB[gmOffsetB], params.layoutB,
+-                        gmDst[gmOffsetC], layout_tmp,
+-                        gmBias[blockLocCoord.n()], blockSizeCoord);
++                        gmA[smallMGmOffsetA], params.layoutA,
++                        gmB[smallMGmOffsetB], params.layoutB,
++                        gmDst[smallMGmOffsetC], layout_tmp,
++                        gmBias[smallMBlockLocCoord.n()], smallMBlockSizeCoord);
+                 } else {
+ 
+-                    bool isFirstBlock = loopIdx == block_id;
+-                    bool hasNextBlock = false;
++                    bool smallMIsFirstBlock = smallMLoopIdx == block_id;
++                    bool smallMHasNextBlock = false;
+                     GemmCoord nextBlockIdCoord;
+                     GemmCoord nextBlockLocCoord;
+-                    GemmCoord nextBlockSizeCoord;
+-                    int32_t nextLoopIdx = loopIdx + core_num;
++                    GemmCoord smallMNextBlockSizeCoord;
++                    int32_t nextLoopIdx = smallMLoopIdx + core_num;
+                     int32_t nextDstRankIdx = nextLoopIdx % params.rankSize;
+                     int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
+                     if (nextLoopIdx < coreLoops) {
+-                        hasNextBlock = true;
++                        smallMHasNextBlock = true;
+                         nextBlockIdCoord =
+                             GetBlockIdCoord(nextLoopIdx, m_loop, n_loop, params.swizzlDirect, params.swizzlCount);
+                         nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
+-                        nextBlockSizeCoord =
++                        smallMNextBlockSizeCoord =
+                             GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, m_loop, params.problemShape.m(),
+                                 n_loop, params.problemShape.n(), params.problemShape.k());
+                     }
+                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
+                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
+-                    int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
+-                    int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
++                    int64_t smallMGmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
++                    int64_t smallMGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+ 
+-                    blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
+-                              layout_tmp, gmA[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord,
+-                              isFirstBlock, hasNextBlock);
++                    blockMmad(gmA[smallMGmOffsetA], params.layoutA, gmB[smallMGmOffsetB], params.layoutB, gmDst[smallMGmOffsetC],
++                              layout_tmp, gmA[smallMGmOffsetNextA], gmB[smallMGmOffsetNextB], smallMBlockSizeCoord, smallMNextBlockSizeCoord,
++                              smallMIsFirstBlock, smallMHasNextBlock);
+                 }
+             }
+-            FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
++            FFTSCrossCoreSync<PIPE_FIX, 2>(smallMFlagIdx);
+         }
+     }
+ 
+
