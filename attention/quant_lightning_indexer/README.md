@@ -24,10 +24,8 @@
 
 ## 参数说明
 
->**说明：**<br> 
->
->- query、key、weights、query_dequant_scale、key_dequant_scale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
->- 使用S1和S2分别表示query和key的输入样本序列长度，N1和N2分别表示query和key对应的多头数，k表示最后选取的索引个数。参数query中的D和参数key中的D值相等为128。T1和T2分别表示query和key的输入样本序列长度的累加和。
+> **说明：**<br>
+> 参数维度含义：batch_size表示Batch Size、seqlen_q和seqlen_kv分别表示query和key的Sequence Length、nheads_q和nheads_kv分别表示query和key的Head Num、headdim表示Head Dim（headdim_q和headdim_kv取值相等为128）、total_q和total_kv分别表示query和key的Total Tokens、sparse_count表示最后选取的索引个数（topK）、block_num和block_size分别表示PageAttention场景下的block总数和每个block的token数。nheads_kv仅支持1。
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
@@ -51,8 +49,8 @@
           <ul>
                 <li>公式中的输入Q。</li>
                 <li>不支持非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1,D)。layout_query为TND时，shape为(T1,N1,D)。</li>
-                <li>N1支持[1, 64]。</li>
+                <li>layout_query为BSND时，shape为[batch_size, seqlen_q, nheads_q, headdim]。layout_query为TND时，shape为[total_q, nheads_q, headdim]。</li>
+                <li>nheads_q支持[1, 64]。</li>
           </ul>
       </td>
       <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
@@ -65,9 +63,9 @@
           <ul>
                 <li>公式中的输入K。</li>
                 <li>支持非连续。</li>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)。layout_kv为BSND时，shape为(B, S2, N2, D)。layout_kv为TND时，shape为(T2, N2, D)。</li>
+                <li>layout_key为PA_BSND时，shape为[block_num, block_size, nheads_kv, headdim]。layout_key为BSND时，shape为[batch_size, seqlen_kv, nheads_kv, headdim]。layout_key为TND时，shape为[total_kv, nheads_kv, headdim]。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
-                <li>N2仅支持1。</li>
+                <li>nheads_kv仅支持1。</li>
           </ul>
       </td>
       <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
@@ -80,7 +78,7 @@
           <ul>
                 <li>公式中的输入W。</li>
                 <li>不支持非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T1,N1)。</li>
+                <li>layout_query为BSND时，shape为[batch_size, seqlen_q, nheads_q]。layout_query为TND时，shape为[total_q, nheads_q]。</li>
           </ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -93,7 +91,7 @@
           <ul>
                 <li>公式中Query的反量化系数Scale_Q。</li>
                 <li>不支持非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T1,N1)。</li>
+                <li>layout_query为BSND时，shape为[batch_size, seqlen_q, nheads_q]。layout_query为TND时，shape为[total_q, nheads_q]。</li>
           </ul>
       </td>
       <td>FLOAT、FLOAT16</td>
@@ -106,8 +104,8 @@
           <ul>
                 <li>公式中Key的反量化系数Scale_K。</li>
                 <li>支持非连续。</li>
-                <li>layout_key为BSND时，shape为(B,S2,N2)。layout_key为TND时，shape为(T2,N2)。</li>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2)。</li>
+                <li>layout_key为BSND时，shape为[batch_size, seqlen_kv, nheads_kv]。layout_key为TND时，shape为[total_kv, nheads_kv]。</li>
+                <li>layout_key为PA_BSND时，shape为[block_num, block_size, nheads_kv]。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
           </ul>
       </td>
@@ -121,10 +119,10 @@
           <ul>
                 <li>每个Batch中，Query的有效token数。</li>
                 <li>不支持非连续。</li>
-                <li>shape为(B,)</li>
-                <li>如果不指定seqlen可传入None，表示和query的shape的S长度相同。</li>
-                <li>该入参中每个Batch的有效token数不超过query中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
-                <li>当layout_query为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+                <li>shape为[batch_size,]</li>
+                <li>如果不指定seqlen可传入None，表示和query的shape的seqlen_q长度相同。</li>
+                <li>该入参中每个Batch的有效token数不超过query中的seqlen_q大小且不小于0，支持长度为batch_size的一维tensor。</li>
+                <li>当layout_query为TND时，该入参必须传入，且以该入参元素的数量作为batch_size值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
                 <li>不能出现负值。</li>
           </ul>
       </td>
@@ -138,9 +136,9 @@
           <ul>
                 <li>每个Batch中，Key的有效token数。</li>
                 <li>不支持非连续。</li>
-                <li>shape为(B,)</li>
-                <li>如果不指定seqlen可传入None，表示和key的shape的S长度相同。</li>
-                <li> 该参数中每个Batch的有效token数不超过key/value中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
+                <li>shape为[batch_size,]</li>
+                <li>如果不指定seqlen可传入None，表示和key的shape的seqlen_kv长度相同。</li>
+                <li>该参数中每个Batch的有效token数不超过key/value中的seqlen_kv大小且不小于0，支持长度为batch_size的一维tensor。</li>
                 <li>当layout_key为TND或PA_BSND时，该入参必须传入，layout_key为TND，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
           </ul>
       </td>
@@ -154,8 +152,8 @@
           <ul>
                 <li>表示PageAttention中KV存储使用的block映射表。</li>
                 <li>不支持非连续。</li>
-                <li>shape支持(B,S2_max/block_size)</li>
-                <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual_seq_lengths_key对应的block数量）</li>
+                <li>shape支持(batch_size, max_blocks_per_batch)</li>
+                <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于batch_size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual_seq_lengths_key对应的block数量）</li>
                 <li>block_size取值为16的整数倍，最大支持到1024。</li>
           </ul>
       </td>
@@ -285,7 +283,7 @@
       <td>
           <ul>
                 <li>公式中的Indices输出。</li>
-                <li>layout_query为"BSND"时输出shape为[B, S1, N2, sparse_count]。layout_query为"TND"时输出shape为[T1, N2, sparse_count]。</li>
+                <li>layout_query为BSND时输出shape为[batch_size, seqlen_q, nheads_kv, sparse_count]。layout_query为TND时输出shape为[total_q, nheads_kv, sparse_count]。</li>
           </ul>
       </td>
       <td>INT32</td>
@@ -300,7 +298,7 @@ Atlas A3 训练系列产品/Atlas A3 推理系列产品：
   - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
 
 Ascend 950PR/Ascend 950DT：
-  - query N1仅支持8、16、24、32、64。
+  - query nheads_q仅支持8、16、24、32、64。
   - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
   - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
   - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`BFLOAT16、FLOAT、FLOAT`；
