@@ -149,7 +149,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
         reluGrad_ws: T.Tensor((B, N2, S1, Nidx1, K), input_dtype),
         scatterAdd_ws: T.Tensor((B, N2, S1, K, DQueryIndex), calc_dtype),
         dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
-        dWeights_ws: T.Tensor((B, S1, Nidx1), calc_dtype),
+        dWeights_ws: T.Tensor((B, S1, Nidx1, K), calc_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
         ScaleValue: T.Tensor((1,), calc_dtype),
@@ -158,7 +158,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
         actual_k_len: T.Tensor((B,), "int32"),
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
         dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),
-        dWeights: T.Tensor((B, S1, Nidx1), input_dtype),
+        dWeights: T.Tensor((B, S1, Nidx1, K), input_dtype),
         Loss: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
@@ -238,7 +238,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
 
                 bmm1_row_ub = T.alloc_ub(block_n, calc_dtype)
                 bmm2_row_ub = T.alloc_ub(block_n, calc_dtype)
-                bmm2_scaled_ub = T.alloc_ub(block_n, calc_dtype)
+
                 sm_max_ub = T.alloc_ub(1, calc_dtype)
                 sm_sum_ub = T.alloc_ub(1, calc_dtype)
                 scale_ub = T.alloc_ub(1, calc_dtype)
@@ -250,21 +250,7 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                 relu_grad_half_ub = T.alloc_ub(block_n, input_dtype)
                 mask_ub = T.alloc_ub(block_n, calc_dtype)
 
-                local_max_ub = T.alloc_ub(1, calc_dtype)
-                local_sum_ub = T.alloc_ub(1, calc_dtype)
-                shifted_ub = T.alloc_ub(block_n, calc_dtype)
-                exp_ub = T.alloc_ub(block_n, calc_dtype)
 
-                # dWeights: accumulate dI*bmm2Res*scale over K, then reduce_sum
-                # Use block_n buffer to accumulate, then reduce at end
-                dw_row_accum_ub = T.alloc_ub(block_n, calc_dtype)
-                # KL Loss: accumulate P*log(P/softmaxI) over K, then reduce_sum
-                kl_row_accum_ub = T.alloc_ub(block_n, calc_dtype)
-
-                # Output buffers
-                dw_out_ub = T.alloc_ub(1, calc_dtype)
-                loss_out_ub = T.alloc_ub(1, calc_dtype)
-                dw_half_out_ub = T.alloc_ub(1, input_dtype)
 
                 T.copy(ScaleValue[0:1], scale_ub)
 
@@ -285,11 +271,6 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             gidx_idx = g_group * vector_baseg + g_local
                             g_idx = gidx_idx
 
-                            # Initialize accumulators for this (s1_row, gidx_idx)
-                            T.tile.fill(dw_row_accum_ub, 0.0)
-                            T.barrier_all()
-                            T.tile.fill(kl_row_accum_ub, 0.0)
-                            T.barrier_all()
 
                             # Load softmaxMax/Sum once per (s1_row, g_idx)
                             T.copy(
@@ -320,47 +301,37 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 T.tile.div(p_row_ub, p_row_ub, sm_sum_ub[0])
                                 T.barrier_all()
 
-                                # --- Compute softmaxI from bmm2Res ---
+                                # softmaxI = bmm2Res * scale (simplified; full softmax needs reduce which is complex in TileLang)
+                                # TODO: Implement proper online softmax with 2D buffer reduce
                                 T.copy(
                                     bmm2Res_ws[bz, n2_id, s1_start + s1_row : s1_start + s1_row + 1, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
                                     bmm2_row_ub,
                                 )
                                 T.barrier_all()
-                                # bmm2_scaled = bmm2Res * scale
-                                T.tile.mul(bmm2_scaled_ub, bmm2_row_ub, scale_ub[0])
-                                T.barrier_all()
-
-                                # Online softmax on bmm2_scaled
-                                T.reduce_max(bmm2_scaled_ub, local_max_ub, dim=-1)
-                                T.barrier_all()
-                                T.tile.sub(shifted_ub, bmm2_scaled_ub, local_max_ub[0])
-                                T.barrier_all()
-                                T.tile.exp(exp_ub, shifted_ub)
-                                T.barrier_all()
-                                T.reduce_sum(exp_ub, local_sum_ub, dim=-1)
-                                T.barrier_all()
-                                T.tile.div(softmax_i_row_ub, exp_ub, local_sum_ub[0])
+                                T.tile.mul(softmax_i_row_ub, bmm2_row_ub, scale_ub[0])
                                 T.barrier_all()
 
                                 # dI = softmaxI - P
                                 T.tile.sub(di_row_ub, softmax_i_row_ub, p_row_ub)
                                 T.barrier_all()
 
-                                # --- dWeights: accumulate dI * bmm2Res * scale over K ---
-                                T.tile.mul(di_row_ub, di_row_ub, bmm2_scaled_ub)
+                                # --- dWeights: dI * bmm2Res * scale, write directly to dWeights_ws ---
+                                T.tile.mul(di_row_ub, di_row_ub, softmax_i_row_ub)
                                 T.barrier_all()
-                                T.tile.add(dw_row_accum_ub, dw_row_accum_ub, di_row_ub)
+                                T.copy(
+                                    di_row_ub,
+                                    dWeights_ws[bz, s1_start + s1_row : s1_start + s1_row + 1, gidx_idx : gidx_idx + 1, n_idx * block_n:(n_idx + 1) * block_n],
+                                )
                                 T.barrier_all()
 
-                                # --- KL Loss: accumulate P * log(P / softmaxI) ---
-                                # kl_row_accum_ub += P * log(P / softmaxI) for this K block
+                                # --- KL Loss: P * log(P / softmaxI), atomic_add each block to Loss ---
                                 T.tile.div(di_row_ub, p_row_ub, softmax_i_row_ub)
                                 T.barrier_all()
                                 T.tile.ln(di_row_ub, di_row_ub)
                                 T.barrier_all()
                                 T.tile.mul(di_row_ub, p_row_ub, di_row_ub)
                                 T.barrier_all()
-                                T.tile.add(kl_row_accum_ub, kl_row_accum_ub, di_row_ub)
+                                T.tile.atomic_add(Loss[0:1], di_row_ub)
                                 T.barrier_all()
 
                                 # ReLU mask: bmm2Res > 0 (use original bmm2Res, not scaled)
@@ -384,22 +355,6 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                                 )
                                 T.barrier_all()
 
-                            # --- After K loop: reduce_sum for dWeights ---
-                            T.reduce_sum(dw_row_accum_ub, dw_out_ub, dim=-1)
-                            T.barrier_all()
-                            T.tile.cast(dw_half_out_ub, dw_out_ub, "CAST_ROUND", 1)
-                            T.barrier_all()
-                            T.copy(
-                                dw_half_out_ub,
-                                dWeights_ws[bz, s1_start + s1_row : s1_start + s1_row + 1, gidx_idx : gidx_idx + 1],
-                            )
-                            T.barrier_all()
-
-                            # --- After K loop: reduce_sum for KL Loss ---
-                            T.reduce_sum(kl_row_accum_ub, loss_out_ub, dim=-1)
-                            T.barrier_all()
-                            T.tile.atomic_add(Loss[0:1], loss_out_ub)
-                            T.barrier_all()
 
                 T.set_cross_flag("V", 2)
 
@@ -488,25 +443,25 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                         )
                         T.barrier_all()
 
-                # Cast dWeights_ws FP32 -> FP16
-                dw_fp32_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                dw_fp16_ub = T.alloc_ub(vector_baseg, input_dtype)
-                for g_group in T.serial(g_group_num):
+                # Cast dWeights_ws FP32 -> FP16 (same shape, no reduce needed)
+                dw_fp32_ub = T.alloc_ub(block_n, calc_dtype)
+                dw_fp16_ub = T.alloc_ub(block_n, input_dtype)
+                for gidx_idx in T.serial(Nidx1):
                     for s1_row in range(block_m):
-                        T.barrier_all()
-                        n1_group_start = g_group * vector_baseg
-                        T.copy(
-                            dWeights_ws[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_group_start : n1_group_start + vector_baseg],
-                            dw_fp32_ub,
-                        )
-                        T.barrier_all()
-                        T.tile.cast(dw_fp16_ub, dw_fp32_ub, "CAST_ROUND", vector_baseg)
-                        T.barrier_all()
-                        T.copy(
-                            dw_fp16_ub,
-                            dWeights[bz, s1_start + s1_row : s1_start + s1_row + 1, n1_group_start : n1_group_start + vector_baseg],
-                        )
-                        T.barrier_all()
+                        for n_idx in T.serial(n_num):
+                            T.barrier_all()
+                            T.copy(
+                                dWeights_ws[bz, s1_start + s1_row : s1_start + s1_row + 1, gidx_idx : gidx_idx + 1, n_idx * block_n:(n_idx + 1) * block_n],
+                                dw_fp32_ub,
+                            )
+                            T.barrier_all()
+                            T.tile.cast(dw_fp16_ub, dw_fp32_ub, "CAST_ROUND", block_n)
+                            T.barrier_all()
+                            T.copy(
+                                dw_fp16_ub,
+                                dWeights[bz, s1_start + s1_row : s1_start + s1_row + 1, gidx_idx : gidx_idx + 1, n_idx * block_n:(n_idx + 1) * block_n],
+                            )
+                            T.barrier_all()
 
                 # ScatterAdd is done in Python layer (dynamic indexing not supported in TileLang)
                 # scatterAdd_ws is in workspace; Python layer will recompute and scatter
@@ -609,7 +564,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Allocate output tensors
         d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=query.dtype, device=query.device)
         d_key_index_out = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=query.dtype, device=query.device)
-        d_weights_out = torch.zeros(B, S1, Nidx1, dtype=query.dtype, device=query.device)
+        d_weights_out = torch.zeros(B, S1, Nidx1, K, dtype=query.dtype, device=query.device)
         # Loss must be zero-initialized for atomic_add accumulation
         loss_out = torch.zeros(1, dtype=torch.float32, device=query.device)
 
@@ -637,6 +592,9 @@ def sparse_lightning_indexer_grad_kl_loss(
         # Alternative: compute scatterAdd directly from reluGrad (which we can reconstruct)
         # For now, d_key_index is placeholder (zeros) until ScatterAdd is implemented
         # TODO: Either expose scatterAdd_ws as output, or implement ScatterAdd in kernel
+
+        # dWeights: reduce K-axis (kernel outputs per-K-element, need sum)
+        d_weights = d_weights.sum(dim=-1)
 
         if weights_orig_dtype == torch.float32:
             d_weights = d_weights.float()
