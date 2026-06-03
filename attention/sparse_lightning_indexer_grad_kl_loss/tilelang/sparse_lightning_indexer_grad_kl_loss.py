@@ -364,13 +364,13 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         for i in range(16):
                             T.barrier_all()
-                            T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
+                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
                             T.barrier_all()
                         T.reduce_max(rsy_2d_ub, rsy_chunk_max_ub, 1)
                         T.barrier_all()
-                        T.copy(rsy_max_ub, max_pair_ub[0, :])
+                        T.tile.mul(max_pair_ub[0, :], rsy_max_ub, 1.0)
                         T.barrier_all()
-                        T.copy(rsy_chunk_max_ub, max_pair_ub[1, :])
+                        T.tile.mul(max_pair_ub[1, :], rsy_chunk_max_ub, 1.0)
                         T.barrier_all()
                         T.reduce_max(max_pair_ub, rsy_max_ub, 0)
                         T.barrier_all()
@@ -395,7 +395,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.barrier_all()
                         for i in range(16):
                             T.barrier_all()
-                            T.copy(rsy_chunk_ub, rsy_2d_ub[i, :])
+                            T.tile.mul(rsy_2d_ub[i, :], rsy_chunk_ub, 1.0)
                             T.barrier_all()
                         T.reduce_sum(rsy_2d_ub, rsy_chunk_sum_ub, 1)
                         T.barrier_all()
@@ -527,8 +527,8 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_ub = T.alloc_ub(Nidx1 * k_block, calc_dtype)
-                dq_fp16_ub = T.alloc_ub(Nidx1 * k_block, input_dtype)
+                dq_fp32_ub = T.alloc_ub((Nidx1, k_block), calc_dtype)
+                dq_fp16_ub = T.alloc_ub((Nidx1, k_block), input_dtype)
 
                 for s1_row in T.serial(s1_start, s1_end):
                     for d_idx in T.serial(d_num_query_index):
