@@ -1090,10 +1090,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
     uint64_t recvWinBlockNumSpace = recvWinBlockNum_ * sizeof(float);
     uint32_t setExpertTokenNumsLocalExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
-    // SetExpertTokenNums使用二维ReduceSum，GatherMask输出按[expert][rank]紧凑存放，不需要按行padding。
+    // SetExpertTokenNums使用二维ReduceSum，DataCopyPad把每个count补齐到32B。
     uint64_t setExpertTokenNumsStatusSpace = static_cast<uint64_t>(setExpertTokenNumsLocalExpertNum) *
-        epWorldSize_ * sizeof(float);
-    setExpertTokenNumsStatusSpace = Ceil(setExpertTokenNumsStatusSpace, UB_ALIGN) * UB_ALIGN;
+        epWorldSize_ * UB_ALIGN;
     uint64_t gatherMaskOutSize = (recStatusNumPerCoreSpace > recvWinBlockNumSpace) ? recStatusNumPerCoreSpace : recvWinBlockNumSpace;
     gatherMaskOutSize = (gatherMaskOutSize > setExpertTokenNumsStatusSpace) ?
         gatherMaskOutSize : setExpertTokenNumsStatusSpace;
@@ -1518,12 +1517,15 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
+    uint32_t countBlockElementNum = UB_ALIGN / sizeof(float);
+    uint32_t expertCountInner = epWorldSize_ * countBlockElementNum;
+    uint32_t expertCountElements = localExpertNum * expertCountInner;
     bool useCumSum = (expertTokenNumsType_ == 0) && (epWorldSize_ >= UB_ALIGN / sizeof(float));
     if (useCumSum) {
         // CumSum临时空间较大。LocalWindowCopy已结束，重置本核pipe后只重建本函数需要的buffer，避免影响搬出阶段UB
         tpipe_->Reset();
         uint32_t cumsumInner = Ceil(localExpertNum * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
-        uint32_t expertCountBytes = Ceil(localExpertNum * epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+        uint32_t expertCountBytes = expertCountElements * sizeof(float);
         uint32_t expertTokenNumBytes = cumsumInner * sizeof(float);
         uint32_t expertTokenNumsBytes = Ceil(localExpertNum * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
         tpipe_->InitBuffer(gatherMaskOutBuf_, expertCountBytes);
@@ -1532,18 +1534,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     }
     uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
     LocalTensor<float> expertCountTensor = gatherMaskOutBuf_.Get<float>();
-    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
+    DataCopyPadExtParams<float> countCopyPadParams{true, 0U, countBlockElementNum - 1U, 0.0f};
     // tiling校验可确保总Moe专家数上限，单次DataCopyPad的blockCount不会超过4095
     DataCopyExtParams countCopyParams{static_cast<uint16_t>(localStatusSectionNum), sizeof(float),
         STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor,
-        windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET], countCopyParams, countCopyPadParams);
+    DataCopyPad(expertCountTensor, windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET],
+        countCopyParams, countCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     LocalTensor<float> expertTokenNumTensor = statusBuf_.Get<float>();
-    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
+    uint32_t expertCountShape[] = {localExpertNum, expertCountInner};
+    // A3/A2 ReduceSum要求srcInnerPad为true；每个count后补7个0，求和等价于按rank求和。
     ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(
-        expertTokenNumTensor, expertCountTensor, expertCountShape, false);
+        expertTokenNumTensor, expertCountTensor, expertCountShape, true);
 
     LocalTensor<int64_t> expertTokenNumsLocalTensor = tokenNumBuf_.Get<int64_t>();
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)),
