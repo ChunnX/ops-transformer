@@ -48,7 +48,7 @@ def _fill_case_name(params, case_id):
     mode = "prefill" if params["layout_q"] == "TND" else "decode"
     filled = dict(params)
     filled["Testcase_Name"] = (
-        f"quantBlockSparseAttention_{mode}_{filled['layout_q']}_{filled['kv_layout']}_"
+        f"quantBlockSparseAttention_{mode}_{filled['layout_q']}_{filled['layout_kv']}_"
         f"{filled['B']}_{filled['N1']}_{filled['N2']}_{filled['S1']}_{filled['S2']}_{filled['D']}_{case_id:06d}"
     )
     return filled

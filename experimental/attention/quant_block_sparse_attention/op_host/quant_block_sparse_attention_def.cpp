@@ -35,17 +35,17 @@ public:
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .IgnoreContiguous();
-        this->Input("q_scale")
+        this->Input("q_descale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("k_scale")
+        this->Input("k_descale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("v_scale")
+        this->Input("v_descale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
@@ -112,12 +112,13 @@ public:
         this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(0);
         this->Attr("max_seqlen_kv").AttrType(OPTIONAL).Int(0);
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
-        this->Attr("q_block_size").AttrType(REQUIRED).Int(128);
-        this->Attr("kv_block_size").AttrType(REQUIRED).Int(128);
-        this->Attr("kv_layout").AttrType(REQUIRED).String("PA_BSND");
-        this->Attr("sparse_indices_layout").AttrType(REQUIRED).String("BNQQbKb");
-        this->Attr("quant_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("sparse_q_block_size").AttrType(REQUIRED).Int(128);
+        this->Attr("sparse_kv_block_size").AttrType(REQUIRED).Int(128);
+        this->Attr("layout_kv").AttrType(REQUIRED).String("PA_BNSD");
+        this->Attr("layout_q").AttrType(REQUIRED).String("TND");
+        this->Attr("layout_sparse_indices").AttrType(REQUIRED).String("B_N_Qb_Kb");
+        this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
+        this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
 
         OpAICoreConfig aicoreConfig;

@@ -15,15 +15,15 @@ import torch
 
 COMMON = {
     "Testcase_Name": [None],
-    "kv_layout": ["PA_BSND"],
+    "layout_kv": ["PA_BSND"],
     "output_dtype": [torch.bfloat16],
     "N1": [8],
     "N2": [2],
     "D": [64],
-    "q_block_size": [128],
-    "kv_block_size": [128],
+    "sparse_q_block_size": [128],
+    "sparse_kv_block_size": [128],
     "softmax_scale": [0.125],
-    "sparse_indices_layout": ["BNQQbKb"],
+    "layout_sparse_indices": ["BNQQbKb"],
     "quant_mode": [0],
     "S1EQS2": [False],
 }

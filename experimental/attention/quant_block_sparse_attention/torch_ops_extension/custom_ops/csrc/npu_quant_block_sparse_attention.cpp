@@ -59,14 +59,14 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const at::Tensor &q_scale, const at::Tensor &k_scale, const at::Tensor &v_scale, const at::Tensor &p_scale,
+    const at::Tensor &q_descale, const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
-    double softmax_scale, int64_t q_block_size, int64_t kv_block_size,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
-    c10::string_view kv_layout, c10::string_view sparse_indices_layout,
+    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
@@ -78,18 +78,20 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
     at::Tensor softmax_lse = std::get<1>(outputs);
 
     // convert str
-    std::string kv_layout_str = std::string(kv_layout);
-    std::string sparse_indices_layout_str = std::string(sparse_indices_layout);
-    char *kv_layout_ptr = const_cast<char *>(kv_layout_str.c_str());
-    char *sparse_indices_layout_ptr = const_cast<char *>(sparse_indices_layout_str.c_str());
+    std::string layout_kv_str = std::string(layout_kv);
+    std::string layout_q_str = std::string(layout_q);
+    std::string layout_sparse_indices_str = std::string(layout_sparse_indices);
+    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
+    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
+    char *layout_sparse_indices_ptr = const_cast<char *>(layout_sparse_indices_str.c_str());
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
     EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttention,
-        query, key, value, q_scale, k_scale, v_scale, p_scale,
+        query, key, value, q_descale, k_descale, v_descale, p_scale,
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         sparse_indices, sparse_seq_len, block_table, atten_mask, metadata,
-        max_seqlen_q, max_seqlen_kv, softmax_scale, q_block_size, kv_block_size,
-        kv_layout_ptr, sparse_indices_layout_ptr, quant_mode, mask_mode, return_softmax_lse,
+        max_seqlen_q, max_seqlen_kv, softmax_scale, sparse_q_block_size, sparse_kv_block_size,
+        layout_kv_ptr, layout_q_ptr, layout_sparse_indices_ptr, quant_mode, mask_mode, return_softmax_lse,
         attention_out, softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
@@ -98,14 +100,14 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_npu(
 // step3, 为META设备实现前向接口
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attention_meta(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const at::Tensor &q_scale, const at::Tensor &k_scale, const at::Tensor &v_scale, const at::Tensor &p_scale,
+    const at::Tensor &q_descale, const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
     const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
-    double softmax_scale, int64_t q_block_size, int64_t kv_block_size,
+    double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
-    c10::string_view kv_layout, c10::string_view sparse_indices_layout,
+    c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
     int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
 {
     return construct_bsa_output_tensors(query, value, return_softmax_lse);

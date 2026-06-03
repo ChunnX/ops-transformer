@@ -44,11 +44,11 @@ def _normalize_params(params):
     normalized = dict(params)
     normalized.setdefault("Testcase_Name", None)
     normalized.setdefault("layout_q", "BSND")
-    normalized.setdefault("kv_layout", "PA_BSND")
+    normalized.setdefault("layout_kv", "PA_BSND")
     normalized.setdefault("output_dtype", torch.bfloat16)
-    normalized.setdefault("q_block_size", 128)
-    normalized.setdefault("kv_block_size", 128)
-    normalized.setdefault("sparse_indices_layout", "BNQQbKb")
+    normalized.setdefault("sparse_q_block_size", 128)
+    normalized.setdefault("sparse_kv_block_size", 128)
+    normalized.setdefault("layout_sparse_indices", "BNQQbKb")
     normalized.setdefault("quant_mode", 0)
     normalized.setdefault("mask_mode", 0)
     normalized.setdefault("return_softmax_lse", False)
@@ -60,11 +60,11 @@ def _normalize_params(params):
     normalized.setdefault("block_table_pattern", "sequential")
     normalized.setdefault("p_scale_value", 1.0)
     normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
-    for key in ("B", "S1", "S2", "N1", "N2", "D", "q_block_size", "kv_block_size", "sparse_count", "seed"):
+    for key in ("B", "S1", "S2", "N1", "N2", "D", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "seed"):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
             normalized[key] = int(normalized[key])
     normalized["sparse_count"] = normalized.get("sparse_count") or math.ceil(
-        normalized["S2"] / normalized["kv_block_size"])
+        normalized["S2"] / normalized["sparse_kv_block_size"])
     normalized["softmax_scale"] = normalized.get("softmax_scale") or (1.0 / math.sqrt(normalized["D"]))
     return normalized
 
@@ -126,19 +126,19 @@ def _pack_pa(dense_tensor, block_size, pattern, rng, block_table=None):
     return pa_tensor.to(_fp8_dtype()), block_table
 
 
-def _allowed_blocks(mask_mode, qb_idx, q_block_size, kv_block_size, q_len, kv_len):
-    block_num = math.ceil(kv_len / kv_block_size)
+def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len):
+    block_num = math.ceil(kv_len / sparse_kv_block_size)
     if block_num <= 0:
         return []
     if mask_mode == 0:
         return list(range(block_num))
 
-    max_token = (qb_idx + 1) * q_block_size - 1
+    max_token = (qb_idx + 1) * sparse_q_block_size - 1
     if mask_mode == 2:
         max_token += kv_len - q_len  # RIGHT_DOWN: col<=row+(kv_len-q_len), 对齐 CUDA softmax.h:162 / kernel deltaN=S2-S1
     if max_token < 0:
         return []
-    max_block = min(block_num - 1, max_token // kv_block_size)
+    max_block = min(block_num - 1, max_token // sparse_kv_block_size)
     return list(range(max_block + 1))
 
 
@@ -168,7 +168,7 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     n1 = case["N1"]
     n2 = case["N2"]
     group = n1 // n2
-    qb_max = math.ceil(case["S1"] / case["q_block_size"])
+    qb_max = math.ceil(case["S1"] / case["sparse_q_block_size"])
     sparse_count = case["sparse_count"]
     sparse_indices = torch.zeros((batch, n2, group, qb_max, sparse_count), dtype=torch.int32)
     sparse_seq_len = torch.zeros((batch, n2, group, qb_max), dtype=torch.int32)
@@ -176,7 +176,7 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     for batch_idx in range(batch):
         for qb_idx in range(qb_max):
             allowed = _allowed_blocks(
-                case["mask_mode"], qb_idx, case["q_block_size"], case["kv_block_size"],
+                case["mask_mode"], qb_idx, case["sparse_q_block_size"], case["sparse_kv_block_size"],
                 q_lengths[batch_idx], kv_lengths[batch_idx])
             for n2_idx in range(n2):
                 for group_idx in range(group):
@@ -279,8 +279,8 @@ def _positions_from_sparse(case, sparse_indices, sparse_seq_len, batch_idx, n2_i
     for block_idx in sparse_indices[batch_idx, n2_idx, group_idx, qb_idx, :block_count].tolist():
         if block_idx < 0:
             continue
-        start = int(block_idx) * case["kv_block_size"]
-        end = min(start + case["kv_block_size"], kv_len)
+        start = int(block_idx) * case["sparse_kv_block_size"]
+        end = min(start + case["sparse_kv_block_size"], kv_len)
         if start < kv_len:
             positions.extend(range(start, end))
     return positions
@@ -307,7 +307,7 @@ def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, 
     p_scale_value = float(p_scale[0].item())
     for batch_idx in range(batch):
         for q_idx in range(q_lengths[batch_idx]):
-            qb_idx = q_idx // case["q_block_size"]
+            qb_idx = q_idx // case["sparse_q_block_size"]
             for head_idx in range(n1):
                 n2_idx = head_idx // group
                 group_idx = head_idx % group
@@ -362,8 +362,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     n1 = case["N1"]
     n2 = case["N2"]
     head_dim = case["D"]
-    q_block_size = case["q_block_size"]
-    kv_block_size = case["kv_block_size"]
+    sparse_q_block_size = case["sparse_q_block_size"]
+    sparse_kv_block_size = case["sparse_kv_block_size"]
 
     q_lengths = _make_lengths(batch, s1, case["actlen_mode"], rng)
     kv_lengths = _make_lengths(batch, s2, case["actlen_mode"], rng)
@@ -386,8 +386,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     dense_key = _rand_fp8((batch, s2, n2, head_dim), generator)
     dense_value = _rand_fp8((batch, s2, n2, head_dim), generator)
-    key, block_table = _pack_pa(dense_key, kv_block_size, case["block_table_pattern"], rng)
-    value, _ = _pack_pa(dense_value, kv_block_size, case["block_table_pattern"], rng, block_table)
+    key, block_table = _pack_pa(dense_key, sparse_kv_block_size, case["block_table_pattern"], rng)
+    value, _ = _pack_pa(dense_value, sparse_kv_block_size, case["block_table_pattern"], rng, block_table)
     q_scale, k_scale, v_scale, p_scale = _make_scales(case, cu_seqlens_q, cu_seqlens_kv)
     atten_mask = torch.zeros((2048, 2048), dtype=torch.uint8)
     sparse_indices, sparse_seq_len = _make_sparse_indices(case, q_lengths, kv_lengths, rng)
@@ -399,7 +399,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     if case["Testcase_Name"] is None:
         mode = "prefill" if case["layout_q"] == "TND" else "decode"
         case["Testcase_Name"] = (
-            f"quantBlockSparseAttention_{mode}_{case['layout_q']}_{case['kv_layout']}_"
+            f"quantBlockSparseAttention_{mode}_{case['layout_q']}_{case['layout_kv']}_"
             f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"
         )
 
@@ -423,15 +423,15 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_kv": max_seqlen_kv,
             "layout_q": case["layout_q"],
-            "kv_layout": case["kv_layout"],
+            "layout_kv": case["layout_kv"],
         },
         "input": {
             "query": query,
             "key": key,
             "value": value,
-            "q_scale": q_scale,
-            "k_scale": k_scale,
-            "v_scale": v_scale,
+            "q_descale": q_scale,
+            "k_descale": k_scale,
+            "v_descale": v_scale,
             "p_scale": p_scale,
             "cu_seqlens_q": cu_seqlens_q_input,
             "cu_seqlens_kv": cu_seqlens_kv_input,
@@ -445,10 +445,11 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_kv": max_seqlen_kv,
             "softmax_scale": case["softmax_scale"],
-            "q_block_size": q_block_size,
-            "kv_block_size": kv_block_size,
-            "kv_layout": case["kv_layout"],
-            "sparse_indices_layout": case["sparse_indices_layout"],
+            "sparse_q_block_size": sparse_q_block_size,
+            "sparse_kv_block_size": sparse_kv_block_size,
+            "layout_kv": case["layout_kv"],
+            "layout_q": case["layout_q"],
+            "layout_sparse_indices": case["layout_sparse_indices"],
             "quant_mode": case["quant_mode"],
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],
