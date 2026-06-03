@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file split_core_v2.cpp
+ * \file fia_tiling_split_core.cpp
  * \brief
 */
 

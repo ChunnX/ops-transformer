@@ -34,7 +34,6 @@ function(gen_ophost_symbol)
             runtime
             acl_rt
             -Wl,-Bsymbolic
-            mmpa
     )
 
   target_link_directories(${OPHOST_NAME}

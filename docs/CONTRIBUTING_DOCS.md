@@ -44,7 +44,7 @@
       简短说明（不超过50字符）
     
       如有必要，在此处进行更详细描述。说明修改的原因和内容，而不是具体改了什么（代码本身会展示）。
-      关联的Issue: #123
+      关联的 Issue: #123
       ```
 
 4. **发起Pull Request**
@@ -98,5 +98,5 @@
 
 算子交付件中涉及的关键文档主要包括如下，具体写作格式、内容要求请参考模板。
 
-- [算子README文档模板](https://gitcode.com/cann/ops-transformer/wiki/%E7%AE%97%E5%AD%90README%E6%96%87%E6%A1%A3%E6%A8%A1%E6%9D%BF)
+- [算子RAEDME文档模板](https://gitcode.com/cann/ops-transformer/wiki/%E7%AE%97%E5%AD%90README%E6%96%87%E6%A1%A3%E6%A8%A1%E6%9D%BF)
 - [aclnn API文档模板](https://gitcode.com/cann/ops-transformer/wiki/aclnn%20API%E6%96%87%E6%A1%A3%E6%A8%A1%E6%9D%BF)

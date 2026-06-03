@@ -14,7 +14,7 @@
 
 #### 1.1.2 传统通信方案的局限性
 
-**AllToAllV通信的效率缺陷**
+**AllToAllV 通信的效率缺陷**
 
 在动态专家选择机制下，每个Token被分发的目标专家呈现离散分布特征，导致：
 
@@ -115,8 +115,8 @@ Token重排操作旨在优化通信效率。由于每次通信下发均存在固
 1. 目标专家索引 = expertIds(i,j)
 2. 目标rank索引 = ceil(expertIds(i,j) / localExpertNum)
 3. 专家在目标rank上的局部索引 = expertIds(i,j) % localExpertNum
-4. expandIdx(i,j) = sendStatus(目标rank索引，专家局部索引)
-5. 更新sendStatus(目标rank索引，专家局部索引)++
+4. expandIdx(i,j) = sendStatus(目标rank索引, 专家局部索引)
+5. 更新sendStatus(目标rank索引, 专家局部索引)++
 
 ##### Token重排机制
 
@@ -195,7 +195,7 @@ expertTokenNum输出为本地每个专家的Token数量前缀和数组，即epRe
 - **数据完整性风险**：combine操作可能覆盖尚未完成处理的dispatch数据
 
 @startuml
-title单缓冲区数据竞争时序图
+title 单缓冲区数据竞争时序图
 
 participant "Rank A" as RankA
 participant "Rank A WindowsIn" as WinA
@@ -213,17 +213,17 @@ RankB -> WinA: 准备写入数据
 
 == 时序冲突点 ==
 
-group数据竞争：同时读写同一内存区域
+group 数据竞争：同时读写同一内存区域
   RankB -> WinA: 开始写入Combine结果
   RankA -> WinA: 仍在读取Dispatch数据
 end
 
-group数据完整性问题
+group 数据完整性问题
   WinA --> RankA: 读取到部分旧数据+部分新数据
   note right WinA: 计算精度异常
 end
 
-group标志位冲突
+group 标志位冲突
   WinA --> RankA: 标志位被数据覆盖
   note right WinA: 死锁风险
 end
@@ -264,7 +264,7 @@ end
 
 # 三、MoeDistributeCombine实现方案
 
-## 3.1概述
+## 3.1 概述
 
 MoeDistributeCombine算子负责将分布式专家计算的结果进行整合与还原，实现从多专家输出到原始输入格式的转换。
 
@@ -272,7 +272,7 @@ MoeDistributeCombine算子负责将分布式专家计算的结果进行整合与
 
 ### 3.2.1 设计背景
 
-Combine算子在Fullmesh架构中采用HCCL高阶API的BatchWrite接口进行卡间通信。该接口每次下发通信任务均存在固定时间开销，为最小化通信调度开销，需要通过Token重排优化数据布局：
+Combine算子在Fullmesh架构中采用HCCL高阶API的BatchWrite接口进行卡间通信。该接口每次下发通信任务 均存在固定时间开销，为最小化通信调度开销，需要通过Token重排优化数据布局：
 
 - **通信效率优化**：将发送至同一目标卡的Token在GM内存中连续存放，实现单次批量发送
 - **缓冲区管理**：基于Dispatch传递的sendCounts元数据，确定各目标卡的Token分发数量
@@ -384,28 +384,28 @@ Token重排完成后进入数据发送阶段，采用BatchWrite接口进行通�
   - 每个核负责若干rank的接收状态查询
   - 轮询Flag值直至刷新为特定标识，确认数据接收完成
 
-**WindowsOut发送缓冲区**
+**WindowsOut 发送缓冲区**
 
-| Rank 0窗口 | Rank 1窗口 | Rank 2窗口 | ... | Rank (n-1)窗口 |
+| Rank 0 窗口 | Rank 1 窗口 | Rank 2 窗口 | ... | Rank (n-1) 窗口 |
 |-------------|-------------|-------------|-----|----------------|
 | Token数据区  | Token数据区  | Token数据区  | ... | Token数据区     |
-| FLAG标记    | FLAG标记    | FLAG标记    | ... | FLAG标记       |
+| FLAG 标记    | FLAG 标记    | FLAG 标记    | ... | FLAG 标记       |
 | ⬇️           | ⬇️           | ⬇️           | ... | ⬆️              |
-| 发送至Rank 0 | 发送至Rank 1 | 发送至Rank 2 | ... | 发送至Rank (n-1) |
+| 发送至 Rank 0 | 发送至 Rank 1 | 发送至 Rank 2 | ... | 发送至 Rank (n-1) |
 
-**WindowsIn接收缓冲区**
+**WindowsIn 接收缓冲区**
 
-| Rank 0窗口 | Rank 1窗口 | Rank 2窗口 | ... | Rank (n-1)窗口 |
+| Rank 0 窗口 | Rank 1 窗口 | Rank 2 窗口 | ... | Rank (n-1) 窗口 |
 |-------------|-------------|-------------|-----|----------------|
 | Token数据区  | Token数据区  | Token数据区  | ... | Token数据区     |
-| FLAG标记    | FLAG标记    | FLAG标记    | ... | FLAG标记       |
+| FLAG 标记    | FLAG 标记    | FLAG 标记    | ... | FLAG 标记       |
 | ⬆️           | ⬆️           | ⬆️           | ... | ⬆️              |
-| 来自Rank 0  | 来自Rank 1  | 来自Rank 2  | ... | 来自Rank (n-1) |
+| 来自 Rank 0  | 来自 Rank 1  | 来自 Rank 2  | ... | 来自 Rank (n-1) |
 
 **布局说明**
 
 - **窗口数量**：`worldSize` 
-- **窗口大小**：每个窗口占用`rankSizeOnWin`大小的内存空间
+- **窗口大小**：每个窗口占用 `rankSizeOnWin` 大小的内存空间
 - **内存排列**：从低地址到高地址连续排列各个rank的窗口
 - **数据结构**：
   - Token数据区：连续存储待发送/已接收的Token数据

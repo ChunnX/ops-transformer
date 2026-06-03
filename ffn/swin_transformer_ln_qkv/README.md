@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 算子功能：完成fp16权重场景下的Swin Transformer网络模型的Q、K、V的计算。
+- 算子功能：完成fp16权重场景下的Swin Transformer 网络模型的Q、K、V 的计算。
 
 - 计算公式：
 
@@ -23,7 +23,7 @@
     (Q,K,V)=((Layernorm(inputX)).transpose() * weight).transpose().split()
     $$  
 
-  其中，weight是Q、K、V三个矩阵权重的拼接。
+  其中，weight 是 Q、K、V 三个矩阵权重的拼接。
 
 ## 参数说明
 
@@ -61,7 +61,7 @@
     <td>beta</td>
     <td>输入</td>
     <td>表示layernorm计算中尺度偏移的大小，维度只支持1维且维度为[H]，Device侧的aclTensor。不支持非连续的Tensor。</td>
-    <td>FLOAT16</td>
+    <td>FLOAT16、BFLOAT16、INT8</td>
     <td>ND</td>
   </tr>
   <tr>

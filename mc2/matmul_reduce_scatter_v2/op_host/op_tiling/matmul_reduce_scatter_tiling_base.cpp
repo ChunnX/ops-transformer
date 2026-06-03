@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include "mc2_hcom_topo_info.h"
+#include "mc2_log.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "reduce_scatter_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
@@ -44,11 +45,9 @@ constexpr uint32_t COMMTURN_INDEX = 4;
 constexpr uint32_t BIAS_INDEX = 2;
 constexpr uint32_t RECV_ARG_INDEX = 3;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
-constexpr uint32_t COMMMODE_INDEX = 10;
 constexpr uint32_t IS_TRANS_A = 2;
 constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
-constexpr int64_t AICPU_STRLEN = 6;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 
 uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt) const
@@ -112,14 +111,12 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmulOutputSize", std::to_string(sizeOfSingleM).c_str(),
-            "The value of matmulOutputSize must not exceed 256MB after splitting into (1, n)"),
+        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size %lu still exceeds 256MB.", sizeOfSingleM),
                 return ge::GRAPH_FAILED);
-
+    
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1size", std::to_string(sizeOfSplitM).c_str(),
-            "The value of x1size must not exceed 256MB after splitting M into 16 parts"),
+        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -135,8 +132,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(
         tileMValue_, rcsCfg.tileCnt, tailMValue_, rcsCfg.tailCnt);
 
     OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quantMmMode",
-            std::to_string(static_cast<int>(quantMmMode)).c_str(), "The value of quantMmMode must not be PERBLOCK_MODE when size exceeds 256MB after formulaic splitting"),
+        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."),
         return ge::GRAPH_FAILED);
 
     uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
@@ -254,7 +250,7 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
         false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
-        commMode_);
+        Mc2Comm::GetCommModeFromEnv());
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;
@@ -275,12 +271,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     isA2APath_ = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_); // 判断是否走 All2All + Vec Reduce 通路（4P 或 8P）
-    // 根据入参commMode设置hccl通信方式
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
-    bool isAicpu = (strncmp(commMode, "ai_cpu", AICPU_STRLEN) == 0);
-    commMode_ = isAicpu ? Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
     // AICPU时不走All2All + Vec Reduce通路
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
+    if (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) {
         isA2APath_ = false;
     }
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -325,7 +317,7 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
              OP_TILING_CHECK((*groupSizePtr != 0), 
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "The value of groupSize must be nullptr or 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize", std::to_string(*groupSizePtr).c_str(), "should be nullptr or 0"),
                 return false);
         }
     }
@@ -345,7 +337,6 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
 {
     if (context_->GetAttrs() == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs");
-        return false;
     } else {
         auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
         OP_TILING_CHECK(
@@ -362,7 +353,7 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
         OP_TILING_CHECK(
             (kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                opName_, "kValue", std::to_string(kValue).c_str(), "The value of kValue must be in the range [256, 65535)"),
+                opName_, "kValue", std::to_string(kValue).c_str(), "should be in range [256, 65535)"),
             return false);
     }
     auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
@@ -383,11 +374,6 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     OP_TILING_CHECK(
         blockSize != 0,
         OP_LOGE_FOR_INVALID_VALUE(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
-        return false);
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
-    OP_TILING_CHECK(
-        commMode == nullptr,
-        OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
         return false);
     return CheckInputScale();
 }
@@ -430,13 +416,13 @@ bool MatmulReduceScatterTilingBase::ReduceScatterCheckShapeInfo()
     uint64_t x2Dim0 = bShape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = bShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(
-        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 of x1 must not be 0"), return false);
+        x1Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
     OP_TILING_CHECK(
-        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 of x1 must not be 0"), return false);
+        x1Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x1", (std::to_string(x1Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 of x2 must not be 0"), return false);
+        x2Dim0 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim0) + "D").c_str(), "Dim0 should not be 0"), return false);
     OP_TILING_CHECK(
-        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 of x2 must not be 0"), return false);
+        x2Dim1 == 0, OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "x2", (std::to_string(x2Dim1) + "D").c_str(), "Dim1 should not be 0"), return false);
 
     return CheckAttrInfoValid(x1Dim1);
 }
@@ -551,7 +537,7 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     // 为通信而进行调整搬运
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "The value of rankDim must be positive and divisible by orgMValue"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rankDim", std::to_string(args_.rankDim).c_str(), "must be positive and divisible by orgMValue"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 };
@@ -560,8 +546,6 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(const Mc2Tiling::RCSTiling &r
                                                    const ::TCubeTiling &mmTiling, const ::TCubeTiling &tailTiling,
                                                    uint32_t debugMode)
 {
-    (void)mmTiling;
-    (void)tailTiling;
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,

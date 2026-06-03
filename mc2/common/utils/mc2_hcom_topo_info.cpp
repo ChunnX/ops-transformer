@@ -16,7 +16,7 @@
 #include <cstdlib>
 #include <string>
 #include <dlfcn.h>
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "mc2_hcom_topo_info.h"
 #include "ops_legacy/op_tiling/hcom_topo_info.h"
 #include "mc2_tiling_utils.h"
@@ -225,7 +225,7 @@ HcclResult MC2HcomTopology::CallCommGetHcclBuffer(HcclComm comm, void **buffer, 
 HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup(const char *group, uint64_t *cclBufferSize, HcclComm *hcclComm)
 {
     if (group == nullptr || cclBufferSize == nullptr || hcclComm == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("", "group, cclBufferSize, hcclComm");
+        OP_LOGE("", "Group or rank num or hcclComm is nullptr.");
         return HCCL_E_PTR;
     }
     HcclResult ret = GetInstance().CallHcomGetCommHandleByGroup(group, hcclComm);
@@ -246,7 +246,7 @@ HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup(const char *group, uint6
 HcclResult MC2HcomTopology::CommGetHcclBufferByGroup(const char *group, void **buffer, uint64_t *size)
 {
     if (group == nullptr || buffer == nullptr || size == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("", "group, buffer, size");
+        OP_LOGE("", "Group or Buffer or Size is nullptr.");
         return HCCL_E_PTR;
     }
     HcclComm hcclComm;
@@ -280,7 +280,7 @@ HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize(const char *group, uint6
 HcclResult MC2HcomTopology::CommGetInstSizeByGroup(const char *group, uint32_t *rankNum)
 {
     if (group == nullptr || rankNum == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("", "group, rankNum");
+        OP_LOGE("", "Group or rank num is nullptr.");
         return HCCL_E_PTR;
     }
     HcclResult ret = GetInstance().CallHcomGetRankSizeEx(group, rankNum, COMM_IS_NOT_SET_DEVICE);
@@ -294,7 +294,7 @@ HcclResult MC2HcomTopology::CommGetInstSizeByGroup(const char *group, uint32_t *
 HcclResult MC2HcomTopology::TryGetGroupTopoType(const char *group, uint32_t *topoType)
 {
     if (group == nullptr || topoType == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("", "group, topoType");
+        OP_LOGE("", "Group or topo type is nullptr.");
         return HCCL_E_PTR;
     }
     CommTopo topoRet;

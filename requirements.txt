@@ -8,5 +8,4 @@ scipy
 attrs
 protobuf
 psutil
-packaging>=26.0
 setuptools>=59.0.0

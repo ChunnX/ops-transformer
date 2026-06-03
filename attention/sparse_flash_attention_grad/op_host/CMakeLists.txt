@@ -10,7 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnInner PRIVATE
+    target_sources(op_host_aclnn PRIVATE
         sparse_flash_attention_grad_def.cpp
     )
 endif()
@@ -41,7 +41,7 @@ else()
     )
     add_modules_sources(
         OPTYPE sparse_flash_attention_grad 
-        ACLNNTYPE aclnn_inner
+        ACLNNTYPE aclnn
     )
 endif()
 
@@ -54,3 +54,4 @@ if(NOT BUILD_OPS_RTY_KERNEL)
         ./arch35/sparse_flash_attention_grad_tiling_bs1_regbase.h
     )
 endif()
+

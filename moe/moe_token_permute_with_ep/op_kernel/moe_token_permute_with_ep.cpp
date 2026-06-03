@@ -36,11 +36,9 @@ using namespace MoeTokenPermuteWithEp;
         op.Process();                                                                                      \
         sortPipe.Destroy();                                                                                \
         sortClass2<int32_t> op2;                                                                           \
-        TPipe sortPipe2;                                                                                   \
         op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                     \
         op2.Process();                                                                                     \
         sortPipe2.Destroy();                                                                               \
-        TPipe MoeindexCopyPipe;                                                                            \
         indexCopyClass<__VA_ARGS__> indexCopyOp;                                                           \
         indexCopyOp.Init(tokens, probs, sortedIndices, permuteTokens, permuteProbs, t, &MoeindexCopyPipe); \
         indexCopyOp.Process();                                                                             \
@@ -66,6 +64,8 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_ep(
 
     auto t = &tilingData;
     TPipe sortPipe;
+    TPipe sortPipe2;
+    TPipe MoeindexCopyPipe;
     if (TILING_KEY_IS(1)) {
         GENERAL_OP_IMPL(MoeSortOneCore, MoeSortOneCore, MoeindexCopyOp, DTYPE_TOKENS, DTYPE_PROBS, false);
     } else if (TILING_KEY_IS(3)) {

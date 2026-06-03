@@ -222,9 +222,6 @@ __aicore__ inline void LIGVector<LIGT>::GatherTopk(GlobalTensor<int32_t> sparseI
         event_t eventIdMte3ToMTE2PingPong = ((cnt / splitDataCopyLen) & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
         LocalTensor<dataType> &gatherPingPongUb = ((cnt / splitDataCopyLen) & 1) ? gatherPingUb : gatherPongUb;
         int64_t singleIndice = indiceUb.GetValue(i);
-        bool isDualPrefetch = (i + 1 < loopEnd) && (indiceUb.GetValue(i + 1) == singleIndice + 1)
-            && ((cnt % splitDataCopyLen) < splitDataCopyLen - 1);
-        uint64_t copyLen = isDualPrefetch ? (2 * constInfo.headDim) : constInfo.headDim;
         // [B, S2, N2, D]
         uint64_t keyOffset = 0;
         if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
@@ -238,20 +235,14 @@ __aicore__ inline void LIGVector<LIGT>::GatherTopk(GlobalTensor<int32_t> sparseI
         if ((cnt % splitDataCopyLen == 0) || (i == loopBegin)) {
             AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
         }
-        DataCopy(gatherPingPongUb[pingPongOffset], keyTensor[keyOffset], copyLen);
-        if (isDualPrefetch) {
-            i++;
-            cnt++;
-        }
-        if (((cnt + 1) % splitDataCopyLen == 0) || (i >= loopEnd - 1)) {
+        DataCopy(gatherPingPongUb[pingPongOffset], keyTensor[keyOffset], constInfo.headDim);
+        if (((cnt + 1) % splitDataCopyLen == 0) || (i == loopEnd - 1)) {
             uint64_t gatherKOffset = (loopBegin + cnt / splitDataCopyLen * splitDataCopyLen) * constInfo.headDim;
-            uint64_t splitNum = ((cnt + 1) % splitDataCopyLen == 0) ? splitDataCopyLen : ((cnt + 1) % splitDataCopyLen);
-            if (splitNum > 0) {
-                AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-                AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
-                DataCopy(gatherKTensor[gatherKOffset], gatherPingPongUb, constInfo.headDim * splitNum);
-                AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
-            }
+            uint64_t splitNum = ((cnt + 1) % splitDataCopyLen == 0) ? splitDataCopyLen : (cnt + 1) % 8;
+            AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+            AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+            DataCopy(gatherKTensor[gatherKOffset], gatherPingPongUb, constInfo.headDim * splitNum);
+            AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
         }
     }
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
@@ -287,24 +278,12 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
 
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
-
-    uint64_t batch = 0;  // 批次计数，每处理一个批次（可能含1或2个索引）递增1
-    for (uint64_t i = loopBegin; i < loopEnd;) {
-        bool canMerge = (i + 1 < loopEnd) && (indiceUb.GetValue(i + 1) == indiceUb.GetValue(i) + 1);
-        uint64_t copyLen = canMerge ? (2 * constInfo.headDim) : constInfo.headDim;
-        uint64_t step = canMerge ? 2 : 1;
-
-        event_t eventIdMte2ToMTE3 = (batch & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
-        event_t eventIdMte3ToMTE2 = (batch & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
-        LocalTensor<float> &gatherPingPongUb = (batch & 1) ? gatherPingUb : gatherPongUb;
-
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-
-        uint64_t srcOffset = i * constInfo.headDim;
-        DataCopy(gatherPingPongUb, scatterAddTensor[srcOffset], copyLen);
-
-        // 计算目标偏移（基于第一个索引）
+    for (uint64_t i = loopBegin; i < loopEnd; i++) {
+        event_t eventIdMte2ToMTE3PingPong = (i & 1) ? eventIdMte2ToMTE3Ping : eventIdMte2ToMTE3Pong;
+        event_t eventIdMte3ToMTE2PingPong = (i & 1) ? eventIdMte3ToMTE2Ping : eventIdMte3ToMTE2Pong;
+        LocalTensor<float> &gatherPingPongUb = (i & 1) ? gatherPingUb : gatherPongUb;
         int64_t singleIndice = indiceUb.GetValue(i);
+        uint64_t scatterAddOffset = i * constInfo.headDim;
         uint64_t dkeyOffset;
         if (unlikely(constInfo.deterministic)) {
             if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
@@ -313,30 +292,26 @@ __aicore__ inline void LIGVector<LIGT>::ScatterAdd(GlobalTensor<int32_t> sparseI
                 dkeyOffset = singleIndice * constInfo.headDim + currentCoreIndex / 2 * runInfo.actualSeqK * constInfo.headDim;
             }
         } else {
-            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                dkeyOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +
-                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
-            } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-                dkeyOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +
-                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim;
+            if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {	 
+                dkeyOffset = runInfo.bIdx * constInfo.seqlenK * constInfo.headNumK * constInfo.headDim +	 
+                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim; 
+            } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {	 
+                dkeyOffset = runInfo.prefixSumS2 * constInfo.headNumK * constInfo.headDim +	 
+                    singleIndice * constInfo.headNumK * constInfo.headDim + runInfo.n2Idx * constInfo.headDim; 
             }
         }
-
-        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
-        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3);
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
+        DataCopy(gatherPingPongUb, scatterAddTensor[scatterAddOffset], constInfo.headDim);
+        AscendC::SetFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
+        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(eventIdMte2ToMTE3PingPong);
         AscendC::SetAtomicAdd<float>();
-        DataCopy(dkWorkSpaceGmTensor[dkeyOffset], gatherPingPongUb, copyLen);
+        DataCopy(dkWorkSpaceGmTensor[dkeyOffset], gatherPingPongUb, constInfo.headDim);
         AscendC::SetAtomicNone();
-        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2);
-
-        i += step;
-        batch++;
+        AscendC::SetFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2PingPong);
     }
-
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Ping);
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(eventIdMte3ToMTE2Pong);
 }
-
 
 template <typename LIGT>
 __aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> dkCoreWorkspaceGM,GlobalTensor<float> dkWorkSpaceGm,
@@ -359,7 +334,7 @@ __aicore__ inline void LIGVector<LIGT>::DeterministicMerge(GlobalTensor<float> d
             uint64_t tileRows = maxTileRows < (determinLen - processed) ? maxTileRows : (determinLen - processed);
             uint64_t dkCoreWorkspaceOffset;
             if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-                dkCoreWorkspaceOffset = static_cast<uint64_t>(core) * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
+                dkCoreWorkspaceOffset = core * constInfo.seqlenK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
             } else {
                 dkCoreWorkspaceOffset = core * runInfo.actualSeqK * constInfo.headDim + (determinBeginPos + processed) * constInfo.headDim;
             }
@@ -405,8 +380,8 @@ __aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dat
     uint64_t blockGroupBegin = (GetBlockIdx() % 2 == 0) ? 0 : constInfo.groupNum / 2;
     uint64_t blockGroupNum = (GetBlockIdx() % 2 == 0) ? constInfo.groupNum / 2 : (constInfo.groupNum + 1) / 2;
 
-    uint64_t dweightsGmOffset = 0;
-    uint64_t dqGmOffset = 0;
+    uint32_t dweightsGmOffset;
+    uint32_t dqGmOffset;
     if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
         dweightsGmOffset = runInfo.bIdx * constInfo.seqlenQ * constInfo.headNumQ + runInfo.s1Idx *
             constInfo.headNumQ + runInfo.n2Idx * constInfo.groupNum + blockGroupBegin;
@@ -432,11 +407,11 @@ __aicore__ inline void LIGVector<LIGT>::InitOutputDqAndDweights(GlobalTensor<dat
 template <typename LIGT>
 __aicore__ inline void LIGVector<LIGT>::InitOutputDkcoreGm(GlobalTensor<float> dkCoreWorkspaceGM, LIGCommon::ConstInfo constInfo, LIGCommon::RunInfo runInfo)
 {
-    uint64_t dkCorePerSize;
+    uint32_t dkCorePerSize;
     if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-        dkCorePerSize = static_cast<uint64_t>(constInfo.seqlenK) * constInfo.headDim / 2;
+        dkCorePerSize =  constInfo.seqlenK * constInfo.headDim / 2;
     } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        dkCorePerSize = runInfo.actualSeqK * constInfo.headDim / 2;
+        dkCorePerSize =  runInfo.actualSeqK * constInfo.headDim / 2;
     }
 
     LocalTensor<float> zeroDataTensor = unifiedBuffer.GetWithOffset<float>(MAX_UB_SIZE, gatherPingUbOffset);

@@ -43,8 +43,6 @@ const std::vector<uint32_t> QUANT_GMM_WEIGHT_SCALE_DTYPE_LIST = {
 };
 const std::vector<uint32_t> QUANT_GMM_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
 
-constexpr int64_t CCU_MODE_RANK_THRESHOLD = 8;
-
 bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint32_t> &list, uint32_t value)
 {
     return std::count(list.begin(), list.end(), value) > 0;
@@ -87,13 +85,13 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "sendCountsTensor, recvCountsTensor",
                             "not null",
-                            "The values of sendCountsTensor and recvCountsTensor must be nullptr."),
+                            "should all be nullptr now"),
                     return ge::GRAPH_FAILED);
     auto commQuantScaleTensorShape = context_->GetOptionalInputShape(COMM_QUANT_SCALE_OPTIONAL_INDEX);
     OP_TILING_CHECK(commQuantScaleTensorShape != nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantScale",
                                                           "not null",
-                                                          "The value of commQuantScale must be nullptr."), return ge::GRAPH_FAILED);
+                                                          "should be nullptr now"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -109,7 +107,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "gmmXScale, gmmWeightScale",
                             "null",
-                            "The values of gmmXScale and gmmWeightScale must not be nullptr."),
+                            "should all not be nullptr"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -132,10 +130,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckOpInputSingleParam
     OP_TILING_CHECK(!isAllSame,
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
                             "mmXTensor, mmWeightTensor, mmYTensor",
-                            (std::string(isMmXNull ? "null" : "not null") + ", " +
-                             std::string(isMmWeightNull ? "null" : "not null") + ", " +
-                             std::string(isMmYNull ? "null" : "not null")).c_str(),
-                            "The values of mmXTensor, mmWeightTensor and mmYTensor must be the same in existence state"),
+                            "not all in same existence state",
+                            "must exist or not exist at same time"),
                     return ge::GRAPH_FAILED);
     if (!isMmXNull) {
         localParams_.hasSharedMm = true;
@@ -284,7 +280,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsM
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsAttr()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName_, "Failed to get attrs."), return ge::GRAPH_FAILED);
 
     auto gmmXQuantModeptr = attrs->GetAttrPointer<int64_t>(ATTR_GMM_X_QUANT_MODE_INDEX);
     OP_TILING_CHECK(gmmXQuantModeptr == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "gmmXQuantMode", "null", "not null"),
@@ -308,8 +304,8 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckAndSetLocalParamsA
                     return ge::GRAPH_FAILED);
     localParams_.commQuantDtype = *commQuantDtypeptr;
     OP_TILING_CHECK(localParams_.commQuantMode != QUANT_NONE,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "commQuantMode",
-                        std::to_string(localParams_.commQuantMode).c_str(), "commQuant is not supported yet; only 0 is allowed"),
+                    OP_LOGE(opName_, "commQuant is not supported yet; only 0 is allowed, but commQuantMode is %ld !",
+                            localParams_.commQuantMode),
                     return ge::GRAPH_FAILED);
 
     auto mmXQuantModeptr = attrs->GetAttrPointer<int64_t>(ATTR_MM_X_QUANT_MODE_INDEX);
@@ -654,7 +650,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckParamsAttrEpAndSet
         localParams_.groupSize != 0,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "groupSize",
                                                std::to_string(localParams_.groupSize),
-                                                "The value of groupSize must be 0. Group quant mode is unavailable."),
+                                               "Group quant is not supported yet, must be 0"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -896,43 +892,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::DoQuantGMMTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t QuantGroupedMatmulAllToAllvTilingCommon::GetCommModeIndex() const
-{
-    return GmmA2AvAttrIndex::ATTR_COMM_MODE_INDEX;
-}
-
-ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context,
-    uint8_t &commMode) const
-{
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(context->GetNodeName(), "Failed to get attrs."), return ge::GRAPH_FAILED);
-    const char *commModeStr = attrs->GetAttrPointer<char>(GetCommModeIndex());
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    OP_TILING_CHECK(commModeStr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode is null pointer."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr,
-        OP_LOGE(context->GetNodeName(), "The input attr epWorldSize is null pointer."), return ge::GRAPH_FAILED);
-    int64_t rankDim = *epWorldSizePtr;
-    const size_t maxLength = 6UL;
-    if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
-        commMode = Mc2Comm::COMM_MODE_CCU;
-    } else if (strncmp(commModeStr, "", maxLength) == 0) {
-        if (rankDim <= CCU_MODE_RANK_THRESHOLD) {
-            commMode = Mc2Comm::COMM_MODE_CCU;
-        } else {
-            commMode = Mc2Comm::COMM_MODE_AICPU;
-        }
-        OP_LOGI(context->GetNodeName(),
-            "commMode is '', and rankDim is %lld, will use commMode: %d.", rankDim, commMode);
-    } else {
-        OP_LOGE(context->GetNodeName(), "The input attr comm_mode only support '', 'aicpu', 'ccu'.");
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 {
     uint32_t alltoAllvCmd = 8U;
@@ -945,8 +904,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
     auto outputDataType = context_->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType();
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(outputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "outputDataType",
-            Ops::Base::ToString(outputDataType).c_str(), "The dtype of outputDataType must be within the supported range."),
+        OP_LOGE(opName_, "Output data type %s is not supported yet.", Ops::Base::ToString(outputDataType).c_str()),
         return ge::GRAPH_FAILED);
 
     auto alltoAllvDstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
@@ -954,20 +912,9 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
-    auto platformInfo = context_->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    uint8_t commMode = 0;
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
-    }
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
@@ -1109,10 +1056,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
-    uint8_t commMode = 0;
-    if (QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
                                                   localParams_.isMmWeightTrans, commMode);
     OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,

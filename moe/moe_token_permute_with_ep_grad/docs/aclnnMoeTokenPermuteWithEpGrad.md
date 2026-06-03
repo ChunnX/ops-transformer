@@ -43,7 +43,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithEpGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize” 接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用 “aclnnMoeTokenPermuteWithEpGrad” 接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize(
@@ -138,7 +138,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
     <tr>
       <td>rangeOptional</td>
       <td>输入</td>
-      <td>ep切分的有效范围，size为2。</td>
+      <td>ep切分的有效范围,size为2。</td>
       <td>为空时，忽略permutedProbsOutputGradOptional和probsGradOut，执行逻辑回退到<a href="../../moe_token_permute_grad/docs/aclnnMoeTokenPermuteGrad.md">aclnnMoeTokenPermuteGrad</a>。</td>
       <td>-</td>
       <td>-</td>
@@ -391,7 +391,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化，参考acl API手册
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -483,7 +483,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenPermuteWithEpGrad failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

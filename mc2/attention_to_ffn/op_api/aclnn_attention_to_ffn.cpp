@@ -13,7 +13,6 @@
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
-#include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_attention_to_ffn.h"
 
@@ -44,7 +43,7 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(expertRankTable, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFFN", "group");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
         return false;
     }
 
@@ -60,9 +59,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, c
               ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnAttentionToFFN", "group",
-            std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
-            (std::string("The length of group must be less than ") + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_INVALID;
     }
 

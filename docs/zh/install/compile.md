@@ -18,8 +18,7 @@
 | protobuf | 25.1.0 | [protobuf-25.1.tar.gz](https://gitcode.com/cann-src-third-party/protobuf/releases/download/v25.1/protobuf-25.1.tar.gz) |
 | abseil-cpp | 20230802.1 | [abseil-cpp-20230802.1.tar.gz](https://gitcode.com/cann-src-third-party/abseil-cpp/releases/download/20230802.1/abseil-cpp-20230802.1.tar.gz) |
 | opbase(自CANN 9.0.0及以后版本需要下载) | master | [opbase](https://gitcode.com/cann/opbase) |
-| cann-cmake | master-026 | [cmake-master-026.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-026.tar.gz) |
-| ops-tensor(自CANN 9.1.0及以后版本需要下载) | master | [ops-tensor](https://gitcode.com/cann/ops-tensor) |
+| cann-cmake | master-007 | [cmake-master-007.tar.gz](https://cann-3rd.obs.cn-north-4.myhuaweicloud.com/cmake/cmake-master-007.tar.gz) |
 
 若您的编译环境可以访问网络，请参考[联网编译](#联网编译)，编译脚本会自动联网下载第三方软件。否则，请参考[未联网编译](#未联网编译)手动下载第三方软件。
 
@@ -125,7 +124,7 @@
 
 #### ops-transformer静态库
 
-> 说明：静态库仅支持Atlas A2、Atlas A3、Atlas A5系列产品。experimental算子暂不支持使用静态库。
+> 说明：静态库仅支持Atlas A2、Atlas A3系列产品。experimental算子暂不支持使用静态库。
 
 1. **编译ops-transformer静态库**
 
@@ -135,7 +134,7 @@
     bash build.sh --pkg --static --soc=${soc_version}
     ```
 
-    \$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Atlas A5系列产品使用"ascend950"。
+    \$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"。
     若提示如下信息，说明编译并压缩成功。
 
     ```bash
@@ -275,15 +274,15 @@ Global Environment TearDown
 
 ## FAQ
 
-### 本地编译报错"ERROR: No matching distribution found for setuptools>=40.8.0"
+### 本地编译报错 "ERROR: No matching distribution found for setuptools>=40.8.0"
 
 ```
 Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
 ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: none)
 ERROR: No matching distribution found for setuptools>=40.8.0
 ```
-1、检查[环境部署](./quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
+1、检查[环境部署](docs/zh/install/quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
 
-2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf指定的pip源是否可用
+2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf 指定的pip源是否可用
 
 

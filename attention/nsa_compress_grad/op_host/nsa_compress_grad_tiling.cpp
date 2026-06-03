@@ -97,8 +97,8 @@ ge::graphStatus NsaCompressGradTiling::DoOpTiling()
 
     const auto& inputKvShape = GetShapeOfInput(INDEXONE);
     tSeqLen_ = static_cast<uint32_t>(inputKvShape.GetDim(INDEXZERO));
-    auto headToProcessPerCore = static_cast<uint64_t>(tSeqLen_) * nHeads / aivNum_;
-    auto headRemainder = (static_cast<uint64_t>(tSeqLen_) * nHeads) % aivNum_;
+    auto headToProcessPerCore = tSeqLen_ * nHeads / aivNum_;
+    auto headRemainder = (tSeqLen_ * nHeads) % aivNum_;
 
     auto batchSize = 1;
     const auto& actSeqLenShape = context_->GetOptionalInputShape(INDEXTHREE);
@@ -143,15 +143,8 @@ ge::graphStatus NsaCompressGradTiling::GetWorkspaceSize() {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     size_t sysWorkspaceSize = WORKSIZE;
     /* usrWorkspaceSize = workspace for other gm */
-    int64_t usrWorkspaceSizeTmp = static_cast<int64_t>(tilingData_.get_blockSize()) *
-                                  static_cast<int64_t>(tilingData_.get_numOfHead()) *
-                                  sizeof(uint32_t) * static_cast<int64_t>(aivNum_) +
-                                  static_cast<int64_t>(tSeqLen_) *
-                                  static_cast<int64_t>(tilingData_.get_numOfHead()) *
-                                  static_cast<int64_t>(tilingData_.get_dimOfHead()) *
-                                  sizeof(uint32_t) +
-                                  static_cast<int64_t>(ONE_KILO) * ONE_KILO;
-    size_t usrWorkspaceSize = static_cast<size_t>(usrWorkspaceSizeTmp);
+    size_t usrWorkspaceSize = tilingData_.get_blockSize() * tilingData_.get_numOfHead() * sizeof(uint32_t) * aivNum_ +
+    tSeqLen_ * tilingData_.get_numOfHead() * tilingData_.get_dimOfHead() * sizeof(uint32_t) + ONE_KILO * ONE_KILO;
     workspaces[0] = sysWorkspaceSize + usrWorkspaceSize;
     return ge::GRAPH_SUCCESS;
 }

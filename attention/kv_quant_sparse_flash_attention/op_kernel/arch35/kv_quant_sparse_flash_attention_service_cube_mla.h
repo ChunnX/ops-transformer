@@ -20,25 +20,23 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
+#include "util_regbase.h"
 
 #if __has_include("../../common/op_kernel/offset_calculator.h")
 #include "../../common/op_kernel/offset_calculator.h"
 #else
 #include "../common/offset_calculator.h"
 #endif
-
 #if __has_include("../../common/op_kernel/matmul.h")
 #include "../../common/op_kernel/matmul.h"
 #else
 #include "../common/matmul.h"
 #endif
-
 #if __has_include("../../common/op_kernel/FixpipeOut.h")
 #include "../../common/op_kernel/FixpipeOut.h"
 #else
 #include "../common/FixpipeOut.h"
 #endif
-
 #if __has_include("../../common/op_kernel/CopyInL1.h")
 #include "../../common/op_kernel/CopyInL1.h"
 #else
@@ -47,7 +45,6 @@
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
-
 using namespace regbaseutil;
 using namespace fa_base_matmul;
 namespace BaseApi {
@@ -77,8 +74,7 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline QSFAMatmulService() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-        __gm__ uint8_t *query);
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr, __gm__ uint8_t *query);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
@@ -116,13 +112,14 @@ private:
     TEventID mte2ToMte1Id[3];
 
     /* =====================LocalBuffer变量==================== */
-    // D小于等于256 mm1左矩阵Q，GS1循环内左矩阵复用, GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
-    BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
-    // L0空间buffer manager
-    BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr;
+    BufferManager<BufferType::L1> *l1BufferManagerPtr;
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
+
+    // D小于等于256 mm1左矩阵Q，GS1循环内左矩阵复用, GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
+    BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
+
     // L0A
     BuffersPolicyDB<BufferType::L0A> mmL0ABuffers;
     // L0B
@@ -132,11 +129,11 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BuffMgr, __gm__ uint8_t *query)
+    TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
-        qsfaL1BufferManagerPtr = qsfaL1BuffMgr;
+        l1BufferManagerPtr = l1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         InitLocalBuffer();
     }
@@ -144,10 +141,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *qsfaActualSeqLengthsQ, const ConstInfo& constInfo)
+QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
-        InitGmTensor(qsfaActualSeqLengthsQ, constInfo);
+        InitGmTensor(actualSeqLengthsQ, constInfo);
         if constexpr (IS_SPLIT_G) {
             mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
@@ -164,7 +161,7 @@ __aicore__ inline void
 QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init((*qsfaL1BufferManagerPtr), mm1LeftSize);
+    l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
@@ -178,14 +175,14 @@ QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-QSFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *qsfaActualSeqLengthsQ, const ConstInfo& constInfo)
+QSFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSize);
     } else {  // QSFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)qsfaActualSeqLengthsQ);
+        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize,
             actualSeqQLen, constInfo.actualSeqLenSize);
     }
@@ -259,18 +256,17 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),  // singleM
                      static_cast<uint32_t>(runInfo.s2RealSize), // singleN
                      static_cast<uint32_t>(constInfo.dSize),    // singleK
                      0,    // isLeftTranspose
                      1     // isRightTranspose
                     };
-
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
-        mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
-
+        mmL0ABuffers, mmL0BBuffers,
+        mm1ResL0C.GetTensor<T>(),
+        param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
@@ -294,23 +290,21 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     outputBuf.SetCrossCore();
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
     inputRightBuf.WaitCrossCore();
+
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
-
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),   // singleM 64
                      static_cast<uint32_t>(constInfo.dSizeNope), // singleN 576->512
                      static_cast<uint32_t>(runInfo.s2RealSize),  // singleK 128
                      0,    // isLeftTranspose
                      0     // isRightTranspose
                      };
-
     MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         inputRightBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeNope), // 左矩阵P 来自rope位置
         inputRightBuf.GetTensor<Q_T>(), // 右矩阵V nope
@@ -320,11 +314,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         param);
 
     inputRightBuf.SetCrossCore();   // bmm2才释放KV，在这里释放
+
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
     outputBuf.WaitCrossCore(); //占用
-
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;      // L0C→UB;FixpipeParamsM300:L0C→UB
     fixpipeParams.nSize = Align8Func(constInfo.dSizeNope);      // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
     fixpipeParams.mSize = Align2Func(runInfo.mRealSize);        // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
@@ -334,7 +328,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
 
@@ -345,21 +338,21 @@ TEMPLATES_DEF
 class QSFAMatmulServiceDummy {
 public:
     __aicore__ inline QSFAMatmulServiceDummy() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-        __gm__ uint8_t *query) {}
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr, __gm__ uint8_t *query) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo) {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         RunInfo &runInfo, ConstInfo &constInfo) {}
-
     __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
 };
 
+
 template <typename T>
 struct CubeBlockTraits;  // 声明
+
 /* 生成CubeBlockTraits */
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
@@ -367,8 +360,8 @@ struct CubeBlockTraits;  // 声明
 #define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
     TEMPLATES_DEF_NO_DEFAULT \
     struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
-        QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
-        QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS(QSFAMatmulService);
@@ -378,7 +371,7 @@ DEFINE_CUBE_BLOCK_TRAITS(QSFAMatmulServiceDummy);
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
 #define ARGS_TRAITS \
-    QSFA_CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
-    QSFA_CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
+    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 }
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_SERVICE_CUBE_MLA_H

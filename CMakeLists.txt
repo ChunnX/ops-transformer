@@ -10,11 +10,6 @@
 
 cmake_minimum_required(VERSION 3.16)
 include(cmake/fetch_cann_cmake.cmake)
-if(DEFINED RULE_LAUNCH AND RULE_LAUNCH)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${RULE_LAUNCH})
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ${RULE_LAUNCH})
-endif()
-
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
@@ -130,7 +125,6 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
-include(cmake/third_party/ops-tensor.cmake)
 include(cmake/config.cmake)
 add_cann_third_party(json)
 
@@ -158,8 +152,8 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
         add_cann_third_party(eigen)
-        add_cann_third_party(abseil-cpp)
-        add_cann_third_party(protobuf)
+        include(cmake/third_party/abseil-cpp.cmake)
+        include(cmake/third_party/ascend_protobuf.cmake)
 
 
         include(cmake/custom_build.cmake)
@@ -335,7 +329,6 @@ add_subdirectory(ffn)
 list(APPEND OP_LIST "ffn")
 list(APPEND OP_DIR_LIST ${CMAKE_CURRENT_SOURCE_DIR}/ffn/ffn)
 add_subdirectory(attention)
-add_subdirectory(mhc)
 list(APPEND OP_LIST ${COMPILED_OPS})
 list(REMOVE_DUPLICATES OP_LIST)
 list(APPEND OP_DIR_LIST ${COMPILED_OP_DIRS})

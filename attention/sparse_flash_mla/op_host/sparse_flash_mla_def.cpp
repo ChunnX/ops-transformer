@@ -7,11 +7,11 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
+ 
 /*!
-* \file sparse_flash_mla_def.cpp
-* \brief
-*/
+ * \file sparse_flash_mla_def.cpp
+ * \brief
+ */
 
 #include "register/op_def_registry.h"
 
@@ -115,7 +115,7 @@ public:
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Attr("softmax_scale").AttrType(REQUIRED).Float(1.0);
@@ -139,8 +139,6 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
-        this->AICore().AddConfig("ascend910b", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };

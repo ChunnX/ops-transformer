@@ -25,12 +25,12 @@ namespace sfag {
 enum class InputIndex : uint32_t {
     QUERY = 0,
     KEY,
+    VALUE,
     TOPK_INDICES,
     ATTENTION_OUT_GRAD,
     ATTENTION_OUT,
     SOFTMAX_MAX,
     SOFTMAX_SUM,
-    VALUE,
     ACTUAL_SEQ_Q_LEN,
     ACTUAL_SEQ_KV_LEN,
     Q_ROPE,
@@ -59,11 +59,12 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
 
     const gert::Shape *queryShape = context->GetInputShape(static_cast<size_t>(InputIndex::QUERY));
     const gert::Shape *keyShape = context->GetInputShape(static_cast<size_t>(InputIndex::KEY));
-    const gert::Shape *valueShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    const gert::Shape *valueShape = context->GetInputShape(static_cast<size_t>(InputIndex::VALUE));
     const gert::Shape *queryRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::Q_ROPE));
     const gert::Shape *keyRopeShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::K_ROPE));
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -89,11 +90,10 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     gert::Shape *dvShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
     OP_CHECK_NULL_WITH_CONTEXT(context, dqShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, dkShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, dvShape);
     *dqShape = *queryShape;
     *dkShape = *keyShape;
-    if (valueShape != nullptr && dvShape != nullptr) {
-        *dvShape = *valueShape;
-    }
+    *dvShape = *valueShape;
 
     if (queryRopeShape != nullptr) {
         gert::Shape *dqRopeShape = context->GetOutputShape(static_cast<size_t>(OutputIndex::DQ_ROPE));

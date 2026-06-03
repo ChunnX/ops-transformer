@@ -48,7 +48,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::CheckMRNInput(const 
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             context_->GetNodeName(), "x1 and residual",
             (Ops::Base::ToString(x1Type) + " and " + Ops::Base::ToString(residualType)).c_str(),
-            "The dtypes of x1 and residual must be the same"),
+            "The dtype of x1 should be the same as the dtype of residual"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -96,7 +96,7 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::GetShapeAttrsInfo()
     } else if (strcmp(context_->GetNodeType(), IMRN) == 0) {
         MC2_CHECK_LOG_RET(context_->GetNodeName(), ContextTransfer::AssembleIMRNCtxInfoFromIMRNCtx(context_, mrnCtxInfo_));
     } else {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "nodeType", context_->GetNodeType(), "The value of nodeType must be MRN or IMRN");
+        OP_LOGE(context_->GetNodeName(), "Unsupported node type %s", context_->GetNodeType());
         return ge::GRAPH_FAILED;
     }
     MC2_CHECK_NOTNULL_RET(context_->GetNodeName(), helper_);
@@ -149,7 +149,11 @@ ge::graphStatus WeightQuantMatmulAllReduceAddRmsNormTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(helper_->opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
+        OP_LOGE(
+            helper_->opName_,
+            "tiling data size[%zu] not aligned to"
+            " 8",
+            tilingDataSize),
         return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
         reinterpret_cast<void *>(&tilingData_), tilingDataSize);

@@ -141,7 +141,6 @@ TEST_P(GroupedMatMulAlltoAllvArch22TilingTest, ShapeSize)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(tilingParams.recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
     if (testParam.status == ge::GRAPH_FAILED){
@@ -223,7 +222,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim1)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -258,7 +256,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim2)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -293,7 +290,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim3)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -329,7 +325,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim4)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -365,7 +360,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim5)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -401,7 +395,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, Dim6)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
@@ -436,7 +429,6 @@ TEST_F(GroupedMatMulAlltoAllvArch22TilingTest, TransMmWeightInvalid)
             {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>(recvCounts)},
             {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")},
         },
         &compileInfo, socVersion, coreNum, ubSize, tilingData);
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};

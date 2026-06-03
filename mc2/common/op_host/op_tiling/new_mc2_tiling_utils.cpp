@@ -71,9 +71,8 @@ ge::graphStatus NewGetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<
         priorities = MATMUL_V3_PRIOR_MAP.at(npuArch);
     }
     if (priorities.empty()) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "npuArch",
-            std::to_string(static_cast<uint32_t>(npuArch)).c_str(), "The value of npuArch must be within the supported range.");
-        return ge::GRAPH_FAILED;
+        OP_LOGE(opName, "NpuArch %u can't find suitable matmul priorities", static_cast<uint32_t>(npuArch));
+                return ge::GRAPH_FAILED;
     }
  	  return ge::GRAPH_SUCCESS;
 }

@@ -22,8 +22,6 @@
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
 
-  其中`topK_num`表示每个token预留的最大专家槽位数。`paddedMode`为`false`时，每个token实际选择的专家数可以小于等于`topK_num`；未使用的槽位在`sortedIndices`中以`-1`表示，计算时跳过该槽位。
-
   $$
   numExperts = probs.size(1)
   $$
@@ -73,8 +71,7 @@
   $$
 
   $$
-  if sortedIndices[i] >= 0:
-      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]] * permutedProbs[i]
+  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
   (3)probs为None,padMode为true时:
@@ -90,8 +87,7 @@
   (4)probs为None,padMode为false时:
 
   $$
-  if sortedIndices[i] >= 0:
-      unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
+  unpermutedTokens[i//topK\_num] += permutedTokens[sortedIndices[i]]
   $$
 
 ## 参数说明
@@ -117,7 +113,7 @@
     <tr>
       <td>sortedIndices</td>
       <td>输入</td>
-      <td>对应公式中的`sortedIndices`。`paddedMode`为false时，非负值表示`permutedTokens`中的有效行号，-1表示该槽位没有对应专家输出，计算时跳过。</td>
+      <td>对应公式中的`sortedIndices`。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -138,7 +134,7 @@
     <tr>
       <td>paddedMode</td>
       <td>属性</td>
-      <td>true表示开启paddedMode，false表示关闭paddedMode。开启paddedMode时，每个专家固定处理capacity个token。关闭paddedMode时，每个token预留topK_num个专家槽位，实际被小于等于topK_num个专家处理，未使用槽位在sortedIndices中以-1表示。</td>
+      <td>true表示开启paddedMode，false表示关闭paddedMode。开启paddedMode时，每个专家固定处理capacity个token。关闭paddedMode时，每个token固定被topK_num个专家处理。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -183,7 +179,7 @@
 
 ## 约束说明
 
--   topkNum <= 512。paddedMode为false时，每个token最多预留topkNum个专家槽位，routingMap中每行为1或true的个数小于等于topkNum；sortedIndices中允许使用-1表示无效槽位。
+- topkNum <= 512, paddedMode为false时routingMap中每行为1或true的个数固定且小于`512`。
 
 ## 调用说明
 

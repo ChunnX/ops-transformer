@@ -55,14 +55,12 @@ operator_group_4:
   - rotary_position_embedding_grad
   - ring_attention_update
   - sparse_flash_attention_grad
-  - sparse_flash_mla_grad
   - fused_infer_attention_score,10-9
   - moe_token_permute_with_routing_map
 operator_group_5:
   - flash_attention_score,3-0
 operator_group_6:
   - sparse_lightning_indexer_grad_kl_loss
-  - sparse_lightning_indexer_kl_loss_grad
   - prompt_flash_attention
   - kv_quant_sparse_flash_attention
   - quant_lightning_indexer

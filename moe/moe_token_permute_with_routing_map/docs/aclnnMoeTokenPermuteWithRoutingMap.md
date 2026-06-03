@@ -18,7 +18,7 @@
 - **接口功能**：MoE的permute计算，将token和expert的标签作为routingMap传入，根据routingMap将tokens和可选probsOptional广播后排序
 - **计算公式**：
 
-  tokens\_num为routingMap的第0维大小，expert\_num为routingMap的第1维大小
+  tokens\_num 为routingMap的第0维大小，expert\_num为routingMap的第1维大小
   dropAndPad为`false`时
 
   $$
@@ -157,7 +157,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <td>routingMap</td>
       <td>输入</td>
       <td>token到expert的映射关系。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非dropAndPad模式要求每行中包含小于topK个true或1。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为2D的(tokens_num, experts_num)。</li><li>数据类型为INT8时取值支持0、1，为BOOL时取值支持true、false。</li><li>非dropAndPad模式要求每行中包含topK个true或1。</li></ul></td>
       <td>INT8、BOOL</td>
       <td>ND</td>
       <td>2</td>
@@ -247,7 +247,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn 返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1180px"> 
@@ -278,7 +278,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
         <td>输入输出的shape不符合要求</td>
       </tr>
       <tr>
-        <td>numOutTokens < 0 或numOutTokens > tokens_num * experts_num</td>
+        <td>numOutTokens < 0 或 numOutTokens > tokens_num * experts_num</td>
       </tr>
       <tr>
         <td>ACLNN_ERR_INNER_NULLPTR</td>
@@ -336,9 +336,9 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMoeTokenPermuteWithRoutingMap默认非确定性实现，支持通过alcrtCtxSetSysParamOpt开启确定性。
+  - aclnnMoeTokenPermuteWithRoutingMap默认确定性实现。
 
-- tokens_num和experts_num要求小于`16777215`，pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
+- tokens_num和experts_num要求小于`16777215`，pad模式为false时routingMap 中 每行为1或true的个数固定且小于`512`。
 
 ## 调用示例
 
@@ -398,7 +398,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 int main() {
-    // 1. 固定写法，device/stream初始化，参考acl对外接口列表
+    // 1. 固定写法，device/stream初始化, 参考acl对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;

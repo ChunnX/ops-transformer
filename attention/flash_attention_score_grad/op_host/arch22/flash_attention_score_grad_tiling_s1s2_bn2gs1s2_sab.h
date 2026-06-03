@@ -152,7 +152,7 @@ protected:
     ge::graphStatus ProcessPseNormal(const char *inputLayout);
     ge::graphStatus ProcessSparseModeInfo();
     ge::graphStatus ProcessTokensInfo();
-    ge::graphStatus ProcessSinkInfo();
+    void ProcessSinkInfo();
     ge::graphStatus SaveToTilingData();
     int64_t FindBandIdx();
     bool SetSparseParams();

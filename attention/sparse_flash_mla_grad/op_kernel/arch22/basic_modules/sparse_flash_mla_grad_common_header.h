@@ -76,7 +76,6 @@ struct RunInfo {
     int64_t cmpDiagOffset;
     bool isLastBasicBlock;
     bool isOri;
-    event_t vWaitMte3Proc;
 };
 
 /////////////////////////////////////////////////////

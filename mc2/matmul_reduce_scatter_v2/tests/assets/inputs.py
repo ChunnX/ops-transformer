@@ -35,7 +35,7 @@ def matmul_reduce_scatter_v2_inputs(
     group_size=0,
     is_amax_out=False,
     y_dtype=0,
-    comm_mode="ai_cpu",
+    comm_mode="aicpu",
     **kwargs
 ):
     if is_trans_b:

@@ -61,8 +61,6 @@ print("Verification successful!")
 
 ## Developer Guide: Adding a New Operator
 
-> For the full operator development specification — directory layout, naming, per-layer implementation (C++ / Python / torchair graph mode), docstring and DeviceGuard requirements — see [torch_extension 开发规范](npu_ops_transformer/docs/torch_extension_guidelines.md).
-
 To implement a new operator (e.g. `abs`), you need to provide two components: a C++ kernel wrapper and a Python JIT builder.
 
 ### 1. C++ Backend(`ops/csrc/<OP_NAME>.cpp`)
@@ -74,13 +72,13 @@ This file bridges PyTorch tensors to the ACLNN C-API.
 #include "aclnn_common.h"
 
 /**
- * @brief ACLNN Wrapper for aclnnAbs
+ * @brief ACLNN Warpper for aclnnAbs
  * @param x Input Tensor (on NPU)
  * @return Result Tensor
  */
 at::Tensor npu_abs(const at::Tensor &x)
 {
-    // 1. Manually allocate output tensor (standard PyTorch practice)
+    // 1. Manually allocate output tensor (standrad PyTorch practice)
     at::Tensor y = at::empty_like(x);
 
     // 2. Launch ACLNN kernel using the helper macro

@@ -12,13 +12,13 @@
 #define GEMM_BLOCK_MMAD_QK_DECODE_HPP
 
 #include "../../../attn_infra/fused_base_defs.hpp"
+#include "../../../attn_infra/arch/fused_resource.hpp"
 #include "../../../attn_infra/fused_coord.hpp"
 #include "../../../attn_infra/gemm/fused_gemm_dispatch_policy.hpp"
 #include "../../../attn_infra/gemm/fused_helper.hpp"
 #include "../../../attn_infra/fused_gemm_coord.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/fused_tile_mmad.hpp"
-#include "../../../attn_infra/arch/fused_resource.hpp"
 
 ////////////////////////////////////////////////////////////////////
 
@@ -84,14 +84,14 @@ public:
     static constexpr uint32_t L0A_PINGPONG_BUF_SIZE = L0A_SIZE / STAGES;
     static constexpr uint32_t L0B_PINGPONG_BUF_SIZE = L0B_SIZE / STAGES;
     static constexpr uint32_t L0C_PINGPONG_BUF_SIZE = L0C_SIZE / STAGES;
-    static constexpr uint32_t COORD_DIM0 = 0;
-    static constexpr uint32_t COORD_DIM1 = 1;
-    static constexpr uint32_t COORD_DIM2 = 2;
     static constexpr uint32_t BLOCK_SIZE = 16;
     static constexpr uint32_t EMBED_SPLIT_SIZE = 128;
     static constexpr uint32_t UNIT_BLOCK_STACK_NUM = 4;
     static constexpr uint32_t KV_BASE_BLOCK = 512;
     static constexpr uint32_t KV_SPLIT_SIZE = 128;
+    static constexpr uint32_t COORD_DIM0 = 0;
+    static constexpr uint32_t COORD_DIM1 = 1;
+    static constexpr uint32_t COORD_DIM2 = 2;
 
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
@@ -99,12 +99,12 @@ public:
     BlockMmad() {}
 
     __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t l1BufAddrStartQK = 0)
+    void init(Arch::Resource<ArchTag> &resource, uint32_t nDyn, uint32_t kDyn, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
-        l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStartQK);
+        l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart);
         for (uint32_t i = 0; i < STAGES; i++) {
-            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStartQK +
+            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart +
                 L1TileShape::M * kDyn * sizeof(ElementA) + nDyn * kDyn * sizeof(ElementB) * i);
             l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementA>(L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(L0B_PINGPONG_BUF_SIZE * i);
@@ -143,26 +143,22 @@ public:
     }
     
     __aicore__ inline
-    void getBlockShape(GemmCoord &actualShape, uint32_t nL1Index, uint32_t nL1Loop, uint32_t stackSeqTile)
+    void getBlockShape(GemmCoord &actualShape, uint32_t nL1Idx, uint32_t nL1Loop, uint32_t stackSeqTile)
     {
         uint32_t nSplitSize = l1NDynamic;
-        if (nL1Index == nL1Loop - 1U) {
-            nSplitSize = stackSeqTile - nL1Index * l1NDynamic;
+        if (nL1Idx == nL1Loop - 1U) {
+            nSplitSize = stackSeqTile - nL1Idx * l1NDynamic;
         }
         actualShape[COORD_DIM1] = nSplitSize;
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
-        uint32_t strideKV, uint32_t blockSize, uint64_t keyBnStride)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t nowNIdx, uint32_t nL1Idx,
+        uint32_t strideKV, uint32_t blockSize)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            if (keyBnStride != 0) {
-                kOffset = blockTableId * keyBnStride + nL1Idx * l1NDynamic * strideKV;
-            } else {
-                kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
-            }
+            kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         } else {
             kOffset = nowNIdx * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
         }
@@ -175,26 +171,25 @@ public:
                     AscendC::GlobalTensor<int32_t> gBlockTable,
                     LayoutA layoutA, LayoutB layoutB, LayoutC layoutC, GemmCoord actualOriShape,
                     uint32_t nIdx, uint32_t nLoop, uint32_t blockSize, uint32_t strideKV,
-                    uint32_t kvNIncreIdx, uint64_t keyBnStride)
+                    uint32_t kvNIncreIdx)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM1];
         uint32_t embed = actualOriShape[COORD_DIM2];
 
         GemmCoord actualShape{rowNum, 0, embed};
-        uint64_t gBOffset = 0;
+        uint32_t gBOffset = 0;
 
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(l1ATotalRowNum, l1AEmbedDim);
 
         uint32_t kvNRowOffset = kvNIncreIdx * l1ARowNumPerKvHead;
 
         uint32_t tileNNumPerBaseBlock = blockSize / l1NDynamic;
-        uint32_t nL1Loop = NpuArch::Detail::Alignment::CeilDiv(stackSeqTile, l1NDynamic);
+        uint32_t nL1Loop = CeilDiv(stackSeqTile, l1NDynamic);
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; ++nL1Idx) {
             uint32_t nowNIdx = nIdx + nL1Idx / tileNNumPerBaseBlock;
             getBlockShape(actualShape, nL1Idx, nL1Loop, stackSeqTile);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock,
-                        strideKV, blockSize, keyBnStride);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize);
             uint32_t mActual = actualShape.m();
             uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();
@@ -205,22 +200,22 @@ public:
             copyGmToL1B(l1BTensor[l1KvPingPongFlag], gB[gBOffset], layoutBInL1, layoutBTile);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KvPingPongFlag);
 
-            uint32_t mL0Loop = NpuArch::Detail::Alignment::CeilDiv(mActual, L0TileShape::M);
-            uint32_t kL0Loop = NpuArch::Detail::Alignment::CeilDiv(kActual, L0TileShape::K);
+            uint32_t mL0Loop = CeilDiv(mActual, L0TileShape::M);
+            uint32_t kL0Loop = CeilDiv(kActual, L0TileShape::K);
             for (uint32_t mL0Idx = 0; mL0Idx < mL0Loop; mL0Idx++) {
                 uint32_t mL0Actual = (mL0Idx < mL0Loop - 1U) ? L0TileShape::M : (mActual - mL0Idx * L0TileShape::M);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CPingPongFlag);
                 for (uint32_t kL0Idx = 0; kL0Idx < kL0Loop; kL0Idx++) {
-                    uint32_t kNumL0Actual = (kL0Idx < kL0Loop - 1U) ?
-                        L0TileShape::K : (kActual - kL0Idx * L0TileShape::K);
-                    LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL0Actual, kNumL0Actual);
+                    uint32_t kL0Actual = (kL0Idx < kL0Loop - 1U) ? L0TileShape::K : (kActual - kL0Idx * L0TileShape::K);
+
+                    LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL0Actual, kL0Actual);
                     MatrixCoord l1ATileCoord{mL0Idx * L0TileShape::M + kvNRowOffset, kL0Idx * L0TileShape::K};
                     auto l1ATile = l1ATensor[layoutAInL1.GetOffset(l1ATileCoord)];
 
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                     copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATile, layoutAInL0, layoutAInL1);
 
-                    LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kNumL0Actual, nActual);
+                    LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nActual);
                     MatrixCoord l1BTileCoord{kL0Idx * L0TileShape::K, 0};
                     auto l1BTile = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
                     if ((mL0Idx == 0U) && (kL0Idx == 0U)) {
@@ -241,7 +236,7 @@ public:
                         l0BTensor[l0ABPingPongFlag],
                         mL0Align,
                         nActual,
-                        kNumL0Actual,
+                        kL0Actual,
                         initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);

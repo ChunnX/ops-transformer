@@ -10,7 +10,7 @@ x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
                                             mhc_pre computes this
 ```
 
-**mhc_pre implements `H_l^{pre} · x_l`**— weighted sum of N streams into 1 output.
+**mhc_pre implements `H_l^{pre} · x_l`** — weighted sum of N streams into 1 output.
 
 ```
 output[b, seq, d] = Σ_{s=0}^{N-1} input[b × N + s, seq, d] × h_pre[s]
@@ -18,9 +18,9 @@ output[b, seq, d] = Σ_{s=0}^{N-1} input[b × N + s, seq, d] × h_pre[s]
 
 Where:
 
-- `input`: [batch × num_streams, seq_len, dim]— N streams per batch
-- `h_pre`: [num_streams]— stream weights (can be positive, negative, or non-normalized)
-- `output`: [batch, seq_len, dim]— aggregated result
+- `input`: [batch × num_streams, seq_len, dim] — N streams per batch
+- `h_pre`: [num_streams] — stream weights (can be positive, negative, or non-normalized)
+- `output`: [batch, seq_len, dim] — aggregated result
 
 ## 2. Implementation Scope
 

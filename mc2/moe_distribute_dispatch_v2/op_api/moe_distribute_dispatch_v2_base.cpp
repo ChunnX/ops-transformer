@@ -19,18 +19,15 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "mc2_log_compat.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
 
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if __has_include("version/hcomm_version.h")
+#ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#else
-#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
-#endif
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
+#if defined(HCOMM_VERSION_NUM) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
 #endif
 
 using namespace Ops::Transformer;
@@ -45,7 +42,8 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
@@ -78,7 +76,7 @@ bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const 
     OP_CHECK_NULL(tpRecvCounts, return false);
     OP_CHECK_NULL(epRecvCounts, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchV2", "groupEp");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group groupEp name is Empty");
         return false;
     }
     return true;
@@ -98,13 +96,11 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
         CHECK_RET(dynamicScales != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupEp name exceeds %zu", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     if (strnlen(groupTp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchV2", "groupTp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupTp name too long");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required groupTp name exceeds %zu", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_NULLPTR;
     }
     return ACLNN_SUCCESS;
@@ -119,7 +115,8 @@ static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, 
 
 static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -185,7 +182,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_v2";
         auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
@@ -206,7 +204,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if defined(BUILD_OPEN_PROJECT) && defined(HCOMM_VERSION_NUM) && \
+    defined(HCCL_CHANNEL_SUPPORT_VERSION) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);

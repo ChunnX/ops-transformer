@@ -104,12 +104,6 @@ private:
     ge::graphStatus CheckAttrExpert();
     ge::graphStatus CheckAttrMode();
     ge::graphStatus CheckOutShape();
-    ge::graphStatus GetInputOutputShape();
-    ge::graphStatus CheckDtypes();
-    ge::graphStatus GetAttrs();
-    ge::graphStatus GetBasicAttrs();
-    ge::graphStatus GetModeAttrs();
-    ge::graphStatus GetOtherAttrs();
     void CalTmpBufUbSize();
     void SplitRows();
     void Tiling4GatherOutComputeSplitK();
@@ -286,8 +280,9 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingRegbase::GetInputOutputShape()
+ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
 {
+    opName_ = context_->GetNodeName();
     // 获取输入shape信息
     auto xShapePtr = context_->GetInputShape(X_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
@@ -306,11 +301,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetInputOutputShape()
     if (outPtr != nullptr) {
         outShape_ = &outPtr->GetStorageShape();
     }
-    return ge::GRAPH_SUCCESS;
-}
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
-{
     auto x = context_->GetInputDesc(X_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, x);
     auto xDtype = x->GetDataType();
@@ -320,7 +311,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
                                   "float32, half, bf16"),
         return ge::GRAPH_FAILED);
 
-    if (biasShape_ != nullptr) {
+    if (biasShapePtr != nullptr) {
         auto biasDtype = context_->GetOptionalInputDesc(BIAS_INPUT_INDEX)->GetDataType();
         OP_CHECK_IF((biasDtype != xDtype),
                     OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "bias",
@@ -346,21 +337,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckDtypes()
                                           Ops::Base::ToString(expertIdDtype).c_str(), "int32"),
                 return ge::GRAPH_FAILED);
 
-    auto outDesc = context_->GetOutputDesc(OUT_OUTPUT_INDEX);
-    if (outFlag_ && outDesc != nullptr) {
-        auto outDtype = outDesc->GetDataType();
-        OP_CHECK_IF((outDtype != ge::DataType::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "outDtype",
-                                              Ops::Base::ToString(outDtype).c_str(), "float32"),
-                    return ge::GRAPH_FAILED);
-    }
-
-    inputDtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(0)->GetDataType()));
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::GetBasicAttrs()
-{
+    // 获取属性
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
@@ -382,13 +359,6 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetBasicAttrs()
     }
     OP_LOGI(context_, "Attr group_count is: %ld ", groupCount_);
 
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::GetModeAttrs()
-{
-    auto attrs = context_->GetAttrs();
-    
     const int64_t *groupSelectModePtr = attrs->GetAttrPointer<int64_t>(GROUP_SELECT_MODE_ATTR_INDEX);
     if (groupSelectModePtr != nullptr) {
         groupSelectMode_ = *groupSelectModePtr;
@@ -409,13 +379,6 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetModeAttrs()
     }
     moeGatingTopKTilingData_.set_normType(normType_);
     OP_LOGI(context_, "Attr norm_type is: %ld ", normType_);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::GetOtherAttrs()
-{
-    auto attrs = context_->GetAttrs();
 
     const bool *outFlagPtr = attrs->GetAttrPointer<bool>(OUT_FLAG_ATTR_INDEX);
     if (outFlagPtr != nullptr) {
@@ -438,48 +401,16 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetOtherAttrs()
     moeGatingTopKTilingData_.set_eps(eps_);
     OP_LOGI(context_, "Attr eps is: %f ", eps_);
 
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::GetAttrs()
-{
-    auto ret = GetBasicAttrs();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
+    auto outDesc = context_->GetOutputDesc(OUT_OUTPUT_INDEX);
+    if (outFlag_ && outDesc != nullptr) {
+        auto outDtype = outDesc->GetDataType();
+        OP_CHECK_IF((outDtype != ge::DataType::DT_FLOAT),
+                    OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "outDtype",
+                                              Ops::Base::ToString(outDtype).c_str(), "float32"),
+                    return ge::GRAPH_FAILED);
     }
 
-    ret = GetModeAttrs();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = GetOtherAttrs();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
-{
-    opName_ = context_->GetNodeName();
-    
-    auto ret = GetInputOutputShape();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = GetAttrs();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = CheckDtypes();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
+    inputDtypeSize_ = static_cast<int64_t>(ge::GetSizeByDataType(context_->GetInputDesc(0)->GetDataType()));
     return ge::GRAPH_SUCCESS;
 }
 

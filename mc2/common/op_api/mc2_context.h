@@ -16,12 +16,9 @@
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
 
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if __has_include("version/hcomm_version.h")
+#ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#else
-#define HCOMM_VERSION_NUM HCCL_CHANNEL_SUPPORT_VERSION
-#endif
+#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include <memory>
 #include <string>
@@ -29,9 +26,10 @@
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
-#include "mc2_log_compat.h"
+#include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "mc2_moe_context.h"
+#include "mc2_quant_reduce_scatter_context.h"
 
 namespace Mc2Aclnn {
 
@@ -40,6 +38,8 @@ public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context);
     static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
+    static aclnnStatus GetMc2ContextTensorForQrs(const char *group, const char *opName, uint64_t &hcclBuffSize,
+                                                 aclTensor *&mc2Context);
 
 private:
     explicit Mc2Context();
@@ -69,6 +69,15 @@ private:
     aclnnStatus CheckLinks(uint32_t &netLinkNum, CommLink *linksList);
     aclnnStatus CheckContextCache(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                   const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize);
+    /* for quant_reduce_scatter */
+    aclnnStatus GetHcclCommResourceForQrs(const HcclComm &hcclHandle, const CommEngine &engine,
+                                          const CommProtocol &protocol, Mc2QuantReduceScatterContext *mc2ContextStruct);
+    aclnnStatus CreatMc2ContextForQrs(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                      const CommEngine &engine, const CommProtocol &protocol,
+                                      Mc2QuantReduceScatterContext *mc2ContextStruct, void *&ctx,
+                                      uint64_t &hcclBuffSize);
+    aclnnStatus CreatMc2ContextTensorForQrs(void *ctx, aclTensor *&mc2Context);
+
     const std::string GetLibPath();
     template <typename T>
     T GetHcclLibFunc(void *handle, const std::string &funcName);
@@ -95,5 +104,6 @@ private:
 };
 } // namespace Mc2Aclnn
 
-#endif
+#endif // EXCEPTION_DUMP_SUPPORT_VERSION
+#endif // BUILD_OPEN_PROJECT
 #endif // MC2_CONTEXT_H

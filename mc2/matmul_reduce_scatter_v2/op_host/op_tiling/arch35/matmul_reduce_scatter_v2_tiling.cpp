@@ -84,11 +84,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::CheckInput()
 {
     auto x1ScaleShape = context_->GetOptionalInputShape(X1SCALE_INDEX);
     OP_TILING_CHECK(x1ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x1Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x1Scale must be nullptr"),
+                    "x1Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     auto x2ScaleShape = context_->GetOptionalInputShape(X2SCALE_INDEX);
     OP_TILING_CHECK(x2ScaleShape != nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_,
-                    "x2Scale", "not nullptr", "If the dtype of x is fp16 or bf16, x2Scale must be nullptr"),
+                    "x2Scale", "not nullptr", "should be nullptr when x dtype is fp16 or bf16"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -111,13 +111,11 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
-    } else {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
-        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
     }
+
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
         
@@ -193,7 +191,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::PostTiling()
 {
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
+                    OP_LOGE(opName_, "rawTilingDataPtr is nullptr."),
                     return ge::GRAPH_FAILED);
     OP_LOGD(opName_, "final tiling data size: %zu and context capacity size: %zu ",
         sizeof(MatmulReduceScatterV2TilingData), rawTilingDataPtr->GetCapacity());

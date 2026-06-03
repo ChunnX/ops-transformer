@@ -72,7 +72,6 @@ protected:
     ge::graphStatus CheckShapeDims(const gert::TilingContext* context);
     ge::graphStatus CheckDType(const gert::TilingContext* context) const;
     ge::graphStatus CheckMmShapeDims(const gert::TilingContext* context) const;
-    ge::graphStatus GetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
     ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
 
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);

@@ -163,7 +163,7 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetRequiredAttrAndSetTilin
 {
     OP_LOGD("GetRequiredAttrAndSetTilingData");
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "attrs"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName_, "attrs is null."), return ge::GRAPH_FAILED);
 
     auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
@@ -282,7 +282,7 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetOptionalAttrAndSetTilin
 {
     OP_LOGD("GetOptionalAttrAndSetTilingData");
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "attrs"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(nodeName_, "attrs is null."), return ge::GRAPH_FAILED);
 
     auto expertShardTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_EXPERT_SHARD_TYPE_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
@@ -293,14 +293,14 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetOptionalAttrAndSetTilin
 
     // 判空
     OP_TILING_CHECK(
-        expertShardTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertShardType"), return ge::GRAPH_FAILED);
+        expertShardTypePtr == nullptr, OP_LOGE(nodeName_, "expertShardType is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        sharedExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertNum"), return ge::GRAPH_FAILED);
+        sharedExpertNumPtr == nullptr, OP_LOGE(nodeName_, "sharedExpertNum is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        sharedExpertRankNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "sharedExpertRankNum"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "quantMode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "globalBs"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commType"), return ge::GRAPH_FAILED);
+        sharedExpertRankNumPtr == nullptr, OP_LOGE(nodeName_, "sharedExpertRankNum is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(quantModePtr == nullptr, OP_LOGE(nodeName_, "quantMode is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(globalBsPtr == nullptr, OP_LOGE(nodeName_, "globalBs is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commTypePtr == nullptr, OP_LOGE(nodeName_, "commType is null."), return ge::GRAPH_FAILED);
 
     if (CheckOptionalAttrValue() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -373,11 +373,13 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOneTensorDim(
     } else if (tensortype == TensorType::OPTIONINPUT) {
         shape = context_->GetOptionalInputShape(index);
     } else {
-        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "tensorType", std::to_string(static_cast<int>(tensortype)).c_str(), "input or output");
+        OP_LOGE(
+            nodeName_, "TensorType Only Support input or output. type:%u, name:%s, index:%u", tensortype, name.c_str(),
+            index);
         return ge::GRAPH_FAILED;
     }
 
-    OP_TILING_CHECK(shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, name.c_str()), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(shape == nullptr, OP_LOGE(nodeName_, "%s is null.", name.c_str()), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         shape->GetStorageShape().GetDimNum() != dims,
         OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName_, name.c_str(),
@@ -472,7 +474,7 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckTensorShapeRela
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x/expertIds",
             (std::string("x dim0=") + std::to_string(xStorageShape->GetStorageShape().GetDim(0)) +
              ", expertIds dim0=" + std::to_string(expertIdsShape->GetStorageShape().GetDim(0))).c_str(),
-            "Dim0 of x must be equal to dim0 of expertIds"),
+            "x dim0 must equal expertIds dim0"),
         return ge::GRAPH_FAILED);
     if (xActiveMaskShape != nullptr) {
         OP_TILING_CHECK(
@@ -480,7 +482,7 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckTensorShapeRela
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x/xActiveMask",
                 (std::string("x dim0=") + std::to_string(xStorageShape->GetStorageShape().GetDim(0)) +
                  ", xActiveMask dim0=" + std::to_string(xActiveMaskShape->GetStorageShape().GetDim(0))).c_str(),
-                "Dim0 of x must be equal to dim0 of xActiveMask"),
+                "x dim0 must equal xActiveMask dim0"),
             return ge::GRAPH_FAILED);
     }
 
@@ -511,7 +513,7 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckTensorShapeRela
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "x/scales",
                     (std::string("x dim1=") + std::to_string(xStorageShape->GetStorageShape().GetDim(1)) +
                      ", scales dim1=" + std::to_string(scalesShape->GetStorageShape().GetDim(1))).c_str(),
-                    "Dim1 of x must be equal to dim1 of scales"),
+                    "x dim1 must equal scales dim1"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -523,8 +525,8 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckInputTensorData
     auto xDesc = context_->GetInputDesc(X_INDEX);
     auto expertIdsDesc = context_->GetInputDesc(EXPERT_IDS_INDEX);
 
-    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "x"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expertIds"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(xDesc == nullptr, OP_LOGE(nodeName_, "x is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertIdsDesc == nullptr, OP_LOGE(nodeName_, "expertIds is null."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (xDesc->GetDataType() != ge::DT_FLOAT16) && (xDesc->GetDataType() != ge::DT_BF16),
@@ -568,9 +570,9 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOutputTensorDat
     auto expandIdxDesc = context_->GetOutputDesc(OUTPUT_EXPAND_IDX_INDEX);
     auto commCmdInfoDesc = context_->GetOutputDesc(OUTPUT_COMM_CMD_INFO_INDEX);
 
-    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "yOut"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(expandIdxDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "expandIdxOut"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commCmdInfoDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "commCmdInfoOut"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(yDesc == nullptr, OP_LOGE(nodeName_, "yOut is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expandIdxDesc == nullptr, OP_LOGE(nodeName_, "expandIdxOut is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commCmdInfoDesc == nullptr, OP_LOGE(nodeName_, "commCmdInfoOut is null."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (expandIdxDesc->GetDataType() != ge::DT_INT32),
@@ -588,26 +590,27 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOutputTensorDat
         && (yDesc->GetDataType() != context_->GetInputDesc(X_INDEX)->GetDataType()),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "yOut",
             Ops::Base::ToString(yDesc->GetDataType()).c_str(),
-            "If quantMode is 0, the dtype of yOut must be the same as that of x"),
+            (std::string("must equal x datatype when quantMode=0: ") +
+             Ops::Base::ToString(context_->GetInputDesc(X_INDEX)->GetDataType())).c_str()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((quantMode == STATIC_QUANT)
         && (yDesc->GetDataType() != ge::DT_HIFLOAT8) && (yDesc->GetDataType() != ge::DT_INT8),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "yOut",
             Ops::Base::ToString(yDesc->GetDataType()).c_str(),
-            "The dtype of yOut must be int8 or hif8"),
+            (std::string("int8/hif8 when quantMode=") + std::to_string(quantMode)).c_str()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK((quantMode == PERTOKEN_DYNAMIC_QUANT)
         && (yDesc->GetDataType() != ge::DT_INT8) && (yDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)
         && (yDesc->GetDataType() != ge::DT_FLOAT8_E5M2),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "yOut",
             Ops::Base::ToString(yDesc->GetDataType()).c_str(),
-            "The dtype of yOut must be int8, fp8_e4m3fn or fp8_e5m2"),
+            (std::string("int8/fp8_e4m3fn/fp8_e5m2 when quantMode=") + std::to_string(quantMode)).c_str()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(((quantMode == PERGROUP_DYNAMIC_QUANT) || (quantMode == MX_QUANT))
         && (yDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) && (yDesc->GetDataType() != ge::DT_FLOAT8_E5M2),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName_, "yOut",
             Ops::Base::ToString(yDesc->GetDataType()).c_str(),
-            "The dtype of yOut must be fp8_e4m3fn or fp8_e5m2"),
+            (std::string("fp8_e4m3fn/fp8_e5m2 when quantMode=") + std::to_string(quantMode)).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -689,7 +692,8 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckComplexTensorSh
                     scalesDim0Size != scalesDim0GoldenSize,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "scales",
                         (std::string("dim0=") + std::to_string(scalesDim0Size)).c_str(),
-                        "Dim0 of scales must be equal to moeExpertNum + sharedExpertNum"),
+                        (std::string("moeExpertNum + sharedExpertNum = ") +
+                         std::to_string(scalesDim0GoldenSize)).c_str()),
                     return ge::GRAPH_FAILED);
         }
     }
@@ -700,7 +704,7 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckComplexTensorSh
         yOutDim0Size != yOutDim0GoldenSize,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "yOut",
             (std::string("dim0=") + std::to_string(yOutDim0Size)).c_str(),
-            "Dim0 of yOut must be equal to BS * (K + sharedExpertNum)"),
+            (std::string("BS * (K + sharedExpertNum) = ") + std::to_string(yOutDim0GoldenSize)).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -739,7 +743,7 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckCalcTensorShapeSizeAn
         tokenMsgSize != tokenMsgSizeGolden,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "yOut",
             (std::string("dim1=") + std::to_string(tokenMsgSize)).c_str(),
-            "Dim1 of yOut must be equal to tokenMsgSize"),
+            (std::string("tokenMsgSize=") + std::to_string(tokenMsgSizeGolden)).c_str()),
         return ge::GRAPH_FAILED);
 
     const int64_t expandIdxOutSizeGolden = BS * K;
@@ -747,7 +751,7 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckCalcTensorShapeSizeAn
         expandIdxOutSize != expandIdxOutSizeGolden,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "expandIdxOut",
             (std::string("dim0=") + std::to_string(expandIdxOutSize)).c_str(),
-            "Dim0 of expandIdxOut must be equal to BS * K"),
+            (std::string("BS * K = ") + std::to_string(expandIdxOutSizeGolden)).c_str()),
         return ge::GRAPH_FAILED);
 
     const int64_t commCmdInfoOutSizeGolden =
@@ -756,7 +760,7 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckCalcTensorShapeSizeAn
         commCmdInfoOutSize != commCmdInfoOutSizeGolden,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName_, "commCmdInfoOut",
             (std::string("dim1=") + std::to_string(commCmdInfoOutSize)).c_str(),
-            "Dim1 of commCmdInfoOut must be equal to the expected value"),
+            (std::string("expected=") + std::to_string(commCmdInfoOutSizeGolden)).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

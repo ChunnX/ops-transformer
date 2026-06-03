@@ -14,7 +14,7 @@
   */
 
 #include "fallback/fallback.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 
 namespace fallback
 {
@@ -33,7 +33,7 @@ namespace fallback
     static ge::graphStatus MoeUpdateExpertExecuteFunc(gert::OpExecuteContext* host_api_ctx)
     {
         OP_LOGD("Start MoeUpdateExpertFallback.");
-        OPS_CHECK(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "host_api_ctx"),
+        OPS_CHECK(host_api_ctx == nullptr, OP_LOGE("MoeUpdateExpertFallback", "host_api_ctx is null"),
                  return ge::GRAPH_FAILED);
 
         const auto expertIds = host_api_ctx->GetInputTensor(static_cast<size_t>(IDX_IN_EXPERT_IDS));
@@ -60,19 +60,19 @@ namespace fallback
             return ge::GRAPH_FAILED);
 
         const auto attrs = host_api_ctx->GetAttrs();
-        OPS_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "attrs"),
+        OPS_CHECK(attrs == nullptr, OP_LOGE("MoeUpdateExpertFallback", "attrs is null"),
                  return ge::GRAPH_FAILED);
 
         const auto localRankId = attrs->GetInt(static_cast<size_t>(IDX_ATTR_LOCAL_RANK_ID));
-        OPS_CHECK(localRankId == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "localRankId"),
+        OPS_CHECK(localRankId == nullptr, OP_LOGE("MoeUpdateExpertFallback", "localRankId is null"),
                  return ge::GRAPH_FAILED);
 
         const auto worldSize = attrs->GetInt(static_cast<size_t>(IDX_ATTR_WORLD_SIZE));
-        OPS_CHECK(worldSize == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "worldSize"),
+        OPS_CHECK(worldSize == nullptr, OP_LOGE("MoeUpdateExpertFallback", "worldSize is null"),
                  return ge::GRAPH_FAILED);
 
         const auto balanceMode = attrs->GetInt(static_cast<size_t>(IDX_ATTR_BALANCE_MODE));
-        OPS_CHECK(balanceMode == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "balanceMode"),
+        OPS_CHECK(balanceMode == nullptr, OP_LOGE("MoeUpdateExpertFallback", "balanceMode is null"),
                  return ge::GRAPH_FAILED);
         
         const auto apiRet = EXEC_OPAPI_CMD(aclnnMoeUpdateExpert, expertIds, eplbTable, expertScales,

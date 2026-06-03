@@ -30,7 +30,7 @@
    L(I){=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
    $$
 
-   其中，$p$是target distribution，通过对main attention score进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
+   其中，$p$是target distribution，通过对main attention score 进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
    
    $$
    D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
@@ -224,13 +224,13 @@
     </tbody>
 </table>
 
-- Atlas A2训练系列产品/Atlas A2推理系列产品、Atlas A3训练系列产品/Atlas A3推理系列产品：
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 ## 约束说明
 
 - 确定性计算：
-  - SparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - SparseLightningIndexerGradKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -313,51 +313,54 @@
         </thead>
         <tbody>
         <tr>
+            <td>deterministic</td>
+            <td>bool</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            </td>
+        </tr>
+        <tr>
             <td>B</td>
-            <td>支持1~256</td>
+            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
+                <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
             <td>-</td>
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~8K，S2支持1~512K</td>
-            <td>S1、S2支持不等长；S1必须小于等于S2</td>
+            <td>S1支持1~8K，S2支持1~128K</td>
+            <td>S1、S2支持不等长</td>
         </tr>
         <tr>
             <td>N1</td>
-            <td>
-            32、64、128
-            </td>
-            <td>SparseFA为MQA。</td>
+            <td>32、64、128</td>
+            <td>SparseFA为MQA</td>
         </tr>
         <tr>
             <td>Nidx1</td>
             <td>
-            8、16、32、64
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持32、64
             </td>
-            <td>SparseFA为MQA。</td>
+            <td>SparseFA为MQA</td>
         </tr>
         <tr>
             <td>N2</td>
             <td>1</td>
-            <td>SparseFA为MQA，Nidx2=1。</td>
+            <td>SparseFA为MQA，Nidx2=1</td>
         </tr>
         <tr>
             <td>Nidx2</td>
             <td>1</td>
-            <td>SparseFA为MQA，N2=1。</td>
+            <td>SparseFA为MQA，N2=1</td>
         </tr>
         <tr>
-            <td>DQuery</td>
+            <td>D</td>
             <td>512</td>
-            <td>-</td>
+            <td>query与query_index的D不同</td>
         </tr>
         <tr>
-            <td>DQueryIndex</td>
-            <td>128</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>DRope</td>
+            <td>Drope</td>
             <td>64</td>
             <td>-</td>
         </tr>
@@ -366,10 +369,53 @@
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
             <td>-</td>
         </tr>
+        <tr>
+            <td>layout</td>
+            <td>BSND/TND</td>
+            <td>-</td>
+        </tr>
         </tbody>
     </table>
 
-    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128；N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
+    <term>Ascend 950PR/Ascend 950DT</term>：B仅支持1~128，N1额外支持48，Nidx1额外支持24。
+
+- 典型值
+    <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
+        <col style="width: 100px">
+        <col style="width: 800px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>规格项</th>
+                <th>典型值</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>query</td>
+            <td>N1=128/64； D =512</td>
+        </tr>
+        <tr>
+            <td>queryIndex</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 64/32/16/8；  D = 128 ； S1 = 64k/128k<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32；D = 128 ； S1 = 64k/128k
+            </td>
+        </tr>
+        <tr>
+            <td>keyIndex</td>
+            <td>D = 128</td>
+        </tr>
+        <tr>
+            <td>topk</td>
+            <td>topk = 1024/2048/3072/4096/5120/6144/7168/8192</td>
+        </tr>
+        <tr>
+            <td>qRope</td>
+            <td>d= 64</td>
+        </tr>
+        </tbody>
+    </table>
 
 ## 调用说明
 

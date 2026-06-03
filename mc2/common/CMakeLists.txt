@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
-if (BUILD_OPEN_PROJECT)
+if(BUILD_OPEN_PROJECT)
     file(GLOB OPTILING_SRCS 
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
@@ -29,13 +29,12 @@ if (BUILD_OPEN_PROJECT)
 
     if(UT_TEST_ALL OR OP_HOST_UT)
         list(FILTER OPTILING_SRCS EXCLUDE REGEX "utils/mc2_hcom_topo_info\\.cpp")
-        file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp ${UT_COMMON_INC}/rt_soc_spec_mocker.cpp)
+        file(GLOB MC2_TILING_UT_STUB ${UT_COMMON_INC}/mc2_hcom_topology_mocker.cpp ${UT_COMMON_INC}/op_cache_tiling.cpp)
         add_library(mc2_tiling_ut_stub SHARED ${MC2_TILING_UT_STUB})
         target_include_directories(mc2_tiling_ut_stub PRIVATE
             ${OPS_TRANSFORMER_DIR}/mc2/common/utils
             ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
             ${OP_TILING_INCLUDE}
-            ${ASCEND_DIR}/pkg_inc
         )
     endif()
     if(OPTILING_SRCS)
@@ -51,7 +50,6 @@ if (BUILD_OPEN_PROJECT)
     file(GLOB GENTASK_SRCS
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
-        op_graph/mc2_moe_graph_context.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")

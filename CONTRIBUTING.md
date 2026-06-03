@@ -19,13 +19,13 @@
 
 ### 1. 创建Issue需求
 
-新建`Requirement|需求建议`类Issue，并阐明新增算子的设计方案。Issue一般需包含以下内容：
+新建 `Requirement|需求建议` 类 Issue，并阐明新增算子的设计方案。Issue一般需包含以下内容：
 
 - **背景信息**  
 - **价值/作用**  
 - **设计方案**
 
-请在提交的Issue中评论`/assign @yourself`认领该任务。
+请在提交的Issue中评论`/assign @yourself` 认领该任务。
 
 ### 2. 需求评审
 
@@ -64,7 +64,7 @@ PR上库要求：
 
 ### 4. CI门禁
 
-通过评论`compile`指令触发开源仓门禁，并依据CI检测结果进行修改，目前CI门禁包含以下检查项：
+通过评论 `compile` 指令触发开源仓门禁，并依据CI检测结果进行修改，目前CI门禁包含以下检查项：
 
 - 代码编译
 - 静态检查（如涉及codecheck误报，请提交给sig成员屏蔽）
@@ -79,25 +79,25 @@ Committer检视后将反馈检视意见，请根据意见修改，完成后@指�
 
 ### 6. Maintainer合入
 
-Committer检视通过后，标注`/lgtm`标签。Maintainer将在1天内进行最终审核，确认无问题后，将标注`/approve`标签合入PR。
+Committer检视通过后，标注 `/lgtm`标签。Maintainer将在1天内进行最终审核，确认无问题后，将标注 `/approve` 标签合入PR。
 
 ## 二、算子Bug修复
 
 如果您在本项目中发现了某些算子Bug，希望对其进行修复，欢迎您新建Issue进行反馈和跟踪处理。
 
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建`Bug-Report|缺陷反馈`类Issue对Bug进行描述，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行处理。
+您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Bug-Report|缺陷反馈` 类Issue对Bug进行描述，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行处理。
 
 ## 三、算子优化
 
 如果您对本项目中某些算子实现有泛化性增强/性能优化思路，希望着手实现这些优化点，欢迎您对算子进行优化贡献。
 
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建`Requirement|需求建议`类Issue对优化点进行说明，并提供您的设计方案，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行跟踪优化。
+您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Requirement|需求建议` 类Issue对优化点进行说明，并提供您的设计方案，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您进行跟踪优化。
 
 ## 四、文档纠错
 
 如果您在本项目中发现某些算子文档描述错误，欢迎您新建Issue进行反馈和修复，文档规范参考[文档贡献指南](docs/CONTRIBUTING_DOCS.md)。
 
-您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建`Documentation|文档反馈`类Issue指出对应文档的问题，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您纠正对应文档描述。
+您可以按照[提交Issue/处理Issue任务](https://gitcode.com/cann/community#提交Issue处理Issue任务)指引新建 `Documentation|文档反馈` 类Issue指出对应文档的问题，然后在评论框中输入“/assign”或“/assign @yourself”，将该Issue分配给您纠正对应文档描述。
 
 ## 五、帮助解决他人Issue
 

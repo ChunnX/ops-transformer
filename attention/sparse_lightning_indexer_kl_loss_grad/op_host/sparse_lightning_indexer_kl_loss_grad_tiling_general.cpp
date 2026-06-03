@@ -328,7 +328,7 @@ void SparseLightningIndexerKLLossGradTilingBase::SetMultiCoreParamsRegbase(int64
     }
 }
 
-ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
+void SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
 {
     SLIKLLossGradInitOutputParams *initoutput = &tilingData->initOutputParams;
     auto &dKeyShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
@@ -338,19 +338,8 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::InitOutputSplit()
     } else if (tilingKeyLayout == LayoutType::LAYOUT_BSND) {
         totalSize = static_cast<int64_t>(bSize) * dKeyShape.GetDim(1) * dKeyShape.GetDim(3);
     }
-    int64_t singleCoreSize = CeilDivision(totalSize, static_cast<int64_t>(aivNum));
-    if (singleCoreSize > UINT32_MAX) {
-        OP_LOGE(context_, "singleCoreSize(%ld) exceeds UINT32_MAX limit.", singleCoreSize);
-        return ge::GRAPH_FAILED;
-    }
-    initoutput->set_singleCoreSize(static_cast<uint32_t>(singleCoreSize));
-
-    if (totalSize > INT64_MAX / 2) {
-        OP_LOGE(context_, "totalOutputSize(%ld) exceeds safe limit.", totalSize);
-        return ge::GRAPH_FAILED;
-    }
+    initoutput->set_singleCoreSize(static_cast<uint32_t>(CeilDivision(totalSize, static_cast<int64_t>(aivNum))));
     initoutput->set_totalOutputSize(totalSize);
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::DoOpTiling()
@@ -368,10 +357,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::DoOpTiling()
     SoftMaxTilingFunc(srcShape, sizeof(float), softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
     SoftMaxTilingFunc(srcShape, sizeof(float), softmaxTmpBufferSize, tilingData->vectorParams.simpleSoftmaxPTilingData);
 
-    auto ret = InitOutputSplit();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
+    InitOutputSplit();
     OP_LOGD(context_, "ending template[%s]", templateName);
     return ge::GRAPH_SUCCESS;
 }
@@ -393,7 +379,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t bmm1Size = static_cast<int64_t>(gSizeQuery) * kSize * sizeof(float);
     int64_t bmm2Size = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
     int64_t reluGradSize = static_cast<int64_t>(gSizeQueryIndex) * kSize * sizeof(float);
-    int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
+    int64_t psySyncSize = static_cast<int64_t>(kSize) * 2 * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
     int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
         accumS2 * dSizeQueryIndex * sizeof(float) :

@@ -19,7 +19,6 @@
 #include "common/utils/hccl_util.h"
 #include "matmul_all_reduce_util.h"
 #include "mc2_comm_utils.h"
-#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -47,11 +46,10 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
-    const char* commModePtr = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) ? "ccu" : "";
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
-        const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn,
-        antiquantGroupSize, 0, yDtype, 0, const_cast<char*>(commModePtr), output, workspaceSize, executor);
+        const_cast<char*>(group), const_cast<char*>(reduceOp),
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -95,12 +93,17 @@ aclnnStatus aclnnMatmulAllReduceV2(
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
-        OP_LOGE_LIBOPAPI_REPORT("aclnnMatmulAllReduceV2", "MatmulAllReduceV2, This is an error in launch aicore");
+        OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceV2, This is an error in launch aicore");
         return ACLNN_ERR_INNER;
     });
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};

@@ -17,11 +17,12 @@
 
 #include <sstream>
 #include <graph/utils/type_utils.h>
-#include <tiling/platform/platform_ascendc.h>
 #include <exe_graph/runtime/tiling_context.h>
+#include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/soc_spec.h"
+
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -156,10 +157,10 @@ TILING_DATA_FIELD_DEF(uint32_t, seqSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
 TILING_DATA_FIELD_DEF(int64_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
-TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
-TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
 TILING_DATA_FIELD_DEF(float, scaleValue)
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsQ)
+TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsKV)
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
@@ -214,6 +215,22 @@ template <typename T> inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
 }
 
+template <typename T>
+std::string QSFAShape2String(const T &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    if (shape.GetDimNum() > 0) {
+        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
+            oss << shape.GetDim(i) << ", ";
+        }
+        oss << shape.GetDim(shape.GetDimNum() - 1);
+    }
+    oss << "]";
+    return oss.str();
+}
+
+static std::string GetShapeStr(gert::Shape shape);
 static std::string QSFADataTypeToSerialString(ge::DataType type);
 std::string QSFATensorDesc2String(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor);
 std::string QSFADebugTilingContext(const gert::TilingContext *context);
@@ -313,7 +330,7 @@ private:
     bool IsBalanceSplitCore();
 
     void SplitBalanced();
-    void CalcInnerSize(uint32_t qsfaS2Size);
+    void CalcInnerSize(uint32_t s2Size);
 
     bool IsFlashDecode(uint32_t coreNum);
 
@@ -333,6 +350,8 @@ private:
     uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
 
     void CalcBlockDim();
+
+    uint32_t GetTypeSize(ge::DataType dtype) const;
 
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
@@ -379,14 +398,14 @@ private:
     void Init();
     void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
         const ge::DataType &actualDtype, const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
         const std::string &name) const;
     template <typename T> void LogErrorNumberSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name, const std::string subName) const;
     template <typename T> void LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
         const T &actualValue, const std::string &name) const;
     ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape,
-        const std::vector<size_t> &qsfaExpectDimNumList, const std::string &name) const;
+        const std::vector<size_t> &expectDimNumList, const std::string &name) const;
     ge::graphStatus CheckDimNumInLayoutSupport(const QSFALayout &layout,
         const gert::StorageShape *shape, const std::string &name) const;
     void LogErrorLayoutSupport(const std::vector<QSFALayout> &expectLayoutList,
@@ -415,6 +434,8 @@ private:
     ge::graphStatus CheckParaExistenceGqaAntiquant() const;
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+        const QSFALayout &layout, const std::string &name) const;
     void SetQSFAShapeCompare();
     ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
@@ -509,15 +530,17 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
+    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+        QSFALayout &layout, const std::string &name) const;
     ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
-    ge::graphStatus GetNpuInfo();
     ge::graphStatus GetOpName();
+    ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
-    ge::graphStatus GetOpParaInfo();
     ge::graphStatus GetKvCache();
+    ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetBatchSize();
@@ -547,11 +570,17 @@ public:
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
 
+public:
+    bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::Shape &shape) const;
+    size_t GetAxisIdx(const QSFAAxis &axis, const QSFALayout &layout) const;
+    uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const QSFALayout &layout) const;
+
     const gert::TilingContext *context_ = nullptr;
 
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     QSFAParaInfo opParamInfo_;
+    static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;

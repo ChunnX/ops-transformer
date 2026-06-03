@@ -47,12 +47,12 @@ enum class InputLayout : uint32_t {
 enum class InputIndex : uint32_t {
     QUERY = 0,
     KEY,
+    VALUE,
     TOPK_INDICES,
     ATTENTION_OUT_GRAD,
     ATTENTION_OUT,
     SOFTMAX_MAX,
     SOFTMAX_SUM,
-    VALUE,
     ACTUAL_SEQ_Q_LEN,
     ACTUAL_SEQ_KV_LEN,
     Q_ROPE,
@@ -101,14 +101,6 @@ inline uint32_t AlignData(const uint32_t a, const uint32_t b)
         return a;
     }
     return (a + b - 1U) / b * b;
-}
-
-inline int64_t AlignData(const int64_t a, const int64_t b)
-{
-    if (b == 0) {
-        return a;
-    }
-    return (a + b - 1) / b * b;
 }
 
 inline uint32_t CalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum)

@@ -213,7 +213,7 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
       </td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>per-tensor一维，有专家[E]，无专家[1]<br>per-channel有专家[E,N1]，无专家[N1]</td>
+      <td>per-tensor 一维，有专家[E]，无专家[1]<br>per-channel 有专家[E,N1]，无专家[N1]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -273,7 +273,7 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>per-channel有专家[E,N1]，无专家[N1]<br>per-group有专家[E,G,N1]，无专家[G,N1]</td>
+      <td>per-channel 有专家[E,N1]，无专家[N1]<br>per-group 有专家[E,G,N1]，无专家[G,N1]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -288,7 +288,7 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>per-channel有专家[E,N2]，无专家[N2]<br>per-group有专家[E,G,N2]，无专家[G,N2]</td>
+      <td>per-channel 有专家[E,N2]，无专家[N2]<br>per-group 有专家[E,G,N2]，无专家[G,N2]</td>
       <td>√</td>
     </tr>
     <tr>
@@ -303,7 +303,7 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>per-channel有专家[E,N1]，无专家[N1]<br>per-group有专家[E,G,N1]，无专家[G,N1]</td>
+      <td>per-channel 有专家[E,N1]，无专家[N1]<br>per-group 有专家[E,G,N1]，无专家[G,N1]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -318,7 +318,7 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>per-channel有专家[E,N2]，无专家[N2]<br>per-group有专家[E,G,N2]，无专家[G,N2]</td>
+      <td>per-channel 有专家[E,N2]，无专家[N2]<br>per-group 有专家[E,G,N2]，无专家[G,N2]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -567,7 +567,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -625,7 +625,7 @@ int main() {
   ret = aclnnFFN(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFFN failed. ERROR: %d\n", ret); return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

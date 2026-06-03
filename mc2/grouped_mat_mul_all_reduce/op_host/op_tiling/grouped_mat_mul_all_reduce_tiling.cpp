@@ -255,17 +255,16 @@ ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* conte
             weightDtype = inputDescPtr1->GetDataType(); // save weight dtype
             mmDataTypeSize = GetSizeByDataType(mmDType);
             OP_TILING_CHECK(
-            mmDataTypeSize == 0,
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "mmDType",
-                TypeUtils::DataTypeToAscendString(mmDType).GetString(), "get size is 0"),
-            return ge::GRAPH_FAILED);
+                mmDataTypeSize == 0,
+                OP_LOGE(
+                    opName, "get dtype[%s] size is 0.", TypeUtils::DataTypeToAscendString(mmDType).GetString()),
+                return ge::GRAPH_FAILED);
             uint32_t numInOneBlk = std::max<uint32_t>(1, ONE_BLK_SIZE / mmDataTypeSize);
             maxMKN = INT_MAX / numInOneBlk * numInOneBlk;
         }
         OP_TILING_CHECK(
             bs > maxMKN || xShape.GetDim(xDimNum - 1) > maxMKN || wShape.GetDim(1) > maxMKN,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "shape dimension", std::to_string(maxMKN).c_str(),
-                "32B-aligned m, n or k axis is out of int32 range"),
+            OP_LOGE(opName, "32B-aligned m, n or k axis is out of range int32 %ld!", maxMKN),
             return ge::GRAPH_FAILED);
         mList[i] = static_cast<int32_t>(bs);                         // m axis of x
         kList[i] = static_cast<int32_t>(xShape.GetDim(xDimNum - 1)); // x shape is [m, k], k index is xDimNum - 1
@@ -349,7 +348,7 @@ ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext* c
         return ge::GRAPH_FAILED);
     bool rankSizeSupported = (rankSize_ == 1 || rankSize_ == 2 || rankSize_ == 4 || rankSize_ == 8);
     OP_TILING_CHECK(
-        !rankSizeSupported, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(), "The value of rankSize must be 1, 2, 4 or 8"),
+        !rankSizeSupported, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(), "only supports 1,2,4,8"),
         return ge::GRAPH_FAILED);
 
     ubSize_ = PLATFORM_SIZE.ubSize;
@@ -567,7 +566,7 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
         baseK_ = std::min<int32_t>(baseK_, SixteenAlign(maxK, true));
     }
     OP_TILING_CHECK(
-        baseK_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", std::to_string(baseK_).c_str(), "The value of baseK_ cannot be 0"), return ge::GRAPH_FAILED);
+        baseK_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", "0", "baseK_ cannot be 0"), return ge::GRAPH_FAILED);
     // 基于使能double buffer的L0A内存和L0B内存计算baseM(cube)
     uint32_t maxBaseM = PLATFORM_SIZE.l0CSize / (baseN_ * sizeof(float));
     baseM_ = std::min<uint32_t>((PLATFORM_SIZE.l0ASize / DOUBLE_BUFFER_L0A_L0B) / (baseK_ * mmDataTypeSize), maxBaseM);
@@ -576,7 +575,7 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
         baseM_ = SixteenAlign(maxM, true);
     }
     OP_TILING_CHECK(
-        baseM_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", std::to_string(baseM_).c_str(), "The value of baseM_ cannot be 0"), return ge::GRAPH_FAILED);
+        baseM_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", "0", "baseM_ cannot be 0"), return ge::GRAPH_FAILED);
     OP_LOGD(opName, "end CalMMTlingData");
 
     return ge::GRAPH_SUCCESS;

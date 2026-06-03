@@ -37,8 +37,6 @@ MANIFEST.in
 
 # third_party
 third_party/
-!cmake/third_party/
-!cmake/third_party/ops-tensor.cmake
 
 # ai
 .agents/

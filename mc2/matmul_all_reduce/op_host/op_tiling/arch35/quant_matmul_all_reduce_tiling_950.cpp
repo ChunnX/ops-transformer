@@ -61,15 +61,9 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommAllReduce(const char* g
     uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
     const std::string algConfig = "AllReduce=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, algConfig, reduceType, dataType, dataType);
-    uint8_t commMode = 0;
-    OP_TILING_CHECK(
-            GetAndConvertCommMode(commMode),
-            OP_LOGE(opName_, "Get commMode failed."),
-            return ge::GRAPH_FAILED);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -90,15 +84,9 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommTwoShot(const char* gro
     const std::string algConfig1 = "AlltoAll=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType, dataType);
-    uint8_t commMode = 0;
-    OP_TILING_CHECK(
-            GetAndConvertCommMode(commMode),
-            OP_LOGE(opName_, "Get commMode failed."),
-            return ge::GRAPH_FAILED);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -128,15 +116,9 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
     const std::string algConfig1 = "ReduceScatter=level0:fullmesh";
     const std::string algConfig2 = "AllGather=level0:fullmesh";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType1, algConfig1, reduceType, dataType2, dataType1);
-    uint8_t commMode = 0;
-    OP_TILING_CHECK(
-            GetAndConvertCommMode(commMode),
-            OP_LOGE(opName_, "Get commMode failed."),
-            return ge::GRAPH_FAILED);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
-    } else if (commMode == Mc2Comm::COMM_MODE_CCU) {
-        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
     }
     OP_TILING_CHECK(
         mc2CcTilingConfig.GetTiling(quantMatmulAllReduceTilingData_.mc2InitTiling),
@@ -226,13 +208,15 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckHCCLSize()
     // 如果1行数据就超通信数据量限制，那么任何M切分方式都无法满足
     uint64_t sizeOfSingleM = static_cast<uint64_t>(param.rankN) * args_.rankDim;
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "matmul output size", std::to_string(sizeOfSingleM).c_str(), "The value of matmul output size must not exceed 256MB"),
+        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), "
+            "the size %lu still exceeds 256MB.", sizeOfSingleM),
         return ge::GRAPH_FAILED);
     // 如果按通信最大次数切分，能够满足通信数据量限制，那么继续做tiling
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(static_cast<uint64_t>(param.rankM),
         mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "x1 size", std::to_string(sizeOfSplitM).c_str(), "The value of x1 size must not exceed 256MB"),
+        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), "
+            "the size %lu still exceeds 256MB.", sizeOfSplitM),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -325,8 +309,8 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
-    uint8_t commMode = GetCommMode();
     bool isA2ARSAG = (isUseA2APath && (commDtype == COMMDTPYE_DEFAULT));
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_QUANT_MM,                            \
         quantTPlparam_.transB,                      \
@@ -491,7 +475,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::PostTiling()
 
     OP_TILING_CHECK(
         (sizeof(QuantMatmulAllReduceTilingDataA5) % sizeof(uint64_t)) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", sizeof(QuantMatmulAllReduceTilingDataA5)),
+        OP_LOGE(opName_, "Tiling data size=%s not aligned to 8.", std::to_string(sizeof(QuantMatmulAllReduceTilingDataA5)).c_str()),
         return ge::GRAPH_FAILED);
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
@@ -554,13 +538,13 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckAxisSize()
     OP_TILING_CHECK(
         m > static_cast<uint64_t>(INT32_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "The value of m of x1 exceeds the upper limit INT32_MAX"),
+            context_->GetNodeName(), "x1", std::to_string(m).c_str(), "exceeds upper limit INT32_MAX"),
         return ge::GRAPH_FAILED);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
     OP_TILING_CHECK(
         k > static_cast<uint64_t>(UINT16_MAX),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "x1", std::to_string(k).c_str(), "The value of k of x1 exceeds the upper limit UINT16_MAX"),
+            context_->GetNodeName(), "x1", std::to_string(k).c_str(), "exceeds upper limit UINT16_MAX"),
         return ge::GRAPH_FAILED);
     // A2有ND2NZ指令的长度约束65535，为了兼容A2，x2最后一维限制65535
     uint64_t x2FirstDim = mmrCtxInfo_.x2_shape->GetStorageShape().GetDim(0);
@@ -570,7 +554,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckAxisSize()
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
             context_->GetNodeName(), "x2",
             ("[first=" + std::to_string(x2FirstDim) + ", last=" + std::to_string(x2LastDim) + "]").c_str(),
-            "The shape of x2 must not exceed upper limit"),
+            "exceeds upper limit"),
         return ge::GRAPH_FAILED);
 
     return CheckQuantEmptyTensor();
@@ -592,7 +576,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckA8W8ScenarioScaleType()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_->GetNodeName(), "dequantScale",
                     ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str(),
-                    "The value of dequantScale dtype must be bf16"),
+                    "should be bf16"),
                 return ge::GRAPH_FAILED);
         } else if (pertokenScaleShape == nullptr) {
             OP_TILING_CHECK(
@@ -600,7 +584,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckA8W8ScenarioScaleType()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_->GetNodeName(), "dequantScale",
                     ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str(),
-                    "The value of dequantScale dtype must be uint64 or int64"),
+                    "should be uint64 or int64"),
                 return ge::GRAPH_FAILED);
         } else {
             OP_TILING_CHECK(
@@ -608,7 +592,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckA8W8ScenarioScaleType()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_->GetNodeName(), "dequantScale",
                     ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str(),
-                    "The value of dequantScale dtype must be bf16"),
+                    "should be bf16"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -627,7 +611,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckDequantScaleType()
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             context_->GetNodeName(), "dequantScale",
             ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str(),
-            "The dtype of dequantScale must be uint64, int64, bf16 or float32"),
+            "should be uint64, int64, bf16 or float32"),
         return ge::GRAPH_FAILED);
     if (scenario_ == AllReduceScenario::FP8HIF8) {
         if (dequantScaleType == ge::DT_FLOAT) {
@@ -643,7 +627,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckDequantScaleType()
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     context_->GetNodeName(), "per_token_scale",
                     ge::TypeUtils::DataTypeToSerialString(perTokenScaleType).c_str(),
-                    "The dtype of per_token_scale must be float"),
+                    "should be float"),
                 return ge::GRAPH_FAILED);
         } else {
             // fp8/hif8场景下，单路pertensor场景必须提供1个scale，类型为uint64
@@ -652,7 +636,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckDequantScaleType()
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     context_->GetNodeName(), "dequantScale",
                     ge::TypeUtils::DataTypeToSerialString(dequantScaleType).c_str(),
-                    "The dtype of dequantScale must be uint64"),
+                    "should be uint64"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -679,7 +663,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckMXFPScenarioScaleType()
                 context_->GetNodeName(), "dequantScale/pertokenScale",
                 (std::string(ge::TypeUtils::DataTypeToSerialString(dequantScaleType)) + "/" +
                  std::string(ge::TypeUtils::DataTypeToSerialString(perTokenScaleType))).c_str(),
-                "The dtype of dequantScale and pertokenScale must be float8_e8m0"),
+                "should be float8_e8m0"),
             return ge::GRAPH_FAILED);
     }
 
@@ -697,7 +681,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckBias()
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     context_->GetNodeName(), "bias",
                     std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                    "The dtype of bias must be int32"),
+                    "should be int32"),
                 return ge::GRAPH_FAILED);
         } else if (
             (scenario_ == AllReduceScenario::FP8HIF8) || (scenario_ == AllReduceScenario::MXFP4) ||
@@ -707,7 +691,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckBias()
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     context_->GetNodeName(), "bias",
                     std::to_string(static_cast<int32_t>(biasType)).c_str(),
-                    "The dtype of bias must be float"),
+                    "should be float"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -728,7 +712,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckCommQuantScale()
                 context_->GetNodeName(), "comm_quant_scale",
                 (std::to_string(static_cast<int32_t>(commQuantScaleType1)) + "/" +
                  std::to_string(static_cast<int32_t>(commQuantScaleType2))).c_str(),
-                "The dtype of comm_quant_scale must be the same as that of output"),
+                ("should be same as cType=" + std::to_string(static_cast<int32_t>(cType))).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -793,7 +777,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
             context_->GetNodeName(), "x2",
             (std::to_string(x2DimNum) + "D").c_str(),
-            "The shape dim of x2 must be 2 or 4"),
+            "Expect x2 dim to be 2 or 4"),
         return ge::GRAPH_FAILED);
     // x1，x2数据类型相同
     auto x1Type = mmrCtxInfo_.x1->GetDataType();
@@ -803,7 +787,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             context_->GetNodeName(), "x2",
             std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-            "The dtype of x2 must be the same as that of x1"),
+            ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type))).c_str()),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         ((scenario_ == AllReduceScenario::FP8HIF8) && (x1Type != x2Type) &&
@@ -811,12 +795,12 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
             context_->GetNodeName(), "x2",
             std::to_string(static_cast<int32_t>(x2Type)).c_str(),
-            "If the dtype of x1 is HIFLOAT8, the dtype of x2 must be the same as that of x1"),
+            ("should be same as x1 type=" + std::to_string(static_cast<int32_t>(x1Type)) + " for HIFLOAT8").c_str()),
         return ge::GRAPH_FAILED);
     if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
         OP_TILING_CHECK(args_.isBTrans == false,
                         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "x2",
-                            std::to_string(args_.isBTrans).c_str(), "When the quantization mode is MXfp4 or MXfp8, x2 must be transposed"),
+                            std::to_string(args_.isBTrans).c_str(), "must be transposed in MXfp4/MXfp8"),
                         return ge::GRAPH_FAILED);
     }
     if (scenario_ == AllReduceScenario::MXFP4) {
@@ -825,7 +809,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
             Ops::Base::CeilDiv(x1K, MX_GROUP_SIZE_K) % 2 != 0,
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 context_->GetNodeName(), "x1",
-                ("k=" + std::to_string(x1K)).c_str(), "The value of k of x1 ceildivided by 32 must be even"),
+                ("k=" + std::to_string(x1K)).c_str(), "ceil(k,32) must be even"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

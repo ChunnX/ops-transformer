@@ -33,7 +33,6 @@ bool QuantMatmulAllReduceTiling310General::IsCapable()
 ge::graphStatus QuantMatmulAllReduceTiling310General::DoOpTiling()
 {
     MC2_CHECK_LOG_RET(opName_, CheckA8W8());
-    MC2_CHECK_LOG_RET(opName_, CheckCommModeA2());
     DoRCSTiling();
     DoSplitMTiling();
     MC2_CHECK_LOG_RET(opName_, DoQuantTiling());
@@ -76,7 +75,7 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::PostTiling()
         tilingDataSize, context_->GetRawTilingData()->GetCapacity());
     OP_TILING_CHECK(
         tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8", tilingDataSize),
+        OP_LOGE(opName_, "tiling data size[%s] not aligned to 8", std::to_string(tilingDataSize).c_str()),
         return ge::GRAPH_FAILED);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
 
@@ -144,23 +143,23 @@ ge::graphStatus QuantMatmulAllReduceTiling310General::DoQuantTiling()
 
 CutResult QuantMatmulAllReduceTiling310General::GetTilingResult()
 {
-    CutResult mCutAllreduceResult;
-    SocVersion inputSocVer = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVer);
-    const gert::StorageShape* commQuantScaleShapeOne = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShapeTwo = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShapeOne != nullptr) && (commQuantScaleShapeTwo != nullptr)) { // low-bit comm
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHcclObj(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer);
-        quantAllReduceTilingHcclObj.GetTiling();
-        mCutAllreduceResult = quantAllReduceTilingHcclObj.tilingM_.cutRes;
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
     } else {
-        MMPlusAllReduce allReduceTilingHcclObj(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
-        allReduceTilingHcclObj.GetTiling();
-        mCutAllreduceResult = allReduceTilingHcclObj.tilingM_.cutRes;
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     }
-    return mCutAllreduceResult;
+    return mCutAllreduce;
 }
 
 //注册tiling类

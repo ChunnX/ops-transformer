@@ -4,25 +4,25 @@
 
 ## 项目简介 | Introduction
 
-NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，它集成了PyTorch、PyBind11和昇腾CANN工具链，提供了从算子内核编写，编译到Python封装的完整工具链。
+NpuOpsTransformerExt 是一个轻量级，高性能的算子开发工程模板，它集成了PyTorch、PyBind11和昇腾CANN工具链，提供了从算子内核编写，编译到Python封装的完整工具链。
 
 ## 核心特性 | Features
 
-🚀 开箱即用(Out-of-the-Box): 预置完整的昇腾NPU算子开发环境配置，克隆后即可开始开发。
+🚀 开箱即用 (Out-of-the-Box): 预置完整的昇腾NPU算子开发环境配置，克隆后即可开始开发。
 
-🧩 极简设计(Minimalist Design): 代码结构清晰直观，专注于核心算子开发流程。
+🧩 极简设计 (Minimalist Design): 代码结构清晰直观，专注于核心算子开发流程。
 
-⚡ 高性能(High Performance): 基于AscendC编程模型，充分发挥昇腾NPU硬件能力。
+⚡ 高性能 (High Performance): 基于AscendC编程模型，充分发挥昇腾NPU硬件能力。
 
-📦 一键部署(One-Click Deployment): 集成setuptools构建系统，支持一键编译和安装。
+📦 一键部署 (One-Click Deployment): 集成setuptools构建系统，支持一键编译和安装。
 
-🔌 PyTorch集成(PyTorch Integration): 无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
+🔌 PyTorch集成 (PyTorch Integration): 无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
 
 ## 核心交付件 | Core Deliverables
 
-1. `experimental/xxx/算子目录/算子名_torch.cpp`算子Kernel实现
-2. `experimental/xxx/算子目录/CMakeLists.txt`算子cmake配置
-3. `experimental/npu_ops_transformer_ext/npu_ops_transformer_ext/npu_ops_def.cpp`注册算子接口
+1. `experimental/xxx/算子目录/算子名_torch.cpp` 算子Kernel实现
+2. `experimental/xxx/算子目录/CMakeLists.txt` 算子cmake配置
+3. `experimental/npu_ops_transformer_ext/npu_ops_transformer_ext/npu_ops_def.cpp` 注册算子接口
 - 其中xxx为attention/ffn/gmm/mc2/moe/posembedding
 
 ## 环境要求 | Prerequisites
@@ -63,7 +63,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     ```  
 3. **安装torch与torch_npu包**
    
-   根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl`下载链接为:[官网地址](http://download.pytorch.org/whl/torch)
+   根据实际环境，下载对应torch包并安装: `torch-${torch_version}+cpu-${python_version}-linux_${arch}.whl` 下载链接为:[官网地址](http://download.pytorch.org/whl/torch)
 
    安装命令如下：
 
@@ -127,7 +127,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
 
 1. 编写算子调用文件，以在experimental/posembedding下添加算子my_ops为例
    
-    在`experimental/posembedding`目录下添加新的算子目录`my_ops`，在`my_ops`目录下添加新的算子调用文件`my_ops_torch.cpp`
+    在 `experimental/posembedding` 目录下添加新的算子目录 `my_ops`，在 `my_ops` 目录下添加新的算子调用文件 `my_ops_torch.cpp`
 
     ```c++
     __global__ __aicore__ void mykernel(GM_ADDR input, GM_ADDR output, int64_t num_element) {
@@ -186,7 +186,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     set(NPU_EXT_OPERATOR_LIST "typhoon_mla;score_normalize;rope_matrix;select_attention_operators;my_ops")
     ```
     
-3. 在`npu_ops_transformer_ext/npu_ops_def.cpp`中添加TORCH_LIBRARY_IMPL定义
+3. 在 `npu_ops_transformer_ext/npu_ops_def.cpp`中添加TORCH_LIBRARY_IMPL定义
    
     ```c++
     TORCH_LIBRARY_IMPL(npu_ops_transformer_ext, PrivateUse1, m) {
@@ -194,7 +194,7 @@ NpuOpsTransformerExt是一个轻量级，高性能的算子开发工程模板，
     }
     ```
 
-4. (可选)在`npu_ops_transformer_ext/ops.py`中封装自定义接口
+4. (可选)在 `npu_ops_transformer_ext/ops.py`中封装自定义接口
 
     ```python
     def my_ops(x: Tensor) -> Tensor:

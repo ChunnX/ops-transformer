@@ -273,12 +273,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             nd2NzParams.nValue = runInfo.commonRunInfo.s2RealSize;
             nd2NzParams.dValue = realK;
             nd2NzParams.srcNdMatrixStride = 0;
-            if constexpr (IS_ROPE) {
-                nd2NzParams.srcDValue = constInfo.commonConstInfo.mm1Kb + 64;
-            } else {
-                nd2NzParams.srcDValue = constInfo.commonConstInfo.mm1Kb;
-            }
-            
+            nd2NzParams.srcDValue = constInfo.commonConstInfo.mm1Kb + 64;
             if constexpr (IS_FP8_INPUT) {
                 nd2NzParams.dstNzC0Stride = AlignTo32(runInfo.commonRunInfo.s2RealSize);
             } else {
@@ -337,21 +332,18 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
     if (!runInfo.isS1IdxNoChange) {
         qL1Buffer.Wait<HardEvent::MTE1_MTE2>(); // 反向同步
         LocalTensor<INPUT_TYPE> qL1Tensor = qL1Buffer.GetTensor<INPUT_TYPE>();
-        nd2NzParams.ndNum = 1;
-        nd2NzParams.nValue = constInfo.commonConstInfo.gSize;
-        nd2NzParams.dValue = constInfo.commonConstInfo.dSize;
-        nd2NzParams.srcNdMatrixStride = 0;
-        nd2NzParams.srcDValue = constInfo.mm2Ka;
-        nd2NzParams.dstNzNStride = 1;
-        nd2NzParams.dstNzMatrixStride = 0;
         if constexpr (IS_ROPE) {
+            nd2NzParams.ndNum = 1;
+            nd2NzParams.nValue = constInfo.commonConstInfo.gSize;
+            nd2NzParams.dValue = constInfo.commonConstInfo.dSize;
+            nd2NzParams.srcNdMatrixStride = 0;
+            nd2NzParams.srcDValue = constInfo.mm2Ka;
+            nd2NzParams.dstNzNStride = 1;
+            nd2NzParams.dstNzMatrixStride = 0;
             DataCopy(qL1Tensor, this->queryGm[runInfo.queryOffsetWithRopeForMm12], nd2NzParams);
             nd2NzParams.dValue = ROPE_D_64;
             nd2NzParams.srcDValue = ROPE_D_64;
-            DataCopy(qL1Tensor[nd2NzParams.dstNzC0Stride * constInfo.commonConstInfo.dSize],
-                     this->queryRopeGm[runInfo.commonRunInfo.qRopeOffset], nd2NzParams);
-        } else {
-            DataCopy(qL1Tensor, this->queryGm[runInfo.commonRunInfo.queryOffset], nd2NzParams);
+            DataCopy(qL1Tensor[nd2NzParams.dstNzC0Stride * constInfo.commonConstInfo.dSize], this->queryRopeGm[runInfo.commonRunInfo.qRopeOffset], nd2NzParams);
         }
         qL1Buffer.Set<HardEvent::MTE2_MTE1>();
         qL1Buffer.Wait<HardEvent::MTE2_MTE1>();
@@ -547,8 +539,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQNormal(typename DqkvResPos<T, IS_WRITE_
                 queryGmTmp = this->queryRopeGm[runInfo.commonRunInfo.qRopeOffset];
             } else {
                 nd2NzParams.srcDValue = constInfo.mm2Ka;
-                int64_t queryOffset = IS_ROPE ? runInfo.queryOffsetWithRopeForMm12 : runInfo.commonRunInfo.queryOffset;
-                queryGmTmp = this->queryGm[queryOffset + gmNOffset];
+                queryGmTmp = this->queryGm[runInfo.queryOffsetWithRopeForMm12 + gmNOffset];
             }
             DataCopy(qL1Tensor, queryGmTmp, nd2NzParams);
             qL1Buffer.Set<HardEvent::MTE2_MTE1>();

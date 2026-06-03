@@ -15,7 +15,7 @@
 #include "batch_mat_mul_v3_base_tiling.h"
 #include "batch_mat_mul_v3/op_kernel/batch_mat_mul_v3_tiling_key.h"
 #include "util/math_util.h"
-#include "mc2_log_compat.h"
+#include "log/log.h"
 #include "op_host/tiling_key.h"
 #include "mc2_log.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
@@ -125,10 +125,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBatchInfo()
     bool batch1Invalid = batchInfo_.batchA1 != batchInfo_.batchB1 && batchInfo_.batchA1 != 1UL && batchInfo_.batchB1 != 1UL;
     bool batch0Invalid = batchInfo_.batchA0 != batchInfo_.batchB0 && batchInfo_.batchA0 != 1UL && batchInfo_.batchB0 != 1UL;
     if (batch3Invalid || batch2Invalid || batch1Invalid || batch0Invalid) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "batch dims",
-            (std::to_string(batchInfo_.batchA3) + ", " + std::to_string(batchInfo_.batchA2) + ", " +
-             std::to_string(batchInfo_.batchA1) + " and " + std::to_string(batchInfo_.batchA0)).c_str(),
-            "The batch dims must not use M broadcast to N mode.");
+        OP_LOGE("[Mc2BatchMatMulV3]", "Is M broadcast to N situation, do not support!");
         return false;
     }
     return GetBiasWithBatchInfo();
@@ -146,18 +143,14 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
         return true;
     }
     if (biasDims == NO_BATCH_SHAPE_DIM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("[Mc2BatchMatMulV3]", "bias",
-            std::to_string(biasDims).c_str(),
-            "The shape dim of bias cannot be 2.");
+        OP_LOGE("[Mc2BatchMatMulV3]", " Dim number of bias must not be 2 !");
         return false;
     }
 
     batchInfo_.biasWithBatch = true;
     uint64_t biasMValue = biasShape[biasDims - NO_BATCH_SHAPE_DIM];
     if (biasMValue != 1UL) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "bias M",
-            std::to_string(biasMValue).c_str(),
-            "The value of bias M must be 1.");
+        OP_LOGE("[Mc2BatchMatMulV3]", "M of Bias must be 1 !");
         return false;
     }
 
@@ -172,9 +165,7 @@ bool Mc2BatchMatmulV3BaseTiling::GetBiasWithBatchInfo()
     bool biasBatchValid = batchBias3 == batchInfo_.batchC3 && batchBias2 == batchInfo_.batchC2
         && batchBias1 == batchInfo_.batchC1 && batchBias0 == batchInfo_.batchC0;
     if (batchInfo_.biasWithBatch && !biasBatchValid) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("[Mc2BatchMatMulV3]", "bias batch",
-            std::to_string(batchBias3).c_str(),
-            "The value of bias batch must be equal to batch of C.");
+        OP_LOGE("[Mc2BatchMatMulV3]", "Batch of Bias  must be equal to C !");
         return false;
     }
     return true;
@@ -1026,7 +1017,7 @@ ge::graphStatus Mc2BatchMatmulV3BaseTiling::PostTiling()
     workspaceSize_ = std::max(workspaceSize_, DEFAULT_SIZE);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspaces"),
+                    OP_LOGE(context_->GetNodeName(), "workspaces is null."),
                     return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize_;
     return ge::GRAPH_SUCCESS;

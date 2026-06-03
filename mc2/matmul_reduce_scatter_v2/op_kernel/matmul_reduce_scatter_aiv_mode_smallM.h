@@ -403,7 +403,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
                                                         CType_, BiasType_, TileCopy>;
             using MatmulKernel = Gemm::Kernel::MatmulReduceScatterAivModeSmallM<void, void, BlockMmadOpt, void,
                                                                                 BlockScheduler30, aicCalBias>;
-            typename MatmulKernel::Params rowMajorParams{
+            typename MatmulKernel::Params params{
                 processSize,
                 reinterpret_cast<GM_ADDR>(gm_a_src),
                 layoutA,
@@ -417,8 +417,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
                 rank,
                 rank_size,
                 need_fixpipe};
-            MatmulKernel rowMajorMatmulOp;
-            rowMajorMatmulOp(rowMajorParams);
+            MatmulKernel matmul_op;
+            matmul_op(params);
         }
     }
 }

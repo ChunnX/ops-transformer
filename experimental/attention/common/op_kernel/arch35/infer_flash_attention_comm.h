@@ -99,8 +99,7 @@ constexpr static int64_t SPARSE_MODE_INT_DEFAULT = 2147483647;
     X(isPa, bool, false) \
     X(isFd, bool, false) \
     X(enableKVPrefix, bool, false) \
-    X(enableS1OutSplit, bool, false) \
-    X(optionalDn, bool, false)
+    X(enableS1OutSplit, bool, false)
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,

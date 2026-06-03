@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul、dequant、swiglu和quant，详细解释见计算公式。[aclnnGroupedMatmulSwigluQuantV2](./aclnnGroupedMatmulSwigluQuantV2.md)接口的weightNZ特化版本，此接口与aclnnGroupedMatmulSwigluQuantV2的区别在于：weight参数在该场景下强制视为FRACTAL_NZ格式。
+- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。[aclnnGroupedMatmulSwigluQuantV2](./aclnnGroupedMatmulSwigluQuantV2.md)接口的weightNZ特化版本，此接口与aclnnGroupedMatmulSwigluQuantV2的区别在于：weight参数在该场景下强制视为FRACTAL_NZ格式。
 
 - 计算公式：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
@@ -35,7 +35,7 @@
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
         * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
@@ -44,7 +44,7 @@
 
       - **计算过程**
 
-        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$。
+        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
 
           >例子：假设groupList=[3,4,4,6]、groupListType=cumsum或groupList=[3,1,0,2]、groupListType=count。
           >
@@ -63,7 +63,7 @@
           >
           >则第一个输出Q的shape为[30，:]，其中Q[18:，：]的部分不会进行更新和初始化，其中数据为显存空间申请时的原数据。
           >
-          >同理，第二个输出Q_scale的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
+          >同理，第二个输出Q的shape为[30]，其中Q\_scale[18:]的部分不会进行更新或初始化，其中数据为显存空间申请时的原数据。
           >
           >即输出的Q[:grouplist[-1],:]和Q\_scale[:grouplist[-1]]为有效数据部分。
 
@@ -118,10 +118,10 @@
 
         - 3.根据分组确定的入参进行如下计算：
 
-          - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位两部分的$\mathbb{Z_4}$
+          - 3.1.将左矩阵$\mathbb{Z_8}$，转变为高低位 两部分的$\mathbb{Z_4}$
             $X\_high\_4bits_{i} = \lfloor \frac{X_{i}}{16} \rfloor$
             $X\_low\_4bits_{i} = X_{i} \& 0x0f - 8$
-          - 3.2.做矩阵乘时，开启per-channel或per-group量化
+          - 3.2.做矩阵乘时，使能per-channel或per-group量化
             per-channel：
 
             $C\_high_{i} = (X\_high\_4bits_{i} \cdot W_{i}) \odot w\_scale_{i}$
@@ -140,7 +140,7 @@
 
             $C_{i,act}, gate_{i} = split(C_{i})$
 
-            $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp;其中$Swish(x)=\frac{x}{1+e^{-x}}$
+            $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp; 其中$Swish(x)=\frac{x}{1+e^{-x}}$
 
         - 3.量化输出结果
 
@@ -165,7 +165,7 @@
         * $X∈\mathbb{Z_4}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
         * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
+        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
         * $smoothScale∈\mathbb{R}^{E \times N/2}(逐channel)或\mathbb{R}^{E}(逐tensor)$：平滑缩放因子，E是专家个数，N是输出维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
@@ -175,7 +175,7 @@
 
       - **计算过程**
 
-        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$。
+        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
           - 分组逻辑与A8W8相同。
 
         - 2.根据分组确定的入参进行如下计算：
@@ -206,15 +206,15 @@
 
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度， N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数，K是特征维度。
+        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
+        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
 
         * $Q∈\mathbb{F}_{8E4M3FN}^{M \times N / 2}$或$Q∈\mathbb{F}_{4E1M2}^{M \times N / 2}$或$Q∈\mathbb{F}_{4E2M1}^{M \times N / 2}$：量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
         * $Q\_scale∈\mathbb{R}^{M \times ceil((N / 2) / 64) \times 2}$：量化缩放因子。
       - **计算过程**
-        - 1.根据groupList[i]确定当前分组的token ，$i \in [0,Len(groupList)]$
+        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
 
         - 2.根据分组确定的入参进行如下计算：
 
@@ -449,7 +449,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
         <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时开启，其他输入请传入空指针。</td>
+        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时使能，其他输入请传入空指针。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -500,7 +500,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - <strong>weight强制视为FRACTAL_NZ格式。</strong>
-      - weight在A4W4下支持转置，其他输入仅支持非转置，INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
+      - weight 在A4W4下支持转置，其他输入仅支持非转置，INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
       - 支持dequantMode参数：A8W4场景和A4W4场景支持取值0和1，A8W8场景仅支持取值0。
       - 不支持dequantDtype和quantMode参数。
       - x和weight不支持空Tensor。
@@ -977,7 +977,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
     }
 
     int main() {
-        // 1.（固定写法）device/stream初始化，参考acl API手册
+        // 1. （固定写法）device/stream初始化，参考acl API手册
         // 根据自己的实际device填写deviceId
         int32_t deviceId = 0;
         aclrtStream stream;
@@ -1077,7 +1077,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         CHECK_RET(ret == ACL_SUCCESS, 
         LOG_PRINT("aclnnGroupedMatmulSwigluQuantWeightNzV2 failed. ERROR: %d\n", ret); return ret);
 
-        // 4.（固定写法）同步等待任务执行结束
+        // 4. （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStream(stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

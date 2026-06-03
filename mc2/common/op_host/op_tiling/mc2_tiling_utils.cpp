@@ -178,14 +178,15 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
   auto debugCommAlg = mc2tiling::Mc2TilingUtils::GetDebugCommAlg();
   if (rankDim == 2) {  // 如果是2p
     if ((debugCommAlg != 0) && (debugCommAlg != COMM_ALG_FULL_MESH)) {
-      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be 0 or COMM_ALG_FULL_MESH when rankDim is 2");
+      OP_LOGE(context->GetNodeName(),
+              " CommAlgo %u is not supported when rank dim is 2.",
+              debugCommAlg);
       return COMM_ALG_DEFAULT;
     }
     return COMM_ALG_FULL_MESH;
   } else if (rankDim <= 0) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "rankDim",
-          std::to_string(rankDim).c_str(), "The value of rankDim must be positive");
+    OP_LOGE(context->GetNodeName(),
+              "Invalid rank dimension %lld. Rank dimension must be positive.", rankDim);
     return COMM_ALG_DEFAULT;
   }
 
@@ -202,8 +203,8 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
   if (commSets == COMM_MESH) {
     if ((debugCommAlg != 0) &&
         (debugCommAlg != COMM_ALG_FULL_MESH)) {  // 环境变量设置非fullmesh
-      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be 0 or COMM_ALG_FULL_MESH when commSets is COMM_MESH");
+      OP_LOGE(context->GetNodeName(), " CommAlg %u is not supported.",
+              debugCommAlg);
       return COMM_ALG_DEFAULT;
     }
     return COMM_ALG_FULL_MESH;
@@ -213,8 +214,8 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
   if (debugCommAlg != 0) {  // 环境变量设置非doublering/switch
     if ((debugCommAlg != COMM_ALG_DOUBLE_RING) &&
         (debugCommAlg != COMM_ALG_SWITCH_WING)) {
-      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "debugCommAlg",
-          std::to_string(debugCommAlg).c_str(), "The value of debugCommAlg must be COMM_ALG_DOUBLE_RING or COMM_ALG_SWITCH_WING");
+      OP_LOGE(context->GetNodeName(), " CommAlg %u is not supported.",
+              debugCommAlg);
       return COMM_ALG_DEFAULT;
     }
     return debugCommAlg;
@@ -280,8 +281,8 @@ ge::graphStatus GetMatmulV3PriorityPolicy(
   }
 
   if (priorities.empty()) {
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "npuArch",
-        std::to_string(static_cast<uint32_t>(npuArch)).c_str(), "The value of npuArch must be within the supported range.");
+    OP_LOGE(opName, "NpuArch %u can't find suitable matmul priorities.",
+            static_cast<uint32_t>(npuArch));
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;
@@ -302,38 +303,36 @@ ge::graphStatus Mc2TilingUtils::CommonParamCheck(
   const gert::StorageShape *aShape = context->GetInputShape(0);
   const gert::StorageShape *bShape = context->GetInputShape(1);
   OP_TILING_CHECK(aShape == nullptr || bShape == nullptr,
-                  OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "aShape, bShape"),
+                  OP_LOGE(context->GetNodeName(), "the shape is invalid"),
                   return ge::GRAPH_FAILED);
 
   uint64_t aShapeDimNum = aShape->GetStorageShape().GetDimNum();
   uint64_t bShapeDimNum = bShape->GetStorageShape().GetDimNum();
   OP_TILING_CHECK(aShapeDimNum != 2 || bShapeDimNum != 2,
-                  OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "aShape, bShape",
-                      (std::to_string(aShapeDimNum) + "D, " + std::to_string(bShapeDimNum) + "D").c_str(), "2D"),
+                  OP_LOGE(context->GetNodeName(), "the dimNum is not two"),
                   return ge::GRAPH_FAILED);
 
   auto aTensor = context->GetInputDesc(0);
   auto bTensor = context->GetInputDesc(1);
   auto output = context->GetOutputDesc(0);
   OP_TILING_CHECK(aTensor == nullptr || bTensor == nullptr || output == nullptr,
-                  OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "aTensor, bTensor, output"),
+                  OP_LOGE(context->GetNodeName(), "the tensor is invalid"),
                   return ge::GRAPH_FAILED);
 
   auto aShapeFormat = aTensor->GetStorageFormat();
   auto bShapeFormat = bTensor->GetStorageFormat();
   auto outputFormat = output->GetStorageFormat();
   OP_TILING_CHECK(aShapeFormat != outputFormat,
-                  OP_LOGE_FOR_INVALID_FORMAT(context->GetNodeName(), "aShape, output",
-                      ge::TypeUtils::FormatToAscendString(aShapeFormat).GetString(),
-                      ge::TypeUtils::FormatToAscendString(outputFormat).GetString()),
+                  OP_LOGE(context->GetNodeName(),
+                          "a shape Format, output Format are not same"),
                   return ge::GRAPH_FAILED);
   OP_TILING_CHECK(
       (mc2tiling::SUPPORTED_FORMAT.count(aShapeFormat) == 0 ||
        mc2tiling::SUPPORTED_FORMAT.count(bShapeFormat) == 0),
-      OP_LOGE_FOR_INVALID_FORMAT(
-          context->GetNodeName(), "aShape, bShape",
-          ge::TypeUtils::FormatToAscendString(aShapeFormat).GetString(),
-          "ND"),
+      OP_LOGE(
+          context->GetNodeName(),
+          "a shape Format, b shape Format only support ND, the format is %s",
+          ge::TypeUtils::FormatToAscendString(aShapeFormat).GetString()),
       return ge::GRAPH_FAILED);
   return ge::GRAPH_SUCCESS;
 }
@@ -399,14 +398,10 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
       scaleMValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
         mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 2);
     }
-    OP_TILING_CHECK(scaleMValue == 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1Scale m dimension", "0", "non-zero"),
-        return false);
-    OP_TILING_CHECK((mValue % scaleMValue) != 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1 and x1Scale m dimension",
-            (std::to_string(mValue) + ", " + std::to_string(scaleMValue)).c_str(),
-            "x1 m dimension should be divisible by x1Scale m dimension"),
-        return false);
+    OP_TILING_CHECK(scaleMValue == 0, OP_LOGE(mmInfo.opName, "The m dimension of x1Scale is 0."), return false);
+    OP_TILING_CHECK((mValue % scaleMValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in m dimension is 0 and the m "
+      "dimension of x1 [%lu] is not divisible by m dimension of x1Scale [%lu]. the real groupSize in in m dimension"
+      "can not be infered.", mValue, scaleMValue), return false);
     groupSizeM = mValue / scaleMValue;
   }
 
@@ -417,14 +412,10 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
     }
     auto nValue = mmInfo.x2Shape->GetStorageShape().GetDim(nIdx);
     auto scaleNValue = mmInfo.x2ScaleShape->GetStorageShape().GetDim(nIdx);
-    OP_TILING_CHECK(scaleNValue == 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x2Scale n dimension", "0", "non-zero"),
-        return false);
-    OP_TILING_CHECK((nValue % scaleNValue) != 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x2 and x2Scale n dimension",
-            (std::to_string(nValue) + ", " + std::to_string(scaleNValue)).c_str(),
-            "x2 n dimension should be divisible by x2Scale n dimension"),
-        return false);
+    OP_TILING_CHECK(scaleNValue == 0, OP_LOGE(mmInfo.opName, "The n dimension of x2Scale is 0."), return false);
+    OP_TILING_CHECK((nValue % scaleNValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in n dimension is 0 and the n "
+      "dimension of x2 [%lu] is not divisible by n dimension of x2Scale [%lu]. the real groupSize in in n dimension "
+      "can not be infered.", nValue, scaleNValue), return false);
     groupSizeN = nValue / scaleNValue;
   }
 
@@ -439,14 +430,10 @@ bool Mc2TilingUtils::InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupS
       scaleKValue = mmInfo.x1ScaleShape->GetStorageShape().GetDim(
         mmInfo.x1ScaleShape->GetStorageShape().GetDimNum() - 1);
     }
-    OP_TILING_CHECK(scaleKValue == 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1Scale k dimension", "0", "non-zero"),
-        return false);
-    OP_TILING_CHECK((kValue % scaleKValue) != 0,
-        OP_LOGE_FOR_INVALID_VALUE(mmInfo.opName, "x1 and x1Scale k dimension",
-            (std::to_string(kValue) + ", " + std::to_string(scaleKValue)).c_str(),
-            "x1 k dimension should be divisible by x1Scale k dimension"),
-        return false);
+    OP_TILING_CHECK(scaleKValue == 0, OP_LOGE(mmInfo.opName, "The k dimension of x1Scale is 0."), return false);
+    OP_TILING_CHECK((kValue % scaleKValue) != 0, OP_LOGE(mmInfo.opName, "The groupSize in k dimension is 0 and the k "
+      "dimension of x1 [%lu] is not divisible by k dimension of x1Scale [%lu]. the real groupSize in in k dimension "
+      "can not be infered.", kValue, scaleKValue), return false);
     groupSizeK = kValue / scaleKValue;
   }
 

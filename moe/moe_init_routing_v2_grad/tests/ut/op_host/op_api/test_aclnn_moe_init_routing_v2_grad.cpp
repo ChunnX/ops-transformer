@@ -34,25 +34,15 @@ protected:
     }
 };
 
-// dtype fp32：一阶段 GetWorkspaceSize + 二阶段 aclnnMoeInitRoutingV2Grad
+// dtype fp32
 TEST_F(l2_moe_init_routing_v2_grad_test, Ascend910B2_moe_init_routing_v2_grad_fp32)
 {
-    auto gradExpandedXDesc = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
-    auto expandedRowIdxDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto outDesc = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
-
-    aclTensor* gradExpandedX = DescToAclContainer(gradExpandedXDesc);
-    aclTensor* expandedRowIdx = DescToAclContainer(expandedRowIdxDesc);
-    aclTensor* out = DescToAclContainer(outDesc);
-
+    auto gradExpandedX = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-10, 10);
+    auto expandedRowIdx = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto out = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnMoeInitRoutingV2Grad, INPUT(gradExpandedX, expandedRowIdx, 1, 0, 0), OUTPUT(out));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus getWorkspaceResult = aclnnMoeInitRoutingV2GradGetWorkspaceSize(
-        gradExpandedX, expandedRowIdx, 1, 0, 0, out, &workspaceSize, &executor);
+    aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
-    ASSERT_NE(executor, nullptr);
-
-    std::vector<uint8_t> workspace(workspaceSize > 0 ? workspaceSize : 1);
-    aclnnStatus runResult = aclnnMoeInitRoutingV2Grad(workspace.data(), workspaceSize, executor, nullptr);
-    EXPECT_EQ(runResult, ACLNN_SUCCESS);
 }

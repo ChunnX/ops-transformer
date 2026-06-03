@@ -21,7 +21,6 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
-#include "mc2_log_compat.h"
 
 namespace {
 
@@ -31,13 +30,12 @@ static inline bool CheckEmptyTensor(const aclTensor *tensor, const char *name)
 {
     const auto &shape = tensor->GetViewShape();
     if (shape.GetDimNum() == 0) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", name, "[]", (std::string("The shape of ") + name + " cannot be empty.").c_str());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Tensor %s has empty shape", name);
         return false;
     }
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (shape.GetDim(i) <= 0) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", name,
-                std::to_string(shape.GetDim(i)).c_str(), "dimension must be positive");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Tensor %s has zero or negative dimension at index %zu.", name, i);
             return false;
         }
     }
@@ -82,7 +80,7 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
     OP_CHECK_NULL(quantExpandXOut, return false);
     OP_CHECK_NULL(commCmdInfoOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeCombineSetup", "groupEp");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group groupEp name is Empty");
         return false;
     }
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckNotNull success");
@@ -115,8 +113,7 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
     OP_CHECK_EMPTY_TENSOR(quantExpandXOut, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_EMPTY_TENSOR(commCmdInfoOut, return ACLNN_ERR_PARAM_INVALID);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineSetup", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name exceeds %zu", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_INVALID;
     }
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckParams success");
@@ -144,9 +141,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
 {
     OP_LOGD("aclnnMoeDistributeCombineSetupGetWorkspaceSize start.");
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineSetup", "npuArch",
-            std::to_string(static_cast<int64_t>(GetCurrentPlatformInfo().GetCurNpuArch())).c_str(),
-            "only support NpuArch::DAV_3510");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch. Only support %d, now get %d.", NpuArch::DAV_3510,
+                GetCurrentPlatformInfo().GetCurNpuArch());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -183,15 +179,14 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     OP_CHECK_NULL(expandX, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     if (expandX->GetViewShape().GetDimNum() != TWO_DIM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",
-            "dim=" + std::to_string(expandX->GetViewShape().GetDimNum()), "The shape dim of expandX must be 2D.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandX's DimNum should be 2, but got %lu.",
+                expandX->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t a = expandX->GetViewShape().GetDim(0);
     int64_t h = expandX->GetViewShape().GetDim(1);
     if (a <= 0 || h <= 0) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",
-            "[" + std::to_string(a) + "," + std::to_string(h) + "]", "dimensions must be greater than zero");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "expandX's Dim should be greater than zero.");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

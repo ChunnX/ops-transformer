@@ -15,6 +15,7 @@
 #include "matmul_reduce_scatter_tiling_a2a3.h"
 #include "vector"
 #include "graph/utils/type_utils.h"
+#include "mc2_log.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
@@ -46,7 +47,7 @@ namespace optiling {
                         VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
     OP_TILING_CHECK(
         it == VALID_RANK.at(tilingData->socParam.isA3).end(),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(), "The value of world_size is illegal"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(), "illegal value"),
         return ge::GRAPH_FAILED);
 
         return ge::GRAPH_SUCCESS;

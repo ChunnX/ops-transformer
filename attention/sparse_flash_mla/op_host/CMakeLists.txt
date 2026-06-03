@@ -10,7 +10,6 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(sparse_flash_mla_depends attention/common CACHE INTERNAL "Dependencies for sparse_flash_mla")
     target_sources(op_host_aclnn PRIVATE
         sparse_flash_mla_def.cpp
     )
@@ -25,10 +24,6 @@ add_ops_compile_options(
             -mllvm -cce-aicore-hoist-movemask=false
 )
 
-add_modules_sources(OPTYPE sparse_flash_mla ACLNNTYPE aclnn)
-
-if(NOT BUILD_OPS_RTY_KERNEL)
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ./arch22/sparse_flash_mla_tiling_arch22.cpp
-    )
+if (NOT BUILD_OPS_RTY_KERNEL)
+    add_modules_sources(OPTYPE sparse_flash_mla ACLNNTYPE aclnn)
 endif()

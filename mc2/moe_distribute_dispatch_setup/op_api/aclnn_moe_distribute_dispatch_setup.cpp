@@ -16,7 +16,6 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_distribute_dispatch_setup.h"
-#include "mc2_log_compat.h"
 
 using namespace op;
 
@@ -58,7 +57,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertIds, const c
     OP_CHECK_NULL(expandIdxOut, return false);
     OP_CHECK_NULL(commCmdInfoOut, return false);
     if ((groupEp == nullptr) || (strnlen(groupEp, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnMoeDistributeDispatchSetup", "groupEp");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group groupEp name is Empty");
         return false;
     }
     return true;
@@ -73,8 +72,7 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertIds, c
 {
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, yOut, expandIdxOut, commCmdInfoOut), ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchSetup", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required groupEp name length exceeds %zu", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -111,13 +109,13 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     OP_CHECK_NULL(x, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertIds, return ACLNN_ERR_PARAM_NULLPTR);
     if (x->GetViewShape().GetDimNum() != TWO_DIM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeDispatchSetup", "x",
-            "dim=" + std::to_string(x->GetViewShape().GetDimNum()), "The shape dim of x must be 2D.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x's DimNum should be 2, but got %lu.", x->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (expertIds->GetViewShape().GetDimNum() != TWO_DIM) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeDispatchSetup", "expertIds",
-            "dim=" + std::to_string(expertIds->GetViewShape().GetDimNum()), "The shape dim of expertIds must be 2D.");
+        OP_LOGE(
+            ACLNN_ERR_PARAM_INVALID, "expertIds's DimNum should be 2, but got %lu.",
+            expertIds->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t bs = x->GetViewShape().GetDim(0);
@@ -133,13 +131,12 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     int64_t localExpertNum;
     int64_t globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
     if (sharedExpertRankNum >= epWorldSize) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchSetup", "sharedExpertRankNum",
-            std::to_string(sharedExpertRankNum).c_str(),
-            "should be less than epWorldSize=" + std::to_string(epWorldSize));
+        OP_LOGE(
+            ACLNN_ERR_PARAM_INVALID, "sharedExpertRankNum should be less than epWorldSize[%ld], but got %ld.", epWorldSize,
+            sharedExpertRankNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (epRankId < 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeDispatchSetup", "epRankId",
-            std::to_string(epRankId).c_str(), "should not be less than 0");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "epRankId should not be less than 0, but got %ld.", epRankId);
         return ACLNN_ERR_PARAM_INVALID;
     } else {
         if (epRankId < sharedExpertRankNum) {

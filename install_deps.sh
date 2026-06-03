@@ -158,7 +158,6 @@ COMMON_PKGS=(
     "attrs"
     "jinja2"
     "mpmath"
-    "packaging>=26.0"
     "setuptools>=59.0.0"
 )
 

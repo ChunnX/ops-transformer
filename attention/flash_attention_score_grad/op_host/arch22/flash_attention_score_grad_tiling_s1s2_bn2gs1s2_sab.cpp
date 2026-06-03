@@ -949,9 +949,7 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetShapeAttrsIn
     if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != ProcessSinkInfo()) {
-        return ge::GRAPH_FAILED;
-    }
+    ProcessSinkInfo();
     auto ret = GetBaseShapeInfo();
     if (ret != ge::GRAPH_SUCCESS) {
         PrintShapeInfo();
@@ -1518,8 +1516,14 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetWorkspaceSiz
         (workspaceSize + static_cast<size_t>(fBaseParams.vSizeAlign) * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
 
     if (fBaseParams.sink == 1) {
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+        // dsink sum workspace size
         workspaceSize =
-            (workspaceSize + fBaseParams.coreNum * fBaseParams.n2 * fBaseParams.g * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+            (workspaceSize + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+
+        // dsink sum data size
+        workspaceSize = (workspaceSize + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
 
     // mask bool workspace size
@@ -1751,21 +1755,16 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessTokensIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessSinkInfo() {
-    OP_LOGD(context_, "FlashAttentionScoreGrad: Before correction, the value of sink %ld.", fBaseParams.sink);
+void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::ProcessSinkInfo() {
+    OP_LOGD(context_, "Before correction ,the value of sink %ld.",
+            fBaseParams.sink);
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
-    if (sinkShape != nullptr) {
-        OP_CHECK_IF(sinkShape->GetStorageShape().GetDimNum() != 1,
-                    OP_LOGE(context_, "FlashAttentionScoreGrad: Sink shape dimNum=%d is not 1, which is invalid.",
-                            sinkShape->GetStorageShape().GetDimNum()),
-                    return ge::GRAPH_FAILED);
+    if (sinkShape != nullptr && sinkShape->GetStorageShape().GetDimNum() == 1 ) {
         fBaseParams.sink = 1;
-        OP_LOGD(context_, "FlashAttentionScoreGrad: Sink is in use, the value of sink now sink=%ld.", fBaseParams.sink);
-    } else {
-        fBaseParams.sink = 0;
-        OP_LOGD(context_, "FlashAttentionScoreGrad: Sink is not provided, skip sink computation.");
+        OP_LOGD(context_, "Sink is in use, the value of sink now sink=%ld.",fBaseParams.sink);
+    }else{
+        OP_LOGD(context_, "Sink is nullptr");
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 int64_t FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::FindBandIdx()
@@ -1914,7 +1913,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPreTiling()
 
     // sink offset
     if (fBaseParams.sink == 1) {
-        dropBeginAddr = (dropBeginAddr + fBaseParams.coreNum * fBaseParams.n2 * fBaseParams.g * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
+        dropBeginAddr = (dropBeginAddr + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        dropBeginAddr = (dropBeginAddr + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
     }
     tilingData->preTilingData.set_dropBeginAddr(dropBeginAddr);
     return ge::GRAPH_SUCCESS;
@@ -2062,10 +2064,18 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::DoPostTiling()
 
     // dsink workspace
     if (fBaseParams.sink == 1) {
+        int64_t sinkBeginOffset = workspaceOffsets;
         tilingData->postTilingData.set_dsinksumWorkSpaceOffset(workspaceOffsets);
+
+        size_t s1Pad = (fBaseParams.s1 + 255) / 256 * 256;
+        size_t s2Pad = (fBaseParams.s2 + 255) / 256 * 256;
         workspaceOffsets =
-            (workspaceOffsets + fBaseParams.coreNum * fBaseParams.n2 * fBaseParams.g * FP32_BYTES +
-             GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+            (workspaceOffsets + fBaseParams.b * fBaseParams.n2 *  fBaseParams.g * s1Pad * s2Pad / fBaseParams.baseMN * FP32_BYTES +
+             GM_ALIGN) /
+            GM_ALIGN * GM_ALIGN;
+        tilingData->postTilingData.set_dsinksumDataSizeOffset(workspaceOffsets);
+        workspaceOffsets = (workspaceOffsets + sizeof(int32_t) + GM_ALIGN) / GM_ALIGN * GM_ALIGN;
+        tilingData->postTilingData.set_sinkDataSize(workspaceOffsets-sinkBeginOffset);
     }
 
     // mask bool workspace size

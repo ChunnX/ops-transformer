@@ -382,7 +382,7 @@ aclnnStatus aclnnGroupedMatmulV3(
       | 0 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）groupListOptional第1维最大支持1024，即最多支持1024个group |1）x不支持转置；<br> 2）支持weight转置，A8W4与A4W4场景不支持weight转置 |weight中tensor需为3维，x，y中tensor需为2维|
       | 0 | 单个|多个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）groupListOptional第1维最大支持128，即最多支持128个group|1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一 |1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
       | 0 | 多个|多个|单个 | 2/3 | 1）groupListOptional可选；<br> 2）groupListOptional第1维最大支持128，即最多支持128个group |1）x不支持转置；<br> 2）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一|1）x，weight，y中tensor需为2维；<br> 2）weight中每个tensor的N轴必须相等 |
-      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）groupListOptional第1维最大支持1024，即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
+      | 2 | 单个|单个|单个 | 2/3 | 1）必须传groupListOptional；<br> 2）groupListOptional第1维最大支持1024， 即最多支持1024个group | 1）x必须转置；<br> 2）weight不能转置 |1）x，weight中tensor需为2维，y中tensor需为3维；<br> 2）bias必须传空|
       | 2 | 单个|多个|多个 | 0/1 | groupListOptional必须传空 | 1）x必须转置；<br> 2）weight不能转置| 1）x，weight，y中tensor需为2维。<br> 2）weight长度最大支持128，即最多支持128个group；<br> 3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br> 4）bias必须传空 |
 
   - x和weight中每一组tensor的最后一维大小都应小于65536。$x_i$的最后一维指当x不转置时$x_i$的K轴或当x转置时$x_i$的M轴。$weight_i$的最后一维指当weight不转置时$weight_i$的N轴或当weight转置时$weight_i$的K轴。
@@ -455,8 +455,8 @@ aclnnStatus aclnnGroupedMatmulV3(
         | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（g, N, K）或（g, K, N）；x，y中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（g, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持weight转置<br>6）x不支持转置<br>7）仅支持ND进ND出 |
         | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，最后一个值与x中tensor的第一维相等，且长度最大为1024<br>3）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>4）weight中每个tensor的N轴必须相等<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持ND进ND出<br>8）仅支持非量化|
         | 0 | 多多单 |1）仅支持splitItem为2<br>2）x，y中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持ND进ND出<br>8）仅支持非量化|
-        | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维， shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
-        | 2 | 单多多 |1）仅支持splitItem为0/1<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为2维， shape为（M, N）<br>3）groupListOptional可以传空，如果传groupListOptional，其最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
+        | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为3维, shape为（g, M, N）<br>3）必须传groupListOptional，最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
+        | 2 | 单多多 |1）仅支持splitItem为0/1<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；y中tensor需为2维, shape为（M, N）<br>3）groupListOptional可以传空，如果传groupListOptional，其最后一个值不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置且weight不能转置<br>6）仅支持ND进ND出<br>7）不支持bias<br>8）仅支持非量化|
 
   </details>
 
@@ -565,7 +565,7 @@ int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** 
 
 
 int main() {
-    // 1.（固定写法）device/stream初始化，参考acl API手册
+    // 1. （固定写法）device/stream初始化，参考acl API手册
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtStream stream;
@@ -618,7 +618,7 @@ int main() {
     // 3. 调用CANN算子库API
     // 调用aclnnGroupedMatmulV3第一段接口
     ret = aclnnGroupedMatmulV3GetWorkspaceSize(x, weight, bias, scale, offset, antiquantScale, antiquantOffset, groupedList, splitItem, groupType, y, &workspaceSize, &executor);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV3GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
@@ -629,7 +629,7 @@ int main() {
     ret = aclnnGroupedMatmulV3(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmul failed. ERROR: %d\n", ret); return ret);
 
-    // 4.（固定写法）同步等待任务执行结束
+    // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
