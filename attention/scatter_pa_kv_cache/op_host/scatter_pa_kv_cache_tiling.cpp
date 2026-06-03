@@ -77,7 +77,10 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::DoLibApiTiling()
 ge::graphStatus ScatterPaKvCacheMembaseTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "platformInfo is nullptr."), return ge::GRAPH_FAILED);
+    if (platformInfo == nullptr) {
+        OP_LOGE(context_, "platformInfo is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     params_.socVersion = ascendcPlatform.GetSocVersion();
     params_.usedCoreNum = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
@@ -210,14 +213,23 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumSiso()
     size_t kCacheDimNum = inputKeyCacheInShape_.GetDimNum();
     size_t slotDimNum = slotMappingShape_.GetDimNum();
 
-    OP_CHECK_IF((kDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "key should be is 3 dim."),
-                return ge::GRAPH_FAILED);
+    if (kDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key",
+            std::to_string(kDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((kCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "key_cache should be is 4 dim."),
-                return ge::GRAPH_FAILED);
+    if (kCacheDimNum != static_cast<size_t>(DIM_4)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key_cache",
+            std::to_string(kCacheDimNum).c_str(), "should be 4 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((slotDimNum != static_cast<size_t>(DIM_1)), OP_LOGE(context_, "slot_mapping should be is 1 dim."),
-                return ge::GRAPH_FAILED);
+    if (slotDimNum != static_cast<size_t>(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "slot_mapping",
+            std::to_string(slotDimNum).c_str(), "should be 1 dim");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -229,11 +241,17 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumNorm()
     size_t vDimNum = inputValueShape_.GetDimNum();
     size_t vCacheDimNum = inputValueCacheInShape_.GetDimNum();
 
-    OP_CHECK_IF((vDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "value should be is 3 dim."),
-                return ge::GRAPH_FAILED);
+    if (vDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value",
+            std::to_string(vDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((vCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "value_cache should be is 4 dim."),
-                return ge::GRAPH_FAILED);
+    if (vCacheDimNum != static_cast<size_t>(DIM_4)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value_cache",
+            std::to_string(vCacheDimNum).c_str(), "should be 4 dim");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -246,22 +264,35 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumNz()
     size_t vDimNum = inputValueShape_.GetDimNum();
     size_t vCacheDimNum = inputValueCacheInShape_.GetDimNum();
 
-    OP_CHECK_IF((kDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "key should be is 3 dim."),
-                return ge::GRAPH_FAILED);
+    if (kDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key",
+            std::to_string(kDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((kCacheDimNum != static_cast<size_t>(DIM_4) && kCacheDimNum != static_cast<size_t>(DIM_5)),
-                OP_LOGE(context_, "key_cache should be is 4 dim or 5 dim."),
-                return ge::GRAPH_FAILED);
+    if (kCacheDimNum != static_cast<size_t>(DIM_4) && kCacheDimNum != static_cast<size_t>(DIM_5)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key_cache",
+            std::to_string(kCacheDimNum).c_str(), "should be 4 dim or 5 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((slotDimNum != static_cast<size_t>(DIM_1)), OP_LOGE(context_, "slot_mapping should be is 1 dim."),
-                return ge::GRAPH_FAILED);
+    if (slotDimNum != static_cast<size_t>(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "slot_mapping",
+            std::to_string(slotDimNum).c_str(), "should be 1 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((vDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "value should be is 3 dim."),
-                return ge::GRAPH_FAILED);
+    if (vDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value",
+            std::to_string(vDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((vCacheDimNum != static_cast<size_t>(DIM_4) && vCacheDimNum != static_cast<size_t>(DIM_5)),
-                OP_LOGE(context_, "value_cache should be is 4 dim or 5 dim."),
-                return ge::GRAPH_FAILED);
+    if (vCacheDimNum != static_cast<size_t>(DIM_4) && vCacheDimNum != static_cast<size_t>(DIM_5)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value_cache",
+            std::to_string(vCacheDimNum).c_str(), "should be 4 dim or 5 dim");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -273,16 +304,25 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumCompress()
     size_t compressLensDimNum = compressLensShape_.GetDimNum();
     size_t seqLensDimNum = seqLensShape_.GetDimNum();
 
-    OP_CHECK_IF((compressLensDimNum != static_cast<size_t>(DIM_1)),
-                OP_LOGE(context_, "compressLens should be is 1 dim."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((seqLensDimNum != static_cast<size_t>(DIM_1)), OP_LOGE(context_, "seqLensDimNum should be is 1 dim."),
-                return ge::GRAPH_FAILED);
+    if (compressLensDimNum != static_cast<size_t>(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "compressLens",
+            std::to_string(compressLensDimNum).c_str(), "should be 1 dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (seqLensDimNum != static_cast<size_t>(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "seqLens",
+            std::to_string(seqLensDimNum).c_str(), "should be 1 dim");
+        return ge::GRAPH_FAILED;
+    }
 
     if (params_.templateType == TEMPLATE_ROPE || params_.templateType == TEMPLATE_OMNI) {
         compressSeqOffsetShape_ = context_->GetInputShape(INPUT_SEQ_LENS)->GetOriginShape();
         size_t compressSeqOffsetDimNum = compressSeqOffsetShape_.GetDimNum();
-        OP_CHECK_IF((compressSeqOffsetDimNum != static_cast<size_t>(DIM_1)),
-                    OP_LOGE(context_, "compressSeqOffsetDimNum should be is 1 dim."), return ge::GRAPH_FAILED);
+        if (compressSeqOffsetDimNum != static_cast<size_t>(DIM_1)) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "compressSeqOffset",
+                std::to_string(compressSeqOffsetDimNum).c_str(), "should be 1 dim");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -294,16 +334,31 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumNHSD()
     size_t slotDimNum = slotMappingShape_.GetDimNum();
     size_t vDimNum = inputValueShape_.GetDimNum();
     size_t vCacheDimNum = inputValueCacheInShape_.GetDimNum();
-    OP_CHECK_IF((slotDimNum != static_cast<size_t>(DIM_1)), OP_LOGE(context_, "slot_mapping should be 1 dim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "key_cache should be 4 dim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((kDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "key should be 3 dim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "value_cache should be 4 dim."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((vDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "value should be 3 dim."),
-                return ge::GRAPH_FAILED);
+    if (slotDimNum != static_cast<size_t>(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "slot_mapping",
+            std::to_string(slotDimNum).c_str(), "should be 1 dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (kCacheDimNum != static_cast<size_t>(DIM_4)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key_cache",
+            std::to_string(kCacheDimNum).c_str(), "should be 4 dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (kDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "key",
+            std::to_string(kDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (vCacheDimNum != static_cast<size_t>(DIM_4)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value_cache",
+            std::to_string(vCacheDimNum).c_str(), "should be 4 dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (vDimNum != static_cast<size_t>(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "value",
+            std::to_string(vDimNum).c_str(), "should be 3 dim");
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -344,15 +399,30 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeSiso()
     int64_t numBlocks = inputKeyCacheInShape_.GetDim(DIM_0);
     params_.blockSize = inputKeyCacheInShape_.GetDim(DIM_1);
 
-    OP_CHECK_IF((static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens),
-                OP_LOGE(context_, "numBlocks * blockSize should larger than numTokens."), return ge::GRAPH_FAILED);
+    if (static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "numBlocks * blockSize and numTokens",
+            (std::to_string(static_cast<uint64_t>(numBlocks) * params_.blockSize) + ", " +
+             std::to_string(params_.numTokens)).c_str(),
+            "numBlocks * blockSize should be larger than or equal to numTokens");
+        return ge::GRAPH_FAILED;
+    }
     if (!(params_.templateType == TEMPLATE_ALIBI || params_.templateType == TEMPLATE_ROPE ||
         params_.templateType == TEMPLATE_OMNI)) {
-        OP_CHECK_IF((params_.numHead != inputKeyCacheInShape_.GetDim(DIM_2)),
-                    OP_LOGE(context_, "dim2 of keyCache should be same as numHead."), return ge::GRAPH_FAILED);
+        if (params_.numHead != inputKeyCacheInShape_.GetDim(DIM_2)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim1 and keyCache.dim2",
+                (std::to_string(params_.numHead) + ", " +
+                 std::to_string(inputKeyCacheInShape_.GetDim(DIM_2))).c_str(),
+                "dim2 of keyCache should be same as numHead of key");
+            return ge::GRAPH_FAILED;
+        }
     }
-    OP_CHECK_IF((params_.kHeadSize != inputKeyCacheInShape_.GetDim(DIM_3)),
-                OP_LOGE(context_, "dim3 of keyCache should be same as kHeadSize."), return ge::GRAPH_FAILED);
+    if (params_.kHeadSize != inputKeyCacheInShape_.GetDim(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim2 and keyCache.dim3",
+            (std::to_string(params_.kHeadSize) + ", " +
+             std::to_string(inputKeyCacheInShape_.GetDim(DIM_3))).c_str(),
+            "dim3 of keyCache should be same as kHeadSize of key");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -362,19 +432,49 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeNorm()
         return ge::GRAPH_FAILED;
     }
     params_.vHeadSize = inputValueShape_.GetDim(DIM_2);
-    OP_CHECK_IF((params_.vHeadSize != inputValueCacheInShape_.GetDim(DIM_3)),
-                OP_LOGE(context_, "dim3 of ValueCache should be same as vHeadSize."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of key should be same as Value."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of key should be same as Value."), return ge::GRAPH_FAILED);
+    if (params_.vHeadSize != inputValueCacheInShape_.GetDim(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "value.dim2 and valueCache.dim3",
+            (std::to_string(params_.vHeadSize) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_3))).c_str(),
+            "dim3 of valueCache should be same as vHeadSize of value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim0 and value.dim0",
+            (std::to_string(inputKeyShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim1 and value.dim1",
+            (std::to_string(inputKeyShape_.GetDim(DIM_1)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_1) != inputValueCacheInShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)),
-                OP_LOGE(context_, "dim2 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
+    if (inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim0 and valueCache.dim0",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_1) != inputValueCacheInShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim1 and valueCache.dim1",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_1)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim2 and valueCache.dim2",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_2)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_2))).c_str(),
+            "dim2 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -388,28 +488,80 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeNHSD()
     params_.blockSize = inputKeyCacheInShape_.GetDim(DIM_2);
     bool isAlign = ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 &&
                         (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
-    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.numHead != inputKeyCacheInShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of keyCache should be same as numHead."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.numHead > NUM_HEAD_MAX),
-                OP_LOGE(context_, "num head must less than or equal 4095."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens),
-                OP_LOGE(context_, "numBlocks * blockSize should larger than numTokens."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)),
-                OP_LOGE(context_, "dim2 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_1) != inputValueCacheInShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of key should be same as Value."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of key should be same as Value."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.kHeadSize != inputKeyCacheInShape_.GetDim(DIM_3)),
-                OP_LOGE(context_, "dim3 of keyCache should be same as kHeadSize."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.vHeadSize != inputValueCacheInShape_.GetDim(DIM_3)),
-                OP_LOGE(context_, "dim3 of ValueCache should be same as vHeadSize."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
+    if (!isAlign) {
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "kHeadSize, vHeadSize",
+            (std::to_string(params_.kHeadSize) + ", " + std::to_string(params_.vHeadSize)).c_str(),
+            "kHeadSize and vHeadSize should be aligned to 32");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.numHead != inputKeyCacheInShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim1 and keyCache.dim1",
+            (std::to_string(params_.numHead) + ", " +
+             std::to_string(inputKeyCacheInShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of keyCache should be same as numHead of key");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.numHead > NUM_HEAD_MAX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "numHead",
+            std::to_string(params_.numHead).c_str(), "must be less than or equal to 4095");
+        return ge::GRAPH_FAILED;
+    }
+    if (static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "numBlocks * blockSize and numTokens",
+            (std::to_string(static_cast<uint64_t>(numBlocks) * params_.blockSize) + ", " +
+             std::to_string(params_.numTokens)).c_str(),
+            "numBlocks * blockSize should be larger than or equal to numTokens");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim2 and valueCache.dim2",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_2)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_2))).c_str(),
+            "dim2 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_1) != inputValueCacheInShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim1 and valueCache.dim1",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_1)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim0 and value.dim0",
+            (std::to_string(inputKeyShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim1 and value.dim1",
+            (std::to_string(inputKeyShape_.GetDim(DIM_1)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.kHeadSize != inputKeyCacheInShape_.GetDim(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim2 and keyCache.dim3",
+            (std::to_string(params_.kHeadSize) + ", " +
+             std::to_string(inputKeyCacheInShape_.GetDim(DIM_3))).c_str(),
+            "dim3 of keyCache should be same as kHeadSize of key");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.vHeadSize != inputValueCacheInShape_.GetDim(DIM_3)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "value.dim2 and valueCache.dim3",
+            (std::to_string(params_.vHeadSize) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_3))).c_str(),
+            "dim3 of valueCache should be same as vHeadSize of value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim0 and valueCache.dim0",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -424,42 +576,108 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeNz()
     int64_t lastDimK = ALIGN / params_.typeByteK;
     int64_t lastDimV = ALIGN / params_.typeByteV;
 
-    OP_CHECK_IF((params_.blockSize > UINT16_MAX),
-                OP_LOGE(context_, "blockSize should less than UINT16_MAX."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens),
-                OP_LOGE(context_, "numBlocks * blockSize should larger than numTokens."), return ge::GRAPH_FAILED);
+    if (params_.blockSize > UINT16_MAX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "blockSize",
+            std::to_string(params_.blockSize).c_str(), "should be less than UINT16_MAX");
+        return ge::GRAPH_FAILED;
+    }
+    if (static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "numBlocks * blockSize and numTokens",
+            (std::to_string(static_cast<uint64_t>(numBlocks) * params_.blockSize) + ", " +
+             std::to_string(params_.numTokens)).c_str(),
+            "numBlocks * blockSize should be larger than or equal to numTokens");
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of key should be same as Value."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)),
-                OP_LOGE(context_, "dim1 of key should be same as Value."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)),
-                OP_LOGE(context_, "dim0 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.blockSize != inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_2)),
-                OP_LOGE(context_, "blockSize of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((lastDimK != inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM_1)),
-                OP_LOGE(context_, "lastDim of keyCache should be same as lastDimK."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((lastDimV != inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_1)),
-                OP_LOGE(context_, "lastDim of valueCache should be same as lastDimV."), return ge::GRAPH_FAILED);
+    if (inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim0 and value.dim0",
+            (std::to_string(inputKeyShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key.dim1 and value.dim1",
+            (std::to_string(inputKeyShape_.GetDim(DIM_1)) + ", " +
+             std::to_string(inputValueShape_.GetDim(DIM_1))).c_str(),
+            "dim1 of key should be same as value");
+        return ge::GRAPH_FAILED;
+    }
+    if (inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.dim0 and valueCache.dim0",
+            (std::to_string(inputKeyCacheInShape_.GetDim(DIM_0)) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(DIM_0))).c_str(),
+            "dim0 of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.blockSize != inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_2)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "keyCache.blockSize and valueCache.blockSize",
+            (std::to_string(params_.blockSize) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_2))).c_str(),
+            "blockSize of keyCache should be same as valueCache");
+        return ge::GRAPH_FAILED;
+    }
+    if (lastDimK != inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "lastDimK and keyCache.lastDim",
+            (std::to_string(lastDimK) + ", " +
+             std::to_string(inputKeyCacheInShape_.GetDim(inputKeyCacheInShape_.GetDimNum() - DIM_1))).c_str(),
+            "lastDim of keyCache should be same as lastDimK");
+        return ge::GRAPH_FAILED;
+    }
+    if (lastDimV != inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_1)) {
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "lastDimV and valueCache.lastDim",
+            (std::to_string(lastDimV) + ", " +
+             std::to_string(inputValueCacheInShape_.GetDim(inputValueCacheInShape_.GetDimNum() - DIM_1))).c_str(),
+            "lastDim of valueCache should be same as lastDimV");
+        return ge::GRAPH_FAILED;
+    }
 
     if (inputKeyCacheInShape_.GetDimNum() == 4) {
-        OP_CHECK_IF((params_.numHead * params_.kHeadSize / lastDimK != inputKeyCacheInShape_.GetDim(DIM_1)),
-                    OP_LOGE(context_, "dim1 of keyCache should be same as numHead * kHeadSize / lastDimK."),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((params_.numHead * params_.vHeadSize / lastDimV != inputValueCacheInShape_.GetDim(DIM_1)),
-                    OP_LOGE(context_, "dim1 of valueCache should be same as numHead * vHeadSize / lastDimV."),
-                    return ge::GRAPH_FAILED);
+        if (params_.numHead * params_.kHeadSize / lastDimK != inputKeyCacheInShape_.GetDim(DIM_1)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
+                "numHead * kHeadSize / lastDimK and keyCache.dim1",
+                (std::to_string(params_.numHead * params_.kHeadSize / lastDimK) + ", " +
+                 std::to_string(inputKeyCacheInShape_.GetDim(DIM_1))).c_str(),
+                "dim1 of keyCache should be same as numHead * kHeadSize / lastDimK");
+            return ge::GRAPH_FAILED;
+        }
+        if (params_.numHead * params_.vHeadSize / lastDimV != inputValueCacheInShape_.GetDim(DIM_1)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
+                "numHead * vHeadSize / lastDimV and valueCache.dim1",
+                (std::to_string(params_.numHead * params_.vHeadSize / lastDimV) + ", " +
+                 std::to_string(inputValueCacheInShape_.GetDim(DIM_1))).c_str(),
+                "dim1 of valueCache should be same as numHead * vHeadSize / lastDimV");
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_CHECK_IF((params_.numHead != inputKeyCacheInShape_.GetDim(DIM_1)),
-                    OP_LOGE(context_, "dim1 of keyCache should be same as numHead."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF((params_.kHeadSize / lastDimK != inputKeyCacheInShape_.GetDim(DIM_2)),
-                    OP_LOGE(context_, "dim2 of keyCache should be same as kHeadSize / lastDimK."),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((params_.numHead != inputValueCacheInShape_.GetDim(DIM_1)),
-                    OP_LOGE(context_, "dim1 of valueCache should be same as numHead."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF((params_.vHeadSize / lastDimV != inputValueCacheInShape_.GetDim(DIM_2)),
-                    OP_LOGE(context_, "dim2 of keyCache should be same as vHeadSize / lastDimV."),
-                    return ge::GRAPH_FAILED);
+        if (params_.numHead != inputKeyCacheInShape_.GetDim(DIM_1)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "numHead and keyCache.dim1",
+                (std::to_string(params_.numHead) + ", " +
+                 std::to_string(inputKeyCacheInShape_.GetDim(DIM_1))).c_str(),
+                "dim1 of keyCache should be same as numHead");
+            return ge::GRAPH_FAILED;
+        }
+        if (params_.kHeadSize / lastDimK != inputKeyCacheInShape_.GetDim(DIM_2)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "kHeadSize / lastDimK and keyCache.dim2",
+                (std::to_string(params_.kHeadSize / lastDimK) + ", " +
+                 std::to_string(inputKeyCacheInShape_.GetDim(DIM_2))).c_str(),
+                "dim2 of keyCache should be same as kHeadSize / lastDimK");
+            return ge::GRAPH_FAILED;
+        }
+        if (params_.numHead != inputValueCacheInShape_.GetDim(DIM_1)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "numHead and valueCache.dim1",
+                (std::to_string(params_.numHead) + ", " +
+                 std::to_string(inputValueCacheInShape_.GetDim(DIM_1))).c_str(),
+                "dim1 of valueCache should be same as numHead");
+            return ge::GRAPH_FAILED;
+        }
+        if (params_.vHeadSize / lastDimV != inputValueCacheInShape_.GetDim(DIM_2)) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "vHeadSize / lastDimV and valueCache.dim2",
+                (std::to_string(params_.vHeadSize / lastDimV) + ", " +
+                 std::to_string(inputValueCacheInShape_.GetDim(DIM_2))).c_str(),
+                "dim2 of valueCache should be same as vHeadSize / lastDimV");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -469,8 +687,12 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeCompress()
     if (CheckInputShapeNorm() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != 1),
-                OP_LOGE(context_, "dim2 of keyCache should be 1."), return ge::GRAPH_FAILED);
+    if (inputKeyCacheInShape_.GetDim(DIM_2) != 1) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "keyCache",
+            std::to_string(inputKeyCacheInShape_.GetDim(DIM_2)).c_str(),
+            "dim2 of keyCache should be 1");
+        return ge::GRAPH_FAILED;
+    }
 
     auto seqLens = context_->GetOptionalInputTensor(INPUT_SEQ_LENS);
     OP_CHECK_NULL_WITH_CONTEXT(context_, seqLens);
@@ -590,16 +812,26 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
 
 ge::graphStatus ScatterPaKvCacheMembaseTiling::DoNHSDOpTiling()
 {
-    OP_CHECK_IF(((params_.numHead * params_.kHeadSize + params_.numHead * params_.vHeadSize) * params_.typeByteK 
-                    > params_.ubSize),
-                    OP_LOGE(context_, "one token key size plus one token value must less than 196608."),
-                    return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.blockSize * params_.kHeadSize > UINT32_MAX),
-                    OP_LOGE(context_, "blockSize * kHeadSize must less than UINT32_MAX."),
-                    return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params_.blockSize * params_.vHeadSize > UINT32_MAX),
-                    OP_LOGE(context_, "blockSize * vHeadSize must less than UINT32_MAX."),
-                    return ge::GRAPH_FAILED);
+    if ((params_.numHead * params_.kHeadSize + params_.numHead * params_.vHeadSize) * params_.typeByteK
+                    > params_.ubSize) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "one token kv size",
+            std::to_string((params_.numHead * params_.kHeadSize + params_.numHead * params_.vHeadSize) *
+                           params_.typeByteK).c_str(),
+            "one token key size plus one token value must be less than ubSize");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.blockSize * params_.kHeadSize > UINT32_MAX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "blockSize * kHeadSize",
+            std::to_string(params_.blockSize * params_.kHeadSize).c_str(),
+            "must be less than UINT32_MAX");
+        return ge::GRAPH_FAILED;
+    }
+    if (params_.blockSize * params_.vHeadSize > UINT32_MAX) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "blockSize * vHeadSize",
+            std::to_string(params_.blockSize * params_.vHeadSize).c_str(),
+            "must be less than UINT32_MAX");
+        return ge::GRAPH_FAILED;
+    }
     params_.blockFactor = Ops::Base::CeilDiv<int64_t>(params_.numTokens, params_.usedCoreNum);
     params_.usedCoreNum =
         std::min(Ops::Base::CeilDiv<int64_t>(params_.numTokens, params_.blockFactor), params_.usedCoreNum);
@@ -613,8 +845,12 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::DoNoCompressOpTiling()
     if (params_.templateType == TEMPLATE_NZ) {
         bool isAlign = ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 &&
                         (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
-        OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
-                    return ge::GRAPH_FAILED);
+        if (!isAlign) {
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context_->GetNodeName(), "kHeadSize, vHeadSize",
+                (std::to_string(params_.kHeadSize) + ", " + std::to_string(params_.vHeadSize)).c_str(),
+                "kHeadSize and vHeadSize should be aligned to 32");
+            return ge::GRAPH_FAILED;
+        }
     }
     bool canLoad = true;
     if (params_.templateType == TEMPLATE_SISO || params_.templateType == TEMPLATE_SISO_NCT) {
