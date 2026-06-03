@@ -56,6 +56,8 @@ public:
         WaitMte2ToMte1RotationReady();
         LoadRotationToL0(qRotationL0b(), qRotationL1Nz_);
         LoadRotationToL0(kRotationL0b(), kRotationL1Nz_);
+        SetMte1ToMmadRotationReady();
+        WaitMte1ToMmadRotationReady();
     }
 
     __aicore__ inline void ComputeTile(const TileParam &tile)
@@ -84,6 +86,7 @@ private:
     static constexpr uint32_t AIC_L0B_ONE_BUFFER_ELEMENTS = AIC_L0B_BUFFER_ELEMENTS / AIC_L0_BUFFER_NUM;
     static constexpr uint32_t AIC_L0C_ONE_BUFFER_ELEMENTS = AIC_L0C_BUFFER_ELEMENTS / AIC_L0C_BUFFER_NUM;
     static constexpr uint32_t EVT_MTE2_TO_MTE1_ROTATION_READY = 5U;
+    static constexpr uint32_t EVT_MTE1_TO_MMAD_ROTATION_READY = 5U;
     static constexpr uint32_t EVT_MTE1_TO_MMAD_L0_BASE = 3U;
     static constexpr uint32_t EVT_MMAD_TO_MTE1_L0_BASE = 3U;
     static constexpr uint32_t EVT_MMAD_TO_FIXP_L0C_BASE = 0U;
@@ -93,6 +96,8 @@ private:
         "QkvRmsNormRopeCacheWithKScale each resident L0B rotation segment must hold one D128 matrix.");
     static_assert(EVT_MTE2_TO_MTE1_ROTATION_READY <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIC rotation MTE2->MTE1 event exceeds event id range.");
+    static_assert(EVT_MTE1_TO_MMAD_ROTATION_READY <= INTRA_EVENT_ID_MAX,
+        "QkvRmsNormRopeCacheWithKScale AIC rotation MTE1->MMAD event exceeds event id range.");
     static_assert(EVT_MTE1_TO_MMAD_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
         "QkvRmsNormRopeCacheWithKScale AIC MTE1->MMAD L0 events exceed event id range.");
     static_assert(EVT_MMAD_TO_MTE1_L0_BASE + AIC_L0_BUFFER_NUM - 1U <= INTRA_EVENT_ID_MAX,
@@ -113,6 +118,20 @@ private:
     {
 #ifndef __CCE_KT_TEST__
         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(EVT_MTE2_TO_MTE1_ROTATION_READY));
+#endif
+    }
+
+    __aicore__ inline void SetMte1ToMmadRotationReady()
+    {
+#ifndef __CCE_KT_TEST__
+        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
+#endif
+    }
+
+    __aicore__ inline void WaitMte1ToMmadRotationReady()
+    {
+#ifndef __CCE_KT_TEST__
+        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(EVT_MTE1_TO_MMAD_ROTATION_READY));
 #endif
     }
 

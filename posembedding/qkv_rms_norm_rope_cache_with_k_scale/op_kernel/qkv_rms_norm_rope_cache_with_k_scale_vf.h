@@ -53,9 +53,10 @@ __simd_vf__ inline void QkRmsNormRopeD128SegmentNzVf(__ubuf__ bfloat16_t *inputB
     MicroAPI::RegTensor<uint16_t> highIndex;
     MicroAPI::MaskReg mask64 = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskFirst = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-    uint32_t halfMaskValue = QKV_RRC_D128_HALF_SIZE;
-    MicroAPI::MaskReg maskHalf = MicroAPI::UpdateMask<float>(halfMaskValue);
-    MicroAPI::MaskReg bf16MaskHalf = MicroAPI::UpdateMask<bfloat16_t>(halfMaskValue);
+    uint32_t fp32HalfMaskValue = QKV_RRC_D128_HALF_SIZE;
+    uint32_t bf16HalfMaskValue = QKV_RRC_D128_HALF_SIZE;
+    MicroAPI::MaskReg maskHalf = MicroAPI::UpdateMask<float>(fp32HalfMaskValue);
+    MicroAPI::MaskReg bf16MaskHalf = MicroAPI::UpdateMask<bfloat16_t>(bf16HalfMaskValue);
 
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaLow, gamma);
     MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(gammaHigh, gamma + QKV_RRC_D128_FLOAT_REPEAT_SIZE);
