@@ -117,6 +117,7 @@ public:
         // } else {
         //     Process_Hybrid();
         // }
+        AscendC::printf("End MoeEpDispatch kernel Process\n");
     }
 
 private:

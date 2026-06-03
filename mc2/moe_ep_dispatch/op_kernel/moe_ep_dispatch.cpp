@@ -45,6 +45,7 @@ __global__ __aicore__ void moe_ep_dispatch(
     TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeEpDispatchTilingData, tilingData, tilingGM);
     KernelMoeEpDispatch<DO_CPU_SYNC, IS_CACHED, NETWORK_MODE> op;
+    AscendC::printf("start MoeEpDispatch kernel\n");
     op.Init(context, x, topkIdx, topkWeights,
             cachedSlotIdx,
             numRecvPerRankHp, numRecvPerExpertHp,
