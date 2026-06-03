@@ -635,10 +635,20 @@ void GroupedMatmulFinalizeRoutingQuantTiling::DeterministicTilingProcess()
 {
     if (context_->GetDeterministic() == 0 || inputParams_.aDtype != ge::DT_INT8 || inputParams_.bDtype != ge::DT_INT8) {
         tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
+        if (context_->GetDeterministic() != 0) {
+            std::ostringstream oss;
+            oss << "DeterministicTilingProcess: deterministic tiling is enabled, but only int8 "
+                   "quantization is supported, current aDtype="
+                << ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype)
+                << ", bDtype=" << ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)
+                << ", set deterministicFlag to 0";
+            OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
+        }
         return;
     }
     tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 1;
     auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t l2Size;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2Size);
@@ -657,6 +667,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
     }
     if (tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag == 1) {
         size_t *workspaces = context_->GetWorkspaceSizes(1);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
         workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
         OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu",
                 deterWorkspaceSize_, workspaces[0]);
