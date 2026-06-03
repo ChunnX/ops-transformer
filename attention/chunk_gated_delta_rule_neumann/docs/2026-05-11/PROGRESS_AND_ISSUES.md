@@ -1,0 +1,380 @@
+# 2026-05-11 Progress And Issues
+
+## Completed
+
+- Phase A11 completed and saved as a correctness baseline.
+- Phase A13 completed and saved as a correctness baseline.
+- Phase A14 completed and saved as a correctness baseline.
+- Phase A15 completed and saved as a correctness baseline.
+- Phase A16 completed and saved as a correctness baseline.
+- Phase A17 completed and saved as a correctness baseline.
+- Phase A18 completed and saved as a correctness baseline.
+- Phase A19 completed and saved as a correctness baseline.
+- Phase A20 completed and saved as a correctness baseline.
+- Phase A21 completed and saved as a correctness baseline.
+- Phase A22 completed and saved as a correctness baseline.
+- Phase A23 completed and saved as a correctness baseline.
+- Phase A24 completed and saved as a correctness baseline, but it was performance-negative versus A23.
+- Phase A25 restored A23 behavior and saved a restore baseline.
+- Phase A26 failed at `S=1024` and was reverted to A25; no baseline saved.
+- Phase A27 timed out at `S=64` and was reverted to A25; no baseline saved.
+- Phase A28 completed and saved as a correctness baseline.
+- Phase A29 completed and saved as a correctness baseline.
+- Phase A30 failed at `S=1024` and was reverted to A29; no baseline saved.
+- Phase A31 full64 GM identity reload candidate failed at `S=64` and was reverted to A29; no baseline saved.
+- Phase A32 direct full64 identity generation failed at `S=64`; no baseline saved.
+- Phase A33 completed from clean A28 plus only P7 L0C offset constexpr cleanup and saved as a correctness baseline.
+- Phase A38-forward completed and saved as a correctness baseline.
+- Phase A39 completed and saved as a correctness baseline.
+- Active selector is `p3l1_p8a`; active Stage1 is `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_p3l1_p8a.h`.
+- A11 gate passed:
+  - build/install PASS
+  - `S=64/256/1024` smoke PASS
+  - compare `16 passed in 6.27s`
+  - performance recorded
+- A11 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA11_identity_cache_hit_nosync_baseline.h`
+  - SHA256: `b16e8b44c97bc7983ba78f9e535c13b6a136cbf53005cf10429e3d75476f9f1b`
+- A13 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA13_p8_dead_zero_cleanup_baseline.h`
+  - SHA256: `57effd24547d6458dd9d3aca74969765a6ed6f4033c04f1c4a279b24ce5d6b80`
+- A14 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA14_l1_zero_cache_baseline.h`
+  - SHA256: `7c6d16dec16f54f29bff3eeec69baa1b8b77daba8917a6914dc912e675b66a4f`
+- A15 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA15_identity_reuse_writeback_baseline.h`
+  - SHA256: `c570e711c9793149a52269148c511b117d0d2b68c7f4921c68fb9fed90efb65e`
+- A16 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA16_restore_writeback_identity_invalidation_baseline.h`
+  - SHA256: `7c6d16dec16f54f29bff3eeec69baa1b8b77daba8917a6914dc912e675b66a4f`
+- A17 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA17_strict_full64_skip_lowerwork_zero_baseline.h`
+  - SHA256: `8a7d00de0c4d64724b89a96416057ef54bef81ee555d8e609c439d4bb371391e`
+- A18 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA18_p8_second_layer_tmp_zero_cleanup_baseline.h`
+  - SHA256: `18b7b4ace8ba012002210164a39080e8eff603a0a3867161cf90e63d7a5d0e1e`
+- A19 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA19_p8_first_layer_tmp_zero_cleanup_baseline.h`
+  - SHA256: `445e8d8af9a1deff28924a7b17e96481297de5d385f2ee7e986462ef21590112`
+- A20 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA20_p7_tileinv_zero_cleanup_baseline.h`
+  - SHA256: `e65e616756b01b9d8dc08cc9e881885be5c532695a42a6ae68f35eaa7dbecc2b`
+- A21 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA21_p7_diagpower_zero_cleanup_baseline.h`
+  - SHA256: `18944df04588ad8f18721aa529522eef83afc3f1195265392550316529a65422`
+- A22 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA22_bf16_upper_zero_source_cache_baseline.h`
+  - SHA256: `5bdec9c9755cec059180f60242a65d0750a3628312de2c58c11ce324a6385479`
+- A23 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA23_bf16_upper_zero_cache_hit_nosync_baseline.h`
+  - SHA256: `4f440a78ba2123cfc6d5caffa75b0081cfd7caf9253b2e211b2785ad8de8da1a`
+- A24 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA24_writeback_identity_once_baseline.h`
+  - SHA256: `a11c220b0904d330c638b413485a2904311aa8ea8cb32057ab7bbd78b3e1ee74`
+- A25 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA25_restore_writeback_identity_once_baseline.h`
+  - SHA256: `4f440a78ba2123cfc6d5caffa75b0081cfd7caf9253b2e211b2785ad8de8da1a`
+- A26:
+  - no baseline saved.
+  - direct L1-to-L1 resident copy failed at `S=64`.
+  - conservative resident identity-once copy failed at `S=1024`.
+  - active restored to A25 SHA256 `4f440a78ba2123cfc6d5caffa75b0081cfd7caf9253b2e211b2785ad8de8da1a`.
+- A27:
+  - no baseline saved.
+  - same-L0C dual Fixpipe to BF16 GM + resident L1 timed out at `S=64`.
+  - active restored to A25 SHA256 `4f440a78ba2123cfc6d5caffa75b0081cfd7caf9253b2e211b2785ad8de8da1a`.
+  - recovery install PASS; recovery `S=64` and `S=1024` smoke PASS.
+- A28 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA28_p7_l0_zero_once_baseline.h`
+  - SHA256: `624a74c2f3e7cf026708a358e0cdaf1af2e41537468529e32cd6c048c778a449`
+- A29 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA29_p8_first_layer_l0_zero_once_baseline.h`
+  - SHA256: `e519d49eb4533bdd80bee3c8955508fb8793ec8f48640cff3ee6aa0c4a4ac638`
+- A30:
+  - no baseline saved.
+  - simple removal of `ParaChunkAIC()` `packed64IdentityPrepared_ = false;` failed at `S=1024`.
+  - active restored to A29 SHA256 `e519d49eb4533bdd80bee3c8955508fb8793ec8f48640cff3ee6aa0c4a4ac638`.
+- A31:
+  - no baseline saved.
+  - full `64x64` FP32 identity written to `tmpWsGm_` and reloaded into `aicHalfL1Identity64_` failed at `S=64`.
+  - recovery `S=1024` smoke PASS when the installed package was A29 SHA256 `e519d49eb4533bdd80bee3c8955508fb8793ec8f48640cff3ee6aa0c4a4ac638`.
+  - recovery was invalidated as a workspace state because another live session rewrote active/build staged source afterward.
+  - final observed state: active/build staged source are A28 SHA256 `624a74c2f3e7cf026708a358e0cdaf1af2e41537468529e32cd6c048c778a449`, while installed source remains A29 SHA256 `e519d49eb4533bdd80bee3c8955508fb8793ec8f48640cff3ee6aa0c4a4ac638`.
+- A32:
+  - no baseline saved.
+  - direct full64 identity generation failed at `S=64` with `out max_abs` around `9.60e-02`.
+  - conclusion: keep the ref-style packed diagonal identity64 construction.
+- A33 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA33_p7_l0c_const_offset_baseline.h`
+  - SHA256: `c138b344294996b07264623270f4c1eaa9e0f4e33d5a19c2b44c451699e15974`
+  - gate: build/install PASS, `S=64/256/1024` smoke PASS, seed40 PASS, compare `16 passed in 6.15s`.
+- A38-forward baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA38_identity_static_gm_datacopy_baseline.h`
+  - SHA256: `d533cb22580c67d5c1996c97ede5313854b255d61f8412c0d1fa1614f3948fcf`
+  - gate: build/install PASS, source/installed SHA aligned, `S=64/256/1024` smoke PASS, compare `16 passed in 6.34s`.
+- A39 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA39_p7_diag_gm_to_l1_coalesced_baseline.h`
+  - SHA256: `57ed59cf35ce8c7c9e941361729837d427413d2cf68f001f8c44c0bddb579e9f`
+  - gate: build/install PASS, active/baseline SHA aligned, `S=64/256/1024` smoke PASS, compare `16 passed in 6.24s`.
+  - note: the installed package payload in this environment does not preserve the untracked `p8afullocal/...p3l1_p8a.h` path, so future installed checks must not assume an installed same-name Stage1 header exists.
+
+## Performance State
+
+- Phase 10 ratio: `1.379 / 2.001 / 2.760 / 2.824`.
+- A10 ratio: `1.408 / 2.150 / 2.980 / 2.984`.
+- A11 ratio: `1.406 / 2.136 / 2.950 / 3.003`.
+- A13 ratio: `1.413 / 2.099 / 2.973 / 2.988`.
+- A14 ratio: `1.441 / 2.104 / 2.915 / 2.975`.
+- A15 ratio: `1.463 / 2.142 / 2.991 / 3.032`.
+- A16 ratio: `1.464 / 2.133 / 2.937 / 2.974`.
+- A17 ratio: `1.435 / 2.110 / 2.938 / 2.970`.
+- A18 ratio: `1.442 / 2.082 / 2.916 / 2.944`.
+- A19 ratio: `1.422 / 2.099 / 2.901 / 2.953`.
+- A20 ratio: `1.387 / 2.093 / 2.925 / 2.946`.
+- A21 ratio: `1.380 / 2.091 / 2.906 / 2.935`.
+- A22 ratio: `1.356 / 2.114 / 2.966 / 2.976`.
+- A23 ratio: `1.355 / 2.068 / 2.895 / 2.938`.
+- A24 ratio: `1.394 / 2.076 / 2.929 / 2.967`.
+- A25 ratio: `1.428 / 2.046 / 2.892 / 2.946`.
+- A28 ratio: `1.437 / 2.065 / 2.889 / 2.939`.
+- A29 ratio: `1.429 / 2.078 / 2.872 / 2.914`.
+- A33 ratio: `1.463 / 2.079 / 2.877 / 2.935`.
+- A38-forward ratio: `1.340 / 2.013 / 2.846 / 2.891`.
+- A39 ratio: `1.234 / 1.979 / 2.872 / n/a`.
+- A15 is correctness-safe but regresses all profiled shapes versus A14.
+- A16 restores A14 behavior after A15; large shapes are back near A14, while small-shape ratio remains noisy and slower than Phase 10.
+- A17 removes one strict full64 lowerWork zero and slightly improves `S=64/512/10240`; still slower than Phase 10.
+- A18 removes the P8 second-layer tmp pre-zero; large shapes improve slightly versus A17 while `S=64` regresses slightly.
+- A19 removes the P8 first-layer tmp pre-zero; `S=64/2048` improve versus A18 while `S=512/10240` regress slightly.
+- A20 removes the P7 tileInv pre-zero; `S=64/512/10240` improve versus A19 while `S=2048` regresses slightly.
+- A21 removes the P7 diagPower64 pre-zero; all four profiled ratios improve versus A20.
+- A22 reuses `aicHalfL1Zero_` for BF16 upper-zero writeback with visibility sync; `S=64` improves, but `S=512/2048/10240` regress versus A21.
+- A23 removes only A22's zero-cache cache-hit visibility sync; it improves all four shapes versus A22 and improves `S=64/512/2048` versus A21.
+- A24 prepares writeback identity once inside `StorePackedL1InverseToBf16Attn()` and passes correctness, but performance regresses versus A23 on most profiled shapes.
+- A25 restores A23 behavior; current active SHA is `4f440a78ba2123cfc6d5caffa75b0081cfd7caf9253b2e211b2785ad8de8da1a`.
+- A26 resident identity-once candidate fails at `S=1024` with out/state close to zero, so identity/cache-hit synchronization around resident copy remains a correctness boundary.
+- A27 same-L0C dual Fixpipe candidate times out at `S=64`, so resident/BF16 writeback fusion also remains a synchronization boundary.
+- A28 clears P7 diag-only L0 operands once per one-shot call. It improves `S=2048/10240` slightly versus A25 but regresses `S=64/512` slightly; still slower than Phase 10.
+- A29 clears P8 first-layer packed32 L0 operands once per first-layer compose. It improves `S=64/2048/10240` versus A28, regresses `S=512`, and is still slower than Phase 10.
+- A33 replaces only the P7 `cPower` L0C offset expression with `C64_L0C_TILE_ELEMS`; correctness is safe, but performance is still slower than Phase 10 and mostly not better than A28/A29.
+- A14 improves large shapes versus A13, but small shapes regress and total latency is still worse than Phase 10.
+- A39 improves `S=64/512` versus A38-forward and is roughly flat/slightly worse at `S=2048`; the `S=10240` profiling row is not trusted because the run hit `libopapi.so` symbol lookup errors during warmup for both normal and neumann.
+
+## Next
+
+- A39 is now the active correctness baseline:
+  - P7 diagonal GM->packed64 L1 input coalesced into one `Nd2NzParams DataCopy` for `L_pow` and one for `INVInit`.
+  - current active/baseline SHA256 `57ed59cf35ce8c7c9e941361729837d427413d2cf68f001f8c44c0bddb579e9f`
+  - build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS.
+- A38-forward remains a correctness baseline:
+  - static GM constant `CGDR_IDENTITY16_NZ4`
+  - one strided `DataCopy` to the four packed64 diagonal NZ offsets
+  - baseline SHA256 `d533cb22580c67d5c1996c97ede5313854b255d61f8412c0d1fa1614f3948fcf`
+  - build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS
+- A40 should be P7 packed64 diagonal L1->L0 load coalescing:
+  - replace the four `LoadData()` calls in `LoadPacked64DiagOnlyToL0()` with one diagonal-strided LoadData candidate.
+  - local API check: `LoadData2DParams.srcStride` is in 512B fractal units and `dstGap` is the 512B gap between consecutive repeats.
+  - packed64 diagonal gap is 5 fractals, so the A40 candidate is `repeatTimes=4`, `srcStride=5`, `dstGap=4`.
+  - one-shot coalescing with an extra L0A/L0B intermediate sync passes `S=64/256/512` but fails `S=1024`; no baseline is saved.
+  - isolation result: L0A coalesced + L0B four loads still fails `S=1024`, so L0A no-transpose one-shot coalescing is unsafe.
+  - isolation result: L0A four loads + L0B coalesced passes `S=1024`, so `ifTranspose=true` L0B one-shot coalescing is safe.
+  - final A40 uses L0A two paired `repeatTimes=2` loads plus L0B one `repeatTimes=4` coalesced load, with the L0A/L0B intermediate sync retained.
+  - final A40 source/installed/baseline SHA256 is `fcd1ea657d4d1fcacd36979e12557dd04b195234dc968097f6247baece0362eb`; object SHA256 is `d7a77f3d7e0fd243ed22727ce3224348a9e9f7fb14297d0053b5dc927d8315b3`.
+  - A40 build/install PASS, `S=64/256/1024` smoke PASS, compare PASS `16 passed in 6.17s`; baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA40_p7_diag_l1_to_l0_paired_baseline.h`.
+  - A40 performance CSV is `tests/pytest/prof_out/packed64_phaseA40_p7_diag_l1_to_l0_paired_20260511/performance_compare.csv`; trustworthy neumann/normal ratios are `S=64 1.271`, `S=512 1.932`, `S=2048 2.778`; `S=10240` is not trusted because both ops failed warmup with package/symbol lookup errors.
+- A41 should be P8 first-layer packed32 paired L1->L0 load coalescing:
+  - keep P8 second-layer `32x32` compose separate.
+  - validate L0A and L0B paired-load directions separately because A40 proved equal NZ offsets do not imply equivalent no-transpose/transpose behavior.
+- A42+ should handle BF16/resident copy-out coalescing only after side-effect/visibility design is explicit.
+- Phase A12 attempted `PrepareHalfL1IdentityByMmad()` cache-hit synchronization deletion and failed at `S=1024`.
+- Phase A13 removed one dead P8 zero and passed the full gate.
+- Phase A14 cached `aicHalfL1Zero_` and passed the full gate.
+- Phase A15 reused the half identity cache into BF16 writeback and passed correctness, but performance regressed.
+- Phase A16 restored the A14 writeback invalidation and passed the full gate.
+- Phase A17 skipped strict full64 lowerWork zero while preserving fallback scratch zero and passed the full gate.
+- Phase A18 removed the P8 second-layer tmp pre-zero and passed the full gate.
+- Phase A19 removed the P8 first-layer tmp pre-zero and passed the full gate.
+- Phase A20 removed the P7 tileInv pre-zero and passed the full gate.
+- Phase A21 removed the P7 diagPower64 pre-zero and passed the full gate.
+- Phase A22 replaced BF16 upper-zero scratch zero with `aicHalfL1Zero_` reuse and passed the full gate, but large shapes regressed.
+- Phase A23 removed A22 zero-cache cache-hit sync and passed the full gate.
+- Phase A24 prepared writeback identity once and passed the full gate, but was performance-negative.
+- Phase A25 restored A23 behavior and passed the full gate.
+- Phase A26 failed and was reverted to A25; no baseline saved.
+- Phase A27 failed and was reverted to A25; no baseline saved.
+- Phase A28 passed the full gate and saved a baseline.
+- Phase A29 passed the full gate and saved a baseline.
+- Phase A30 failed at `S=1024` after removing the `ParaChunkAIC()` `packed64IdentityPrepared_ = false;` invalidation, then active was restored to byte-identical A29.
+- Phase A31 failed at `S=64` after trying to persist/reload full64 identity through `tmpWsGm_`.
+- Phase A32 failed at `S=64` after direct full64 identity generation.
+- Phase A33 passed the full gate and saved a baseline; active/source/installed/baseline are aligned at SHA256 `c138b344294996b07264623270f4c1eaa9e0f4e33d5a19c2b44c451699e15974`.
+- Phase A38 direct scalar NZ packed identity64 writer failed at `S=64` and was reverted to A34; no baseline saved.
+- Current active/source/installed/baseline are aligned to A34 SHA256 `ccec6f1a0e7bfe78b5102ad4ab8cf383441a0de40e1940ad09ca055037be5cdb`.
+- Next phase should not retry A30 as a simple prepared-flag extension, should not retry A31's same-GM-region full64 identity reload, and should not retry A38's exact scalar direct NZ writer. It needs either a different identity64 construction proof that matches MMAD/Fixpipe output, a true lifecycle design, or another independent single-point cleanup.
+- Required gate remains build/install, `S=64 -> 256 -> 1024`, compare, performance.
+- Save the next baseline only if the full gate passes.
+
+## Do Not Repeat
+
+- Do not delete BF16 pre-RHS GM writeback.
+- Do not skip upper-zero BF16 writeback.
+- Do not skip RHS operand L1 zero-init.
+- Do not remove `RestoreRawMmadState()`.
+- Do not directly remove `PrepareHalfL1IdentityByMmad()` cache-hit `SyncFixToMte1()` / `SyncMte2ToMte1()`.
+- Do not directly remove `ParaChunkAIC()` `packed64IdentityPrepared_ = false;`; A30 failed at `S=1024`.
+- Do not retry A31's `LoadGmFloatBlockToHalfL1ByMmad(tmpWsGm_, aicHalfL1Identity64_, chunkSize_)` path while using the same `tmpWsGm_` area as the full64 identity RHS; it failed at `S=64`.
+- Do not retry A38's exact scalar direct NZ writer that zeroes `aicHalfL1Identity64_` and writes only diagonal `half(1.0f)` values at `C64_DIAG_NZ_OFFSET0/1/2/3`; it failed at `S=64`.
+- Do not retry A15 writeback identity-cache reuse.
+- Do not bypass resident-copy per-block identity preparation with a prepared-identity helper; A26 failed at `S=1024`.
+- Do not retry same-L0C dual Fixpipe to GM + resident without a new synchronization design; A27 timed out at `S=64`.
+
+## Redundant Operations Still Present
+
+- Same-stride packed movement candidates are now tracked explicitly:
+  - P7 diagonal GM->packed64 L1 input was reduced in A39 to two tensor-level `Nd2NzParams DataCopy` calls for full64.
+  - P8 lower-left full64 preload has two paired first-layer `16x16` blocks plus one separate second-layer `32x32` block; only the paired first-layer loads should be coalesced together.
+  - P7 packed64 diagonal L1->L0 load was reduced in A40: L0A uses two paired loads; L0B uses one coalesced load.
+  - P8 first-layer packed32 L1->L0 helpers were reduced in A41 to paired `16x16` lane loads with required MTE1/M ordering between L0A and L0B.
+  - P7 diagonal-only Fixpipe output still writes full `64x64` packed tiles even when the consumer only reads four diagonal fractals; this is a later strided/paired Fixpipe copy-out phase.
+  - P8 first-layer output still writes full packed32 tmp/result and then extracts two lanes; this is a later packed32 output-placement phase, separate from L1->L0 load coalescing.
+  - P8 second-layer tmp/result is not a first-layer-style two-lane redundancy: the `32x32 tmp` is fully consumed and final `(32,0) 32x32` is a real output block.
+  - P3/fallback diagonal store-to-GM also copies out one diagonal block at a time through `CopyHalfL1PackedBlockToCompact()` plus `CopyHalfL1MatrixToGmHalfByMmad()`; this is a tail/fallback phase, not part of strict full64 A40.
+  - BF16 GM writeback and resident exposure still copy one `16x16` block at a time; row-prefix coalescing is possible later, but unresolved side effects make direct deletion/fusion unsafe. BF16 lower rows are `16x16/16x32/16x48/16x64` prefixes and still need half->bf16 conversion.
+- L0 operand clearing remains a movement-cost candidate:
+  - P7/P8 clear L0 via L1 zero tile copies.
+  - A28/A29 already reduced repeated clearing to one-time clearing; any direct-L0 or partial-clear replacement should be a separate phase after A40 passes.
+- `identity64` construction was reduced in A38-forward from GM write/reload plus four `BuildPacked64IdentityDiag16()` Fixpipe placements to static GM `CGDR_IDENTITY16_NZ4` plus one strided `DataCopy`. Direct scalar placement of only NZ diagonal `half(1.0f)` values failed in the earlier A38 attempt at `S=64`, so any future direct L1 materialization must first prove it reproduces the current NZ fractal content and visibility semantics.
+- `identity64` lifecycle is not operator-lifetime once-only. Active code has `aicHalfL1Identity64_`, but A30 proved `packed64IdentityPrepared_` cannot simply cross the para-group boundary. A valid next design must account for `pipe_->Reset()` / raw-MMAD local buffer epochs.
+- The intended identity lifecycle is still "first valid generation, later direct L1 reuse"; the missing piece is the valid epoch definition. A simple longer-lived flag is not enough unless it proves the L1 tile survives raw-MMAD local buffer initialization and `pipe_->Reset()`.
+- `16x16` half identity is still generated for BF16 writeback, resident copy, and pack/compact copy helpers. These are `X @ I16` copy/layout substitutes; final code should use direct movement or source any transitional `I16` from persistent `identity64` diagonal fractals.
+- Resident inverse exposure still uses resident zero + per-lower-block `X @ I16` copy. A26 direct resident copy failed and A27 same-L0C BF16/resident fused writeback timed out, so the next valid direction needs a new visibility design rather than reusing those exact approaches.
+- BF16 pre-RHS GM inverse writeback is not RHS math input; `FusedRhsAICProcess()` reads `aicHalfL1ResidentInv_`. It remains because deletion/upper-zero skipping exposed an unresolved pipe/cache/workspace lifecycle side effect at `S=1024`.
+- BF16 upper-zero writeback is not lower-triangular inverse math. It is tied to the current BF16 GM materialization side effect and should be removed only after that side effect is explicitly replaced.
+- RHS operand L1 zero-init in `FusedRhsAICProcess()` is still a redundancy candidate, but Phase 12 showed direct full-tile skip fails at `S=1024`; split zero-content removal from synchronization/visibility replacement.
+- P8 compose syncs remain candidates only after producer/consumer split. A35 and A36 proved direct deletion of first-layer `SyncFixToMte1()` or second-layer final `SyncFixToM()` is unsafe.
+- `P8Compose64From32Direct32()` is already a real `32x32` compose, not a four-`16x16` fallback. Its remaining opportunities are L0 load/Fixpipe/tmp visibility reductions, not copying the first-layer independent-lane packing pattern.
+- `RestoreRawMmadState()` is not inverse math, but Phase 11 showed deleting the whole function is performance-negative. Future work should validate individual state items.
+
+## Current Clean Baseline
+
+- Active/source/installed are aligned to A41 clean baseline:
+  - active Stage1 SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - installed Stage1 SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - installed object SHA256 `3a5e0da47ca0f34f90f3b932ea7e3e94b2447789a5017f5d1e2b65be31f41772`
+- A41 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA41_p8_first_layer_l1_to_l0_paired_sync_baseline.h`
+  - SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+- A41 status:
+  - build/install PASS
+  - seed40 PASS
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS `16 passed in 6.17s`
+
+## Copy-Out Redundancy Queue
+
+- Same-stride and row-prefix copy-out/writeback redundancies must still be modified, but only one phase at a time.
+- Packed MMAD is not classified as redundancy. P7/P8 should keep moving toward packed-MMAD execution; the removable work is repeated movement, copy-out, layout-copy, identity generation, and avoidable synchronization around that packed compute.
+- Updated queue:
+  - A42-deferred: P7 diagonal-only Fixpipe copy-out. Exact diagonal and partial L0C->L1 attempts have timed out; L0C copy-out may be solved later if it blocks other progress, but it is not PASS.
+  - A43: P7 L0A no-transpose diagonal load continuation; A40 left two paired loads and L0A still needs a forward fix.
+  - A44: identity64 lifecycle epoch reuse; implement "first valid generation then L1 reuse" with a real raw-MMAD buffer epoch, not A30-style flag extension.
+  - A45: P8 first-layer packed32 output placement; avoid full packed32 result write plus two lane extracts.
+  - A46: P8 lower-left first-layer GM->lowerWork64 paired preload.
+  - A47: P8 second-layer packed-MMAD load/tmp lifetime continuation; keep `P8Compose64From32Direct32()` packed, do not split it back to four `16x16`.
+  - A48+: BF16 GM and resident row-prefix exposure; split side effects/visibility before replacing per-`16x16` `X @ I16` copies.
+  - Final: after all planned phases pass, save a fresh baseline, then use `msprof` real profiling or simulator analysis to find the next optimization points.
+  - Tail/fallback later: P3 diagonal GM writeback through `CopyHalfL1PackedBlockToCompact()` plus `CopyHalfL1MatrixToGmHalfByMmad()`.
+
+## Current A42 Failure
+
+- A41 is complete and saved:
+  - baseline `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA41_p8_first_layer_l1_to_l0_paired_sync_baseline.h`
+  - SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - build/install PASS, seed40 PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.17s`
+- Current work surface is restored to A41 clean baseline; the A42 failing candidate is not active.
+- Previous A42 failing candidate:
+  - source/installed Stage1 SHA256 `f1eba202336d9ee4582d5fb00df18bf372b4036584f8fa2b41d149b90b4e40da`
+  - installed object SHA256 `f97bf90c0fd03f5e03439739a8baae3d651640162134ce9a6f39cd34d99284b5`
+- A42 changed only P7 diagonal-only Fixpipe copy-out:
+  - added four per-diagonal `16x16` L0C->L1 Fixpipe calls
+  - replaced P7 full `64x64` Fixpipe writes in `HalfL1PowerPacked64DiagOnlyOnC()` and `P7Packed64DiagonalNeumannOneShotToResult()`
+- A42 validation:
+  - build/install PASS
+  - `S=64` smoke timed out
+  - using non-final unit flags for the first three diagonal Fixpipe calls and final only for the last still timed out
+- Root-cause hypothesis:
+  - four independent L0C->L1 Fixpipe calls against the same MMAD result likely violate Fixpipe sequencing/source semantics or do not map to a supported scatter copy-out.
+  - DAV220 `Fixpipe<..., CFG_NZ>` L0C->L1 does not use `ndNum/srcNdStride/dstNdStride` as a multi-ND scatter path; it calls `copy_matrix_cc_to_cbuf` with only `dstStride/srcStride` for the L0C->L1 NZ copy.
+  - The failed helper may also have used packed L1 NZ offsets as L0C source offsets. L0C source layout must be checked independently; `srcStride` for full packed64 C-tile output is `64`, while a single diagonal submatrix copy would need a correct `src` offset and source stride, not the destination NZ offset.
+- Required next action:
+  - continue A42 forward when returning to L0C copy-out, but do not start the next phase on the failing candidate.
+  - if no supported diagonal L0C->L1 grouped copy exists, document exact diagonal scatter as unsupported and choose another A42 copy-out shape, such as legal `32x32` rectangular grouping.
+  - Later 2026-05-11 clarification allows L0C copy-out to be deferred; before A43/A44, restore a clean PASS baseline work surface and keep A42-deferred as pending, not PASS.
+
+## Current A42 Source State
+
+- Active source is not currently clean A41:
+  - active Stage1 SHA256 `756d8e90aceb04d615a1e0906fe39f3cab495834e32cdf5bc6ce3f70877c33f8`
+  - A41 baseline SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - installed Stage1 SHA256 `170e2e69c0c9993802fac4d792d627e2fd2000f254b5f488aac3987c8013594f`
+  - installed object SHA256 `5cd2ebe2576fb4c632dff04f25863ac71584da96bb6714a6470c91568c5091e0`
+- Active source is the unverified A42 `32x32` quadrant candidate:
+  - `FixpipePacked64DiagQuadrants32ToHalfL1()` writes `base2` 32x32 non-final first, then `base0` 32x32 final.
+  - This specifically tests whether keeping the final Fixpipe on L0C source offset 0 avoids the previous timeout.
+- Source/install/object are not aligned. Build/install is mandatory before any smoke result can be attributed to this candidate.
+- At the time, A42 was the blocking item. Later 2026-05-11 clarification allows L0C copy-out to move later if it blocks progress; do not stack P8/BF16/resident copy-out changes on top of this failing A42 candidate.
+- Validation update:
+  - `756d8e90...` built and installed successfully.
+  - installed object SHA256 `5cd2ebe2576fb4c632dff04f25863ac71584da96bb6714a6470c91568c5091e0`
+  - `S=64` smoke timed out at 90s.
+- Updated conclusion:
+  - final-on-source-zero does not solve A42.
+  - continue A42 around legal L0C->L1 `CFG_NZ` source offsets/rectangle shapes; do not proceed to A43/A44.
+
+## Latest Copy-Out Redundancy Audit
+
+- Current active is an A42 diagnostic candidate, not clean A41:
+  - latest rechecked active Stage1 SHA256 `767e463b46af157e925839df5000bed658c3210c88bfe8f6521820d0b75f4277`
+  - A41 baseline SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - latest recheck did not find the expected current build/install object paths under the previously used locations, so this active source is not installed-aligned.
+- P7 diagonal GM->L1 is not still eight independent copies in the full64 path:
+  - A39 already made it one `Nd2NzParams DataCopy` for `L_pow` and one for `INVInit`.
+  - Two tensor sources/destinations mean this cannot be one total copy.
+- P7 diagonal L1->L0 is not still four independent loads in the active full64 path:
+  - A40 final shape uses two paired L0A no-transpose loads and one coalesced L0B transpose load.
+  - This remains intentional because A40 proved one universal coalesced load fails for L0A.
+- P7 L0C->L1 remains the active A42 copy-out problem:
+  - it is `Fixpipe<..., CFG_NZ>`, not `DataCopy`.
+  - exact diagonal scatter has timed out.
+  - two-`32x32` non-zero-source-offset variants have also timed out.
+  - candidate `b9c8df...` only wrote `base0` `32x32` partial final and also timed out at `S=64`, so partial final itself is unsafe in that path.
+  - latest active candidate `767e463b...` adds a top-left `32x32` compact partial copy-out attempt; it is unvalidated and not a baseline.
+- Additional redundancies found and queued:
+  - generic compact/packed rect L1->L0 row-block loops in `CopyHalfL1MatrixToL0A/B()`, `CopyPackedHalfL1BlockToL0()`, and `CopyPackedHalfL1RectToL0()`;
+  - P8 first-layer full packed32 output plus two lane extracts;
+  - P8 lower-left full64 preload two first-layer `16x16` blocks, separate from `(32,0) 32x32`;
+  - BF16 GM and resident row-prefix exposure through per-block `X @ I16`;
+  - P3/tail fallback diagonal GM writeback through compact scratch and `X @ I16`.
+- Queue order is updated again after user clarification:
+  - A42-deferred: keep P7 L0C copy-out as pending if it continues to block.
+  - A43: P7 L0A no-transpose load continuation.
+  - A44: identity64 lifecycle epoch reuse.
+  - A45: P8 first-layer packed32 output placement.
+  - A46: P8 lower-left first-layer GM->lowerWork64 paired preload.
+  - A47: P8 second-layer packed-MMAD load/tmp lifetime.
+  - A48+: BF16/resident row-prefix copy-out after side-effect split.
+  - A-final: save baseline, then use `msprof` or simulator analysis to look for more optimization points.
+- Rule remains: do not start the next item on a failing A42 candidate; first restore a clean PASS baseline work surface. Moving A42 later is allowed only as a recorded pending item, not a pass.
+
+## Latest A42 Validation
+
+- Candidate:
+  - active Stage1 SHA256 `b9c8df4462b0560f8faedf13a937591551381d64e699f2546affe91b0d7c8535`
+  - build/installed object SHA256 `2ac1e134ad90aeaff67ce2db867422ac9808a8227e22519be2113a61eef44cf3`
+  - only writes `base0` `32x32` partial final in `FixpipePacked64DiagQuadrants32ToHalfL1()`.
+- Validation:
+  - `S=64` smoke timed out at 90s.
+- Updated conclusion:
+  - A42 timeout is not solved by keeping the L0C source offset at zero.
+  - Do not stack P8/BF16/resident changes.
+  - Restore A41 only as a clean working surface, then continue A42 with a different legal copy-out shape.

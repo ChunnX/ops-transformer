@@ -1,0 +1,579 @@
+# 2026-05-12 Progress And Issues
+
+## Current Clean Surface Latest
+
+- Active selector is `p3l1_p8a / C64_1616_FP16 / chunkSize=64`.
+- Active Stage1 is A69:
+  - `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_p3l1_p8a.h`
+  - SHA256 `c135346911ae7915a4cb6ba272d997289bd19e54f774f4f21fac987d4441a4ea`
+- A69 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA69_p8_second_layer_cinv_ctmp_accum_baseline.h`
+  - SHA256 `c135346911ae7915a4cb6ba272d997289bd19e54f774f4f21fac987d4441a4ea`
+- A69 gate:
+  - build/install PASS.
+  - `S=64/256/1024` smoke PASS.
+  - full compare PASS `16 passed in 6.22s`.
+- A69 performance:
+  - `tests/pytest/prof_out/packed64_phaseA69_p8_second_layer_cinv_ctmp_accum_20260512/performance_compare.csv`
+  - ratios `1.250 / 1.657 / 2.438 / 2.469`.
+- Performance conclusion:
+  - A69 is the latest correctness-safe baseline.
+  - A69 is not the preferred performance baseline; use A68/A67 performance records as the comparison surface before the next performance-oriented phase.
+  - A68 ratios are `1.175 / 1.662 / 2.399 / 2.437`.
+  - A67 ratios are `1.181 / 1.635 / 2.425 / 2.456`.
+- A70 direct-L0-zero candidate failed and was reverted:
+  - candidate SHA256 `1237de47447c1530b2068f21677c16d9569d39317ce3f9ba33f1d626a2617985`.
+  - `S=64` failed with AIC exception `507015`, `load2d instruction write address greater than max destination address`.
+  - recovered source SHA256 `a39847a6f7b05bc5911cb2bf13cd76bf264a5123ce6842ac55332dac4a248552`.
+  - recovery gate PASS: `S=64/256/1024` and full compare `16 passed in 6.14s`.
+- Current single-point candidate A71:
+  - only remove the non-data `PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)` from `CopyZeroHalfL1RectToGmBf16ByMmad()`.
+  - replace it with explicit syncs while preserving BF16 GM upper-zero writeback, resident writeback, RHS, P7, and P8.
+- A71 result:
+  - SHA256 `3f5e0b61eff7faa38b292312cb1b91f861fcb7db30b6f7fd2a6b00bd835ffa47`.
+  - gate PASS: `S=64/256/1024` and full compare `16 passed in 6.19s`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA71_bf16_zero_rect_no_identity_baseline.h`.
+  - performance ratios `1.260 / 1.680 / 2.424 / 2.444`.
+  - correctness-safe, but not performance-preferred versus A68/A67.
+- Current single-point candidate A72:
+  - remove only the entry `EnsureHalfL1ZeroForMte1(INVERSE_SHAPE * INVERSE_SHAPE)` in `StorePackedL1InverseToBf16Attn()`.
+  - keep each upper-zero rectangle's full64 zero preparation.
+  - no BF16 deletion, resident/RHS, P7/P8, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- A72 result:
+  - SHA256 `deb987f598b383bcc73b7d18dc846f78fc3fb120970382b214ee84b7ec006520`.
+  - gate PASS: `S=64/256/1024` and full compare `16 passed in 6.23s`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA72_bf16_entry_zero_prepare_drop_baseline.h`.
+  - performance ratios `1.225 / 1.659 / 2.397 / 2.456`.
+  - A72 is correctness-safe and improves over A71 on all profiled sizes, but A68/A67 still hold some best-size records.
+- P7/RHS audit:
+  - P7's first two full64 Fixpipe writes are L1-read visibility points for later P7 MMADs; the third is final result64 exposure.
+  - RHS consumes resident L1 through `FusedRhsAICProcess()`, not `attnWsGm_`.
+  - BF16 GM `attnWsGm_` writeback is still present and must not be deleted without a new lifecycle replacement because prior delete/delay variants failed at long sequence.
+- Current single-point candidate A73:
+  - remove only `SyncFixToMte1()` in `CopyZeroHalfL1RectToGmBf16ByMmad()` after zero preparation.
+  - keep `SyncMte2ToMte1()` for this phase.
+  - no BF16 deletion, resident/RHS, P7/P8, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- A73 result:
+  - SHA256 `07d0e7269273d3b997112cef17a77b48923bfe114d6aae3b31384c858c22a073`.
+  - gate PASS: `S=64/256/1024` and full compare `16 passed in 6.15s`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA73_bf16_zero_rect_drop_fix_to_mte1_sync_baseline.h`.
+  - package SHA256 `957ede6fbfd4ba561000d070eb49b6aec3ed7e06a031b234ad9ca59bed12f32d`; installed Neumann object SHA256 `e6d79cb9866a81a7639c591cb4d68ba64fbd87525b94d460f52bf713cd832872`.
+  - performance ratios `1.223 / 1.684 / 2.419 / 2.460`.
+  - correctness-safe but not performance-preferred; it only improves `S=64` slightly versus A72 and regresses the other profiled sizes.
+- Build hygiene issue found:
+  - `bash ../../build.sh --make_clean` should not be chained before a real build in the same shell command; the script does not early-exit after cleaning.
+  - Use manual `rm -rf ../../build ../../build_out && mkdir -p ../../build_out` or verify `CMakeCache.txt` / package payload before install.
+
+## Current Clean Surface Earlier Snapshot
+
+- Active selector is `p3l1_p8a / C64_1616_FP16 / chunkSize=64`.
+- Active Stage1 is byte-identical to A65a:
+  - `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_p3l1_p8a.h`
+- SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`
+- A65a is the latest correctness-safe active source checked in this turn.
+- A65a baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA65a_resident_upper_zero_single_sync_baseline.h`
+  - SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`
+- A63a baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA63a_aiv_scratch_rect_write_baseline.h`
+  - SHA256 `ca6bc32ca4f80bc093a0b293c0bbd20dcf5b24f3a88a7dc0c594b2804f8a66b5`
+- A61a baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA61a_p8_first_layer_direct_l0_zero_baseline.h`
+  - SHA256 `dfa33e483b0661626f4835a388546b425581ff0455aed3d6cf2efbed7b4b01ac`
+- A60 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA60_result64_upper_zero_only_baseline.h`
+  - SHA256 `5d2cfb3d95a6974f92b4f4d37be3e17c421ea0115ec3f4e1d498d9201f54c773`
+- A58 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA58_p8_packed32_mmad_no_hf32_baseline.h`
+  - SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`
+- A56 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA56_restore_atomicnone_singlefield_baseline.h`
+  - SHA256 `5646df25a94ee35f030bff0ef756c284738927fb7fe212afe5ae51dbe94c6bfb`
+- A55 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA55_restore_ndpara_singlefield_baseline.h`
+  - SHA256 `ca7b044e48fd7c3d1553fe60479e6b9684369847963335eacd8eb14bfc8c4aac`
+- A54 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA54_restore_mmlayout_singlefield_baseline.h`
+  - SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`
+- A53 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA53_restore_hf32trans_singlefield_baseline.h`
+  - SHA256 `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`
+- A52 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA52_restore_hf32_singlefield_baseline.h`
+  - SHA256 `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`
+- A51b baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA51b_bf16_blockwrite_partial_identity64_baseline.h`
+  - SHA256 `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`
+- A50 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA50_bf16_rowprefix_identity64_baseline.h`
+  - SHA256 `4c995b59523e8e87069da1a38692567d0eee99ac9a8a30ee1cec8f83d6f6208a`
+- A49 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA49_bf16_lower_rowprefix48_baseline.h`
+  - SHA256 `337b86df5435578536c3b95ce38423aaf4f0592e223456a8f8a9382e2743d149`
+- A48 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA48_bf16_upper_zero_rowsuffix_baseline.h`
+  - SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`
+- A65a is the latest correctness surface, but A63a remains the current all-shape preferred performance surface because A65a ratios `1.209 / 1.881 / 2.734 / 2.787` still regress `S=2048/10240` versus A63a `1.244 / 1.948 / 2.710 / 2.775`.
+- A61a's default-root performance CSVs remain untrusted because the default install root had polluted `libcust_opapi.so` paths; A63a used an isolated OPP root.
+- A47 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA47_p8_second_layer_fixed_load_baseline.h`
+  - SHA256 `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`
+- A46 remains the previous clean rollback point:
+  - SHA256 `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`
+- A46 baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_baseline.h`
+  - SHA256 `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`
+- A44 remains the previous clean rollback point:
+  - SHA256 `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`
+- A41 remains the previous clean rollback point:
+  - SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+
+## Pending Boundaries
+
+- A42 remains pending/deferred:
+  - exact diagonal and partial L0C->L1 `CFG_NZ` Fixpipe copy-out candidates timed out at `S=64`.
+  - this is not a correctness PASS and not a baseline.
+- A43 remains bounded:
+  - L0B transpose coalescing is safe from A40.
+  - L0A no-transpose full coalescing failed at `S=1024`; the current paired L0A load shape stays active.
+- A44 is PASS as an epoch-safe identity64 cleanup:
+  - identity ensure is explicit before P7 one-shot and after P8 lower-left preload.
+  - P7 one-shot no longer hides identity preparation internally.
+  - current valid reuse scope is the raw-MMAD inverse-window epoch, with invalidation at `Init()`, `InitRawMmadLocalBuffers()`, `RestoreStage1MatmulLocalBuffers()`, and the existing `ParaChunkAIC()` boundary.
+  - this does not finish the final operator-lifecycle-once identity64 target.
+- Do not repeat failed A44 candidates:
+  - `db993914...`: pre-generate before loop; `S=1024` out/state FAIL.
+  - `19d4ccf...`: pre-generate plus first-use sync; `S=1024` out FAIL.
+- A45 direct L0C copy-out candidate failed:
+  - SHA256 `55422221d4be3edb9722a0e7225cc98724f53961d52fde692825a82dcff863cb`.
+  - build/install PASS, but `S=64` timeout after 90s with exit code `124`.
+  - `S=256/1024` not run; no baseline saved.
+  - Suspected boundary is non-zero compact32 L0C source offset / partial `CFG_NZ` L0C->L1 Fixpipe, similar to A42.
+  - Do not stack changes on this failed source.
+- Current A45a candidate:
+  - SHA256 `424fa16e0f2b0a99435076fef184bb4781707e73b24972b7bc32854eb32ca6b2`.
+  - Keeps full `32x32` L0C->L1 writeback and replaces only the two post-writeback `X @ I16` packed-to-result copies with packed L1 sub-block direct copy.
+- A45a result:
+  - build/install PASS, `S=64/256` PASS, `S=1024` FAIL with near-zero out/state.
+  - No baseline saved.
+- A45a2 result:
+  - SHA256 `43d60696d792c9819cfa3971708ffa9543844f3909f6dad27047fa8011a6d61c`.
+  - build/install PASS, `S=1024` FAIL with the same near-zero out/state pattern.
+  - No baseline saved.
+- A45a3 result:
+  - SHA256 `e42e13abbacc8103ddee99fb3e1e24c408e84aa6b6aa3f8abbfacc643963baac`.
+  - build/install PASS, `S=64/256/1024` PASS.
+  - full compare FAIL: `15 passed, 1 failed`, failing case `b2_t256_h32_h8_d64`.
+  - Failure is `out` only; `state` PASS. Worst `out` actual is near zero (`3.017e-07`) while expect is about `1.160e-01`.
+  - No baseline saved.
+- A45b result:
+  - SHA256 `36e201ac34295257a5a8918982d337bfa5bd3e04128fcb0e386244b88f4fc17e`.
+  - Correct CGDR package rebuilt after a transient `tri_inverse` build-cache collision.
+  - package SHA256 `a6d8ed0a182cf7336a4fda007facd74bf9029dc84f39a2e9615de9291e7a61c9`.
+  - installed `libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`.
+  - `S=1024` timeout after 120s, exit code `124`; no baseline saved.
+  - Conclusion: direct L0C top-left partial copy-out remains unsafe even with final flag and immediate sync.
+- A45c result:
+  - SHA256 `7bd77182344d14e6787b14079ff257a12c275c46d19bf279483dbbc99f7bcb37`.
+  - build PASS after package hash drift was detected and rebuilt from source.
+  - package SHA256 `42bb850654d1a0b21e5fd8ef37a9e1615c7ac0db0521c3a80bf7e7c86266d0eb`.
+  - waited for a concurrent `tri_inverse` install/test process before installing CGDR.
+  - installed `libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`; installed symbols/kernels were CGDR/Neumann only.
+  - `S=64` timeout after 90s, exit code `124`; no baseline saved.
+  - Conclusion: L1->UB->L1 packed32 two-lane copy-out is also unsafe for active A45.
+- A45 deferred:
+  - direct L0C partial, scalar L1 sub-block, and L1->UB->L1 candidates all failed.
+  - Do not enter A46 from any A45 candidate source.
+  - Active source restored to A44 SHA256 `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`.
+- A46 result:
+  - SHA256 `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`.
+  - A46 initial candidate merged `(16,0)` and `(48,32)` first-layer lower-left preload but failed `S=1024` with out near zero.
+  - A46b added `SyncMte2ToMte1()` before the separate `(32,0)` second-layer preload.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.56s`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_baseline.h`.
+- A47 result:
+  - SHA256 `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`.
+  - `P8Compose64From32Direct32()` remains packed `32x32`.
+  - Formula unchanged: `tmp = lower @ topInv`, `out = bottomInv @ tmp`.
+  - Fixed `32x32` packed L1->L0 load helpers replace only the second-layer generic extraction; tmp L1 lifetime, result64 writeback, BF16/resident/RHS are unchanged.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.18s`.
+  - performance ratios: `1.368 / 1.995 / 2.797 / 2.807`.
+  - Compared with A46 (`1.318 / 1.976 / 2.778 / 2.840`), A47 is worse on small/medium sizes and better at `S=10240`.
+- A48 result:
+  - SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`.
+  - `StorePackedL1InverseToBf16Attn()` keeps the lower 10 real inverse blocks as per-`16x16` BF16 writeback, but merges the upper 6 zero blocks into three row-suffix zero rectangles.
+  - The row-suffix zero helper keeps `PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)` after zero preparation to preserve the MMAD/Fixpipe visibility boundary.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.27s`.
+  - performance ratios: `1.278 / 1.960 / 2.745 / 2.778`.
+  - Compared with A47 (`1.368 / 1.995 / 2.797 / 2.807`), A48 improves all four profiled sizes.
+- A48 remains the preferred performance rollback surface.
+- A49 result:
+  - SHA256 `337b86df5435578536c3b95ce38423aaf4f0592e223456a8f8a9382e2743d149`.
+  - `StorePackedL1InverseToBf16Attn()` row-prefix writeback enabled only for lower columns `16/32/48`; `cols=64` remains old per-`16x16`.
+  - Full `cols=64` row-prefix failed at `S=1024` and must not be retried as A49.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.21s`.
+  - performance ratios: `2.196 / 4.441 / 5.804 / 5.900`.
+  - A49 is correctness-safe but not a performance baseline; root cause is repeated `PrepareHalfL1IdentityByMmad(cols)` for `I32/I48`.
+- A50 result:
+  - SHA256 `4c995b59523e8e87069da1a38692567d0eee99ac9a8a30ee1cec8f83d6f6208a`.
+  - `CopyPackedHalfL1RowPrefixToGmBf16()` keeps the A49 row-prefix range but uses `EnsurePacked64Identity()` + `aicHalfL1Identity64_` with `chunkSize_` RHS stride.
+  - First build hit a generated kernel_meta missing-object FATBIN failure; after clearing stale generated files, rebuild PASS.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.16s`.
+  - package `/tmp/cgdr_a50_identity64_rowprefix_20260512_124019.run`, package SHA256 `0b7308bff932c3c2eb5cb932fee76654b7386fcefc9a2a8cff800edd5967dbf1`.
+  - isolated OPP `/tmp/cgdr_a50_identity64_rowprefix_opp_20260512_124019/vendors/custom_transformer`.
+  - installed object SHA256 `b26efc75e743a2f161d260b7abd03701da39814bb5a9ae75ef30d583c9f98d12`.
+  - performance ratios: `1.275 / 1.965 / 2.768 / 2.804`.
+  - A50 fixes A49's large regression, but A48 remains better at long sequence sizes.
+- A51 initial result:
+  - SHA256 `27a94981ec45dce4c3cd12236364a785e59b380e2141cc9ad69b474e65c82b69`.
+  - `CopyPackedHalfL1BlockToGmBf16()` fully reused `aicHalfL1Identity64_` for block writeback.
+  - build/install PASS, `S=64/256` PASS, `S=1024` FAIL with out/state near-zero.
+  - No baseline saved.
+- A51a result:
+  - SHA256 `09e7a24a955263e9464aa6008c5aed92d20b76e1d6cde24f18b1e5e91299586f`.
+  - Added post-identity syncs before MMAD.
+  - build/install PASS, `S=64/256` PASS, `S=1024` FAIL with out near-zero and state PASS.
+  - No baseline saved.
+- A51b result:
+  - SHA256 `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`.
+  - Only rows `0/16/32` in `CopyPackedHalfL1BlockToGmBf16()` reuse `aicHalfL1Identity64_`; row `48` keeps the A48 `I16` path.
+  - build/install PASS, `S=64/256/1024` PASS, full compare PASS `16 passed in 6.20s`.
+  - package `/tmp/cgdr_a51b_identity64_blockwrite_partial_20260512_131120.run`, package SHA256 `c958109eedf875798f3fe0624369d690bae3394875f0d595a06161c2e21ac6e9`.
+  - isolated OPP `/tmp/cgdr_a51b_identity64_blockwrite_partial_20260512_131120_opp/vendors/custom_transformer`.
+  - installed active header SHA256 `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`.
+  - performance ratios: `1.317 / 1.935 / 2.743 / 2.792`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A51b improves `S=512/2048` slightly but regresses `S=64/10240`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA51b_bf16_blockwrite_partial_identity64_baseline.h`.
+- A52 result:
+  - SHA256 `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`.
+  - Restored from A48 and removed only `SetHF32Mode(HF32Mode::DISABLE);` from `RestoreRawMmadState()`.
+  - All other raw-MMAD state restore fields, P7/P8 formulas, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - build/install PASS, installed active header SHA256 matched source.
+  - `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 7.07s`.
+  - performance ratios: `1.299 / 1.945 / 2.749 / 2.793`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A52 improves only `S=512` and is slightly worse at `S=64/2048/10240`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA52_restore_hf32_singlefield_baseline.h`.
+- A53 result:
+  - SHA256 `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`.
+  - Removed only `SetHF32TransMode(HF32TransMode::NEAREST_EVEN);` from `RestoreRawMmadState()`.
+  - All other raw-MMAD state restore fields, P7/P8 formulas, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - build/install PASS, installed active header SHA256 matched source.
+  - `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.15s`.
+  - performance ratios: `1.271 / 1.955 / 2.755 / 2.789`.
+  - Compared with A52 (`1.299 / 1.945 / 2.749 / 2.793`), A53 improves `S=64/10240` but regresses `S=512/2048`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A53 improves only `S=64/512` and is worse at long sequence sizes.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA53_restore_hf32trans_singlefield_baseline.h`.
+- A54 result:
+  - SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`.
+  - Removed only `SetMMLayoutTransform(false);` from `RestoreRawMmadState()`.
+  - `RestoreRawMmadState()` now contains only `SetAtomicNone();` and `SetNdParaImpl(0x1);`.
+  - `PrepareRawMmadState()` still keeps padding, nd para, HF32 mode, HF32 trans mode, and MM layout transform.
+  - P7/P8 formulas, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - package `/tmp/cgdr_a54_restore_mmlayout_singlefield_20260512_134540.run`, package SHA256 `05ac1c2cb82891ce4161220a104a1f6811fd30c49eb78f279fc11dfae9e8e1bd`.
+  - isolated OPP `/tmp/cgdr_a54_restore_mmlayout_singlefield_20260512_134540_opp/vendors/custom_transformer`.
+  - installed active header SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`.
+  - installed Neumann object SHA256 `fd914a7d6249a1298896cf0e421a073e486b8164d3178d94457aef835816350a`.
+  - build/install PASS, `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.19s`.
+  - performance ratios: `1.322 / 1.915 / 2.746 / 2.778`.
+  - Compared with A53 (`1.271 / 1.955 / 2.755 / 2.789`), A54 improves `S=512/2048/10240` but regresses `S=64`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A54 improves only `S=512`; `S=2048/10240` are effectively flat and `S=64` regresses.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA54_restore_mmlayout_singlefield_baseline.h`.
+- A55 result:
+  - SHA256 `ca7b044e48fd7c3d1553fe60479e6b9684369847963335eacd8eb14bfc8c4aac`.
+  - Removed only `SetNdParaImpl(0x1);` from `RestoreRawMmadState()`.
+  - `RestoreRawMmadState()` now contains only `SetAtomicNone();`.
+  - `PrepareRawMmadState()` still keeps padding, nd para, HF32 mode, HF32 trans mode, and MM layout transform.
+  - P7/P8 formulas, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - package `/tmp/cgdr_a55_restore_ndpara_singlefield_20260512_135630.run`, package SHA256 `4d4a92c144f536398cf6fbeb096a3983f32f937ca363ed7f635630ac939805a4`.
+  - isolated OPP `/tmp/cgdr_a55_restore_ndpara_singlefield_20260512_135630_opp/vendors/custom_transformer`.
+  - installed Neumann object SHA256 `dec83cd36b255e0dc93bdf99a543f93818a0e7d68a72662786c7db5bdf3c0689`.
+  - build/install PASS, `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.15s`.
+  - performance ratios: `1.291 / 1.925 / 2.750 / 2.802`.
+  - Compared with A54 (`1.322 / 1.915 / 2.746 / 2.778`), A55 improves `S=64` but regresses `S=512/2048/10240`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A55 improves only `S=512`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA55_restore_ndpara_singlefield_baseline.h`.
+- A56 result:
+  - SHA256 `5646df25a94ee35f030bff0ef756c284738927fb7fe212afe5ae51dbe94c6bfb`.
+  - Removed only `SetAtomicNone();` from `RestoreRawMmadState()`.
+  - `RestoreRawMmadState()` is now empty.
+  - `PrepareRawMmadState()` still keeps padding, nd para, HF32 mode, HF32 trans mode, and MM layout transform.
+  - P7/P8 formulas, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - package `/tmp/cgdr_a56_restore_atomicnone_singlefield_20260512_141651.run`, package SHA256 `61fc3e1f4f27a9cb581290686980e58d4feebd5d8904c91c4ed5714fa8cfce27`.
+  - isolated OPP `/tmp/cgdr_a56_restore_atomicnone_singlefield_20260512_141651_opp/vendors/custom_transformer`.
+  - installed Neumann object SHA256 `3ec083c63e026930057e19f40c2dde3e8a697724d621bd12546ee03d6647f87c`.
+  - build/install PASS, `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.16s`.
+  - performance ratios: `1.335 / 1.945 / 2.743 / 2.791`.
+  - Compared with A55 (`1.291 / 1.925 / 2.750 / 2.802`), A56 improves `S=2048/10240` but regresses `S=64/512`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A56 improves `S=512/2048` but regresses `S=64/10240`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA56_restore_atomicnone_singlefield_baseline.h`.
+- A57 result:
+  - SHA256 `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`.
+  - Removed only the repeated `SetHF32Mode(HF32Mode::DISABLE);` inside `MmadPacked64DiagOnly()` before each packed64 diagonal MMAD.
+  - `PrepareRawMmadState()` still keeps the canonical HF32 disable setup at `C64InverseBy16x16Neumann()` entry.
+  - P7/P8 formulas, packed layout, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - package `/tmp/cgdr_a57_p7_diag_mmad_no_hf32_cgdrpkg_20260512_143719.run`, package SHA256 `a498e72d04e2547a28c3de28c452a390674f20441604bda1ac588948c4c8accb`.
+  - isolated OPP `/tmp/cgdr_a57_p7_diag_mmad_no_hf32_cgdrpkg_20260512_143719_opp/vendors/cgdr_a57_transformer`.
+  - installed active header SHA256 `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`.
+  - installed Neumann object SHA256 `b66226f1ab02bd3c903edf05600a8b08b72a866cf46e83e666ee466545061fea`.
+  - build/install PASS, `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.21s`.
+  - performance ratios: `1.293 / 1.920 / 2.746 / 2.800`.
+  - Compared with A56 (`1.335 / 1.945 / 2.743 / 2.791`), A57 improves `S=64/512` but regresses slightly at `S=2048/10240`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A57 improves only `S=512`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA57_p7_diag_mmad_no_hf32_baseline.h`.
+- A58 result:
+  - SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`.
+  - Removed only the repeated `SetHF32Mode(HF32Mode::DISABLE);` inside `MmadPacked32()` before P8 packed32 MMAD calls.
+  - `PrepareRawMmadState()` still keeps the canonical HF32 disable setup at `C64InverseBy16x16Neumann()` entry; generic copy/layout helpers keep their own HF32 setup.
+  - P7/P8 formulas, packed layout, BF16/resident/RHS, Stage2/Stage3/QK, and `gBK/vBeta` are unchanged.
+  - first build hit a generated kernel_meta missing-object FATBIN failure; after `bash ../../build.sh --make_clean`, rebuild PASS.
+  - package `/tmp/cgdr_a58_p8_packed32_mmad_no_hf32_20260512_145328.run`, package SHA256 `fd1a01aeaec2823ad0229b41a7e88f27085466ed01f4a56975bae95985a3694c`.
+  - isolated OPP `/tmp/cgdr_a58_p8_packed32_mmad_no_hf32_20260512_145328_opp/vendors/cgdr_a58_transformer`.
+  - installed active header SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`.
+  - installed Neumann object SHA256 `482d1ea374283b43900330f48ffc1fe80a8513e260179e162e19869befda48f3`.
+  - build/install PASS, `S=64/256/1024` sequential smoke PASS, full compare PASS `16 passed in 6.41s`.
+  - performance ratios: `1.313 / 1.905 / 2.737 / 2.776`.
+  - Compared with A57 (`1.293 / 1.920 / 2.746 / 2.800`), A58 improves `S=512/2048/10240` but regresses `S=64`.
+  - Compared with A48 (`1.278 / 1.960 / 2.745 / 2.778`), A58 improves `S=512/2048/10240` but regresses `S=64`.
+  - baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA58_p8_packed32_mmad_no_hf32_baseline.h`.
+
+## Comparison Notes
+
+- Added `docs/2026-05-12/TRI_INVERSE_VS_CHUNKGDN_INVERSE_GAP.md`.
+- This document is the current reference for comparing standalone `tri_inverse` pure inverse work against chunkGDN Stage1 inverse work.
+- Important boundary:
+  - pure inverse comparison excludes `FusedRhsAICProcess()`.
+  - resident L1 exposure is not mathematical inverse, but is still a chunkGDN output/consumer boundary that currently adds copy-out work.
+- Main missing chunkGDN optimizations recorded there:
+  - P8 lowerWork once/paired preload.
+  - P8 first-layer output placement.
+  - P7 full64 L0C copy-out reduction.
+  - identity64 independent persistent L1 buffer, not another prepared-flag extension.
+  - P8 final output direct-to-resident instead of late `StorePackedL1InverseToResidentL1()`.
+  - BF16 GM materialization row-prefix cleanup.
+
+## Latest Gate
+
+- A58 install PASS.
+- `S=64/256/1024` smoke PASS.
+- full compare PASS: `16 passed in 6.41s`.
+- baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA58_p8_packed32_mmad_no_hf32_baseline.h`
+  - SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`
+- performance:
+  - `tests/pytest/prof_out/packed64_phaseA58_p8_packed32_mmad_no_hf32_20260512/performance_compare.csv`
+  - neumann/normal ratios: `1.313 / 1.905 / 2.737 / 2.776`
+
+## Next
+
+- A58 is correctness-safe and improves long sequence ratios versus A48/A57, but regresses `S=64`; A48 remains the best small-sequence surface.
+- `RestoreRawMmadState()` is empty; `MmadPacked64DiagOnly()` and `MmadPacked32()` repeated HF32 setup are cleaned. Continue raw-MMAD setup cleanup only after identifying another single-field/one-dataflow candidate.
+- For resident/BF16 copy-out or the performance mainline, explicitly choose A48 preferred small-sequence baseline or A58 latest long-sequence/correctness baseline before editing.
+- Next work should address resident copy-out row-prefix visibility design, P8 second-layer tmp lifetime, P7 L0A no-transpose load, or another `RestoreRawMmadState()` single-field cleanup as one gated phase.
+- Do not mix BF16 GM materialization cleanup with resident RHS exposure cleanup in one phase.
+- Do not stack new unrelated work on A49/A50 BF16 lower row-prefix performance-regressed branch.
+- A45 remains deferred to later copy-out专项 with the current failure evidence.
+- A59 failed and is not a baseline:
+  - Candidate SHA256 `4ce3769b1b2ba8849461cfb8a837052f562134d7a61c23e4ea041d3db039cdcf`.
+  - Removed only `SetHF32Mode(HF32Mode::DISABLE);` inside `RawMmadPackedHalfL1AccumulateTile()`.
+  - build/install PASS, installed header SHA256 matched candidate, `S=64/256` PASS, `S=1024` FAIL on out while state PASS.
+  - Failure detail: CPU vs ChunkGDRNeumann out max_abs `9.486666e-02`, worst actual `-6.97374344e-06` vs expect `9.48596820e-02`.
+  - Keep the local HF32 setup in this generic copy/layout helper unless a later phase proves a narrower safe lifecycle placement.
+- Full gate remains:
+  - build package
+  - install package
+  - `S=64 -> S=256 -> S=1024`
+  - full compare
+  - performance record
+  - save baseline only after compare PASS
+
+## A60 Result
+
+- Starting point is A58 latest correctness-safe baseline SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`.
+- A60 SHA256 `5d2cfb3d95a6974f92b4f4d37be3e17c421ea0115ec3f4e1d498d9201f54c773`.
+- Single-point change: `LoadPacked64DiagonalInputsToL1()` strict full64 branch clears only upper-triangular 6 `16x16` fractals of `aicHalfL1P3Result_`; tail/non-full64 keeps full `64x64` zero.
+- Scope guard: no BF16/resident/RHS/P7/P8 formula/L0C copy-out changes in this phase.
+- build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.12s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA60_result64_upper_zero_only_baseline.h`.
+- package SHA256 `4622ffd0df85c6780245fd24809700307b870b908a82b78c1b42602982e38160`; installed Neumann object SHA256 `fabad3def2466c4da32e191d205838c9721327101dcebae81ffacdbc3e49b8c3`.
+- performance ratios: `1.314 / 1.888 / 2.736 / 2.780`.
+- Compared with A58 `1.313 / 1.905 / 2.737 / 2.776`, A60 improves `S=512`, is effectively flat at `S=2048`, and slightly regresses `S=64/10240`.
+- A60 is the latest correctness continuation surface. A48 remains the preferred small-sequence rollback surface.
+
+## A61a Result
+
+- A61 audit found that the original P8 first-layer packed32 L1 tmp/result pre-zero cleanup was already covered:
+  - A19 removed the `tmp32` L1 pre-zero.
+  - A29 reduced P8 first-layer L0 clears to one-time clearing.
+- A61a SHA256 `dfa33e483b0661626f4835a388546b425581ff0455aed3d6cf2efbed7b4b01ac`.
+- Single-point change: `P8ComposeFirstLayerPacked32Direct()` clears packed32 L0 operands directly with `ZeroHalfL0()` instead of preparing/copying a zero tile from L1.
+- Scope guard: no P8 output-placement, direct resident, partial L0C copy-out, BF16/resident/RHS/P7/P8 formula, Stage2/Stage3/QK, or `gBK/vBeta` changes.
+- build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.16s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA61a_p8_first_layer_direct_l0_zero_baseline.h`.
+- Performance attempts:
+  - `tests/pytest/prof_out/packed64_phaseA61a_p8_first_layer_direct_l0_zero_20260512/performance_compare.csv`
+  - `tests/pytest/prof_out/packed64_phaseA61a_p8_first_layer_direct_l0_zero_ld_20260512/performance_compare.csv`
+  - both are empty and not trusted.
+- Environment issue:
+  - top-level default install `op_api/lib/libcust_opapi.so` lacks `aclnnChunkGatedDeltaRule*` symbols.
+  - nested historical `vendors/custom_transformer` copies still contain those symbols.
+  - performance must be rerun from a clean or isolated OPP root before recording ratios.
+- A61a is the latest correctness continuation surface. A48 remains the preferred small-sequence performance rollback surface.
+
+## A63a Result
+
+- Starting point is A61a clean baseline SHA256 `dfa33e483b0661626f4835a388546b425581ff0455aed3d6cf2efbed7b4b01ac`.
+- A63a SHA256 `ca6bc32ca4f80bc093a0b293c0bbd20dcf5b24f3a88a7dc0c594b2804f8a66b5`.
+- Single-point change:
+  - `L_powHalfWsGm_` AIV scratch writeback writes only the diagonal `32x32` half instead of `32x64`.
+  - `INVInitHalfWsGm_` AIV scratch writeback writes subBlock0 `32x32` and subBlock1 `32x64`.
+- Correctness-critical detail:
+  - CopyOut `srcStride` is UB-side 32B units.
+  - CopyOut `dstStride` is GM-side bytes.
+  - the earlier byte-`srcStride` candidate SHA `60e326...` failed at `S=64` and is not a baseline.
+- Scope guard:
+  - no P7/P8 formula change.
+  - no BF16/resident/RHS/Stage2/Stage3/QK/`gBK/vBeta` change.
+- build/install PASS, isolated OPP PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.28s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA63a_aiv_scratch_rect_write_baseline.h`.
+- package `/tmp/cgdr_a63a_srcstride_20260512_171721.run`, package SHA256 `0f3a4aa4a99edfb102738feaf6da48cd64fd7c55375bd19cc82fcb344d51d96c`.
+- isolated OPP `/tmp/cgdr_a63a_srcstride_20260512_171721_opp/vendors/custom_transformer`.
+- installed Neumann object SHA256 `920bacc66168f28101c2e1fedc38fd609c3f4abdf1e8b94f816b34a07f5cc833`.
+- performance ratios: `1.244 / 1.948 / 2.710 / 2.775`.
+- A63a is the latest correctness continuation surface and current preferred performance baseline.
+
+## A64 Result
+
+- Starting point is A63a clean baseline SHA256 `ca6bc32ca4f80bc093a0b293c0bbd20dcf5b24f3a88a7dc0c594b2804f8a66b5`.
+- A64 SHA256 `9db43aa3868a7e2c9384b58b328dd4e4b8ed19a5b061a761b529d2abd97d0a2c`.
+- Single-point change:
+  - `StorePackedL1InverseToResidentL1()` clears only the resident upper triangular 6 `16x16` blocks.
+  - lower 10 resident blocks still use the existing `CopyHalfL1PackedBlockToCompact()` materialization.
+- Scope guard:
+  - no `FusedRhsAICProcess()` input or RHS math change.
+  - no BF16 GM materialization, P8 final output placement, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- build/install PASS, isolated OPP PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.20s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA64_resident_upper_zero_only_baseline.h`.
+- package `/tmp/cgdr_a64_resident_upper_zero_20260512_173829.run`, package SHA256 `aee16480d5a94585956bb1aa619f91bb4f1287ef4743c299e75b228ff400f0a0`.
+- isolated OPP `/tmp/cgdr_a64_resident_upper_zero_20260512_173829_opp/vendors/custom_transformer`.
+- installed Neumann object SHA256 `a76ef23e33a9d81859e5ce9c5ddc781413078f20a89a41005190a1b1d43327ec`.
+- performance ratios: `1.239 / 1.916 / 2.740 / 2.786`.
+- A64 is the latest correctness continuation surface.
+- A64 improves `S=64/512` versus A63a, but regresses `S=2048/10240`; keep A63a as the all-shape preferred performance baseline.
+
+## A65a Result
+
+- Starting point is A64 clean baseline SHA256 `9db43aa3868a7e2c9384b58b328dd4e4b8ed19a5b061a761b529d2abd97d0a2c`.
+- A65a SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`.
+- Single-point change:
+  - `ZeroHalfL1NoSync()` split out from `ZeroHalfL1()`;
+  - resident upper 6 block zero now uses `ZeroPacked64UpperTriangularBlocksSingleSync()`.
+- Scope guard:
+  - no BF16 GM materialization, resident lower 10 block copy, RHS, P7/P8 formula, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- build/install PASS, isolated OPP PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.22s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA65a_resident_upper_zero_single_sync_baseline.h`.
+- package `/tmp/cgdr_a65a_20260512_175433.run`, package SHA256 `25f6075f3e5904f539bb5658bdf83fd8821deddf513b97ebf21da61db19da2a3`.
+- isolated OPP `/tmp/cgdr_a65a_opp_20260512_175433/vendors/custom_transformer`.
+- installed Neumann object SHA256 `caefe7792d2b894839b0fad4bc251579495a89956cf6491a3f444cddd8dca7ab`.
+- performance ratios: `1.209 / 1.881 / 2.734 / 2.787`.
+- A65a is the latest correctness continuation surface.
+- A65a improves `S=64/512/2048` versus A64 and is essentially flat at `S=10240`; keep A63a as the all-shape preferred performance baseline.
+
+## A65b Result
+
+- A65b SHA256 `8883db05bb1a0ce4c642bb3637429b20339e5d1e15c43954a6ffd3619c340c55`.
+- Single-point change:
+  - `LoadPacked64DiagonalInputsToL1()` strict full64 branch uses `ZeroPacked64UpperTriangularBlocksSingleSync(aicHalfL1P3Result_)`.
+  - no resident lower copy, BF16 GM materialization, RHS, P7/P8 formula, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA65b_result64_upper_zero_single_sync_baseline.h`.
+- performance ratios: `1.258 / 1.911 / 2.742 / 2.785`.
+- A65b is correctness-safe but performance-regressed versus A65a `1.209 / 1.881 / 2.734 / 2.787`.
+- Active source restored to A65a SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`; continue from A65a unless a future phase explicitly chooses otherwise.
+
+## Next Boundary
+
+- Do not retry A66 as a single coalesced L0A no-transpose load:
+  - A40 already proved L0B transpose one-shot load is safe.
+  - A40/A66 proved L0A no-transpose one-shot `repeatTimes=4, srcStride=5, dstGap=4` fails at `S=1024`.
+  - Current safe shape remains L0A two paired loads plus L0B one coalesced load.
+- `RestoreRawMmadState()` is already empty in A65a; do not redo A52-A58 cleanup.
+- The next useful candidate should avoid A65b/A66 and choose one bounded point, such as resident copy-out visibility design, P8 second-layer tmp lifetime, or a BF16/resident lower true-inverse replay reduction.
+
+## A66 Result
+
+- A66 SHA256 `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`.
+- Single-point change:
+  - removed `preparedHalfIdentityBlockSize_ = 0` at the end of `P8ComposeFirstLayerPacked32Direct()`;
+  - removed `preparedHalfIdentityBlockSize_ = 0` immediately before `StorePackedL1InverseToBf16Attn()`;
+  - kept the final reset after `StorePackedL1InverseToResidentL1()`.
+- Intent:
+  - keep the `I16` half identity cache across P8 packed32 output copy, BF16 materialization, and resident materialization inside the same raw-MMAD inverse epoch.
+- Scope guard:
+  - no P7/P8 formula change.
+  - no BF16/resident writeback shape change.
+  - no final RHS, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.17s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA66_identity16_cache_keep_baseline.h`.
+- package `/tmp/packed64_phaseA66_identity16_cache_keep_20260512_185151.run`, package SHA256 `7613b0fffd744f4b15c37c3d7d108fdf7c47f2ad49303311f6cd1f98e4e47cae`.
+- isolated OPP `/tmp/packed64_phaseA66_identity16_cache_keep_20260512_185151_opp/vendors/custom_transformer`.
+- installed Neumann object SHA256 `7613edee5a2f3301813a0e8641940ae26400e9d14a90947bf03290f7e1a8bd0a`.
+- performance ratios: `1.244 / 1.778 / 2.528 / 2.561`.
+- A66 is the latest correctness continuation surface and current all-shape preferred performance baseline.
+- Compared with A65a `1.209 / 1.881 / 2.734 / 2.787`, A66 regresses `S=64` but improves `S=512/2048/10240`.
+
+## Next Boundary After A66
+
+- Continue from A66 unless a later phase explicitly chooses a different rollback surface.
+- Avoid the already blacklisted paths:
+  - A65b as default continuation.
+  - A26/A27 resident direct copy or same-L0C BF16+resident dual Fixpipe.
+  - A40/A66 single coalesced L0A no-transpose load.
+  - removing `RawMmadPackedHalfL1AccumulateTile()` local HF32 setup.
+- Next useful candidates:
+  - resident copy-out visibility design without direct L1-to-L1 full copy.
+  - P8 second-layer tmp lifetime reduction.
+  - BF16/resident lower true-inverse replay reduction as a small isolated change.
+
+## A67 Result
+
+- A67 SHA256 `146d13040989a98f23436a083769b1a925fc8f91e9e0c25691f993c479acfbfe`.
+- Single-point change:
+  - removed the final `preparedHalfIdentityBlockSize_ = 0` at the end of `C64InverseBy16x16Neumann()`.
+- Intent:
+  - keep the `I16` half identity cache across multiple `paraIdx` iterations inside the same `ParaChunkAIC()` inverse loop.
+  - existing invalidation remains at `ParaChunkAIC()` inverse-window start, `InitRawMmadLocalBuffers()`, and `RestoreStage1MatmulLocalBuffers()`.
+- Scope guard:
+  - no P7/P8 formula change.
+  - no BF16/resident writeback shape change.
+  - no final RHS, Stage2/Stage3/QK, or `gBK/vBeta` change.
+- build/install PASS, `S=64/256/1024` smoke PASS, full compare PASS `16 passed in 6.18s`.
+- Baseline saved as `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA67_identity16_cross_para_keep_baseline.h`.
+- package `/tmp/packed64_phaseA67_identity16_cross_para_keep_20260512_190504.run`, package SHA256 `7d7f48185a28b9038506e7087e262a49d9b0a39f69de1f3cddf05997fd0e4560`.
+- isolated OPP `/tmp/packed64_phaseA67_identity16_cross_para_keep_20260512_190504_opp/vendors/custom_transformer`.
+- installed active Stage1 header SHA256 `146d13040989a98f23436a083769b1a925fc8f91e9e0c25691f993c479acfbfe`.
+- installed Neumann object SHA256 `edcae896cbcaf76bda7ce5730eac6c58fad9c7619c57e98c4b5d50528a3b87bb`.
+- performance CSV `tests/pytest/prof_out/packed64_phaseA67_identity16_cross_para_keep_20260512/performance_compare.csv`, SHA256 `8de471eab5f6c91e5529f5628c0d61ff46c6e23086a05d16bdd3a02a21e7d08e`.
+- performance raw CSV `tests/pytest/prof_out/packed64_phaseA67_identity16_cross_para_keep_20260512/performance_raw.csv`, SHA256 `70ca0b4d650bd8136f8017d38f4043dd9c614cdc98226299da137fb1c5237262`.
+- performance baseline note `docs/2026-05-12/A67_PERFORMANCE_BASELINE.md`.
+- performance ratios: `1.181 / 1.635 / 2.425 / 2.456`.
+- A67 is the latest correctness continuation surface and current all-shape preferred performance baseline.
+- Compared with A66 `1.244 / 1.778 / 2.528 / 2.561`, A67 improves all four profiled sizes.
+
+## Next Boundary After A67
+
+- Continue from A67 unless a later phase explicitly chooses a different rollback surface.
+- Next user-selected optimization remains lower true-inverse `X @ I16` replay reduction, but keep strict-lower and diagonal materialization separate.
+- Do not combine BF16 GM materialization cleanup with resident RHS exposure cleanup in one phase.
+
+## P8 First-Layer cInv/cTmp Accumulate Plan
+
+- Plan saved as `docs/2026-05-12/P8_FIRST_LAYER_CINV_CTMP_ACCUMULATE_PLAN.md`.
+- Starting active source SHA256 `1d23b34e174e24287b4046054bd6bce35fd68da23f18c031e45a55028b5bc328`.
+- First phase scope:
+  - keep P7 `cInv = aicL0C_` alive;
+  - use `cTmp = aicL0C_[C64_L0C_TILE_ELEMS]`;
+  - replace only P8 first-layer output path with full64 sparse MMAD accumulation into `cInv`;
+  - full64 Fixpipe `cInv` back to `aicHalfL1P3Result_` so current second-layer remains unchanged.
+- Formula remains `tmp = lowerNeg @ topInv`, `out = bottomInv @ tmp`; do not add another negative sign because `INVInit` lower is already `-L`.
+- Avoid partial L0C copy-out in this phase because A42/A45 already showed that path is unsafe.
+- Gate remains build/install, `S=64/256/1024`, full compare, then performance.

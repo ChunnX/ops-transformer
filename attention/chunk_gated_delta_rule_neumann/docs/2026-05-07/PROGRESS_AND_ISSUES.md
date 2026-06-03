@@ -1,0 +1,153 @@
+# 2026-05-07 进度与问题
+
+## 已完成
+
+- 已按 `FULLLOCALNEW_DIRECT_MIGRATION_PLAN.md` 建立 `op_kernel/fulllocalnew/` 迁移落点。
+- 已将 active selector 切到 `fulllocalnew/C16_FP16/chunkSize=16`。
+- 已完成 `fulllocalnew/C16_FP16` 的构建和安装。
+- 已将 `GammaCompute()` 中错误实验恢复为 `Sub + Exp`。
+- 全量 compare 已从初始安装前的 `20 failed` 收敛到安装后的 `16 passed, 4 failed`。
+- 已按用户要求跑通 `origin/latest_gdr_baseline`：
+  - 基线使用最新 `attention/chunk_gated_delta_rule` BF16 主链路代码。
+  - `CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash test_run.sh compare`，结果 `20 passed in 6.23s`。
+  - `ChunkGDR vs ChunkGDRNeumann` 的 `out/state max_abs=0`。
+- 已创建并验证 `fulllocalnew/C64_1616_FP16`：
+  - active selector 当前为 `fulllocalnew/C64_1616_FP16/chunkSize=64`。
+  - `StageOneMT` 与 final RHS 保持新版 BF16 matmul。
+  - 求逆内部使用 FP16 half L1/TSCM resident Neumann/compose。
+  - AIC 求逆后由 AIV 将 FP32 `INVWsGm_` cast 到 BF16 `attnWsGm_`，供 BF16 final matmul 使用。
+  - 构建、安装、全量 compare 已通过：`20 passed in 6.26s`。
+- 已完成 4 个典型 shape msprof smoke 性能对比：
+  - 结果目录：`tests/pytest/prof_out/fulllocalnew_c64_1616_fp16_typical_20260507/`。
+  - `B8,S16,D64,H16,Hkv4`：Neumann/normal `1.144x`。
+  - `B8,S64,D64,H16,Hkv4`：Neumann/normal `1.977x`。
+  - `B8,S125,D64,H16,Hkv4`：Neumann/normal `2.318x`。
+  - `B8,S2048,D128,H16,Hkv4`：Neumann/normal `3.751x`。
+  - 4/4 shape normal 更快。
+- 已复核当前 `baseline/C64_1616_FP16` 的 inverse 与后续 KV MM 数据流：
+  - 16x16 Neumann inner loop 在 half L1/TSCM + L0A/L0B/L0C 内执行。
+  - C64 compose 和 final KV MM 仍经过 GM workspace。
+  - inverse 结果先写 FP32 `INVWsGm_`，再由 AIV cast 写入 BF16 `attnWsGm_`；后续 `attn@gBK` 与 `attn@vBeta` 两个 BF16 matmul 分别从 `attnWsGm_` 读一次。
+- 已新增 `docs/2026-05-07/C64_1616_FAST_INVERSE_OPTIMIZATION_ORDER.md`，按当前 C64_1616 约束将后续改进点从简单到困难重新排序。
+- 已修正 RHS resident 口径：当前 `gBKWsGm_` / `vBetaWsGm_` 是 BF16 GM；P10 的难点不是 FP32->half，而是 BF16 GM RHS 到 AIC raw MMAD 可消费的片上 L1/NZ operand，或生成端直接产出片上 tile。
+- 已进一步修正 KVMM resident 口径：当前 MatmulImpl 本来也会搬运 BF16 `gBK/vBeta`，resident KVMM 的差异和潜在收益主要在 LHS，即避免 `attnWsGm_` materialize 以及两个 final matmul 重复读 `attnWsGm_`。
+- 已修正 P5/P7/P8 关系：P5 只是朴素 full-L1 compose correctness baseline，可直接由 P7 packed diagonal 与 P8 odd/even packed compose 替代为 fast inverse 主线。
+- 已完成 P1 前 baseline 复验：
+  - selector 为 `baseline/C64_1616_FP16/chunkSize=64`。
+  - 构建双算子包成功。
+  - 安装到 `/home/developer/Ascend/cann-9.0.0/opp` 成功。
+  - `CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash test_run.sh compare` 结果 `20 passed in 6.21s`。
+- 已完成 P1：AIV 直接生成 FP16 `L/I-L` 初始 scratch。
+  - selector 为 `fulllocalnew/C64_1616_FP16/chunkSize=64`。
+  - host workspace 同步改为 FP16 `L_pow` + FP16 初始 `INV` + FP32 `tmp` + FP32 final `INV`。
+  - AIC 侧消费 FP16 scratch，final RHS BF16 matmul 保持不变。
+  - 修复 32x32 materialize 边界污染：32x32 初始 inverse materialize 拆成四个 16x16 block；递归实现改为非递归 helper 以满足 AscendC 编译限制。
+  - 构建与安装成功。
+  - smoke：前四个顺序 case 和 `varlen_b4_5_16_31_64` 全部 PASS。
+  - 全量 compare：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.30s`。
+  - 典型 shape 性能目录：`tests/pytest/prof_out/fulllocalnew_c64_1616_fp16_p1_half_init_typical_20260507/`。
+  - 典型 shape Neumann/normal ratio：`S=16 1.329x`、`S=64 2.323x`、`S=125 2.961x`、`S=2048 5.260x`，4/4 normal 更快。
+- 已完成 P2：half identity cache。
+  - selector 保持 `fulllocalnew/C64_1616_FP16/chunkSize=64`。
+  - 新增 `preparedHalfIdentityBlockSize_`，`PrepareHalfL1IdentityByMmad(blockSize)` 在 blockSize 匹配时复用已准备好的 `aicHalfL1Identity_`。
+  - `InitRawMmadLocalBuffers()` 与 `RestoreStage1MatmulLocalBuffers()` 重置 identity cache，避免跨 pipe reset 或 matmul buffer 生命周期复用。
+  - 构建与安装成功。
+  - smoke：同一进程串行覆盖 `default_b1_t64_d128 / varlen_b2_17_65 / gqa_b2_nk2_nv4 / dims32_b2_t64 / varlen_b4_5_16_31_64`，全部 PASS。
+  - 全量 compare：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.35s`。
+  - 典型 shape 性能目录：`tests/pytest/prof_out/fulllocalnew_c64_1616_fp16_p2_identity_cache_typical_20260507/`。
+  - 典型 shape Neumann/normal ratio：`S=16 1.277x`、`S=64 1.732x`、`S=125 1.984x`、`S=2048 3.111x`。
+  - 相对 P1 的 Neumann 绝对耗时比：`S=16 0.988x`、`S=64 0.756x`、`S=125 0.684x`、`S=2048 0.593x`；P2 可作为 P3 基线。
+- 已完成 P3：inverse 内部 FP16 GM 化。
+  - selector 保持 `fulllocalnew/C64_1616_FP16/chunkSize=64`。
+  - `INVInitHalfWsGm_` 作为 inverse 内部可变 FP16 scratch，16x16 Neumann 输出与 16->32/32->64 compose 中间态均优先保留在 FP16 scratch。
+  - AIV final `attnWsGm_` 生成读取 FP16 scratch，采用 half -> float -> BF16 cast；final RHS 仍保持 BF16 `AICProcess(attnWsGm_, gBKWsGm_/vBetaWsGm_, ...)`。
+  - 构建与安装成功。
+  - smoke：`S=16/17/33/64/125` 全部 PASS。
+  - 全量 compare：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.25s`。
+  - 典型 shape 性能目录：`tests/pytest/prof_out/fulllocalnew_c64_1616_fp16_p3_half_internal_typical_20260507/`。
+  - 典型 shape Neumann/normal ratio：`S=16 1.234x`、`S=64 1.633x`、`S=125 1.957x`、`S=2048 3.056x`。
+  - 相对 P2 的 Neumann 绝对耗时比：`S=16 0.968x`、`S=64 0.931x`、`S=125 0.970x`、`S=2048 0.982x`；P3 可作为 P4 基线。
+- 已完成 P4：C64 full half L1/TSCM diagonal staging。
+  - 当前验收版本将 FP16 `L_powHalfWsGm_` / `INVInitHalfWsGm_` 搬入 C64 full half L1/TSCM，四个 16x16 diagonal inverse 走 full-L1 block Neumann。
+  - top-left `16->32`、lower-right `16->32` 和最终 `32->64` compose 均回退到已验证的 FP16 GM compose path；full-L1 compose 仍未验收。
+  - 构建与安装成功。
+  - smoke 覆盖 `S=16/17/33/48/49/63/64/65/125/129/160` 以及旧失败点 `B=1,S=129,seed=33`、`B=2,S=160,seed=40,nv=32`，全部 PASS。
+  - 全量 compare：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.23s`。
+  - P4 阶段典型性能目录：`tests/pytest/prof_out/fulllocalnew_c64_1616_fp16_p4_diag_full_l1_gm_compose_typical_20260507/`。
+  - P4 典型 shape Neumann/normal ratio：`S=16 1.284x`、`S=64 1.691x`、`S=125 2.159x`、`S=2048 3.452x`；4/4 normal 更快。
+- 已澄清当前 active 计算/搬运链路：
+  - AIV 生成 FP16 `L_powHalfWsGm_` / `INVInitHalfWsGm_`。
+  - AIC 以 16x16 compact half L1/TSCM 局部 resident 方式做 Neumann，并把结果写回 FP16 `INVInitHalfWsGm_`。
+  - 16->32 与 32->64 compose 仍以 FP16 GM block 作为输入/输出，只在单次 block MMAD 内局部使用 half L1/TSCM。
+  - AIV 从 FP16 inverse scratch cast 到 BF16 `attnWsGm_`。
+  - final RHS 仍是 BF16 GM `AICProcess(attnWsGm_, gBKWsGm_/vBetaWsGm_, ...)`。
+  - 当前 P4 是 full-L1 diagonal staging + FP16 GM compose fallback，不是完整 full-local compose。
+- 已按用户要求阅读 P7/P8 参考方案与代码：
+  - `pto-kernels v0.1.2` 的 `CopyDiagonalFractalsL1ToL0()` 将 16x16 diagonal fractal 打包到 L0 block-diagonal 位置，可用于 P7 packed diagonal inverse。
+  - `CopyOddOrEvenBlocksL1ToL0()` 将 even/odd diagonal blocks 分别打包到 L0A/L0B，对应 Unrolled-MBH 的 `LX/RX`，可用于 P8 packed compose。
+  - fast inverse 文章中的 MXR 路线是小对角块用 MCH/Neumann，随后用 MBH 结构化组装全矩阵；这比继续修朴素 full-L1 compose offset 更适合作为主线。
+- 已新增方案文档 `docs/2026-05-07/P7_P8_PACKED_FAST_INVERSE_PLAN.md`，记录 P7/P8 理解、当前代码映射、实施顺序和风险。
+- 已按用户提醒补充 P7/P8 `set2d` 口径：packed diagonal/even/odd tile 应优先用 `set2d` 批量清 L1 为 0，再填参与计算的 block，避免 off-diagonal 残留污染 packed MMAD。
+- 已复核 P3 初始 `I-L` 生成：仍沿用 Stage1 原有简单逻辑，AIV 生成 `L` 后 `Muls(-1)`，再把 diagonal `SetValue` 为 1；P3 没有复杂化初始矩阵生成，只是把输出落点改为 FP16 scratch。
+- 已完成 P8 scratch64 compose 并进入 active path：
+  - `P8ComposeBoth32From16Scratch64()` 用 64x64 FP16 L1 scratch 同时完成两个 `16->32` compose。
+  - `P8Compose64From32Scratch64()` 用 64x64 FP16 L1 scratch 完成最终 `32->64` compose。
+  - packed scratch 通过 `ZeroHalfL1()`/`InitConstValue` 批量清零，承接 `set2d` 批量清零方向，避免 off-diagonal 残留污染。
+- 已恢复 active 入口为 `P3 diagonal inverse + P8 scratch64 compose`：
+  - diagonal 16x16 inverse 仍使用 `Neumann16InverseBlock()`。
+  - P7 packed diagonal inverse 不进入 active path。
+  - final RHS 仍保持 BF16 GM `AICProcess(attnWsGm_, gBKWsGm_/vBetaWsGm_, ...)`。
+- P8 active 版本重新构建、安装、验证通过：
+  - build/install 成功。
+  - smoke `S=17/32/33/49/64/129` 全部 PASS。
+  - full compare `20 passed in 6.22s`。
+
+## 进行中
+
+- 范围已调整：放弃 `C16`，当前只关注 `C64_1616`。
+- 修改边界已执行：
+  - 不修改 Stage2/Stage3。
+  - Stage1 只允许修改求逆相关路径。
+  - 不再继续 `fulllocalnew/C16_FP16` 的 `out` 链路调试。
+- 当前可用 active 基线已回退为 P3：16x16 Neumann 输出与 16->32/32->64 compose 中间态保留在 FP16 GM scratch，full-L1 staging/compose 不在 active path。
+- 当前不再暂停在 diagonal staging：用户已修正规则，P4 必须以整个 fulllocal 改完为结束点。
+- full-L1 compose 仍是未验收问题；后续继续推进 compose resident，但期间只跑精度，不跑性能。
+- 新增强制 gate：每个优化必须单独 build/install、smoke 精度、全量 compare；精度通过后才能进入下一个优化，失败则停在当前优化点正向定位和修复。恢复 PASS baseline 只能用于明确放弃候选或重建干净工作面，不能作为任务完成方式。
+- 性能测试口径已修正：P4/full-local 改造期间不再跑性能；只有完整 fulllocal active path 通过精度后才跑一次典型 shape 性能并暂停。
+- 总规则已落到 `C64_1616_FAST_INVERSE_OPTIMIZATION_ORDER.md`：P4 子项/probe 只测精度，不测性能。
+- 当前源码 active path 已回退到 P3；`fulllocalnew` active 文件中的 P4 full-L1 resident compose/probe helper 已清理，只保留 P3 已通过路径。
+- 已保存并清理 P3 可用版本到 `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_p3_baseline.h`，该文件不再携带未通过的 P4 probe/helper。
+- 已新增通用精度定位 skill：`SKILL/fulllocal-compose-precision-debugging/SKILL.md`，用于 fulllocal/compose/resident/L1/TSCM/GM fallback/边界 shape 精度问题定位。
+- 当前 active path 已推进到 P8：`P3 16x16 diagonal inverse + P8 scratch64 compose`。
+- P7 packed diagonal inverse 仍在定位中，目前只保留 diagnostic helper，不作为 active path。
+- P7/P8 完整精度通过前不跑性能；当前只完成 P8 active 精度 gate，尚未跑 P8 阶段性能。
+
+## 阻塞项
+
+- 当前精度阻塞项：P7 packed diagonal inverse 未通过，不能进入 active path；active 保持 `P3 diagonal inverse + P8 scratch64 compose`，该组合全量 compare 通过。
+- P7 已知失败记录：
+  - 原始 packed 32 diagonal active 尝试在 `S=17` 精度失败。
+  - diagonal-only 写回诊断在 `S=17` 超时。
+  - full 32 block-diagonal MMAD 保守尝试在 `S=17` 精度失败。
+  - 当前判断问题更可能是 L0/L1 packed diagonal 写回或布局语义，而不是简单 compact offset 错误。
+- P4 完整 full-local compose 仍未通过；active 不采用朴素 P4 full-L1 compose。
+- 当前剩余技术阻塞：朴素 full-L1 compose 未通过验收。直接 full-L1 `32->64` compose 本轮仍在 `S=33` 失败，state `max_abs=9.669919e-02`；GM fallback 版本的 `S=16/17/33` PASS，说明 full-L1 diagonal 输入和最终写回链路可用，失败集中在 resident compose 本体。
+- P4 helper/probe 代码已从 `op_kernel/fulllocalnew/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_fulllocalnew.h` 和 `_p3_baseline` 中清理；后续若继续 full-L1 compose，必须重新按单项 gate 引入并单独验收，不能默认继承 P4 结论。
+- 已执行 P4 阶段典型 shape 性能 profiling，但尚未按单方案规则裁剪无关 `TilingData/MatmulTiling` 字段。
+- 后续性能放大前仍需按 AGENTS.md 规则裁剪无关 `TilingData/MatmulTiling` 字段，否则性能数据只能作 smoke 观察。
+- 性能主要风险仍是 GM materialization 与 tiny raw MMAD/Fixpipe/MTE 同步开销：当前不是 full-local resident，final KV MM 也没有直接消费片上 inverse。
+- P4 未完成；后续建议不再把朴素 full-L1 compose 作为主线，而是转向 P7 packed diagonal 与 P8 odd/even packed MBH compose。仍需单项 build/install/smoke/full compare，完整 fulllocal 通过后再跑一次阶段性能。
+- P7/P8 主要实现风险：当前 AscendC 代码没有直接使用 PTO tile API，不能逐行照搬 `TEXTRACT/TASSIGN/TMATMUL`；需要用现有 raw MMAD/local tensor 能力表达等价 packed L0 布局，并保证 L0A/L0B 内部布局、zero fill、tail validLen 和写回散布正确。
+- packed tile zero-fill 风险已明确：P7/P8 实现时不能依赖历史 buffer 内容，必须先清零 L1 packed scratch；`set2d` 是优先实现手段。
+- 禁止多个优化叠加后统一验收；未通过精度的优化不得作为后续优化基线。
+- 本轮没有跑性能，符合“P4 期间只测精度”的修正规则。
+
+## 下一步
+
+- 若继续推进，应单独定位 P7 packed diagonal inverse：
+  - 保持 P8 active 不变，先用 P3 diagonal inverse 作为可信对照。
+  - 做 P7 packed `block@I` / diagonal-only roundtrip，重点验证 L0A/L0B diagonal fractal load、L0C 写回、Fixpipe 子块散回和 L1/L0 zero-fill。
+  - 每次只打开一个 P7 子项，smoke 先覆盖 `S=16/17/33`，通过后再跑 full compare。
+- P8 已通过当前精度 gate；后续若只评估 P8 性能，需要先按单方案规则裁剪无关 TilingData/MatmulTiling 字段。
+- 后续只允许继续改求逆相关 helper；Stage2/Stage3、final RHS BF16 matmul、`gBK/vBeta` 生成链路保持不动。
+- 2026-05-07 用户追问“还不是 fulllocal 为什么停下”：已澄清当前暂停是阶段 gate，不代表完整 fulllocal 完成；剩余核心难点是 `16->32`/`32->64` compose resident 闭环的完整 64 chunk 正确性，以及最终 LHS resident 与当前 BF16 GM final RHS 边界之间的取舍。
