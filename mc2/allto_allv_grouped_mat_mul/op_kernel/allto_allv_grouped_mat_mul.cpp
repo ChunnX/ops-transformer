@@ -65,11 +65,6 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     if (workspaceGM == nullptr) {
         return;
     }
-    SetSysWorkspace(workspaceGM);
-    GM_ADDR userWorkspace = GetUserWorkspace(workspaceGM);
-    if (userWorkspace == nullptr) {
-        return;
-    }
     TPipe pipe;
 
     REGISTER_TILING_DEFAULT(AlltoAllvGmmTilingData);
