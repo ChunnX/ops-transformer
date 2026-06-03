@@ -24,7 +24,7 @@ class InterleavedSplitBSNPad {
 public:
     __aicore__ inline InterleavedSplitBSNPad(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                const RopeRegbaseTilingData *tiling, TPipe *pipe);
+                                const InplacePartialRopeRegbaseTilingData *tiling, TPipe *pipe);
     __aicore__ inline void Process();
 
 protected:
@@ -39,7 +39,7 @@ protected:
     TBuf<TPosition::VECCALC> tmpFp32Buf2;
     TBuf<TPosition::VECCALC> tmpFp32Buf3;
     TBuf<TPosition::VECCALC> gatherOffsetBuf;
-    const RopeRegbaseTilingData* tiling_;
+    const InplacePartialRopeRegbaseTilingData* tiling_;
 
     // tilingdata
     uint64_t batchSize;
@@ -71,7 +71,7 @@ protected:
     uint64_t bufferLenSize;
     uint64_t gatherOffsetLenSize;
 
-    __aicore__ inline void InitData(const RopeRegbaseTilingData *tiling);
+    __aicore__ inline void InitData(const InplacePartialRopeRegbaseTilingData *tiling);
     __aicore__ inline void CopyInX(LocalTensor<T> &x, uint32_t batchIdx, uint32_t seqIdx, uint32_t numHeadsIdx,
                                    uint32_t calcLen);
     __aicore__ inline void CopyInCos(LocalTensor<T> &cos, uint32_t seqIdx, uint32_t calcLen);
@@ -85,7 +85,7 @@ protected:
 
 template <typename T>
 __aicore__ inline void InterleavedSplitBSNPad<T>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                                       const RopeRegbaseTilingData *tiling, TPipe *pipe)
+                                                       const InplacePartialRopeRegbaseTilingData *tiling, TPipe *pipe)
 {
     InitData(tiling);
 
@@ -129,7 +129,7 @@ __aicore__ inline void InterleavedSplitBSNPad<T>::Init(GM_ADDR x, GM_ADDR cos, G
 }
 
 template <typename T>
-__aicore__ inline void InterleavedSplitBSNPad<T>::InitData(const RopeRegbaseTilingData *tiling)
+__aicore__ inline void InterleavedSplitBSNPad<T>::InitData(const InplacePartialRopeRegbaseTilingData *tiling)
 {
     tiling_ = tiling;
     batchSize = tiling_->batchSize;

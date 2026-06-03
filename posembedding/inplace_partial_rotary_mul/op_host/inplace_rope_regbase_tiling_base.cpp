@@ -37,7 +37,7 @@ const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::
 
 namespace optiling {
 using namespace Ops::Base;
-ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
@@ -48,7 +48,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
         aicoreParams_.ubSize = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     } else {
-        auto compileInfoPtr = reinterpret_cast<const RotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
+        auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -58,7 +58,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckNullptr()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckNullptr()
 {
     for (int64_t i = 0; i <= SIN_INDEX; i++) {
         auto desc = context_->GetInputDesc(i);
@@ -73,7 +73,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckNullptr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive(const int64_t idx) const
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckShapeAllPositive(const int64_t idx) const
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
@@ -88,20 +88,20 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive(const int64_t idx)
     }
     return ge::GRAPH_SUCCESS;
 }
-bool RopeRegBaseTilingClass::IsRotaryPosEmbeddingMode(const int32_t mode) const
+bool InplacePartialRopeRegBaseTilingClass::IsInplacePartialRotaryPosEmbeddingMode(const int32_t mode) const
 {
     switch (mode) {
-        case static_cast<int32_t>(RotaryPosEmbeddingMode::HALF):
-        case static_cast<int32_t>(RotaryPosEmbeddingMode::INTERLEAVE):
-        case static_cast<int32_t>(RotaryPosEmbeddingMode::QUARTER):
-        case static_cast<int32_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE):
+        case static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::HALF):
+        case static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE):
+        case static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER):
+        case static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE):
             return true;
         default:
             return false;
     }
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive() const
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckShapeAllPositive() const
 {
     if (CheckShapeAllPositive(X_INDEX) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -125,7 +125,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShapeAllPositive() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape)
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xShape, const gert::Shape &cosShape)
 {
     uint64_t xShape0 = xShape.GetDim(DIM_0);
     uint64_t xShape1 = xShape.GetDim(DIM_1);
@@ -134,20 +134,20 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
     uint64_t cosShape1 = cosShape.GetDim(DIM_1);
     uint64_t cosShape2 = cosShape.GetDim(DIM_2);
     if (xShape0 == cosShape0 && xShape1 == cosShape1 && xShape2 == cosShape2) { // BSND
-        layout_ = RopeLayout::NO_BROADCAST;
+        layout_ = InplacePartialRopeLayout::NO_BROADCAST;
     } else if (cosShape0 == 1 && cosShape1 == 1 && cosShape2 == 1) { // (111D)
-        layout_ = RopeLayout::BROADCAST_BSN;
+        layout_ = InplacePartialRopeLayout::BROADCAST_BSN;
     } else if (cosShape2 == 1 && cosShape0 == 1 && xShape1 == cosShape1) { // BSND (1S1D)
-        layout_ = RopeLayout::BSND;
+        layout_ = InplacePartialRopeLayout::BSND;
     } else if (cosShape2 == 1 && xShape0 == cosShape0 && (cosShape1 == 1 || cosShape1 == xShape1)) { // SBND (S11D,
                                                                                                      // SB1D), BSND
                                                                                                      // (BS1D)
-        layout_ = RopeLayout::SBND;
+        layout_ = InplacePartialRopeLayout::SBND;
     } else if (cosShape1 == 1 && xShape2 == cosShape2 && (cosShape0 == 1 || cosShape0 == xShape0)) { // BNSD (11SD,
                                                                                                      // B1SD)
-        layout_ = RopeLayout::BNSD;
+        layout_ = InplacePartialRopeLayout::BNSD;
     } else if (cosShape0 == 1 && xShape1 == cosShape1 && xShape2 == cosShape2) { // 1SND
-        layout_ = RopeLayout::BNSD;
+        layout_ = InplacePartialRopeLayout::BNSD;
         is1snd_ = true;
     } else {
         std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
@@ -158,7 +158,7 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckShape()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckShape()
 {
     auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
@@ -195,7 +195,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
     return CheckShapeAllPositive();
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckDtypeAndAttr()
 {
     dtype_ = context_->GetInputDesc(X_INDEX)->GetDataType();
     if (std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), dtype_) == SUPPORT_DTYPE.end()) {
@@ -243,7 +243,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckParam()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckParam()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "platform info is nullptr."), return ge::GRAPH_FAILED);
@@ -258,7 +258,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckParam()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64_t d)
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64_t d)
 {
     if (d > D_LIMIT) {
         std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LIMIT) +
@@ -267,15 +267,15 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
             ("D=" + std::to_string(d)).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
-    if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::INTERLEAVE ||
-        rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
+    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF || rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::INTERLEAVE ||
+        rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         if (d % HALF_INTERLEAVE_MODE_COEF != 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
                 ("D=" + std::to_string(d)).c_str(),
                 "D must be multiples of 2 in half, interleave and interleave-half mode, where D refers to the last dim");
             return ge::GRAPH_FAILED;
         }
-    } else if (rotaryMode_ == RotaryPosEmbeddingMode::QUARTER) {
+    } else if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::QUARTER) {
         if (d % QUARTER_MODE_COEF != 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
                 ("D=" + std::to_string(d)).c_str(),
@@ -283,9 +283,9 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
             return ge::GRAPH_FAILED;
         }
     }
-    if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
+    if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::HALF || rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
-    } else if (rotaryMode_ == RotaryPosEmbeddingMode::QUARTER) {
+    } else if (rotaryMode_ == InplacePartialRotaryPosEmbeddingMode::QUARTER) {
         dSplitCoef_ = QUARTER_MODE_COEF;
     } else {
         dSplitCoef_ = 1;
@@ -293,7 +293,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::JudgeSliceInfo() {
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::JudgeSliceInfo() {
     OP_LOGI(context_, "TEST LOG, sliceStart_ =  %ld. sliceEnd_ =  %ld", sliceStart_, sliceEnd_);
     if (sliceStart_ < 0 || sliceEnd_ < 0 || sliceLength_ < 0 || sliceEnd_ > d_) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x",
@@ -311,16 +311,16 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeSliceInfo() {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
+ge::graphStatus InplacePartialRopeRegBaseTilingClass::GetShapeAttrsInfo()
 {
     const gert::RuntimeAttrs *attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     const int32_t *mode = attrs->GetAttrPointer<int32_t>(0);
     int32_t modeValue = (mode == nullptr) ? 0 : static_cast<int32_t>(*mode);
-    OP_CHECK_IF(modeValue != static_cast<int32_t>(RotaryPosEmbeddingMode::INTERLEAVE),
+    OP_CHECK_IF(modeValue != static_cast<int32_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE),
                 OP_LOGE(context_->GetNodeName(), "InplacePartialRotaryMul only support interleave mode (mode=1), actual %d.", modeValue),
                 return ge::GRAPH_FAILED);
-    rotaryMode_ = static_cast<RotaryPosEmbeddingMode>(modeValue);
+    rotaryMode_ = static_cast<InplacePartialRotaryPosEmbeddingMode>(modeValue);
 
     OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "check param fail."), return ge::GRAPH_FAILED);
 
@@ -334,13 +334,13 @@ ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
     d_ = xShape.GetDim(DIM_3);
     cosd_ = cosShape.GetDim(DIM_3);
     sind_ = sinShape.GetDim(DIM_3);
-    if (layout_ == RopeLayout::BSND) {
+    if (layout_ == InplacePartialRopeLayout::BSND) {
         b_ = xShape.GetDim(DIM_0);
         cosb_ = cosShape.GetDim(DIM_0);
         s_ = xShape.GetDim(DIM_1);
         n_ = xShape.GetDim(DIM_2);
-    } else if (layout_ == RopeLayout::BNSD || layout_ == RopeLayout::NO_BROADCAST ||
-               layout_ == RopeLayout::BROADCAST_BSN) {
+    } else if (layout_ == InplacePartialRopeLayout::BNSD || layout_ == InplacePartialRopeLayout::NO_BROADCAST ||
+               layout_ == InplacePartialRopeLayout::BROADCAST_BSN) {
         b_ = xShape.GetDim(DIM_0);
         cosb_ = cosShape.GetDim(DIM_0);
         n_ = xShape.GetDim(DIM_1);
@@ -350,7 +350,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
             s_ = s_ * n_;
             n_ = 1;
         }
-    } else if (layout_ == RopeLayout::SBND) {
+    } else if (layout_ == InplacePartialRopeLayout::SBND) {
         s_ = xShape.GetDim(DIM_0);
         b_ = xShape.GetDim(DIM_1);
         cosb_ = cosShape.GetDim(DIM_1);

@@ -25,14 +25,14 @@ template <typename T>
 class RotaryPositionEmbeddingBAB
 {
 public:
-    __aicore__ inline RotaryPositionEmbeddingBAB(TPipe* pipe, const RopeRegbaseTilingData* tiling)
+    __aicore__ inline RotaryPositionEmbeddingBAB(TPipe* pipe, const InplacePartialRopeRegbaseTilingData* tiling)
         : pipe_(pipe), tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y);
     __aicore__ inline void Process();
 
 private:
     constexpr static int32_t bufferNum = 2;
-    const RopeRegbaseTilingData* tilingData_;
+    const InplacePartialRopeRegbaseTilingData* tilingData_;
     TPipe* pipe_;
     int64_t blockIdx_ = 0;
     int64_t dSplitCoef_ = 1; // 切分系数初始化为1
@@ -69,10 +69,10 @@ template <typename T>
 __aicore__ inline void RotaryPositionEmbeddingBAB<T>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y)
 {
     this->blockIdx_ = GetBlockIdx();
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF) ||
-        tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF) ||
+        tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         this->dSplitCoef_ = QUARTER_MODE_COEF;
     }
     this->dSplitSize_ = tilingData_->sliceLength / dSplitCoef_ * sizeof(T);
@@ -154,7 +154,7 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::ProcessN(
         DataCopyExtParams copyInParams{static_cast<uint16_t>(currSNum * currDNum * dSplitCoef_), dSplitSize_, static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
         DataCopyExtParams copyOutParams{static_cast<uint16_t>(currSNum * currDNum * dSplitCoef_), dSplitSize_, 0, static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0};
         // deepseekInterleave 场景，copyIn时按照D对齐，copyOut 时，按照 d/2 对齐
-        if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+        if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
             copyInParams = {static_cast<uint16_t>(currSNum * currDNum), tilingData_->sliceLength * sizeof(T), static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(T)), 0, 0};
         }
         DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
@@ -176,11 +176,11 @@ __aicore__ inline void RotaryPositionEmbeddingBAB<T>::Compute(
     const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor, const LocalTensor<T>& inTensor,
     const LocalTensor<T>& outTensor, const uint32_t currSNum, const uint32_t currDNum)
 {
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
         HalfAlignVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->sliceLength, dAlign_, currSNum, currDNum);
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::INTERLEAVE)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
         InterleaveModeVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->sliceLength, currSNum, currDNum);
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         QuarterAlignVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->sliceLength, dAlign_, currSNum, currDNum);
     } else {
         DeepSeekInterleaveModeVF<T>(sinTensor, cosTensor, inTensor, outTensor, tilingData_->sliceLength, currSNum, currDNum);

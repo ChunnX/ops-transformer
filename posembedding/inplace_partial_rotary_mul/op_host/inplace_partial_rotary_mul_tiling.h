@@ -23,7 +23,7 @@
 #include "log/log.h"
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(RopeRegbaseTilingData)
+BEGIN_TILING_DATA_DEF(InplacePartialRopeRegbaseTilingData)
 TILING_DATA_FIELD_DEF(int64_t, B);
 TILING_DATA_FIELD_DEF(int64_t, CosB);
 TILING_DATA_FIELD_DEF(int64_t, S);
@@ -90,10 +90,10 @@ TILING_DATA_FIELD_DEF(int64_t, ubCalcNTail);
 
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMul, RopeRegbaseTilingData)
+REGISTER_TILING_DATA_CLASS(InplacePartialRotaryMul, InplacePartialRopeRegbaseTilingData)
 
 ge::graphStatus Tiling4InplacePartialRotaryMul(gert::TilingContext* context);
-struct RotaryPositionEmbeddingCompileInfo {
+struct InplacePartialRotaryPositionEmbeddingCompileInfo {
     int64_t blockDim;
     uint64_t ubSize;
     platform_ascendc::SocVersion socVersion;
@@ -109,7 +109,7 @@ struct AiCoreParams {
     uint64_t l0cSize = 0;
 };
 
-enum class RopeLayout : uint8_t {
+enum class InplacePartialRopeLayout : uint8_t {
     NO_BROADCAST = 1,
     BROADCAST_BSN = 2,
     BSND = 3,
@@ -117,7 +117,7 @@ enum class RopeLayout : uint8_t {
     BNSD = 5
 };
 
-enum class RotaryPosEmbeddingMode : uint8_t {
+enum class InplacePartialRotaryPosEmbeddingMode : uint8_t {
     HALF = 0,
     INTERLEAVE = 1,
     QUARTER = 2,
@@ -156,15 +156,15 @@ static inline T FloorAlign(T x, T y)
     return x / y * y;
 }
 
-class RotaryPosEmbeddingMembaseTilingClass {
+class InplacePartialRotaryPosEmbeddingMembaseTilingClass {
 public:
-    explicit RotaryPosEmbeddingMembaseTilingClass(gert::TilingContext *context) : context_(context)
+    explicit InplacePartialRotaryPosEmbeddingMembaseTilingClass(gert::TilingContext *context) : context_(context)
     {
     }
 
     void Reset(gert::TilingContext *context)
     {
-        RotaryPosEmbeddingMembaseTilingClass::Reset(context);
+        InplacePartialRotaryPosEmbeddingMembaseTilingClass::Reset(context);
     }
 
     ge::graphStatus GetPlatformInfo();
@@ -213,18 +213,18 @@ protected:
     AiCoreParams aicoreParams_;
 };
 
-class RopeRegBaseTilingClass {
+class InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClass(gert::TilingContext *context) : context_(context)
+    explicit InplacePartialRopeRegBaseTilingClass(gert::TilingContext *context) : context_(context)
     {
     }
 
     void Reset(gert::TilingContext *context)
     {
-        RopeRegBaseTilingClass::Reset(context);
+        InplacePartialRopeRegBaseTilingClass::Reset(context);
     }
 
-    bool IsRotaryPosEmbeddingMode(const int32_t mode) const;
+    bool IsInplacePartialRotaryPosEmbeddingMode(const int32_t mode) const;
     ge::graphStatus CheckNullptr();
     ge::graphStatus CheckShape();
     ge::graphStatus CheckDtypeAndAttr();
@@ -284,7 +284,7 @@ public:
         }
         // No-op: empty slice, nothing to compute
         if (sliceLength_ == 0) {
-            RopeRegbaseTilingData noopTiling;
+            InplacePartialRopeRegbaseTilingData noopTiling;
             noopTiling.set_sliceStart(sliceStart_);
             noopTiling.set_sliceEnd(sliceEnd_);
             noopTiling.set_sliceLength(0);
@@ -341,8 +341,8 @@ protected:
     int64_t d_{0};
     int64_t cosb_{0};
     ge::DataType dtype_;
-    RopeLayout layout_;
-    RotaryPosEmbeddingMode rotaryMode_;
+    InplacePartialRopeLayout layout_;
+    InplacePartialRotaryPosEmbeddingMode rotaryMode_;
 
     int64_t blockSize_;
     int64_t dSplitCoef_;
@@ -360,9 +360,9 @@ protected:
     int64_t sind_{0};
 };
 
-class RopeRegBaseTilingClassAAndB : public RopeRegBaseTilingClass {
+class InplacePartialRopeRegBaseTilingClassAAndB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassAAndB(gert::TilingContext *context) : RopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassAAndB(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -392,12 +392,12 @@ private:
     int64_t ubFactorN_{0};
     int64_t ubLoopNumN_{0};
     int64_t ubTailFactorN_{0};
-    RopeRegbaseTilingData tilingData_;
+    InplacePartialRopeRegbaseTilingData tilingData_;
 };
 
-class RopeRegBaseTilingClassAB : public RopeRegBaseTilingClass {
+class InplacePartialRopeRegBaseTilingClassAB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassAB(gert::TilingContext *context) : RopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassAB(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -416,12 +416,12 @@ private:
     int64_t ubFactorBS_ = 0;
     int64_t ubFactorN_ = 0;
     int64_t dAlign_ = 0;
-    RopeRegbaseTilingData tilingData_;
+    InplacePartialRopeRegbaseTilingData tilingData_;
 };
 
-class RopeRegBaseTilingClassABAAndBA : public RopeRegBaseTilingClass {
+class InplacePartialRopeRegBaseTilingClassABAAndBA : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassABAAndBA(gert::TilingContext *context) : RopeRegBaseTilingClass(context)
+    explicit InplacePartialRopeRegBaseTilingClassABAAndBA(gert::TilingContext *context) : InplacePartialRopeRegBaseTilingClass(context)
     {
     }
 
@@ -450,12 +450,12 @@ private:
     int64_t ubFactorN_{0};
     int64_t ubLoopNumN_{0};
     int64_t ubTailFactorN_{0};
-    RopeRegbaseTilingData tilingData_;
+    InplacePartialRopeRegbaseTilingData tilingData_;
 };
 
-class RopeRegBaseTilingClassBAB : public RopeRegBaseTilingClass {
+class InplacePartialRopeRegBaseTilingClassBAB : public InplacePartialRopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassBAB(gert::TilingContext *context_) : RopeRegBaseTilingClass(context_)
+    explicit InplacePartialRopeRegBaseTilingClassBAB(gert::TilingContext *context_) : InplacePartialRopeRegBaseTilingClass(context_)
     {
     }
 
@@ -469,7 +469,7 @@ public:
     bool IsCapable() override
     {
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast
-        if (IsRegbaseSocVersion() && (layout_ == RopeLayout::BSND) &&
+        if (IsRegbaseSocVersion() && (layout_ == InplacePartialRopeLayout::BSND) &&
             (cosb_ == 1)) {
             return true;
         }
@@ -498,7 +498,7 @@ private:
     ge::graphStatus SplitCore();
     ge::graphStatus SplitUb();
     void PrintTilingData();
-    RopeRegbaseTilingData tilingData_;
+    InplacePartialRopeRegbaseTilingData tilingData_;
 };
 
 } // namespace optiling

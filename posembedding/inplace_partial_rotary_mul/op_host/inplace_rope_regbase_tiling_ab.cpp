@@ -26,7 +26,7 @@ constexpr int64_t TILING_KEY_AB = 20030;
 constexpr int64_t TILING_KEY_AB_BF16_FP32 = 20130;
 constexpr int64_t TILING_KEY_AB_FP16_FP32 = 20230;
 
-ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAB::DoOpTiling()
 {
     int64_t bs = b_ * s_;
     if (cosb_ == 1) {
@@ -35,7 +35,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
     }
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     if (typeSize == 0) {
-        OP_LOGI("RopeRegBaseTilingClassAB DoOpTiling error, typeSize == 0");
+        OP_LOGI("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, typeSize == 0");
         return ge::GRAPH_FAILED;
     }
     dAlign_ = CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
@@ -44,7 +44,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
     bool isMixedPrecision = (dtype_ == ge::DT_BF16 || dtype_ == ge::DT_FLOAT16) && cosDtype == ge::DT_FLOAT;
     int64_t cosTypeSize = ge::GetSizeByDataType(cosDtype);
     if (cosTypeSize == 0) {
-        OP_LOGI("RopeRegBaseTilingClassAB DoOpTiling error, cosTypeSize == 0");
+        OP_LOGI("InplacePartialRopeRegBaseTilingClassAB DoOpTiling error, cosTypeSize == 0");
         return ge::GRAPH_FAILED;
     }
     int64_t dAlignCosSin = CeilAlign(sliceLength_ / dSplitCoef_, blockSize_ / cosTypeSize) * dSplitCoef_;
@@ -55,7 +55,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
 
     if (bs <= int64_t(aicoreParams_.blockDim) / CONST_TWO) {
         if (blockNumBS_ == 0) {
-            OP_LOGI("RopeRegBaseTilingClassAB ComputeUbFactor error, blockNumBS_ == 0");
+            OP_LOGI("InplacePartialRopeRegBaseTilingClassAB ComputeUbFactor error, blockNumBS_ == 0");
             return ge::GRAPH_FAILED;
         }
         blockNumN_ = aicoreParams_.blockDim / blockNumBS_;
@@ -107,7 +107,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassAB::PostTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassAB::PostTiling()
 {
     tilingData_.set_B(b_);
     tilingData_.set_CosB(cosb_);
@@ -137,7 +137,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
     OP_LOGI(context_->GetNodeName(),
-        "RopeRegBaseTilingClassAB tilingData is B: %ld, CosB: %ld, S: %ld, D: %ld, N: %ld, kAlign: %ld, "
+        "InplacePartialRopeRegBaseTilingClassAB tilingData is B: %ld, CosB: %ld, S: %ld, D: %ld, N: %ld, kAlign: %ld, "
         "dSplitCoef: %ld, BlockNumBS: %ld, BlockFactorBS: %ld, BlockTailBS: %ld, BlockNumN: %ld, "
         "BlockFactorN: %ld, BlockTailN: %ld, UBFactorBS: %ld, UBFactorN: %ld, RotaryMode: %ld, TilingKey: %ld, "
         "sliceStart is %ld, sliceEnd is %ld, sliceLength is %ld",
@@ -165,7 +165,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t RopeRegBaseTilingClassAB::GetTilingKey() const
+uint64_t InplacePartialRopeRegBaseTilingClassAB::GetTilingKey() const
 {
     auto xDtype = context_->GetInputDesc(0)->GetDataType();
     auto cosDtype = context_->GetInputDesc(1)->GetDataType();
@@ -178,7 +178,7 @@ uint64_t RopeRegBaseTilingClassAB::GetTilingKey() const
     return TILING_KEY_AB;
 }
 
-bool RopeRegBaseTilingClassAB::IsCapable()
+bool InplacePartialRopeRegBaseTilingClassAB::IsCapable()
 {
     if (!IsRegbaseSocVersion()) {
         return false;
@@ -186,7 +186,7 @@ bool RopeRegBaseTilingClassAB::IsCapable()
 
     OP_LOGI(context_->GetNodeName(), "layout: %ld", static_cast<int64_t>(layout_));
     // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d
-    return layout_ == RopeLayout::SBND;
+    return layout_ == InplacePartialRopeLayout::SBND;
 }
 
 }  // namespace optiling

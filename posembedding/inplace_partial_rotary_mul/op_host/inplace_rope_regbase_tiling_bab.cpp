@@ -25,7 +25,7 @@ constexpr int64_t TILING_KEY_BAB = 20020;
 constexpr int64_t TILING_KEY_BAB_BF16_FP32 = 20120;
 constexpr int64_t TILING_KEY_BAB_FP16_FP32 = 20220;
 
-ge::graphStatus RopeRegBaseTilingClassBAB::DoOpTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::DoOpTiling()
 {
     ubSize_ = aicoreParams_.ubSize;
     coreNum_ = aicoreParams_.blockDim;
@@ -47,13 +47,13 @@ ge::graphStatus RopeRegBaseTilingClassBAB::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassBAB::SplitCore()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::SplitCore()
 {
     // 尝试先对B分核，再尝试优先对S分核，比较二者切分之后的总核数
     auto blockFactorB1 = CeilDiv(b_, coreNum_);
     auto blockNumB1 = CeilDiv(b_, blockFactorB1);
     if (blockNumB1 == 0) {
-        OP_LOGI("RopeRegBaseTilingClassBAB SplitCore error, blockNumB1 == 0");
+        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumB1 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumS1 = std::min(coreNum_ / blockNumB1, s_);
@@ -64,7 +64,7 @@ ge::graphStatus RopeRegBaseTilingClassBAB::SplitCore()
     auto blockFactorS2 = CeilDiv(s_, coreNum_);
     auto blockNumS2 = CeilDiv(s_, blockFactorS2);
     if (blockNumS2 == 0) {
-        OP_LOGI("RopeRegBaseTilingClassBAB SplitCore error, blockNumS2 == 0");
+        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitCore error, blockNumS2 == 0");
         return ge::GRAPH_FAILED;
     }
     auto blockNumB2 = std::min(coreNum_ / blockNumS2, b_);
@@ -93,7 +93,7 @@ ge::graphStatus RopeRegBaseTilingClassBAB::SplitCore()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus RopeRegBaseTilingClassBAB::SplitUb()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::SplitUb()
 {
     uint32_t typeSize = ge::GetSizeByDataType(dtype_);
     auto cosDtype = context_->GetInputDesc(1)->GetDataType();
@@ -119,7 +119,7 @@ ge::graphStatus RopeRegBaseTilingClassBAB::SplitUb()
     ubFactorN_ = std::min(CeilDiv(n_, ubLoopNum), MIN_COPY_BLOCK_COUNT / dSplitCoef_);
     ubLoopNumN_ = CeilDiv(n_, ubFactorN_);
     if (ubFactorN_ == 0) {
-        OP_LOGI("RopeRegBaseTilingClassBAB SplitUb error, ubFactorN_ == 0");
+        OP_LOGI("InplacePartialRopeRegBaseTilingClassBAB SplitUb error, ubFactorN_ == 0");
         return ge::GRAPH_FAILED;
     }
     ubTailFactorN_ = (n_ % ubFactorN_ == 0) ? ubFactorN_ : n_ % ubFactorN_;
@@ -128,10 +128,10 @@ ge::graphStatus RopeRegBaseTilingClassBAB::SplitUb()
     return ge::GRAPH_SUCCESS;
 }
 
-void RopeRegBaseTilingClassBAB::PrintTilingData()
+void InplacePartialRopeRegBaseTilingClassBAB::PrintTilingData()
 {
     OP_LOGI(context_->GetNodeName(),
-        "RopeRegBaseTilingClassBAB tilingData: useCoreNum is %ld,"
+        "InplacePartialRopeRegBaseTilingClassBAB tilingData: useCoreNum is %ld,"
         "B is %ld, CosB is %ld, S is %ld, D is %ld, N is %ld, blockNumB %ld,"
         "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
         "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
@@ -164,7 +164,7 @@ void RopeRegBaseTilingClassBAB::PrintTilingData()
     return;
 }
 
-ge::graphStatus RopeRegBaseTilingClassBAB::PostTiling()
+ge::graphStatus InplacePartialRopeRegBaseTilingClassBAB::PostTiling()
 {
     tilingData_.set_B(b_);
     tilingData_.set_CosB(0);
@@ -198,7 +198,7 @@ ge::graphStatus RopeRegBaseTilingClassBAB::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t RopeRegBaseTilingClassBAB::GetTilingKey() const
+uint64_t InplacePartialRopeRegBaseTilingClassBAB::GetTilingKey() const
 {
     auto xDtype = context_->GetInputDesc(0)->GetDataType();
     auto cosDtype = context_->GetInputDesc(1)->GetDataType();

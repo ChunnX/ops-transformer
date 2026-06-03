@@ -24,14 +24,14 @@ using namespace AscendC;
 template <typename TX>
 class RotaryPositionEmbeddingBABMixed {
 public:
-    __aicore__ inline RotaryPositionEmbeddingBABMixed(TPipe *pipe, const RopeRegbaseTilingData *tiling)
+    __aicore__ inline RotaryPositionEmbeddingBABMixed(TPipe *pipe, const InplacePartialRopeRegbaseTilingData *tiling)
         : pipe_(pipe), tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y);
     __aicore__ inline void Process();
 
 private:
     constexpr static int32_t bufferNum = 2;
-    const RopeRegbaseTilingData *tilingData_;
+    const InplacePartialRopeRegbaseTilingData *tilingData_;
     TPipe *pipe_;
     int64_t blockIdx_ = 0;
     int64_t dSplitCoef_ = 1;
@@ -68,10 +68,10 @@ template <typename TX>
 __aicore__ inline void RotaryPositionEmbeddingBABMixed<TX>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y)
 {
     this->blockIdx_ = GetBlockIdx();
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF) ||
-        tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF) ||
+        tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
         this->dSplitCoef_ = HALF_INTERLEAVE_COEF;
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         this->dSplitCoef_ = QUARTER_MODE_COEF;
     }
     this->dSplitSize_ = tilingData_->sliceLength / dSplitCoef_ * sizeof(TX);
@@ -163,7 +163,7 @@ __aicore__ inline void RotaryPositionEmbeddingBABMixed<TX>::ProcessN(const Local
             0,
             static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),
             0};
-        if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
+        if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
             copyInParams = {static_cast<uint16_t>(currSNum * currDNum),
                 tilingData_->sliceLength * sizeof(TX),
                 static_cast<uint32_t>((tilingData_->D - tilingData_->sliceLength) * sizeof(TX)),
@@ -189,14 +189,14 @@ __aicore__ inline void RotaryPositionEmbeddingBABMixed<TX>::Compute(const LocalT
     const LocalTensor<float> &cosTensor, const LocalTensor<TX> &inTensor, const LocalTensor<TX> &outTensor,
     const uint32_t currSNum, const uint32_t currDNum)
 {
-    if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::INTERLEAVE)) {
+    if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::INTERLEAVE)) {
         InterleaveModeVFMixed<TX>(
             inTensor, cosTensor, sinTensor, outTensor, tilingData_->sliceLength, currSNum, currDNum);
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::HALF)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::HALF)) {
         // For HALF mode, need to implement HalfAlignVFMixed
         InterleaveModeVFMixed<TX>(
             inTensor, cosTensor, sinTensor, outTensor, tilingData_->sliceLength, currSNum, currDNum);
-    } else if (tilingData_->rotaryMode == static_cast<int64_t>(RotaryPosEmbeddingMode::QUARTER)) {
+    } else if (tilingData_->rotaryMode == static_cast<int64_t>(InplacePartialRotaryPosEmbeddingMode::QUARTER)) {
         // For QUARTER mode, need to implement QuarterAlignVFMixed
         InterleaveModeVFMixed<TX>(
             inTensor, cosTensor, sinTensor, outTensor, tilingData_->sliceLength, currSNum, currDNum);
