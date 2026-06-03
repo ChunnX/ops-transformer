@@ -1411,7 +1411,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>支持D轴小于等于512</li>
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
-                        <li>MxFP8场景下，HeadDim仅支持128</li>
+                        <li>MxFP8场景下，HeadDim仅支持64或128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
                         <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时,HeadDim需要32对齐</li>
@@ -1667,7 +1667,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
     - MxFP8 全量化
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT8_E8M0类型
-      - 入参 dequantScaleQuery 的shape为（Q_T, Q_N, D/64, 2）、keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2）、valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）
+      - 当Q_S * G > 80场景，入参 dequantScaleQuery 的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S * G <= 80场景，入参 dequantScaleQuery 的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale 的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale 的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale 的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale 的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
       - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group模式）
       - 入参 quantScale1 的shape为（1），dtype支持FLOAT32，复用 quantScale1 作为 pScale
 - 存在性约束
@@ -1800,7 +1800,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为 (blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope 最后一维D0是16
     - GQA全量化场景除开MxFP8均不支持PagedAttention
-    - MxFP8全量化仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
+    - MxFP8全量化支持非PagedAttention场景，kv cache排布支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
 
 #### 左padding参数组
 
