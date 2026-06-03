@@ -180,7 +180,6 @@ protected:
 
     GlobalTensor<float> softmaxMaxGm, softmaxSumGm;
     GlobalTensor<T2> workspaceGm;
-    GlobalTensor<int32_t> syncGlobal;
     GlobalTensor<uint8_t> dropoutWorkspaceGm, dropMaskGm;
 
     GlobalTensor<T1> dropWorkspaceGm, mulWorkspaceGm;
@@ -361,9 +360,7 @@ __aicore__ inline void
     dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
     dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
     workspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace);
-    syncGlobal.SetGlobalBuffer((__gm__ int32_t *)workspace, 100 * 8);
     dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + 3200);
-    InitOutput<int32_t>(syncGlobal[GetBlockIdx() * 8], 8, 0);
 
     ordTilingData_ = ordTilingData;
     pipe = pipe_in;
