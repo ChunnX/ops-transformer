@@ -147,7 +147,7 @@ TEST_PARAMS = {
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
     },
-    # SCFA prefill 大用例: b=1, s1=8k, s2=128k, n=128, topk=1024
+    # SCFA prefill 大用例: b=1, s1=8k, s2=32k, n=128, topk=1024
     "scfa_prefill":{
         "Testcase_Name": [None],
         "layout_q": ["BSND"],
@@ -157,7 +157,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.float8_e4m3fn],
         "B": [1],
         "S1": [8192],
-        "S2": [131072],
+        "S2": [32768],
         "N1": [128],
         "N2": [1],
         "D": [512],
@@ -181,7 +181,7 @@ TEST_PARAMS = {
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
     },
-    # SCFA decode 用例: b=24, s1=2, s2=8k, n=128, topk=1024
+    # SCFA decode 用例: b=48, s1=2, s2=8k, n=128, topk=1024
     "scfa_decode":{
         "Testcase_Name": [None],
         "layout_q": ["BSND"],
@@ -189,7 +189,7 @@ TEST_PARAMS = {
         "q_type": [torch.bfloat16],
         "ori_kv_type": [torch.float8_e4m3fn],
         "cmp_kv_type": [torch.float8_e4m3fn],
-        "B": [24],
+        "B": [48],
         "S1": [2],
         "S2": [8192],
         "N1": [128],

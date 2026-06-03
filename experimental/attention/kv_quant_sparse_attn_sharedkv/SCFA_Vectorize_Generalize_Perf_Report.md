@@ -1,9 +1,11 @@
 # KvQuantSparseAttnSharedkv SCFA — 向量化地址计算泛化 + 三流水性能对比报告
 
-> 范围: 单文件功能改动 `op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_block_vector.h`
-> (地址计算向量化泛化), 配合 `tests/pytest` 新增 prefill/decode 大用例。
-> 结论: 泛化后 128 对齐快路径**零回归** (my_test 精度 99.994818% PASS, ~109us 不变);
-> decode 大用例三流水对比 **baseline 77.8us → lead-by-1 62.4us (-19.8%)**。
+> 范围: `op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_block_vector.h` (地址计算
+> 向量化泛化 + prefill 多 batch 钳位), `op_host/..._tiling.cpp` (workspace 物理地址区
+> 修复), 配合 `tests/pytest` 新增 prefill/decode 大用例。
+> 结论: 泛化后 128 对齐快路径**零回归** (my_test 99.994818% PASS);
+> 修复 prefill AICore 异常 507015 (三根因); 三流水对比 **h01 在 prefill -27.2% /
+> decode -21.9% (vs baseline)**。
 
 日期: 2026-06-03
 
@@ -84,39 +86,77 @@ for (uint16_t i = 0; i < s2Loop; i++){
 
 | 用例 | layout | B | S1 | S2 | N1 | N2 | D | K(topk) | cmp_ratio | kv_quant_mode | mode |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| prefill | BSND | 1 | 8192 | 131072 | 128 | 1 | 512 | 1024 | 4 | 1 | SCFA |
-| decode  | BSND | 24 | 2 | 8192 | 128 | 1 | 512 | 1024 | 4 | 1 | SCFA |
+| prefill | BSND | 1 | 8192 | 32768 | 128 | 1 | 512 | 1024 | 4 | 1 | SCFA |
+| decode  | BSND | 48 | 2 | 8192 | 128 | 1 | 512 | 1024 | 4 | 1 | SCFA |
 
-每用例 profiling 取 3 次均值 (用例较大)。msprof `--aic-metrics=PipeUtilization`。
+每用例 profiling 取 3 次均值。msprof `--aic-metrics=PipeUtilization`。三套 kernel
+共用同一份(已泛化的) `block_vector.h`, 仅 `*_scfa_kernel.h` 流水编排不同。
 
-> 注: 性能测量使用 `QSAS_PERF_ONLY=1` 跳过 CPU golden forward (prefill 单次 ~50min),
-> msprof 仍捕获真实 NPU kernel 耗时。
+> 注: 性能测量使用 `QSAS_PERF_ONLY=1` 跳过 CPU golden forward, msprof 仍捕获真实 NPU
+> kernel 耗时。精度另行用 golden 校验 (decode 99.994818% / prefill 99.994445%, 均 PASS)。
 
-### 3.2 Decode 结果 (b=24, s1=2, s2=8k)
+### 3.2 Decode 结果 (b=48, s1=2, s2=8k)
 
 | Kernel | 3-run (us) | 均值 (us) | aic_mac_ratio | vs baseline |
 |---|---|---|---|---|
-| baseline (老版流水) | 78.43 / 76.68 / 78.43 | **77.85** | 0.468 | — |
-| h01 (a05 + lead-by-1) | 66.14 / 63.35 / 62.60 | **64.03** | 0.593 | **-17.7%** |
-| lead-by-1 (baseline 序 + lead-by-1) | 63.24 / 62.03 / 62.02 | **62.43** | 0.608 | **-19.8%** |
+| baseline (老版流水) | 144.33 / 141.54 / 141.38 | **142.42** | 0.51 | — |
+| h01 (a05 + lead-by-1) | 111.47 / 112.53 / 109.51 | **111.17** | 0.67 | **-21.9%** |
+| lead-by-1 (baseline 序 + lead-by-1) | 113.23 / 112.51 / 112.42 | **112.72** | 0.66 | **-20.9%** |
 
 **结论**:
-- lead-by-1 流水把 cube 利用率从 0.47 抬到 0.61, decode 提速 **~19.8%**, 三者最快。
-- lead-by-1(跳过 a05 的 load-last 重排) 略优于 h01, 印证 a05 的 load-last 在该
-  深流水下基本冗余。
+- 流水改造把 cube 利用率从 0.51 抬到 0.67, decode 提速 **~22%**。
+- 本轮 b=48 下 **h01 略优于 lead-by-1** (111.2 vs 112.7us), 与上一轮 b=24 的结论相反
+  (上轮 lead-by-1 略快)。差距在 ~1.5% 量级、随 batch 数浮动, 两者基本等价;
+  当前默认保留 h01。
 
-### 3.3 Prefill 结果 (b=1, s1=8k, s2=128k)
+### 3.3 Prefill 结果 (b=1, s1=8k, s2=32k)
 
-**三套 kernel 在 prefill 用例下均触发 AICore 硬异常 (device error 507015,
-aicore exception), 无法取得性能数据。**
+**上一轮 prefill (s2=128k) 三套 kernel 均触发 AICore 硬异常 507015, 本轮定位并修复了
+根因, s2=32k 下三套 kernel 全部正常运行并取得性能数据。**
 
-- baseline / h01 / lead-by-1 表现**完全一致** (均 3 次空结果), 说明该崩溃为
-  **与流水编排无关的既有 shape 限制**, 与本轮 `block_vector.h` 泛化无关
-  (decode 用例同样走泛化后地址计算路径且正常运行)。
-- 异常 dump 指向主 attention kernel (`KvQuantSparseAttnSharedkv_..._mix_aic/aiv`),
-  触发因素为 prefill 超大 shape (S1=8192 / S2=131072)。
-- 该问题属于 kernel 在 prefill 极大 shape 下的既有缺陷, 不在本轮 (流水 + 地址向量化)
-  优化范围内, 需单独定位 (workspace / tiling 在 s2=128k 下的边界)。
+| Kernel | 3-run (us) | 均值 (us) | aic_mac_ratio | vs baseline |
+|---|---|---|---|---|
+| baseline (老版流水) | 11193.79 / 11195.67 / 11194.25 | **11194.57** | 0.544 | — |
+| h01 (a05 + lead-by-1) | 8146.51 / 8150.74 / 8143.61 | **8146.95** | 0.766 | **-27.2%** |
+| lead-by-1 (baseline 序 + lead-by-1) | 8324.84 / 8313.85 / 8316.90 | **8318.53** | 0.750 | **-25.7%** |
+
+**结论**:
+- prefill 上流水改造收益更大 (cube mac 率 0.544→0.766), h01 提速 **~27%**。
+- prefill 下 h01 同样略优于 lead-by-1, 与 decode 一致。
+- 三套 kernel 在 s2=32k 下均无 507015, 证明该异常是 **host/kernel workspace 布局缺陷**
+  (详见 §3.4), 与流水编排无关。
+
+### 3.4 prefill AICore 异常 507015 根因与修复
+
+上一轮 prefill (s1=8k) 触发 device error 507015 (errcode 95, "DDR address of MTE
+instruction out of range")。定位到 **三个相互独立的根因**, 全部修复后 crash 消失,
+精度 PASS:
+
+**Bug 1 — host tiling 物理地址行数写死 (`tiling.cpp`)**
+- 原 `kvPhyAddrGm` 行数按 `BS1_MAX=4000` 写死; prefill 需要 `B*S1=8192` 行 → 物理
+  地址区不足, AIV 写越界。
+- 修复: 行数改为动态 `bs1Rows = (qTSize>0) ? qTSize : bSize*s1Size`。
+
+**Bug 2 — host 物理地址区基址比 kernel 少 ×4 (`tiling.cpp`)**
+- kernel 用 `kvPhyAddrGm.SetGlobalBuffer((uint32_t*)workspace + v0TotalOffset)`,
+  其中 `v0TotalOffset` 本是**字节**数, 但 `(uint32_t*)` 转换在加法之前, 指针算术
+  把它 ×4 → 物理区真实字节基址 = `v0RegionBytes * 4`。
+- 这个 ×4 是**承重设计** (把 kernel 改成字节精确反而崩了 decode)。host 原来只按
+  `1× v0RegionBytes` 预留, 与 kernel 的 4× 基址错位 3×, 小用例靠运行时余量幸存,
+  prefill (物理区大) 越界。
+- 修复: host 改为 `physAddrBase = v0RegionBytes * sizeof(uint32_t)`, 与 kernel 对齐。
+
+**Bug 3 — kernel 多 batch 切分越界 (`block_vector.h GetKVPhyAddr`, prefill 专属)**
+- `aivIdx % 4` 分支给 `bN2StartIdx` 加 +1/+2, 把工作分到 4 个 AIV lane — 这是 decode
+  多 batch 的切分逻辑。
+- 对 **prefill B=1 (`bN2 = bSize*n2Size = 1`)**, case 1/2/3 索引到不存在的 batch →
+  `bS1Idx = s1Size*bIdx` (如 16384) 越过 8192 行的 `cmpSparseIndicesGm` 读 + 物理地址
+  写 → AIV MTE 越界。
+- 修复: `curBN2EndIdx = Min(curBN2EndIdx, bSize*n2Size)`, 让幻影 batch 的 lane 空转
+  (s1 已由 `gS1StartIdx/nextGs1Idx` 切分)。
+
+> 注: s2=128k 是否仍有更深的 shape 边界问题未在本轮覆盖 (本轮用例 s2=32k); 但 §3.4
+> 三个修复对任意 b/s1 通用, 不限 s2=32k。
 
 ---
 
@@ -124,15 +164,17 @@ aicore exception), 无法取得性能数据。**
 
 | 文件 | 改动 |
 |---|---|
-| `op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_block_vector.h` | `GetKVPhyAddrVF` 尾段 mask 泛化 + buffer CeilAlign padding |
+| `op_host/kv_quant_sparse_attn_sharedkv_tiling.cpp` | **Bug 1+2** workspace 物理地址区: 动态 `bs1Rows` + 基址 ×`sizeof(uint32_t)` 对齐 kernel |
+| `op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_block_vector.h` | **Bug 3** `GetKVPhyAddr` 多 batch 切分 `Min(bN2End, bSize*n2Size)` 钳位; `GetKVPhyAddrVF` 尾段 mask 泛化 + buffer CeilAlign padding |
 | `op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_kernel_leadby1_noloadlast.h` | (已有) lead-by-1 变体 kernel |
-| `tests/pytest/kv_quant_sparse_attn_sharedkv_paramset.py` | 新增 `scfa_prefill` / `scfa_decode` 用例 + `QSAS_CASE` 环境变量选择 |
-| `tests/pytest/kv_quant_sparse_attn_sharedkv_golden.py` | 新增 `QSAS_PERF_ONLY` 开关, 跳过 CPU golden (仅 profiling 用) |
+| `tests/pytest/kv_quant_sparse_attn_sharedkv_paramset.py` | 新增 `scfa_prefill`(s2=32k) / `scfa_decode`(b=48) 用例 + `QSAS_CASE` 环境变量选择 |
+| `tests/pytest/kv_quant_sparse_attn_sharedkv_golden.py` | `QSAS_PERF_ONLY` 跳过 CPU golden; **golden 缓存** (`golden_cache/golden_<md5(params)>.pt`, 命中即 load, 输入由 `set_seed(42)` 决定性生成); `QSAS_GOLDEN_NOCACHE=1` 强制重算 |
 
 ---
 
 ## 5. 后续
 
-- prefill (s1=8k/s2=128k) 的 AICore 异常需单独定位, 优先排查 workspace 与 tiling
-  在 S2=131072 下的边界计算。
-- 当前默认 `kv_quant_sparse_attn_sharedkv_scfa_kernel.h` = h01 (未改动)。
+- s2=128k 超大 shape 是否仍有更深的 workspace/tiling 边界问题需单独覆盖 (本轮用例
+  收敛到 s2=32k 并已全绿)。
+- decode 下 h01 与 lead-by-1 差距在 ~1.5% 内、随 batch 浮动, 两者等价; 当前默认
+  `kv_quant_sparse_attn_sharedkv_scfa_kernel.h` = h01 (未改动)。

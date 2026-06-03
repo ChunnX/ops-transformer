@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
+import hashlib
 import torch
 import torch_npu
 import check_valid_param
@@ -1020,7 +1021,19 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         # msprof 仍会捕获真实 NPU kernel 耗时，精度比对结果在该模式下无意义。
         cpu_result = torch.zeros_like(q)
     else:
-        cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
+        # CPU golden 缓存: 输入由 set_seed(42) 决定性生成，golden 只需算一次。
+        # 用 params 生成稳定 key，命中则直接 load，避免每次重复 ~tens-of-min 的 forward。
+        cache_dir = os.environ.get("QSAS_GOLDEN_CACHE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden_cache"))
+        cache_key = hashlib.md5(repr(params).encode("utf-8")).hexdigest()
+        cache_path = os.path.join(cache_dir, f"golden_{cache_key}.pt")
+        if os.environ.get("QSAS_GOLDEN_NOCACHE", "0") != "1" and os.path.exists(cache_path):
+            print(f"[golden-cache] HIT {cache_path}")
+            cpu_result = torch.load(cache_path)
+        else:
+            cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
+            os.makedirs(cache_dir, exist_ok=True)
+            torch.save(cpu_result, cache_path)
+            print(f"[golden-cache] SAVED {cache_path}")
 
     print("mode:%s\n",template_run_mode)
 

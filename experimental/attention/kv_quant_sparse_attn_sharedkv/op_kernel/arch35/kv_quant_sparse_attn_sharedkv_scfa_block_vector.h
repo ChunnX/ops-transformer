@@ -1297,6 +1297,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
         default:
             break;
     }
+    // bN2 的 4 路 AIV 切分 (+1/+2) 面向 decode 多 batch 场景; prefill B=1(bN2=1) 时
+    // case1/2/3 会落到不存在的 batch, 使 bS1Idx=s1Size*bIdx 越界读 cmpSparseIndicesGm/写物理地址区
+    // -> AIV MTE 越界(507015)。s1 维已由 gS1StartIdx/nextGs1Idx 切分, 故 batch 不足时这些核应空转。
+    // 将 curBN2EndIdx 收敛到真实 bN2 上界; 当 curBN2StartIdx>=上界时下方 for 自然不执行。
+    const uint32_t bN2Bound = static_cast<uint32_t>(constInfo.bSize) * static_cast<uint32_t>(constInfo.n2Size);
+    curBN2EndIdx = Min(curBN2EndIdx, bN2Bound);
     // PRINTF("=========curBN2StartIdx:%lu, curBN2EndIdx:%lu,curGS1StartIdx:%lu,curNextGs1Idx:%lu,\n", curBN2StartIdx, curBN2EndIdx, curGS1StartIdx, curNextGs1Idx);
     const uint32_t kvStride = static_cast<uint32_t>(constInfo.cmpKvStride);
     // PRINTF("=========kvStride:%lu\n", kvStride);
