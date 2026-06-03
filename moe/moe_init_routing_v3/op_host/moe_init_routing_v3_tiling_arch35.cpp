@@ -716,9 +716,10 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                     quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
                     quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
                     quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_FP8_PERBLOCK_E5M2 &&
-                    quantMode_ != QUANT_MODE_FP8_PERBLOCK_E4M3FN,
+                    quantMode_ != QUANT_MODE_FP8_PERBLOCK_E4M3FN &&
+                    quantMode_ != QUANT_MODE_DYNAMIC_INT4,
                 OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "quant_mode", std::to_string(quantMode_),
-                                          "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11 or 12"),
+                                          "-1, 0, 1, 2, 3, 6, 7, 8, 9, 11, 12 or 13"),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
 
@@ -1535,7 +1536,7 @@ MultipleParams MoeInitRoutingV3Arch35TilingClass::GetMultipleParams()
         // colMultiple = 2*inputXDtypeSize + 2*1 + 4 + 2 = 2*inputXDtypeSize + 8
         params.colMultiple = NUM_TWO * inputXDtypeSize_ + NUM_TWO + sizeof(float) + sizeof(uint16_t);
         params.rowMultiple = STATIC_QUANT_ROW_MULTIPLE;
-    } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
+    } else if (quantMode_ == QUANT_MODE_DYNAMIC || quantMode_ == QUANT_MODE_DYNAMIC_INT4) {
         params.colMultiple = DYNAMIC_QUANT_COLS_BUFFER;
         params.rowMultiple = NUM_FOUR;
     } else if (quantMode_ == QUANT_MODE_HIF8_CAST && xDtype_ == ge::DataType::DT_BF16) {
@@ -1850,7 +1851,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
         ep_ = 0;
-        if (quantMode_ != QUANT_MODE_DYNAMIC) {
+        if (quantMode_ != QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_DYNAMIC_INT4) {
             int64_t perCoreTokensEst = n_ / aivCoreNum_;
             int64_t remainder = n_ % aivCoreNum_;
             perCoreTokens = remainder <= 1 ? perCoreTokensEst + 1 : perCoreTokensEst + NUM_TWO;
@@ -1881,21 +1882,19 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         int64_t quantSpace = xAlignedCount * STATIC_QUANT_FULLLOAD_COLS_BUFFER * perCoreTokens;
         remainUb -= (gatherSpace + quantSpace);
     } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
-        if (IsInt4DynamicQuantCase()) {
-            int64_t inputXInSpace = inputXDtypeSize_ == static_cast<int64_t>(sizeof(float)) ?
-                                    AlignBytes(cols_, sizeof(float)) :
-                                    BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
-            int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
-            // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
-            int64_t inputXOutSpace = AlignBytes(cols_ / 2, sizeof(int8_t));
-            int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
-            remainUb -= (inputXInSpace + smoothInSpace + inputXOutSpace + scaleOutSpace);
-        } else {
-            int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
-            int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
-            int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
-            remainUb -= (quantSpace + scaleOutSpace);
-        }
+        int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
+        int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
+        int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
+        remainUb -= (quantSpace + scaleOutSpace);
+    } else if (quantMode_ == QUANT_MODE_DYNAMIC_INT4) {
+        int64_t inputXInSpace = inputXDtypeSize_ == static_cast<int64_t>(sizeof(float)) ?
+                                AlignBytes(cols_, sizeof(float)) :
+                                BF16_TO_FP32_SIZE_FACTOR * AlignBytes(cols_, inputXDtypeSize_);
+        int64_t smoothInSpace = AlignBytes(cols_, sizeof(float));
+        // INT4 output is cols/2 bytes (2 INT4 values packed per byte).
+        int64_t inputXOutSpace = AlignBytes(cols_ / 2, sizeof(int8_t));
+        int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
+        remainUb -= (inputXInSpace + smoothInSpace + inputXOutSpace + scaleOutSpace);
     }
 
     return remainUb > 0;
