@@ -30,12 +30,15 @@
 #include "aclnn_matmul_reduce_scatter_v2.h"
 #include "aclnnInner_matmul_reduce_scatter_v2.h"
 
-#ifdef BUILD_OPEN_PROJECT
+#define HCCL_CHANNEL_SUPPORT_VERSION 899997000
+#if __has_include("version/hcomm_version.h")
 #include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#endif
+#ifndef HCOMM_VERSION_NUM
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION + 1)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
-#endif
 #endif
 
 using namespace op;
@@ -523,7 +526,7 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
         }
         if (strncmp(commMode, "", EMPTY_STRLEN) == 0) {
             uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && (HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION)
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
             auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
             CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
 #endif
