@@ -63,7 +63,7 @@ constexpr uint32_t DIM_NUM_Y = 2;
 constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
 constexpr int32_t SPLIT_M = 0;
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024U;
-constexpr float DETER_WORKSPACE_RATIO = 0.8f;
+constexpr float DETER_WORKSPACE_RATIO = 0.8f; // 减去系统开销后，确定性workspace占比
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
 class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQmmTiling {
