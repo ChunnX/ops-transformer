@@ -16,15 +16,15 @@ from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
 class MoeEpDispatchOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("npu_moe_ep_dispatch")
+        super(MoeEpDispatchOpBuilder, self).__init__("npu_moe_ep_dispatch")
 
     def sources(self):
         return ['ops/csrc/moe_ep_dispatch.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_ep_dispatch(Tensor context, Tensor x, Tensor? topk_idx, Tensor? topk_weights, "
-               "Tensor? cached_handle_dst_buffer_slot_idx, int ep_world_size, int ep_rank_id, "
-               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, "
+        return "npu_moe_ep_dispatch(Tensor context, Tensor x, Tensor? topk_idx, Tensor? topk_weights, " \
+               "Tensor? cached_handle_dst_buffer_slot_idx, int ep_world_size, int ep_rank_id, " \
+               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, " \
                "*, int expert_alignment=1, bool do_cpu_sync=True) -> (Tensor, Tensor, Tensor, Tensor)"
 
     def register_meta(self):
@@ -62,16 +62,16 @@ class MoeEpDispatchOpBuilder(OpBuilder):
 
 class MoeEpDispatchEpilogueOpBuilder(OpBuilder):
     def __init__(self):
-        super().__init__("npu_moe_ep_dispatch_epilogue")
+        super(MoeEpDispatchEpilogueOpBuilder, self).__init__("npu_moe_ep_dispatch_epilogue")
 
     def sources(self):
         return ['ops/csrc/moe_ep_dispatch_epilogue.cpp']
 
     def schema(self) -> str:
-        return "npu_moe_ep_dispatch_epilogue(Tensor context, Tensor dst_buffer_slot_idx, "
-               "Tensor recv_src_metadata_internal, Tensor num_recv_tokens_per_rank_host_pinned, "
-               "Tensor num_recv_tokens_per_expert_host_pinned, int ep_world_size, int ep_rank_id, "
-               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, "
+        return "npu_moe_ep_dispatch_epilogue(Tensor context, Tensor dst_buffer_slot_idx, " \
+               "Tensor recv_src_metadata_internal, Tensor num_recv_tokens_per_rank_host_pinned, " \
+               "Tensor num_recv_tokens_per_expert_host_pinned, int ep_world_size, int ep_rank_id, " \
+               "int num_experts, int num_max_tokens_per_rank, int ccl_buffer_size, " \
                "*, int expert_alignment=1) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
 
     # def register_meta(self):

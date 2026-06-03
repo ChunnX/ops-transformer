@@ -109,11 +109,11 @@ class MoEElasticBuffer:
 
         if cached:
             actual_a = handle.recv_src_metadata.shape[0]
-        elif do_cpu_sync:
-            if self._host_pinned_counter is None:
-                from mc2.common.op_kernel.host_pinned_counter import HostPinnedCounter
-                self._host_pinned_counter = HostPinnedCounter()
-            actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
+        # elif do_cpu_sync:
+        #     if self._host_pinned_counter is None:
+        #         from mc2.common.op_kernel.host_pinned_counter import HostPinnedCounter
+        #         self._host_pinned_counter = HostPinnedCounter()
+        #     actual_a = self._host_pinned_counter.SpinWait(num_recv_per_rank_hp)
         else:
             actual_a = self.ep_world_size * nm
 
