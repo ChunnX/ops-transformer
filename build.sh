@@ -59,6 +59,7 @@ ONNX_PLUGIN=FALSE
 OP_KERNEL=FALSE
 SOC_ARRAY=()
 ENABLE_UT_EXEC=TRUE
+ENABLE_RULE_LAUNCH=""
 ENABLE_GENOP=FALSE
 ENABLE_GENOP_AICPU=FALSE
 GENOP_TYPE=""
@@ -1185,6 +1186,11 @@ while [[ $# -gt 0 ]]; do
         ENABLE_TEST=TRUE
         shift
         ;;
+    --rule_launch=*)
+        OPTARG=$1
+        ENABLE_RULE_LAUNCH=${OPTARG#*=}
+        shift
+        ;;
     --simulator=*)
         OPTARG=$1
         SIMULATOR=${OPTARG#*=}
@@ -1528,6 +1534,9 @@ if [[ "$UT_TEST_ALL" == "TRUE" ]]; then
 fi
 if [[ "$ENABLE_UT_EXEC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_UT_EXEC=TRUE"
+fi
+if [[ "x$ENABLE_RULE_LAUNCH" != "x" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DRULE_LAUNCH=${ENABLE_RULE_LAUNCH}"
 fi
 
 if [ -n "${TEST}" ];then
