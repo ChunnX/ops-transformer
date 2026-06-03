@@ -43,10 +43,11 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
+    // 2 represents bf16 dtype
     using weightscaleType = std::conditional_t<scaleType == 2, bfloat16_t, float>;
     using BiasType = bfloat16_t;
     using LayoutBias = layout::RowMajor;
-    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>;
+    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
     using ProblemShape = Cgmct::Gemm::MatmulShape;
     using BlockPrologue = Cgmct::Gemm::Block::BlockPrologueFinalizeRouting<CType, BiasType>;
 
@@ -75,13 +76,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant_deter(
                         gmmFinalizeRoutingQuantParams_.deterWorkspaceSize,
                         static_cast<uint32_t>(matmulTiling_.usedCoreNum)};
     gmmParams.matmulTiling = &matmulTiling_;
-    Params params = {{1, 1, 1, 1},
-                     {x, w, y, bias, group_list},
+    Params params = {{1, 1, 1, 1},                // problem shape
+                     {x, w, y, bias, group_list}, // BlockMmadParams
                      {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
                       gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
-                      gmmFinalizeRoutingQuantParams_.batch, gmmFinalizeRoutingQuantParams_.residualScale},
+                      gmmFinalizeRoutingQuantParams_.batch, gmmFinalizeRoutingQuantParams_.residualScale}, // prologue params
                      {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN,
-                      userWorkspace, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize},
+                      userWorkspace, gmmFinalizeRoutingQuantParams_.deterWorkspaceSize}, // epilogue params
                      gmmParams};
     GmmKernel gmm;
     gmm(params);
@@ -105,10 +106,11 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     using LayoutA = layoutA;
     using LayoutB = layoutB;
     using LayoutC = layout::RowMajorAlign;
+    // 2 represents bf16 dtype
     using weightscaleType = std::conditional_t<scaleType == 2, bfloat16_t, float>;
     using BiasType = bfloat16_t;
     using LayoutBias = layout::RowMajor;
-    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>;
+    using C1Type = std::conditional_t<std::is_same_v<AType, int8_t>, int32_t, float>; // matmul output dtype
     using xscaleType = float;
     using rowIndexType = std::conditional_t<rowIndType == 1, int32_t, int64_t>;
     using ProblemShape = Cgmct::Gemm::MatmulShape;
@@ -142,12 +144,12 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                         gmmFinalizeRoutingQuantParams_.hasBias};
 
     gmmParams.matmulTiling = &matmulTiling_;
-    Params params = {{1, 1, 1, 1},
-                     {x, w, y, bias, group_list},
+    Params params = {{1, 1, 1, 1},                // problem shape
+                     {x, w, y, bias, group_list}, // BlockMmadParams
                      {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
                       gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
-                      gmmFinalizeRoutingQuantParams_.batch, gmmFinalizeRoutingQuantParams_.residualScale},
-                     {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN},
+                      gmmFinalizeRoutingQuantParams_.batch, gmmFinalizeRoutingQuantParams_.residualScale}, // prologue params
+                     {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
                      gmmParams};
     GmmKernel gmm;
     gmm(params);
