@@ -103,6 +103,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
+        {reinterpret_cast<void **>(&HcommChannelGetPtrByHandle), "HcommChannelGetPtrByHandle"},
     };
 
     for (auto &sym : symbols) {
@@ -275,25 +276,37 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     // 将rankSizePerServer_写入通信资源结构体中，后续DPU直驱需要使用
     mc2ContextStruct->rankSizePerServer = rankSizePerServer_;
     OP_LOGD("Get HCCL communication channel success, channel num is: %u", channels.size());
+    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        for (uint32_t i = 0; i < epRankSize_; ++i) {
+            void *tempBuffer = nullptr;
+            uint64_t bufSize = 0;
+            HcclResult hcclRet;
 
-    for (uint32_t i = 0; i < epRankSize_; ++i) {
-        void *tempBuffer = nullptr;
-        uint64_t bufSize = 0;
-        HcclResult hcclRet;
+            if (i == rankId) {
+                hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            } else {
+                uint32_t idx = (i < rankId) ? i : (i - 1);
+                hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            }
 
-        if (i == rankId) {
-            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
-        } else {
-            uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER, "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
+                return ACLNN_ERR_INNER;
+            }
+
+            mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
         }
-
-        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
-            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
+    }
+    else if (protocol == CommProtocol::COMM_PROTOCOL_UBC_TP) {
+        auto hcommRet = HcommChannelGetPtrByHandle(channels.data(), channels.size(), mc2ContextStruct->hcommHandle_);
+        if (hcommRet != HCCL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL urma channel ptr failed");
             return ACLNN_ERR_INNER;
         }
-
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        OP_LOGI("Get HCCL urma channel ptr success");
+        for (uint32_t i =0; i < channels.size(); ++i) {
+            OP_LOGI("hcommHandle_[%u] = %u", i, mc2ContextStruct->hcommHandle_[i]);
+        }
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
