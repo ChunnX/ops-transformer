@@ -67,7 +67,7 @@ private:
 
     const KvQuantSparseAttnSharedkvTilingData *__restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint32_t PRELOAD_NUM = 2;
+    static constexpr uint32_t PRELOAD_NUM = 3;
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
 
@@ -349,7 +349,15 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 
     int64_t taskId = 0;
     bool notLast = true;
-    RunInfo runInfo[3];
+    // Task2 (h01): v0 dequant leads LoadQK by one round. The whole cube consumer
+    // chain (LoadQK/Bmm1/Bmm2) + the AIV Vec1/Vec2 are shifted one global stage
+    // deeper, so LoadQK(tile T) consumes the v0ResGm tile that Vec0 produced in the
+    // previous iteration. Pipeline is now 4-deep, so runInfo holds 4 tiles and the
+    // lastBN drain spans 3 extra iterations (PRELOAD_NUM=3). loadDrainOff turns off
+    // LoadQK one drain step before Bmm1 (notLast) so the deepest tile flushes
+    // Vec0->LoadQK->Bmm1->Bmm2.
+    bool loadDrainOff = false;
+    RunInfo runInfo[4];
     RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
     bool isFirstLoop = true;
@@ -371,8 +379,13 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                         notLastTwoLoop = false;
                         break;
                     case 1:
+                        notLastTwoLoop = false;
+                        loadDrainOff = true;
+                        break;
+                    case 2:
                         notLast = false;
                         notLastTwoLoop = false;
+                        loadDrainOff = true;
                         break;
                     default:
                         break;
@@ -397,14 +410,15 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastTwoLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId % 3];
+                    RunInfo &runInfo1 = runInfo[taskId % 4];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                 }
                 if ASCEND_IS_AIV {
-                    // V0 (dequant, producer) runs first so the cube can overlap its
-                    // matmuls with this dequant instead of stalling on it.
+                    // V0 (dequant, producer) runs first and leads the cube by one
+                    // round: it produces tile `taskId`, which LoadQK will not consume
+                    // until the next iteration.
                     if (notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 3];
+                        RunInfo &runInfo1 = runInfo[taskId % 4];
                         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(runInfo1.taskIdMod3), \
                             v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
                     } else {
@@ -416,34 +430,35 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                             }
                         }
                     }
-                    if (taskId > 0 && notLast) {
-                        auto &runInfo2 = runInfo[(taskId + 2) % 3];
+                    if (taskId > 1 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 4];  // tile taskId-2
                         this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo2,
                             this->constInfo);
                     }
-                    if (taskId > 1) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
+                    if (taskId > 2) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];  // tile taskId-3
                         this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                     }
                 } else {
-                    // AIC: issue matmuls (Bmm1 N-1, Bmm2 N-2) first, then load the
-                    // current task's K (which blocks on V0 via v0ResGm.WaitCrossCore).
-                    // Doing the load last lets the matmuls overlap the AIV dequant.
-                    if (taskId > 0 && notLast) {
-                        auto &runInfo2 = runInfo[(taskId + 2) % 3];
-                        RunInfo &runInfoNext = runInfo[taskId % 3];
+                    // AIC consumer chain shifted one stage deeper: Bmm1 tile-2,
+                    // Bmm2 tile-3, then LoadQK tile-1 LAST. LoadQK now reads a v0ResGm
+                    // tile produced by Vec0 in the previous iteration, so it no longer
+                    // stalls on the current iteration's dequant.
+                    if (taskId > 1 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 4];      // tile taskId-2
+                        RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];  // tile taskId-1 (next Bmm1 block Q)
                         this->cubeBlock.IterateBmm1(
                             this->bmm1Buffers.Get(), this->l1RightBuffers.Get(runInfo2.taskIdMod3),
                                 v0ResGmBuffers.Get(runInfo2.taskIdMod3),
                             notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                     }
-                    if (taskId > 1) {
-                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 3];
+                    if (taskId > 2) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];  // tile taskId-3
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                             this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
                     }
-                    if (notLastTwoLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId % 3];
+                    if (taskId > 0 && !loadDrainOff) {
+                        RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];  // tile taskId-1
                         this->cubeBlock.IterateLoadQK(this->l1RightBuffers.Get(runInfo1.taskIdMod3),
                             v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo, isFirstLoop);
                         isFirstLoop = false;
