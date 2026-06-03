@@ -168,8 +168,10 @@ public:
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TBuf<> stage2OutBuf;
-    TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
-    TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    TEventID mte3ToVId_0; // 存放MTE3_V的eventId, pingpong buffer 0
+    TEventID mte3ToVId_1; // 存放MTE3_V的eventId, pingpong buffer 1
+    TEventID vToMte3Id_0; // 存放V_MTE3的eventId, pingpong buffer 0
+    TEventID vToMte3Id_1; // 存放V_MTE3的eventId, pingpong buffer 1
     // 这三组buffer深度为 PRELOAD_N+1(=3)，与 C1 C1 C2 预取流水深度严格对应。
     // 3 非2的幂，对应的索引保留 % (PRELOAD_N+1) 取模；若改为位掩码需将深度抬到4，
     // 会额外多占 1/3 的 UB，得不偿失。本PR只替换了高频、位于内层循环、构成scalar bound瓶颈的 % DB。
@@ -634,7 +636,7 @@ public:
 
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_0);
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
@@ -661,7 +663,7 @@ public:
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_0);
     }
 
     __aicore__ inline void Bmm2ResCastAndCopyOut(RunInfoX &runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -677,8 +679,8 @@ public:
 
         RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3Id_0);
+        WaitFlag<HardEvent::V_MTE3>(vToMte3Id_0);
 
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
@@ -690,7 +692,7 @@ public:
         uint32_t subMBase = 8192 / constInfo.dBasicBlock;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_0);
         LocalTensor<T> bmm2Ub = mm2InBuf.template Get<T>();
 
         event_t mte2ToV = static_cast<event_t>(tPipe->FetchEventID(HardEvent::MTE2_V));
@@ -789,8 +791,8 @@ public:
                 }
                 CopyOutAttentionOut(runInfo, vec2ResUb, mIdx, subMRealsize);
             } else if (vec2LoopLimit > 1) {
-                SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-                WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+                SetFlag<HardEvent::V_MTE3>(vToMte3Id_0);
+                WaitFlag<HardEvent::V_MTE3>(vToMte3Id_0);
                 if constexpr (useDn) {
                     DataCopy(this->vec2ResGm[runInfo.loop & (DB - 1)][vec2SubBlockOffset + vec2ResInnerOffset],
                              vec2ResUb,
@@ -804,7 +806,7 @@ public:
                 }
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_0);
     }
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
@@ -961,8 +963,9 @@ public:
         if constexpr (splitD) {
             dSizeAligned64 = constInfo.dBasicBlock;
         }
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        auto& curVToMte3 = (runInfo.loop & 1) ? vToMte3Id_1 : vToMte3Id_0;
+        SetFlag<HardEvent::V_MTE3>(curVToMte3);
+        WaitFlag<HardEvent::V_MTE3>(curVToMte3);
         uint64_t gmOffset =
             runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV + (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
 
@@ -1005,7 +1008,7 @@ public:
         uint32_t subMBase = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.actVecMSize, subMBase);
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_0);
         LocalTensor<T> bmm2Ub = mm2InBuf.template Get<T>();
 
         event_t mte2ToV = static_cast<event_t>(tPipe->FetchEventID(HardEvent::MTE2_V));
@@ -1087,7 +1090,7 @@ public:
                 CopyOutAttentionOut(runInfo, vec2ResInner, mIdx, subMRealsize);
             }
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_0);
     }
 
     __aicore__ inline void SoftmaxInitBuffer()
@@ -1152,22 +1155,22 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
-        mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        mte3ToVId_0 = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        mte3ToVId_1 = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        vToMte3Id_0 = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        vToMte3Id_1 = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_0);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_1);
     }
 
     __aicore__ inline void FreeEventID()
     {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId_0);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId_1);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId_0);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId_1);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_0);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_1);
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
