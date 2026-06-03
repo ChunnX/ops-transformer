@@ -127,6 +127,10 @@ public:
     bool emptyBatch = false;
     uint32_t dealZerosMSize = 0;
 
+    // Cached loop times to avoid redundant 64-bit divisions
+    uint64_t cachedS2LoopTimes = 0;
+    uint64_t cachedGS1LoopTimes = 0;
+
     // metadata
     uint32_t sectionNum_;
     bool isFd;
@@ -417,13 +421,13 @@ public:
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
-                if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
+                if (likely(taskDealMode == TASK_DEAL_MODE::CREATE_TASK)) {
                     // 创建任务
                     CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
                     UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
-                } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
+                } else if (unlikely(taskDealMode == TASK_DEAL_MODE::DEAL_ZERO)) {
                     if ASCEND_IS_AIV {
                         vecFaBlock.DealZeroActSeqLen(bN2Cur);
                     }
@@ -470,11 +474,12 @@ public:
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
+            // Cache loop times when batch changes
+            cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+            cachedGS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         }
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (unlikely(cachedS2LoopTimes == 0 || cachedGS1LoopTimes == 0)) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -491,11 +496,11 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
+        if (unlikely(curS2Start < curS2End && s2Cur >= curS2End)) {
             return TASK_DEAL_MODE::S2_END;
         }
 
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
+        if (unlikely(s2Cur < curS2Start || s2Cur >= curS2End)) {
             return TASK_DEAL_MODE::SKIP;
         }
 
@@ -744,12 +749,8 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
         // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
+        if (s2Cur + 1 < cachedS2LoopTimes) {
             s2Cur++;
             return;
         }
@@ -761,12 +762,12 @@ public:
 
         // 当前BN2未处理完
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
+        if (gS1Cur + 1 < cachedGS1LoopTimes) {
             gS1Cur++;
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+        if (unlikely(taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
             accGS1Loops++;
         }
 
