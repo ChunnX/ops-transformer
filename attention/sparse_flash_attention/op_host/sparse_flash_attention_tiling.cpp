@@ -604,8 +604,9 @@ void SFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expec
             sfaOss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only supports dtype %s, but got %s",
-        name.c_str(), sfaOss.str().c_str(), SFADataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+        SFADataTypeToSerialString(actualDtype).c_str(),
+        "The dtype of " + name + " must be " + sfaOss.str());
 }
 
 ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *sfaDesc,
@@ -985,9 +986,9 @@ ge::graphStatus SFATilingCheck::CheckDTypeConsistency(const ge::DataType &actual
     const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
-        OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            SFADataTypeToSerialString(expectDtype).c_str(),
-            SFADataTypeToSerialString(actualDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, name.c_str(),
+            SFADataTypeToSerialString(actualDtype).c_str(),
+            "The dtype of " + name + " must be " + SFADataTypeToSerialString(expectDtype));
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1082,7 +1083,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
                 return ge::GRAPH_FAILED);
         // type类型校验
         OP_CHECK_IF(opParamInfo_.softmaxMax.desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "SoftmaxMax",
+                 std::to_string(opParamInfo_.softmaxMax.desc->GetDataType()).c_str(),
+                "The dtype of SoftmaxMax must be FLOAT."),
                 return ge::GRAPH_FAILED);
         // shape和维度校验
         if (ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
@@ -1103,7 +1106,9 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
             OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
-            OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "softmaxSum",
+                 std::to_string(opParamInfo_.softmaxSum.desc->GetDataType()).c_str(),
+                "The dtype of softmaxSum must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
         if (opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0) {
@@ -1223,8 +1228,9 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQDType()
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengthsQ's dtype is %s, it should be DT_INT32.",
-            SFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengthsQ",
+            SFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengthsQ must be DT_INT32");
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1273,8 +1279,9 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensDType()
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "actualSeqLengths's dtype is %s, it should be DT_INT32.",
-            SFADataTypeToSerialString(opParamInfo_.actualSeqLengths.desc->GetDataType()).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengths",
+            SFADataTypeToSerialString(opParamInfo_.actualSeqLengthsQ.desc->GetDataType()).c_str(),
+            "The dtype of actualSeqLengths must be DT_INT32");
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1373,9 +1380,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantLayout() const
 ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantDtype() const
 {
     OP_CHECK_IF(inputQType_ != ge::DT_BF16 && inputQType_ != ge::DT_FLOAT16,
-        OP_LOGE(opName_, "query dtype only support %s and %s, but got %s",
-            SFADataTypeToSerialString(ge::DT_BF16).c_str(), SFADataTypeToSerialString(ge::DT_FLOAT16).c_str(),
-            SFADataTypeToSerialString(inputQType_).c_str()),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query", SFADataTypeToSerialString(actualDtype).c_str(),
+            "The dtype of query must be " + SFADataTypeToSerialString(ge::DT_BF16).c_str() + " and " + SFADataTypeToSerialString(ge::DT_FLOAT16).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
