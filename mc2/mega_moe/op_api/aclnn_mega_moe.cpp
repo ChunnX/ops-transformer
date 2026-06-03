@@ -68,8 +68,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         uniqueExec.ReleaseTo(executor);
     }
 
-    const aclTensorList* bias1Optional;
-    const aclTensorList* bias2Optional;
+    const aclTensorList* bias1Optional = nullptr;
+    const aclTensorList* bias2Optional = nullptr;
     // 可选 DYNAMIC 参数为 nullptr 时创建带 dtype 的 dummy tensor list 满足支持列表校验
     aclTensorList *tmpBiasList = nullptr;
     aclTensorList *tmpScaleList = nullptr;
