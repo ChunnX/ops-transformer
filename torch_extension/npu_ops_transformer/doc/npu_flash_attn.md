@@ -5,11 +5,6 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
 
 
 ## 功能说明<a name="zh-cn_topic_0000002168254826_section14441124184110"></a>
@@ -75,301 +70,51 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 319px">
-<col style="width: 272px">
-<col style="width: 45px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>q</td>
-        <td>必选输入</td>
-        <td>公式中的q</td>
-        <td>BFLOAT16/FLOAT16</td>
-        <td>ND</td>
-        <td>
-            <ul>
-                <li>(B, Q_S, Q_N, D)</li>
-                <li>(B, Q_N, Q_S, D)</li>
-                <li>(Q_T, Q_N, D)</li>
-            </ul>      
-        </td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>k</td>
-        <td>必选输入</td>
-        <td>公式中的k</td>
-        <td>BFLOAT16/FLOAT16</td>
-        <td>ND</td>
-        <td>
-            <ul>
-                <li>(B, KV_S, KV_N, D)</li>
-                <li>(B, KV_N, KV_S, D)</li>
-                <li>(KV_T, KV_N, D)</li>
-                <li>(num_blocks, block_size, KV_N, D)</li>
-                <li>(num_blocks, KV_N, block_size, D)</li>
-            </ul>
-        </td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>v</td>
-        <td>必选输入</td>
-        <td>公式中的v</td>
-        <td>BFLOAT16/FLOAT16</td>
-        <td>ND</td>
-        <td>
-            <ul>
-                <li>(B, KV_S, KV_N, D)</li>
-                <li>(B, KV_N, KV_S, D)</li>
-                <li>(KV_T, KV_N, D)</li>
-                <li>(num_blocks, block_size, KV_N, D)</li>
-                <li>(num_blocks, KV_N, block_size, D)</li>
-            </ul>    
-        </td>
-        <td>×</td>
-    </tr>
-    <tr>
-        <td>block_table</td>
-        <td>可选输入</td>
-        <td>用于分块注意力计算中的块索引映射</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(B, max_num_blocks_per_seq)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>cu_seqlens_q</td>
-        <td>可选输入</td>
-        <td>累积序列长度,用于处理变长序列</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(B+1,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>cu_seqlens_kv</td>
-        <td>可选输入</td>
-        <td>累积序列长度,用于处理变长序列</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(B+1,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>seqused_q</td>
-        <td>可选输入</td>
-        <td>指定每batch中实际使用的序列长度，截断冗余运算</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(B,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>seqused_kv</td>
-        <td>可选输入</td>
-        <td>指定每batch中实际使用的序列长度，截断冗余运算</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(B,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>sinks</td>
-        <td>可选输入</td>
-        <td>暂不支持</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>(Q_N,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>metadata</td>
-        <td>可选输入</td>
-        <td>metadata</td>
-        <td>INT32</td>
-        <td>ND</td>
-        <td>(max_schedule_size,)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>softmax_scale</td>
-        <td>可选输入</td>
-        <td>可显式设置缩放因子，覆盖默认计算</td>
-        <td>FLOAT32</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>mask_mode</td>
-        <td>可选输入</td>
-        <td>掩码模式</td>
-        <td>INT</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>attn_mask</td>
-        <td>可选输入</td>
-        <td>掩码矩阵</td>
-        <td>INT8</td>
-        <td>ND</td>
-        <td>(2048, 2048)</td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>win_left</td>
-        <td>可选输入</td>
-        <td>window左界限</td>
-        <td>INT</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>win_right</td>
-        <td>可选输入</td>
-        <td>window右界限</td>
-        <td>INT</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>max_seqlen_q</td>
-        <td>可选输入</td>
-        <td>指定查询q序列的长度上限</td>
-        <td>INT</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>max_seqlen_kv</td>
-        <td>可选输入</td>
-        <td>指定键k和值v序列的长度上限</td>
-        <td>INT</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>layout_q</td>
-        <td>可选输入</td>
-        <td>定义输入q张量的布局格式</td>
-        <td>STRING</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>layout_kv</td>
-        <td>可选输入</td>
-        <td>定义输入k和v张量的布局格式</td>
-        <td>STRING</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>layout_out</td>
-        <td>可选输入</td>
-        <td>定义输出张量的布局格式</td>
-        <td>STRING</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-    <tr>
-        <td>return_softmax_lse</td>
-        <td>可选输入</td>
-        <td>是否需要获取softmax的LSE结果</td>
-        <td>INT</td>
-        <td>N/A</td>
-        <td>-</td>
-        <td>-</td>
-    </tr>
-</tbody>
-</table>
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
+|:---|:---|:---|:---|:---|:---|:---:|
+| q | 必选输入 | 公式中的q | BFLOAT16/FLOAT16 | ND | (B, Q_S, Q_N, D) / (B, Q_N, Q_S, D) / (Q_T, Q_N, D) | ✓ |
+| k | 必选输入 | 公式中的k | BFLOAT16/FLOAT16 | ND | (B, KV_S, KV_N, D) / (B, KV_N, KV_S, D) / (KV_T, KV_N, D) / (num_blocks, block_size, KV_N, D) / (num_blocks, KV_N, block_size, D) | × |
+| v | 必选输入 | 公式中的v | BFLOAT16/FLOAT16 | ND | (B, KV_S, KV_N, D) / (B, KV_N, KV_S, D) / (KV_T, KV_N, D) / (num_blocks, block_size, KV_N, D) / (num_blocks, KV_N, block_size, D) | × |
+| block_table | 可选输入 | 用于分块注意力计算中的块索引映射 | INT32 | ND | (B, max_num_blocks_per_seq) | ✓ |
+| cu_seqlens_q | 可选输入 | 累积序列长度，用于处理变长序列 | INT32 | ND | (B+1,) | ✓ |
+| cu_seqlens_kv | 可选输入 | 累积序列长度，用于处理变长序列 | INT32 | ND | (B+1,) | ✓ |
+| seqused_q | 可选输入 | 指定每batch中实际使用的序列长度，截断冗余运算 | INT32 | ND | (B,) | ✓ |
+| seqused_kv | 可选输入 | 指定每batch中实际使用的序列长度，截断冗余运算 | INT32 | ND | (B,) | ✓ |
+| sinks | 可选输入 | 暂不支持 | FLOAT32 | ND | (Q_N,) | ✓ |
+| metadata | 可选输入 | metadata | INT32 | ND | (max_schedule_size,) | ✓ |
+| softmax_scale | 可选输入 | 可显式设置缩放因子，覆盖默认计算 | FLOAT32 | N/A | - | - |
+| mask_mode | 可选输入 | 掩码模式 | INT | N/A | - | - |
+| attn_mask | 可选输入 | 掩码矩阵 | INT8 | ND | (2048, 2048) | ✓ |
+| win_left | 可选输入 | window左界限 | INT | - | - | - |
+| win_right | 可选输入 | window右界限 | INT | - | - | - |
+| max_seqlen_q | 可选输入 | 指定查询q序列的长度上限 | INT | - | - | - |
+| max_seqlen_kv | 可选输入 | 指定键k和值v序列的长度上限 | INT | - | - | - |
+| layout_q | 可选输入 | 定义输入q张量的布局格式 | STRING | N/A | - | - |
+| layout_kv | 可选输入 | 定义输入k和v张量的布局格式 | STRING | N/A | - | - |
+| layout_out | 可选输入 | 定义输出张量的布局格式 | STRING | N/A | - | - |
+| return_softmax_lse | 可选输入 | 是否需要获取softmax的LSE结果 | INT | N/A | - | - |
+
+### 基准信息说明
+
+资料约束中，常见字段释义如下：
+
+| 命名 | 含义 |
+|:---:|:---|
+| B | Batch, 表示输入样本批量大小 |
+| Q_N | 输入q tensor的头数，对应q shape中的N |
+| KV_N | 输入k/v tensor的头数，对应k/v shape中的N |
+| Q_S | 输入q tensor的序列长度，对应q shape中的S |
+| KV_S | 输入k/v tensor的序列长度，对应k/v shape中的S |
+| Q_T | 输入q tensor所有batch序列长度的累加和 |
+| KV_T | 输入k/v tensor所有batch序列长度的累加和 |
+| D | 输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim |
 
 ## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
 
-<table style="undefined;table-layout: fixed; width:1475px"><colgroup>
-<col style="width: 250px">
-<col style="width: 130px">
-<col style="width: 230px">
-<col style="width: 290px">
-<col style="width: 185px">
-<col style="width: 270px">
-<col style="width: 120px">
-
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>attn_out</td>
-        <td>固定输出</td>
-        <td>flash_attn的计算输出</td>
-        <td>BFLOAT16/FLOAT16</td>
-        <td>ND</td>
-        <td>
-            <ul>
-                <li>(B, Q_S, Q_N, D)</li>
-                <li>(B, Q_N, Q_S, D)</li>
-                <li>(Q_T, Q_N, D)</li>
-            </ul>      
-        </td>
-        <td>✓</td>
-    </tr>
-    <tr>
-        <td>softmax_lse</td>
-        <td>可选输出</td>
-        <td>softmax的LSE结果</td>
-        <td>FLOAT32</td>
-        <td>ND</td>
-        <td>
-            <ul>
-                <li>(B, Q_N, Q_S)</li>
-                <li>(Q_N, Q_T)</li>
-            </ul>      
-        </td>
-        <td>✓</td>
-    </tr>
-</tbody>
-</table>
-
-**说明**
--   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
--   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时，输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
+|:---|:---|:---|:---|:---|:---|:---:|
+| attn_out | 固定输出 | flash_attn的计算输出。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致 | BFLOAT16/FLOAT16 | ND | (B, Q_S, Q_N, D) / (B, Q_N, Q_S, D) / (Q_T, Q_N, D) | ✓ |
+| softmax_lse | 可选输出 | softmax的LSE结果。对query乘key的结果先取max得到softmax_max，再减去softmax_max后取exp，最后取sum得到softmax_sum，对softmax_sum取log再加上softmax_max。return_softmax_lse为1时，一般情况下输出shape为(B, Q_N, Q_S)的Tensor，当input_q为TND时输出shape为(Q_N, Q_T)的Tensor；return_softmax_lse为0时，输出shape为[1]的值为0的Tensor | FLOAT32 | ND | (B, Q_N, Q_S) / (Q_N, Q_T) | ✓ |
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
@@ -378,526 +123,167 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ### 特性参数组
 
-|      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
-| :-------------------: | :-------------------: | :-------------: | :--------: |
-|      公共参数组      |         q         |      INPUT      |   Tensor   |
-|                      |          k          |      INPUT      | Tensor |
-|                      |         v         |      INPUT      | Tensor |
-|                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
-|                      |      layout_q      | ATTR(OPTIONAL) |   string   |
-|                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
-|                      |      layout_out      | ATTR(OPTIONAL) |   string   |
-|                      |     attn_out     |     OUTPUT     |   Tensor   |
-|      Mask参数组      |       mask_mode       | ATTR(OPTIONAL) |   int   |
-|                      |       win_left       | ATTR(OPTIONAL) |   int   |
-|                      |      win_right      | ATTR(OPTIONAL) |   int   |
-|                      |      attn_mask      | INPUT(OPTIONAL) |   Tensor   |
-| SeqLens参数组  |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
-|                      |  cu_seqlens_kv  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_q  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_kv  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  max_seqlen_q  | ATTR(OPTIONAL) |  int  |
-|                      |  max_seqlen_kv  | ATTR(OPTIONAL) |  int  |
-| Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
-|  Sinks参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
-|   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
-|                      |      softmax_lse      |     OUTPUT     |   Tensor   |
-
-### 基准信息说明
-
-资料约束中，常见字段释义如下：
-
-|    命名    |                            含义                            |
-| :---------: | :---------------------------------------------------------: |
-|      B      |                Batch, 表示输入样本批量大小                |
-|     Q_N     |        输入q tensor的头数，对应q shape中的N        |
-|    KV_N    |    输入k/v tensor的头数，对应k/v shape中的N    |
-|     Q_S     |      输入q tensor的序列长度，对应q shape中的S      |
-|    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
-|     Q_T     |          输入q tensor所有batch序列长度的累加和          |
-|     KV_T     |          输入k/v tensor所有batch序列长度的累加和          |
-|     D     |          输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim         |
+| 特性参数组 | 参数字段名称 | 字段分组 | 字段类型 |
+|:---|:---|:---|:---|
+| 公共参数组 | q | INPUT | Tensor |
+| | k | INPUT | Tensor |
+| | v | INPUT | Tensor |
+| | softmax_scale | ATTR(OPTIONAL) | double |
+| | layout_q | ATTR(OPTIONAL) | string |
+| | layout_kv | ATTR(OPTIONAL) | string |
+| | layout_out | ATTR(OPTIONAL) | string |
+| | attn_out | OUTPUT | Tensor |
+| Mask参数组 | mask_mode | ATTR(OPTIONAL) | int |
+| | win_left | ATTR(OPTIONAL) | int |
+| | win_right | ATTR(OPTIONAL) | int |
+| | attn_mask | INPUT(OPTIONAL) | Tensor |
+| SeqLens参数组 | cu_seqlens_q | INPUT(OPTIONAL) | Tensor |
+| | cu_seqlens_kv | INPUT(OPTIONAL) | Tensor |
+| | seqused_q | INPUT(OPTIONAL) | Tensor |
+| | seqused_kv | INPUT(OPTIONAL) | Tensor |
+| | max_seqlen_q | ATTR(OPTIONAL) | int |
+| | max_seqlen_kv | ATTR(OPTIONAL) | int |
+| Paged Attention参数组 | block_table | INPUT(OPTIONAL) | Tensor |
+| Sinks参数组 | sinks | INPUT(OPTIONAL) | Tensor |
+| SoftmaxLSE参数组 | return_softmax_lse | ATTR(OPTIONAL) | int |
+| | softmax_lse | OUTPUT | Tensor |
 
 ### 参数组约束
 
 #### 公共参数组
+
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
 - q、k、v、attn_out校验
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>q</td>
-        <td>
-            <ul>
-                <li>tensor_type支持BFLOAT16和FLOAT16</li>
-                <li>BNSD -> (B, N_Q, S_Q, D)</li>
-                <li>BSND -> (B, S_Q, N_Q, D)</li>
-                <li>TND -> (T_Q, N_Q, D)</li>
-            </ul>
-        </td>
-        <td rowspan="4">
-            必须存在
-        </td>
-        <td rowspan="4">
-            <ul>
-                <li>q、k、v、attn_out的数据类型需相同</li>
-                <li>k、v的shape需相同</li>
-                <li>Layout校验规则见layout匹配关系表</li>
-            </ul>
-        </td>
-        <td rowspan="4">
-            轴校验：
-            <ul>
-                <li>65536 > B > 0</li>
-                <li>Q_T > 0</li>
-                <li>KV_T > 0</li>
-                <li>Q_N > 0</li>
-                <li>KV_N > 0</li>
-                <li>Q_S > 0</li>
-                <li>KV_S > 0</li>
-                <li>D = 128</li>
-                <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>k</td>
-        <td rowspan="2">
-            <ul>
-                <li>tensor_type支持BFLOAT16和FLOAT16</li>
-                <li>BNSD -> (B, N_KV, S_KV, D)</li>
-                <li>BSND -> (B, S_KV, N_KV, D)</li>
-                <li>TND -> (T_KV, N_KV, D)</li>
-                <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
-                <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
-                <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>v</td>
-    </tr>
-    <tr>
-        <td>attn_out</td>
-        <td>
-            <ul>
-                <li>data_type支持BFLOAT16和FLOAT16</li>
-                <li>shape维度支持3、4</li>
-            </ul>
-        </td>
-    </tr>
-</tbody>
-</table>
 
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| q | tensor_type支持BFLOAT16和FLOAT16；BNSD -> (B, N_Q, S_Q, D)；BSND -> (B, S_Q, N_Q, D)；TND -> (T_Q, N_Q, D) | 必须存在 | q、k、v、attn_out的数据类型需相同；k、v的shape需相同；Layout校验规则见layout匹配关系表 | 轴校验：65536 > B > 0；Q_T > 0；KV_T > 0；Q_N > 0；KV_N > 0；Q_S > 0；KV_S > 0；D = 128；Q_N % KV_N == 0 且 Q_N / KV_N > 0 |
+| k | tensor_type支持BFLOAT16和FLOAT16；BNSD -> (B, N_KV, S_KV, D)；BSND -> (B, S_KV, N_KV, D)；TND -> (T_KV, N_KV, D)；PA_BBND -> (num_blocks, block_size, KV_N, D)；PA_BNBD -> (num_blocks, KV_N, block_size, D)；1024 >= block_size >= 16，block_size % 16 == 0 | 必须存在 | 同上 | 同上 |
+| v | 同k | 必须存在 | 同上 | 同上 |
+| attn_out | data_type支持BFLOAT16和FLOAT16；shape维度支持3、4 | 必须存在 | 同上 | 同上 |
 
 layout匹配关系表：
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 247px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 119px">
-<col style="width: 272px">
-<col style="width: 145px">
-</colgroup>
-<thead>
-<tr>
-    <th>layout_q</th>
-    <th>layout_kv</th>
-    <th>layout_out</th>
-    <th>layout_softmax_lse</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>BNSD</td>
-        <td>
-          <li>BNSD</li>
-          <li>PA_BBND</li>
-          <li>PA_BNBD</li>
-        </td>
-        <td>
-          <li>BNSD</li>
-          <li>BSND</li>
-        </td>
-        <td>(B, Q_N, Q_S)</td>
-    </tr>
-    <tr>
-        <td>BSND</td>
-        <td>
-          <li>BSND</li>
-          <li>PA_BBND</li>
-          <li>PA_BNBD</li>
-        </td>
-        <td>BSND</td>
-        <td>(B, Q_N, Q_S)</td>
-    </tr>
-    <tr>
-        <td>TND</td>
-        <td>
-          <li>TND</li>
-          <li>PA_BBND</li>
-          <li>PA_BNBD</li>
-        </td>
-        <td>TND</td>
-        <td>(Q_N, Q_T)</td>
-    </tr>
-</tbody>
-</table>
+
+| layout_q | layout_kv | layout_out | layout_softmax_lse |
+|:---|:---|:---|:---|
+| BNSD | BNSD / PA_BBND / PA_BNBD | BNSD / BSND | (B, Q_N, Q_S) |
+| BSND | BSND / PA_BBND / PA_BNBD | BSND | (B, Q_N, Q_S) |
+| TND | TND / PA_BBND / PA_BNBD | TND | (Q_N, Q_T) |
 
 #### Mask参数组
 
-mask_mode参数解释
-<ul>
-    <li>mask_mode=0，全计算模式（默认值）</li>
-    <li>mask_mode=3，Causal模式</li>
-</ul>
+mask_mode参数解释：
+- mask_mode=0，全计算模式（默认值）
+- mask_mode=3，Causal模式
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>mask_mode</td>
-        <td>
-            <ul>
-                <li>data_type支持INT</li>
-                <li>支持输入范围仅为 0、3，默认值为 0</li>
-            </ul>
-        </td>
-        <td>
-            可选输入，如果不传该参数，默认值为0
-        </td>
-        <td rowspan="4">
-            <ul>
-                <li>当mask_mode为0时，win_left和win_right必须为-1以及不支持传入attn_mask</li>
-                <li>当mask_mode为3时，win_left和win_right必须为-1且必须传入attn_mask矩阵</li>
-            </ul>
-        </td>
-        <td rowspan="4">
-            <ul>
-                <li>无</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>attn_mask</td>
-        <td>
-            <ul>
-                <li>tensor_type支持INT8</li>
-                <li>tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048的下三角矩阵对角线全0</li>
-            </ul>
-        </td>
-        <td rowspan="3">
-            无
-        </td>
-    </tr>
-    <tr>
-        <td>win_left</td>
-        <td rowspan="2">
-            <ul>
-                <li>data_type支持INT</li>
-                <li>不传或者传入-1,代表该值为正无穷</li>
-                <li>值需要 >= -1</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>win_right</td>
-    </tr>
-</tbody>
-</table>
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| mask_mode | data_type支持INT；支持输入范围仅为 0、3，默认值为 0 | 可选输入，如果不传该参数，默认值为0 | 当mask_mode为0时，win_left和win_right必须为-1以及不支持传入attn_mask；当mask_mode为3时，win_left和win_right必须为-1且必须传入attn_mask矩阵 | 无 |
+| attn_mask | tensor_type支持INT8；tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048的下三角矩阵对角线全0 | 无 | 同上 | 无 |
+| win_left | data_type支持INT；不传或者传入-1，代表该值为正无穷；值需要 >= -1 | 无 | 同上 | 无 |
+| win_right | 同win_left | 无 | 同上 | 无 |
 
 #### SeqLengths参数组
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>seqused_q</td>
-        <td rowspan="2">
-            <ul>
-                <li>tensor_type支持INT32</li>
-                <li>tensor_shape为(B,)</li>
-                <li>仅支持非负整数</li>
-                <li>seqused_q中的值需小于等于Q_S</li>
-                <li>seqused_kv中的值需小于等于KV_S</li>
-            </ul>
-        </td>
-        <td rowspan="6">
-            可选参数
-        </td>
-        <td rowspan="6">
-            无
-        </td>
-        <td rowspan="2">
-            无
-        </td>
-    </tr>
-    <tr>
-        <td>seqused_kv</td>
-    </tr>
-    <tr>
-        <td>cu_seqlens_q</td>
-        <td>
-            <ul>
-                <li>tensor_type支持INT32</li>
-                <li>tensor_shape为(B+1,)</li>
-                <li>值仅支持非负整数</li>
-                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 Q_T</li>
-            </ul>
-        </td>
-        <td>
-            <ul>
-                <li>当layout_q为TND时，必须传入</li>
-                <li>当layout_q不为TND时，不支持传入</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>cu_seqlens_kv</td>
-        <td>
-            <ul>
-                <li>tensor_type支持INT32</li>
-                <li>tensor_shape为(B+1,)</li>
-                <li>值仅支持非负整数</li>
-                <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 KV_T</li>
-            </ul>
-        </td>
-        <td>
-            <ul>
-                <li>当layout_kv为TND时，必须传入</li>
-                <li>当layout_kv不为TND时，不支持传入</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>max_seqlen_q</td>
-        <td rowspan="2">
-            <ul>
-                <li>data_type支持INT</li>
-                <li>暂不生效，仅支持-1</li>
-                <li>默认值为-1</li>
-            </ul>
-        </td>
-        <td rowspan="2">
-            <ul>
-                <li>暂不生效，仅支持传入-1</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td>max_seqlen_kv</td>
-    </tr>
-</tbody>
-</table>
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| seqused_q | tensor_type支持INT32；tensor_shape为(B,)；仅支持非负整数；seqused_q中的值需小于等于Q_S | 可选参数 | 无 | 无 |
+| seqused_kv | tensor_type支持INT32；tensor_shape为(B,)；仅支持非负整数；seqused_kv中的值需小于等于KV_S | 可选参数 | 无 | 无 |
+| cu_seqlens_q | tensor_type支持INT32；tensor_shape为(B+1,)；值仅支持非负整数；其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 Q_T | 可选参数 | 无 | 当layout_q为TND时，必须传入；当layout_q不为TND时，不支持传入 |
+| cu_seqlens_kv | tensor_type支持INT32；tensor_shape为(B+1,)；值仅支持非负整数；其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 KV_T | 可选参数 | 无 | 当layout_kv为TND时，必须传入；当layout_kv不为TND时，不支持传入 |
+| max_seqlen_q | data_type支持INT；暂不生效，仅支持-1；默认值为-1 | 可选参数 | 无 | 暂不生效，仅支持传入-1 |
+| max_seqlen_kv | 同max_seqlen_q | 可选参数 | 无 | 暂不生效，仅支持传入-1 |
 
 #### Paged Attention参数组
+
 当block_table不为空时，使能Paged Attention
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>block_table</td>
-        <td>
-            <ul>
-                <li>tensor_type仅支持INT32</li>
-                <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
-                <li>值只能为正整数</li>
-            </ul>
-        </td>
-        <td>
-            可选参数
-        </td>
-        <td>
-            无
-        </td>
-        <td>
-            <ul>
-                <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
-                <li>PagedAttention 使能情况下，block_table必须不为空</li>
-            </ul>
-        </td>
-    </tr>
-</tbody>
-</table>
+
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| block_table | tensor_type仅支持INT32；tensor_shape为(B, max_num_blocks_per_seq)；值只能为正整数 | 可选参数 | 无 | PagedAttention 使能情况下，必须传入 seqused_kv；PagedAttention 使能情况下，block_table必须不为空 |
 
 #### Sinks参数组
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>sinks</td>
-        <td>
-            <ul>
-                <li>暂不支持</li>
-            </ul>
-        </td>
-        <td>
-            可选参数
-        </td>
-        <td>
-            无
-        </td>
-        <td>
-            暂不支持
-        </td>
-    </tr>
-</tbody>
-</table>
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| sinks | 暂不支持 | 可选参数 | 无 | 暂不支持 |
 
 #### SoftmaxLSE参数组
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 147px">
-<col style="width: 232px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数</th>
-    <th>单参数校验</th>
-    <th>存在性校验</th>
-    <th>一致性校验</th>
-    <th>特性交叉校验</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>return_softmax_lse</td>
-        <td>
-            <ul>
-                <li>data_type仅支持INT</li>
-                <li>值仅支持0和1，1代表开启softmax_lse，0代表关闭softmax_lse</li>
-            </ul>
-        </td>
-        <td>
-            可选属性，默认值为0
-        </td>
-        <td rowspan="2">
-            <ul>
-                <li>当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor</li>
-                <li>当return_softmax_lse为1时，输出shape见layout匹配关系表</li>
-            </ul>
-        </td>
-        <td>
-            无
-        </td>
-    </tr>
-    <tr>
-        <td>softmax_lse</td>
-        <td>
-            <ul>
-                <li>data_type仅支持FLOAT32</li>
-            </ul>
-        </td>
-        <td>
-            无
-        </td>
-        <td>
-            无
-        </td>
-    </tr>
-</tbody>
-</table>
+| 参数 | 单参数校验 | 存在性校验 | 一致性校验 | 特性交叉校验 |
+|:---|:---|:---|:---|:---|
+| return_softmax_lse | data_type仅支持INT；值仅支持0和1，1代表开启softmax_lse，0代表关闭softmax_lse | 可选属性，默认值为0 | 当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor；当return_softmax_lse为1时，输出shape见layout匹配关系表 | 无 |
+| softmax_lse | data_type仅支持FLOAT32 | 无 | 同上 | 无 |
 
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
 
     ```python
-    import os
     import torch
-    import random
     import torch_npu
-    import numpy as np
+    from npu_ops_transformer.ops import npu_flash_attn, npu_flash_attn_metadata
 
-    ```
+    # 配置参数
+    device = torch.device("npu:0")
+    dtype = torch.float16
+    batch_size = 1
+    num_heads_q = 1
+    num_heads_kv = 1
+    seq_len_q = 1
+    seq_len_kv = 8192
+    head_dim = 128
+    mask_size = 2048
+    layout = "BSND"
+    mask_mode = 3  # Causal模式
 
--   调用
+    # 构造Causal掩码矩阵（上三角为1）
+    attn_mask = torch.triu(
+        torch.ones(mask_size, mask_size, dtype=torch.int8), diagonal=1
+    ).to(device)
 
-    ```python
-    import os
-    import torch
-    import random
-    import torch_npu
-    import torchair
-    import numpy as np
+    # 构造输入数据
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(42)
 
+    q = torch.randn(batch_size, seq_len_q, num_heads_q, head_dim,
+                    dtype=dtype, generator=generator).to(device)
+    k = torch.randn(batch_size, seq_len_kv, num_heads_kv, head_dim,
+                    dtype=dtype, generator=generator).to(device)
+    v = torch.randn(batch_size, seq_len_kv, num_heads_kv, head_dim,
+                    dtype=dtype, generator=generator).to(device)
+
+    # 构造metadata
+    metadata = npu_flash_attn_metadata(
+        num_heads_q=num_heads_q,
+        num_heads_kv=num_heads_kv,
+        head_dim=head_dim,
+        batch_size=batch_size,
+        max_seqlen_q=seq_len_q,
+        max_seqlen_kv=seq_len_kv,
+        mask_mode=mask_mode,
+        win_left=-1,
+        win_right=-1,
+        layout_q=layout,
+        layout_kv=layout,
+        layout_out=layout,
+    )
+
+    # 调用算子
+    softmax_scale = 1.0 / (head_dim ** 0.5)
+    attn_out, softmax_lse = npu_flash_attn(
+        q, k, v,
+        softmax_scale=softmax_scale,
+        mask_mode=mask_mode,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        layout_q=layout,
+        layout_kv=layout,
+        layout_out=layout,
+    )
+
+    torch.npu.synchronize()
+    print("attn_out shape:", attn_out.shape)
     ```
