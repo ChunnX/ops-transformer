@@ -1,9 +1,9 @@
 #ifndef MOE_EP_COMBINE_TILING_H
 #define MOE_EP_COMBINE_TILING_H
 
-#include "mc2_common_def.h"
-#include "mc2_moe_context.h"
-#include "../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
+#include "../../common/op_kernel/mc2_common_def.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
+#include "../../moe_ep_dispatch/op_kernel/moe_ep_dispatch_tiling.h"
 
 struct MoeEpCombineInfo {
     MoeEpCommonTilingData cfg;
