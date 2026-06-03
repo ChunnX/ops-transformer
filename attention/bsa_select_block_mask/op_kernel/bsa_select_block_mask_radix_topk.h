@@ -30,17 +30,6 @@ public:
 
 private:
     __aicore__ inline void NegateAttnScore();
-    __aicore__ inline void TwiddleInB16(LocalTensor<int16_t> &xLocal, uint64_t dataLen);
-    __aicore__ inline void DoAndMask(LocalTensor<int16_t> &xLocal, uint64_t dataLen);
-    __aicore__ inline void CalcCumsumHistogram(LocalTensor<int16_t> &xLocal, int32_t roundId,
-                                                int32_t tileId, uint64_t curTileLen);
-    __aicore__ inline void CopyOutHistToWs();
-    __aicore__ inline bool Update(int32_t roundId);
-    __aicore__ inline void ClearHist(int32_t roundId);
-    __aicore__ inline void TopKPerTile(uint32_t batchIdx, uint32_t headIdx);
-    __aicore__ inline void SubTopKAndWriteMask(LocalTensor<half> &xLocalHalf, half boundaryHalf,
-                                                uint64_t curTileLen, uint64_t tileGmOffset,
-                                                int32_t &curTileK);
 
     BSAConstInfo constInfo;
     const optiling::BSASelectBlockMaskTilingData *__restrict tilingData;
@@ -201,17 +190,8 @@ __aicore__ inline void BSARadixTopKService<BSAT>::FreeEventID()
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
-    if (GetBlockIdx() == 0) {
-        AscendC::printf("STEP6.2: ProcessRadixTopKAndWriteMask start, sparsityMode=%d\n",
-                        static_cast<int32_t>(constInfo.sparsityMode));
-    }
-
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         NegateAttnScore();
-    }
-
-    if (GetBlockIdx() == 0) {
-        AscendC::printf("STEP6.2: NegateAttnScore done (or skipped for TopK)\n");
     }
 }
 
@@ -231,10 +211,6 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
                         static_cast<uint8_t>(alignLen - curTileLen), 0));
         PipeBarrier<PIPE_V>();
 
-        if (GetBlockIdx() == 0 && tileIdx == 0) {
-            AscendC::printf("STEP6.2: NegateAttnScore before Muls, tileLen=%lu\n", curTileLen);
-        }
-
         if constexpr (IsSameType<IN_T, bfloat16_t>::value) {
             Muls(xLocal.template ReinterpretCast<half>(),
                  xLocal.template ReinterpretCast<half>(), (half)-1, alignLen);
@@ -245,62 +221,13 @@ __aicore__ inline void BSARadixTopKService<BSAT>::NegateAttnScore()
 
         DataCopyPad(attnScoreGmLocal[tileGmOffset], xLocal,
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(IN_T)), 0, 0));
-
-        if (GetBlockIdx() == 0 && tileIdx == 0) {
-            AscendC::printf("STEP6.2: NegateAttnScore after writeback\n");
-        }
     }
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TwiddleInB16(LocalTensor<int16_t> &xLocal, uint64_t dataLen)
-{
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::DoAndMask(LocalTensor<int16_t> &xLocal, uint64_t dataLen)
-{
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CalcCumsumHistogram(
-    LocalTensor<int16_t> &xLocal, int32_t roundId, int32_t tileId, uint64_t curTileLen)
-{
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::CopyOutHistToWs()
-{
-}
-
-template <typename BSAT>
-__aicore__ inline bool BSARadixTopKService<BSAT>::Update(int32_t roundId)
-{
-    return true;
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::ClearHist(int32_t roundId)
-{
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::TopKPerTile(uint32_t batchIdx, uint32_t headIdx)
-{
-}
-
-template <typename BSAT>
-__aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
-    LocalTensor<half> &xLocalHalf, half boundaryHalf,
-    uint64_t curTileLen, uint64_t tileGmOffset, int32_t &curTileK)
-{
 }
 
 template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::CopyMaskToOutput(uint32_t batchIdx, uint32_t headIdx,
                                                                      GlobalTensor<OUT_T> &maskOutGm)
 {
-    AscendC::printf("STEP6.1: CopyMaskToOutput baseline (empty)\n");
 }
 
 #endif // BSA_SELECT_BLOCK_MASK_RADIX_TOPK_H
