@@ -218,7 +218,7 @@ public:
         }
     }
 
-    __aicore__ inline void SendVecSftPreProcess()
+    __aicore__ inline void SendVecSftPreProcess(const RunTimeInfo &runTimeInfo)
     {
         s1_process_ = runTimeInfo.s1Len;
         s1_process_align_ = runTimeInfo.s1LenAlign;
