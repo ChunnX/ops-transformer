@@ -51,8 +51,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                                         int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode,
                                         int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
                                         const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
-                                        int64_t batchInvariant, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                        const char *socVersion)
+                                        uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion)
 {
     // batch_size >= 0
     if (batchSize < 0) {
@@ -149,11 +148,6 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
     if ((strcmp(layoutKvOptional, "BSND") != 0) && (strcmp(layoutKvOptional, "TND") != 0) &&
         (strcmp(layoutKvOptional, "PA_BNBD") != 0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD!");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // batch_invariant: 0, 1, or 2
-    if (batchInvariant != 0 && batchInvariant != 1 && batchInvariant != 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "batch_invariant should be 0, 1 or 2, but got %ld", batchInvariant);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核数校验
@@ -568,12 +562,12 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio,
                                int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
                                const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
-                               int64_t batchInvariant, uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
+                               uint32_t aicCoreNum, uint32_t aivCoreNum, const char *socVersion,
                                const aclTensor *metaData)
 {
     if (CheckSingleParamSmla(batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, numHeadsQ, numHeadsKv, oriTopk,
                              cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,
-                             layoutKvOptional, hasOriKv, hasCmpKv, batchInvariant, aicCoreNum, aivCoreNum,
+                             layoutKvOptional, hasOriKv, hasCmpKv, aicCoreNum, aivCoreNum,
                              socVersion) == ACLNN_SUCCESS &&
         CheckExistenceSmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedOriKvOptional,
                            sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,

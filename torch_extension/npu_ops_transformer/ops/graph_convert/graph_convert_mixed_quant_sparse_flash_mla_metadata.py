@@ -45,5 +45,5 @@ if _TORCHAIR_AVAILABLE:
         rope_head_dim: Optional[int] = None, cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None,
         cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
         layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
-        has_cmp_kv: Optional[bool] = None, batch_invariant: Optional[int] = None, meta_outputs: TensorSpec = None):
+        has_cmp_kv: Optional[bool] = None, meta_outputs: TensorSpec = None):
         raise RuntimeError("GE converter doesn't support op: 'npu_mixed_quant_sparse_flash_mla_metadata'")

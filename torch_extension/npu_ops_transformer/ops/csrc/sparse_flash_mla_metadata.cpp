@@ -33,8 +33,7 @@ at::Tensor npu_sparse_flash_mla_metadata(
     const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
     int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_ori_kv, int64_t max_seqlen_cmp_kv, int64_t ori_topk,
     int64_t cmp_topk, int64_t cmp_ratio, int64_t ori_mask_mode, int64_t cmp_mask_mode, int64_t ori_win_left,
-    int64_t ori_win_right, c10::string_view layout_q, c10::string_view layout_kv, bool has_ori_kv, bool has_cmp_kv,
-    int64_t batch_invariant)
+    int64_t ori_win_right, c10::string_view layout_q, c10::string_view layout_kv, bool has_ori_kv, bool has_cmp_kv)
 {
     const c10::string_view device = "npu";
     at::Device output_device = at::Device(std::string(device));
@@ -79,7 +78,7 @@ at::Tensor npu_sparse_flash_mla_metadata(
               seqused_ori_kv_val, seqused_cmp_kv_val, cmp_residual_kv_val, ori_topk_length_val, cmp_topk_length_val,
               num_heads_q, num_heads_kv, head_dim, batch_size, max_seqlen_q, max_seqlen_ori_kv, max_seqlen_cmp_kv,
               ori_topk, cmp_topk, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q_ptr,
-              layout_kv_ptr, has_ori_kv, has_cmp_kv, batch_invariant, output);
+              layout_kv_ptr, has_ori_kv, has_cmp_kv, output);
     return output;
 }
 

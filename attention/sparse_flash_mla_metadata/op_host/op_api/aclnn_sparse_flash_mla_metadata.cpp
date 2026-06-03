@@ -41,15 +41,15 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
     int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
     int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, const char *layoutQOptional,
-    const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, int64_t batchInvariant, const aclTensor *metaData,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData, uint64_t *workspaceSize,
+    aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnSparseFlashMlaMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                           sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                           cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv,
                           maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-                          layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, batchInvariant),
+                          layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -65,8 +65,8 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv,
                            maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft,
-                           oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, batchInvariant,
-                           aicCoreNum, aivCoreNum, socVersion, metaData);
+                           oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv, aicCoreNum, aivCoreNum,
+                           socVersion, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
@@ -148,7 +148,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         cmpResidualKvOptionalContiguous, oriTopkLengthOptionalContiguous, cmpTopkLengthOptionalContiguous, numHeadsQ,
         numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk, cmpRatio,
         oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-        batchInvariant, socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+        socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

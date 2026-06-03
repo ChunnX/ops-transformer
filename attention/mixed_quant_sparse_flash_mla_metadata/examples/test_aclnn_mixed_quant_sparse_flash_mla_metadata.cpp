@@ -127,7 +127,6 @@ struct ArgContext {
     char *layoutKvOptional { nullptr };
     bool hasOriKv { true };
     bool hasCmpKv { true };
-    int64_t batchInvariant { 0 };
     // output
     Tensor metadata {};
 };
@@ -244,7 +243,6 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     strcpy(context.layoutKvOptional, "BSND");                // BSND,TND,PA_BNBD
     context.hasOriKv = true;
     context.hasCmpKv = true;
-    context.batchInvariant = 0;
 
     context.batchSize = 4;
     context.maxSeqlenOriKv = 1024;
@@ -312,7 +310,7 @@ int main() {
         context.maxSeqlenQ, context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk,
         context.ropeHeadDim, context.cmpRatio, context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft,
         context.oriWinRight, context.layoutQOptional, context.layoutKvOptional, context.hasOriKv, context.hasCmpKv,
-        context.batchInvariant, context.metadata.data, &workspaceSize, &executor);
+        context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 

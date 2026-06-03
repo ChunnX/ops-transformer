@@ -25,8 +25,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMixedQuantSparseFlashMla
     int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t batchSize, int64_t maxSeqlenQ,
     int64_t maxSeqlenOriKv, int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim,
     int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
-    const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, int64_t batchInvariant,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const aclTensor *metaData,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 __attribute__((visibility("default"))) aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);

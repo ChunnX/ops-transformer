@@ -35,7 +35,7 @@ class MixedQuantSparseFlashMlaMetadataOpBuilder(OpBuilder):
             "int? max_seqlen_cmp_kv=None, int? ori_topk=None, int? cmp_topk=None, int? rope_head_dim=None," \
             "int? cmp_ratio=None, int? ori_mask_mode=None, int? cmp_mask_mode=None, int? ori_win_left=None," \
             "int? ori_win_right=None, str? layout_q=None, str? layout_kv=None, bool? has_ori_kv=None," \
-            "bool? has_cmp_kv=None, int? batch_invariant=None) -> Tensor"
+            "bool? has_cmp_kv=None) -> Tensor"
 
     def register_meta(self):
         """
@@ -55,8 +55,7 @@ class MixedQuantSparseFlashMlaMetadataOpBuilder(OpBuilder):
             rope_head_dim: Optional[int] = None, cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None,
             cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None,
             ori_win_right: Optional[int] = None, layout_q: Optional[str] = None, layout_kv: Optional[str] = None,
-            has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None,
-            batch_invariant: Optional[int] = None):
+            has_ori_kv: Optional[bool] = None, has_cmp_kv: Optional[bool] = None):
             return torch.empty((QSMLA_METADATA_SIZE), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
@@ -76,7 +75,7 @@ def npu_mixed_quant_sparse_flash_mla_metadata(
     rope_head_dim: Optional[int] = None, cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None,
     cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
     layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
-    has_cmp_kv: Optional[bool] = None, batch_invariant: Optional[int] = None):
+    has_cmp_kv: Optional[bool] = None):
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
@@ -97,13 +96,12 @@ def npu_mixed_quant_sparse_flash_mla_metadata(
     layout_kv = "BSND" if layout_kv is None else layout_kv
     has_ori_kv = True if has_ori_kv is None else has_ori_kv
     has_cmp_kv = True if has_cmp_kv is None else has_cmp_kv
-    batch_invariant = 0 if batch_invariant is None else batch_invariant
 
     return op_module.npu_mixed_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
         max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, rope_head_dim, cmp_ratio, ori_mask_mode,
-        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv, batch_invariant)
+        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
 
 
 @torch.library.register_kernel("npu_ops_transformer::npu_mixed_quant_sparse_flash_mla_metadata", None)
@@ -118,13 +116,13 @@ def npu_mixed_quant_sparse_flash_mla_metadata_fallback(
     rope_head_dim: Optional[int] = None, cmp_ratio: Optional[int] = None, ori_mask_mode: Optional[int] = None,
     cmp_mask_mode: Optional[int] = None, ori_win_left: Optional[int] = None, ori_win_right: Optional[int] = None,
     layout_q: Optional[str] = None, layout_kv: Optional[str] = None, has_ori_kv: Optional[bool] = None,
-    has_cmp_kv: Optional[bool] = None, batch_invariant: Optional[int] = None):
+    has_cmp_kv: Optional[bool] = None):
     # 处理所有 tensor 都为 None 的情况
     # 调用 NPU 实现
     return npu_mixed_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, ori_topk_length, cmp_topk_length, batch_size, max_seqlen_q,
         max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, rope_head_dim, cmp_ratio, ori_mask_mode,
-        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv, batch_invariant)
+        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv, has_ori_kv, has_cmp_kv)
 
 torch.compiler.allow_in_graph(npu_mixed_quant_sparse_flash_mla_metadata)
