@@ -64,12 +64,12 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
         __ubuf__ T *curInUb = inUb + rIdx * actualCol;
         __ubuf__ ROPET *curOutUb = outUb + rIdx * actualCol;
 
-        MicroAPI::DataCopy(vregIn, curInUb + baseAddr);
-        MicroAPI::DataCopy(vregHalfIn, curInUb + baseAddr + halfCol);
-        MicroAPI::DataCopy(vregCos, curCosUb);
-        MicroAPI::DataCopy(vregHalfCos, curCosUb + halfCol);
-        MicroAPI::DataCopy(vregSin, curSinUb);
-        MicroAPI::DataCopy(vregHalfSin, curSinUb + halfCol);
+        MicroAPI::LoadAlign(vregIn, curInUb + baseAddr);
+        MicroAPI::LoadAlign(vregHalfIn, curInUb + baseAddr + halfCol);
+        MicroAPI::LoadAlign(vregCos, curCosUb);
+        MicroAPI::LoadAlign(vregHalfCos, curCosUb + halfCol);
+        MicroAPI::LoadAlign(vregSin, curSinUb);
+        MicroAPI::LoadAlign(vregHalfSin, curSinUb + halfCol);
         MicroAPI::Mul(vregSin, vregSin, vregHalfIn, mask);
         MicroAPI::Mul(vregHalfSin, vregHalfSin, vregIn, mask);
         MicroAPI::Mul(vregCos, vregCos, vregIn, mask);
@@ -77,17 +77,17 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
         MicroAPI::Mul(vregHalfCos, vregHalfCos, vregHalfIn, mask);
         MicroAPI::Add(vregHalfOut, vregHalfSin, vregHalfCos, mask);
         MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregOutBf16, vregOut, mask);
-        MicroAPI::DataCopy<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
+        MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
         MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregOutHalfBf16, vregHalfOut, mask);
-        MicroAPI::DataCopy<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr + halfCol, vregOutHalfBf16,
+        MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr + halfCol, vregOutHalfBf16,
                                                                       mask);
 
-        for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += 64) {
-            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(64));
+        for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += Compressor::FP32_REPEAT_ELEMENT_NUM) {
+            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
             MicroAPI::MaskReg castMask = MicroAPI::UpdateMask<T>(castMaskValue);
-            MicroAPI::DataCopy(vregCastIn, curInUb + dOffset);
+            MicroAPI::LoadAlign(vregCastIn, curInUb + dOffset);
             MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregCastOut, vregCastIn, castMask);
-            MicroAPI::DataCopy<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + dOffset, vregCastOut, castMask);
+            MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + dOffset, vregCastOut, castMask);
         }
     }
 }
@@ -117,9 +117,9 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
         __ubuf__ T *curInUb = inUb + rIdx * actualCol;
         __ubuf__ ROPET *curOutUb = outUb + rIdx * actualCol;
 
-        MicroAPI::DataCopy(vregIn, curInUb + baseAddr);
-        MicroAPI::DataCopy(vregCos, curCosUb);
-        MicroAPI::DataCopy(vregSin, curSinUb);
+        MicroAPI::LoadAlign(vregIn, curInUb + baseAddr);
+        MicroAPI::LoadAlign(vregCos, curCosUb);
+        MicroAPI::LoadAlign(vregSin, curSinUb);
         MicroAPI::Mul(vregCos, vregCos, vregIn, mask);
         MicroAPI::DeInterleave<T>(vregEven, vregOdd, vregIn, vregTemp);
         MicroAPI::Muls(vregOdd, vregOdd, static_cast<T>(-1.0), mask);
@@ -127,18 +127,29 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
         MicroAPI::Mul(vregSin, vregSin, vregIn, mask);
         MicroAPI::Add(vregOut, vregCos, vregSin, mask);
         MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregOutBf16, vregOut, mask);
-        MicroAPI::DataCopy<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
-        for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += 64) {
-            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(64));
+        MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + baseAddr, vregOutBf16, mask);
+        for (uint64_t dOffset = 0; dOffset < baseAddr; dOffset += Compressor::FP32_REPEAT_ELEMENT_NUM) {
+            uint32_t castMaskValue = min(baseAddr - dOffset, static_cast<uint64_t>(Compressor::FP32_REPEAT_ELEMENT_NUM));
             MicroAPI::MaskReg castMask = MicroAPI::UpdateMask<T>(castMaskValue);
-            MicroAPI::DataCopy(vregCastIn, curInUb + dOffset);
+            MicroAPI::LoadAlign(vregCastIn, curInUb + dOffset);
             MicroAPI::Cast<ROPET, T, castTraitB322B16>(vregCastOut, vregCastIn, castMask);
-            MicroAPI::DataCopy<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + dOffset, vregCastOut, castMask);
+            MicroAPI::StoreAlign<ROPET, MicroAPI::StoreDist::DIST_PACK_B32>(curOutUb + dOffset, vregCastOut, castMask);
         }
     }
 }
 
 
+/**
+ * @brief RopeVF 对输入做Rotary Position Embedding
+ * @param sinTensor sin输入tensor [row, col]
+ * @param cosTensor cos输入tensor [row, col]
+ * @param inTensor 输入tensor [row, actualCol]
+ * @param outTensor 输出tensor [row, actualCol]
+ * @param row 处理的行数
+ * @param col 每行rope计算的列数
+ * @param actualCol 每行的总列数（含非rope部分）
+ * @param baseAddr 非rope部分的起始偏移
+ */
 template <Compressor::ROTARY_MODE MODE, typename T, typename ROPET>
 __aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
                               const LocalTensor<T> &inTensor, const LocalTensor<ROPET> &outTensor, uint32_t row,

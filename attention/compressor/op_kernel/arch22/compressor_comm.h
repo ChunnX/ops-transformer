@@ -50,7 +50,7 @@ template <typename T>
 __aicore__ inline T FloorPow2(T num)
 {
     if (num == 0) return 1;
-    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+    for (uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
         num |= (num >> i);
     }
     return num - (num >> 1);
@@ -61,7 +61,7 @@ __aicore__ inline T CeilPow2(T num)
 {
     if (num <= 1) return 1;
     num --;
-    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+    for (uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
         num |= (num >> i);
     }
     num ++;
@@ -150,16 +150,16 @@ struct ConstInfo {
 
     // workSpace
     uint32_t dbWorkspaceRatio = 1;
-    uint32_t mm1KvResSize = 0;
-    uint32_t mm1ScoreResSize = 0;
+    uint64_t mm1KvResSize = 0;
+    uint64_t mm1ScoreResSize = 0;
     uint32_t vec1TailCacheSize = 0;
-    uint32_t vec1ResSize = 0;
-    uint32_t mm1ResSize = 0;    // 所有cube输出kv/score结果的总大小
+    uint64_t vec1ResSize = 0;
+    uint64_t mm1ResSize = 0;    // 所有cube输出kv/score结果的总大小
 
     uint32_t aiCoreIdx = 0;
     uint32_t nSize = 0;
 
-    uint32_t dbSize = 0;
+    uint64_t dbSize = 0;
 };
 
 struct RunInfo {
@@ -178,7 +178,6 @@ struct RunInfo {
     uint32_t preDealSeqCnt  = 0;     // 左边需要处理的s大小
     uint32_t preFirstSeqCnt = 0;    // 左边首块大小
 
-
     uint32_t bEnd = 0;
     uint32_t sEnd = 0;
     uint32_t bStartSeqIdx = 0;
@@ -189,7 +188,6 @@ struct RunInfo {
     uint32_t scEnd = 0;
     uint32_t dealScSize = 0;
 
-    // vec1Res offset
     uint64_t vec1ResOffset = 0;
 };
 
@@ -205,7 +203,6 @@ struct Vec1RunInfo {
 };
 
 struct Vec2RunInfo {
-    // uint32_t bStart = 0;
     uint32_t v2DbIdx = 0;              // v2 doubleBuffer索引
     uint32_t sStart = 0;
     uint32_t bEnd = 0;
@@ -213,7 +210,6 @@ struct Vec2RunInfo {
     // v2分核信息 sc是左闭右开
     uint32_t scStart = 0;
     uint32_t scEnd = 0;
-    // uint32_t dealScSize = 0;
 
     // 增加字段
     uint32_t bStart = 0;
@@ -242,7 +238,7 @@ struct BlockInfo {
 
     uint32_t isFirst = true;
     uint32_t bSeqUsed = 0U;
-    uint32_t bStartPos = 0U;
+    uint64_t bStartPos = 0U;
     uint32_t headHolderSeqCnt = 0U;
     uint32_t validSeqCnt = 0U;
     uint32_t tailHolderSeqCnt = 0U;
@@ -275,6 +271,17 @@ inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
 
+inline constexpr uint32_t NZ_FRACTAL_DIM = 16;
+inline constexpr uint32_t WEIGHT_MATRIX_NUM = 2;
+inline constexpr uint32_t STATE_INTERLEAVE_FACTOR = 2;
+inline constexpr float SOFTMAX_MIN_VALUE = -2e38f;
+
+template <typename T>
+__aicore__ inline constexpr uint32_t BlockElementNum()
+{
+    return static_cast<uint32_t>(BYTE_BLOCK / sizeof(T));
+}
+
 template <typename T>
 __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
     uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
@@ -295,39 +302,6 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
-}
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row, uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row, uint32_t col)
-{
-    uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
-}
-
-template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize)
-{
-    uint32_t col = 32 / sizeof(T);
-    uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
-    AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
 } // namespace Compressor

@@ -10,7 +10,8 @@
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "log/ops_log.h"
+#include "err/ops_err.h"
+#include "log/log.h"
 
 using namespace ge;
 
@@ -73,33 +74,33 @@ constexpr uint32_t DIM_INDEX_3 = 3;
 ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, CompressorProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
-    OPS_LOG_E_IF_NULL(context, xShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     auto wkvShape = context->GetRequiredInputShape(WEIGHT_KV_INPUT_INDEX);  // (coff * D, H)
-    OPS_LOG_E_IF_NULL(context, wkvShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, wkvShape);
     auto wgateShape = context->GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);  // (coff * D, H)
-    OPS_LOG_E_IF_NULL(context, wgateShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, wgateShape);
 
-    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, tokrn_size, 2 * coff * D)
-    OPS_LOG_E_IF_NULL(context, stateCacheShape, return ge::GRAPH_FAILED)
+    auto stateCacheShape = context->GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);    // (block_num, block_size, 2 * coff * D) | (B, token_size, 2 * coff * D)
+    OP_CHECK_NULL_WITH_CONTEXT(context, stateCacheShape);
 
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
-    OPS_LOG_E_IF_NULL(context, apeShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
     auto normWeightShape = context->GetRequiredInputShape(NORM_WEIGHT_INPUT_INDEX);    // (D)
-    OPS_LOG_E_IF_NULL(context, normWeightShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, normWeightShape);
     auto ropeSinShape = context->GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);    // (B, ceil(S / r), rD) | (min(T, T/r + B), rD)
-    OPS_LOG_E_IF_NULL(context, ropeSinShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, ropeSinShape);
     auto ropeCosShape = context->GetRequiredInputShape(ROPE_COS_INPUT_INDEX);    // (B, ceil(S / r), rD) | (min(T, T/r + B), rD)
-    OPS_LOG_E_IF_NULL(context, ropeCosShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, ropeCosShape);
 
     auto stateBlockTableShape = context->GetRequiredInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);    // (B, sMax/block_size) | (B, )
-    OPS_LOG_E_IF_NULL(context, stateBlockTableShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, stateBlockTableShape);
 
     auto cuSeqlensShape = context->GetRequiredInputShape(CU_SEQ_LEN_INPUT_INDEX);    // (B+1,)
-    OPS_LOG_E_IF_NULL(context, cuSeqlensShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, cuSeqlensShape);
     auto seqUsedShape = context->GetRequiredInputShape(SEQ_USED_INPUT_INDEX);    // (B,)
-    OPS_LOG_E_IF_NULL(context, seqUsedShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, seqUsedShape);
     auto startPosShape = context->GetRequiredInputShape(START_POS_INPUT_INDEX);    // (B,)
-    OPS_LOG_E_IF_NULL(context, startPosShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
     if (xShape->GetDimNum() == DIM_NUM_3) {                // BS
         shapeParam.isBsMerge = false;
@@ -122,12 +123,13 @@ ge::graphStatus GetCompressorShapeDim(const gert::InferShapeContext* context, Co
 ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
 {
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);                 // query: (B, S, N, Hckv) | (T, N, Hckv)
-    OPS_LOG_E_IF_NULL(context, cmpKvShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
     auto attr = context->GetAttrs();
-    const uint32_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
-    uint32_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
-    const uint32_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    uint32_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
+    OP_CHECK_NULL_WITH_CONTEXT(context, attr);
+    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
+    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
+    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     // Set output shape
     if (!shapeParam.isBsMerge) {
         cmpKvShape->SetDimNum(DIM_NUM_3);                   // (B, Sr, H)
@@ -145,9 +147,9 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
 
 ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OPS_LOG_I(context->GetNodeName(), "Enter Compressor inferDataType impl.");
+    OP_LOGI(context->GetNodeName(), "Enter Compressor inferDataType impl.");
 
     context->SetOutputDataType(CMP_KV_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
 
@@ -156,16 +158,16 @@ ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 
 ge::graphStatus InferShapeCompressor(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
                return ge::GRAPH_FAILED);
-    OPS_LOG_I(context->GetNodeName(), "Enter Compressor infershape impl.");
+    OP_LOGI(context->GetNodeName(), "Enter Compressor infershape impl.");
 
     CompressorProtoShapeParam shapeParam {};
     auto apiRet = GetCompressorShapeDim(context, shapeParam);
-    OPS_LOG_E_IF((apiRet != GRAPH_SUCCESS), context, return ge::GRAPH_FAILED, "Context get input shape failed");
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context get input shape failed", return ge::GRAPH_FAILED);
 
     apiRet = SetCompressorShapeDim(shapeParam, context);
-    OPS_LOG_E_IF((apiRet != GRAPH_SUCCESS), context, return ge::GRAPH_FAILED, "Context set output shape failed");
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context set output shape failed", return ge::GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

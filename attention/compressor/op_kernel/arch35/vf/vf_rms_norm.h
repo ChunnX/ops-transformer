@@ -67,15 +67,14 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ T * inputBuf, __ubuf__ GammaType * gamma
 }
 
 /**
- * @brief RmsNormVF 对一行进行rmsnorm
- * @param outputLocal 输出tensor [row, col]，row目前均为1
+ * @brief RmsNormVF 对输入进行rmsnorm归一化
+ * @param outputLocal 输出tensor [row, col]
  * @param inputLocal 输入tensor [row, col]
- * @param gammaLocal gamma参数tensor [row, col]
- * @param rmsNormParams rmsNrom计算所需系数，包括
-          row 行数  1
-          col 列数，对应headSizeCq或headSizeCkv
-          reciprocal ，1/N
-          epsilon，防止除零极小数
+ * @param gammaLocal gamma参数tensor [1, col]
+ * @param reciprocal rmsNorm系数，1/N
+ * @param epsilon rmsNorm系数，防止除零极小数
+ * @param row 处理的行数
+ * @param col 列数，对应headSizeCq或headSizeCkv
  */
 template <typename T, typename GammaType>
 __aicore__ inline void RmsNormVF(const LocalTensor<T> outputLocal, const LocalTensor<T> inputLocal, const LocalTensor<GammaType> gammaLocal,

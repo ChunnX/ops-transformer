@@ -20,7 +20,7 @@
 #include <cstdint>
 using namespace AscendC;
 constexpr uint32_t FLOAT_REP_SIZE = 64;
-constexpr uint32_t BTYEALIGNSIZE = 32;
+constexpr uint32_t BYTE_ALIGN_SIZE = 32;
 constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t HALFCORED = 128;
 
@@ -283,7 +283,7 @@ __simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
         MicroAPI::LoadAlign(regList[6].vreg, initialAddr + offset + 6 * FLOAT_REP_SIZE);
         MicroAPI::LoadAlign(regList[7].vreg, initialAddr + offset + 7 * FLOAT_REP_SIZE);
         for (uint32_t repeatIdx = initialRepeatIdx; repeatIdx < repeatNum; repeatIdx++) {
-            uint64_t addOffset = offset + repeatIdx * row * actualCol;
+            uint64_t addOffset = offset + repeatIdx * repeatOffset;
             MicroAPI::LoadAlign(regList[0].vregape, inputAddr + addOffset);
             MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + FLOAT_REP_SIZE);
             MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + 2 * FLOAT_REP_SIZE);
@@ -313,14 +313,13 @@ __simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
 }
 
 /**
- * @brief AddVF 输入与apt相加
- * @param rightLocal 输出tensor []
- * @param leftLocal 输入tensor [row, col]
- * @param aptLocal apt输入tensor [r]
- * @param apeIdx ape起始位置
- * @param d  coff*d为ape的D轴大小
- * @param coreSplitD scoreleft大小，coff*coreSplitD为总大小
- * @param coreSplitS 核间d轴切分大小
+ * @brief AddVF score与ape相加，结果写回scoreLocal
+ * @param scoreLocal 输入输出tensor [row, actualCol0]
+ * @param apeLocal ape输入tensor [row, actualCol1]
+ * @param row 处理的行数
+ * @param col 每行实际计算的列数
+ * @param actualCol0 score每行的总列数（含对齐填充）
+ * @param actualCol1 ape每行的总列数（含对齐填充）
  */
 template <typename T>
 __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal, uint32_t row,
@@ -340,6 +339,14 @@ __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor
     }
 }
 
+/**
+ * @brief AddVF score与ape相加，结果写回scoreLocal（score和ape行宽相同）
+ * @param scoreLocal 输入输出tensor [row, actualCol]
+ * @param apeLocal ape输入tensor [row, actualCol]
+ * @param row 处理的行数
+ * @param col 每行实际计算的列数
+ * @param actualCol 每行的总列数（含对齐填充）
+ */
 template <typename T>
 __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal, uint32_t row,
                              uint32_t col, uint32_t actualCol)
@@ -358,6 +365,16 @@ __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor
     }
 }
 
+/**
+ * @brief MultiAddVF 多次累加输入到输出
+ * @param outputLocal 输出tensor [row, actualCol]
+ * @param inputLocal 输入tensor [row, actualCol]
+ * @param row 处理的行数
+ * @param col 每行实际计算的列数
+ * @param actualCol 每行的总列数（含对齐填充）
+ * @param repeatNum 累加的输入次数
+ * @param repeatOffset 每次累加在输入中的行偏移
+ */
 template <bool IS_FIRST, typename T>
 __aicore__ inline void MultiAddVF(const LocalTensor<T> &outputLocal, const LocalTensor<T> &inputLocal, uint32_t row,
                                   uint32_t col, uint32_t actualCol, uint32_t repeatNum, uint64_t repeatOffset)
