@@ -69,6 +69,7 @@ private:
     __aicore__ inline void SubTopKAndWriteMask(LocalTensor<half>& xLocal, half boundaryHalf,
                                                 uint64_t curTileLen, uint64_t tileGmOffset,
                                                 int32_t& curTileK);
+    __aicore__ inline void TileTopK(uint32_t batchIdx, uint32_t headIdx);
     __aicore__ inline void VToSSync();
     __aicore__ inline void SToVSync();
     __aicore__ inline void MTE2ToMTE3Sync();
@@ -242,12 +243,120 @@ template <typename BSAT>
 __aicore__ inline void BSARadixTopKService<BSAT>::ProcessRadixTopKAndWriteMask(uint32_t batchIdx, uint32_t headIdx)
 {
     if (GetBlockIdx() == 0) {
-        AscendC::printf("[TopK] v6.5: CopyOutHistToWs+Update implemented\n");
+        AscendC::printf("[TopK] v6.8: main flow assembled\n");
     }
 
+    // 1. BottomK → NegateAttnScore()
     if (constInfo.sparsityMode == BSASparseMode::BottomK) {
         NegateAttnScore();
     }
+
+    // 2. Calculate blockOffset
+    uint64_t blockOffset_ = 0;
+    if (GetBlockIdx() < formerCoreNum_) {
+        blockOffset_ = GetBlockIdx() * formerTileNum_ * tileLen_;
+    } else {
+        blockOffset_ = formerCoreNum_ * formerTileNum_ * tileLen_ +
+                      (GetBlockIdx() - formerCoreNum_) * tailTileNum_ * tileLen_;
+    }
+
+    // 3. ClearTileTopKInWs() — batch zero tileTopK in WS
+    ClearTileTopKInWs();
+
+    // 4. Reset state variables
+    involvedMask16_ = 0;
+    andMask16_ = static_cast<int16_t>(0xC000);  // ((1<<2)-1) << (16-2)
+    totalDefinitelyInTopK_ = 0;
+    boundaryBin = 0;
+    boundaryBinPrev = 1;
+    globalHistBoundaryNum_ = (tileNum_ - 1) * tileLen_ + tailTileLen_;
+    remainK_ = kValue_;
+
+    // 5. RADIX LOOP
+    bool earlyExit = false;
+    for (int32_t roundId = round_ - 1; roundId >= 0; roundId--) {
+        // a. Prefetch first tile (double buffering)
+        uint64_t firstTileLen = tileNum_ > 1 ? tileLen_ : tailTileLen_;
+        CopyIn(xBufPing_, firstTileLen, blockOffset_);
+        pingPongFlag = true;
+
+        // b. CopyOutHistToWs<true>
+        CopyOutHistToWs<true>(numValue_, GetBlockIdx() * numValue_);
+
+        // c. ClearHistInWs — batch init/reset tileHist in WS
+        ClearHistInWs(roundId);
+
+        // d. Signal first tile ready
+        SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+
+        // e. Batched tile loop (each batch MAX_TILE_NUM_IN_UB_BY3 = 2048)
+        for (int32_t repeatId = 0; repeatId <= tileNumBy3RepeatTimes_; repeatId++) {
+            int32_t startTileId = repeatId * MAX_TILE_NUM_IN_UB_BY3;
+            int32_t endTileId = BSAMin(startTileId + MAX_TILE_NUM_IN_UB_BY3,
+                                       static_cast<int32_t>(tileNum_));
+
+            for (int32_t tileId = startTileId; tileId < endTileId; tileId++) {
+                uint64_t curTileLen = (tileId == static_cast<int32_t>(tileNum_) - 1)
+                                    ? tailTileLen_ : tileLen_;
+                TBuf<TPosition::VECIN>& curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
+                TBuf<TPosition::VECIN>& nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
+
+                // Prefetch next tile (double buffering)
+                if (tileId < static_cast<int32_t>(tileNum_) - 1) {
+                    uint64_t nextOffset = blockOffset_ + (tileId + 1) * tileLen_;
+                    uint64_t nextTileLen = (tileId == static_cast<int32_t>(tileNum_) - 2)
+                                         ? tailTileLen_ : tileLen_;
+                    CopyIn(nextBuf, nextTileLen, nextOffset);
+                }
+
+                // Wait current tile ready
+                WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+
+                // Core processing
+                TwiddleInB16(curBuf, curTileLen);
+                DoAndMask(curBuf, curTileLen);
+                CalcCumsumHistogram(curBuf, roundId, tileId - startTileId, curTileLen);
+
+                // Signal next tile ready
+                if (tileId < static_cast<int32_t>(tileNum_) - 1) {
+                    SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+                }
+
+                pingPongFlag = !pingPongFlag;  // Switch double buffering
+            }
+
+            // Write this batch's tileHist to WS
+            SToMTE3Sync();
+            LocalTensor<int32_t> tileHist = tileHistAndTopKBuf_.Get<int32_t>();
+            for (int32_t binMask = numValue_ - 1; binMask > 0; binMask--) {
+                uint32_t tileHistOffset = binMask * tileNum_ + repeatId * MAX_TILE_NUM_IN_UB_BY3;
+                DataCopyPad(tileHistGm_[tileHistOffset],
+                           tileHist[(binMask - 1) * MAX_TILE_NUM_IN_UB_BY3],
+                           DataCopyParams(1, sizeof(int32_t) * (endTileId - startTileId), 0, 0));
+            }
+        }
+
+        // f. CopyOutHistToWs<false>
+        CopyOutHistToWs<false>(numValue_, GetBlockIdx() * numValue_);
+
+        // g. SyncAll
+        SyncAll();
+
+        // h. Update
+        earlyExit = Update(roundId);
+
+        // i. Shift mask
+        andMask16_ >>= RADIX_BITS_PER_ROUND;
+
+        // j. Early exit
+        if (earlyExit) break;
+    }
+
+    // 6. SyncAll before final selection
+    SyncAll();
+
+    // 7. TileTopK (batched processing)
+    TileTopK(batchIdx, headIdx);
 }
 
 template <typename BSAT>
@@ -972,6 +1081,75 @@ __aicore__ inline void BSARadixTopKService<BSAT>::SubTopKAndWriteMask(
                     DataCopyParams(1, static_cast<uint16_t>(curTileLen * sizeof(uint8_t)), 0, 0));
 
         curTileK -= static_cast<int32_t>(writeCnt);
+    }
+}
+
+template <typename BSAT>
+__aicore__ inline void BSARadixTopKService<BSAT>::TileTopK(uint32_t batchIdx, uint32_t headIdx)
+{
+    if (GetBlockIdx() == 0) {
+        AscendC::printf("[TopK] v6.6b: TileTopK implemented\n");
+    }
+
+    LocalTensor<int32_t> tileTopK = tileHistAndTopKBuf_.Get<int32_t>();
+
+    // Restore boundary value (twiddle inverse transform)
+    int16_t boundaryInt16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
+    half boundaryHalf = *reinterpret_cast<half*>(&boundaryInt16);
+
+    // WS version: batch read tileTopK, use ping-pong double buffering
+    for (uint32_t repeatId = 0; repeatId <= tileNumRepeatTimes_; repeatId++) {
+        uint32_t startTileId = repeatId * MAX_TILE_NUM_IN_UB;
+        uint32_t dataNum = (repeatId == tileNumRepeatTimes_) ? tileNumRemain_ : MAX_TILE_NUM_IN_UB;
+        if (dataNum == 0) continue;
+
+        CopyTileTopKWs2Ub(tileTopK, startTileId, dataNum);
+        MTE2ToVSync();
+
+        // Prefetch first tile
+        uint32_t firstTileId = startTileId;
+        uint64_t firstTileLen = (firstTileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
+        uint64_t firstOffset = blockOffset_ + firstTileId * tileLen_;
+        CopyIn(xBufPing_, firstTileLen, firstOffset);
+        pingPongFlag = true;
+        SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+
+        for (uint32_t i = 0; i < dataNum; i++) {
+            uint64_t tileId = startTileId + i;
+            int32_t curTileK = tileTopK.GetValue(i);
+            // v2.3: no longer skip curTileK==0, GT phase naturally handles all tiles
+
+            uint64_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
+            uint64_t tileGmOffset = tileId * tileLen_;
+
+            TBuf<TPosition::VECIN>& curBuf = pingPongFlag ? xBufPing_ : xBufPong_;
+            TBuf<TPosition::VECIN>& nextBuf = pingPongFlag ? xBufPong_ : xBufPing_;
+
+            // Prefetch next tile
+            if (i < dataNum - 1) {
+                uint64_t nextTileId = tileId + 1;
+                uint64_t nextTileLen = (nextTileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
+                uint64_t nextOffset = blockOffset_ + nextTileId * tileLen_;
+                CopyIn(nextBuf, nextTileLen, nextOffset);
+            }
+
+            WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+
+            LocalTensor<half> xLocal = curBuf.template Get<half>()[tileLen_].template ReinterpretCast<half>();
+
+            // GT phase: handle all tiles (including curTileK==0)
+            SubTopKAndWriteMask(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+
+            // EQ phase: only execute when curTileK > 0
+            if (curTileK > 0) {
+                SubTopKAndWriteMask(xLocal, boundaryHalf, curTileLen, tileGmOffset, curTileK);
+            }
+
+            if (i < dataNum - 1) {
+                SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToVForX_);
+            }
+            pingPongFlag = !pingPongFlag;
+        }
     }
 }
 
