@@ -10,7 +10,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import itertools
 import concurrent.futures
 
 import pytest
@@ -21,18 +20,8 @@ import fia_fullquant_mxfp8_golden as golden
 import fia_fullquant_mxfp8_paramset as paramset
 import result_compare_method
 
-PARAM_NAMES = [
-    "B", "N_q", "N_kv", "D",
-    "actual_seq_q", "actual_seq_kv",
-    "enable_pa", "kv_cache_layout", "block_size",
-    "sparse_mode", "q_scale_layout", "p_scale",
-]
-
-param_combinations = []
-for params in paramset.ENABLED_PARAMS:
-    param_values = [params[name] for name in PARAM_NAMES]
-    for combo in itertools.product(*param_values):
-        param_combinations.append(dict(zip(PARAM_NAMES, combo)))
+CASES = paramset.CASES
+CASE_IDS = [case["name"] for case in CASES]
 
 
 def _apply_params(params):
@@ -82,15 +71,8 @@ def _execute_test(params):
     return atten_result, lse_result
 
 
-def _make_case_id(params):
-    pa_tag = "PA" if params["enable_pa"] else "TND"
-    sq = params["actual_seq_q"][0]
-    skv = params["actual_seq_kv"][0]
-    return f"{pa_tag}_S{skv}_Q{sq}_Nq{params['N_q']}_Nkv{params['N_kv']}_D{params['D']}"
-
-
 @pytest.mark.ci
-@pytest.mark.parametrize("params", param_combinations, ids=_make_case_id)
+@pytest.mark.parametrize("params", CASES, ids=CASE_IDS)
 def test_fia_fullquant_mxfp8(params):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_execute_test, params)
