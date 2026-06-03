@@ -136,6 +136,7 @@ public:
         int64_t strideLseS = 0;
         if constexpr (qFormat == Format::TND) {
             strideQO = qHeads_ * embed_;
+            strideLse = qHeads_;
         } else if constexpr (qFormat == Format::BNSD) {
             strideQOB = qHeads_ * qSeqlenAligned_ * embed_;  // batch_ stride
             strideQON = qSeqlenAligned_ * embed_;  // head stride
