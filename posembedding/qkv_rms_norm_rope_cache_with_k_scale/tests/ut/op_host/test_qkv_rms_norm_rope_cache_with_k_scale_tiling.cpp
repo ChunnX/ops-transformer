@@ -207,6 +207,20 @@ TEST(QkvRmsNormRopeCacheWithKScaleTiling, TypicalHeadTableMatchesDesign)
     }
 }
 
+TEST(QkvRmsNormRopeCacheWithKScaleTiling, QkAlignedL0cRowsCanReduceTokenTile)
+{
+    ContractTiling tiling;
+    auto input = BuildInput(128, 14, 4, 4);
+    EXPECT_EQ(ValidateAndBuildTiling(input, tiling), ContractStatus::kSuccess);
+    EXPECT_EQ(tiling.tokenTile, 12U);
+    EXPECT_EQ(tiling.tokenTilePerAiv, 6U);
+    EXPECT_EQ(tiling.rowTile, 216U);
+    EXPECT_EQ(tiling.rowTileAligned, 224U);
+    EXPECT_LE(AlignUp(tiling.tokenTile * input.numQHeads, 16) +
+            AlignUp(tiling.tokenTile * input.numKHeads, 16),
+        kL0cMaxRows);
+}
+
 TEST(QkvRmsNormRopeCacheWithKScaleTiling, RejectsUnsupportedFastPath)
 {
     ContractTiling tiling;

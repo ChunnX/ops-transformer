@@ -42,6 +42,11 @@ bool HasDtype(const TensorContractInfo &tensor, ContractDtype expected)
     return tensor.dtype == expected;
 }
 
+uint32_t CalcQkL0cRows(uint32_t tokenTile, uint32_t numQHeads, uint32_t numKHeads)
+{
+    return AlignUp(tokenTile * numQHeads, 16) + AlignUp(tokenTile * numKHeads, 16);
+}
+
 } // namespace
 
 uint32_t AlignUp(uint32_t value, uint32_t align)
@@ -146,23 +151,30 @@ ContractStatus ValidateAndBuildTiling(const ContractInput &input, ContractTiling
         return ContractStatus::kInvalidScaleShape;
     }
 
-    const uint32_t taMax = std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
-    if (taMax == 0) {
+    uint32_t tokenTilePerAiv = std::min({kMaxTokenTile / 2, kUbOutputRowsPerAiv / hqk, kUbInputRowsPerAiv / htot});
+    while (tokenTilePerAiv > 0) {
+        const uint32_t tokenTile = 2 * tokenTilePerAiv;
+        const uint32_t rowTile = tokenTile * hqk;
+        const uint32_t rowTileAligned = AlignUp(rowTile, 16);
+        if (rowTile <= kL0cMaxRows && rowTileAligned <= kL0cMaxRows &&
+            CalcQkL0cRows(tokenTile, input.numQHeads, input.numKHeads) <= kL0cMaxRows) {
+            break;
+        }
+        --tokenTilePerAiv;
+    }
+    if (tokenTilePerAiv == 0) {
         return ContractStatus::kUnsupportedResource;
     }
 
     tiling.coreTokenTile = CeilDiv(input.totalTokens, input.aicNum);
     tiling.coreGroupNum = CeilDiv(input.totalTokens, tiling.coreTokenTile);
-    tiling.tokenTilePerAiv = taMax;
-    tiling.tokenTile = 2 * taMax;
+    tiling.tokenTilePerAiv = tokenTilePerAiv;
+    tiling.tokenTile = 2 * tokenTilePerAiv;
     tiling.qkHeadTile = hqk;
     tiling.vHeadTile = input.numVHeads;
     tiling.dimTile = kDimTileFast;
     tiling.rowTile = tiling.tokenTile * hqk;
     tiling.rowTileAligned = AlignUp(tiling.rowTile, 16);
-    if (tiling.rowTile > kL0cMaxRows || tiling.rowTileAligned > kL0cMaxRows) {
-        return ContractStatus::kUnsupportedResource;
-    }
 
     return ContractStatus::kSuccess;
 }
