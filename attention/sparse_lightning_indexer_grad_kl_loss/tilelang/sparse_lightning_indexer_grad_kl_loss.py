@@ -129,7 +129,7 @@ def check_param_valid(
 # V scope 2: cast dQueryIndex FP32->FP16
 # ==============================================================================
 @tilelang.jit(
-    out_idx=[-2, -3, -4],
+    out_idx=[-4, -3, -2],
     workspace_idx=[7, 8, 9, 10, 11, 15],
     pass_configs=pass_configs,
 )
