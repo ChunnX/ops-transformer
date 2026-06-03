@@ -70,7 +70,12 @@ enum class ErrorType {
     BS_GT_512K,
     T_GT_512K,
     N_NOT_4_6_8,
-    D_GT_24K
+    D_GT_24K,
+    // ======================== Empty tensor ===========================
+    EMPTY_TENSOR_BS_ZERO,
+    EMPTY_TENSOR_T_ZERO,
+    EMPTY_TENSOR_D_ZERO,
+    EMPTY_TENSOR_N_ZERO
 };
 
 // ==================== 测试夹具类 ====================
@@ -290,7 +295,44 @@ protected:
             case ErrorType::BS_GT_512K:
             case ErrorType::T_GT_512K:
             case ErrorType::N_NOT_4_6_8:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, 5, D}, {T, 5, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, 5, D}, {B, S, 5, D}};
+                }
+                break;
             case ErrorType::D_GT_24K:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n, 24000}, {T, n, 24000}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, n, 24000}, {B, S, n, 24000}};
+                }
+                break;
+
+            // Empty tensor场景
+            case ErrorType::EMPTY_TENSOR_BS_ZERO:
+                if (!isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{0, 0, n, D}, {0, 0, n, D}};
+                }
+                break;
+            case ErrorType::EMPTY_TENSOR_T_ZERO:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{0, n, D}, {0, n, D}};
+                }
+                break;
+            case ErrorType::EMPTY_TENSOR_D_ZERO:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, n, 0}, {T, n, 0}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, n, 0}, {B, S, n, 0}};
+                }
+                break;
+            case ErrorType::EMPTY_TENSOR_N_ZERO:
+                if (isTshape) {
+                    context.inputTensorDesc_[0].shape_ = {{T, 0, D}, {T, 0, D}};
+                } else {
+                    context.inputTensorDesc_[0].shape_ = {{B, S, 0, D}, {B, S, 0, D}};
+                }
                 break;
 
             default:
