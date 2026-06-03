@@ -29,7 +29,7 @@ tensor_list npu_moe_ep_dispatch(const at::Tensor &context, const at::Tensor &x,
     int64_t ccl_buffer_size, int64_t expert_alignment, bool do_cpu_sync)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
-    TORCH_CHECK(ep_world_size > 1, "ep_world_size must be > 1");
+    TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK(ep_rank_id >= 0 && ep_rank_id < ep_world_size, "ep_rank_id out of range");
     TORCH_CHECK(num_experts % ep_world_size == 0, "num_experts must be divisible by ep_world_size");
     TORCH_CHECK(x.dtype() == at::kBFloat16, "x must be bfloat16");
