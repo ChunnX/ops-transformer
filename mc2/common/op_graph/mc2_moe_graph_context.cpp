@@ -14,9 +14,10 @@
  */
 #include "op_graph/mc2_moe_graph_context.h"
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
 #include <cstdlib>
+#include <climits>
 #include <dlfcn.h>
 #include <atomic>
 #include <thread>
@@ -77,12 +78,7 @@ const std::string Mc2MoeGraphContext::GetLibPath()
         OPS_LOG_E(LOG_TAG, "Ascend home path doesn't exist.");
         return "";
     }
-#if defined(__x86_64__)
-    std::string hcclPathPostfix = "/x86_64-linux/lib64/libhccl_fwk.so";
-#elif defined(__aarch64__)
-    std::string hcclPathPostfix = "/aarch64-linux/lib64/libhccl_fwk.so";
-#endif
-    std::string fullPath = std::string(ascendPath) + hcclPathPostfix;
+    std::string fullPath = std::string(ascendPath) + "/lib64/libhccl_fwk.so";
     OPS_LOG_D(LOG_TAG, "Loading lib in path %s.", fullPath.c_str());
     return fullPath;
 }
@@ -114,23 +110,24 @@ ge::graphStatus Mc2MoeGraphContext::LoadSymbol(void **ptr, const char *name)
 ge::graphStatus Mc2MoeGraphContext::LoadHcclSymbols()
 {
     if (hcclLibHandle_ != nullptr) {
-        OPS_LOG_I(LOG_TAG, "HCCL symbols already loaded, skip dlopen");
         return ge::GRAPH_SUCCESS;
     }
-    OPS_LOG_I(LOG_TAG, "Start to load HCCL library and symbols");
     const std::string libPath = GetLibPath();
     if (libPath.empty()) {
         OPS_LOG_E(LOG_TAG, "Failed to get HCCL library path");
         return ge::GRAPH_FAILED;
     }
-
-    hcclLibHandle_ = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    char resolvedPath[PATH_MAX];
+    if (realpath(libPath.c_str(), resolvedPath) == nullptr) {
+        OPS_LOG_E(LOG_TAG, "realpath failed for HCCL library: %s, errno=%d", libPath.c_str(), errno);
+        return ge::GRAPH_FAILED;
+    }
+    hcclLibHandle_ = dlopen(resolvedPath, RTLD_NOW | RTLD_GLOBAL);
     if (hcclLibHandle_ == nullptr) {
         const char *dlErr = dlerror();
         OPS_LOG_E(LOG_TAG, "dlopen HCCL library failed: %s, error: %s", libPath.c_str(), dlErr ? dlErr : "unknown");
         return ge::GRAPH_FAILED;
     }
-
     struct SymbolInfo {
         void **ptr;
         const char *name;
@@ -158,7 +155,6 @@ ge::graphStatus Mc2MoeGraphContext::LoadHcclSymbols()
             return ge::GRAPH_FAILED;
         }
     }
-    OPS_LOG_I(LOG_TAG, "All HCCL symbols loaded successfully");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -177,7 +173,7 @@ ge::graphStatus Mc2MoeGraphContext::GetCommHandle(const char *groupEp, HcclComm 
 ge::graphStatus Mc2MoeGraphContext::GetHcclCommLink(const HcclComm &hcclHandle, const LinkQueryParams &params,
                                                     CommLink *&links)
 {
-    OPS_LOG_D(LOG_TAG, "Start to get HCCL communication link");
+    OPS_LOG_I(LOG_TAG, "Start to get HCCL communication link");
     CommLink *linksList = nullptr;
     uint32_t netLinkNum = 0;
 
@@ -187,7 +183,7 @@ ge::graphStatus Mc2MoeGraphContext::GetHcclCommLink(const HcclComm &hcclHandle, 
         OPS_LOG_E(LOG_TAG, "Get HCCL Communication link failed");
         return ge::GRAPH_FAILED;
     }
-    if (netLinkNum == 0 || linksList == nullptr) {
+    if ((netLinkNum == 0) || (linksList == nullptr)) {
         OPS_LOG_E(LOG_TAG, "The Net Link Is nullptr or count is 0, netLinkNum=%u", netLinkNum);
         return ge::GRAPH_FAILED;
     }
@@ -208,7 +204,7 @@ ge::graphStatus Mc2MoeGraphContext::GetHcclCommLink(const HcclComm &hcclHandle, 
         return ge::GRAPH_FAILED;
     }
 
-    OPS_LOG_D(LOG_TAG, "Get HCCL communication link success, protocol is: %d", params.protocol);
+    OPS_LOG_I(LOG_TAG, "Get HCCL communication link success, protocol is: %d", params.protocol);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -219,7 +215,7 @@ ge::graphStatus Mc2MoeGraphContext::GetRankSizePerServer(const HcclComm &hcclHan
         OPS_LOG_E(LOG_TAG, "Get HCCL rank size per server failed");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "Get HCCL rank size per server success, rankSizePerServer_ is: %u", rankSizePerServer_);
+    OPS_LOG_I(LOG_TAG, "Get HCCL rank size per server success, rankSizePerServer_ is: %u", rankSizePerServer_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -263,10 +259,10 @@ ge::graphStatus Mc2MoeGraphContext::InitHcclChannel(const HcclComm &hcclHandle, 
         OPS_LOG_E(LOG_TAG, "HCCL channel init failed");
         return ge::GRAPH_FAILED;
     }
-    OPS_LOG_D(LOG_TAG, "HCCL channel init success");
+    OPS_LOG_I(LOG_TAG, "HCCL channel init success");
 
     hcclRet = HcclRankGraphGetLayers(hcclHandle, &netLayerList, &netLayerNum);
-    if (hcclRet != HCCL_SUCCESS || netLayerNum == 0 || netLayerList == nullptr) {
+    if ((hcclRet != HCCL_SUCCESS) || (netLayerNum == 0) || (netLayerList == nullptr)) {
         OPS_LOG_E(LOG_TAG, "Get HCCL GetNetLayers failed");
         return ge::GRAPH_FAILED;
     }
@@ -290,8 +286,8 @@ ge::graphStatus Mc2MoeGraphContext::InitHcclChannel(const HcclComm &hcclHandle, 
 ge::graphStatus Mc2MoeGraphContext::GetHcclCommChannel(const HcclComm &hcclHandle, const ChannelAcquireParams &params,
                                                        std::vector<ChannelHandle> &channels)
 {
-    OPS_LOG_D(LOG_TAG, "Start to get HCCL communication channel");
-    if (params.rankDim == 0 || params.rankDim >= MAX_EP_RANK_SIZE) {
+    OPS_LOG_I(LOG_TAG, "Start to get HCCL communication channel");
+    if ((params.rankDim == 0) || (params.rankDim >= MAX_EP_RANK_SIZE)) {
         OPS_LOG_E(LOG_TAG, "Invalid rankDim: %u", params.rankDim);
         return ge::GRAPH_FAILED;
     }
@@ -330,7 +326,7 @@ ge::graphStatus Mc2MoeGraphContext::FillContextBuffer(const HcclComm &hcclHandle
             hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
         }
 
-        if (hcclRet != HCCL_SUCCESS || tempBuffer == nullptr) {
+        if ((hcclRet != HCCL_SUCCESS) || (tempBuffer == nullptr)) {
             OPS_LOG_E(LOG_TAG, "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
             return ge::GRAPH_FAILED;
         }
@@ -343,7 +339,7 @@ ge::graphStatus Mc2MoeGraphContext::FillContextBuffer(const HcclComm &hcclHandle
 ge::graphStatus Mc2MoeGraphContext::GetHcclCommResource(const HcclComm &hcclHandle, const CommEngine &engine,
                                                         const CommProtocol &protocol, Mc2MoeContext *context)
 {
-    OPS_LOG_D(LOG_TAG, "Start to get HCCL communication resource");
+    OPS_LOG_I(LOG_TAG, "Start to get HCCL communication resource");
     uint32_t rankId = context->epRankId;
     std::vector<ChannelHandle> channels;
 
@@ -355,14 +351,14 @@ ge::graphStatus Mc2MoeGraphContext::GetHcclCommResource(const HcclComm &hcclHand
     }
 
     context->rankSizePerServer = rankSizePerServer_;
-    OPS_LOG_D(LOG_TAG, "Get HCCL communication channel success, channel num is: %zu", channels.size());
+    OPS_LOG_I(LOG_TAG, "Get HCCL communication channel success, channel num is: %zu", channels.size());
 
     status = FillContextBuffer(hcclHandle, engine, context, rankId, channels);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "FillContextBuffer failed");
         return status;
     }
-    OPS_LOG_D(LOG_TAG, "Fill context buffer success");
+    OPS_LOG_I(LOG_TAG, "Fill context buffer success");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -382,13 +378,13 @@ ge::graphStatus Mc2MoeGraphContext::CreatMc2Context(const ContextCreateParams &p
     };
 
     hcclRet = HcclGetRankId(params.hcclHandle, &context->epRankId);
-    if (hcclRet != HCCL_SUCCESS || context->epRankId >= MAX_EP_RANK_SIZE) {
+    if ((hcclRet != HCCL_SUCCESS) || (context->epRankId >= MAX_EP_RANK_SIZE)) {
         OPS_LOG_E(LOG_TAG, "Get rank ID failed, rankId=%u", context->epRankId);
         cleanup();
         return ge::GRAPH_FAILED;
     }
     hcclRet = HcclGetRankSize(params.hcclHandle, &epRankSize_);
-    if (hcclRet != HCCL_SUCCESS || epRankSize_ == 0 || epRankSize_ >= MAX_EP_RANK_SIZE) {
+    if ((hcclRet != HCCL_SUCCESS) || (epRankSize_ == 0) || (epRankSize_ >= MAX_EP_RANK_SIZE)) {
         OPS_LOG_E(LOG_TAG, "Get rank size failed, rankSize=%u", epRankSize_);
         cleanup();
         return ge::GRAPH_FAILED;
@@ -439,16 +435,16 @@ ge::graphStatus Mc2MoeGraphContext::CheckProtocolSupport(const HcclComm &hcclHan
         return ge::GRAPH_FAILED;
     }
 
-    OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
+    OPS_LOG_I(LOG_TAG, "CheckProtocolSupport Get rank ID success, rankId is: %u", srcRankId);
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        OPS_LOG_D(LOG_TAG, "CheckProtocolSupport Check layer %u", layerList[layerIndex]);
+        OPS_LOG_I(LOG_TAG, "CheckProtocolSupport Check layer %u", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
-        if (hcclRet != HCCL_SUCCESS || rankNumInLayer == 0 || rankIdLists == nullptr) {
+        if ((hcclRet != HCCL_SUCCESS) || (rankNumInLayer == 0) || (rankIdLists == nullptr)) {
             OPS_LOG_E(LOG_TAG, "Get rank IDs by layer failed");
             return ge::GRAPH_FAILED;
         }
         for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
-            if (rankIdLists[rankId] == srcRankId || layerMap_.find(rankIdLists[rankId]) != layerMap_.end()) {
+            if ((rankIdLists[rankId] == srcRankId) || (layerMap_.find(rankIdLists[rankId]) != layerMap_.end())) {
                 continue;
             }
             hcclRet = HcclRankGraphGetLinks(hcclHandle, layerList[layerIndex], srcRankId, rankIdLists[rankId],
@@ -457,7 +453,7 @@ ge::graphStatus Mc2MoeGraphContext::CheckProtocolSupport(const HcclComm &hcclHan
                 OPS_LOG_E(LOG_TAG, "Get HCCL links failed");
                 return ge::GRAPH_FAILED;
             }
-            if (netLinkNum == 0 || linksList == nullptr) {
+            if ((netLinkNum == 0) || (linksList == nullptr)) {
                 OPS_LOG_E(LOG_TAG, "No available HCCL links found, srcRankID %u, dstRankID %u layer is %u", srcRankId,
                           rankIdLists[rankId], layerList[layerIndex]);
                 return ge::GRAPH_FAILED;
@@ -476,12 +472,12 @@ ge::graphStatus Mc2MoeGraphContext::CheckProtocolSupport(const HcclComm &hcclHan
 
 ge::graphStatus Mc2MoeGraphContext::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol)
 {
-    OPS_LOG_D(LOG_TAG, "Start to get HCCL communication protocol");
+    OPS_LOG_I(LOG_TAG, "Start to get HCCL communication protocol");
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
 
     auto ret = HcclRankGraphGetLayers(hcclHandle, &layerList, &layerNum);
-    if (ret != HCCL_SUCCESS || layerNum == 0) {
+    if ((ret != HCCL_SUCCESS) || (layerNum == 0)) {
         OPS_LOG_E(LOG_TAG, "Get HCCL layers failed");
         return ge::GRAPH_FAILED;
     }
@@ -491,14 +487,14 @@ ge::graphStatus Mc2MoeGraphContext::GetCommProtocol(const HcclComm &hcclHandle, 
         return ge::GRAPH_SUCCESS;
     }
 
-    OPS_LOG_D(LOG_TAG, "start CheckProtocolSupport, layerNum is %u", layerNum);
+    OPS_LOG_I(LOG_TAG, "start CheckProtocolSupport, layerNum is %u", layerNum);
     auto status = CheckProtocolSupport(hcclHandle, layerList, layerNum);
     if (status != ge::GRAPH_SUCCESS) {
         OPS_LOG_E(LOG_TAG, "CheckProtocolSupport failed");
         return status;
     }
 
-    OPS_LOG_D(LOG_TAG, "CheckProtocolSupport success!");
+    OPS_LOG_I(LOG_TAG, "CheckProtocolSupport success!");
     protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
     return ge::GRAPH_SUCCESS;
 }
@@ -620,13 +616,13 @@ ge::graphStatus Mc2MoeGraphContext::GetMc2ContextA5(
     ge::Graph& graph, const std::string& contextTag, const std::string& epName,
     const ge::GNode& originalNode, ge::GNode& constNode, int64_t& hcclBuffSize)
 {
-    if (contextTag.empty() || epName.empty()) {
+    if ((contextTag.empty()) || (epName.empty())) {
         OPS_LOG_E(LOG_TAG, "Context tag or ep name is empty");
         return ge::GRAPH_FAILED;
     }
     ge::AscendString groupEpStr;
-    if (originalNode.GetAttr(ge::AscendString(epName.c_str()), groupEpStr) != ge::GRAPH_SUCCESS ||
-        groupEpStr.GetString() == nullptr || *groupEpStr.GetString() == '\0') {
+    if ((originalNode.GetAttr(ge::AscendString(epName.c_str()), groupEpStr) != ge::GRAPH_SUCCESS) ||
+        (groupEpStr.GetString() == nullptr) || (*groupEpStr.GetString() == '\0')) {
         OPS_LOG_E(LOG_TAG, "Failed to get %s attr", epName.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -682,5 +678,5 @@ template void *Mc2MoeGraphContext::GetHcclLibFunc<void *>(void *handle, const st
 
 }  // namespace ops
 
-#endif  // BUILD_OPEN_PROJECT && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#endif  // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #endif  // CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION

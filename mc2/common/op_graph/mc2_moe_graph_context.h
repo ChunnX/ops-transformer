@@ -19,9 +19,12 @@
 #define GRAPH_FUSION_SUPPORT_VERSION 90000000
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
 #define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if __has_include("version/hcomm_version.h")
+#include "version/hcomm_version.h"
+#else
+#define HCOMM_VERSION_NUM (HCCL_CHANNEL_SUPPORT_VERSION)
+#endif
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
 #include "hccl/hccl_rank_graph.h"
@@ -163,6 +166,5 @@ private:
 }  // namespace ops
 
 #endif  // HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#endif  // BUILD_OPEN_PROJECT
 #endif  // CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #endif  // OPS_TRANSFORMER_MC2_MOE_GRAPH_CONTEXT_H
