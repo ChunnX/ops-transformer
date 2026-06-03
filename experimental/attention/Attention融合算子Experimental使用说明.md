@@ -85,8 +85,8 @@
     <td>该算子为kv_quant_sparse_attn_sharedkv算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
   </tr>
   <tr>
-    <td>quant_lightning_indexer</td>
-    <td><a href="./quant_lightning_indexer/README.md">文档</a></td>
+    <td>stem_indexer</td>
+    <td><a href="./stem_indexer/README.md">文档</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
@@ -96,15 +96,15 @@
     <td>该算子是推理场景下，稀疏Attention前处理的计算，选出关键的稀疏token，并对输入query和key进行量化实现存8算8，获取最大收益。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
   </tr>
   <tr>
-    <td>quant_lightning_indexer_metadata</td>
-    <td><a href="./quant_lightning_indexer_metadata/README.md">文档</a></td>
+    <td>stem_indexer_metadata</td>
+    <td><a href="./stem_indexer_metadata/README.md">文档</a></td>
     <td>√</td>
     <td>√</td>
     <td>√</td>
     <td>×</td>
     <td>√</td>
     <td>AI Cpu</td>
-    <td>该算子为quant_lightning_indexer算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
+    <td>该算子为stem_indexer算子提供分核结果。<br/>算子torch接口调用依赖torch_ops_extension，具体安装方法见<a href="https://gitcode.com/cann/cann-recipes-infer/tree/master/ops/ascendc#torch_ops_extension%E7%AE%97%E5%AD%90%E5%8C%85%E7%BC%96%E8%AF%91%E4%B8%8E%E5%AE%89%E8%A3%85">安装指导</a>。</td>
   </tr>
   <tr>
     <td>sparse_attn_sharedkv</td>
@@ -173,10 +173,10 @@
     ```bash
     bash build.sh --pkg --experimental --soc=${soc_version} --ops=${op_list}
     # 如要使用DeepSeek-V4，910c环境编译命令示例如下：
-    # bash build.sh --pkg --experimental --soc=ascend910_93 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,sparse_attn_sharedkv,sparse_attn_sharedkv_metadata
+    # bash build.sh --pkg --experimental --soc=ascend910_93 --ops=compressor,stem_indexer,stem_indexer_metadata,sparse_attn_sharedkv,sparse_attn_sharedkv_metadata
 
     # 如要使用DeepSeek-V4，ascend950环境编译命令示例如下：
-    # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
+    # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,stem_indexer,stem_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
     ```
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --ops：自定义算子名称，多个自定义算子通过`,`分割。
@@ -226,8 +226,8 @@ torch_ops_extension包为自定义算子提供了torch.ops的拓展接口，具�
     <td><a href="./kv_quant_sparse_attn_sharedkv/tests/pytest/README.md">示例</a></td>
   </tr>
   <tr>
-    <td>quant_lightning_indexer</td>
-    <td><a href="./quant_lightning_indexer/tests/pytest/README.md">示例</a></td>
+    <td>stem_indexer</td>
+    <td><a href="./stem_indexer/tests/pytest/README.md">示例</a></td>
   </tr>
   <tr>
     <td>sparse_attn_sharedkv</td>
