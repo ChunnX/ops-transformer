@@ -28,7 +28,8 @@ template <typename LIGT>
 class LIGVectorPost {
 public:
     __aicore__ inline LIGVectorPost() : tilingData(nullptr), pipe(nullptr) {};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict ordTilingData);
+    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace,
+                                const LIGTilingData *__restrict ordTilingData);
     __aicore__ inline void Process();
 
     using dataType = typename LIGT::dataType;
@@ -55,13 +56,15 @@ public:
     int64_t kPostTailNum;
 };
 
-template <typename LIGT> 
-__aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict ordTilingData)
+template <typename LIGT>
+__aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace,
+                                                 const LIGTilingData *__restrict ordTilingData)
 {
     tilingData = nullptr;
     pipe = nullptr;
 
     if (ordTilingData == nullptr || pipe_in == nullptr || dk == nullptr || workspace == nullptr) {
+        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "LIGVectorPost Init input pointer is null."); });
         return;
     }
 
@@ -102,6 +105,7 @@ template <typename LIGT>
 __aicore__ inline void LIGVectorPost<LIGT>::Process()
 {
     if (tilingData == nullptr || pipe == nullptr) {
+        ASCENDC_ASSERT(false, { KERNEL_LOG(KERNEL_ERROR, "LIGVectorPost Process called before successful Init."); });
         return;
     }
     // init k
