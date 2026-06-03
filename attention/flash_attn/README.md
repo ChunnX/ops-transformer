@@ -359,6 +359,9 @@
 </table>
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
+
+- 算子调用
+  - 算子仅支持torch_extension进行调用
 - 声明
   - 参数 cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table 及 attn_mask 属于tensor。由于算子在 Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
