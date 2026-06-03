@@ -466,6 +466,9 @@ public:
         gmPerTokenScale.SetGlobalBuffer(ptrPerTokenScale);
         gmIn.SetGlobalBuffer(ptrIn);
         gmOut.SetGlobalBuffer(ptrOut);
+        if (ptrBias != nullptr) {
+            gmBias.SetGlobalBuffer((__gm__ ElementBias *)ptrBias);
+        }
 
         auto ubTileStride = MakeCoord(static_cast<int64_t>(TileShape::COLUMN), 1L);
         auto tileShape = TileShape::ToCoord();
