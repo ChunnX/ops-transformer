@@ -697,6 +697,14 @@ public:
         event_t vToMte2 = static_cast<event_t>(tPipe->FetchEventID(HardEvent::V_MTE2));
         event_t mte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
 
+        DataCopyParams dataCopyParams;
+        DataCopyPadParams dataCopyPadParams;
+        if (constInfo.dSizeV != dTemplateAlign64) {
+            dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
+            dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
+            dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+        }
+
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
             uint32_t subMRealsize = subMBase;
@@ -720,12 +728,7 @@ public:
                              vec2CalcSize);
                 }
             } else {
-                DataCopyParams dataCopyParams;
-                DataCopyPadParams dataCopyPadParams;
                 dataCopyParams.blockCount = subMRealsize;
-                dataCopyParams.dstStride = (constInfo.dBasicBlock - constInfo.dSizeV) * sizeof(T) / blockBytes;
-                dataCopyParams.srcStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T);
-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
                 if constexpr (useDn) {
                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
                                 dataCopyPadParams);
@@ -1011,6 +1014,14 @@ public:
         event_t mte2ToV = static_cast<event_t>(tPipe->FetchEventID(HardEvent::MTE2_V));
         event_t vToMte2 = static_cast<event_t>(tPipe->FetchEventID(HardEvent::V_MTE2));
 
+        DataCopyParams dataCopyParams;
+        DataCopyPadParams dataCopyPadParams;
+        if (constInfo.dSizeV != dTemplateAlign64) {
+            dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+        }
+
         for (int64_t mOIdx = 0; mOIdx < vec2LoopLimit; mOIdx++) {
             int32_t mIdx = mOIdx * subMBase;
             uint32_t subMRealsize = subMBase;
@@ -1033,12 +1044,7 @@ public:
                              vec2CalcSize);
                 }
             } else {
-                DataCopyParams dataCopyParams;
-                DataCopyPadParams dataCopyPadParams;
                 dataCopyParams.blockCount = subMRealsize;
-                dataCopyParams.dstStride = (dTemplateAlign64 - constInfo.dSizeV) * sizeof(T) / blockBytes;
-                dataCopyParams.srcStride = 0;
-                dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
                 if constexpr (useDn) {
                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
                                 dataCopyPadParams);
