@@ -121,91 +121,83 @@ def check_param_valid(
     )
 
 
-@tilelang.jit(out_idx=[-4, -3, -2, -1], workspace_idx=[5, 6, 7, 8, 9, 10], pass_configs=pass_configs)
-def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
+# ==============================================================================
+# Kernel 1: Cube1 - Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
+# GatherKey: (B, S1, K, DQuery) - no G dimension (MQA, all groups share same key)
+# GatherKeyIndex: (B, S1, K, DQueryIndex) - no Nidx1 dimension (all gidx share same keyIndex)
+# Output: bmm1Res (B, S1, N1, K), bmm2Res (B, S1, Nidx1, K) with ReLU
+# ==============================================================================
+@tilelang.jit(out_idx=[-2, -1], workspace_idx=[], pass_configs=pass_configs)
+def tilelang_cube1_bsnd(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
     input_dtype, calc_dtype
 ):
     block_m = BLOCK_M
     block_n = BLOCK_N
     block_k = BLOCK_K
-    vector_baseg = VECTOR_BASEG
     s1_tile_num = ceil_div(S1, block_m)
-    block_num = B * N2 * s1_tile_num
+    block_num = B * s1_tile_num
     n_num = K // block_n
     d_num_query = DQuery // block_k
     d_num_query_index = DQueryIndex // block_k
-    g_group_num = Nidx1 // vector_baseg
 
     @T.prim_func
     def main(
         Query: T.Tensor((B, S1, N1, DQuery), input_dtype),
-        GatherKey: T.Tensor((B, N2, S1, G, K, DQuery), input_dtype),
+        GatherKey: T.Tensor((B, S1, K, DQuery), input_dtype),
         QueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        GatherKeyIndex: T.Tensor((B, N2, S1, Nidx1, K, DQueryIndex), input_dtype),
-        Weights: T.Tensor((B, S1, Nidx1), input_dtype),
-        bmm1Res_ws: T.Tensor((B, N2, S1, G, K), calc_dtype),
-        bmm2Res_ws: T.Tensor((B, N2, S1, Nidx1, K), calc_dtype),
-        reluGrad_ws: T.Tensor((B, N2, S1, Nidx1, K), input_dtype),
-        scatterAdd_ws: T.Tensor((B, N2, S1, K, DQueryIndex), calc_dtype),
-        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
-        dWeights_ws: T.Tensor((B, S1, Nidx1, K), calc_dtype),
-        SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
-        SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        ScaleValue: T.Tensor((1,), calc_dtype),
-        SparseIndices: T.Tensor((B, S1, Nidx2, K), "int32"),
-        actual_q_len: T.Tensor((B,), "int32"),
-        actual_k_len: T.Tensor((B,), "int32"),
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
-        dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype),
-        dWeights: T.Tensor((B, S1, Nidx1, K), input_dtype),
-        Loss: T.Tensor((1,), calc_dtype),
+        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        bmm1Res: T.Tensor((B, S1, N1, K), calc_dtype),
+        bmm2Res: T.Tensor((B, S1, Nidx1, K), calc_dtype),
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
-            bz = cid // (N2 * s1_tile_num)
-            n2_id = cid // s1_tile_num % N2
+            bz = cid // s1_tile_num
             m = cid % s1_tile_num
             s1_start = m * block_m
             s1_end = T.min(s1_start + block_m, S1)
 
-            # ========== Cube1: query@gatherKey^T + queryIndex@gatherKeyIndex^T ==========
             with T.Scope("C"):
                 T.barrier_all()
 
-                Q_L1 = T.alloc_L1((block_m, block_k), input_dtype)
+                # --- Matmul1: query @ gatherKey^T -> bmm1Res ---
+                # query[b, s1, n1, :]: (1, DQuery)
+                # gatherKey[b, s1, k_start:k_end, :]: (block_n, DQuery)
+                # result: (1, block_n) -> bmm1Res[b, s1, n1, k_start:k_end]
+                Q_L1 = T.alloc_L1((1, block_k), input_dtype)
                 GK_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
+                C_L0C = T.alloc_L0C((1, block_n), calc_dtype)
 
-                # Matmul1: query @ gatherKey^T -> bmm1Res_ws
                 for s1_row in T.serial(block_m):
-                    for g_idx in T.serial(G):
-                        n1_idx = n2_id * G + g_idx
+                    for n1_idx in T.serial(N1):
                         for n_idx in T.serial(n_num):
                             T.barrier_all()
                             for k_idx in T.serial(d_num_query):
                                 T.copy(
                                     Query[bz, s1_start + s1_row, n1_idx, k_idx * block_k:(k_idx + 1) * block_k],
-                                    Q_L1[s1_row, :],
+                                    Q_L1,
                                 )
                                 T.barrier_all()
                                 T.copy(
-                                    GatherKey[bz, n2_id, s1_start + s1_row, g_idx, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                    GatherKey[bz, s1_start + s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
                                     GK_L1,
                                 )
                                 T.barrier_all()
                                 T.gemm_v0(Q_L1, GK_L1, C_L0C, transpose_B=True, init=(k_idx == 0))
                                 T.barrier_all()
                             T.copy(
-                                C_L0C[s1_row, :],
-                                bmm1Res_ws[bz, n2_id, s1_start + s1_row, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                C_L0C,
+                                bmm1Res[bz, s1_start + s1_row, n1_idx, n_idx * block_n:(n_idx + 1) * block_n],
                             )
                             T.barrier_all()
 
-                QI_L1 = T.alloc_L1((block_m, block_k), input_dtype)
+                # --- Matmul2: queryIndex @ gatherKeyIndex^T -> bmm2Res (with ReLU) ---
+                # queryIndex[b, s1, gidx, :]: (1, DQueryIndex)
+                # gatherKeyIndex[b, s1, k_start:k_end, :]: (block_n, DQueryIndex)
+                # result: (1, block_n) -> bmm2Res[b, s1, gidx, k_start:k_end]
+                QI_L1 = T.alloc_L1((1, block_k), input_dtype)
                 GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                C2_L0C = T.alloc_L0C((block_m, block_n), calc_dtype)
+                C2_L0C = T.alloc_L0C((1, block_n), calc_dtype)
 
-                # Matmul2: queryIndex @ gatherKeyIndex^T -> bmm2Res_ws
                 for s1_row in T.serial(block_m):
                     for gidx_idx in T.serial(Nidx1):
                         for n_idx in T.serial(n_num):
@@ -213,198 +205,93 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             for k_idx in T.serial(d_num_query_index):
                                 T.copy(
                                     QueryIndex[bz, s1_start + s1_row, gidx_idx, k_idx * block_k:(k_idx + 1) * block_k],
-                                    QI_L1[s1_row, :],
+                                    QI_L1,
                                 )
                                 T.barrier_all()
                                 T.copy(
-                                    GatherKeyIndex[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
+                                    GatherKeyIndex[bz, s1_start + s1_row, n_idx * block_n:(n_idx + 1) * block_n, k_idx * block_k:(k_idx + 1) * block_k],
                                     GKI_L1,
                                 )
                                 T.barrier_all()
                                 T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                                 T.barrier_all()
                             T.copy(
-                                C2_L0C[s1_row, :],
-                                bmm2Res_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                C2_L0C,
+                                bmm2Res[bz, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                enable_relu=True,
                             )
                             T.barrier_all()
 
-                T.set_cross_flag("FIX", 1)
-
-            # ========== Vec1: Softmax恢复 + 在线Softmax + KL Loss + dW + reluGrad ==========
-            with T.Scope("V"):
-                T.wait_cross_flag(1)
-
-                weight_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                weight_fp32_ub = T.alloc_ub(vector_baseg, calc_dtype)
-
-                bmm1_row_ub = T.alloc_ub(block_n, calc_dtype)
-                bmm2_row_ub = T.alloc_ub(block_n, calc_dtype)
-
-                sm_max_ub = T.alloc_ub(1, calc_dtype)
-                sm_sum_ub = T.alloc_ub(1, calc_dtype)
-                scale_ub = T.alloc_ub(1, calc_dtype)
-
-                p_row_ub = T.alloc_ub(block_n, calc_dtype)
-                softmax_i_row_ub = T.alloc_ub(block_n, calc_dtype)
-                di_row_ub = T.alloc_ub(block_n, calc_dtype)
-                relu_grad_row_ub = T.alloc_ub(block_n, calc_dtype)
-                relu_grad_half_ub = T.alloc_ub(block_n, input_dtype)
-                mask_ub = T.alloc_ub(block_n, calc_dtype)
+    return main
 
 
+# ==============================================================================
+# Kernel 2: Cube2 - Matmul4 (reluGrad @ gatherKeyIndex^T -> dQueryIndex)
+# reluGrad: (B, S1, Nidx1, K) - computed in Python layer
+# GatherKeyIndex: (B, S1, K, DQueryIndex)
+# Output: dQueryIndex (B, S1, Nidx1, DQueryIndex)
+# ==============================================================================
+@tilelang.jit(out_idx=[-1], workspace_idx=[], pass_configs=pass_configs)
+def tilelang_cube2_bsnd(
+    B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
+    input_dtype, calc_dtype
+):
+    block_m = BLOCK_M
+    block_n = BLOCK_N
+    block_k = BLOCK_K
+    s1_tile_num = ceil_div(S1, block_m)
+    block_num = B * s1_tile_num
+    n_num = K // block_n
+    d_num_query_index = DQueryIndex // block_k
 
-                T.copy(ScaleValue[0:1], scale_ub)
+    @T.prim_func
+    def main(
+        ReluGrad: T.Tensor((B, S1, Nidx1, K), input_dtype),
+        GatherKeyIndex: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
+        dQueryIndex_ws: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype),
+    ):
+        with T.Kernel(block_num, is_npu=True) as (cid, vid):
+            bz = cid // s1_tile_num
+            m = cid % s1_tile_num
+            s1_start = m * block_m
+            s1_end = T.min(s1_start + block_m, S1)
 
-                for g_group in T.serial(g_group_num):
-                    for s1_row in T.serial(block_m):
-                        T.barrier_all()
-
-                        n1_group_start = g_group * vector_baseg
-                        T.copy(
-                            Weights[bz, s1_start + s1_row, n1_group_start : n1_group_start + vector_baseg],
-                            weight_half_ub,
-                        )
-                        T.barrier_all()
-                        T.tile.cast(weight_fp32_ub, weight_half_ub, "CAST_NONE", vector_baseg)
-                        T.barrier_all()
-
-                        for g_local in T.serial(vector_baseg):
-                            gidx_idx = g_group * vector_baseg + g_local
-                            g_idx = gidx_idx
-
-                            T.copy(
-                                SoftmaxMax[bz, n2_id, s1_start + s1_row, g_idx],
-                                sm_max_ub,
-                            )
-                            T.barrier_all()
-                            T.copy(
-                                SoftmaxSum[bz, n2_id, s1_start + s1_row, g_idx],
-                                sm_sum_ub,
-                            )
-                            T.barrier_all()
-
-                            for n_idx in T.serial(n_num):
-                                T.barrier_all()
-
-                                T.copy(
-                                    bmm1Res_ws[bz, n2_id, s1_start + s1_row, g_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                    bmm1_row_ub,
-                                )
-                                T.barrier_all()
-                                T.tile.sub(p_row_ub, bmm1_row_ub, sm_max_ub[0])
-                                T.barrier_all()
-                                T.tile.exp(p_row_ub, p_row_ub)
-                                T.barrier_all()
-                                T.tile.div(p_row_ub, p_row_ub, sm_sum_ub[0])
-                                T.barrier_all()
-
-                                T.copy(
-                                    bmm2Res_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                    bmm2_row_ub,
-                                )
-                                T.barrier_all()
-                                T.tile.mul(softmax_i_row_ub, bmm2_row_ub, scale_ub[0])
-                                T.barrier_all()
-
-                                T.tile.sub(di_row_ub, softmax_i_row_ub, p_row_ub)
-                                T.barrier_all()
-
-                                T.tile.mul(di_row_ub, di_row_ub, softmax_i_row_ub)
-                                T.barrier_all()
-                                T.copy(
-                                    di_row_ub,
-                                    dWeights_ws[bz, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                )
-                                T.barrier_all()
-
-                                T.tile.compare(mask_ub, bmm2_row_ub, 0.0, "GT")
-                                T.barrier_all()
-
-                                T.tile.sub(di_row_ub, softmax_i_row_ub, p_row_ub)
-                                T.barrier_all()
-                                T.tile.select(relu_grad_row_ub, mask_ub, di_row_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                                T.barrier_all()
-                                T.tile.mul(relu_grad_row_ub, relu_grad_row_ub, weight_fp32_ub[g_local])
-                                T.barrier_all()
-                                T.tile.cast(relu_grad_half_ub, relu_grad_row_ub, "CAST_ROUND", block_n)
-                                T.barrier_all()
-
-                                T.copy(
-                                    relu_grad_half_ub,
-                                    reluGrad_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                )
-                                T.barrier_all()
-
-
-                T.set_cross_flag("V", 2)
-
-            # ========== Cube2: reluGrad^T@queryIndex + reluGrad@gatherKeyIndex ==========
             with T.Scope("C"):
-                T.wait_cross_flag(2)
+                T.barrier_all()
 
-                RG_L1 = T.alloc_L1((block_m, block_n), input_dtype)
-                QI2_L1 = T.alloc_L1((block_m, block_k), input_dtype)
-                SA_L0C = T.alloc_L0C((block_n, block_k), calc_dtype)
+                # Matmul4: dQueryIndex[gidx, d] = sum_k reluGrad[gidx, k] * gatherKeyIndex[k, d]
+                # reluGrad: (1, block_n), gatherKeyIndex: (block_n, block_k)
+                # gemm: (1, block_n) @ (block_n, block_k) = (1, block_k)
+                RG_L1 = T.alloc_L1((1, block_n), input_dtype)
+                GKI_L1 = T.alloc_L1((block_n, block_k), input_dtype)
+                DQ_L0C = T.alloc_L0C((1, block_k), calc_dtype)
 
-                # Matmul3: reluGrad^T @ queryIndex -> scatterAdd_ws
-                for s1_row in T.serial(block_m):
-                    for n_idx in T.serial(n_num):
-                        for d_idx in T.serial(d_num_query_index):
-                            for gidx_idx in T.serial(Nidx1):
-                                T.barrier_all()
-                                T.copy(
-                                    reluGrad_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                    RG_L1,
-                                )
-                                T.barrier_all()
-                                T.copy(
-                                    QueryIndex[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
-                                    QI2_L1,
-                                )
-                                T.barrier_all()
-                                T.gemm_v0(RG_L1, QI2_L1, SA_L0C, transpose_B=True, init=(gidx_idx == 0))
-                                T.barrier_all()
-                            T.copy(
-                                SA_L0C,
-                                scatterAdd_ws[bz, n2_id, s1_start + s1_row, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
-                            )
-                            T.barrier_all()
-
-                GKI2_L1 = T.alloc_L1((block_n, block_k), input_dtype)
-                DQ_L0C = T.alloc_L0C((block_m, block_k), calc_dtype)
-
-                # Matmul4: reluGrad @ gatherKeyIndex -> dQueryIndex_ws
                 for s1_row in T.serial(block_m):
                     for gidx_idx in T.serial(Nidx1):
                         for d_idx in T.serial(d_num_query_index):
                             for n_idx in T.serial(n_num):
                                 T.barrier_all()
                                 T.copy(
-                                    reluGrad_ws[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
+                                    ReluGrad[bz, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
                                     RG_L1,
                                 )
                                 T.barrier_all()
                                 T.copy(
-                                    GatherKeyIndex[bz, n2_id, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
-                                    GKI2_L1,
+                                    GatherKeyIndex[bz, s1_start + s1_row, n_idx * block_n:(n_idx + 1) * block_n, d_idx * block_k:(d_idx + 1) * block_k],
+                                    GKI_L1,
                                 )
                                 T.barrier_all()
-                                T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=True, init=(n_idx == 0))
+                                T.gemm_v0(RG_L1, GKI_L1, DQ_L0C, init=(n_idx == 0))
                                 T.barrier_all()
                             T.copy(
-                                DQ_L0C[s1_row, :],
+                                DQ_L0C,
                                 dQueryIndex_ws[bz, s1_start + s1_row, gidx_idx, d_idx * block_k:(d_idx + 1) * block_k],
                             )
                             T.barrier_all()
 
-                T.set_cross_flag("FIX", 3)
-
-            # ========== Vec2: Cast + ScatterAdd + loss ==========
+            # Cast dQueryIndex_ws FP32 -> FP16
             with T.Scope("V"):
-                T.wait_cross_flag(3)
-
-                # Cast dQueryIndex_ws FP32 -> FP16
                 dq_fp32_ub = T.alloc_ub(block_k, calc_dtype)
                 dq_fp16_ub = T.alloc_ub(block_k, input_dtype)
                 for s1_row in T.serial(block_m):
@@ -424,61 +311,150 @@ def tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
                             )
                             T.barrier_all()
 
-                # Cast dWeights_ws FP32 -> FP16 (same shape, no reduce needed)
-                dw_fp32_ub = T.alloc_ub(block_n, calc_dtype)
-                dw_fp16_ub = T.alloc_ub(block_n, input_dtype)
-                for s1_row in T.serial(block_m):
-                    for gidx_idx in T.serial(Nidx1):
-                        for n_idx in T.serial(n_num):
-                            T.barrier_all()
-                            T.copy(
-                                dWeights_ws[bz, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                                dw_fp32_ub,
-                            )
-                            T.barrier_all()
-                            T.tile.cast(dw_fp16_ub, dw_fp32_ub, "CAST_ROUND", block_n)
-                            T.barrier_all()
-                            T.copy(
-                                dw_fp16_ub,
-                                dWeights[bz, s1_start + s1_row, gidx_idx, n_idx * block_n:(n_idx + 1) * block_n],
-                            )
-                            T.barrier_all()
-
-                # ScatterAdd is done in Python layer (dynamic indexing not supported in TileLang)
-                # scatterAdd_ws is in workspace; Python layer will recompute and scatter
-
     return main
 
 
-def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, G, Nidx1, K, DQuery, DQueryIndex):
+# ==============================================================================
+# Gather preprocessing: from Key/KeyIndex + sparseIndices -> GatherKey/GatherKeyIndex
+# ==============================================================================
+def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, K, DQuery, DQueryIndex):
     device = key.device
     dtype = key.dtype
 
-    # Gather key: (B, S2, N2, DQuery) -> gatherKey: (B, N2, S1, G, K, DQuery)
-    # sparse_indices: (B, S1, Nidx2, K), Nidx2=1, N2=1
+    # sparse_indices: (B, S1, Nidx2, K), Nidx2=1
     sparse_idx_3d = sparse_indices[:, :, 0, :]  # (B, S1, K)
-    # Replace -1 (padding) with 0 to avoid negative indexing in gather
     sparse_idx_3d = sparse_idx_3d.clamp(min=0)
     batch_idx = torch.arange(B, device=device).view(B, 1, 1)
 
-    # key: (B, S2, N2, DQuery) -> gather along S2 dim
-    # For each (b, s1, k), gather key[b, sparse_indices[b,s1,k], :, :] -> (B, S1, K, N2, DQuery)
-    gather_key = key[batch_idx, sparse_idx_3d, :, :]  # (B, S1, K, N2, DQuery)
-    gather_key = gather_key.permute(0, 3, 1, 2, 4)  # (B, N2, S1, K, DQuery)
+    # Gather key: (B, S2, N2, DQuery) -> (B, S1, K, DQuery)
+    # For each (b, s1, k), gather key[b, sparse_indices[b,s1,k], :, :]
+    gather_key = key[batch_idx, sparse_idx_3d, 0, :]  # (B, S1, K, DQuery)
 
-    # Expand G dimension: all G groups share the same gathered key (MQA)
-    gather_key_expanded = gather_key.unsqueeze(3).expand(B, N2, S1, G, K, DQuery).contiguous()
+    # Gather keyIndex: (B, S2, Nidx2, DQueryIndex) -> (B, S1, K, DQueryIndex)
+    gather_key_index = key_index[batch_idx, sparse_idx_3d, 0, :]  # (B, S1, K, DQueryIndex)
 
-    # Gather keyIndex: (B, S2, Nidx2, DQueryIndex) -> gatherKeyIndex: (B, N2, S1, Nidx1, K, DQueryIndex)
-    gather_key_index = key_index[batch_idx, sparse_idx_3d, :, :]  # (B, S1, K, Nidx2, DQueryIndex)
-    # Nidx2=1, need (B, S1, K, DQueryIndex) then expand to (B, N2, S1, Nidx1, K, DQueryIndex)
-    gather_key_index = gather_key_index.squeeze(3)  # (B, S1, K, DQueryIndex)
-    # Insert N2 and Nidx1 dims: (B, 1, S1, 1, K, DQueryIndex) -> expand
-    gather_key_index_expanded = gather_key_index.unsqueeze(1).unsqueeze(3).expand(B, N2, S1, Nidx1, K, DQueryIndex).contiguous()
-
-    return gather_key_expanded, gather_key_index_expanded
+    return gather_key.contiguous(), gather_key_index.contiguous()
 
 
+# ==============================================================================
+# Python-layer vector computation (arch22 reference)
+# ==============================================================================
+def _compute_vector_outputs(
+    bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
+    scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
+    input_dtype,
+):
+    """
+    Compute softmaxI, P_reduced, dWeight, reluGrad in Python (arch22 logic).
+
+    bmm1_res: (B, S1, N1, K) float32 - query @ gatherKey^T
+    bmm2_res: (B, S1, Nidx1, K) float32 - ReLU(queryIndex @ gatherKeyIndex^T)
+    weights: (B, S1, Nidx1) float16
+    softmax_max: (B, N2, S1, G) float32
+    softmax_sum: (B, N2, S1, G) float32
+    scale_value: float
+
+    Returns:
+        d_weights: (B, S1, Nidx1) float32
+        relu_grad: (B, S1, Nidx1, K) float16
+        kl_loss: float32 scalar
+    """
+    # P = softmax(bmm1Res * scale) per (b, s1, g)
+    # bmm1_res: (B, S1, N1, K) where N1 = N2 * G = G (since N2=1)
+    # Reshape to (B, S1, G, K) for per-group softmax
+    bmm1 = bmm1_res * scale_value  # (B, S1, N1, K)
+
+    # softmax_max/sum: (B, N2, S1, G) -> (B, S1, G) since N2=1
+    sm_max = softmax_max.squeeze(1)  # (B, S1, G)
+    sm_sum = softmax_sum.squeeze(1)  # (B, S1, G)
+
+    # P[b, s1, g, k] = exp(bmm1[b,s1,g,k] - sm_max[b,s1,g]) / sm_sum[b,s1,g]
+    # bmm1 shape: (B, S1, G, K), sm_max shape: (B, S1, G) -> unsqueeze to (B, S1, G, 1)
+    P = torch.exp(bmm1 - sm_max.unsqueeze(-1)) / sm_sum.unsqueeze(-1)  # (B, S1, G, K)
+
+    # P_reduced[k] = (1/G) * sum_g P[g, k]
+    P_reduced = P.mean(dim=2)  # (B, S1, K)
+
+    # softmaxI = softmax(sum_g(ReLU(bmm2Res[g,k]) * weight[g]))
+    # bmm2_res already has ReLU applied (enable_relu=True in kernel)
+    # bmm2_res: (B, S1, Nidx1, K) - this is reluRes
+    relu_res = bmm2_res  # (B, S1, Nidx1, K)
+
+    # weight: (B, S1, Nidx1) -> unsqueeze to (B, S1, Nidx1, 1)
+    w = weights.float().unsqueeze(-1)  # (B, S1, Nidx1, 1)
+
+    # weighted_relu = reluRes * weight: (B, S1, Nidx1, K)
+    weighted_relu = relu_res * w  # (B, S1, Nidx1, K)
+
+    # reduceSumY[k] = sum_g(weighted_relu[g, k]): sum over Nidx1 (g) dimension
+    reduce_sum_y = weighted_relu.sum(dim=2)  # (B, S1, K)
+
+    # softmaxI = softmax(reduceSumY) per (b, s1)
+    # Standard softmax: exp(x - max) / sum(exp(x - max))
+    rsy_max = reduce_sum_y.max(dim=-1, keepdim=True).values  # (B, S1, 1)
+    rsy_exp = torch.exp(reduce_sum_y - rsy_max)  # (B, S1, K)
+    rsy_sum = rsy_exp.sum(dim=-1, keepdim=True)  # (B, S1, 1)
+    softmax_i = rsy_exp / rsy_sum  # (B, S1, K)
+
+    # dWeight[g] = sum_k((softmaxI[k] - P_reduced[k]) * reluRes[g, k])
+    diff = softmax_i - P_reduced  # (B, S1, K)
+    # relu_res: (B, S1, Nidx1, K), diff: (B, S1, K) -> unsqueeze diff
+    d_weights = (diff.unsqueeze(2) * relu_res).sum(dim=-1)  # (B, S1, Nidx1)
+
+    # reluGrad[g, k] = weight[g] * (softmaxI[k] - P_reduced[k]) * I(reluRes[g,k] > 0)
+    # Since reluRes = ReLU(bmm2Res), reluRes >= 0 always. I(reluRes > 0) = I(reluRes > 0)
+    relu_mask = (relu_res > 0).float()  # (B, S1, Nidx1, K)
+    relu_grad = w * diff.unsqueeze(2) * relu_mask  # (B, S1, Nidx1, K)
+    relu_grad_half = relu_grad.to(input_dtype)
+
+    # KL Loss = sum over all elements of (softmaxI * log(softmaxI / P_reduced))
+    # This is computed per (b, s1) as sum_k(softmaxI[k] * (log(softmaxI[k]) - log(P_reduced[k])))
+    # Use log_softmax for numerical stability
+    # Note: P_reduced is already a probability distribution, softmaxI is too
+    # KL = sum_k(softmaxI[k] * log(softmaxI[k] / P_reduced[k]))
+    eps = 1e-10
+    kl_loss = (softmax_i * (torch.log(softmax_i + eps) - torch.log(P_reduced + eps))).sum()
+
+    return d_weights, relu_grad_half, kl_loss
+
+
+# ==============================================================================
+# ScatterAdd: compute dKeyIndex from reluGrad and queryIndex
+# ==============================================================================
+def _compute_d_key_index(relu_grad, query_index, sparse_indices, B, S1, S2, Nidx2, K, DQueryIndex, device, dtype):
+    """
+    scatterAdd = reluGrad^T @ queryIndex per (b, s1)
+    Then scatter into dKeyIndex using sparseIndices.
+    """
+    relu_grad_fp32 = relu_grad.float()  # (B, S1, Nidx1, K)
+    query_index_fp32 = query_index.float()  # (B, S1, Nidx1, DQueryIndex)
+
+    # scatterAdd[b, s1] = reluGrad[b,s1]^T @ queryIndex[b,s1]
+    # relu_grad: (B, S1, Nidx1, K) -> transpose last two -> (B, S1, K, Nidx1)
+    relu_grad_t = relu_grad_fp32.permute(0, 1, 3, 2)  # (B, S1, K, Nidx1)
+    scatter_add = torch.bmm(
+        relu_grad_t.reshape(B * S1, K, Nidx1),
+        query_index_fp32.reshape(B * S1, Nidx1, DQueryIndex),
+    ).reshape(B, S1, K, DQueryIndex)
+
+    # Scatter into dKeyIndex using sparseIndices
+    d_key_index = torch.zeros(B, S2, Nidx2, DQueryIndex, dtype=torch.float32, device=device)
+    sparse_idx = sparse_indices[:, :, 0, :].clamp(min=0)  # (B, S1, K)
+
+    for b in range(B):
+        for s in range(S1):
+            valid_mask = sparse_indices[b, s, 0, :] >= 0
+            k_indices = sparse_idx[b, s, valid_mask]
+            sa_values = scatter_add[b, s, valid_mask]
+            if k_indices.numel() > 0:
+                d_key_index[b, k_indices, 0, :] += sa_values
+
+    return d_key_index.to(dtype)
+
+
+# ==============================================================================
+# Main entry: BSND layout
+# ==============================================================================
 def sparse_lightning_indexer_grad_kl_loss(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -513,8 +489,9 @@ def sparse_lightning_indexer_grad_kl_loss(
     DQueryIndex = tiling.DQueryIndex
     K = tiling.K
 
+    input_dtype = query.dtype
     calc_dtype_str = "float"
-    input_dtype_str = "float16" if query.dtype == torch.float16 else "bfloat16"
+    input_dtype_str = "float16" if input_dtype == torch.float16 else "bfloat16"
     weights_orig_dtype = weights.dtype
 
     if layout_query == "BSND" and sparse_mode in (3,):
@@ -534,59 +511,76 @@ def sparse_lightning_indexer_grad_kl_loss(
             key_index = torch.nn.functional.pad(key_index, (0, 0, 0, 0, 0, S2_pad - S2, 0, 0))
 
         if weights.dtype == torch.float32:
-            weights = weights.half()
+            weights = weights.to(input_dtype)
 
-        # Gather preprocessing
+        # Step 1: Gather preprocessing
         gather_key, gather_key_index = _preprocess_gather(
             key, key_index, sparse_indices,
-            B, S1, S2_pad, N2, Nidx2, G, Nidx1, K, DQuery, DQueryIndex,
+            B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex,
         )
 
-        scale_tensor = torch.tensor([scale_value], dtype=torch.float32).npu()
-
-        # Allocate output tensors
-        d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=query.dtype, device=query.device)
-        d_key_index_out = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=query.dtype, device=query.device)
-        d_weights_out = torch.zeros(B, S1, Nidx1, K, dtype=query.dtype, device=query.device)
-        # Loss must be zero-initialized for atomic_add accumulation
-        loss_out = torch.zeros(1, dtype=torch.float32, device=query.device)
-
-        func = tilelang_sparse_lightning_indexer_grad_kl_loss_bsnd(
+        # Step 2: Cube1 kernel - Matmul1 + Matmul2
+        func_cube1 = tilelang_cube1_bsnd(
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
             input_dtype_str, calc_dtype_str,
         )
 
+        bmm1_res_out = torch.zeros(B, S1, N1, K, dtype=torch.float32, device=query.device)
+        bmm2_res_out = torch.zeros(B, S1, Nidx1, K, dtype=torch.float32, device=query.device)
+
         torch.npu.synchronize()
-        d_query_index, d_key_index, d_weights, loss = func(
-            query, gather_key, query_index, gather_key_index, weights,
-            softmax_max, softmax_sum, scale_tensor,
-            sparse_indices, actual_q_len, actual_k_len,
-            d_query_index_out, d_key_index_out, d_weights_out, loss_out,
+        bmm1_res, bmm2_res = func_cube1(
+            query, gather_key, query_index, gather_key_index,
+            bmm1_res_out, bmm2_res_out,
         )
         torch.npu.synchronize()
 
-        # ScatterAdd: compute dKeyIndex from reluGrad_ws and queryIndex
-        # reluGrad_ws shape: (B, N2, S1, Nidx1, K)
-        # queryIndex shape: (B, S1, Nidx1, DQueryIndex)
-        # scatterAdd = reluGrad^T @ queryIndex, shape: (B, N2, S1, K, DQueryIndex)
-        # Then scatter into dKeyIndex using sparseIndices
-        # Since we can't easily extract reluGrad_ws from workspace, we recompute in Python:
-        # reluGrad_fp32 = reluGrad_ws.float()  -- but reluGrad_ws is in workspace
-        # Alternative: compute scatterAdd directly from reluGrad (which we can reconstruct)
-        # For now, d_key_index is placeholder (zeros) until ScatterAdd is implemented
-        # TODO: Either expose scatterAdd_ws as output, or implement ScatterAdd in kernel
+        # Step 3: Python-layer vector computation
+        d_weights, relu_grad, kl_loss = _compute_vector_outputs(
+            bmm1_res, bmm2_res, weights, softmax_max, softmax_sum,
+            scale_value, B, S1, N1, N2, G, Nidx1, K, DQuery, DQueryIndex,
+            input_dtype,
+        )
 
-        # dWeights: reduce K-axis (kernel outputs per-K-element, need sum)
-        d_weights = d_weights.sum(dim=-1)
+        # Step 4: Cube2 kernel - Matmul4 (dQueryIndex)
+        func_cube2 = tilelang_cube2_bsnd(
+            B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
+            input_dtype_str, calc_dtype_str,
+        )
 
+        d_query_index_ws = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
+        d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
+
+        torch.npu.synchronize()
+        d_query_index = func_cube2(
+            relu_grad, gather_key_index,
+            d_query_index_ws, d_query_index_out,
+        )
+        torch.npu.synchronize()
+
+        # Step 5: ScatterAdd (dKeyIndex)
+        d_key_index = _compute_d_key_index(
+            relu_grad, query_index, sparse_indices,
+            B, S1, S2_pad, Nidx2, K, DQueryIndex,
+            query.device, input_dtype,
+        )
+
+        # Cast dWeights to original dtype
         if weights_orig_dtype == torch.float32:
             d_weights = d_weights.float()
+        else:
+            d_weights = d_weights.to(input_dtype)
 
-        return d_query_index, d_key_index, d_weights, loss
+        loss_tensor = kl_loss.reshape(1).to(torch.float32).npu()
+
+        return d_query_index, d_key_index, d_weights, loss_tensor
 
     raise ValueError(f"Unsupported layout_query={layout_query} with sparse_mode={sparse_mode}")
 
 
+# ==============================================================================
+# TND layout entry
+# ==============================================================================
 def sparse_lightning_indexer_grad_kl_loss_tnd(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -602,19 +596,12 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
     actual_seq_lengths_key: Optional[torch.Tensor] = None,
     sparse_mode: int = 3,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """
-    TND layout entry: reshape TND -> BSND (B=1, S=T), call BSND kernel, reshape back.
-    TND shapes: query(T1,N1,D), key(T2,N2,D), queryIndex(T1,Nidx1,Didx), keyIndex(T2,Nidx2,Didx)
-    BSND shapes: query(1,T1,N1,D), key(1,T2,N2,D), ...
-    """
-    # TND -> BSND: insert B=1 dim at position 0
     query_b = query.unsqueeze(0)
     key_b = key.unsqueeze(0)
     query_index_b = query_index.unsqueeze(0)
     key_index_b = key_index.unsqueeze(0)
     weights_b = weights.unsqueeze(0)
     sparse_indices_b = sparse_indices.unsqueeze(0)
-    # softmaxMax/Sum: TND (N2,T1,G) -> BSND (B,N2,T1,G) = (1,N2,T1,G)
     softmax_max_b = softmax_max.unsqueeze(0)
     softmax_sum_b = softmax_sum.unsqueeze(0)
 
@@ -637,5 +624,4 @@ def sparse_lightning_indexer_grad_kl_loss_tnd(
         sparse_mode=sparse_mode,
     )
 
-    # BSND -> TND: remove B=1 dim
     return d_qi.squeeze(0), d_ki.squeeze(0), dw.squeeze(0), loss
