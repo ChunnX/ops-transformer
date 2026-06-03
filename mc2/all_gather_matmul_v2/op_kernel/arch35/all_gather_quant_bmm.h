@@ -275,6 +275,14 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         return;
     }
 
+    // BI-fix (issue #2872): construct cfgUnified with rankM scaled to TOTAL gather-buffer M.
+    // Original cfg.rankM = per-rank input M (e.g. 8). After HCCL allgather, the gather
+    // buffer contains rankDim * per-rank-M rows. For Mc2QuantBatchMatmulASWKernel
+    // (isGather=false) to correctly interpret this as rankDim sub-chunks of per-rank-M
+    // rows each, rankM must be the total M.
+    Mc2Tiling::RCSTiling cfgUnified = cfg;
+    cfgUnified.rankM = cfg.rankM * cfg.rankDim;
+
     GetTPipePtr() -> Destroy();
     GetTPipePtr() -> Init();
     Mc2MatmulV3::Mc2QuantBatchMatmulASWKernel<
@@ -285,13 +293,14 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType,
         // Workspace偏移留出scale1目的地址
         workspaceGM += DequantBmm::Align(CeilDiv(qMmv3Tiling.matmulTiling.Ka, MX_BLOCK_SIZE), EVEN_ALIGN) *
                        static_cast<uint64_t>(cfg.rankM) * sizeof(X2ScaleType) * static_cast<uint64_t>(cfg.rankDim);
+        // isGather=false: process all rankDim slices uniformly (mirror reduce_scatter_v2 pattern)
         mmv3.Init(
-            aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg,
-            isTail, true, preCoreNum_);
+            aGM, bGM_, biasGM_, dequantGM2_, gatherDequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfgUnified,
+            isTail, false, preCoreNum_);
     } else {
         mmv3.Init(
-            aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfg, isTail,
-            true, preCoreNum_);
+            aGM, bGM_, biasGM_, dequantGM2_, dequantGM1_, cGM_, workspaceGM, &qMmv3Tiling, GetTPipePtr(), cfgUnified, isTail,
+            false, preCoreNum_);
     }
 
     uint32_t shift = isTail ? cfg.tileCnt : 0;
@@ -320,18 +329,20 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType,
                                          X2ScaleType, CType, ATrans, BTrans, ServerMode>::QuantMatmulCompute()
 {
     auto &&cfg = tilingData_->param;
-    // 计算本片的块
-    // 未用到的AIC核不需要参与计算
-    if ((GetBlockIdx() < tilingData_->quantBmmv3LocalTiling.matmulTiling.usedCoreNum) && (cfg.rankN != 0)) {
-        QuantMatmulLocalCompute();
+    // BI-fix (issue #2872): unified-kernel pattern — skip QuantMatmulLocalCompute,
+    // route ALL rank data (including own, via HCCL GroupCopy to gather buffer)
+    // through a single Mc2QuantBatchMatmulASWKernel(isGather=false) call.
+    // Mirrors matmul_reduce_scatter_v2's ExecuteAicMatMulPipeline structural pattern.
+    if (cfg.rankN == 0) {
+        return;
     }
     Mc2SyncAll<Mc2CoreType::ON_CUBE>();
 
-    // 只做本卡计算时，aGM_从本地获取；计算远端卡数据时，aGM_为gather来的数据
+    // Wait for own-rank's HCCL GroupCopy to finish populating gather buffer slot,
+    // plus wait for scale1 gather (under MX) before single unified compute.
     if (debugMode_ != MC2_DEBUG_ONLY_CUBE) {
         aGM_ = gatherOut_;
         if constexpr (DequantBmm::IsMxType<X2ScaleType>()) {
-            // 计算其他片数据前先wait scale1
             hcclAllgather_.Wait(handleList_[SCALE1_HANDLE_IDX]);
         }
     }
