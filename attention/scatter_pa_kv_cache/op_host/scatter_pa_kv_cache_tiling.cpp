@@ -572,6 +572,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         // auto kvCacheStrides = attrs->GetListInt(INPUT_KV_CACHE_STRIDES_INDEX);
         bool isViewKCache = context_->InputIsView(DIM_1);
         bool isViewVCache = context_->InputIsView(DIM_4);
+        OP_LOGD(context, "isViewKCache: %d", isViewKCache );
+        OP_LOGD(context, "isViewVCache: %d", isViewVCache );
         if (isViewKCache) {
             auto *kCacheStride = context_->GetInputStride(DIM_1);
             if (kCacheStride != nullptr) {

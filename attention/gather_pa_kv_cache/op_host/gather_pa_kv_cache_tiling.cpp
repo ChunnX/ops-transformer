@@ -138,6 +138,8 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     int64_t vCacheBlockStride = 0;
     bool isViewKCache = context->InputIsView(DIM_0);
     bool isViewVCache = context->InputIsView(DIM_1);
+    OP_LOGD(context, "isViewKCache: %d", isViewKCache );
+    OP_LOGD(context, "isViewVCache: %d", isViewVCache );
     if (isViewKCache) {
         auto *kCacheStride = context->GetInputStride(DIM_0);
         if (kCacheStride != nullptr) {
