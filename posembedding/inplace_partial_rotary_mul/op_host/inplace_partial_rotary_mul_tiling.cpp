@@ -49,9 +49,9 @@ ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetShapeAttr
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
+ge::graphStatus Tiling4InplacePartialRotaryMulDispatcher(gert::TilingContext *context)
 {
-    OP_LOGI(context, "Tiling4RotaryPositionEmbedding start");
+    OP_LOGI(context, "Tiling4InplacePartialRotaryMulDispatcher start");
     OP_CHECK_IF(context == nullptr, OP_LOGE(context, "Tiling context is null"),
                return ge::GRAPH_FAILED);
 
@@ -90,14 +90,14 @@ ge::graphStatus Tiling4RotaryPositionEmbedding(gert::TilingContext *context)
     }
 }
 
-ge::graphStatus TilingPrepareForRotaryPositionEmbedding(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForInplacePartialRotaryMul(gert::TilingParseContext *context)
 {
-    OP_LOGI(context, "TilingPrepareForRotaryPositionEmbedding context success");
+    OP_LOGI(context, "TilingPrepareForInplacePartialRotaryMul context success");
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(InplacePartialRotaryMul)
-    .Tiling(Tiling4RotaryPositionEmbedding)
-    .TilingParse<InplacePartialRotaryPositionEmbeddingCompileInfo>(TilingPrepareForRotaryPositionEmbedding);
+    .Tiling(Tiling4InplacePartialRotaryMulDispatcher)
+    .TilingParse<InplacePartialRotaryPositionEmbeddingCompileInfo>(TilingPrepareForInplacePartialRotaryMul);
 } // namespace optiling
 
