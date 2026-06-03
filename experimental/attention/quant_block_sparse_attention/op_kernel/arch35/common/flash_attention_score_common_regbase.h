@@ -69,18 +69,7 @@ constexpr uint64_t FLOAT_BYTES = 4;
 constexpr uint64_t BT_PP_SIZE = 4;
 constexpr uint64_t BT_AVAL_SIZE = 16;
 constexpr uint64_t BT_BVAL_SIZE = 16;
-enum class SparseModeEnum {
-    ALL = 0,
-    NONE = 1,
-    ANY = 2,
-    CAUSAL = 3,
-    BAND = 4,
-    PREFIX = 5,
-    BAND_COMPRESS = 6,
-    RIGHT_DOWN_CAUSAL = 7,
-    RIGHT_DOWN_CAUSAL_BAND = 8,
-    BAND_LEFT_UP_CAUSAL = 9,
-};
+
 
 enum class ImplModeEnum {
     AA_HIGH_PRECISION = 0,
