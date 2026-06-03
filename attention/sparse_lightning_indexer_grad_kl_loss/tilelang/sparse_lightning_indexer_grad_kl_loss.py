@@ -484,14 +484,14 @@ def _preprocess_gather(key, key_index, sparse_indices, B, S1, S2, N2, Nidx2, G, 
     gather_key = gather_key.permute(0, 3, 1, 2, 4)  # (B, N2, S1, K, DQuery)
 
     # Expand G dimension: all G groups share the same gathered key (MQA)
-    gather_key_expanded = gather_key.unsqueeze(3).expand(B, N2, S1, G, K, DQuery)  # (B, N2, S1, G, K, DQuery)
+    gather_key_expanded = gather_key.unsqueeze(3).expand(B, N2, S1, G, K, DQuery).contiguous()
 
     # Gather keyIndex: (B, S2, Nidx2, DQueryIndex) -> gatherKeyIndex: (B, N2, S1, Nidx1, K, DQueryIndex)
     gather_key_index = key_index[batch_idx, sparse_idx_3d, :, :]  # (B, S1, K, Nidx2, DQueryIndex)
     # Nidx2=1, need (B, S1, K, DQueryIndex) then expand to (B, N2, S1, Nidx1, K, DQueryIndex)
     gather_key_index = gather_key_index.squeeze(3)  # (B, S1, K, DQueryIndex)
     # Insert N2 and Nidx1 dims: (B, 1, S1, 1, K, DQueryIndex) -> expand
-    gather_key_index_expanded = gather_key_index.unsqueeze(1).unsqueeze(3).expand(B, N2, S1, Nidx1, K, DQueryIndex)
+    gather_key_index_expanded = gather_key_index.unsqueeze(1).unsqueeze(3).expand(B, N2, S1, Nidx1, K, DQueryIndex).contiguous()
 
     return gather_key_expanded, gather_key_index_expanded
 
